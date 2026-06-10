@@ -3,8 +3,8 @@
 //! [`BackendService`] is the single trait that decouples the gRPC handlers
 //! from the underlying implementation. Two implementations exist:
 //!
-//! - [`CoordinatorBackend`] — runs the coordinator in-process.
-//! - [`MockBackend`] — in-memory, auto-progresses jobs; used for testing only.
+//! - [`CoordinatorBackend`]: runs the coordinator in-process.
+//! - [`MockBackend`]: in-memory, auto-progresses jobs; used for testing only.
 
 pub mod coordinator;
 pub mod mock;
@@ -17,24 +17,40 @@ use futures::Stream;
 use uuid::Uuid;
 
 use crate::errors::ApiResult;
+use zisk_coordinator::WorkerSnapshot;
 
 // Re-export domain types from coordinator-api so existing `use crate::backend::X` still works.
 pub use zisk_coordinator_api::dto::*;
 
-// ── Stream type aliases ───────────────────────────────────────────────────────
+// Stream type aliases.
 
 pub type JobEventStream = Pin<Box<dyn Stream<Item = ApiResult<DomainJobEvent>> + Send>>;
 pub type InputChunkStream = Pin<Box<dyn Stream<Item = ApiResult<DomainInputChunk>> + Send>>;
 
-// ── BackendService trait ──────────────────────────────────────────────────────
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LiveJobSnapshot {
+    pub coordinator_id: String,
+    pub job_id: Uuid,
+    pub job_label: String,
+    pub hash_id: String,
+    pub program: String,
+    pub state: String,
+    pub phase: String,
+    pub age_seconds: Option<u64>,
+    pub phase_age_seconds: Option<u64>,
+    pub update_age_seconds: u64,
+    pub workers_count: usize,
+}
+
+// BackendService trait.
 
 /// The single integration point between the gRPC handlers and the backend.
 ///
-/// Swap [`MockBackend`] for [`CoordinatorBackend`] at startup — no handler
+/// Swap [`MockBackend`] for [`CoordinatorBackend`] at startup; no handler
 /// code changes required.
 #[async_trait]
 pub trait BackendService: Send + Sync + 'static {
-    /// Register a guest program by ELF bytes. Idempotent — same ELF always
+    /// Register a guest program by ELF bytes. Idempotent: same ELF always
     /// returns the same `hash_id`.
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String>;
 
@@ -59,4 +75,15 @@ pub trait BackendService: Send + Sync + 'static {
     /// returns `true` if the job was cancelled, or `false` if it was already
     /// in a terminal state when the request arrived.
     async fn cancel_job(&self, job_id: Uuid) -> ApiResult<bool>;
+}
+
+#[async_trait]
+pub trait LiveStateProvider: Send + Sync + 'static {
+    async fn current_live_job(
+        &self,
+        job_id: Option<Uuid>,
+        program: Option<&str>,
+    ) -> ApiResult<Option<LiveJobSnapshot>>;
+
+    async fn live_workers(&self) -> ApiResult<Vec<WorkerSnapshot>>;
 }

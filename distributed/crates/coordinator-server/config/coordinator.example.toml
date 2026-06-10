@@ -25,7 +25,7 @@ environment = "development"
 host = "0.0.0.0"
 
 # CClient-facing gRPC API port.
-port = 7000
+port = 15100
 
 # Seconds to drain in-flight requests after a shutdown signal before forcing exit.
 shutdown_timeout_seconds = 30

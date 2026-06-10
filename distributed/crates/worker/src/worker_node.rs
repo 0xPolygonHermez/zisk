@@ -667,19 +667,26 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: Prove reported failure but returned Ok result"
                     ));
                 }
-                (
-                    data.into_iter()
-                        .map(|v| ProofStark {
-                            airgroup_id: v.airgroup_id,
-                            values: v.proof,
-                            // NOTE: in this context we take always the first worker index
-                            // because at this time at each send_proof call we are processing
-                            // proofs for a single worker
-                            worker_idx: v.worker_indexes[0] as u32,
-                        })
-                        .collect(),
-                    String::new(),
-                )
+                let proofs: Vec<ProofStark> = data
+                    .into_iter()
+                    .map(|v| ProofStark {
+                        airgroup_id: v.airgroup_id,
+                        values: v.proof,
+                        // NOTE: in this context we take always the first worker index
+                        // because at this time at each send_proof call we are processing
+                        // proofs for a single worker
+                        worker_idx: v.worker_indexes[0] as u32,
+                    })
+                    .collect();
+                let proof_words: usize = proofs.iter().map(|proof| proof.values.len()).sum();
+                info!(
+                    "Prepared Prove response for {} (success=true, proofs={}, proof_words={}, approx_payload_bytes={})",
+                    job_id,
+                    proofs.len(),
+                    proof_words,
+                    proof_words * std::mem::size_of::<u64>()
+                );
+                (proofs, String::new())
             }
             Err(e) => {
                 if success {
@@ -706,6 +713,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         message_sender.send(message)?;
+        info!("Queued Prove response for {} to coordinator stream", job_id);
 
         if worker_in_recovery {
             self.spawn_post_failure_recovery(loop_tx.clone());

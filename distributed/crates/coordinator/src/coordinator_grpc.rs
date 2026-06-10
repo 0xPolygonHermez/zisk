@@ -173,6 +173,22 @@ impl CoordinatorGrpc {
                 }
                 worker_message::Payload::ExecuteTaskResponse(execute_task_response) => {
                     Self::validate_same_worker_id(worker_id, &execute_task_response.worker_id)?;
+                    let result_kind = match execute_task_response.result_data.as_ref() {
+                        Some(execute_task_response::ResultData::Execution(_)) => "execution",
+                        Some(execute_task_response::ResultData::Challenges(_)) => "challenges",
+                        Some(execute_task_response::ResultData::Proofs(_)) => "proofs",
+                        Some(execute_task_response::ResultData::FinalProof(_)) => "final_proof",
+                        Some(execute_task_response::ResultData::WrapResult(_)) => "wrap_result",
+                        None => "none",
+                    };
+                    info!(
+                        worker_id = %worker_id,
+                        job_id = %execute_task_response.job_id,
+                        task_type = execute_task_response.task_type,
+                        success = execute_task_response.success,
+                        result_kind,
+                        "received ExecuteTaskResponse from worker stream"
+                    );
                     coordinator
                         .handle_stream_execute_task_response(execute_task_response.into())
                         .await

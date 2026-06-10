@@ -61,7 +61,7 @@
 # Usage from a fresh server (no clone needed):
 #
 #   curl -fsL https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/distributed/deploy/scripts/coordinator/install.sh \
-#       | sudo bash -s -- --api-port 7000
+#       | sudo bash -s -- --api-port 15100
 #
 #   # Pin a non-default branch (e.g., a PR under review):
 #   curl -fsL .../install.sh | sudo ZISK_DEPLOY_BRANCH=feature/foo bash -s -- ...

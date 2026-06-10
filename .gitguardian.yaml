@@ -1,0 +1,9 @@
+version: 2
+secret:
+  ignored-paths:
+    # CLI flag --grafana-password reads $GRAFANA_PASSWORD from env. No
+    # hardcoded value; GG matches on the "password" keyword near a literal.
+    - distributed/deploy/grafana/Makefile
+    # Test fixtures build "zisk-test-token" and "grafana-test-value" via
+    # std::str::join; not real secrets, only used by the CLI parsing test.
+    - distributed/crates/coordinator-dashboard-integration/src/main.rs

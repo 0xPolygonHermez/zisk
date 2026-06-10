@@ -2,12 +2,13 @@ apiVersion: 1
 
 # Auto-provisioned at Grafana startup. The `uid` is pinned so dashboard JSONs
 # can reference it stably (`"datasource": {"type": "prometheus", "uid": "prometheus"}`).
+# The concrete endpoint is supplied by the deployment environment.
 datasources:
   - name: Prometheus
     type: prometheus
     uid: prometheus
     access: proxy
-    url: http://prometheus:9090
+    url: ${ZISK_PROMETHEUS_URL}
     isDefault: true
     editable: false
     jsonData:

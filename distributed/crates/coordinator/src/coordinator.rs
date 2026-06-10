@@ -43,13 +43,23 @@ use crate::{
     coordinator_errors::{CoordinatorError, CoordinatorResult},
     hooks,
     job_events::{CoordinatorExecutionStats, CoordinatorJobEvent},
+    job_history::{
+        JobHistoryEvent, JobHistoryLifecycleEvent, JobHistorySnapshot, JobHistoryStore,
+        JobHistoryWorkerError, EVENT_TYPE_COORDINATOR_STARTED, EVENT_TYPE_JOB_CANCELLED,
+        EVENT_TYPE_JOB_FAILED, EVENT_TYPE_JOB_PHASE_CHANGED, EVENT_TYPE_JOB_QUEUED,
+        EVENT_TYPE_JOB_STARTED, EVENT_TYPE_JOB_SUCCEEDED, EVENT_TYPE_JOB_WAITING_FOR_INPUT,
+        EVENT_TYPE_PROGRAM_REGISTERED,
+    },
+    program_registry::{ProgramRegistry, UNKNOWN_PROGRAM_ALIAS},
     WorkersPool,
 };
 use chrono::{DateTime, Utc};
+use serde_json::{json, Value};
+use sqlx::types::Uuid;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    sync::{atomic::AtomicU64, Arc},
+    sync::{atomic::AtomicU64, Arc, Mutex},
     time::Duration,
 };
 use tokio::sync::{broadcast, RwLock};
@@ -115,6 +125,8 @@ struct JobEventChannel {
 /// 3. **Job Execution**: Proof requests trigger multi-phase job workflows
 /// 4. **Cleanup**: Completed jobs trigger webhooks and resource cleanup
 pub struct Coordinator {
+    coordinator_id: String,
+
     /// Configuration settings for the coordinator including server parameters,
     /// logging parameters and coordinator specific settings.
     config: Config,
@@ -150,6 +162,9 @@ pub struct Coordinator {
     /// program returns success immediately without re-broadcasting.
     pub(crate) active_setups: RwLock<HashMap<SetupKey, ActiveSetup>>,
 
+    /// Bounded raw program hash to Prometheus-safe alias registry.
+    program_registry: Mutex<ProgramRegistry>,
+
     /// Per-job channel senders for gRPC-pushed hints (uri = "grpc://...").
     /// Dropping or sending `None` signals EOF to the relay thread.
     #[allow(clippy::type_complexity)]
@@ -162,6 +177,9 @@ pub struct Coordinator {
     /// timestamp the worker was parked, used by the stuck-recovery sweep
     /// to evict workers that never confirm.
     pending_recovery: RwLock<HashMap<WorkerId, DateTime<Utc>>>,
+
+    /// Optional durable history sink. Writes are buffered and best-effort.
+    job_history: Option<Arc<dyn JobHistoryStore>>,
 }
 
 /// Bookkeeping captured by `Coordinator::terminate_job` and consumed by
@@ -169,6 +187,9 @@ pub struct Coordinator {
 struct TerminationOutcome {
     worker_ids: Vec<WorkerId>,
     phase1_start: Option<DateTime<Utc>>,
+    kind: &'static str,
+    program: String,
+    executed_steps: Option<u64>,
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -186,9 +207,32 @@ impl Coordinator {
     ///
     /// * `config` - Configuration settings
     pub fn new(config: Config) -> Self {
+        Self::new_inner(config, "default".to_owned(), None)
+    }
+
+    pub fn new_with_coordinator_id(config: Config, coordinator_id: String) -> Self {
+        Self::new_inner(config, coordinator_id, None)
+    }
+
+    pub fn new_with_job_history(
+        config: Config,
+        coordinator_id: String,
+        job_history: Arc<dyn JobHistoryStore>,
+    ) -> Self {
+        Self::new_inner(config, coordinator_id, Some(job_history))
+    }
+
+    fn new_inner(
+        config: Config,
+        coordinator_id: String,
+        job_history: Option<Arc<dyn JobHistoryStore>>,
+    ) -> Self {
         let start_time_utc = Utc::now();
 
-        Self {
+        metrics::counter!("coordinator_restarts_total").increment(1);
+
+        let coordinator = Self {
+            coordinator_id,
             config,
             start_time_utc,
             workers_pool: Arc::new(WorkersPool::new()),
@@ -198,14 +242,93 @@ impl Coordinator {
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
             active_setups: RwLock::new(HashMap::new()),
+            program_registry: Mutex::new(ProgramRegistry::default()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_recovery: RwLock::new(HashMap::new()),
+            job_history,
+        };
+
+        if let Some(store) = &coordinator.job_history {
+            store.try_record_event(JobHistoryEvent::coordinator_event(
+                coordinator.coordinator_id.clone(),
+                EVENT_TYPE_COORDINATOR_STARTED,
+                start_time_utc,
+                json!({
+                    "coordinator_id": &coordinator.coordinator_id,
+                    "started_at": start_time_utc,
+                }),
+            ));
         }
+
+        coordinator
+    }
+
+    pub fn coordinator_id(&self) -> &str {
+        &self.coordinator_id
     }
 
     /// Returns a reference to the workers pool.
     pub fn workers_pool(&self) -> &WorkersPool {
         &self.workers_pool
+    }
+
+    fn register_program_alias(&self, hash_id: &str) -> String {
+        let (alias, newly_registered) = match self.program_registry.lock() {
+            Ok(mut registry) => {
+                let existed = registry.get(hash_id).is_some();
+                let alias =
+                    registry.register(hash_id).unwrap_or_else(|| UNKNOWN_PROGRAM_ALIAS.to_owned());
+                (alias, !existed)
+            }
+            Err(err) => {
+                warn!("Program registry lock poisoned while registering {hash_id}");
+                let mut registry = err.into_inner();
+                let existed = registry.get(hash_id).is_some();
+                let alias =
+                    registry.register(hash_id).unwrap_or_else(|| UNKNOWN_PROGRAM_ALIAS.to_owned());
+                (alias, !existed)
+            }
+        };
+
+        if newly_registered && alias != UNKNOWN_PROGRAM_ALIAS {
+            metrics::gauge!(
+                "coordinator_program_info",
+                "program" => alias.clone(),
+                "hash_id" => hash_id.to_owned()
+            )
+            .set(1.0);
+            if let Some(store) = &self.job_history {
+                store.try_record_event(JobHistoryEvent::new(
+                    self.coordinator_id.clone(),
+                    None,
+                    None,
+                    EVENT_TYPE_PROGRAM_REGISTERED,
+                    Utc::now(),
+                    format!(
+                        "{}:{}:{}",
+                        EVENT_TYPE_PROGRAM_REGISTERED, self.coordinator_id, hash_id
+                    ),
+                    json!({
+                        "coordinator_id": &self.coordinator_id,
+                        "hash_id": hash_id,
+                        "program": alias,
+                    }),
+                ));
+            }
+        }
+
+        alias
+    }
+
+    pub fn program_alias_for_hash(&self, hash_id: &str) -> String {
+        match self.program_registry.lock() {
+            Ok(registry) => registry.get(hash_id).unwrap_or(UNKNOWN_PROGRAM_ALIAS).to_owned(),
+            Err(err) => {
+                warn!("Program registry lock poisoned while reading {hash_id}");
+                let registry = err.into_inner();
+                registry.get(hash_id).unwrap_or(UNKNOWN_PROGRAM_ALIAS).to_owned()
+            }
+        }
     }
 
     /// Returns a reference to the jobs map.
@@ -216,6 +339,155 @@ impl Coordinator {
     /// Returns a reference to the coordinator config.
     pub fn config(&self) -> &Config {
         &self.config
+    }
+
+    /// Persists bounded worker-error context without blocking the hot path.
+    pub(crate) async fn record_worker_error_event(
+        &self,
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        reason: &'static str,
+        message: Option<String>,
+    ) {
+        self.record_worker_error_event_with_hash(job_id, worker_id, reason, message, None).await;
+    }
+
+    /// Returns the live running phase for worker-error attribution.
+    pub(crate) async fn current_job_phase(&self, job_id: &JobId) -> Option<JobPhase> {
+        let job_arc = self.jobs.read().await.get(job_id).cloned()?;
+        let job = job_arc.read().await;
+        match job.state() {
+            JobState::Running(phase) => Some(phase.clone()),
+            _ => None,
+        }
+    }
+
+    /// Records worker-error context when the caller already knows the hash id.
+    pub(crate) async fn record_worker_error_event_with_hash(
+        &self,
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        reason: &'static str,
+        message: Option<String>,
+        explicit_hash_id: Option<String>,
+    ) {
+        let Some(store) = self.job_history.clone() else {
+            return;
+        };
+
+        let hash_id = match explicit_hash_id {
+            Some(hash) => hash,
+            None => {
+                let jobs = self.jobs.read().await;
+                match jobs.get(job_id) {
+                    Some(job_arc) => job_arc.read().await.hash_id.clone(),
+                    None => String::new(),
+                }
+            }
+        };
+
+        let job_uuid = match Uuid::parse_str(job_id.as_str()) {
+            Ok(uuid) => uuid,
+            Err(error) => {
+                warn!(
+                    "skipping worker-error history row for {job_id}: job_id is not a UUID ({error})"
+                );
+                return;
+            }
+        };
+
+        let mut event = JobHistoryWorkerError {
+            coordinator_id: self.coordinator_id.clone(),
+            worker_id: worker_id.as_string(),
+            job_id: job_uuid,
+            program: self.program_alias_for_hash(&hash_id),
+            hash_id,
+            reason: reason.to_owned(),
+            message,
+            occurred_at: Utc::now(),
+        };
+        event.truncate_message();
+        crate::metrics::record_worker_error(&event.worker_id, &event.program, &event.reason);
+
+        tokio::spawn(async move {
+            if let Err(error) = store.record_worker_error(event).await {
+                warn!("failed to record worker error history event: {error:#}");
+            }
+        });
+    }
+
+    async fn snapshot_job_for_history(
+        &self,
+        job_id: &JobId,
+        failure_reason: Option<&str>,
+    ) -> Option<JobHistorySnapshot> {
+        let jobs = self.jobs.read().await;
+        let job_entry = jobs.get(job_id).cloned()?;
+        drop(jobs);
+
+        let job = job_entry.read().await;
+        match JobHistorySnapshot::from_job(&self.coordinator_id, &job) {
+            Ok(mut snapshot) => {
+                snapshot.failure_reason = failure_reason.map(str::to_owned);
+                snapshot.program = self.program_alias_for_hash(&snapshot.hash_id);
+                Some(snapshot)
+            }
+            Err(error) => {
+                warn!("failed to build job-history snapshot for {job_id}: {error:#}");
+                None
+            }
+        }
+    }
+
+    pub(crate) fn record_worker_lifecycle_event(
+        &self,
+        worker_id: &WorkerId,
+        event_type: &'static str,
+        payload: Value,
+    ) {
+        let Some(store) = &self.job_history else {
+            return;
+        };
+        let payload = extend_history_payload(
+            json!({
+                "coordinator_id": &self.coordinator_id,
+                "worker_id": worker_id.as_string(),
+            }),
+            payload,
+        );
+        store.try_record_event(JobHistoryEvent::worker_event(
+            self.coordinator_id.clone(),
+            worker_id.as_string(),
+            event_type,
+            Utc::now(),
+            payload,
+        ));
+    }
+
+    async fn history_event_without_snapshot(
+        &self,
+        job_id: &JobId,
+        event: &CoordinatorJobEvent,
+    ) -> Option<JobHistoryEvent> {
+        let job_uuid = Uuid::parse_str(job_id.as_str()).ok();
+        let event_type = history_event_type(event);
+        let setup_hash_id =
+            self.setup_pending.read().await.get(job_id).map(|state| state.hash_id.clone());
+        let payload = json!({
+            "coordinator_id": &self.coordinator_id,
+            "job_id": job_id.as_str(),
+            "hash_id": setup_hash_id,
+            "event": history_event_kind_payload(event),
+        });
+        Some(JobHistoryEvent::new(
+            self.coordinator_id.clone(),
+            job_uuid,
+            None,
+            event_type,
+            Utc::now(),
+            format!("{event_type}:{}:{job_id}", self.coordinator_id),
+            payload,
+        ))
     }
 
     /// Allocates a broadcast channel for the given job. Must be called before any event is fired.
@@ -248,6 +520,11 @@ impl Coordinator {
     /// late subscribers can read it; the entry itself is kept alive (and evicted
     /// later by `cleanup_expired_jobs`).
     async fn fire_job_event(&self, job_id: &JobId, event: CoordinatorJobEvent) {
+        let failure_reason = match &event {
+            CoordinatorJobEvent::Failed(reason) => Some(reason.clone()),
+            _ => None,
+        };
+        let event_for_history = event.clone();
         let terminal = matches!(
             event,
             CoordinatorJobEvent::Completed(_)
@@ -274,6 +551,26 @@ impl Coordinator {
         } else if let Some(chan) = self.job_events.read().await.get(job_id) {
             let _ = chan.tx.send(event);
         }
+
+        if let Some(store) = &self.job_history {
+            if let Some(snapshot) =
+                self.snapshot_job_for_history(job_id, failure_reason.as_deref()).await
+            {
+                let occurred_at = history_event_occurred_at(&event_for_history, &snapshot);
+                let program = self.program_alias_for_hash(&snapshot.hash_id);
+                let payload = history_lifecycle_payload(&event_for_history, &snapshot, &program);
+                store.try_record_lifecycle_event(JobHistoryLifecycleEvent::new(
+                    history_event_type(&event_for_history),
+                    occurred_at,
+                    payload,
+                    snapshot,
+                ));
+            } else if let Some(event) =
+                self.history_event_without_snapshot(job_id, &event_for_history).await
+            {
+                store.try_record_event(event);
+            }
+        }
     }
 
     /// Cancels a running or queued job.
@@ -288,9 +585,12 @@ impl Coordinator {
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Cancelled).await;
         crate::metrics::record_job_terminal(
+            outcome.kind,
             crate::metrics::OUTCOME_CANCELLED,
+            &outcome.program,
             &outcome.worker_ids,
             outcome.phase1_start,
+            outcome.executed_steps,
         );
         info!("Cancelled job {}", job_id);
 
@@ -324,13 +624,24 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?;
         drop(jobs_map);
 
-        let (worker_ids, phase1_start) = {
+        let (worker_ids, phase1_start, kind, program, executed_steps) = {
             let mut job = job_entry.write().await;
             if job.state().is_resolved() {
                 return Ok(None);
             }
             job.change_state(terminal_state);
-            (job.workers.clone(), job.phase_start_time(&JobPhase::Contributions))
+            let kind = crate::metrics::job_kind(job.execution_only);
+            let program = self.program_alias_for_hash(&job.hash_id);
+            crate::metrics::record_phase_durations(&program, &job.phase_timings);
+            let first_phase =
+                if job.execution_only { JobPhase::Execution } else { JobPhase::Contributions };
+            (
+                job.workers.clone(),
+                job.phase_start_time(&first_phase),
+                kind,
+                program,
+                job.executed_steps,
+            )
         };
 
         let parked = self.workers_pool.mark_computing_workers_settingup(job_id, &worker_ids).await;
@@ -343,7 +654,7 @@ impl Coordinator {
         }
         self.cancel_job_workers(&worker_ids, job_id, cancel_reason).await;
 
-        Ok(Some(TerminationOutcome { worker_ids, phase1_start }))
+        Ok(Some(TerminationOutcome { worker_ids, phase1_start, kind, program, executed_steps }))
     }
 
     /// Content-addresses ELF bytes with blake3, writes to cache if absent, returns `hash_id`.
@@ -352,6 +663,7 @@ impl Coordinator {
         let mut hasher = Hasher::new();
         hasher.update(&elf_bytes);
         let hash_id = hasher.finalize().to_hex().to_string();
+        let program_alias = self.register_program_alias(&hash_id);
 
         let path = ZiskPaths::global().elf_cache(&hash_id);
         if !path.exists() {
@@ -361,7 +673,11 @@ impl Coordinator {
             }
             fs::write(&path, &elf_bytes)
                 .map_err(|e| CoordinatorError::Internal(format!("write ELF cache: {e}")))?;
-            metrics::gauge!("coordinator_registered_programs_total").increment(1.0);
+            metrics::counter!(
+                "coordinator_registered_programs_total",
+                "program" => program_alias
+            )
+            .increment(1);
         }
 
         Ok(hash_id)
@@ -604,6 +920,8 @@ impl Coordinator {
                 return Err(e);
             }
         };
+        let kind = crate::metrics::job_kind(job.execution_only);
+        let program = self.program_alias_for_hash(&job.hash_id);
 
         // Store job in jobs map. From this point, error paths can fail the
         // job via `fail_job` which itself releases worker reservations via
@@ -620,7 +938,7 @@ impl Coordinator {
         // timeout will call `record_job_terminal` (which decrements). Without
         // the matching increment here, the gauge would underflow on the
         // dispatch-failure path.
-        crate::metrics::record_job_started();
+        crate::metrics::record_job_started(kind, &program);
 
         let job = job_arc.read().await;
         if let Err(e) = self.dispatch_contributions_messages(&job, &active_workers).await {
@@ -975,10 +1293,14 @@ impl Coordinator {
 
         self.fire_job_event(job_id, CoordinatorJobEvent::Failed(reason.to_string())).await;
         crate::metrics::record_job_terminal(
+            outcome.kind,
             crate::metrics::OUTCOME_FAILURE,
+            &outcome.program,
             &outcome.worker_ids,
             outcome.phase1_start,
+            outcome.executed_steps,
         );
+        crate::metrics::record_job_failure_reason(reason, &outcome.program);
         error!("Failed job {} (reason: {})", job_id, reason);
 
         // post_launch_proof may fail (e.g. proof serialization, webhook).
@@ -1128,6 +1450,13 @@ impl Coordinator {
             // Trigger job failure with detailed context about which workers failed
             let reason =
                 format!("Phase2 failed for workers {:?} in job {}", failed_workers, job.job_id);
+            self.record_worker_error_event(
+                &job.job_id,
+                worker_id,
+                crate::job_history::worker_error_reason::PROVE_FAIL,
+                Some(reason.clone()),
+            )
+            .await;
             self.fail_job(&job.job_id, reason).await?;
 
             // Returns error to prevent further processing of this failed job
@@ -1404,6 +1733,118 @@ impl Coordinator {
             expired.len(),
             retention_secs
         );
+    }
+}
+
+fn history_event_type(event: &CoordinatorJobEvent) -> &'static str {
+    match event {
+        CoordinatorJobEvent::Queued => EVENT_TYPE_JOB_QUEUED,
+        CoordinatorJobEvent::Started => EVENT_TYPE_JOB_STARTED,
+        CoordinatorJobEvent::Progress(_) => EVENT_TYPE_JOB_PHASE_CHANGED,
+        CoordinatorJobEvent::WaitingForInput => EVENT_TYPE_JOB_WAITING_FOR_INPUT,
+        CoordinatorJobEvent::Completed(_) => EVENT_TYPE_JOB_SUCCEEDED,
+        CoordinatorJobEvent::Failed(_) => EVENT_TYPE_JOB_FAILED,
+        CoordinatorJobEvent::Cancelled => EVENT_TYPE_JOB_CANCELLED,
+    }
+}
+
+fn history_event_occurred_at(
+    event: &CoordinatorJobEvent,
+    snapshot: &JobHistorySnapshot,
+) -> DateTime<Utc> {
+    match event {
+        CoordinatorJobEvent::Queued | CoordinatorJobEvent::Started => {
+            snapshot.received_at.unwrap_or_else(Utc::now)
+        }
+        CoordinatorJobEvent::Progress(phase) => {
+            let phase_name = phase.to_string();
+            snapshot
+                .phase_timings
+                .iter()
+                .find(|timing| timing.phase == phase_name)
+                .map(|timing| timing.start_at)
+                .unwrap_or_else(Utc::now)
+        }
+        CoordinatorJobEvent::WaitingForInput => Utc::now(),
+        CoordinatorJobEvent::Completed(_)
+        | CoordinatorJobEvent::Failed(_)
+        | CoordinatorJobEvent::Cancelled => {
+            snapshot.completed_at.or(snapshot.received_at).unwrap_or_else(Utc::now)
+        }
+    }
+}
+
+fn history_lifecycle_payload(
+    event: &CoordinatorJobEvent,
+    snapshot: &JobHistorySnapshot,
+    program: &str,
+) -> Value {
+    extend_history_payload(
+        json!({
+            "coordinator_id": &snapshot.coordinator_id,
+            "job_id": snapshot.job_id,
+            "hash_id": &snapshot.hash_id,
+            "program": program,
+            "state": &snapshot.state,
+            "failure_reason": &snapshot.failure_reason,
+            "proof_type": &snapshot.proof_type,
+            "received_at": snapshot.received_at,
+            "completed_at": snapshot.completed_at,
+            "duration_ms": snapshot.duration_ms,
+            "workers": &snapshot.workers,
+            "agg_worker_id": &snapshot.agg_worker_id,
+            "instances": snapshot.instances,
+            "executed_steps": snapshot.executed_steps,
+        }),
+        history_event_kind_payload(event),
+    )
+}
+
+fn history_event_kind_payload(event: &CoordinatorJobEvent) -> Value {
+    match event {
+        CoordinatorJobEvent::Queued => json!({ "event": "queued" }),
+        CoordinatorJobEvent::Started => json!({ "event": "started" }),
+        CoordinatorJobEvent::Progress(phase) => {
+            json!({ "event": "phase_changed", "phase": phase.to_string() })
+        }
+        CoordinatorJobEvent::WaitingForInput => json!({ "event": "waiting_for_input" }),
+        CoordinatorJobEvent::Completed(result) => match result {
+            crate::job_events::CoordinatorJobResult::Setup { vk } => {
+                json!({ "event": "succeeded", "result": "setup", "vk_bytes": vk.len() })
+            }
+            crate::job_events::CoordinatorJobResult::Prove { proof_bytes, stats } => json!({
+                "event": "succeeded",
+                "result": "prove",
+                "proof_bytes": proof_bytes.len(),
+                "steps": stats.steps,
+                "duration_nanos": stats.duration_nanos,
+            }),
+            crate::job_events::CoordinatorJobResult::Wrap { proof_bytes } => json!({
+                "event": "succeeded",
+                "result": "wrap",
+                "proof_bytes": proof_bytes.len(),
+            }),
+            crate::job_events::CoordinatorJobResult::Execute { stats, .. } => json!({
+                "event": "succeeded",
+                "result": "execute",
+                "steps": stats.steps,
+                "duration_nanos": stats.duration_nanos,
+            }),
+        },
+        CoordinatorJobEvent::Failed(reason) => json!({ "event": "failed", "reason": reason }),
+        CoordinatorJobEvent::Cancelled => json!({ "event": "cancelled" }),
+    }
+}
+
+fn extend_history_payload(mut base: Value, extra: Value) -> Value {
+    match (&mut base, extra) {
+        (Value::Object(base), Value::Object(extra)) => {
+            for (key, value) in extra {
+                base.insert(key, value);
+            }
+            Value::Object(base.clone())
+        }
+        (base, extra) => json!({ "base": base, "extra": extra }),
     }
 }
 

@@ -1,0 +1,87 @@
+# Local observability stack for a host-running coordinator and worker.
+# Required: ZISK_COORD_HOST, ZISK_COORD_ID, and ./.zisk-scrape-token.
+# Dashboard: http://127.0.0.1:${ZISK_GRAFANA_PORT:-3001}/d/zisk-dev/zisk-coordinator
+
+services:
+
+  # Postgres job history for local coordinator runs.
+  postgres:
+    image: postgres:16-alpine
+    container_name: zisk-postgres-local
+    restart: on-failure
+    ports:
+      - "${ZISK_POSTGRES_PORT:-15432}:5432"
+    environment:
+      - POSTGRES_USER=zisk
+      - POSTGRES_DB=zisk_history
+    env_file:
+      - ${ZISK_POSTGRES_ENV_FILE:-../config/postgres.env.example}
+    volumes:
+      - zisk-postgres-local-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U zisk -d zisk_history" ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Prometheus scrapes the host coordinator through ZISK_COORD_HOST.
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: zisk-prometheus-local
+    restart: on-failure
+    ports:
+      - "${ZISK_PROM_PORT:-9091}:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Multi-coord scrape list: id1=host:port,id2=host:port,... Falls back to
+      # ZISK_COORD_HOST + ZISK_COORD_ID for the legacy single-coord setup.
+      - ZISK_COORDS=${ZISK_COORDS:-}
+      - COORD_HOST=${ZISK_COORD_HOST:-}
+      - COORD_ID=${ZISK_COORD_ID:-}
+    volumes:
+      - ./prometheus.local.yml.tpl:/etc/prometheus/prometheus.local.yml.tpl:ro
+      - ./prometheus-entrypoint.sh:/usr/local/bin/zisk-prom-entrypoint.sh:ro
+      - ./.zisk-scrape-token:/etc/prometheus/zisk-scrape-token:ro
+      # TSDB volume so metric history survives restarts and scrape-target swaps.
+      - zisk-prometheus-local-data:/prometheus
+    entrypoint: ["/usr/local/bin/zisk-prom-entrypoint.sh"]
+
+  # Grafana is provisioned from the canonical dashboard and datasource paths.
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: zisk-grafana-local
+    restart: on-failure
+    ports:
+      - "${ZISK_GRAFANA_PORT:-3001}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_INSTALL_PLUGINS=yesoreyeram-infinity-datasource
+      - GF_USERS_DEFAULT_THEME=dark
+      - GF_DASHBOARDS_MIN_REFRESH_INTERVAL=1s
+      - ZISK_PROMETHEUS_URL=http://prometheus:9090
+      - ZISK_COORDINATOR_API_URL=${ZISK_COORDINATOR_API_URL:-http://${ZISK_COORD_HOST:?}}
+      - ZISK_POSTGRES_DATASOURCE_HOST=${ZISK_POSTGRES_DATASOURCE_HOST:-postgres}
+      - ZISK_POSTGRES_DATASOURCE_PORT=${ZISK_POSTGRES_DATASOURCE_PORT:-5432}
+      - ZISK_POSTGRES_DATASOURCE_DB=${ZISK_POSTGRES_DATASOURCE_DB:-zisk_history}
+      - ZISK_POSTGRES_DATASOURCE_USER=${ZISK_POSTGRES_DATASOURCE_USER:-zisk}
+      - ZISK_POSTGRES_DATASOURCE_SSLMODE=${ZISK_POSTGRES_DATASOURCE_SSLMODE:-disable}
+    env_file:
+      - ${ZISK_POSTGRES_ENV_FILE:-../config/postgres.env.example}
+    volumes:
+      - ../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../grafana/dashboards:/etc/grafana/dashboards:ro
+      # Grafana reads the same bearer token file as Prometheus.
+      - ./.zisk-scrape-token:/etc/grafana/secrets/zisk-scrape-token:ro
+      - zisk-grafana-local-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  zisk-postgres-local-data:
+  zisk-grafana-local-data:
+  zisk-prometheus-local-data:

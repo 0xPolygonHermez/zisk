@@ -25,8 +25,31 @@ pub struct WorkerInfo {
     pub compute_capacity: ComputeCapacity,
     pub connected_at: DateTime<Utc>,
     pub last_heartbeat: DateTime<Utc>,
+    pub state_updated_at: DateTime<Utc>,
     pub connection_generation: u64,
     pub msg_sender: Box<dyn MessageSender + Send + Sync>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WorkerSnapshot {
+    pub worker_id: String,
+    pub status: String,
+    pub program: Option<String>,
+    pub job_id: Option<String>,
+    pub job_label: Option<String>,
+    pub phase: Option<String>,
+    pub heartbeat_age_seconds: u64,
+    pub assigned_seconds: Option<u64>,
+    pub compute_units: u32,
+    pub updated_at: DateTime<Utc>,
+}
+
+fn elapsed_seconds(started_at: DateTime<Utc>, now: DateTime<Utc>) -> u64 {
+    now.signed_duration_since(started_at).num_seconds().max(0) as u64
+}
+
+fn short_label(value: &str) -> String {
+    value.chars().take(8).collect()
 }
 
 impl WorkerInfo {
@@ -43,6 +66,7 @@ impl WorkerInfo {
             compute_capacity,
             connected_at: now,
             last_heartbeat: now,
+            state_updated_at: now,
             connection_generation: 0,
             msg_sender,
         }
@@ -235,6 +259,7 @@ impl WorkersPool {
                 return Err(CoordinatorError::InvalidRequest(msg));
             }
             worker.state = initial_state;
+            worker.state_updated_at = Utc::now();
             worker.compute_capacity = connection.compute_capacity;
             worker.msg_sender = connection.msg_sender;
             worker.connection_generation += 1;
@@ -403,6 +428,7 @@ impl WorkersPool {
             Some(worker) if worker.state == WorkerState::Disconnected => Ok(false),
             Some(worker) => {
                 worker.state = WorkerState::Disconnected;
+                worker.state_updated_at = Utc::now();
                 Ok(true)
             }
             None => {
@@ -462,6 +488,45 @@ impl WorkersPool {
         self.workers.read().await.get(worker_id).map(|p| p.state.clone())
     }
 
+    pub async fn live_worker_snapshots(&self) -> Vec<WorkerSnapshot> {
+        let now = Utc::now();
+        let mut snapshots = self
+            .workers
+            .read()
+            .await
+            .values()
+            .map(|worker| {
+                let (status, job_id, phase) = match &worker.state {
+                    WorkerState::Ready => ("ready".to_owned(), None, None),
+                    WorkerState::Idle => ("idle".to_owned(), None, None),
+                    WorkerState::SettingUp => ("setting_up".to_owned(), None, None),
+                    WorkerState::Disconnected => ("disconnected".to_owned(), None, None),
+                    WorkerState::Connecting => ("connecting".to_owned(), None, None),
+                    WorkerState::Error => ("error".to_owned(), None, None),
+                    WorkerState::Computing((job_id, phase)) => {
+                        ("running".to_owned(), Some(job_id.as_string()), Some(phase.to_string()))
+                    }
+                };
+                let assigned_seconds = matches!(worker.state, WorkerState::Computing(_))
+                    .then_some(elapsed_seconds(worker.state_updated_at, now));
+                WorkerSnapshot {
+                    worker_id: worker.worker_id.as_string(),
+                    status,
+                    program: None,
+                    job_label: job_id.as_deref().map(short_label),
+                    job_id,
+                    phase,
+                    heartbeat_age_seconds: elapsed_seconds(worker.last_heartbeat, now),
+                    assigned_seconds,
+                    compute_units: worker.compute_capacity.compute_units,
+                    updated_at: worker.last_heartbeat,
+                }
+            })
+            .collect::<Vec<_>>();
+        snapshots.sort_by(|left, right| left.worker_id.cmp(&right.worker_id));
+        snapshots
+    }
+
     /// Updates the state for multiple workers atomically (single write lock).
     /// Returns `NotFoundOrInaccessible` if any worker id is unknown, without
     /// rolling back the writes that already landed before the missing entry
@@ -481,7 +546,10 @@ impl WorkersPool {
             let mut workers = self.workers.write().await;
             for worker_id in worker_ids {
                 match workers.get_mut(worker_id) {
-                    Some(worker) => worker.state = state.clone(),
+                    Some(worker) => {
+                        worker.state = state.clone();
+                        worker.state_updated_at = Utc::now();
+                    }
                     None => return Err(CoordinatorError::NotFoundOrInaccessible),
                 }
             }
@@ -515,6 +583,7 @@ impl WorkersPool {
                 if let WorkerState::Computing((current_job, _)) = &worker.state {
                     if current_job == job_id {
                         worker.state = WorkerState::SettingUp;
+                        worker.state_updated_at = Utc::now();
                         transitioned.push(wid.clone());
                     }
                 }
@@ -546,6 +615,7 @@ impl WorkersPool {
     ) -> CoordinatorResult<()> {
         if let Some(worker) = self.workers.write().await.get_mut(worker_id) {
             worker.state = state.clone();
+            worker.state_updated_at = Utc::now();
         } else {
             return Err(CoordinatorError::NotFoundOrInaccessible);
         }
@@ -741,6 +811,7 @@ impl WorkersPool {
         for wid in &selected_workers {
             if let Some(info) = workers.get_mut(wid) {
                 info.state = WorkerState::Computing((job_id.clone(), JobPhase::Contributions));
+                info.state_updated_at = Utc::now();
             }
         }
         drop(workers);
@@ -811,6 +882,7 @@ impl WorkersPool {
             match info.state {
                 WorkerState::Idle | WorkerState::Ready | WorkerState::SettingUp => {
                     info.state = WorkerState::SettingUp;
+                    info.state_updated_at = Utc::now();
                     reserved.push(wid.clone());
                 }
                 // Disconnected: can't reach the worker; it'll re-fetch all
@@ -843,6 +915,7 @@ impl WorkersPool {
                 if current_job == job_id && *current_phase == from_phase =>
             {
                 info.state = WorkerState::Computing((job_id.clone(), to_phase));
+                info.state_updated_at = Utc::now();
                 Ok(())
             }
             other => Err(CoordinatorError::InvalidRequest(format!(
@@ -871,6 +944,7 @@ impl WorkersPool {
             .ok_or(CoordinatorError::InsufficientCapacity)?;
         if let Some(info) = workers.get_mut(&worker_id) {
             info.state = WorkerState::Computing((job_id.clone(), phase));
+            info.state_updated_at = Utc::now();
         }
         Ok(worker_id)
     }
@@ -888,6 +962,7 @@ impl WorkersPool {
                 if let WorkerState::Computing((current_job, _)) = &info.state {
                     if current_job == job_id {
                         info.state = WorkerState::Ready;
+                        info.state_updated_at = Utc::now();
                         released.push(wid.clone());
                     }
                 }

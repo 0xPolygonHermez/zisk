@@ -14,7 +14,7 @@ use zisk_coordinator_client::CoordinatorClient;
 #[command(name = "zisk-prove-client", about = "Submit jobs to the ZisK coordinator")]
 struct Cli {
     /// Coordinator gRPC URL
-    #[arg(long, default_value = "http://localhost:7000", env = "ZISK_COORDINATOR_URL")]
+    #[arg(long, default_value = "http://127.0.0.1:15100", env = "ZISK_COORDINATOR_URL")]
     coordinator: String,
 
     /// Connection timeout in seconds

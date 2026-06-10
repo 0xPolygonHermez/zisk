@@ -1,4 +1,4 @@
-//! Coordinator backend — calls `Arc<Coordinator>` directly with no gRPC hop.
+//! Coordinator backend: calls `Arc<Coordinator>` directly with no gRPC hop.
 //!
 //! The coordinator runs in the same process as the coordinator server. Workers still connect
 //! over gRPC to the coordinator's worker-facing port.
@@ -23,7 +23,8 @@ use super::{
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
     DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    InputChunkStream, JobEventStream, LiveJobSnapshot, LiveStateProvider, SubmitJobResult,
+    WaitResult,
 };
 use crate::errors::{internal, ApiError, ApiResult};
 use zisk_cluster_common::{
@@ -33,7 +34,7 @@ use zisk_cluster_common::{
 
 pub struct CoordinatorBackend {
     coordinator: Arc<Coordinator>,
-    /// job_id (UUID string) → hash_id: needed to populate `DomainProof.hash_id`.
+    /// Maps job UUID strings to hash IDs needed for `DomainProof.hash_id`.
     /// Entries are removed once the job reaches a terminal state.
     job_hash: Arc<RwLock<HashMap<String, String>>>,
 }
@@ -44,7 +45,121 @@ impl CoordinatorBackend {
     }
 }
 
-// ── Type mapping helpers ─────────────────────────────────────────────────────
+#[async_trait]
+impl LiveStateProvider for CoordinatorBackend {
+    async fn current_live_job(
+        &self,
+        job_id: Option<Uuid>,
+        program: Option<&str>,
+    ) -> ApiResult<Option<LiveJobSnapshot>> {
+        let now = Utc::now();
+        let jobs = self.coordinator.jobs().read().await;
+        let mut snapshots = Vec::new();
+
+        for job in jobs.values() {
+            let job = job.read().await;
+            if job.state.is_resolved() {
+                continue;
+            }
+            let Ok(parsed_job_id) = Uuid::parse_str(job.job_id.as_str()) else {
+                continue;
+            };
+            if job_id.is_some_and(|wanted| wanted != parsed_job_id) {
+                continue;
+            }
+
+            let alias = self.coordinator.program_alias_for_hash(&job.hash_id);
+            if program.is_some_and(|wanted| !program_matches(wanted, &alias)) {
+                continue;
+            }
+
+            let phase = match &job.state {
+                JobState::Created => "queued".to_owned(),
+                JobState::Running(phase) => phase.to_string(),
+                JobState::Completed | JobState::Failed | JobState::Cancelled => continue,
+            };
+            let phase_age_seconds = match &job.state {
+                JobState::Running(phase) => {
+                    job.phase_start_time(phase).map(|started| elapsed_seconds(started, now))
+                }
+                _ => None,
+            };
+
+            snapshots.push(LiveJobSnapshot {
+                coordinator_id: self.coordinator.coordinator_id().to_owned(),
+                job_id: parsed_job_id,
+                job_label: short_label(parsed_job_id),
+                hash_id: job.hash_id.clone(),
+                program: alias,
+                state: job.state.to_string(),
+                phase,
+                age_seconds: job.task_received_time.map(|received| elapsed_seconds(received, now)),
+                phase_age_seconds,
+                update_age_seconds: 0,
+                workers_count: job.workers.len(),
+            });
+        }
+
+        snapshots.sort_by(|left, right| {
+            right.age_seconds.cmp(&left.age_seconds).then_with(|| left.job_id.cmp(&right.job_id))
+        });
+        Ok(snapshots.into_iter().next())
+    }
+
+    async fn live_workers(&self) -> ApiResult<Vec<zisk_coordinator::WorkerSnapshot>> {
+        let mut snapshots = self.coordinator.workers_pool().live_worker_snapshots().await;
+        let jobs = self.coordinator.jobs().read().await;
+        for worker in &mut snapshots {
+            let Some(job_id) = &worker.job_id else {
+                continue;
+            };
+            let job_id = zisk_cluster_common::JobId::from(job_id.clone());
+            let Some(job) = jobs.get(&job_id) else {
+                continue;
+            };
+            let job = job.read().await;
+            worker.program = Some(self.coordinator.program_alias_for_hash(&job.hash_id));
+            if let Some(phase) = &worker.phase {
+                let phase = match phase.as_str() {
+                    "Contributions" => Some(JobPhase::Contributions),
+                    "Prove" => Some(JobPhase::Prove),
+                    "Aggregate" => Some(JobPhase::Aggregate),
+                    "Execution" => Some(JobPhase::Execution),
+                    _ => None,
+                };
+                if let Some(phase) = phase {
+                    worker.assigned_seconds = job
+                        .phase_start_time(&phase)
+                        .map(|started| (Utc::now() - started).num_seconds().max(0) as u64);
+                }
+            }
+        }
+        Ok(snapshots)
+    }
+}
+
+fn elapsed_seconds(started_at: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> u64 {
+    now.signed_duration_since(started_at).num_seconds().max(0) as u64
+}
+
+fn short_label(job_id: Uuid) -> String {
+    job_id.as_simple().to_string()[..8].to_owned()
+}
+
+fn program_matches(filter: &str, program: &str) -> bool {
+    let filter = filter.trim();
+    if filter.is_empty() || matches!(filter, "All" | "$__all" | ".*") {
+        return true;
+    }
+    filter
+        .trim_start_matches('{')
+        .trim_end_matches('}')
+        .split(',')
+        .map(str::trim)
+        .any(|candidate| candidate == program || matches!(candidate, "All" | "$__all" | ".*"))
+}
+
+// Type mapping helpers.
 
 fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
     DomainProof {
@@ -214,7 +329,7 @@ fn is_terminal(event: &CoordinatorJobEvent) -> bool {
 /// returns. Any client calling `watch_job` after submission has always missed
 /// them. For jobs already past Contributions, the phase-transition Progress
 /// events are also synthesized. The terminal event itself is NOT synthesized
-/// here — callers should fetch the stashed real event via
+/// here; callers should fetch the stashed real event via
 /// `Coordinator::get_terminal_event` and append it separately.
 fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
     let ts = Utc::now();
@@ -245,7 +360,7 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
     }
 }
 
-// ── BackendService impl ──────────────────────────────────────────────────────
+// BackendService impl.
 
 #[async_trait]
 impl BackendService for CoordinatorBackend {
@@ -346,7 +461,7 @@ impl BackendService for CoordinatorBackend {
 
         // Existence is sourced from the event channel, not the `jobs` map:
         // setup jobs live in `setup_pending` (not `jobs`) but DO have event
-        // channels — sourcing from `jobs` would falsely 404 them.
+        // channels; sourcing from `jobs` would falsely 404 them.
         //
         // Subscribe BEFORE checking the stash so a terminal event that fires
         // between our two reads is captured by the receiver.
@@ -358,7 +473,7 @@ impl BackendService for CoordinatorBackend {
             return Ok(WaitResult { job_id, job_status: status, result: kind_result });
         }
 
-        // Neither stash nor live channel → job does not exist (or already evicted).
+        // Neither stash nor live channel means the job does not exist or was evicted.
         let mut rx = rx_opt.ok_or(ApiError::JobNotFound(job_id))?;
 
         let result = timeout(timeout_dur, async {
@@ -395,20 +510,20 @@ impl BackendService for CoordinatorBackend {
 
         // Existence is sourced from the event channel, not the `jobs` map:
         // setup jobs live in `setup_pending` (not `jobs`) but DO have event
-        // channels — sourcing from `jobs` would falsely 404 them.
+        // channels; sourcing from `jobs` would falsely 404 them.
         //
         // Subscribe BEFORE checking the stash so we don't miss a terminal event
         // that fires between our two reads.
         let rx_opt = self.coordinator.subscribe_job_events(&job_id_internal).await;
         let stashed_terminal = self.coordinator.get_terminal_event(&job_id_internal).await;
 
-        // Both None → job is unknown (or already evicted by retention sweep).
+        // Both missing means the job is unknown or already evicted.
         if rx_opt.is_none() && stashed_terminal.is_none() {
             return Err(ApiError::JobNotFound(job_id));
         }
 
         // Best-effort catchup from the Job snapshot. Setup jobs aren't in
-        // `jobs` (they use `setup_pending`) — degrade to a Created-state
+        // `jobs` (they use `setup_pending`); degrade to a Created-state
         // catchup (just Queued) in that case.
         let job_state = self.coordinator.jobs().read().await.get(&job_id_internal).cloned();
         let state = match job_state {
@@ -417,7 +532,7 @@ impl BackendService for CoordinatorBackend {
         };
         let catchup = catchup_events(&state, job_id);
 
-        // If the job is already terminal we won't drain the receiver — drop it.
+        // If the job is already terminal we won't drain the receiver.
         let rx = if stashed_terminal.is_some() { None } else { rx_opt };
 
         let job_id_str = job_id.to_string();

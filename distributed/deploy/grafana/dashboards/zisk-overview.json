@@ -1,137 +1,3562 @@
 {
-  "uid": "zisk-overview",
-  "title": "ZisK — Overview",
-  "tags": ["zisk", "coordinator"],
-  "schemaVersion": 39,
-  "timezone": "browser",
-  "refresh": "5s",
-  "time": { "from": "now-30m", "to": "now" },
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "expr": "changes(up{job=~\"zisk-coordinator.*|zisk-coord.*\"}[1m]) > 0",
+        "name": "Coordinator scrape state changed"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "expr": "changes(coordinator_start_time_seconds{coordinator_id=~\"$coordinator\"}[1m]) > 0",
+        "name": "Coordinator process restarted"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "enable": true,
+        "expr": "changes(coordinator_workers_connected{coordinator_id=~\"$coordinator\"}[1m]) != 0",
+        "name": "Worker pool changed"
+      }
+    ]
+  },
+  "editable": true,
   "panels": [
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Whether the selected coordinator process is visible to Prometheus. Worker attachment is shown separately so coordinator-down and no-worker states are not collapsed.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "#D95F5F",
+                  "index": 0,
+                  "text": "offline"
+                },
+                "1": {
+                  "color": "#0ABF83",
+                  "index": 1,
+                  "text": "online"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#D95F5F",
+                "value": null
+              },
+              {
+                "color": "#0ABF83",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 0
+      },
       "id": 1,
-      "type": "stat",
-      "title": "Coordinator",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "up{job=\"zisk-coordinator\"}", "refId": "A" }],
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
-      "options": { "colorMode": "background", "graphMode": "none" },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(max(up{job=~\"zisk-coordinator.*|zisk-coord.*\"} * on(instance, job) group_left(coordinator_id) max by (instance, job, coordinator_id) (coordinator_info{coordinator_id=~\"$coordinator\"})) or vector(0)) > bool 0",
+          "instant": true,
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Coordinator Availability (now)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Connected worker sessions reported by the v0.18 coordinator pool. This is pool availability, not per-worker utilization.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#D95F5F",
+                "value": null
+              },
+              {
+                "color": "#0ABF83",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 0
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(coordinator_workers_connected{coordinator_id=~\"$coordinator\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Workers Connected (now)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Current non-terminal proof jobs. Zero means idle, not success/failure.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 10,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(coordinator_active_jobs{coordinator_id=~\"$coordinator\"}) or vector(0)",
+          "instant": true,
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Active Proofs (now)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "Average total duration for the last 10 successful proof jobs. Failed and cancelled jobs stay split out in Proof Duration Stats.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "mappings": [],
+          "noValue": "no successes",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 0
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, sampled AS (\n  SELECT duration_ms\n  FROM job_rows\n  WHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND outcome = 'success'\n  AND duration_ms IS NOT NULL\n  ORDER BY sort_at DESC NULLS LAST, job_id DESC\n  LIMIT 10\n)\nSELECT\n  ROUND(AVG(duration_ms))::bigint AS \"Avg Proof Time\"\nFROM sampled",
+          "refId": "A"
+        }
+      ],
+      "title": "Average Proof Duration (last 10 successes)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Seconds since the latest successful proof job. This gauge is seeded from Postgres history on coordinator startup and does not assume a fixed proof-time SLO.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "mappings": [],
+          "noValue": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 0
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "time() - max(coordinator_last_successful_job_timestamp_seconds{coordinator_id=~\"$coordinator\"} > 0)",
+          "instant": true,
+          "legendFormat": "",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Last Successful Proof Age (now)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 4
+      },
+      "id": 19,
+      "panels": [],
+      "title": "Current Proof",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "zisk-json"
+      },
+      "description": "Current phase for the active proof. Shows idle when the coordinator reports no active proof.",
       "fieldConfig": {
         "defaults": {
           "mappings": [
-            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" } } },
-            { "type": "value", "options": { "1": { "text": "UP", "color": "green" } } }
-          ]
-        }
-      }
-    },
-    {
-      "id": 2,
-      "type": "stat",
-      "title": "Active jobs",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "coordinator_active_jobs", "refId": "A" }],
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
-    },
-    {
-      "id": 3,
-      "type": "stat",
-      "title": "Workers connected",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "coordinator_workers_connected", "refId": "A" }],
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 }
-    },
-    {
-      "id": 4,
-      "type": "stat",
-      "title": "Jobs in last 5m",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [{ "expr": "sum(increase(coordinator_jobs_total[5m]))", "refId": "A" }],
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 }
-    },
-    {
-      "id": 5,
-      "type": "timeseries",
-      "title": "Job throughput by outcome",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum by (outcome) (rate(coordinator_jobs_total[1m]))",
-          "refId": "A",
-          "legendFormat": "{{outcome}}"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "ops" } },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 }
-    },
-    {
-      "id": 6,
-      "type": "timeseries",
-      "title": "Failure rate",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum(rate(coordinator_jobs_total{outcome=\"failure\"}[5m])) / clamp_min(sum(rate(coordinator_jobs_total[5m])), 1e-9)",
-          "refId": "A",
-          "legendFormat": "failure rate"
-        }
-      ],
-      "fieldConfig": { "defaults": { "unit": "percentunit", "max": 1, "min": 0 } },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 }
-    },
-    {
-      "id": 7,
-      "type": "timeseries",
-      "title": "Job duration (success) — p50 / p95 / p99",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(coordinator_job_duration_seconds_bucket{outcome=\"success\"}[5m])))",
-          "refId": "A",
-          "legendFormat": "p50"
+            {
+              "options": {
+                "0": {
+                  "color": "#8E8E8A",
+                  "index": 0,
+                  "text": "idle"
+                },
+                "1": {
+                  "color": "#A4F6D0",
+                  "index": 1,
+                  "text": "queued"
+                },
+                "2": {
+                  "color": "#005F44",
+                  "index": 2,
+                  "text": "contribution"
+                },
+                "255": {
+                  "color": "#8E8E8A",
+                  "index": 6,
+                  "text": "unknown"
+                },
+                "3": {
+                  "color": "#007755",
+                  "index": 3,
+                  "text": "prove"
+                },
+                "4": {
+                  "color": "#079B6E",
+                  "index": 4,
+                  "text": "aggregate/wrap"
+                },
+                "5": {
+                  "color": "#0ABF83",
+                  "index": 5,
+                  "text": "execute"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "noValue": "idle",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8E8E8A",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
         },
-        {
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(coordinator_job_duration_seconds_bucket{outcome=\"success\"}[5m])))",
-          "refId": "B",
-          "legendFormat": "p95"
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 5
+      },
+      "id": 26,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
         },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(coordinator_job_duration_seconds_bucket{outcome=\"success\"}[5m])))",
-          "refId": "C",
-          "legendFormat": "p99"
+          "columns": [
+            {
+              "selector": "phase_code",
+              "text": "Phase",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "zisk-json"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "data",
+          "source": "url",
+          "type": "json",
+          "url": "/api/v1/jobs/current",
+          "url_options": {
+            "data": "",
+            "method": "GET"
+          }
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "s" } },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 }
+      "title": "Current Proof Phase (now)",
+      "transformations": [],
+      "type": "stat"
     },
     {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "zisk-json"
+      },
+      "description": "Elapsed time for the active proof. Terminal proof durations are shown in Proof Duration Stats and Recent Proof History.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 6,
+        "y": 5
+      },
+      "id": 22,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "age_seconds",
+              "text": "Duration",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "zisk-json"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "data",
+          "source": "url",
+          "type": "json",
+          "url": "/api/v1/jobs/current",
+          "url_options": {
+            "data": "",
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Current Proof Duration (now)",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "zisk-json"
+      },
+      "description": "Elapsed time inside the current phase. Expected phase length depends on program, workers, and GPU class.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 10,
+        "y": 5
+      },
+      "id": 27,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "phase_age_seconds",
+              "text": "Phase Age",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "zisk-json"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "data",
+          "source": "url",
+          "type": "json",
+          "url": "/api/v1/jobs/current",
+          "url_options": {
+            "data": "",
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Current Phase Age (now)",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "zisk-json"
+      },
+      "description": "Age of the latest progress snapshot for the active proof. Red means progress writes are stale while a run is still shown active.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              },
+              {
+                "color": "#C7D300",
+                "value": 60
+              },
+              {
+                "color": "#D95F5F",
+                "value": 300
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 14,
+        "y": 5
+      },
+      "id": 28,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "update_age_seconds",
+              "text": "Update Age",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "zisk-json"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "data",
+          "source": "url",
+          "type": "json",
+          "url": "/api/v1/jobs/current",
+          "url_options": {
+            "data": "",
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Progress Update Age (now)",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "zisk-json"
+      },
+      "description": "Workers assigned to the active proof run. This is not a per-worker utilization metric.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8E8E8A",
+                "value": null
+              },
+              {
+                "color": "#0ABF83",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 5
+      },
+      "id": 23,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "workers_count",
+              "text": "Workers",
+              "type": "number"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "zisk-json"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "data",
+          "source": "url",
+          "type": "json",
+          "url": "/api/v1/jobs/current",
+          "url_options": {
+            "data": "",
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Workers Assigned (now)",
+      "transformations": [],
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "One progress lane per recent proof. The lane label carries total duration; hover for per-phase durations.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 92,
+            "gradientMode": "opacity",
+            "lineWidth": 1
+          },
+          "decimals": 1,
+          "noValue": "-",
+          "unit": "ms"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Proof"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Contribution"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#24483D",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Prove"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#007755",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Aggregate/Wrap"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#0ABF83",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Execution"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#A4F6D0",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 16,
+      "options": {
+        "barRadius": 0.080000000000000002,
+        "barWidth": 0.95999999999999996,
+        "groupWidth": 0.57999999999999996,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "orientation": "horizontal",
+        "showValue": "never",
+        "stacking": "normal",
+        "xField": "Proof",
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 100
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, recent_jobs AS (\n  SELECT\n    job_id,\n    job_label,\n    program,\n    state,\n    outcome,\n    received_at,\n    completed_at,\n    sort_at,\n    (COALESCE(contributions_duration_ms, 0)\n      + COALESCE(prove_duration_ms, 0)\n      + COALESCE(aggregate_duration_ms, 0)\n      + COALESCE(execution_duration_ms, 0))::double precision AS total_phase_ms,\n    COALESCE(contributions_duration_ms, 0)::double precision AS contribution_ms,\n    COALESCE(prove_duration_ms, 0)::double precision AS prove_ms,\n    COALESCE(aggregate_duration_ms, 0)::double precision AS aggregate_ms,\n    COALESCE(execution_duration_ms, 0)::double precision AS execution_ms,\n    ROW_NUMBER() OVER (ORDER BY sort_at DESC NULLS LAST, job_id DESC) AS job_rank\n  FROM job_rows\n  WHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n    AND (\n      outcome IN ('success', 'failure', 'cancelled')\n      OR state LIKE 'Running%'\n    )\n    AND (COALESCE(contributions_duration_ms, 0)\n      + COALESCE(prove_duration_ms, 0)\n      + COALESCE(aggregate_duration_ms, 0)\n      + COALESCE(execution_duration_ms, 0)) > 0\n  ORDER BY sort_at DESC NULLS LAST, job_id DESC\n  LIMIT 5\n)\nSELECT\n  job_label || ' | total ' ||\n  CASE\n    WHEN total_phase_ms >= 3600000 THEN ROUND((total_phase_ms / 3600000.0)::numeric, 1)::text || 'h'\n    WHEN total_phase_ms >= 60000 THEN ROUND((total_phase_ms / 60000.0)::numeric, 1)::text || 'm'\n    ELSE ROUND((total_phase_ms / 1000.0)::numeric, 1)::text || 's'\n  END AS \"Proof\",\n  job_id AS \"Job ID\",\n  program AS \"Program\",\n  state AS \"State\",\n  received_at AS \"Started\",\n  completed_at AS \"Completed\",\n  contribution_ms AS \"Contribution\",\n  prove_ms AS \"Prove\",\n  aggregate_ms AS \"Aggregate/Wrap\",\n  execution_ms AS \"Execution\"\nFROM recent_jobs\nORDER BY job_rank ASC",
+          "refId": "A"
+        }
+      ],
+      "title": "Proof Phase Progress (latest jobs)",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Completed": true,
+              "Job ID": true,
+              "Program": true,
+              "Started": true,
+              "State": true
+            },
+            "indexByName": {
+              "Aggregate/Wrap": 8,
+              "Completed": 5,
+              "Contribution": 6,
+              "Execution": 9,
+              "Job ID": 1,
+              "Program": 2,
+              "Proof": 0,
+              "Prove": 7,
+              "Started": 4,
+              "State": 3
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 20,
+      "panels": [],
+      "title": "Reliability",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "Fraction of terminal proof jobs that succeeded over the last 24 hours. Postgres history, restart-proof. Pair with live failure rate and failure reasons for reliability triage.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "mappings": [],
+          "noValue": "no matching terminal jobs in 24h",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#D95F5F",
+                "value": null
+              },
+              {
+                "color": "#C7D300",
+                "value": 0.94999999999999996
+              },
+              {
+                "color": "#0ABF83",
+                "value": 0.98999999999999999
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 21
+      },
       "id": 8,
-      "type": "timeseries",
-      "title": "gRPC requests by method",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "text": {
+          "valueSize": 36
+        },
+        "textMode": "value"
+      },
+      "pluginVersion": "v11.2.0",
       "targets": [
         {
-          "expr": "sum by (method) (rate(coordinator_requests_total[1m]))",
-          "refId": "A",
-          "legendFormat": "{{method}}"
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, sampled AS (\n  SELECT *\n  FROM job_rows\n  WHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND sort_at >= NOW() - INTERVAL '86400 seconds'\n  ORDER BY sort_at DESC NULLS LAST, job_id DESC\n  LIMIT 500\n),\nterminal AS (\n  SELECT outcome\n  FROM sampled\n  WHERE outcome IN ('success', 'failure', 'cancelled')\n)\nSELECT\n  (COUNT(*) FILTER (WHERE outcome = 'success'))::double precision\n    / NULLIF(COUNT(*), 0)::double precision AS \"Success Rate\"\nFROM terminal",
+          "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "ops" } },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 }
+      "title": "Proof Success Rate (24h)",
+      "type": "stat"
     },
     {
-      "id": 9,
-      "type": "timeseries",
-      "title": "Per-worker job rate (success)",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "Restart-proof failure counts by reason over the dashboard time range, from Postgres proof history. Per-row failure messages remain in Recent Proof History.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8E8E8A",
+                "value": null
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 12,
+        "x": 4,
+        "y": 21
+      },
+      "id": 17,
+      "options": {
+        "displayMode": "gradient",
+        "maxVizHeight": 32,
+        "minVizHeight": 18,
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": true
+        },
+        "showUnfilled": true,
+        "text": {
+          "titleSize": 13,
+          "valueSize": 22
+        },
+        "valueMode": "color"
+      },
+      "pluginVersion": "v11.2.0",
       "targets": [
         {
-          "expr": "sum by (worker_id) (rate(coordinator_worker_jobs_total{outcome=\"success\"}[1m]))",
-          "refId": "A",
-          "legendFormat": "{{worker_id}}"
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, sampled AS (\n  SELECT\n    COALESCE(NULLIF(failure_reason, ''), 'unknown') AS reason\n  FROM job_rows\n  WHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND outcome IN ('failure', 'cancelled')\n  AND $__timeFilter(sort_at)\n  ORDER BY sort_at DESC NULLS LAST, job_id DESC\n  LIMIT 500\n)\nSELECT\n  reason AS \"Reason\",\n  COUNT(*)::bigint AS \"Failures\"\nFROM sampled\nGROUP BY reason\nORDER BY \"Failures\" DESC, \"Reason\" ASC",
+          "refId": "A"
         }
       ],
-      "fieldConfig": { "defaults": { "unit": "ops" } },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 20 }
+      "title": "Proof Failures by Reason (selected range)",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Current coordinator process failure fraction over the last 5 minutes, split by workload kind. Live reliability signal, not historical count.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "decimals": 2,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              },
+              {
+                "color": "#C7D300",
+                "value": 0.01
+              },
+              {
+                "color": "#D95F5F",
+                "value": 0.050000000000000003
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 8,
+        "x": 16,
+        "y": 21
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "(sum by (kind) (rate(coordinator_jobs_total{coordinator_id=~\"$coordinator\",outcome=\"failure\"}[5m])) or (sum by (kind) (rate(coordinator_jobs_total{coordinator_id=~\"$coordinator\"}[5m])) * 0)) / clamp_min(sum by (kind) (rate(coordinator_jobs_total{coordinator_id=~\"$coordinator\"}[5m])), 1e-9)",
+          "instant": false,
+          "legendFormat": "{{kind}} failure rate",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Proof Failure Rate by Kind (5m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "History-backed duration stats for terminal jobs in the last 24 hours. Values render as durations so normal proof time and failed-run time are directly comparable.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Outcome"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Jobs"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Avg|p50|p95|p99|Max"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 26
+      },
+      "id": 9,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, sampled AS (\n  SELECT *\n  FROM job_rows\n  WHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND sort_at >= NOW() - INTERVAL '86400 seconds'\n  ORDER BY sort_at DESC NULLS LAST, job_id DESC\n  LIMIT 500\n),\nterminal AS (\n  SELECT outcome, duration_ms\n  FROM sampled\n  WHERE outcome IN ('success', 'failure', 'cancelled')\n)\nSELECT\n  outcome AS \"Outcome\",\n  COUNT(duration_ms)::bigint AS \"Jobs\",\n  ROUND(AVG(duration_ms))::bigint AS \"Avg\",\n  (percentile_disc(0.50) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL))::bigint AS \"p50\",\n  (percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL))::bigint AS \"p95\",\n  (percentile_disc(0.99) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL))::bigint AS \"p99\",\n  MAX(duration_ms)::bigint AS \"Max\"\nFROM terminal\nGROUP BY outcome\nORDER BY CASE outcome WHEN 'success' THEN 0 WHEN 'failure' THEN 1 WHEN 'cancelled' THEN 2 ELSE 3 END",
+          "refId": "A"
+        }
+      ],
+      "title": "Proof Duration Stats (24h)",
+      "transformations": [],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
+      "id": 30,
+      "panels": [],
+      "title": "Proof Performance",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "Raw-value histogram from recent terminal job durations. Buckets honor dashboard filters and scale to the observed data range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisLabel": "Total duration",
+            "fillOpacity": 80,
+            "lineWidth": 1
+          },
+          "decimals": 0,
+          "noValue": "-",
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "id": 31,
+      "options": {
+        "bucketCount": 12,
+        "bucketOffset": 0,
+        "combine": true,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\nSELECT\n  duration_ms AS \"Duration\"\nFROM job_rows\nWHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND (duration_ms IS NOT NULL)\nORDER BY sort_at DESC NULLS LAST, job_id DESC\nLIMIT 500",
+          "refId": "A"
+        }
+      ],
+      "title": "Proof Duration Distribution (recent jobs)",
+      "transformations": [
+        {
+          "id": "histogram",
+          "options": {
+            "bucketCount": 12,
+            "bucketOffset": 0,
+            "combine": true
+          }
+        }
+      ],
+      "type": "histogram"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "History-backed p50/p95/p99 total duration for terminal jobs in the last 24 hours.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "min": 0,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "id": 32,
+      "options": {
+        "displayMode": "gradient",
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, sampled AS (\n  SELECT *\n  FROM job_rows\n  WHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND sort_at >= NOW() - INTERVAL '86400 seconds'\n  ORDER BY sort_at DESC NULLS LAST, job_id DESC\n  LIMIT 500\n),\nterminal AS (\n  SELECT duration_ms::double precision / 1000.0 AS duration_seconds\n  FROM sampled\n  WHERE outcome IN ('success', 'failure', 'cancelled')\n    AND duration_ms IS NOT NULL\n)\nSELECT\n  percentile_disc(0.50) WITHIN GROUP (ORDER BY duration_seconds) AS \"p50\",\n  percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_seconds) AS \"p95\",\n  percentile_disc(0.99) WITHIN GROUP (ORDER BY duration_seconds) AS \"p99\"\nFROM terminal",
+          "refId": "A"
+        }
+      ],
+      "title": "Proof Duration Quantiles (24h)",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "One dot per stored terminal proof. X is proving cost in million zkVM cycles, Y is total duration in minutes. Dashboard time range is not applied.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "axisGridShow": true,
+            "axisLabel": "Total duration (min)",
+            "lineWidth": 1,
+            "pointSize": {
+              "fixed": 7
+            },
+            "show": "points"
+          },
+          "decimals": 2,
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cost (M cycles)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "Cost (million cycles)"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
+      "id": 36,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "series": [
+          {
+            "frame": 0,
+            "name": "Total duration (min)",
+            "x": "Cost (M cycles)",
+            "y": "Duration (min)"
+          }
+        ],
+        "seriesMapping": "manual",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, ordered AS (\n  SELECT\n    executed_steps::double precision / 1000000.0 AS cost_mcycles,\n    duration_ms::double precision / 60000.0 AS duration_minutes,\n    COALESCE(job_label, LEFT(job_id, 8)) || ' [' || COALESCE(program, '-') || ']' AS proof\n  FROM job_rows\n  WHERE outcome IN ('success', 'failure', 'cancelled')\n    AND duration_ms IS NOT NULL\n    AND executed_steps IS NOT NULL\n  AND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n)\nSELECT\n  cost_mcycles AS \"Cost (M cycles)\",\n  duration_minutes AS \"Duration (min)\",\n  proof AS \"Proof\"\nFROM ordered\nORDER BY cost_mcycles ASC, duration_minutes ASC",
+          "refId": "A"
+        }
+      ],
+      "title": "Proof Duration by Cost (all proofs)",
+      "transformations": [],
+      "type": "xychart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 70
+      },
+      "id": 35,
+      "panels": [],
+      "title": "Performance Trends",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Rolling 15-minute phase workload from coordinator_phase_duration_seconds_sum. Values are proof-seconds per wall-clock second, so parallel workers can push the total above 1.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 35,
+            "lineWidth": 1,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            }
+          },
+          "decimals": 2,
+          "min": 0,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Contributions"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#005F44",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Prove"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#007755",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Aggregate"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#079B6E",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Execution"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#0ABF83",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      },
+      "id": 134,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (phase) (increase(coordinator_phase_duration_seconds_sum{coordinator_id=~\"$coordinator\",program=~\"$program\"}[15m])) / 900",
+          "instant": false,
+          "legendFormat": "{{phase}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Stage Utilization by Phase (15m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Rolling 15-minute per-program zkVM cycle throughput from coordinator_job_executed_steps_total. This shows actual proof work completed, not just elapsed time.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 1,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "decimals": 2,
+          "min": 0,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": []
+          },
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 79
+      },
+      "id": 135,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (program) (increase(coordinator_job_executed_steps_total{coordinator_id=~\"$coordinator\",program=~\"$program\"}[15m])) / 900",
+          "instant": false,
+          "legendFormat": "{{program}} cycles/s",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Executed Cycles Rate by Program (15m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Rolling 15-minute p95 in seconds by program from coordinator_job_duration_seconds_bucket. Uses increase() so sparse completed proofs still appear in the trend.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "decimals": 2,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 87
+      },
+      "id": 136,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (program, le) (increase(coordinator_job_duration_seconds_bucket{coordinator_id=~\"$coordinator\",program=~\"$program\"}[15m])))",
+          "instant": false,
+          "legendFormat": "{{program}} p95",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Proof Duration p95 by Program (15m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Rolling 15-minute p95 in seconds by program and phase from coordinator_phase_duration_seconds_bucket. Uses increase() so sparse completed proofs still appear in the trend.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "decimals": 2,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 95
+      },
+      "id": 137,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (program, phase, le) (increase(coordinator_phase_duration_seconds_bucket{coordinator_id=~\"$coordinator\",program=~\"$program\"}[15m])))",
+          "instant": false,
+          "legendFormat": "{{program}} {{phase}} p95",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Phase Duration p95 by Program and Phase (15m)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "Postgres-backed per-program rollup. One row per program: job count, success rate, mean/p95/p99 duration, and average steps/s.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Program"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Jobs"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Success Rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "Avg|p95|p99"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Steps/s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 103
+      },
+      "id": 139,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\n, sampled AS (\n  SELECT *\n  FROM job_rows\n  WHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND sort_at >= NOW() - INTERVAL '86400 seconds'\n  ORDER BY sort_at DESC NULLS LAST, job_id DESC\n  LIMIT 500\n),\nterminal AS (\n  SELECT *\n  FROM sampled\n  WHERE outcome IN ('success', 'failure', 'cancelled')\n)\nSELECT\n  program AS \"Program\",\n  COUNT(*)::bigint AS \"Jobs\",\n  (COUNT(*) FILTER (WHERE outcome = 'success'))::double precision / NULLIF(COUNT(*), 0)::double precision AS \"Success Rate\",\n  ROUND(AVG(duration_ms))::bigint AS \"Avg\",\n  (percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL))::bigint AS \"p95\",\n  (percentile_disc(0.99) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL))::bigint AS \"p99\",\n  AVG(\n    CASE\n      WHEN duration_ms > 0 AND executed_steps IS NOT NULL\n        THEN executed_steps::double precision / (duration_ms::double precision / 1000.0)\n      ELSE NULL\n    END\n  ) AS \"Steps/s\"\nFROM terminal\nGROUP BY program\nORDER BY \"Jobs\" DESC, program ASC",
+          "refId": "A"
+        }
+      ],
+      "title": "Program Performance Summary (24h)",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Avg": 3,
+              "Jobs": 1,
+              "Program": 0,
+              "Steps/s": 6,
+              "Success Rate": 2,
+              "p95": 4,
+              "p99": 5
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "zisk-postgres"
+      },
+      "description": "Postgres-backed recent proof history. Current panels above use /api/v1/jobs/current.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Coordinator"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Started"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              },
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Completed"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              },
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Updated"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              },
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "State"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "options": {
+                      "Cancelled": {
+                        "color": "#C7D300",
+                        "index": 2,
+                        "text": "Cancelled"
+                      },
+                      "Completed": {
+                        "color": "#0ABF83",
+                        "index": 0,
+                        "text": "Completed"
+                      },
+                      "Created": {
+                        "color": "#A4F6D0",
+                        "index": 3,
+                        "text": "Created"
+                      },
+                      "Failed": {
+                        "color": "#D95F5F",
+                        "index": 1,
+                        "text": "Failed"
+                      },
+                      "Running (Aggregate)": {
+                        "color": "#079B6E",
+                        "index": 6,
+                        "text": "Running: aggregate/wrap"
+                      },
+                      "Running (Contributions)": {
+                        "color": "#005F44",
+                        "index": 4,
+                        "text": "Running: contribution"
+                      },
+                      "Running (Execution)": {
+                        "color": "#0ABF83",
+                        "index": 7,
+                        "text": "Running: execute"
+                      },
+                      "Running (Prove)": {
+                        "color": "#007755",
+                        "index": 5,
+                        "text": "Running: prove"
+                      }
+                    },
+                    "type": "value"
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Current Phase"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Job Age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Phase Age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Update Age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#0ABF83",
+                      "value": null
+                    },
+                    {
+                      "color": "#C7D300",
+                      "value": 60
+                    },
+                    {
+                      "color": "#D95F5F",
+                      "value": 300
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Duration"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Contribution"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Prove"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Aggregate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Execution"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Steps"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Workers"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Aggregator"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failure Reason"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Program"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 260
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Job"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Job ID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 285
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 54
+      },
+      "id": 10,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "WITH phase_summary AS (\n  SELECT\n    job_id,\n    MAX(duration_ms) FILTER (WHERE phase = 'Contributions' AND event_type = 'ended') AS contributions_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Prove' AND event_type = 'ended') AS prove_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Aggregate' AND event_type = 'ended') AS aggregate_duration_ms,\n    MAX(duration_ms) FILTER (WHERE phase = 'Execution' AND event_type = 'ended') AS execution_duration_ms\n  FROM job_history_phase_events\n  GROUP BY job_id\n),\nopen_phase AS (\n  SELECT DISTINCT ON (started.job_id)\n    started.job_id,\n    started.phase AS current_phase,\n    started.occurred_at AS current_phase_started_at\n  FROM job_history_phase_events started\n  WHERE started.event_type = 'started'\n    AND NOT EXISTS (\n      SELECT 1\n      FROM job_history_phase_events ended\n      WHERE ended.job_id = started.job_id\n        AND ended.phase = started.phase\n        AND ended.event_type = 'ended'\n        AND ended.occurred_at >= started.occurred_at\n    )\n  ORDER BY started.job_id, started.occurred_at DESC\n),\nworker_counts AS (\n  SELECT\n    job_id,\n    COUNT(*) FILTER (WHERE role = 'participant') AS workers_count\n  FROM job_history_job_workers\n  GROUP BY job_id\n),\njob_rows AS (\n  SELECT\n    s.coordinator_id,\n    s.job_id::text AS job_id,\n    s.job_label,\n    s.program,\n    s.hash_id,\n    s.state,\n    COALESCE(\n      s.outcome,\n      CASE s.state\n        WHEN 'Completed' THEN 'success'\n        WHEN 'Failed' THEN 'failure'\n        WHEN 'Cancelled' THEN 'cancelled'\n        ELSE NULL\n      END\n    ) AS outcome,\n    s.received_at,\n    s.completed_at,\n    COALESCE(s.duration_ms, j.duration_ms) AS duration_ms,\n    COALESCE(\n      s.contributions_duration_ms,\n      ps.contributions_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Contributions'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS contributions_duration_ms,\n    COALESCE(\n      s.prove_duration_ms,\n      ps.prove_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Prove'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS prove_duration_ms,\n    COALESCE(\n      s.aggregate_duration_ms,\n      ps.aggregate_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Aggregate'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS aggregate_duration_ms,\n    COALESCE(\n      ps.execution_duration_ms,\n      CASE\n        WHEN op.current_phase = 'Execution'\n          THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)) * 1000)::bigint\n        ELSE NULL\n      END\n    ) AS execution_duration_ms,\n    j.executed_steps,\n    COALESCE(s.workers_count, wc.workers_count, 0) AS workers_count,\n    j.agg_worker_id,\n    j.proof_type,\n    s.failure_reason,\n    CASE\n      WHEN s.state LIKE 'Running%' THEN op.current_phase\n      ELSE NULL\n    END AS current_phase,\n    CASE\n      WHEN s.received_at IS NULL THEN NULL\n      ELSE GREATEST(0, EXTRACT(EPOCH FROM (COALESCE(s.completed_at, NOW()) - s.received_at)))::bigint\n    END AS age_seconds,\n    CASE\n      WHEN s.state LIKE 'Running%' AND op.current_phase_started_at IS NOT NULL\n        THEN GREATEST(0, EXTRACT(EPOCH FROM (NOW() - op.current_phase_started_at)))::bigint\n      ELSE NULL\n    END AS current_phase_age_seconds,\n    GREATEST(0, EXTRACT(EPOCH FROM (NOW() - j.updated_at)))::bigint AS last_update_age_seconds,\n    j.updated_at,\n    COALESCE(s.completed_at, s.received_at, j.updated_at) AS sort_at\n  FROM zisk_dashboard_job_summary s\n  JOIN job_history_jobs j ON j.job_id = s.job_id\n  LEFT JOIN phase_summary ps ON ps.job_id = s.job_id\n  LEFT JOIN open_phase op ON op.job_id = s.job_id\n  LEFT JOIN worker_counts wc ON wc.job_id = s.job_id\n)\n\nSELECT\n  coordinator_id AS \"Coordinator\",\n  received_at AS \"Started\",\n  completed_at AS \"Completed\",\n  state AS \"State\",\n  current_phase AS \"Current Phase\",\n  age_seconds AS \"Job Age\",\n  current_phase_age_seconds AS \"Phase Age\",\n  last_update_age_seconds AS \"Update Age\",\n  failure_reason AS \"Failure Reason\",\n  updated_at AS \"Updated\",\n  duration_ms AS \"Duration\",\n  contributions_duration_ms AS \"Contribution\",\n  prove_duration_ms AS \"Prove\",\n  aggregate_duration_ms AS \"Aggregate\",\n  execution_duration_ms AS \"Execution\",\n  executed_steps AS \"Steps\",\n  workers_count AS \"Workers\",\n  agg_worker_id AS \"Aggregator\",\n  proof_type AS \"Kind\",\n  program AS \"Program\",\n  job_label AS \"Job\",\n  job_id AS \"Job ID\"\nFROM job_rows\nWHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text = ${job_id:singlequote}\n  OR job_label = ${job_id:singlequote}\n  OR job_id::text LIKE ${job_id:singlequote} || '%'\n)\n\n  AND (TRUE)\nORDER BY sort_at DESC NULLS LAST, job_id DESC\nLIMIT 200",
+          "refId": "A"
+        }
+      ],
+      "title": "Recent Proof History",
+      "transformations": [],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 121
+      },
+      "id": 40,
+      "panels": [],
+      "title": "Worker Fleet",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Seconds since each worker's last heartbeat reached the coordinator. Sourced from coordinator_worker_heartbeat_lag_seconds. Spikes above 30s mean lost heartbeats; above 90s the worker is treated as failed.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "decimals": 1,
+          "min": 0,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              },
+              {
+                "color": "#C7D300",
+                "value": 30
+              },
+              {
+                "color": "#D95F5F",
+                "value": 90
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 122
+      },
+      "id": 42,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "coordinator_worker_heartbeat_lag_seconds{coordinator_id=~\"$coordinator\"}",
+          "instant": false,
+          "legendFormat": "{{worker_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Worker Heartbeat Lag by Worker",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "zisk-json"
+      },
+      "description": "Live worker roster from /api/v1/workers. Coordinator-owned view of each connected worker, current assignment, and last-seen age.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "-"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Worker"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 190
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Program"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Job"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Job ID"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 285
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Phase"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Assigned Age"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Updated"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              },
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 130
+      },
+      "id": 44,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "columns": [
+            {
+              "selector": "worker_id",
+              "text": "Worker",
+              "type": "string"
+            },
+            {
+              "selector": "status",
+              "text": "Status",
+              "type": "string"
+            },
+            {
+              "selector": "program",
+              "text": "Program",
+              "type": "string"
+            },
+            {
+              "selector": "job_label",
+              "text": "Job",
+              "type": "string"
+            },
+            {
+              "selector": "job_id",
+              "text": "Job ID",
+              "type": "string"
+            },
+            {
+              "selector": "phase",
+              "text": "Phase",
+              "type": "string"
+            },
+            {
+              "selector": "assigned_seconds",
+              "text": "Assigned Age",
+              "type": "number"
+            },
+            {
+              "selector": "updated_at",
+              "text": "Updated",
+              "type": "timestamp"
+            }
+          ],
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "zisk-json"
+          },
+          "format": "table",
+          "parser": "backend",
+          "refId": "A",
+          "root_selector": "data",
+          "source": "url",
+          "type": "json",
+          "url": "/api/v1/workers",
+          "url_options": {
+            "data": "",
+            "method": "GET"
+          }
+        }
+      ],
+      "title": "Worker Roster",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Assigned Age": 5,
+              "Job": 3,
+              "Job ID": 7,
+              "Phase": 4,
+              "Program": 2,
+              "Status": 1,
+              "Updated": 6,
+              "Worker": 0
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 136
+      },
+      "id": 46,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Per-worker proof-job rate over time, derived from coordinator_worker_jobs_total. Use this to spot uneven load distribution across workers, idle workers, and program-level skew within the worker pool.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "fillOpacity": 0,
+                "lineWidth": 1,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                }
+              },
+              "decimals": 2,
+              "noValue": "-",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#0ABF83",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "ops"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 137
+          },
+          "id": 47,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "v11.2.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (worker_id, program) (rate(coordinator_worker_jobs_total{coordinator_id=~\"$coordinator\",program=~\"$program\"}[5m]))",
+              "instant": false,
+              "legendFormat": "{{worker_id}} {{program}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "Worker Assignments by Worker",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "zisk-postgres"
+          },
+          "description": "Per-worker error events from job_history_worker_errors. Each row is one discrete failure with the raw error message and clickable Job ID.",
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "noValue": "no worker error events recorded"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "When"
+                },
+                "properties": [
+                  {
+                    "id": "unit",
+                    "value": "dateTimeAsIso"
+                  },
+                  {
+                    "id": "custom.width",
+                    "value": 180
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Worker"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 160
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Program"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 130
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Reason"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 140
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-background"
+                    }
+                  },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "options": {
+                          "agg_fail": {
+                            "color": "#D95F5F",
+                            "index": 5
+                          },
+                          "channel_closed": {
+                            "color": "#D95F5F",
+                            "index": 1
+                          },
+                          "heartbeat_lost": {
+                            "color": "#D95F5F",
+                            "index": 0
+                          },
+                          "prove_fail": {
+                            "color": "#D95F5F",
+                            "index": 4
+                          },
+                          "setup_fail": {
+                            "color": "#C7D300",
+                            "index": 3
+                          },
+                          "unknown": {
+                            "color": "#8E8E8A",
+                            "index": 6
+                          },
+                          "unreachable": {
+                            "color": "#D95F5F",
+                            "index": 2
+                          }
+                        },
+                        "type": "value"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Job ID"
+                },
+                "properties": [
+                  {
+                    "id": "custom.width",
+                    "value": 260
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 137
+          },
+          "id": 45,
+          "options": {
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            },
+            "showHeader": true
+          },
+          "pluginVersion": "v11.2.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "grafana-postgresql-datasource",
+                "uid": "zisk-postgres"
+              },
+              "editorMode": "code",
+              "format": "table",
+              "rawQuery": true,
+              "rawSql": "SELECT\n  occurred_at AS \"When\",\n  worker_id AS \"Worker\",\n  program AS \"Program\",\n  reason AS \"Reason\",\n  job_id::text AS \"Job ID\",\n  COALESCE(message, '') AS \"Message\"\nFROM job_history_worker_errors\nWHERE 1 = 1\nAND (\n  ARRAY[${coordinator:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR coordinator_id = ANY(ARRAY[${coordinator:singlequote}]::text[])\n)\nAND (\n  ARRAY[${program:singlequote}]::text[] && ARRAY['', 'All', '$__all', '.*']::text[]\n  OR program = ANY(ARRAY[${program:singlequote}]::text[])\n)\nAND (\n  NULLIF(${job_id:singlequote}, '') IS NULL\n  OR job_id::text::text = ${job_id:singlequote}\n  OR LEFT(job_id::text, 8) = ${job_id:singlequote}\n  OR job_id::text::text LIKE ${job_id:singlequote} || '%'\n)\n\nORDER BY occurred_at DESC, id DESC\nLIMIT 50",
+              "refId": "A"
+            }
+          ],
+          "title": "Worker Error Events",
+          "transformations": [],
+          "type": "table"
+        }
+      ],
+      "title": "Worker Diagnostics",
+      "type": "row"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 140
+      },
+      "id": 50,
+      "panels": [],
+      "title": "Coordinator Runtime",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Per-coordinator scrape state over the selected range. One lane per coordinator. Red segments = coord unreachable (in-flight jobs likely affected). Gaps reveal restarts and outages without reading numbers.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0,
+            "spanNulls": false
+          },
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "#D95F5F",
+                  "index": 0,
+                  "text": "down"
+                },
+                "1": {
+                  "color": "#0ABF83",
+                  "index": 1,
+                  "text": "up"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "noValue": "-"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 141
+      },
+      "id": 51,
+      "options": {
+        "alignValue": "center",
+        "legend": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "mergeValues": true,
+        "rowHeight": 0.90000000000000002,
+        "showValue": "never",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max by (coordinator_id) (up{job=~\"zisk-coordinator.*|zisk-coord.*\"} * on(instance, job) group_left(coordinator_id) max by (instance, job, coordinator_id) (coordinator_info{coordinator_id=~\"$coordinator\"}))",
+          "instant": false,
+          "legendFormat": "{{coordinator_id}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Coordinator Availability Timeline",
+      "transformations": [],
+      "type": "state-timeline"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "description": "Restart events per coordinator over the selected range. Spike = restart fired at that bucket. Derived from changes(coordinator_start_time_seconds) so the panel works without a dedicated restart counter.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            }
+          },
+          "decimals": 0,
+          "noValue": "-",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#0ABF83",
+                "value": null
+              },
+              {
+                "color": "#C7D300",
+                "value": 1
+              },
+              {
+                "color": "#D95F5F",
+                "value": 3
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 146
+      },
+      "id": 53,
+      "options": {
+        "legend": {
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "v11.2.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(changes(coordinator_start_time_seconds{coordinator_id=~\"$coordinator\"}[$__range])) or vector(0)",
+          "instant": false,
+          "legendFormat": "{{coordinator_id}} restarts",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Coordinator Restarts (selected range)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": true,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 151
+      },
+      "id": 18,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Public API gRPC request rate by method and status. v0.18 emits status=ok/error, not outcome.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "fillOpacity": 0,
+                "lineWidth": 1,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                }
+              },
+              "decimals": 2,
+              "noValue": "-",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#0ABF83",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "reqps"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": ".* ok$"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#0ABF83",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byRegexp",
+                  "options": ".* error$"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#D95F5F",
+                      "mode": "fixed"
+                    }
+                  },
+                  {
+                    "id": "custom.lineWidth",
+                    "value": 2
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 0,
+            "y": 152
+          },
+          "id": 11,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "v11.2.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum by (method, status) (rate(coordinator_requests_total{coordinator_id=~\"$coordinator\"}[5m]))",
+              "instant": false,
+              "legendFormat": "{{method}} {{status}}",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "gRPC Request Rate by Status",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "Postgres history writer queue depth and drops in the selected time range. Write latency split out so this panel does not mix count and seconds.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "fillOpacity": 0,
+                "lineWidth": 1,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                }
+              },
+              "decimals": 2,
+              "noValue": "-",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#0ABF83",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "none"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "queue depth"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#A4F6D0",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "drops in range"
+                },
+                "properties": [
+                  {
+                    "id": "color",
+                    "value": {
+                      "fixedColor": "#D95F5F",
+                      "mode": "fixed"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 8,
+            "y": 152
+          },
+          "id": 12,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "v11.2.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "coordinator_db_write_queue_depth{coordinator_id=~\"$coordinator\"}",
+              "instant": false,
+              "legendFormat": "queue depth",
+              "range": true,
+              "refId": "A"
+            },
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "sum(increase(coordinator_db_write_dropped_total{coordinator_id=~\"$coordinator\"}[$__range])) or vector(0)",
+              "instant": false,
+              "legendFormat": "drops in range",
+              "range": true,
+              "refId": "B"
+            }
+          ],
+          "title": "History Writer Queue and Drops",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "description": "p95 latency from the v0.18 summary metric coordinator_db_query_duration_seconds{quantile=\"0.95\"}, split by history DB operation.",
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "fillOpacity": 0,
+                "lineWidth": 1,
+                "stacking": {
+                  "group": "A",
+                  "mode": "none"
+                }
+              },
+              "decimals": 3,
+              "noValue": "-",
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "#0ABF83",
+                    "value": null
+                  },
+                  {
+                    "color": "#C7D300",
+                    "value": 0.050000000000000003
+                  },
+                  {
+                    "color": "#D95F5F",
+                    "value": 0.25
+                  }
+                ]
+              },
+              "unit": "s"
+            },
+            "overrides": []
+          },
+          "gridPos": {
+            "h": 7,
+            "w": 8,
+            "x": 16,
+            "y": 152
+          },
+          "id": 14,
+          "options": {
+            "legend": {
+              "calcs": [
+                "lastNotNull",
+                "max"
+              ],
+              "displayMode": "table",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "none"
+            }
+          },
+          "pluginVersion": "v11.2.0",
+          "targets": [
+            {
+              "datasource": {
+                "type": "prometheus",
+                "uid": "prometheus"
+              },
+              "expr": "max by (op) (coordinator_db_query_duration_seconds{coordinator_id=~\"$coordinator\",status=\"success\",quantile=\"0.95\"})",
+              "instant": false,
+              "legendFormat": "{{op}} p95",
+              "range": true,
+              "refId": "A"
+            }
+          ],
+          "title": "History DB Latency p95 by Operation",
+          "type": "timeseries"
+        }
+      ],
+      "title": "Infrastructure Health",
+      "type": "row"
     }
-  ]
+  ],
+  "refresh": "1s",
+  "schemaVersion": 39,
+  "tags": [
+    "zisk",
+    "coordinator",
+    "v0.18"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "includeAll": true,
+        "label": "Coordinator",
+        "multi": true,
+        "name": "coordinator",
+        "query": "label_values(coordinator_info, coordinator_id)",
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "includeAll": true,
+        "label": "Program",
+        "multi": true,
+        "name": "program",
+        "query": "label_values(coordinator_program_info, program)",
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": false,
+          "text": "",
+          "value": ""
+        },
+        "label": "Job ID",
+        "name": "job_id",
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "query": "",
+        "type": "textbox"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-2h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "ZisK Coordinator v0.18",
+  "uid": "zisk-dev"
 }

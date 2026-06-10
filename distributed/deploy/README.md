@@ -51,7 +51,7 @@ then run the process in the foreground.
 
 ```bash
 # Coordinator (container mode)
-bash distributed/deploy/scripts/coordinator/install.sh --no-service --api-port 7000
+bash distributed/deploy/scripts/coordinator/install.sh --no-service --api-port 15100
 
 # Worker (container mode)
 bash distributed/deploy/scripts/worker/install.sh --no-service --gpu --coordinator-url <URL>
@@ -74,7 +74,7 @@ ansible-playbook -i inventory.ini distributed/deploy/ansible/playbooks/install-w
 ```bash
 helm install zisk-worker distributed/deploy/k8s/charts/zisk-worker \
     -n zisk --create-namespace \
-    --set coordinator.url=coordinator.zisk.svc.cluster.local:7000 \
+    --set coordinator.url=coordinator.zisk.svc.cluster.local:15100 \
     --set provingKey.pvc.claimName=zisk-bundle \
     --set replicaCount=8
 ```

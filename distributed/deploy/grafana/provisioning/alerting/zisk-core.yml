@@ -1,0 +1,306 @@
+apiVersion: 1
+
+# Minimal Grafana-managed alert rules for the local/provisioned stack. Rules
+# route through the Grafana default notification policy; production installs
+# can override contact points and policies without changing these core checks.
+groups:
+  - orgId: 1
+    name: zisk-core
+    folder: ZisK Alerts
+    interval: 1m
+    rules:
+      - uid: zisk-coordinator-down
+        title: ZisK coordinator scrape down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: '(max by (coordinator_id, instance) (up{job=~"zisk-coordinator.*|zisk-coord.*"} == bool 0)) or absent(up{job=~"zisk-coordinator.*|zisk-coord.*"})'
+              instant: true
+              intervalMs: 1000
+              legendFormat: "{{coordinator_id}} {{instance}}"
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: Alerting
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: ZisK coordinator scrape is down
+          description: Prometheus cannot scrape the coordinator metrics endpoint.
+        labels:
+          severity: critical
+        isPaused: false
+
+      - uid: zisk-no-workers-connected
+        title: ZisK coordinator has no connected workers
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: '(sum by (coordinator_id) (coordinator_workers_connected) == bool 0) and on (coordinator_id) coordinator_info'
+              instant: true
+              intervalMs: 1000
+              legendFormat: "{{coordinator_id}}"
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: ZisK coordinator has no connected workers
+          description: The coordinator is scrapeable but reports zero connected workers.
+        labels:
+          severity: warning
+        isPaused: false
+
+      - uid: zisk-worker-heartbeat-stale
+        title: ZisK worker heartbeat stale
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 'max by (coordinator_id, worker_id) (coordinator_worker_heartbeat_lag_seconds > 90)'
+              instant: true
+              intervalMs: 1000
+              legendFormat: "{{coordinator_id}} {{worker_id}}"
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: ZisK worker heartbeat is stale
+          description: A worker heartbeat has been stale for more than 90 seconds.
+        labels:
+          severity: warning
+        isPaused: false
+
+      - uid: zisk-db-write-dropped-events
+        title: ZisK Postgres history writer dropped events
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: prometheus
+            model:
+              datasource:
+                type: prometheus
+                uid: prometheus
+              editorMode: code
+              expr: 'sum by (coordinator_id) (increase(coordinator_db_write_dropped_total[5m])) > 0'
+              instant: true
+              intervalMs: 1000
+              legendFormat: "{{coordinator_id}}"
+              maxDataPoints: 43200
+              range: false
+              refId: A
+          - refId: B
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              reducer: last
+              refId: B
+              type: reduce
+          - refId: C
+            relativeTimeRange:
+              from: 0
+              to: 0
+            datasourceUid: __expr__
+            model:
+              conditions:
+                - evaluator:
+                    params:
+                      - 0
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params:
+                      - C
+                  reducer:
+                    params: []
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: B
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 1m
+        annotations:
+          summary: ZisK Postgres history writer dropped events
+          description: The coordinator dropped job-history events before they reached Postgres.
+        labels:
+          severity: critical
+        isPaused: false

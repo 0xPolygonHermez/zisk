@@ -15,8 +15,8 @@
 #   - WORK_DIR/cache/ is pre-created; inputs/ is not (no rom-setup).
 #   - Bundle population is a near-no-op if the worker installed first (idempotent).
 #   - --api-port flag is NOT injected into the plist by install.sh; the
-#     /etc/zisk/coordinator.toml value (port = 7000 by default) governs.
-#     Override order: built-in default (7000) < TOML < env < CLI flag.
+#     /etc/zisk/coordinator.toml value (port = 15100 by default) governs.
+#     Override order: built-in default (15100) < TOML < env < CLI flag.
 
 set -euo pipefail
 
@@ -167,11 +167,11 @@ grep -q '<string>--api-port</string>' "$PLIST" \
     && fail "plist should not carry --api-port (TOML governs)" \
     || ok "plist has no --api-port flag (TOML governs)"
 [[ -f "$CONFIG" ]] && ok "$CONFIG exists" || fail "$CONFIG missing"
-# Verify the shipped TOML carries the default port = 7000 under [server].
+# Verify the shipped TOML carries the default port = 15100 under [server].
 awk '/^\[server\]/{f=1;next} /^\[/{f=0} f' "$CONFIG" \
-    | grep -qE '^port[[:space:]]*=[[:space:]]*7000([[:space:]]|#|$)' \
-    && ok "$CONFIG [server] port = 7000 (default)" \
-    || fail "$CONFIG [server] port != 7000"
+    | grep -qE '^port[[:space:]]*=[[:space:]]*15100([[:space:]]|#|$)' \
+    && ok "$CONFIG [server] port = 15100 (default)" \
+    || fail "$CONFIG [server] port != 15100"
 grep -q "<!-- zisk-coordinator:CONFIG_FILE=${CONFIG} -->" "$PLIST" \
     && ok "metadata footer has CONFIG_FILE" \
     || fail "metadata footer missing CONFIG_FILE"

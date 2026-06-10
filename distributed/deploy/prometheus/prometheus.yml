@@ -7,3 +7,6 @@ scrape_configs:
     static_configs:
       - targets: ["coordinator:9091"]
     metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/zisk-scrape-token
