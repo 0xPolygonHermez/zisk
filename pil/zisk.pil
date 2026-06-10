@@ -5,11 +5,12 @@ require "opids.pil"
 require "config.pil"
 
 require "dma/pil/dual_range.pil"
-require "rom/pil/rom.pil"
-require "main/pil/main.pil"
 require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
 require "mem/pil/mem_align_byte.pil"
+require "mem/pil/rom_data.pil"
+require "rom/pil/rom.pil"
+require "main/pil/main.pil"
 require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_extension.pil"
@@ -59,8 +60,8 @@ enable_dma_unaligned * (1 - enable_dma_unaligned);
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
 public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
 
-function range_dual_byte(expr byte_a, expr byte_b, expr sel = 1) {
-    lookup_assumes(DUAL_RANGE_BYTE_ID, expressions: [byte_a, byte_b], sel: sel);
+function range_dual_byte(expr byte_a, expr byte_b, expr sel = 1, int sel_is_binary = 0) {
+    lookup_assumes(DUAL_RANGE_BYTE_ID, expressions: [byte_a, byte_b], sel: sel, sel_is_binary: sel_is_binary);
 }
 
 airgroup Zisk {
@@ -94,11 +95,12 @@ airgroup Zisk {
     // Main Program
     Main(N: 2**22);
     Rom(N: 2**22);
+    
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
-    Mem(N: 2**21, base_address: 0x8000_0000, size_mb: 128, immutable: 1, enable_flag: enable_rom_data) alias RomData;
     Mem(N: 2**21, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
+    RomData(N: 2**21, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data);
 
     MemAlign(N: 2**21);
     MemAlignByte(N: 2**22, read: 1, write: 1);

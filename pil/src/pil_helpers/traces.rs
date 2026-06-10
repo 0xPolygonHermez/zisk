@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "b759b1d6c3f84738d6fd6e11d1865ee62ab56d4fdeb791a7ba74d20e4cc86a29";
+pub const PILOUT_HASH: &str = "a8d604785bf11536d695d7a84bd2f1c88957274903fc18e3d40e94471fd815e7";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -56,9 +56,9 @@ pub const ROM_AIR_IDS: &[usize] = &[13];
 
 pub const MEM_AIR_IDS: &[usize] = &[14];
 
-pub const ROM_DATA_AIR_IDS: &[usize] = &[15];
+pub const INPUT_DATA_AIR_IDS: &[usize] = &[15];
 
-pub const INPUT_DATA_AIR_IDS: &[usize] = &[16];
+pub const ROM_DATA_AIR_IDS: &[usize] = &[16];
 
 pub const MEM_ALIGN_AIR_IDS: &[usize] = &[17];
 
@@ -116,14 +116,14 @@ pub struct ZiskPublics {
     pub rom_root: [u64; 4],
     #[serde(default = "default_array_inputs", with = "serde_arrays")]
     pub inputs: [u64; 64],
-
+    
 }
 
 impl Default for ZiskPublics {
     fn default() -> Self {
-        Self {
-            rom_root: [0; 4],
-            inputs: [0; 64],
+        Self {  
+            rom_root: [0; 4],  
+            inputs: [0; 64], 
         }
     }
 }
@@ -131,11 +131,11 @@ impl Default for ZiskPublics {
 values!(ZiskPublicValues<F> {
  rom_root: [F; 4], inputs: [F; 64],
 });
-
+ 
 values!(ZiskProofValues<F> {
  enable_input_data: F, enable_rom_data: F, enable_dma_64_aligned: F, enable_dma_64_aligned_inputcpy: F, enable_dma_64_aligned_mem: F, enable_dma_64_aligned_memcpy: F, enable_dma_64_aligned_memset: F, enable_dma_unaligned: F,
 });
-
+ 
 trace_row!(DmaFixedRow<F> {
  __L1__: F,
 });
@@ -301,27 +301,27 @@ trace_row!(MemTraceRow<F> {
 
 pub type MemTrace<R> = GenericTrace<R, 4194304, 0, 14>;
 
-trace_row!(RomDataFixedRow<F> {
- SEGMENT_L1: F, __L1__: F,
-});
-pub type RomDataFixed<F> = GenericTrace<RomDataFixedRow<F>, 2097152, 0, 15>;
-
-trace_row!(RomDataTraceRow<F> {
- addr:ubit(29), step:ubit(38), sel:bit, addr_changes:bit, value:[u32; 2],
-});
-
-pub type RomDataTrace<R> = GenericTrace<R, 2097152, 0, 15>;
-
 trace_row!(InputDataFixedRow<F> {
  SEGMENT_L1: F, __L1__: F,
 });
-pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 2097152, 0, 16>;
+pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 2097152, 0, 15>;
 
 trace_row!(InputDataTraceRow<F> {
  addr:ubit(29), step:ubit(38), sel:bit, addr_changes:bit, value_word:[u16; 4], is_free_read:bit,
 });
 
-pub type InputDataTrace<R> = GenericTrace<R, 2097152, 0, 16>;
+pub type InputDataTrace<R> = GenericTrace<R, 2097152, 0, 15>;
+
+trace_row!(RomDataFixedRow<F> {
+ __L1__: F,
+});
+pub type RomDataFixed<F> = GenericTrace<RomDataFixedRow<F>, 2097152, 0, 16>;
+
+trace_row!(RomDataTraceRow<F> {
+ addr_change:bit, addr:ubit(29), step:ubit(40), value:[u32; 2],
+});
+
+pub type RomDataTrace<R> = GenericTrace<R, 2097152, 0, 16>;
 
 trace_row!(MemAlignFixedRow<F> {
  L1: F, __L1__: F,
@@ -511,7 +511,7 @@ trace_row!(VirtualTableZisk1TraceRow<F> {
 pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 33>;
 
 trace_row!(RomRomTraceRow<F> {
- line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
+ is_data: F, line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
 });
 pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 4194304, 0, 13, 0>;
 
@@ -548,12 +548,12 @@ values!(MemAirValues<F> {
  segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
 });
 
-values!(RomDataAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, im_direct: [FieldExtension<F>; 4],
-});
-
 values!(InputDataAirValues<F> {
  segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
+});
+
+values!(RomDataAirValues<F> {
+ previous_segment_value: [F; 2], previous_segment_addr: F, segment_last_value: [F; 2], segment_last_addr: F, segment_id: F, is_first_segment: F, is_last_segment: F, padding_size: F, im_direct: [FieldExtension<F>; 4],
 });
 
 values!(MemAlignByteAirValues<F> {
@@ -640,11 +640,11 @@ values!(MemAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(RomDataAirGroupValues<F> {
+values!(InputDataAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(InputDataAirGroupValues<F> {
+values!(RomDataAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -790,12 +790,12 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 15, PackedInfoConst {
         is_packed: true,
         num_packed_words: 3,
-        unpack_info: &[29, 38, 1, 1, 32, 32],
+        unpack_info: &[29, 38, 1, 1, 16, 16, 16, 16, 1],
     }),
     (0, 16, PackedInfoConst {
         is_packed: true,
         num_packed_words: 3,
-        unpack_info: &[29, 38, 1, 1, 16, 16, 16, 16, 1],
+        unpack_info: &[1, 29, 40, 32, 32],
     }),
     (0, 17, PackedInfoConst {
         is_packed: true,

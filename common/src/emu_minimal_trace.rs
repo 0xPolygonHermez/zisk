@@ -55,6 +55,11 @@ pub struct EmuTrace {
     pub end: bool,
 }
 
+impl EmuTrace {
+    pub fn is_first(&self) -> bool {
+        self.start_state.step == 0
+    }
+}
 impl Debug for EmuTrace {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OutputChunk")
