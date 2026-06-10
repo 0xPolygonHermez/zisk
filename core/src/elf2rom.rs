@@ -66,11 +66,11 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         // regions marked as read-only as well, e.g. the output region
         for section in &payload.ro {
             if section.addr >= ROM_ADDR
-                && (section.addr + section.data.len() as u64) < (ROM_ADDR + ROM_SIZE)
+                && (section.addr + section.data.len() as u64) <= (ROM_ADDR + ROM_SIZE)
             {
                 ro_data.push(section.clone());
             } else if section.addr >= RAM_ADDR
-                && (section.addr + section.data.len() as u64) < (RAM_ADDR + RAM_SIZE)
+                && (section.addr + section.data.len() as u64) <= (RAM_ADDR + RAM_SIZE)
             {
                 rw_data.push(section.clone());
             } else {

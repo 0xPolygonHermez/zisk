@@ -377,10 +377,10 @@ void server_setup (void)
         if (pInput == MAP_FAILED)
         {
             asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, LOCKED_INPUT_SIZE);
+            pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED, shmem_input_fd, LOCKED_INPUT_SIZE);
         }
 #else
-        pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, LOCKED_INPUT_SIZE);
+        pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED, shmem_input_fd, LOCKED_INPUT_SIZE);
 #endif
         if (pInput == MAP_FAILED)
         {
