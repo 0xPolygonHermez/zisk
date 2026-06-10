@@ -87,6 +87,9 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
     fn is_dual(&self) -> bool {
         true
     }
+    fn is_initializable(&self) -> bool {
+        true
+    }
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
@@ -249,6 +252,16 @@ impl<F: PrimeField64> MemSM<F> {
                     increment, i, addr_changes as u8, mem_op.addr, last_addr, mem_op.step, last_step);
             }
 
+            #[cfg(feature = "debug_mem")]
+            if h_increment >= 0x1_0000 {
+                if i > 0 {
+                    panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?} {:?}",
+                         mem_op.addr, last_addr, mem_op.step, last_step, trace[i-1], trace[i]);
+                } else {
+                    panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?}",
+                         mem_op.addr, last_addr, mem_op.step, last_step, trace[i]);
+                }
+            }
             range_22bits[l_increment] += 1;
             range_16bits[h_increment] += 1;
 

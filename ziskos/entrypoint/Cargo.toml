@@ -52,7 +52,7 @@ ark-bn254 = { workspace = true }
 ark-ff = { workspace = true }
 sha2 = { workspace = true }
 tiny-keccak = { version = "2.0.0", features = ["keccak"] }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0", features = [
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta", features = [
   "verify",
 ] }
 blst = "0.3.16"
@@ -62,22 +62,18 @@ secp256k1 = { version = "0.31", features = ["recovery"] }
 bytes = { version = "1.11.0", optional = true }
 once_cell = { version = "1.21.3", optional = true }
 paste = { version = "1.0", optional = true }
-zisk-common = { path = "../../common", optional = true }
+zisk-stream = { path = "../../stream", optional = true }
 anyhow = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [target.'cfg(all(not(any(all(target_os = "zkvm", target_vendor = "zisk"), all(target_arch = "riscv64", target_os = "none"))), zisk_hints_metrics))'.dependencies]
 ctor = { version = "0.2", optional = true }
 
-[target.'cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))'.dev-dependencies]
-test-artifacts = { workspace = true }
-zisk-common = { workspace = true }
-serial_test = { workspace = true }
 
 [features]
 default = ["user-hints", "inputcpy"]
 user-hints = [
-  "dep:zisk-common",
+  "dep:zisk-stream",
   "dep:bytes",
   "dep:paste",
   "dep:once_cell",
@@ -99,6 +95,9 @@ zisk-embedded-talc-alloc = [
   "dep:talc",
 ]
 zisk-embedded-tlfs-alloc = ["dep:embedded-alloc", "dep:critical-section"]
+
+[dev-dependencies]
+serial_test = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [

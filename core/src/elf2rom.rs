@@ -14,19 +14,29 @@ use std::{error::Error, path::Path};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
-    // Load the embedded float library
+    // Load the embedded float library (enabled with the `float` feature).
+    #[cfg(feature = "float")]
     const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
 
     // Extract all relevant sections from the ELF file
+    #[cfg(feature = "float")]
     let payloads: Vec<ElfPayload> =
         vec![collect_elf_payload_from_bytes(FLOAT_LIB_DATA)?, collect_elf_payload_from_bytes(elf)?];
+    #[cfg(not(feature = "float"))]
+    let payloads: Vec<ElfPayload> = vec![collect_elf_payload_from_bytes(elf)?];
+
+    // Record the ELF file index
+    #[cfg(feature = "float")]
+    let elf_index = 1;
+    #[cfg(not(feature = "float"))]
+    let elf_index = 0;
 
     // Without `ziskos::entrypoint!(main);` the linker can't resolve `_start`
     // to the ziskos boot thunk and emits `e_entry = 0`, which would crash the
     // emulator at PC=0 with a confusing out-of-rom error. Looking up a `main`
     // symbol is not a reliable signal: release-mode LTO inlines `main` into
     // `_zisk_main` and strips it from the symbol table.
-    if payloads[1].entry_point == 0 {
+    if payloads[elf_index].entry_point == 0 {
         return Err("Guest ELF has no entry point (e_entry=0x0). \
                     Declare `#![no_main]` and `ziskos::entrypoint!(main);` \
                     at the guest program root."
@@ -76,8 +86,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         // Add read-write data sections (will be stored in RAM)
         rw_data.append(&mut payload.rw.clone());
 
-        // Add entry and exit jump instructions, only for the main payload, i.e. for the second payload
-        if i == 1 {
+        // Add entry and exit jump instructions, only for the guest ELF payload
+        // (i.e. `payloads[elf_index]`)
+        if i == elf_index {
             add_entry_exit_jmp(&mut rom, payload.entry_point);
         }
     }
@@ -85,6 +96,18 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Merge adjacent read-only and read_write data sections for efficiency
     ro_data = merge_adjacent_data_sections(&ro_data);
     rw_data = merge_adjacent_data_sections(&rw_data);
+
+    // Add trailing zeros in every data section of the ROM to make their size a multiple of 32 bytes
+    ro_data = ro_data
+        .into_iter()
+        .map(|section| {
+            let mut data = section.data;
+            while data.len() % 32 != 0 {
+                data.push(0);
+            }
+            DataSection { addr: section.addr, data }
+        })
+        .collect();
 
     // Delete trailing zeros in every data section of the RAM, and delete the section if needed
     rw_data = rw_data
@@ -99,18 +122,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             } else {
                 Some(DataSection { addr: section.addr, data })
             }
-        })
-        .collect();
-
-    // Add trailing zeros in every data section of the RAM to make their size a multiple of 8 bytes
-    rw_data = rw_data
-        .into_iter()
-        .map(|section| {
-            let mut data = section.data;
-            while data.len() % 8 != 0 {
-                data.push(0);
-            }
-            DataSection { addr: section.addr, data }
         })
         .collect();
 
@@ -132,6 +143,54 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             .into());
         }
     }
+
+    // Remove heading zeros, only for RW data sections
+    for section in &mut rw_data {
+        // Get number of heading zeros
+        let mut heading_zeros_counter: usize = 0;
+        for i in 0..section.data.len() {
+            if section.data[i] == 0 {
+                heading_zeros_counter += 1;
+            } else {
+                break;
+            }
+        }
+
+        if heading_zeros_counter == section.data.len() {
+            // The whole section is zeros, we can delete it
+            section.data.clear();
+            continue;
+        }
+
+        // Find the largest n, multiple of 8 and <= heading_zeros_counter, such that
+        // (data.len() - n) % 32 == 0, so no extra trailing zeros need to be added afterwards.
+        let r = section.data.len() % 32;
+        heading_zeros_counter = if r % 8 == 0 && heading_zeros_counter >= r {
+            r + ((heading_zeros_counter - r) / 32) * 32
+        } else {
+            // Cannot achieve a multiple-of-32 length with an 8-aligned removal; skip entirely.
+            0
+        };
+
+        // Delete heading zeros and update the section address accordingly
+        if heading_zeros_counter > 0 {
+            section.data.drain(0..heading_zeros_counter);
+            section.addr += heading_zeros_counter as u64;
+        }
+    }
+
+    // Add trailing zeros in every data section of the RAM to make their size a multiple of 32 bytes
+    rw_data = rw_data
+        .into_iter()
+        .map(|section| {
+            let mut data = section.data;
+            while data.len() % 32 != 0 {
+                data.push(0);
+            }
+            DataSection { addr: section.addr, data }
+        })
+        .collect();
+
     for section in &mut rw_data {
         if section.addr % 8 != 0 {
             return Err(format!(
@@ -147,33 +206,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                 section.data.len()
             )
             .into());
-        }
-    }
-
-    // Remove heading zeros, only for RW data sections
-    for section in &mut rw_data {
-        // Get number of heading zeros
-        let mut heading_zeros_counter: usize = 0;
-        for i in 0..section.data.len() {
-            if section.data[i] == 0 {
-                heading_zeros_counter += 1;
-            } else {
-                break;
-            }
-        }
-        // Align to 8 bytes, as the data sections will be converted to 64-bit data sections
-        heading_zeros_counter &= !0x07;
-
-        if heading_zeros_counter == section.data.len() {
-            // The whole section is zeros, we can delete it
-            section.data.clear();
-            continue;
-        }
-
-        // Delete heading zeros and update the section address accordingly
-        if heading_zeros_counter > 0 {
-            section.data.drain(0..heading_zeros_counter);
-            section.addr += heading_zeros_counter as u64;
         }
     }
 

@@ -567,7 +567,7 @@ void server_setup (void)
     shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY, 0666);
     if (shmem_control_input_fd < 0)
     {
-        asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+        asm_printf("ERROR: Failed calling shmem_control_input_fd RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
         exit(-1);
     }
 
@@ -743,6 +743,7 @@ void server_setup (void)
         }
     }
 
+
     /****************/
     /* OUTPUT TRACE */
     /****************/
@@ -901,6 +902,7 @@ void server_setup (void)
         duration = TimeDiff(start_time, stop_time);
         asm_printf("sem_open(%s) succeeded in %lu us\n", sem_input_avail_name, duration);
     }
+    
 }
 
 void server_reset_fast (void)

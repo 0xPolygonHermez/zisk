@@ -1,5 +1,5 @@
 use crate::hints::macros::define_hint;
-use zisk_common::HINT_VERIFY_KZG_PROOF;
+use zisk_definitions::HINT_VERIFY_KZG_PROOF;
 
 define_hint! {
     verify_kzg_proof => {

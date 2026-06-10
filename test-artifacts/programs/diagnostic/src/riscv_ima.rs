@@ -173,7 +173,7 @@ pub fn diagnostic_riscv_ima() {
     riscv_csrrc();
     riscv_csrrci();
 
-    println!("diagnostic_riscv_ima() success");
+    println!("All RISC-V IMA diagnostics passed!");
 }
 
 #[allow(dead_code)]
