@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
 use fields::PrimeField64;
-use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEM_BYTES_BITS, MEMORY_INIT_STEP};
+use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use std::{
@@ -35,7 +35,6 @@ pub struct RomDataSM<F: PrimeField64> {
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
-const MAX_RANGE_CHECK_CACHE: usize = 2048;
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> RomDataSM<F> {
@@ -181,22 +180,11 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         #[cfg(feature = "debug_mem")]
         {
-            let path = std::env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
             let filename = format!("{path}/rom_trace_{segment_id:04}.txt");
             Self::save_to_file(&trace, &filename);
         }
 
-        #[cfg(feature = "debug_mem")]
-        Self::save_addr_offsets_to_file(
-            &trace,
-            &format!("tmp/rom_data_trace_{segment_id:04}_offsets.txt"),
-        );
-
-        #[cfg(feature = "debug_mem")]
-        Self::dump_trace_to_file(
-            &trace,
-            &format!("tmp/rom_data_trace_legacy_{segment_id:04}_dump.txt"),
-        );
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
@@ -276,20 +264,12 @@ impl<F: PrimeField64> RomDataSM<F> {
         //     seg,
         //     &format!("tmp/rom_data_trace_gpu_{segment_id:04}_offsets.txt"),
         // );
-
+        let previous_segment_addr: u32 = if segment_id == 0 { 0 } else { previous_segment.addr };
         let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
-        let mut range_check_cache = vec![0u32; MAX_RANGE_CHECK_CACHE];
 
         #[cfg(debug_assertions)]
         let mut filled_rows = vec![false; trace.num_rows()];
         let offset_base_addr_w = seg.offsets_base_addr >> 3;
-
-        let distance_from_prev = previous_segment.addr - ROM_DATA_W_ADDR_INIT;
-        if distance_from_prev < MAX_RANGE_CHECK_CACHE as u32 {
-            range_check_cache[distance_from_prev as usize] += 1;
-        } else {
-            self.std.range_check_one(self.range_id, distance_from_prev as i64);
-        }
 
         if seg.offset_at(0) == 0 {
             current_offsets[0] = OFFSET_USE_FLAG;
@@ -318,32 +298,13 @@ impl<F: PrimeField64> RomDataSM<F> {
 
             trace[irow].set_addr(mem_op.addr);
             trace[irow].set_step(mem_op.step);
-            trace[irow].set_sel(true);
 
             let (low_val, high_val) = self.get_u32_values(mem_op.value);
-            trace[irow].set_value(0, low_val);
-            trace[irow].set_value(1, high_val);
+            trace[irow].set_all_value(&[low_val, high_val]);
 
-            if addr_changes || (irow == 0 && segment_id == 0) {
-                trace[irow].set_addr_changes(true);
-                let previous_addr = seg
-                    .previous_change_addr_w(addr_index as u32)
-                    .unwrap_or(previous_segment.addr as u64);
-                let distance = mem_op.addr as i64
-                    - previous_addr as i64
-                    - !(irow == 0 && segment_id == 0) as i64;
-                if distance < MAX_RANGE_CHECK_CACHE as i64 {
-                    range_check_cache[distance as usize] += 1;
-                } else {
-                    self.std.range_check_one(self.range_id, distance);
-                }
-            } else {
-                trace[irow].set_addr_changes(false);
-            }
+            trace[irow].set_addr_change(addr_changes || (irow == 0 && segment_id == 0));
         }
-        // STEP3. Add dummy rows to the output vector to fill the remaining rows
-        // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
-        // = 1, wr = 0
+
         let count = mem_ops.len();
         let last_row = trace[count - 1];
 
@@ -365,37 +326,37 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         if count < num_rows {
             trace[count] = last_row;
-            trace[count].set_addr_changes(false);
-            trace[count].set_sel(false);
+            trace[count].set_addr_change(false);
+            trace[count].set_step(MEMORY_INIT_STEP); // make sure the step is different from the last mem_op row
 
             for i in count + 1..num_rows {
                 trace[i] = trace[i - 1];
             }
-            // address doesn't change in padding rows, no range check is required
         }
 
-        let distance_to_end = (ROM_DATA_W_ADDR_END - last_row.get_addr()) as i64;
-        if distance_to_end < MAX_RANGE_CHECK_CACHE as i64 {
-            range_check_cache[distance_to_end as usize] += 1;
-        } else {
-            self.std.range_check_one(self.range_id, distance_to_end);
-        }
-        self.std.range_check_ranged(self.range_id, None, &range_check_cache);
+        assert!(
+            is_last_segment || count == num_rows,
+            "All intermediate segments must fill all rows"
+        );
 
         let mut air_values = RomDataAirValues::<F>::new();
+        let padding_size = num_rows - count;
+        air_values.padding_size = F::from_u32(padding_size as u32);
         air_values.segment_id = F::from_usize(segment_id.into());
         air_values.is_first_segment = F::from_bool(segment_id == 0);
         air_values.is_last_segment = F::from_bool(is_last_segment);
-        air_values.previous_segment_step = F::from_u64(previous_segment.step);
-        air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
+        air_values.previous_segment_addr = F::from_u32(previous_segment_addr);
         air_values.segment_last_addr = F::from_u32(last_row.get_addr());
-        air_values.segment_last_step = F::from_u64(last_row.get_step());
 
         air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
         air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
 
         air_values.segment_last_value[0] = F::from_u32(last_row.get_value(0));
         air_values.segment_last_value[1] = F::from_u32(last_row.get_value(1));
+
+        if is_last_segment {
+            self.std.range_check_one(self.range_24bits_id, padding_size as u64);
+        }
 
         #[cfg(feature = "debug_mem")]
         {
@@ -423,12 +384,10 @@ impl<F: PrimeField64> RomDataSM<F> {
         for i in 0..num_rows {
             let addr = trace[i].get_addr() as u64 * 8;
             let step = trace[i].get_step();
-            let sel = trace[i].get_sel();
             let chunk = if step == 0 { 0 } else { MemHelpers::mem_step_to_chunk(step).0 };
             let value = trace[i].get_value(0) as u64 | ((trace[i].get_value(1) as u64) << 32);
-            let wr = trace[i].get_sel() as u8;
 
-            writeln!(writer, "{i} {addr:#08X} {wr} {step} {chunk} 0x{value:X} {sel}").unwrap();
+            writeln!(writer, "{i} {addr:#08X} {step} {chunk} 0x{value:X}").unwrap();
         }
         println!("[RomDataDebug] done");
     }
@@ -442,11 +401,10 @@ impl<F: PrimeField64> RomDataSM<F> {
         for i in 0..num_rows {
             let addr = trace[i].get_addr() * 8;
             let step = trace[i].get_step();
-            let sel = trace[i].get_sel();
             // TODO: chunk_size * 4 = 20
             writeln!(
                 writer,
-                "{:#010X} {} {:?} S:{sel} @{}",
+                "{:#010X} {} {:?} @{}",
                 addr,
                 step,
                 trace[i].get_value(0) as u64 + ((trace[i].get_value(1) as u64) << 32),

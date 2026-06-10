@@ -912,6 +912,10 @@ impl<F: PrimeField64> MemModule<F> for MemSM<F> {
         "ram"
     }
 
+    fn is_initializable(&self) -> bool {
+        true
+    }
+
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
     /// This method is invoked by the executor when no further witness data remains to be added.
