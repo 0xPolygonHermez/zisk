@@ -3072,7 +3072,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mem_reads_collect_main() {
                     if ctx.address_is_constant {
                         *code += &format!(
-                            "\tmov {}, {} {}\n",
+                            "\tmov {}, 0x{:x} {}\n",
                             reg_address,
                             ctx.address_constant_value,
                             ctx.comment_str("a(address) = constant")
