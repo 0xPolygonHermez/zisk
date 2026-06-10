@@ -162,7 +162,8 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     // 3] Prove unaligned memory accesses against the Main component
     col witness bits(1) sel_prove;
 
-    sel_prove * sel_assume === 0; // Disjoint selectors
+    sel_prove * (sel_prove - 1) === 0; // Binary selector
+    sel_prove * sel_assume === 0; // Disjoint from the assume selector
 
     // On prove steps, we reconstruct the value in the correct manner chosen by the selectors
     expr prove_val[RC];
