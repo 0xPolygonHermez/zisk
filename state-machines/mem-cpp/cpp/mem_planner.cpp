@@ -119,6 +119,15 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
     current_segment = nullptr;
     uint32_t addr = 0;
     
+    rows_available = rows;
+    reference_addr_chunk = NO_CHUNK_ID;
+    reference_addr = 0;
+    reference_skip = 0;
+    locators_done = 0;
+    last_addr = 0;
+
+    current_chunk = NO_CHUNK_ID;
+
     // Pre-compute requirements and preallocate
     uint32_t first_addr, last_addr, num_addrs;
     precompute_locator_requirements(workers, locator, first_addr, last_addr, num_addrs);

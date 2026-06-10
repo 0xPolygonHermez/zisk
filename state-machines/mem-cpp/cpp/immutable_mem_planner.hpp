@@ -92,7 +92,6 @@ public:
     void set_last_addr(uint32_t addr) { initial_last_addr = addr; }
     void save_offsets_to_file(const std::string &filename, bool compact = true);
     MemOffsets* get_mem_offsets() { return mem_offsets; }
-    void enable_debug() { if (mem_offsets) mem_offsets->enable_debug(); }
     void init_mem_offsets();
 };
 

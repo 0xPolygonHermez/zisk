@@ -52,19 +52,6 @@ impl<F: PrimeField64> RomDataSM<F> {
     pub fn get_to_addr() -> u32 {
         ROM_DATA_W_ADDR_END
     }
-    #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
-        let file = File::create(file_name).unwrap();
-        let mut writer = BufWriter::new(file);
-        let num_rows = RomDataTrace::<R>::NUM_ROWS;
-
-        for i in 0..num_rows {
-            let addr = trace[i].get_addr() * 8;
-            let step = trace[i].get_step();
-            let values = [trace[i].get_value(0), trace[i].get_value(1)];
-            writeln!(writer, "{:#010X} {} {:?} @{}", addr, step, values, (step - 1) >> 20).unwrap();
-        }
-    }
 
     /// Finalizes the witness accumulation process and triggers the proof generation.
     ///
