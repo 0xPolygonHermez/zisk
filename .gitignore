@@ -30,3 +30,4 @@ reth-inputs/
 /hints
 /benchmark
 dist/
+package-lock.json

@@ -17,7 +17,9 @@
 // Each test binary only uses a subset of these; silence the per-binary dead-code warns.
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::sync::Once;
 
 use anyhow::{anyhow, Result};
 use test_artifacts::ELF_RECURSER_CHAIN;
@@ -43,8 +45,114 @@ pub fn build_client() -> EmbeddedClient {
     builder.build().expect("failed to build EmbeddedClient")
 }
 
+
+fn ensure_node_deps() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        if let Err(e) = ensure_node_deps_inner() {
+            eprintln!("[recurser] WARN: could not bootstrap pil2com node deps: {e:#}");
+        }
+    });
+}
+
+fn ensure_node_deps_inner() -> Result<()> {
+    if let Some(p) = std::env::var_os("PIL2C_EXEC") {
+        if Path::new(&p).is_file() {
+            return Ok(());
+        }
+    }
+
+    let proofman_dir = resolve_proofman_dir()?;
+    let pil2c = proofman_dir.join("node_modules/.bin/pil2com");
+
+    if !pil2c.exists() {
+        eprintln!("[recurser] npm install in {}", proofman_dir.display());
+        let status = Command::new("npm")
+            .arg("install")
+            .current_dir(&proofman_dir)
+            .status()
+            .map_err(|e| anyhow!("failed to run `npm install` in {}: {e}", proofman_dir.display()))?;
+        if !status.success() {
+            return Err(anyhow!("`npm install` failed in {}", proofman_dir.display()));
+        }
+    }
+
+    if !pil2c.exists() {
+        return Err(anyhow!("pil2com missing at {} after npm install", pil2c.display()));
+    }
+    let pil2c = pil2c.canonicalize().unwrap_or(pil2c);
+    eprintln!("[recurser] PIL2C_EXEC={}", pil2c.display());
+    std::env::set_var("PIL2C_EXEC", &pil2c);
+
+    let snarkjs = proofman_dir.join("node_modules/snarkjs");
+    if snarkjs.is_dir() {
+        std::env::set_var("SNARKJS_PATH", &snarkjs);
+    }
+
+    Ok(())
+}
+
+fn resolve_proofman_dir() -> Result<PathBuf> {
+    if let Some(dir) = std::env::var_os("PROOFMAN_DIR") {
+        let dir = PathBuf::from(dir);
+        if !dir.is_dir() {
+            return Err(anyhow!("PROOFMAN_DIR is not a directory: {}", dir.display()));
+        }
+        return Ok(dir);
+    }
+
+    // Walk up from this crate to the workspace root holding Cargo.lock.
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let lock = manifest_dir
+        .ancestors()
+        .map(|d| d.join("Cargo.lock"))
+        .find(|p| p.is_file())
+        .ok_or_else(|| anyhow!("could not find Cargo.lock above {}", manifest_dir.display()))?;
+    let lock_text = std::fs::read_to_string(&lock)
+        .map_err(|e| anyhow!("failed to read {}: {e}", lock.display()))?;
+
+    // Find the `source = "git+...#<sha>"` line inside the `proofman` package block.
+    let rev = lock_text
+        .split("[[package]]")
+        .find(|block| block.lines().any(|l| l.trim() == r#"name = "proofman""#))
+        .and_then(|block| {
+            block
+                .lines()
+                .map(str::trim)
+                .find(|l| l.starts_with("source = \"git+"))
+        })
+        .and_then(|src| src.rsplit_once('#'))
+        .map(|(_, rev)| rev.trim_end_matches('"'))
+        .ok_or_else(|| anyhow!("proofman is not a git dependency in {} — set PROOFMAN_DIR", lock.display()))?;
+    let short = &rev[..rev.len().min(7)];
+
+    // cargo checks out under ~/.cargo/git/checkouts/pil2-proofman-<urlhash>/<short-sha>/
+    let home = std::env::var_os("HOME").ok_or_else(|| anyhow!("HOME not set"))?;
+    let checkouts = PathBuf::from(home).join(".cargo/git/checkouts");
+    for entry in std::fs::read_dir(&checkouts)
+        .map_err(|e| anyhow!("failed to read {}: {e}", checkouts.display()))?
+        .flatten()
+    {
+        let name = entry.file_name();
+        if name.to_string_lossy().starts_with("pil2-proofman-") {
+            let dir = entry.path().join(short);
+            if dir.join("package.json").is_file()
+                && dir.join("pil2-components/lib/std/pil").is_dir()
+            {
+                return Ok(dir);
+            }
+        }
+    }
+    Err(anyhow!(
+        "could not locate the pil2-proofman checkout for rev {short} under {} — set PROOFMAN_DIR",
+        checkouts.display()
+    ))
+}
+
 /// Set up the leaf program and a chain-fold aggregator, returning the handle.
 pub async fn setup_aggregator(client: &EmbeddedClient) -> RecurserAggregator {
+    ensure_node_deps();
+
     // ROM setup for the leaf program.
     client
         .setup(&ELF_RECURSER_CHAIN)
