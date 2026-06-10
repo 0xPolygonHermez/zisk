@@ -125,18 +125,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         })
         .collect();
 
-    // Add trailing zeros in every data section of the RAM to make their size a multiple of 32 bytes
-    rw_data = rw_data
-        .into_iter()
-        .map(|section| {
-            let mut data = section.data;
-            while data.len() % 32 != 0 {
-                data.push(0);
-            }
-            DataSection { addr: section.addr, data }
-        })
-        .collect();
-
     // Ensure every data section address is aligned to 8 bytes, and data length as well
     for section in &mut ro_data {
         if section.addr % 8 != 0 {
@@ -155,6 +143,54 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             .into());
         }
     }
+
+    // Remove heading zeros, only for RW data sections
+    for section in &mut rw_data {
+        // Get number of heading zeros
+        let mut heading_zeros_counter: usize = 0;
+        for i in 0..section.data.len() {
+            if section.data[i] == 0 {
+                heading_zeros_counter += 1;
+            } else {
+                break;
+            }
+        }
+
+        if heading_zeros_counter == section.data.len() {
+            // The whole section is zeros, we can delete it
+            section.data.clear();
+            continue;
+        }
+
+        // Find the largest n, multiple of 8 and <= heading_zeros_counter, such that
+        // (data.len() - n) % 32 == 0, so no extra trailing zeros need to be added afterwards.
+        let r = section.data.len() % 32;
+        heading_zeros_counter = if r % 8 == 0 && heading_zeros_counter >= r {
+            r + ((heading_zeros_counter - r) / 32) * 32
+        } else {
+            // Cannot achieve a multiple-of-32 length with an 8-aligned removal; skip entirely.
+            0
+        };
+
+        // Delete heading zeros and update the section address accordingly
+        if heading_zeros_counter > 0 {
+            section.data.drain(0..heading_zeros_counter);
+            section.addr += heading_zeros_counter as u64;
+        }
+    }
+
+    // Add trailing zeros in every data section of the RAM to make their size a multiple of 32 bytes
+    rw_data = rw_data
+        .into_iter()
+        .map(|section| {
+            let mut data = section.data;
+            while data.len() % 32 != 0 {
+                data.push(0);
+            }
+            DataSection { addr: section.addr, data }
+        })
+        .collect();
+
     for section in &mut rw_data {
         if section.addr % 8 != 0 {
             return Err(format!(
@@ -170,33 +206,6 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                 section.data.len()
             )
             .into());
-        }
-    }
-
-    // Remove heading zeros, only for RW data sections
-    for section in &mut rw_data {
-        // Get number of heading zeros
-        let mut heading_zeros_counter: usize = 0;
-        for i in 0..section.data.len() {
-            if section.data[i] == 0 {
-                heading_zeros_counter += 1;
-            } else {
-                break;
-            }
-        }
-        // Align to 8 bytes, as the data sections will be converted to 64-bit data sections
-        heading_zeros_counter &= !0x07;
-
-        if heading_zeros_counter == section.data.len() {
-            // The whole section is zeros, we can delete it
-            section.data.clear();
-            continue;
-        }
-
-        // Delete heading zeros and update the section address accordingly
-        if heading_zeros_counter > 0 {
-            section.data.drain(0..heading_zeros_counter);
-            section.addr += heading_zeros_counter as u64;
         }
     }
 

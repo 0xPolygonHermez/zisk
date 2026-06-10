@@ -99,16 +99,19 @@ impl CustomRom {
         //   a_offset_imm0 = value[0] low  32 bits    a_imm1        = value[0] high 32 bits
         //   b_offset_imm0 = value[1] low  32 bits    b_imm1        = value[1] high 32 bits
         //   ind_width     = value[2] low  32 bits    op            = value[2] high 32 bits
-        //   jmp_offset1   = value[3] low  32 bits    store_offset  = value[3] high 32 bits
-        //   flags         = MEMORY_STORE_OP (1) for RAM or MEMORY_ROM_INIT_OP (4) for ROM
+        //   store_offset  = value[3] low  32 bits    jmp_offset1   = value[3] high 32 bits
+        //   flags         = MEMORY_STORE_OP (2) for RAM or MEMORY_ROM_INIT_OP (4) for ROM
         //   is_data       = 1
         let mut data_row_index = rom.insts.len();
         let sections = rom.ro_data_64.iter().chain(rom.rw_data_64.iter());
         for section in sections {
-            assert!(
-                section.data.len() % 4 == 0,
-                "ro_data_64 and rw_data_64 sections must have length multiple of 4 u64 values",
-            );
+            if section.data.len() % 4 != 0 {
+                return Err(RomError::Custom(format!(
+                    "ro_data_64/rw_data_64 section at 0x{:x} has {} u64s; expected a multiple of 4",
+                    section.addr,
+                    section.data.len(),
+                )));
+            }
             let is_rom = section.addr >= ROM_ADDR && section.addr <= ROM_ADDR_MAX;
             let operation = if is_rom { MEMORY_ROM_INIT_OP } else { MEMORY_STORE_OP };
             for (chunk_idx, chunk) in section.data.chunks(4).enumerate() {
