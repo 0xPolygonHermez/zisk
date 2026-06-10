@@ -17,6 +17,7 @@ pub fn diagnostic_syscalls() {
     bls12_381::diagnostic_bls12_381();
     bn254::diagnostic_bn254();
     keccakf::diagnostic_keccakf();
+    poseidon1::diagnostic_poseidon1();
     poseidon2::diagnostic_poseidon2();
     secp256k1::diagnostic_secp256k1();
     secp256r1::diagnostic_secp256r1();
