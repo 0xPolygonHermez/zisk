@@ -74,7 +74,7 @@ impl ZiskStream {
     }
 
     /// Buffer raw bytes as one input record (length-prefixed, paired with
-    /// `ziskos::read_input_slice()`).
+    /// `ziskos::read_slice()`).
     pub fn write_slice(&self, data: &[u8]) {
         let frame = build_frame(data);
         self.writer.push_raw(&frame);

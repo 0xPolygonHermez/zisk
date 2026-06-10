@@ -786,7 +786,7 @@ impl Coordinator {
         let mut job = job_entry.write().await;
 
         // Save proof to disk
-        if state == JobState::Completed && !self.config.server.no_save_proofs {
+        if state == JobState::Completed && self.config.server.save_proofs {
             let zisk_proof = job.proof.as_ref().ok_or_else(|| {
                 CoordinatorError::Internal(
                     "Proof is missing during post-launch processing".to_string(),
@@ -1475,7 +1475,7 @@ mod tests {
     };
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
-        let mut config = Config::load(None, None, None, true, None)
+        let mut config = Config::load(None, None, None, None, None)
             .expect("Failed to create default test config");
         overrides(&mut config);
         config
