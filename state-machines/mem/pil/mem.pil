@@ -199,8 +199,9 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
                   [
                     base_address,               // identify area of memory
                     segment_id,                 // current segment_id
-                                                // proves of last segment
-                    previous_segment_addr,
+                    is_first_segment,           // to verify that first segment has the flag 
+                                                // is_first_segment = 1 to match with direct global update
+                    previous_segment_addr,      
                     previous_segment_step,
                     ...previous_segment_value
                   ]);
@@ -236,7 +237,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
                   [
                     base_address,               // identify area of memory
                     segment_id + 1,             // next segment_id, for last segment
-                                                // this value is forced to 0 to match global constraint
+                    0,                          // is_first_segment must be 0 always on next segments
                     segment_last_addr,          // last addr of segment
                     segment_last_step,          // last step of segment
                     ...segment_last_value
@@ -253,7 +254,13 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
     // to prevent redundant constraints.This flag is used to handle cases where a memory area is not
     // used during a given execution.
 
-    direct_global_update_proves(MEMORY_CONTINUATION_ID, [ base_address, 0, internal_base_address, 0, ...zeros], sel: enable_flag);
+    direct_global_update_proves(MEMORY_CONTINUATION_ID, [ base_address,             // base_addr
+                                                          0,                        // segment_id
+                                                          1,                        // is_first_segment
+                                                          internal_base_address,    // internal_base_addr
+                                                          0,                        // previous_segment_addr
+                                                          ...zeros]                 // value
+                                                          , sel: enable_flag);
 
     // For security, ensure that the first address has the correct value to prevent adding a large
     // number of instances that could cause an "overflow" in the prime field.

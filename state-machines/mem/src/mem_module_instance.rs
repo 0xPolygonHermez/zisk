@@ -149,7 +149,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             self.module.is_dual(),
         );
 
-        assert!(self.init, "mem module instance should not build collector with init because method don't has mem_sections as argument");
+        assert!(!self.init, "mem module instance should not build collector with init because method don't has mem_sections as argument");
         // if self.init && chunk_id == ChunkId(0) {
         //     collector.init_with_mem_sections(mem_sections);
         // }

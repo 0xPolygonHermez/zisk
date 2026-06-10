@@ -29,13 +29,18 @@ const _: () = {
 };
 
 pub struct RomDataSM<F: PrimeField64> {
-    _phantom: std::marker::PhantomData<F>,
+    /// PIL2 standard library
+    std: Arc<Std<F>>,
+
+    range_24bits_id: usize,
 }
 
 #[allow(unused, unused_variables)]
 impl<F: PrimeField64> RomDataSM<F> {
-    pub fn new(_std: Arc<Std<F>>) -> Arc<Self> {
-        Arc::new(Self { _phantom: std::marker::PhantomData })
+    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+        let range_24bits_id =
+            std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
+        Arc::new(Self { range_24bits_id, std: std.clone() })
     }
     pub fn get_from_addr() -> u32 {
         ROM_DATA_W_ADDR_INIT
@@ -159,6 +164,11 @@ impl<F: PrimeField64> RomDataSM<F> {
             }
         }
 
+        assert!(
+            is_last_segment || count == num_rows,
+            "All intermediate segments must fill all rows"
+        );
+
         let mut air_values = RomDataAirValues::<F>::new();
         air_values.padding_size = F::from_u32((num_rows - count) as u32);
         air_values.segment_id = F::from_usize(segment_id.into());
@@ -172,6 +182,10 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         air_values.segment_last_value[0] = F::from_u32(trace[last_row_idx].get_value(0));
         air_values.segment_last_value[1] = F::from_u32(trace[last_row_idx].get_value(1));
+
+        if is_last_segment {
+            self.std.range_check_one(self.range_24bits_id, count as u64);
+        }
 
         #[cfg(feature = "debug_mem")]
         {
