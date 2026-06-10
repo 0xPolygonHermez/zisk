@@ -172,6 +172,12 @@ pub struct EmuOptions {
     /// Requires option: --sdk
     #[clap(long, value_name = "WIDTH", default_value = "120")]
     pub sdk_width: usize,
+    /// In mode full emulation, load the data sections into memory, allowing to read them during the
+    /// emulation.  Enabled by default.
+    /// In mode chunk player, do not load the data sections into memory, since memory reads are
+    /// obtained from the minimal traces, not from memory
+    #[clap(long, default_value = "true")]
+    pub with_memory_data: bool,
 }
 
 impl Default for EmuOptions {
@@ -222,6 +228,7 @@ impl Default for EmuOptions {
             compact_names: 160,
             no_compact_names: false,
             sdk_width: 120,
+            with_memory_data: true,
         }
     }
 }

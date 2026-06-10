@@ -1226,8 +1226,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
-        let is_first_partition = params.worker_allocation.contains(&0);
-        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
+        let is_first_process =
+            params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };
@@ -1293,8 +1294,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         };
 
         let with_hints = !matches!(hints_source, HintsSourceDto::HintsNull);
-        let is_first_partition = params.worker_allocation.contains(&0);
-        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_partition)?;
+        let is_first_process =
+            params.worker_allocation.contains(&0) && self.worker.world_rank() == 0;
+        self.worker.prepare_for_new_job(&params.hash_id, with_hints, is_first_process)?;
 
         let data_ctx =
             DataCtx { data_id: DataId::from(params.data_id), input_source, hints_source };

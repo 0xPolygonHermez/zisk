@@ -81,9 +81,16 @@ impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu<'_> {
         Emu { rom, ctx: EmuContext::default(), static_array: [0; MAX_OPERATION_DATA_SIZE] }
     }
+    pub fn new_with_memory_data(rom: &ZiskRom, with_memory_data: bool) -> Emu<'_> {
+        Emu {
+            rom,
+            ctx: EmuContext::new_with_memory_data(with_memory_data),
+            static_array: [0; MAX_OPERATION_DATA_SIZE],
+        }
+    }
 
     pub fn from_emu_trace_start(rom: &'a ZiskRom, trace_start: &'a EmuTraceStart) -> Emu<'a> {
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, false);
         emu.ctx.inst_ctx.pc = trace_start.pc;
         emu.ctx.inst_ctx.sp = trace_start.sp;
         emu.ctx.inst_ctx.step = trace_start.step;
@@ -97,6 +104,11 @@ impl<'a> Emu<'a> {
         // Initialize an empty instance
         let mut ctx = EmuContext::new(inputs, options);
 
+        // Skip memory data allocation when in chunk mode, since memory reads are obtained from the
+        // minimal traces, not from memory
+        if !options.with_memory_data {
+            return ctx;
+        }
         // Create a new read section for every RO data entry of the rom
         for i in 0..self.rom.ro_data.len() {
             ctx.inst_ctx.mem.add_read_section(self.rom.ro_data[i].from, &self.rom.ro_data[i].data);

@@ -199,8 +199,9 @@ impl ArithOperationTest {
             + aop.main_mul as u64 * (aop.c[2] as u64 + aop.c[3] as u64 * CHUNK_SIZE)
             + aop.main_div as u64 * (aop.a[2] as u64 + aop.a[3] as u64 * CHUNK_SIZE);
 
-        let bus_res_high = if aop.sext && !aop.div_overflow { 0xFFFF_FFFF } else { 0 }
-            + (1 - aop.m32 as u64) * bus_res_high_64;
+        let bus_res_high =
+            if aop.sext && !(aop.div_overflow_mul_rz && aop.div) { 0xFFFF_FFFF } else { 0 }
+                + (1 - aop.m32 as u64) * bus_res_high_64;
 
         let expected_a_low = a & 0xFFFF_FFFF;
         let expected_a_high = (a >> 32) & 0xFFFF_FFFF;
@@ -263,7 +264,7 @@ impl ArithOperationTest {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow,
+            aop.div_overflow_mul_rz,
             aop.m32,
             aop.div,
             aop.main_mul,
@@ -281,7 +282,7 @@ impl ArithOperationTest {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow,
+            aop.div_overflow_mul_rz,
         );
         self.table_rows[row_1] += 1;
     }
