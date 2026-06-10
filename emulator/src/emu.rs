@@ -113,8 +113,10 @@ impl<'a> Emu<'a> {
         // Create a new read section for every RO data entry of the rom
         for i in 0..self.rom.ro_data_64.len() {
             // Convert from DataSection64 to DataSection
-            let mut data_section =
-                DataSection { addr: self.rom.ro_data_64[i].addr, data: Vec::new() };
+            let mut data_section = DataSection {
+                addr: self.rom.ro_data_64[i].addr,
+                data: Vec::with_capacity(self.rom.ro_data_64[i].data.len() * 8),
+            };
             for j in 0..self.rom.ro_data_64[i].data.len() {
                 data_section.data.extend_from_slice(&self.rom.ro_data_64[i].data[j].to_le_bytes());
             }
@@ -126,8 +128,10 @@ impl<'a> Emu<'a> {
         // Write the initial RAM data to the memory, as it will be used for the execution of the program (e.g. for jumps to code in the ROM, or for read-only data)
         for i in 0..self.rom.rw_data_64.len() {
             // Convert from DataSection64 to DataSection
-            let mut data_section =
-                DataSection { addr: self.rom.rw_data_64[i].addr, data: Vec::new() };
+            let mut data_section = DataSection {
+                addr: self.rom.rw_data_64[i].addr,
+                data: Vec::with_capacity(self.rom.rw_data_64[i].data.len() * 8),
+            };
             for j in 0..self.rom.rw_data_64[i].data.len() {
                 data_section.data.extend_from_slice(&self.rom.rw_data_64[i].data[j].to_le_bytes());
             }
