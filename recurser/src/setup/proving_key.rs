@@ -25,6 +25,11 @@ pub struct RecurserAggregatorConfig<'a> {
     /// `<output_dir>/provingKey/recurser/<recurser_id>/`.
     pub recurser_id: &'a str,
 
+    /// Hash family the recurser recurses over (e.g. `"Poseidon1"` /
+    /// `"Poseidon2"`). Must match vadcop_final's family; read from the proving
+    /// key's `globalInfo.json`.
+    pub hash: &'a str,
+
     /// Inner ZisK verifier's verkey (4 Goldilocks limbs). Baked into the
     /// aggregator as `rootCVadcopFinalZisk`.
     pub zisk_vk: &'a [String; 4],
@@ -77,6 +82,7 @@ pub fn gen_recurser_aggregator_setup(
             input_challenges: false,
             fri_queries_batch_size: None,
             multi_fri: false,
+            hash: config.hash.to_string(),
         };
         let circom_src = gen_stark_verifier(
             Some(config.zisk_vk),
@@ -172,6 +178,7 @@ pub fn gen_recurser_aggregator_setup(
     let plonk_opts = PlonkOptions {
         airgroup_name: Some("RecurserAggregator".to_string()),
         max_constraint_degree: None,
+        hash_id: config.hash.to_string(),
     };
     let plonk_result: PlonkResult = plonk2pil::plonk2pil(&r1cs_data, "aggregation", &plonk_opts)
         .context("plonk2pil failed in recurser_aggregator setup")?;

@@ -45,7 +45,6 @@ pub fn build_client() -> EmbeddedClient {
     builder.build().expect("failed to build EmbeddedClient")
 }
 
-
 fn ensure_node_deps() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
@@ -67,11 +66,10 @@ fn ensure_node_deps_inner() -> Result<()> {
 
     if !pil2c.exists() {
         eprintln!("[recurser] npm install in {}", proofman_dir.display());
-        let status = Command::new("npm")
-            .arg("install")
-            .current_dir(&proofman_dir)
-            .status()
-            .map_err(|e| anyhow!("failed to run `npm install` in {}: {e}", proofman_dir.display()))?;
+        let status =
+            Command::new("npm").arg("install").current_dir(&proofman_dir).status().map_err(
+                |e| anyhow!("failed to run `npm install` in {}: {e}", proofman_dir.display()),
+            )?;
         if !status.success() {
             return Err(anyhow!("`npm install` failed in {}", proofman_dir.display()));
         }
@@ -115,15 +113,12 @@ fn resolve_proofman_dir() -> Result<PathBuf> {
     let rev = lock_text
         .split("[[package]]")
         .find(|block| block.lines().any(|l| l.trim() == r#"name = "proofman""#))
-        .and_then(|block| {
-            block
-                .lines()
-                .map(str::trim)
-                .find(|l| l.starts_with("source = \"git+"))
-        })
+        .and_then(|block| block.lines().map(str::trim).find(|l| l.starts_with("source = \"git+")))
         .and_then(|src| src.rsplit_once('#'))
         .map(|(_, rev)| rev.trim_end_matches('"'))
-        .ok_or_else(|| anyhow!("proofman is not a git dependency in {} — set PROOFMAN_DIR", lock.display()))?;
+        .ok_or_else(|| {
+            anyhow!("proofman is not a git dependency in {} — set PROOFMAN_DIR", lock.display())
+        })?;
     let short = &rev[..rev.len().min(7)];
 
     // cargo checks out under ~/.cargo/git/checkouts/pil2-proofman-<urlhash>/<short-sha>/

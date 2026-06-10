@@ -44,6 +44,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     }
     let global_info: Value = serde_json::from_str(&fs::read_to_string(&global_info_path)?)?;
     let name = global_info.get("name").and_then(|v| v.as_str()).unwrap_or("pilout").to_string();
+    let hash = global_info.get("hash").and_then(|v| v.as_str()).unwrap_or("Poseidon1").to_string();
 
     let vadcop_final_dir =
         PathBuf::from(setup_dir).join("provingKey").join(&name).join("vadcop_final");
@@ -129,6 +130,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     let config = RecurserAggregatorConfig {
         output_dir,
         recurser_id: &recurser_id,
+        hash: &hash,
         zisk_vk: &zisk_vk,
         stark_info: &stark_info,
         verifier_info: &verifier_info,
