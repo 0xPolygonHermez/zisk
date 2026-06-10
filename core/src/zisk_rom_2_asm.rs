@@ -3068,14 +3068,14 @@ impl ZiskRom2Asm {
                     address_is_constant && ((address_constant_value & 0x7) == 0);
 
                 let reg_address = REG_A;
-                // Calculate memory address and store it in REG_ADDRESS
+                // Calculate memory address and store it in reg_address (reusing REG_A)
                 if !ctx.chunk_player_mem_reads_collect_main() {
                     if ctx.address_is_constant {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
                             reg_address,
                             ctx.address_constant_value,
-                            ctx.comment_str("address = constant")
+                            ctx.comment_str("a(address) = constant")
                         );
                     } else {
                         // If `a` is an immediate and wasn't materialized into a register, load it
@@ -3092,7 +3092,7 @@ impl ZiskRom2Asm {
                                 "\tadd {}, 0x{:x} {}\n",
                                 reg_address,
                                 instruction.store_offset as u64,
-                                ctx.comment_str("address += i.store_offset")
+                                ctx.comment_str("a(address) += i.store_offset")
                             );
                         }
                         if instruction.store_use_sp {
@@ -3100,7 +3100,7 @@ impl ZiskRom2Asm {
                                 "\tadd {}, {} {}\n",
                                 reg_address,
                                 ctx.mem_sp,
-                                ctx.comment_str("address += sp")
+                                ctx.comment_str("a(address) += sp")
                             );
                         }
                     }
