@@ -29,5 +29,8 @@
   },
   "Poseidon": {
     "hasCompressor": true
+  },
+  "DmaPrePost": {
+    "hasCompressor": true
   }
 }
