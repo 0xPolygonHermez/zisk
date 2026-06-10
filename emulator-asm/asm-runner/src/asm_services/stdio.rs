@@ -1,7 +1,7 @@
 use std::{
     io::{Read, Write},
     process::{Child, ChildStdin, ChildStdout, Stdio},
-    sync::{Arc, Mutex},
+    sync::Mutex,
     thread,
 };
 
@@ -76,9 +76,8 @@ impl StdioHandle {
     }
 }
 
-#[derive(Clone)]
 pub(super) struct StdioService {
-    state: Arc<[Mutex<StdioHandle>; 3]>,
+    state: [Mutex<StdioHandle>; 3],
     pub(super) world_rank: i32,
     pub(super) local_rank: i32,
 }
@@ -104,7 +103,7 @@ impl StdioService {
             .try_into()
             .expect("expected exactly 3 services");
 
-        Ok(Self { state: Arc::new(handles), world_rank, local_rank })
+        Ok(Self { state: handles, world_rank, local_rank })
     }
 
     fn start_service(
@@ -139,11 +138,6 @@ impl StdioService {
         let mut guard = self.state[service.as_index()].lock().unwrap();
         let _ = guard.child.kill();
         let _ = guard.child.wait();
-    }
-
-    /// Number of `StdioService`/`AsmServices` clones sharing these child handles.
-    pub(super) fn owner_count(&self) -> usize {
-        Arc::strong_count(&self.state)
     }
 
     pub(super) fn running_services(&self) -> Vec<AsmService> {
