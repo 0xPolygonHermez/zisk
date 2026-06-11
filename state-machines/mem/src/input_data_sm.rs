@@ -1,7 +1,13 @@
 use std::sync::Arc;
 
 #[cfg(feature = "debug_mem")]
-use std::io::Write;
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+};
+
+#[cfg(feature = "debug_mem")]
+use mem_common::MemHelpers;
 
 use crate::{MemInput, MemModule, MemPreviousSegment};
 use mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
@@ -65,6 +71,34 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
     pub fn get_to_addr() -> u32 {
         (INPUT_ADDR + MAX_INPUT_SIZE - 1) as u32
+    }
+
+    #[cfg(feature = "debug_mem")]
+    pub fn save_to_file<R: InputDataTraceRowOps<F>>(trace: &InputDataTrace<R>, file_name: &str) {
+        println!("[MemDebug] writing information {} .....", file_name);
+        let file = File::create(file_name).unwrap();
+        let mut writer = BufWriter::new(file);
+        let num_rows = InputDataTrace::<R>::NUM_ROWS;
+
+        for i in 0..num_rows {
+            let addr = trace[i].get_addr() as u64 * 8;
+            let step = trace[i].get_step();
+            let main_step = MemHelpers::mem_step_to_main_step(step);
+            let values = trace[i].get_all_value_word();
+            let value = values[0] as u64
+                | ((values[1] as u64) << 16)
+                | ((values[2] as u64) << 32)
+                | ((values[3] as u64) << 48);
+            let addr_changes = trace[i].get_addr_changes();
+            let is_free_read = trace[i].get_is_free_read();
+            let sel = trace[i].get_sel();
+            writeln!(
+                writer,
+                "{i:<8} {addr:#010X} {step:>13} {main_step:>12} {values:?} 0x{value:016X} AC:{addr_changes} S:{sel} FR:{is_free_read}"
+            )
+            .unwrap();
+        }
+        println!("[MemDebug] done");
     }
 
     #[cfg(feature = "debug_mem")]
@@ -291,6 +325,15 @@ impl<F: PrimeField64> InputDataSM<F> {
         self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
 
         #[cfg(feature = "debug_mem")]
+        {
+            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let filename = format!("{path}/input_data_legacy_trace_{segment_id:04}.txt");
+            println!("Saving {filename}");
+            Self::save_to_file(&trace, &filename);
+            println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
+        }
+
+        #[cfg(feature = "debug_mem")]
         Self::save_addr_offsets_to_file(
             &trace,
             &format!("tmp/input_data_trace_{segment_id:04}_offsets.txt"),
@@ -382,8 +425,11 @@ impl<F: PrimeField64> InputDataSM<F> {
         let offset_base_addr_w = seg.offsets_base_addr >> 3;
 
         // first address == halo
-        // In input data, first special address not active flag change address.
-        current_offsets[0] = OFFSET_USE_FLAG;
+        // In input data, first special address not active flag change address if has free inputs
+        // on special address INPUT_ADDR, first position of input data.
+        if seg.offset_at(0) == 0 || seg.offsets_base_addr == INPUT_ADDR as u32 {
+            current_offsets[0] = OFFSET_USE_FLAG;
+        }
 
         for (index, mem_op) in mem_ops.iter().enumerate() {
             let addr_index = (mem_op.addr - offset_base_addr_w) as usize;
@@ -517,6 +563,15 @@ impl<F: PrimeField64> InputDataSM<F> {
         range_16bits[distance_end_chunks[0] as usize] += 1;
         range_16bits[distance_end_chunks[1] as usize] += 1;
         self.std.range_check_ranged(self.range_16bits_id, None, &range_16bits);
+
+        #[cfg(feature = "debug_mem")]
+        {
+            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let filename = format!("{path}/input_data_trace_{segment_id:04}.txt");
+            println!("Saving {filename}");
+            Self::save_to_file(&trace, &filename);
+            println!("[Mem:{}] mem_ops:{} padding:{}", segment_id, mem_ops.len(), padding_size);
+        }
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
