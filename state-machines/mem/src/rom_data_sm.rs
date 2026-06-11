@@ -167,7 +167,7 @@ impl<F: PrimeField64> RomDataSM<F> {
 
         #[cfg(feature = "debug_mem")]
         {
-            let path = env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
+            let path = std::env::var("MEM_TRACE_DIR").unwrap_or("tmp/mem_trace".to_string());
             let filename = format!("{path}/rom_trace_{segment_id:04}.txt");
             Self::save_to_file(&trace, &filename);
         }
