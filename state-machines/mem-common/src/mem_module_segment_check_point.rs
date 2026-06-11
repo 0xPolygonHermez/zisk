@@ -113,8 +113,8 @@ impl MemModuleSegmentCheckPoint {
         // A repeated address keeps the offset of its FIRST occurrence: `offset_at`
         // must point at the row of the first operation for an address, and the
         // consumer counts further operations by incrementing locally. So any call
-        // for an already-recorded address (`target_slot <= prev_last`) is ignored.
-        if target_slot <= prev_last {
+        // for an already-recorded address (`target_slot == prev_last`) is ignored.
+        if target_slot == prev_last {
             return;
         }
 
