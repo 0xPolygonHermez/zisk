@@ -140,6 +140,18 @@ pub fn pow_mod256(
 
     // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
+    assert!(len <= 256, "Exponent bit length out of range");
+    assert!(bits.len() == len, "Bit decomposition length mismatch");
+
+    // Recompose the exponent from the (untrusted) bit hint and bind it to exp
+    let mut rec_exp = [0u64; 4];
+    for (bit_idx, &bit) in bits.iter().enumerate() {
+        if bit == 1 {
+            let bit_pos = len - 1 - bit_idx;
+            rec_exp[bit_pos / 64] |= 1u64 << (bit_pos % 64);
+        }
+    }
+    assert_eq!(rec_exp, *exp, "Exponent decomposition mismatch");
 
     // Left-to-right square-and-multiply, starting from the second bit
     let mut result = reduce_mod256(
@@ -148,13 +160,10 @@ pub fn pow_mod256(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut rec_exp = [0u64; 4];
-    let bit_pos = len - 1;
-    rec_exp[bit_pos / 64] = 1u64 << (bit_pos % 64);
-    for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
+    for &bit in bits.iter().skip(1) {
         if is_zero(&result) {
-            // Exit with result = 0 if the result is already zero,
-            // since it will remain zero regardless of the remaining bits
+            // result stays zero regardless of the remaining bits; the exponent
+            // is already bound above, so exiting early is sound.
             break;
         }
 
@@ -175,15 +184,8 @@ pub fn pow_mod256(
                 #[cfg(feature = "hints")]
                 hints,
             );
-
-            // Recompose the exponent
-            let bit_pos = len - 1 - bit_idx;
-            rec_exp[bit_pos / 64] |= 1u64 << (bit_pos % 64);
         }
     }
-
-    // Verify the hinted decomposition matches the original exponent
-    assert_eq!(rec_exp, *exp, "Exponent decomposition mismatch");
 
     result
 }

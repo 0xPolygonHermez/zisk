@@ -117,22 +117,25 @@ fn modexp_short(
 
     // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
+    assert!(len <= 64 * len_e, "Exponent bit length out of range");
+    assert!(bits.len() == len, "Bit decomposition length mismatch");
 
-    // We should recompose the exponent from bits to verify correctness
+    // Recompose the exponent from the (untrusted) bit hint and bind it to exp
     let mut rec_exp = vec![0u64; len_e];
-
-    // Recompose the MSB
-    let bits_pos = len - 1;
-    let limb_idx = bits_pos / 64;
-    let bit_in_limb = bits_pos % 64;
-    rec_exp[limb_idx] = 1u64 << bit_in_limb;
+    for (bit_idx, &bit) in bits.iter().enumerate() {
+        if bit == 1 {
+            let bits_pos = len - 1 - bit_idx;
+            rec_exp[bits_pos / 64] |= 1u64 << (bits_pos % 64);
+        }
+    }
+    assert_eq!(rec_exp[..], *exp, "Exponent decomposition mismatch");
 
     // Scratch space
     let mut scratch = ShortScratch::new();
 
     // Initialize out = base
     let mut out = base;
-    for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
+    for &bit in bits.iter().skip(1) {
         if out.is_zero() {
             // Exit with out = 0 if the result is already zero,
             // since it will remain zero regardless of the remaining bits
@@ -158,16 +161,8 @@ fn modexp_short(
                 #[cfg(feature = "hints")]
                 hints,
             );
-
-            // Recompose the exponent
-            let bits_pos = len - 1 - bit_idx;
-            let limb_idx = bits_pos / 64;
-            let bit_in_limb = bits_pos % 64;
-            rec_exp[limb_idx] |= 1u64 << bit_in_limb;
         }
     }
-
-    assert_eq!(rec_exp[..], *exp, "Exponent decomposition mismatch");
 
     vec![out]
 }
@@ -199,22 +194,25 @@ fn modexp_long(
 
     // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
+    assert!(len <= 64 * len_e, "Exponent bit length out of range");
+    assert!(bits.len() == len, "Bit decomposition length mismatch");
 
-    // We should recompose the exponent from bits to verify correctness
+    // Recompose the exponent from the (untrusted) bit hint and bind it to exp
     let mut rec_exp = vec![0u64; len_e];
-
-    // Recompose the MSB
-    let bits_pos = len - 1;
-    let limb_idx = bits_pos / 64;
-    let bit_in_limb = bits_pos % 64;
-    rec_exp[limb_idx] = 1u64 << bit_in_limb;
+    for (bit_idx, &bit) in bits.iter().enumerate() {
+        if bit == 1 {
+            let bits_pos = len - 1 - bit_idx;
+            rec_exp[bits_pos / 64] |= 1u64 << (bits_pos % 64);
+        }
+    }
+    assert_eq!(rec_exp[..], *exp, "Exponent decomposition mismatch");
 
     // Scratch space
     let mut scratch = LongScratch::new(len_m);
 
     // Initialize out = base
     let mut out = base.clone();
-    for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
+    for &bit in bits.iter().skip(1) {
         if out.len() == 1 && out[0].is_zero() {
             // Exit with out = 0 if the result is already zero,
             // since it will remain zero regardless of the remaining bits
@@ -240,16 +238,8 @@ fn modexp_long(
                 #[cfg(feature = "hints")]
                 hints,
             );
-
-            // Recompose the exponent
-            let bits_pos = len - 1 - bit_idx;
-            let limb_idx = bits_pos / 64;
-            let bit_in_limb = bits_pos % 64;
-            rec_exp[limb_idx] |= 1u64 << bit_in_limb;
         }
     }
-
-    assert_eq!(rec_exp[..], *exp, "Exponent decomposition mismatch");
 
     out
 }
