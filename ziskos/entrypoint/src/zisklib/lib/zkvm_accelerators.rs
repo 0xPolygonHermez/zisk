@@ -1092,7 +1092,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        *verified = super::secp256k1_ecdsa_verify_bytes_c(
+        *verified = super::secp256k1_ecdsa_verify_c(
             sig as *const u8,
             msg as *const u8,
             pubkey as *const u8,
@@ -1124,7 +1124,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
 
             #[cfg(zisk_guest)]
             {
-                *verified = super::secp256k1_ecdsa_verify_bytes_c(
+                *verified = super::secp256k1_ecdsa_verify_c(
                     sig as *const u8,
                     msg as *const u8,
                     pubkey as *const u8,
