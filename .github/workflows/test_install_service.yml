@@ -26,6 +26,17 @@ jobs:
     name: Linux deploy smoke
     runs-on: ubuntu-latest
     steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
       - uses: actions/checkout@v4
       - name: Install runtime deps
         run: |

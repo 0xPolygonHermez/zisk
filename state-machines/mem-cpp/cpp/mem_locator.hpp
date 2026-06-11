@@ -21,6 +21,7 @@
 #include "mem_config.hpp"
 #include "tools.hpp"
 struct MemLocator {
+    uint32_t previous_addr;
     uint32_t offset;
     uint32_t cpos;
     uint32_t skip;

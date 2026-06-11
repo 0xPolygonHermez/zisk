@@ -6,6 +6,7 @@
 #include "mem_context.hpp"
 #include "tools.hpp"
 #include <vector>
+#include <string>
 #include <assert.h>
 #include <memory>   
 
@@ -42,6 +43,7 @@ public:
         return elapsed_ms;
     }
     void debug (void);
+    void save_csv (const std::string &filename);
 };
 
 

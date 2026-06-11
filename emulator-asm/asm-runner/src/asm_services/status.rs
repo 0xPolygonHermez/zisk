@@ -3,15 +3,20 @@ use super::{
     CMD_PING_RESPONSE_ID,
 };
 
-pub struct PingRequest;
+pub(crate) struct PingRequest;
 
 impl ToRequestPayload for PingRequest {
     fn to_request_payload(&self) -> RequestData {
         [CMD_PING_REQUEST_ID, 0, 0, 0, 0]
     }
 }
-pub struct PingResponse {
+
+// Fields mirror the on-wire ping response; these document the protocol layout.
+#[allow(dead_code)]
+pub(crate) struct PingResponse {
+    /// The producer's generation method.
     pub generation_method: u64,
+    /// The total allocated size of the shared memory segment.
     pub allocated_size: u64,
 }
 

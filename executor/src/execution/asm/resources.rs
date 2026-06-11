@@ -1,9 +1,11 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use asm_runner::{AsmRunnerOptions, AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
+use asm_runner::{
+    AsmRunnerOptions, AsmServices, ControlShmem, GpuBufferSource, HintsShmem, InputsShmemWriter,
+};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-use asm_runner::{MOShMemReader, MTShMemReader, RHShMemReader};
+use asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
 use zisk_common::io::{StreamSink, StreamSource, ZiskStdin, ZiskStream};
 
@@ -31,23 +33,27 @@ impl std::fmt::Debug for AsmResourcesConfig {
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub struct AsmShmemReaders {
     /// Reader for the minimal trace shmem segment (MT).
-    pub mt: Arc<Mutex<MTShMemReader>>,
+    pub mt: Arc<Mutex<MTShmemReader>>,
     /// Reader for the memory-ops shmem segment (MO).
-    pub mo: Arc<Mutex<MOShMemReader>>,
+    pub mo: Arc<Mutex<MOShmemReader>>,
     /// Reader for the ROM histogram shmem segment (RH).
-    pub rh: Arc<Mutex<Option<RHShMemReader>>>,
+    pub rh: Arc<Mutex<Option<RHShmemReader>>>,
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmShmemReaders {
-    fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> ExecutorResult<Self> {
+    fn new(
+        shm_prefix: &str,
+        unlock_mapped_memory: bool,
+        gpu_buffer_src: GpuBufferSource,
+    ) -> ExecutorResult<Self> {
         Ok(Self {
             mt: Arc::new(Mutex::new(
-                MTShMemReader::new(shm_prefix, unlock_mapped_memory)
+                MTShmemReader::new(shm_prefix, unlock_mapped_memory)
                     .map_err(ExecutorError::asm_backend)?,
             )),
             mo: Arc::new(Mutex::new(
-                MOShMemReader::new(shm_prefix, unlock_mapped_memory)
+                MOShmemReader::new(shm_prefix, unlock_mapped_memory, gpu_buffer_src)
                     .map_err(ExecutorError::asm_backend)?,
             )),
             rh: Arc::new(Mutex::new(None)),
@@ -91,8 +97,8 @@ impl AsmSharedResources {
     /// Semaphores are NOT opened here — call `bind_semaphores` on `AsmResources` before use.
     ///
     /// `with_hints` must match the value used during setup: the C binary only creates the
-    /// per-service precompile shmem segments when hints are enabled, so passing `true` here
-    /// without the C binary having created them will panic in `SharedMemoryWriter::new`.
+    /// per-service precompile shmem segments when hints are enabled, so passing `true` here without
+    /// the C binary having created them makes the underlying `shm_open` fail and returns an `Err`
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         local_rank: i32,
@@ -102,9 +108,14 @@ impl AsmSharedResources {
         init_rom: bool,
         with_hints: bool,
         shm_prefix: &str,
+        gpu_buffer_src: GpuBufferSource,
     ) -> ExecutorResult<Self> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let readers = AsmShmemReaders::new(shm_prefix, unlock_mapped_memory)?;
+        let readers = AsmShmemReaders::new(shm_prefix, unlock_mapped_memory, gpu_buffer_src)?;
+
+        // Avoid "unused variable" warnings on non-x86_64/Linux targets where the readers aren't used.
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let _ = gpu_buffer_src;
 
         let control_writer = Arc::new(
             ControlShmem::new(shm_prefix, unlock_mapped_memory)
@@ -195,10 +206,13 @@ impl AsmResources {
         asm_mt_path: &Path,
         with_hints: bool,
         verbose: proofman_common::VerboseMode,
+        gpu: bool,
     ) -> ExecutorResult<Self> {
         let options = AsmRunnerOptions::new().with_local_rank(0);
         let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
             .map_err(ExecutorError::asm_backend)?;
+        let gpu_buffer_src =
+            if gpu { GpuBufferSource::SelfAllocated } else { GpuBufferSource::Cpu };
         let shared = Arc::new(AsmSharedResources::new(
             0,
             false,
@@ -207,6 +221,7 @@ impl AsmResources {
             true,
             with_hints,
             services.shm_prefix(),
+            gpu_buffer_src,
         )?);
         Self::new(shared, services)
     }
@@ -350,27 +365,14 @@ impl AsmResources {
 
 impl Drop for AsmResources {
     fn drop(&mut self) {
-        // Shut down ASM microservices
+        // Unbind this process's semaphores. Shutting down the ASM microservices
+        // and unlinking their /dev/shm segments is handled by the `asm_services`
+        // field's own `Drop` (see `Drop for AsmServicesInner`).
         self.shared.shmem_inputs.unbind_semaphores();
         if let Some(hints_stream) = &self.shared.hints_stream {
             if let Ok(g) = hints_stream.lock() {
                 g.get_processor().hints_sink().unbind_semaphores();
             }
         }
-
-        tracing::info!(">>> [{}] Stopping ASM microservices.", self.shared.config.local_rank);
-        if let Err(e) = self.asm_services.stop_asm_services() {
-            tracing::error!(
-                ">>> [{}] Failed to stop ASM microservices: {}",
-                self.shared.config.local_rank,
-                e
-            );
-        }
-        // The ASM service children don't unlink shmem on exit (the
-        // `delete_*_shm` flags aren't set for them), so the parent must
-        // unlink the `/dev/shm/{shm_prefix}*` and `sem.{sem_prefix}*`
-        // entries here. Otherwise GBs of `_input`, `_ram`, `_rom` files
-        // leak until the next worker startup runs `cleanup_stale_shmem`.
-        self.asm_services.cleanup_my_shmem();
     }
 }

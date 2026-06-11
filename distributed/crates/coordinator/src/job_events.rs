@@ -1,4 +1,5 @@
 use zisk_cluster_common::JobPhase;
+use zisk_common::{AirInstanceCount, ZiskExecutorTime};
 
 /// Events broadcast on the per-job channel as the job transitions through states.
 #[derive(Debug, Clone)]
@@ -32,4 +33,6 @@ pub struct CoordinatorExecutionStats {
     pub precompile_cost: u64,
     pub tables_cost: u64,
     pub other_cost: u64,
+    pub executor_time: ZiskExecutorTime,
+    pub plan: Vec<AirInstanceCount>,
 }

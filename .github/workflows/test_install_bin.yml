@@ -120,7 +120,7 @@ jobs:
         shell: bash
         run: |
           cd $HOME/guest
-          cargo-zisk rom-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -v 2>&1 | tee romsetup_output.log
+          cargo-zisk-dev program-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -v 2>&1 | tee romsetup_output.log
           if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
             echo "❌ Program setup failed"
             exit 1
@@ -130,7 +130,7 @@ jobs:
         shell: bash
         run: |
           cd $HOME/guest
-          cargo-zisk prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -o proof.bin -y -p 8000 -u 2>&1 | tee prove_output.log
+          cargo-zisk-dev prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -o proof.bin -y -a -u 2>&1 | tee prove_output.log
           if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
             echo "❌ Prove program failed"
             exit 1

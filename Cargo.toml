@@ -23,6 +23,7 @@ members = [
   "executor",
   "pil",
   "prover-backend",
+  "prover-backend/macros",
   "riscv",
   "rom-setup",
   "state-machines/arith",
@@ -137,10 +138,12 @@ proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git"
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+ 
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
@@ -222,3 +225,4 @@ reqwest = { version = "0.12", features = [
   "rustls-tls",
 ], default-features = false }
 vergen-git2 = { version = "9", default-features = false, features = ["build"] }
+env = "1.0.1"

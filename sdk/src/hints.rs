@@ -64,6 +64,20 @@ impl ZiskHints {
         Ok(Self { source: StreamSource::from_file(path)? })
     }
 
+    /// Creates hints from a URI string.
+    ///
+    /// # Supported Schemes
+    /// - `file://path/to/file`   → File-based stream
+    /// - `unix://path/to/socket` → Unix domain socket stream
+    /// - `quic://host:port`      → QUIC network stream
+    /// - No scheme               → treated as a file path
+    ///
+    /// # Errors
+    /// Returns an error if the URI scheme is unknown or the resource is not accessible.
+    pub fn from_uri<S: Into<String>>(uri: S) -> anyhow::Result<Self> {
+        Ok(Self { source: StreamSource::from_uri(uri)? })
+    }
+
     pub(crate) fn into_inner(self) -> StreamSource {
         self.source
     }

@@ -1,6 +1,9 @@
 use crate::{MemInput, MemPreviousSegment};
-use mem_common::{MemHelpers, MemModuleCheckPoint, MEM_BYTES, MEM_BYTES_BITS};
+use mem_common::{MemHelpers, MemModuleCheckPoint, MEMORY_INIT_STEP, MEM_BYTES, MEM_BYTES_BITS};
 use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
+
+#[cfg(feature = "save_addr_action")]
+use std::io::Write;
 
 #[derive(Debug, PartialEq, Eq)]
 enum InputAction {
@@ -37,6 +40,8 @@ pub struct MemModuleCollector {
     pub is_dual: bool,
     state_from: DualState,
     state_to: DualState,
+    #[cfg(feature = "save_addr_action")]
+    file: std::fs::File,
 }
 
 impl MemModuleCollector {
@@ -46,6 +51,8 @@ impl MemModuleCollector {
         segment_id: SegmentId,
         is_first_chunk_of_segment: bool,
         is_dual: bool,
+        #[cfg(feature = "save_addr_action")] instance_name: &str,
+        #[cfg(feature = "save_addr_action")] chunk_id: usize,
     ) -> Self {
         // let prev_addr = mem_check_point.reference_addr;
         // let prev_step = MemHelpers::first_chunk_mem_step(mem_check_point.reference_addr_chunk);
@@ -72,6 +79,15 @@ impl MemModuleCollector {
             state_from: DualState::Ini,
             state_to: DualState::Ini,
             is_dual,
+            #[cfg(feature = "save_addr_action")]
+            file: {
+                std::fs::create_dir_all("tmp")
+                    .unwrap_or_else(|e| panic!("Cannot create tmp directory: {}", e));
+                let path =
+                    format!("tmp/actions_{}_{}_{}.txt", instance_name, segment_id.0, chunk_id);
+                std::fs::File::create(&path)
+                    .unwrap_or_else(|e| panic!("Cannot create {}: {}", path, e))
+            },
         }
     }
 
@@ -159,6 +175,18 @@ impl MemModuleCollector {
     /// - assumes called previously the discard_align_addr to check if is out of range
     fn dual_action_addr(&mut self, addr_w: u32, is_write: bool) -> InputAction {
         if addr_w == self.mem_check_point.from_addr && self.skip > 0 {
+            // skip > 1
+            //    DA == 0 && R => skip -=1, if skip == 1 {SetPrevious} else {Discard}, DA = 0
+            //    DA == 1 && R => Discard, DA = 1
+            //    W => skip -=1, if skip == 1 {SetPrevious} else {Discard}, DA = 1
+            //
+            // NOTE: if !is_first_chunk && SetPrevious => Discard
+            //
+            // skip == 1
+            //    DA == 0 && R => SetPrevious, DA = 0
+            //    DA == 1 && R => skip -=1, SetPrevious, DA = 1
+            //    W => skip -=1, SetPrevious, DA = 1
+
             // skip > 1 && !is_first_chunk
             //     ST_INI + X => ST_X, Discard
             //     ST_X + R => ST_INI, skip -= 1, Discard
@@ -426,6 +454,16 @@ impl MemModuleCollector {
         is_write: bool,
         action: InputAction,
     ) {
+        #[cfg(feature = "save_addr_action")]
+        {
+            let addr = (addr_w as u64) * 8;
+            writeln!(
+                self.file,
+                "0x{:x} {} 0x{:x} {} {:?}",
+                addr, step, value, is_write as u8, action
+            )
+            .unwrap();
+        }
         match action {
             InputAction::Discard => {}
             InputAction::Accept => {
@@ -467,6 +505,21 @@ impl MemModuleCollector {
         }
     }
 
+    fn aligned_init_data_to_input(&mut self, addr: u32, value: u64) {
+        // Direct case when is aligned, calculated 8 bytes addres (addr_w) and check if is a
+        // write or read.
+
+        let addr_w = MemHelpers::get_addr_w(addr);
+        if self.discard_align_addr(addr_w) {
+            return;
+        }
+
+        let action = self.action_addr(addr_w, true);
+        if action != InputAction::Discard {
+            self.process_addr_action(addr_w, MEMORY_INIT_STEP, value, true, action);
+        }
+    }
+
     pub fn skip_addr(&self, addr: u32) -> bool {
         if addr > self.filter_max_addr || addr < self.filter_min_addr {
             return true;
@@ -491,6 +544,34 @@ impl MemModuleCollector {
             self.bus_data_to_input(addr, data);
         }
         true
+    }
+    pub fn init_with_mem_sections(&mut self, mem_sections: &dyn zisk_core::MemDataSection) {
+        let sections = mem_sections.ro_sections().iter().chain(mem_sections.rw_sections().iter());
+        for section in sections {
+            if section.data.is_empty() {
+                continue;
+            }
+            let addr_from = section.addr as u32;
+            let addr_to = addr_from + section.data.len() as u32 * 8 - 8;
+            if addr_to < self.filter_min_addr || addr_from > self.filter_max_addr {
+                continue;
+            }
+            let from_index = if self.filter_min_addr > addr_from {
+                ((self.filter_min_addr - addr_from) / 8) as usize
+            } else {
+                0
+            };
+            let to_index = if self.filter_max_addr < addr_to {
+                ((self.filter_max_addr - addr_from) / 8 + 1) as usize
+            } else {
+                section.data.len()
+            };
+            let addr_from = addr_from + 8 * from_index as u32;
+            for (index, value) in section.data[from_index..to_index].iter().enumerate() {
+                let addr = addr_from + (index as u32) * 8;
+                self.aligned_init_data_to_input(addr, *value);
+            }
+        }
     }
 }
 

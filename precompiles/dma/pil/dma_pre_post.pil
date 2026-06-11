@@ -284,7 +284,7 @@ airtemplate DmaPrePost(int N = 2**21,                    // Rows of instance
         lookup_assumes(DMA_BYTE_CMP_TABLE_ID, [last_dst_byte, 
                                                 memcmp_result_is_negative, 
                                                 abs_diff_dst_src
-                                                ], sel: memcmp_result_nz);
+                                                ], sel: memcmp_result_nz, sel_is_binary: 1);
     } else {
         const int air.diff_dst_src[2] = [0, 0];
         const int air.diff_factor[2] = [0, 0];
@@ -461,7 +461,7 @@ airtemplate DmaPrePost(int N = 2**21,                    // Rows of instance
                                     fill_byte,
                                     memcmp_result_nz,
                                     ...memcmp_result
-                                    ], sel:);
+                                    ], sel:, sel_is_binary: 1);
 
                                             
     //                                                   @[selectors_mask] (8 bits)
@@ -471,7 +471,7 @@ airtemplate DmaPrePost(int N = 2**21,                    // Rows of instance
     // DMA_PRE_POST_MEMCMP_RESULT_IS_NEG_F = P2_13       @[memcmp_result_is_negative] (1 bit)
     // DMA_PRE_POST_MEMCMP_RESULT_NZ       = P2_14       @[memcmp_result_nz] (1 bit)
 
-    lookup_assumes(DMA_PRE_POST_TABLE_ID, [rom_flags, dst_offset, src_offset, count, ...diff_factor], sel: sel);
+    lookup_assumes(DMA_PRE_POST_TABLE_ID, [rom_flags, dst_offset, src_offset, count, ...diff_factor], sel: sel, sel_is_binary: 1);
 
     // TBO: For single memcmp operation, we only need two reads, and after generate two values to compare, less
     // columns.

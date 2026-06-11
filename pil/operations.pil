@@ -138,11 +138,12 @@ function assumes_operation (const expr op, const expr a[] = [0,0], const expr b[
                             const expr flag = 0, const expr main_step = 0,
                             const expr extended_arg = 0,
                             const expr sel = 1,
-                            const expr extra_args[] = [0]) 
+                            const int sel_is_binary = 0,
+                            const expr extra_args[] = [0])
 {
     assert(length(extra_args) == 1);
     lookup_assumes(OPERATION_BUS_ID, [op, ...a, ...b, ...c, flag, main_step, extended_arg, ...extra_args], 
-                   sel:);
+                   sel:, sel_is_binary:);
 }                              
 
 function proves_operation (const expr op, const expr a[] = [0, 0], const expr b[] = [0, 0], const expr c[] = [0, 0], 

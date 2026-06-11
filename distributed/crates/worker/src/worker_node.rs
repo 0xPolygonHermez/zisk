@@ -19,7 +19,7 @@ use zisk_cluster_common::{
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
-use zisk_common::{ProgramVK, Proof, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
@@ -464,7 +464,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
+        result: Result<(
+            WitnessInfo,
+            ZiskExecutorTime,
+            Vec<ContributionsInfo>,
+            u64,
+            StatsCostPerType,
+        )>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         loop_tx: &LoopEventSender,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
@@ -488,7 +494,16 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                ((WitnessInfo::default(), ZiskExecutorTime::default(), vec![], 0), e.to_string())
+                (
+                    (
+                        WitnessInfo::default(),
+                        ZiskExecutorTime::default(),
+                        vec![],
+                        0,
+                        StatsCostPerType::default(),
+                    ),
+                    e.to_string(),
+                )
             }
         };
 
@@ -529,6 +544,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             challenges,
             witness_info: Some(witness_info),
             zisk_execution_time: Some(zisk_execution_time),
+            cost_per_type: Some(result_data.4.into()),
         }));
 
         let worker_in_recovery = !success && self.owns_recovery_for(&job_id).await;
@@ -564,7 +580,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         &mut self,
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64)>,
+        #[allow(clippy::type_complexity)] result: Result<(
+            WitnessInfo,
+            ZiskExecutorTime,
+            u64,
+            u64,
+            StatsCostPerType,
+            Vec<zisk_common::AirInstanceCount>,
+        )>,
         message_sender: &mpsc::UnboundedSender<WorkerMessage>,
         loop_tx: &LoopEventSender,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
@@ -588,11 +611,22 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         "Inconsistent state: operation reported success but returned Err result"
                     ));
                 }
-                ((WitnessInfo::default(), ZiskExecutorTime::default(), 0, 0), e.to_string())
+                (
+                    (
+                        WitnessInfo::default(),
+                        ZiskExecutorTime::default(),
+                        0,
+                        0,
+                        StatsCostPerType::default(),
+                        Vec::new(),
+                    ),
+                    e.to_string(),
+                )
             }
         };
 
-        let (witness_info, zisk_exec_time, instances, executed_steps) = result_data;
+        let (witness_info, zisk_exec_time, instances, executed_steps, cost_per_type, plan) =
+            result_data;
 
         let witness_info_msg = WitnessExecInfo {
             witness_time: witness_info.witness_time,
@@ -621,6 +655,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             executed_steps,
             zisk_execution_time: Some(zisk_execution_time),
             witness_info: Some(witness_info_msg),
+            cost_per_type: Some(cost_per_type.into()),
+            plan: plan
+                .into_iter()
+                .map(|p| AirInstanceCount {
+                    airgroup_id: p.airgroup_id as u32,
+                    air_id: p.air_id as u32,
+                    count: p.count,
+                })
+                .collect(),
         }));
 
         let worker_in_recovery = !success && self.owns_recovery_for(&job_id).await;

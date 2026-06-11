@@ -44,6 +44,7 @@ impl ZiskStdin {
     /// Create a `ZiskStdin` from a URI string.
     /// - `None` → empty stdin
     /// - `"file://path"` → read from file
+    /// - `"inline://[[1,2],[3]]"` → inline input, a JSON array of u64 arrays
     /// - No scheme → treated as a file path
     pub fn from_uri<S: Into<String>>(stdin_uri: Option<S>) -> Result<ZiskStdin> {
         let Some(uri) = stdin_uri else { return Ok(ZiskStdin::new()) };
@@ -53,11 +54,36 @@ impl ZiskStdin {
             let path = &path[3..];
             match scheme {
                 "file" => ZiskStdin::from_file(path),
+                "inline" => ZiskStdin::from_inline(path),
                 _ => Err(anyhow::anyhow!("Unknown stdin scheme: {}", scheme)),
             }
         } else {
             ZiskStdin::from_file(uri.as_str())
         }
+    }
+
+    /// Create a `ZiskStdin` from an inline JSON array of u64 arrays.
+    ///
+    /// Each inner array is written as one frame via [`write_slice`](Self::write_slice),
+    /// so the buffer is byte-identical to a saved `input.bin`: every frame carries an
+    /// 8-byte little-endian length prefix and is padded to an 8-byte boundary.
+    ///
+    /// Example: `"[[1,2],[3],[4,5,6]]"` produces three frames.
+    pub fn from_inline(json: &str) -> Result<ZiskStdin> {
+        let frames: Vec<Vec<u64>> = serde_json::from_str(json).with_context(|| {
+            format!(
+                "inline input must be a JSON array of u64 arrays, e.g. [[1,2],[3]]; got: {json}"
+            )
+        })?;
+        let stdin = ZiskStdin::new();
+        for frame in frames {
+            let mut bytes = Vec::with_capacity(frame.len() * 8);
+            for word in frame {
+                bytes.extend_from_slice(&word.to_le_bytes());
+            }
+            stdin.write_slice(&bytes);
+        }
+        Ok(stdin)
     }
 
     pub fn read_data(&self) -> Vec<u8> {

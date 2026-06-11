@@ -14,7 +14,8 @@ use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
-    ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID,
+    MemDataSection, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID,
+    PUB_OUT_OP_TYPE_ID,
 };
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -55,8 +56,8 @@ pub struct StaticDataBus<D, F: PrimeField64> {
 impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
     /// Constructs a counter-phase data bus via static dispatch — no
     /// `StaticSMBundle` required. Callable on the standalone path.
-    pub fn build(is_asm_emulator: bool) -> Self {
-        let builtins = BuiltinCounters::build::<F>(is_asm_emulator);
+    pub fn build(is_asm_emulator: bool, mem_sections: Option<&dyn MemDataSection>) -> Self {
+        let builtins = BuiltinCounters::build::<F>(is_asm_emulator, mem_sections);
         let precompiles = PrecompileCounters::<F>::build(is_asm_emulator);
 
         Self {

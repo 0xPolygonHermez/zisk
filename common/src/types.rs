@@ -153,11 +153,23 @@ pub struct ZiskExecutorTime {
     pub asm_execution_duration: Option<AsmExecutionInfo>,
 }
 
+/// Per-AIR planned instance count. Plain `(airgroup_id, air_id, count)` triple so it can
+/// live in `common` (no executor dependency) and cross the wire; the human-readable AIR
+/// name is derived from the ids by the consumer.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AirInstanceCount {
+    pub airgroup_id: usize,
+    pub air_id: usize,
+    pub count: u64,
+}
+
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorSummary {
     pub steps: u64,
     pub executor_time: ZiskExecutorTime,
     pub cost_per_type: StatsCostPerType,
+    /// Per-AIR instance plan. Empty unless produced by a planning executor run.
+    pub plan: Vec<AirInstanceCount>,
 }
 
 impl ZiskExecutorSummary {
@@ -166,7 +178,12 @@ impl ZiskExecutorSummary {
         execution_time: ZiskExecutorTime,
         cost_per_type: StatsCostPerType,
     ) -> Self {
-        Self { steps: executed_steps, executor_time: execution_time, cost_per_type }
+        Self {
+            steps: executed_steps,
+            executor_time: execution_time,
+            cost_per_type,
+            ..Default::default()
+        }
     }
 }
 

@@ -108,8 +108,15 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
         EmulatorAsmSource::Workspace => {
             tracing::debug!("Building ziskclib...");
 
+            // ziskclib is cross-platform; lib-c's C build only runs on Linux
+            // (its build.rs early-returns elsewhere), so only build it — and only
+            // require its libziskc.a artifact — when targeting Linux.
+            let mut args = vec!["build", "--release", "-p", "ziskclib"];
+            if cfg!(target_os = "linux") {
+                args.extend(["-p", "lib-c"]);
+            }
             let output = Command::new("cargo")
-                .args(["build", "--release", "-p", "ziskclib"])
+                .args(&args)
                 .current_dir(emulator_parent)
                 .output()
                 .context("Failed to execute cargo build for ziskclib")?;
@@ -125,6 +132,21 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
                     "ziskclib build succeeded but library not found at: {}",
                     target_lib_path.display()
                 );
+            }
+
+            // lib-c's build.rs publishes libziskc.a to target/zisk-libs/ (Linux only;
+            // the emulator-asm Makefile links it via -L../target/zisk-libs). The
+            // `-p lib-c` build above re-runs that script after a `cargo clean`, so
+            // verify the artifact is present.
+            #[cfg(target_os = "linux")]
+            {
+                let ziskc_lib_path = emulator_parent.join("target/zisk-libs/libziskc.a");
+                if !ziskc_lib_path.exists() {
+                    anyhow::bail!(
+                        "lib-c build succeeded but libziskc.a not found at: {}",
+                        ziskc_lib_path.display()
+                    );
+                }
             }
 
             tracing::debug!("ziskclib built successfully at: {}", target_lib_path.display());
@@ -143,12 +165,15 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
     Ok(())
 }
 
-fn asm_file_base(name: &str, hash: &str, hints: bool) -> String {
-    let prefix = if name != hash { format!("{name}-{hash}") } else { hash.to_string() };
+/// Base filename for a program's ASM artifacts.
+///
+/// Content-addressed by the ELF hash only — the same ELF always maps to the same
+/// artifacts regardless of the program name, so a given hash is generated once.
+fn asm_file_base(hash: &str, hints: bool) -> String {
     if hints {
-        format!("{prefix}-hints")
+        format!("{hash}-hints")
     } else {
-        prefix
+        hash.to_string()
     }
 }
 
@@ -159,23 +184,17 @@ pub fn get_assembly_file_paths(
     hints: bool,
 ) -> Result<Vec<PathBuf>> {
     let elf_hash = get_elf_data_hash_from_path(elf)?;
-    let elf_name = elf
-        .file_stem()
-        .context("Failed to extract file stem from ELF path")?
-        .to_str()
-        .context("Failed to convert ELF file stem to string")?;
-    Ok(get_assembly_file_paths_from_id(elf_name, &elf_hash, output_path, hints).to_vec())
+    Ok(get_assembly_file_paths_from_id(&elf_hash, output_path, hints).to_vec())
 }
 
-/// Variant of [`get_assembly_file_paths`] that takes the ELF name + hash
-/// directly (caller already computed them). Returns `[mt, rh, mo]`.
+/// Variant of [`get_assembly_file_paths`] that takes the ELF hash directly
+/// (caller already computed it). Returns `[mt, rh, mo]`.
 pub fn get_assembly_file_paths_from_id(
-    elf_name: &str,
     elf_hash: &str,
     output_path: &Path,
     hints: bool,
 ) -> [PathBuf; 3] {
-    let base = asm_file_base(elf_name, elf_hash, hints);
+    let base = asm_file_base(elf_hash, hints);
     [
         output_path.join(format!("{base}-mt.bin")),
         output_path.join(format!("{base}-rh.bin")),
@@ -201,13 +220,8 @@ pub fn gen_assembly(
         let output_path = crate::get_output_path(_output_dir)?;
         let elf_data =
             std::fs::read(_elf).with_context(|| format!("Error reading ELF file: {_elf:?}"))?;
-        let stem = _elf
-            .file_stem()
-            .context("Failed to extract file stem from ELF path")?
-            .to_str()
-            .context("Failed to convert ELF file stem to string")?;
         tracing::info!("Computing assembly setup");
-        generate_assembly(&elf_data, stem, output_path.as_path(), _hints, _verbose)?;
+        generate_assembly(&elf_data, output_path.as_path(), _hints, _verbose)?;
         tracing::info!("Assembly setup generated at {}", output_path.display());
     }
     Ok(())
@@ -215,7 +229,6 @@ pub fn gen_assembly(
 
 pub fn generate_assembly(
     elf: &[u8],
-    elf_name: &str,
     output_path: &Path,
     hints: bool,
     verbose: bool,
@@ -226,7 +239,7 @@ pub fn generate_assembly(
         anyhow::bail!("ROM file is not a valid ELF file");
     }
 
-    let base = asm_file_base(elf_name, &elf_hash, hints);
+    let base = asm_file_base(&elf_hash, hints);
 
     let bin_mt_file = output_path.join(format!("{base}-mt.bin"));
     let bin_rh_file = output_path.join(format!("{base}-rh.bin"));

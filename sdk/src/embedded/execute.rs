@@ -28,7 +28,7 @@ impl EmbeddedClient {
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
 
-            let result = Self::do_execute_inner(stdin, hints, executor, program, prover);
+            let result = Self::do_execute_inner(stdin, hints, executor, &program, prover);
 
             fire_result_event(&subs_cloned, &result);
 
@@ -38,11 +38,29 @@ impl EmbeddedClient {
         Ok(JobHandle::new_embedded(handle, subs, timeout))
     }
 
+    /// Run the execution synchronously on the calling thread.
+    ///
+    /// Unlike [`do_execute`](Self::do_execute), this performs no `spawn_blocking`
+    /// and returns the result directly, so it requires no async runtime.
+    pub(crate) fn do_execute_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        subs: SubscriberList,
+    ) -> Result<ExecuteResult> {
+        fire_event(&subs, JobEvent::Started);
+        let result = Self::do_execute_inner(stdin, hints, executor, program, self.prover.clone());
+        fire_result_event(&subs, &result);
+        result
+    }
+
     fn do_execute_inner(
         stdin: InputSource,
         hints: Option<HintsSource>,
         executor: ExecutorKind,
-        program: GuestProgram,
+        program: &GuestProgram,
         prover: Arc<EmbeddedProver>,
     ) -> Result<ExecuteResult> {
         let output = match (prover.as_ref(), executor) {
@@ -54,7 +72,7 @@ impl EmbeddedClient {
                     anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
                 }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute(&program, s.into_inner())?
+                p.execute(program, s.into_inner())?
             }
             (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
                 anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
@@ -67,7 +85,7 @@ impl EmbeddedClient {
                     anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
                 }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute_emulator(&program, s.into_inner())?
+                p.execute_emulator(program, s.into_inner())?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {
@@ -90,7 +108,7 @@ impl EmbeddedClient {
                             p.register_hints_stream(source)?;
                         }
                     }
-                    p.execute(&program, zisk_common::io::ZiskStdin::new())?
+                    p.execute(program, zisk_common::io::ZiskStdin::new())?
                 } else {
                     if p.was_setup_with_hints() {
                         anyhow::bail!(
@@ -106,9 +124,9 @@ impl EmbeddedClient {
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri)?;
                             p.register_inputs_stream(source)?;
-                            p.execute(&program, zisk_common::io::ZiskStdin::new())?
+                            p.execute(program, zisk_common::io::ZiskStdin::new())?
                         }
-                        InputSource::Stdin(s) => p.execute(&program, s.into_inner())?,
+                        InputSource::Stdin(s) => p.execute(program, s.into_inner())?,
                     }
                 }
             }
