@@ -5,7 +5,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 
 /// Branch of the `zisk_template` repo cloned by default. A blank, compilable
 /// placeholder project whose crate names use the `template-` prefix.
-const DEFAULT_TEMPLATE_BRANCH: &str = "feature/blank-template";
+const BLANK_TEMPLATE_BRANCH: &str = "feature/blank-template";
 
 /// Crate-name prefix used throughout the template; rewritten to the project name.
 const TEMPLATE_PREFIX: &str = "template-";
@@ -32,7 +32,7 @@ impl NewCmd {
         let branch = std::env::var("ZISK_TEMPLATE_BRANCH")
             .ok()
             .filter(|b| !b.is_empty())
-            .unwrap_or_else(|| DEFAULT_TEMPLATE_BRANCH.to_string());
+            .unwrap_or_else(|| BLANK_TEMPLATE_BRANCH.to_string());
 
         // Clone the repository.
         let mut cmd = Command::new("git");
