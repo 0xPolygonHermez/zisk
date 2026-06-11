@@ -73,7 +73,7 @@ impl<F: PrimeField64> MemModuleInstance<F> {
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
             #[cfg(feature = "save_addr_action")]
-            self.get_mem_name(),
+            self.module.get_mem_name(),
             #[cfg(feature = "save_addr_action")]
             chunk_id.0,
         );
@@ -165,7 +165,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
             #[cfg(feature = "save_addr_action")]
-            self.get_mem_name(),
+            self.module.get_mem_name(),
             #[cfg(feature = "save_addr_action")]
             chunk_id.0,
         );
