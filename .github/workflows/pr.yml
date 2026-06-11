@@ -43,7 +43,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          sudo ./install_deps.sh
+          ./install_deps.sh
 
       - name: Build cargo-zisk
         uses: actions-rs/cargo@v1
