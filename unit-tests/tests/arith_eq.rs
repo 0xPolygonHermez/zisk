@@ -4,7 +4,7 @@
 //! 1. honest typed input              → constraints hold     (Ok)
 //! 2. honest input + a tampering hook → constraint violated  (Err)
 //! 3. raw trace override (bypasses `compute_witness`)         (Err here,
-//!    because the hand-authored trace is deliberately invalid)
+//!    because the hand-authored trace trips the sel_op latch)
 //!
 //! Copy this file's structure to add tests for other SMs. All are `#[ignore]`
 //! because they need a real proving key at `~/.zisk/provingKey`; `with_prover`
@@ -65,9 +65,21 @@ fn arith256_mod_hook_injection_is_caught() {
 }
 
 /// Override feature: bypass `compute_witness` entirely and author the trace
-/// ourselves. Here we hand back the freshly zeroed trace — a deliberately
-/// invalid ArithEq witness — so verification must fail. This proves the
-/// override's trace is what actually reaches the constraint check.
+/// ourselves, then check that what we wrote is what the constraints see.
+///
+/// A freshly zeroed ArithEq trace is *not* invalid — with every `sel_op`
+/// selector at zero the whole instance is "unused", every selector-gated
+/// arithmetic constraint is multiplied by 0, and verification passes. So to
+/// prove the authored trace actually reaches the constraint check we must
+/// author a trace that *trips* a constraint.
+///
+/// The cheapest, layout-robust violation is the selector latch
+/// (`arith_eq.pil`): `(1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0` requires a
+/// selector to stay constant across an operation's clock cycle except on its
+/// first row (where the fixed column `CLK_0 == 1`). `CLK_0` is `1` on rows
+/// 0, 16, 32, ... and `0` elsewhere, so turning `sel_op[1]` on at row 1 only
+/// — while row 0 keeps it off — makes the latch evaluate to `1 * (1 - 0) = 1`,
+/// a guaranteed failure that needs no carries, ranges, or arithmetic.
 #[test]
 #[ignore = "requires ~/.zisk/provingKey"]
 fn arith256_mod_override_authors_trace_directly() {
@@ -77,11 +89,11 @@ fn arith256_mod_override_authors_trace_directly() {
             .input::<ArithEqSm>(honest_input())
             .trace_override::<ArithEqSm, ArithEqTrace<ArithEqTraceRow<Goldilocks>>>(
                 |trace, _inputs| {
-                    let row = &mut trace.buffer[0];
-                    row.set_step_addr(1);
-                    row.set_x1(7);
-                    row.set_y1(11);
-                    row.set_q0(123);
+                    // Enable the Arith256Mod selector (index 1) on row 1 only.
+                    // Row 0 keeps every selector at 0, so the latch constraint
+                    // `(1 - CLK_0) * (sel_op[1] - 'sel_op[1]) === 0` is broken
+                    // at row 1 (CLK_0 == 0 there).
+                    trace.buffer[1].set_sel_op(1, true);
                     Ok(())
                 },
             )
@@ -89,8 +101,9 @@ fn arith256_mod_override_authors_trace_directly() {
 
         assert!(
             result.is_err(),
-            "an all-zero (override-authored) trace must violate ArithEq constraints, \
-             but verification passed — the override did not reach the constraint check"
+            "an override-authored trace that breaks the sel_op latch must violate \
+             ArithEq constraints, but verification passed — the override did not \
+             reach the constraint check"
         );
     });
 }
