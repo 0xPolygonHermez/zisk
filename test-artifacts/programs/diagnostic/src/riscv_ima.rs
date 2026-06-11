@@ -1,3 +1,6 @@
+// NOTE: This diagnostic program is built for the guest target and intentionally does not depend on
+// `zisk_core`. We include the pure-Rust op reference implementations directly to validate
+// instruction semantics against the emulator.
 #[path = "../../../../core/src/ops_core.rs"]
 mod ops_core;
 
