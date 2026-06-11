@@ -341,9 +341,15 @@ mod tests {
             w.write_u64_at(0, initial as u64).unwrap();
         }
 
-        let m =
-            AsmMultiShmem::<TestHeader>::open_and_map(&base, initial, initial, initial * 4, true)
-                .unwrap();
+        let m = AsmMultiShmem::<TestHeader>::open_and_map(
+            &base,
+            initial,
+            initial,
+            initial * 4,
+            true,
+            false,
+        )
+        .unwrap();
         assert_eq!(m.map_header().allocated_size(), initial as u64);
         assert_eq!(m.total_mapped_size(), initial);
         assert!(!m.mapped_ptr().is_null());
@@ -353,12 +359,15 @@ mod tests {
 
     #[test]
     fn open_and_map_rejects_empty_base_name() {
-        assert!(AsmMultiShmem::<TestHeader>::open_and_map("", 4096, 4096, 8192, true).is_err());
+        assert!(
+            AsmMultiShmem::<TestHeader>::open_and_map("", 4096, 4096, 8192, true, false).is_err()
+        );
     }
 
     #[test]
     fn open_and_map_rejects_max_smaller_than_initial() {
         let base = format!("ZISK_unittest_multibad_{}", std::process::id());
-        assert!(AsmMultiShmem::<TestHeader>::open_and_map(&base, 8192, 4096, 4096, true).is_err());
+        assert!(AsmMultiShmem::<TestHeader>::open_and_map(&base, 8192, 4096, 4096, true, false)
+            .is_err());
     }
 }
