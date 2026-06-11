@@ -125,7 +125,7 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
-    runs-on: gpu-hosted-2
+    group: zisk-gpu
     timeout-minutes: 180
     # NOTE: We intentionally use 'docker exec' in individual steps rather than
     # defining a job-level container. The test scripts deploy systemd services
