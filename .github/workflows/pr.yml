@@ -20,7 +20,7 @@ permissions:
 jobs:
   cargo-tests:
     name: Cargo tests
-    runs-on: self-hosted
+    runs-on: rocket
     container:
       image: ubuntu:latest
     env:
