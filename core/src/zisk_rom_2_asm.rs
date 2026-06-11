@@ -3047,32 +3047,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &ctx.full_line_comment(format!("STORE_IND width={}", instruction.ind_width));
 
-                // Calculate memory address and store it in REG_ADDRESS
-                if !ctx.chunk_player_mem_reads_collect_main() {
-                    *code += &format!(
-                        "\tmov {}, {} {}\n",
-                        REG_ADDRESS,
-                        ctx.a.string_value,
-                        ctx.comment_str("address = a")
-                    );
-                    if instruction.store_offset != 0 {
-                        *code += &format!(
-                            "\tadd {}, 0x{:x} {}\n",
-                            REG_ADDRESS,
-                            instruction.store_offset as u64,
-                            ctx.comment_str("address += i.store_offset")
-                        );
-                    }
-                    if instruction.store_use_sp {
-                        *code += &format!(
-                            "\tadd {}, {} {}\n",
-                            REG_ADDRESS,
-                            ctx.mem_sp,
-                            ctx.comment_str("address += sp")
-                        );
-                    }
-                }
-
+                // Check if address is constant and calculate it if so, to optimize code and get alignment info
                 let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
                 let address_constant_value = if address_is_constant {
                     (ctx.a.constant_value as i64 + instruction.store_offset) as u64
@@ -3083,6 +3058,45 @@ impl ZiskRom2Asm {
                 ctx.address_constant_value = address_constant_value;
                 let address_is_aligned =
                     address_is_constant && ((address_constant_value & 0x7) == 0);
+
+                let reg_address = REG_A;
+                // Calculate memory address and store it in reg_address (reusing REG_A)
+                if !ctx.chunk_player_mem_reads_collect_main() {
+                    if ctx.address_is_constant {
+                        *code += &format!(
+                            "\tmov {}, 0x{:x} {}\n",
+                            reg_address,
+                            ctx.address_constant_value,
+                            ctx.comment_str("a(address) = constant")
+                        );
+                    } else {
+                        // If `a` is an immediate and wasn't materialized into a register, load it
+                        // now, adding the offset, before applying SP adjustments.
+                        if ctx.a.is_constant && !ctx.a.is_saved {
+                            *code += &format!(
+                                "\tmov {}, 0x{:x} {}\n",
+                                reg_address,
+                                ctx.a.constant_value + instruction.store_offset as u64,
+                                ctx.comment_str("a(address) = imm + offset")
+                            );
+                        } else if instruction.store_offset != 0 {
+                            *code += &format!(
+                                "\tadd {}, 0x{:x} {}\n",
+                                reg_address,
+                                instruction.store_offset as u64,
+                                ctx.comment_str("a(address) += i.store_offset")
+                            );
+                        }
+                        if instruction.store_use_sp {
+                            *code += &format!(
+                                "\tadd {}, {} {}\n",
+                                reg_address,
+                                ctx.mem_sp,
+                                ctx.comment_str("a(address) += sp")
+                            );
+                        }
+                    }
+                }
 
                 // Generate mem_reads
                 if ctx.minimal_trace() || ctx.zip() {
@@ -3102,18 +3116,18 @@ impl ZiskRom2Asm {
                             // Check if address is aligned, i.e. it is a multiple of 8
                             if address_is_constant {
                                 if !address_is_aligned {
-                                    Self::c_store_ind_8_not_aligned(ctx, code);
+                                    Self::c_store_ind_8_not_aligned(ctx, code, reg_address);
                                 }
                             } else {
                                 *code += &format!(
                                     "\ttest {}, 0x7 {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("address &= 7")
                                 );
                                 *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                                 *unusual_code +=
-                                    &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-                                Self::c_store_ind_8_not_aligned(ctx, unusual_code);
+                                    &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                Self::c_store_ind_8_not_aligned(ctx, unusual_code, reg_address);
                                 *unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                                 *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
                             }
@@ -3123,7 +3137,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmov {}, {} {}\n",
                                 REG_AUX,
-                                REG_ADDRESS,
+                                reg_address,
                                 ctx.comment_str("aux = address")
                             );
 
@@ -3149,11 +3163,11 @@ impl ZiskRom2Asm {
                                 ctx.comment_str("mem_reads[@+size*8] = prev_c")
                             );
 
-                            // FIX: compute next_aligned from ORIGINAL addr (REG_ADDRESS), not prev_aligned
+                            // FIX: compute next_aligned from ORIGINAL addr (reg_address), not prev_aligned
                             *code += &format!(
                                 "\tmov {}, {} {}\n",
                                 REG_VALUE,
-                                REG_ADDRESS,
+                                reg_address,
                                 ctx.comment_str("value = original address")
                             );
                             let address_increment = instruction.ind_width - 1;
@@ -3230,7 +3244,7 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov {}, [{}] {}\n",
                                     REG_VALUE,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("value = mem[address]")
                                 );
                                 *code += &format!(
@@ -3252,7 +3266,7 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov {}, {} {}\n",
                                     REG_AUX,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("aux = address")
                                 );
 
@@ -3310,7 +3324,7 @@ impl ZiskRom2Asm {
                             } else {
                                 *code += &format!(
                                     "\ttest {}, 0x7 {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("address &= 7")
                                 );
                                 *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
@@ -3327,7 +3341,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmov {}, {} {}\n",
                                 REG_AUX,
-                                REG_ADDRESS,
+                                reg_address,
                                 ctx.comment_str("aux = address")
                             );
 
@@ -3422,14 +3436,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov qword {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=8: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C,
                                     ctx.comment_str("width=8: mem[address] = c")
                                 );
@@ -3440,14 +3454,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov dword {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=4: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C_W,
                                     ctx.comment_str("width=4: mem[address] = c")
                                 );
@@ -3458,14 +3472,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov word {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=2: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C_H,
                                     ctx.comment_str("width=2: mem[address] = c")
                                 );
@@ -3476,14 +3490,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov word {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=1: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C_B,
                                     ctx.comment_str("width=1: mem[address] = c")
                                 );
@@ -3496,7 +3510,7 @@ impl ZiskRom2Asm {
                                 );
                                 *code += &format!(
                                     "\tcmp {}, {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_FLAG,
                                     ctx.comment_str("width=1: if address = USART then print char")
                                 );
@@ -3538,7 +3552,7 @@ impl ZiskRom2Asm {
                 }
 
                 if ctx.mem_op() {
-                    Self::c_store_ind_mem_op(ctx, code, instruction.ind_width);
+                    Self::c_store_ind_mem_op(ctx, code, instruction.ind_width, reg_address);
                 }
             }
             _ => panic!(
@@ -7974,10 +7988,10 @@ impl ZiskRom2Asm {
         );
     }
 
-    fn c_store_ind_8_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn c_store_ind_8_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String, reg_address: &str) {
         // Get a copy of the address to preserve it
         *code +=
-            &format!("\tmov {}, {} {}\n", REG_AUX, REG_ADDRESS, ctx.comment_str("aux = address"));
+            &format!("\tmov {}, {} {}\n", REG_AUX, reg_address, ctx.comment_str("aux = address"));
 
         // Calculate previous aligned address
         *code += &format!(
@@ -8230,7 +8244,12 @@ impl ZiskRom2Asm {
         *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
     }
 
-    fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
+    fn c_store_ind_mem_op(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        width: u64,
+        reg_address: &str,
+    ) {
         // Dynamic trace value: if rest of bytes were zero, set flag on bit F_MEM_CLEAR_WRITE_BYTE
         // With this information, the mem_planner can use a specific state machine for
         // this kind of byte writes
@@ -8254,8 +8273,8 @@ impl ZiskRom2Asm {
                     }
             };
             *code += &format!(
-                "\tmov {REG_ADDRESS}, 0x{mops:x} {}\n",
-                ctx.comment_str("aux = constant mem op")
+                "\tmov {reg_address}, 0x{mops:x} {}\n",
+                ctx.comment_str("address = constant mem op")
             );
         } else {
             let mops = match width {
@@ -8268,7 +8287,7 @@ impl ZiskRom2Asm {
             *code +=
                 &format!("\tmov {REG_AUX}, 0x{mops:x} {}\n", ctx.comment_str("aux = mem op mask"));
             *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
+                "\tor {reg_address}, {REG_AUX} {}\n",
                 ctx.comment_str("address |= mem op mask")
             );
         }
@@ -8287,7 +8306,7 @@ impl ZiskRom2Asm {
                 ctx.comment_str("aux = F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
+                "\tor {reg_address}, {REG_AUX} {}\n",
                 ctx.comment_str("address |= F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!("\npc_{}_rest_of_bytes_not_zero:\n", ctx.pc);
@@ -8295,7 +8314,7 @@ impl ZiskRom2Asm {
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_ADDRESS} {}\n",
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {reg_address} {}\n",
             ctx.comment_str("mem_reads[@+size*8] = mem op")
         );
 
