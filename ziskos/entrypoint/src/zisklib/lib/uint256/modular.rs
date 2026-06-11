@@ -1,10 +1,12 @@
-use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
+use crate::syscalls::{
+    syscall_arith256, syscall_arith256_mod, SyscallArith256ModParams, SyscallArith256Params,
+};
 use crate::zisklib::fcall_bin_decomp;
-use crate::zisklib::fcall_uint256_inv_mod;
 use crate::zisklib::lib::{
     constants::{ONE_256 as ONE, ZERO_256 as ZERO},
-    utils::{be_bytes_to_u64_4, is_one, is_zero, lt, u64_4_to_be_bytes},
+    utils::{be_bytes_to_u64_4, gt, is_one, is_zero, lt, u64_4_to_be_bytes},
 };
+use crate::zisklib::{fcall_uint256_inv_mod, ModInvResult};
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a (mod modulus)`.
 pub fn reduce_mod256(
@@ -190,27 +192,62 @@ pub fn inv_mod256(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 4]> {
     // Hint the inverse
-    let inv = fcall_uint256_inv_mod(
+    match fcall_uint256_inv_mod(
         a,
         modulus,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ) {
+        ModInvResult::Inverse(inv) => {
+            // Check the inverse is canonical
+            assert!(lt(&inv, modulus), "Inverse must be less than modulus");
 
-    if let Some(inv) = inv {
-        // Verify: a * inv ≡ 1 (mod modulus)
-        let result = mul_mod256(
-            a,
-            &inv,
-            modulus,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        assert_eq!(result, ONE, "a * inv must equal 1 mod modulus");
+            // Verify: a * inv ≡ 1 (mod modulus)
+            let result = mul_mod256(
+                a,
+                &inv,
+                modulus,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            assert!(is_one(&result), "a * inv must equal 1 mod modulus");
 
-        Some(inv)
-    } else {
-        None
+            Some(inv)
+        }
+        ModInvResult::NoInverse { gcd: d, qa, qm } => {
+            // a is invertible mod modulus iff gcd(a, modulus) == 1, so it is
+            // sufficient to find an integer d such that:
+            //      d > 1, d | a, d | modulus
+
+            // d > 1
+            assert!(gt(&d, &ONE), "gcd witness must be greater than 1");
+
+            // d | a iff qa * d == a
+            let mut a_lo = ZERO;
+            let mut a_hi = ZERO;
+            let mut a_params =
+                SyscallArith256Params { a: &qa, b: &d, c: &ZERO, dl: &mut a_lo, dh: &mut a_hi };
+            syscall_arith256(
+                &mut a_params,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            assert!(is_zero(&a_hi) && a_lo == *a, "gcd must divide a");
+
+            // d | modulus iff qm * d == modulus
+            let mut m_lo = ZERO;
+            let mut m_hi = ZERO;
+            let mut m_params =
+                SyscallArith256Params { a: &qm, b: &d, c: &ZERO, dl: &mut m_lo, dh: &mut m_hi };
+            syscall_arith256(
+                &mut m_params,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            assert!(is_zero(&m_hi) && m_lo == *modulus, "gcd must divide modulus");
+
+            None
+        }
     }
 }
 
