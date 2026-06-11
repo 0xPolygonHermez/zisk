@@ -73,9 +73,9 @@ impl<F: PrimeField64> MemModuleInstance<F> {
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
             #[cfg(feature = "save_addr_action")]
-            self.get_name(),
+            self.get_mem_name(),
             #[cfg(feature = "save_addr_action")]
-            chunk_id,
+            chunk_id.0,
         );
 
         if self.init && chunk_id == ChunkId(0) {
@@ -165,9 +165,9 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
             #[cfg(feature = "save_addr_action")]
-            self.get_name(),
+            self.get_mem_name(),
             #[cfg(feature = "save_addr_action")]
-            chunk_id,
+            chunk_id.0,
         );
 
         assert!(!self.init, "mem module instance should not build collector with init because method don't has mem_sections as argument");
