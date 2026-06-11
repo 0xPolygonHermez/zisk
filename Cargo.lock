@@ -553,7 +553,7 @@ dependencies = [
  "mem-common",
  "mem-planner-cpp",
  "named-sem",
- "proofman-common",
+ "proofman-util",
  "rayon",
  "thiserror 2.0.18",
  "tracing",
@@ -598,6 +598,21 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "assert_cmd"
+version = "2.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2aa3a22042e45de04255c7bf3626e239f450200fd0493c1e382263544b20aea6"
+dependencies = [
+ "anstyle",
+ "bstr",
+ "libc",
+ "predicates",
+ "predicates-core",
+ "predicates-tree",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -897,9 +912,9 @@ dependencies = [
 
 [[package]]
 name = "block-buffer"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdd35008169921d80bc60d3d0ab416eecb028c4cd653352907921d95084790be"
+checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
 dependencies = [
  "hybrid-array",
 ]
@@ -947,6 +962,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
 dependencies = [
  "memchr",
+ "regex-automata",
  "serde",
 ]
 
@@ -1011,6 +1027,7 @@ name = "cargo-zisk"
 version = "1.0.0-beta"
 dependencies = [
  "anyhow",
+ "assert_cmd",
  "clap",
  "colored",
  "fields",
@@ -1018,9 +1035,9 @@ dependencies = [
  "hex",
  "indicatif",
  "pil2-stark-setup",
+ "predicates",
  "proofman",
  "proofman-common",
- "proofman-util",
  "rand 0.8.6",
  "rayon",
  "reqwest",
@@ -1029,6 +1046,8 @@ dependencies = [
  "serde_json",
  "sysinfo 0.38.4",
  "target-lexicon",
+ "tempfile",
+ "time",
  "tokio",
  "tracing",
  "vergen-git2",
@@ -1037,6 +1056,7 @@ dependencies = [
  "zisk-common",
  "zisk-pil",
  "zisk-prover-backend",
+ "zisk-sdk",
 ]
 
 [[package]]
@@ -1637,7 +1657,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1812,6 +1832,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abd57806937c9cc163efc8ea3910e00a62e2aeb0b8119f1793a978088f8f6b04"
 
 [[package]]
+name = "difflib"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6184e33543162437515c2e2b48714794e37845ec9851711914eec9d308f6ebe8"
+
+[[package]]
 name = "digest"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1838,7 +1864,7 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
- "block-buffer 0.12.0",
+ "block-buffer 0.12.1",
  "crypto-common 0.2.2",
 ]
 
@@ -2146,7 +2172,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2186,6 +2212,15 @@ checksum = "843fba2746e448b37e26a819579957415c8cef339bf08564fe8b7ddbd959573c"
 dependencies = [
  "crc32fast",
  "miniz_oxide",
+]
+
+[[package]]
+name = "float-cmp"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b09cf3155332e944990140d967ff5eceb70df778b34f77d8075db46e4704e6d8"
+dependencies = [
+ "num-traits",
 ]
 
 [[package]]
@@ -3092,9 +3127,9 @@ dependencies = [
 
 [[package]]
 name = "keccak-asm"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1766b89733097006f3a1388a02849865d6bc98c89273cb622e29fdd209922183"
+checksum = "dd5dc2c0d691cbf7595cde551ced329cca99c2387c2cbc97754c5d0cd045d3ee"
 dependencies = [
  "digest 0.10.7",
  "sha3-asm",
@@ -3337,9 +3372,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.8.1"
+version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
+checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
 name = "memmap2"
@@ -3495,6 +3530,12 @@ dependencies = [
  "memchr",
  "minimal-lexical",
 ]
+
+[[package]]
+name = "normalize-line-endings"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
 
 [[package]]
 name = "ntapi"
@@ -3917,7 +3958,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "colored",
  "fields",
@@ -3937,7 +3978,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "anyhow",
  "clap",
@@ -3963,7 +4004,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4281,6 +4322,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "predicates"
+version = "3.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ada8f2932f28a27ee7b70dd6c1c39ea0675c55a36879ab92f3a715eaa1e63cfe"
+dependencies = [
+ "anstyle",
+ "difflib",
+ "float-cmp",
+ "normalize-line-endings",
+ "predicates-core",
+ "regex",
+]
+
+[[package]]
+name = "predicates-core"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cad38746f3166b4031b1a0d39ad9f954dd291e7854fcc0eed52ee41a0b50d144"
+
+[[package]]
+name = "predicates-tree"
+version = "1.0.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0de1b847b39c8131db0467e9df1ff60e6d0562ab8e9a16e568ad0fdb372e2f2"
+dependencies = [
+ "predicates-core",
+ "termtree",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4344,7 +4415,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "bincode",
  "blake3",
@@ -4378,7 +4449,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "bincode",
  "borsh",
@@ -4409,7 +4480,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "fields",
  "itoa",
@@ -4422,7 +4493,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4432,7 +4503,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4441,7 +4512,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "bincode",
  "colored",
@@ -4452,7 +4523,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "bincode",
  "fields",
@@ -5541,9 +5612,9 @@ dependencies = [
 
 [[package]]
 name = "sha3-asm"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f3f15d4e239ebe08413eed880e0f9b5af4b40ee0472543320efa91d488e96a7"
+checksum = "a6287fd675f713484342a89cbf0a386abef5f15919cfad607e5e1f19e1e15331"
 dependencies = [
  "cc",
  "cfg-if",
@@ -5738,6 +5809,7 @@ dependencies = [
 name = "sm-mem"
 version = "1.0.0-beta"
 dependencies = [
+ "env",
  "fields",
  "mem-common",
  "pil-std-lib",
@@ -5756,6 +5828,7 @@ version = "1.0.0-beta"
 dependencies = [
  "asm-runner",
  "fields",
+ "mem-common",
  "proofman-common",
  "rayon",
  "thiserror 2.0.18",
@@ -5767,9 +5840,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.15.1"
+version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "socket2"
@@ -5800,7 +5873,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "anyhow",
  "fields",
@@ -6013,6 +6086,12 @@ dependencies = [
  "slug",
  "unicode-segmentation",
 ]
+
+[[package]]
+name = "termtree"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f50febec83f5ee1df3015341d8bd429f2d1cc62bcba7ea2076759d315084683"
 
 [[package]]
 name = "test-artifacts"
@@ -7510,7 +7589,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#1897a228cf6fa6a6c9681c9fe5813ffb0c415df4"
 dependencies = [
  "colored",
  "fields",
@@ -7893,6 +7972,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-program-macros"
+version = "1.0.0-beta"
+dependencies = [
+ "blake3",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "zisk-prove-client"
 version = "1.0.0-beta"
 dependencies = [
@@ -7930,6 +8020,7 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
+ "zisk-program-macros",
  "ziskemu",
 ]
 
@@ -7987,6 +8078,7 @@ dependencies = [
  "proofman",
  "proofman-common",
  "serde",
+ "time",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -8029,6 +8121,7 @@ dependencies = [
  "sm-binary",
  "symbolic-demangle",
  "sysinfo 0.38.4",
+ "time",
  "vergen-git2",
  "zisk-common",
  "zisk-core",

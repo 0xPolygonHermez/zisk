@@ -15,7 +15,6 @@ use proofman::{
 use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
-use proofman_starks_lib_c::{get_unified_buffer_gpu_c, get_unified_buffer_gpu_size_c};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
@@ -209,9 +208,7 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let device_buffers_ptr = pctx.get_device_buffers_ptr();
-            let gpu_buf_ptr = get_unified_buffer_gpu_c(device_buffers_ptr) as usize;
-            let gpu_buf_size = get_unified_buffer_gpu_size_c(device_buffers_ptr);
+            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
         };
 
