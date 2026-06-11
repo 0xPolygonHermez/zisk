@@ -71,8 +71,8 @@ pub mod rows {
     };
 }
 
-/// Concrete trace types, for the raw trace-authoring override path
-/// (`VerifyInput::trace_override`). Each is `Trace<Row>` over the same row
+/// Concrete trace types, for the raw trace-authoring path
+/// (`VerifyInput::trace`). Each is `Trace<Row>` over the same row
 /// types re-exported in [`rows`].
 pub mod traces {
     pub use zisk_pil::{

@@ -2,6 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use fields::PrimeField64;
+use pil_std_lib::Std;
 use proofman_common::{
     trace::TraceRow, AirInstance, ProofCtx, ProofmanError, ProofmanResult, SetupCtx,
 };
@@ -222,7 +223,6 @@ macro_rules! unit_test_sm {
         $crate::unit_test_trace_override! {
             $marker => {
                 air: $air,
-                input: $input_ty,
                 trace: $trace,
                 row: $row_ty,
             }
@@ -346,15 +346,18 @@ impl<F: PrimeField64, T: UnitTestSm<F>> DynUnitTestSm<F> for T {
 }
 
 // =====================================================================
-// Raw trace-authoring override.
+// Raw trace authoring.
 //
 // The `UnitTestSm::compute_witness` path turns typed inputs into a trace
-// deterministically. The override path is the escape hatch beneath it: it
-// hands the caller the freshly-allocated *typed* trace (e.g.
-// `KeccakfTrace<Row>`) plus the planned inputs and lets them write columns
-// directly — bypassing `compute_witness` entirely. This is what you reach
-// for to author malformed or boundary-case traces and check that the
-// constraints reject (or accept) them.
+// deterministically. The trace-authoring path is the escape hatch beneath
+// it: it hands the caller the freshly-allocated *typed* trace (e.g.
+// `KeccakfTrace<Row>`) plus the shared `Std` handle and lets them write
+// columns directly — bypassing `compute_witness` entirely. No inputs are
+// involved: the executor plans one max-size instance for the AIR from its
+// fixed shape. The `Std` handle is what lets an authored trace also emit
+// the side-effects `compute_witness` would (range-check / lookup
+// multiplicities), so a trace can be authored as fully *valid* — or as
+// invalid in exactly one chosen way.
 //
 // The concrete trace type is SM-specific, so the type-safe glue is emitted
 // by the [`unit_test_trace_override!`] macro (which knows the trace type).
@@ -362,11 +365,12 @@ impl<F: PrimeField64, T: UnitTestSm<F>> DynUnitTestSm<F> for T {
 // running through `compute_witness` as before.
 // =====================================================================
 
-/// The user-supplied raw-trace authoring closure for SM marker `S`, before
-/// type erasure. Receives the freshly-allocated typed trace and the planned
-/// inputs for that AIR instance; writes the trace in place.
-pub type TraceOverrideFn<Trace, Input> =
-    Box<dyn Fn(&mut Trace, &[Input]) -> ProofmanResult<()> + Send + Sync + 'static>;
+/// The user-supplied raw-trace authoring closure, before type erasure.
+/// Receives the freshly-allocated typed trace and the shared [`Std`]
+/// handle (for emitting range-check / lookup multiplicities); writes the
+/// trace in place.
+pub type TraceOverrideFn<F, Trace> =
+    Box<dyn Fn(&mut Trace, &Std<F>) -> ProofmanResult<()> + Send + Sync + 'static>;
 
 /// Object-safe builder that turns a (type-erased) [`TraceOverrideFn`] plus a
 /// trace buffer into a finished [`AirInstance`], bypassing the SM's
@@ -379,28 +383,24 @@ pub trait DynTraceOverride<F: PrimeField64>: Send + Sync {
 
     /// Allocate the typed trace from `trace_buffer`, run the erased
     /// `override_fn` against it (downcast internally to the concrete
-    /// `TraceOverrideFn`), and wrap the result into an `AirInstance`.
-    ///
-    /// `inputs` is the planned input chunk (erased `Vec<Input>`), passed to
-    /// the closure for reference. `override_fn` is the erased
-    /// `TraceOverrideFn<Trace, Input>`.
+    /// `TraceOverrideFn`) with the shared `std` handle, and wrap the result
+    /// into an `AirInstance`.
     fn build_erased(
         &self,
         override_fn: &(dyn Any + Send + Sync),
-        inputs: Box<dyn Any + Send + Sync>,
+        std: &Std<F>,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>>;
 }
 
 /// Generate a [`DynTraceOverride`] impl for a marker, given its concrete
-/// trace type, row type and input type. The marker is typically the same
-/// one declared via [`unit_test_sm!`].
+/// trace type and row type. The marker is typically the same one declared
+/// via [`unit_test_sm!`].
 ///
 /// ```ignore
 /// unit_test_trace_override! {
 ///     KeccakfSm => {
 ///         air: KECCAKF_AIR_IDS[0],
-///         input: KeccakfInput,
 ///         trace: KeccakfTrace,
 ///         row: KeccakfTraceRow<F>,
 ///     }
@@ -410,8 +410,9 @@ pub trait DynTraceOverride<F: PrimeField64>: Send + Sync {
 /// Then register a closure on the executor's `TraceOverrideBag`:
 ///
 /// ```ignore
-/// TraceOverrideBag::new().with::<KeccakfSm>(|trace, inputs| {
-///     // write rows directly, e.g. trace.buffer[0].set_step_addr(1);
+/// TraceOverrideBag::new().with::<KeccakfSm>(|trace, std| {
+///     // write rows directly, e.g. trace.buffer[0].set_step_addr(1),
+///     // and emit std side-effects (range checks, lookups) as needed.
 ///     Ok(())
 /// })
 /// ```
@@ -420,7 +421,6 @@ macro_rules! unit_test_trace_override {
     (
         $marker:ident => {
             air: $air:expr,
-            input: $input_ty:ty,
             trace: $trace:ident,
             row: $row_ty:ty $(,)?
         }
@@ -433,30 +433,20 @@ macro_rules! unit_test_trace_override {
             fn build_erased(
                 &self,
                 override_fn: &(dyn ::std::any::Any + ::std::marker::Send + ::std::marker::Sync),
-                inputs: ::std::boxed::Box<
-                    dyn ::std::any::Any + ::std::marker::Send + ::std::marker::Sync,
-                >,
+                std: &::pil_std_lib::Std<F>,
                 trace_buffer: ::std::vec::Vec<F>,
             ) -> ::proofman_common::ProofmanResult<::proofman_common::AirInstance<F>> {
-                let typed_inputs: ::std::vec::Vec<$input_ty> =
-                    *inputs.downcast::<::std::vec::Vec<$input_ty>>().map_err(|_| {
-                        ::proofman_common::ProofmanError::InvalidSetup(::std::format!(
-                            "TraceOverride({}): input type mismatch",
-                            ::std::stringify!($marker),
-                        ))
-                    })?;
-
                 let f = override_fn
-                    .downcast_ref::<$crate::TraceOverrideFn<$trace<$row_ty>, $input_ty>>()
+                    .downcast_ref::<$crate::TraceOverrideFn<F, $trace<$row_ty>>>()
                     .ok_or_else(|| {
-                        ::proofman_common::ProofmanError::InvalidSetup(::std::format!(
-                            "TraceOverride({}): override closure type mismatch",
-                            ::std::stringify!($marker),
-                        ))
-                    })?;
+                    ::proofman_common::ProofmanError::InvalidSetup(::std::format!(
+                        "TraceOverride({}): override closure type mismatch",
+                        ::std::stringify!($marker),
+                    ))
+                })?;
 
                 let mut trace = <$trace<$row_ty>>::new_from_vec_zeroes(trace_buffer)?;
-                f(&mut trace, &typed_inputs)?;
+                f(&mut trace, std)?;
 
                 ::std::result::Result::Ok(::proofman_common::AirInstance::new_from_trace(
                     ::proofman_common::FromTrace::new(&mut trace),

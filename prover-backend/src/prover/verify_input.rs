@@ -76,17 +76,21 @@ impl<'a> VerifyInput<'a> {
         self
     }
 
-    /// Register a raw trace-authoring override for SM `S`, bypassing
-    /// `compute_witness` for that AIR id. The closure receives the freshly
-    /// allocated typed trace `&mut Trace` and the planned inputs, and writes
-    /// the trace itself. `Trace` is the SM's concrete trace type (e.g.
+    /// Author SM `S`'s trace directly, bypassing `compute_witness` for that
+    /// AIR id. No `.input()` is needed: the executor plans one instance for
+    /// the AIR from its fixed shape. The closure receives the freshly
+    /// allocated, zeroed typed trace `&mut Trace` and the shared
+    /// [`Std`](pil_std_lib::Std) handle — call into it (range checks,
+    /// lookups) to emit the side-effects `compute_witness` would, so a trace
+    /// can be authored as fully valid, or as invalid in exactly one chosen
+    /// way. `Trace` is the SM's concrete trace type (e.g.
     /// `KeccakfTrace<KeccakfTraceRow<Goldilocks>>`). The SM must have a
     /// `unit_test_trace_override!` impl registered.
     ///
-    /// A later call for the same SM replaces the earlier override.
-    pub fn trace_override<S, Trace>(
+    /// A later call for the same SM replaces the earlier author closure.
+    pub fn trace<S, Trace>(
         mut self,
-        override_fn: impl Fn(&mut Trace, &[S::Input]) -> proofman_common::ProofmanResult<()>
+        author: impl Fn(&mut Trace, &pil_std_lib::Std<Goldilocks>) -> proofman_common::ProofmanResult<()>
             + Send
             + Sync
             + 'static,
@@ -97,7 +101,7 @@ impl<'a> VerifyInput<'a> {
     {
         self.trace_overrides =
             std::mem::replace(&mut self.trace_overrides, TraceOverrideBag::new())
-                .with::<S, Trace>(override_fn);
+                .with::<S, Trace>(author);
         self
     }
 

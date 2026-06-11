@@ -20,6 +20,10 @@ use crate::{
     Precompiles, StaticSMBundle,
 };
 
+/// Per-SM batches of type-erased inputs (each entry a boxed `S::Input`),
+/// keyed by SM name. Mirrors `ErasedInputs` on the prover-backend side.
+type ErasedInputMap = HashMap<String, Vec<Box<dyn Any + Send + Sync>>>;
+
 /// Alternative `WitnessComponent` used by the unit-test backend.
 ///
 /// The struct is concrete to `Goldilocks` because the registry of per-SM
@@ -28,7 +32,6 @@ use crate::{
 /// of generic bounds that would otherwise have to be threaded through every
 /// call site.
 pub struct ZiskExecutorTest {
-    #[allow(dead_code)]
     sm_bundle: Arc<StaticSMBundle<Goldilocks>>,
     /// Per-AIR-id erased Manager arcs, built once from the bundle.
     /// Indexed by AIR id; the dispatcher passes the right one to each
@@ -42,7 +45,7 @@ pub struct ZiskExecutorTest {
     /// Type-erased input data set by the `verify_input()` builder before each
     /// run (per-SM batches of boxed `S::Input`). The only input source for the
     /// unit-test executor.
-    input_data_value: RwLock<Option<HashMap<String, Vec<Box<dyn Any + Send + Sync>>>>>,
+    input_data_value: RwLock<Option<ErasedInputMap>>,
     /// Per-AIR-id post-hoc trace-row hooks. Empty by default; set via
     /// [`ZiskExecutorTest::set_hooks`]. Cleared at the start of every
     /// `execute()` so leftover hooks from a previous run don't apply.
@@ -98,7 +101,7 @@ impl ZiskExecutorTest {
 
     /// Set the type-erased input data. This is the only input path: the typed
     /// `verify_input()` builder boxes each input into this map before running.
-    pub fn set_input_data_value(&self, value: HashMap<String, Vec<Box<dyn Any + Send + Sync>>>) {
+    pub fn set_input_data_value(&self, value: ErasedInputMap) {
         *self.input_data_value.write().unwrap() = Some(value);
     }
 
@@ -110,11 +113,16 @@ impl ZiskExecutorTest {
 
     /// Take the input map set by [`Self::set_input_data_value`]. The boxed
     /// inputs are not `Clone`, so this consumes the stored map (one `execute`
-    /// per `set`).
-    fn take_input_map(&self) -> ProofmanResult<HashMap<String, Vec<Box<dyn Any + Send + Sync>>>> {
-        self.input_data_value.write().unwrap().take().ok_or_else(|| {
-            ProofmanError::InvalidSetup("ZiskExecutorTest: input_data_value not set".into())
-        })
+    /// per `set`). A run that only registers trace-authoring overrides has no
+    /// inputs to set, so a missing map is fine in that case.
+    fn take_input_map(&self) -> ProofmanResult<ErasedInputMap> {
+        match self.input_data_value.write().unwrap().take() {
+            Some(map) => Ok(map),
+            None if !self.trace_overrides.read().unwrap().is_empty() => Ok(HashMap::new()),
+            None => Err(ProofmanError::InvalidSetup(
+                "ZiskExecutorTest: input_data_value not set".into(),
+            )),
+        }
     }
 }
 
@@ -131,6 +139,7 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
         // collect its already-typed (erased) inputs, and let the SM plan its
         // own AIR instances. The unit-test executor itself is fully generic
         // here; per-SM behaviour lives entirely in trait impls.
+        let mut planned_air_ids = std::collections::HashSet::new();
         for (key, arr) in raw {
             let sm = lookup_by_name(&key).ok_or_else(|| {
                 ProofmanError::InvalidSetup(format!(
@@ -140,11 +149,28 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
             let typed_inputs = sm.collect_inputs(arr)?;
             let mgr = self.manager_for(sm.air_id())?;
             let chunks = sm.plan_erased(mgr, &pctx, typed_inputs)?;
+            planned_air_ids.insert(sm.air_id());
             for (gid, chunk) in chunks {
                 global_ids.write().unwrap().push(gid);
                 self.air_ids.write().unwrap().insert(gid, sm.air_id());
                 self.inputs.write().unwrap().insert(gid, chunk);
             }
+        }
+
+        // Shape-driven planning for trace-authoring overrides: `trace()`
+        // takes no inputs, so an override whose AIR id was not planned from
+        // inputs gets exactly one instance here (its size is the AIR's fixed
+        // NUM_ROWS — nothing input-dependent to decide).
+        for &air_id in self.trace_overrides.read().unwrap().overrides.keys() {
+            if planned_air_ids.contains(&air_id) {
+                continue;
+            }
+            let gid = pctx.add_instance(zisk_pil::ZISK_AIRGROUP_ID, air_id)?;
+            global_ids.write().unwrap().push(gid);
+            self.air_ids.write().unwrap().insert(gid, air_id);
+            // Marker entry so `calculate_witness` picks the instance up; the
+            // override path never reads it.
+            self.inputs.write().unwrap().insert(gid, Box::new(()));
         }
 
         Ok(())
@@ -190,9 +216,11 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
                 })?;
                 let trace_buffer = buffer_pool.take_buffer();
 
-                // Raw trace-authoring override: if registered for this AIR
-                // id, bypass `compute_witness` and let the user closure write
-                // the trace directly. Otherwise take the normal path.
+                // Raw trace authoring: if registered for this AIR id, bypass
+                // `compute_witness` and let the user closure write the trace
+                // directly (with the shared `Std` handle for emitting
+                // range-check / lookup multiplicities). Otherwise take the
+                // normal path.
                 let mut air_instance = {
                     let overrides_guard = self.trace_overrides.read().unwrap();
                     if let Some(slot) = overrides_guard.overrides.get(&air_id) {
@@ -207,7 +235,11 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
                                  but no DynTraceOverride builder is in OVERRIDE_REGISTRY"
                             ))
                         })?;
-                        builder.build_erased(slot.override_fn.as_ref(), chunk, trace_buffer)?
+                        builder.build_erased(
+                            slot.override_fn.as_ref(),
+                            &self.sm_bundle.get_std(),
+                            trace_buffer,
+                        )?
                     } else {
                         drop(overrides_guard);
                         let mgr = self.manager_for(air_id)?;
