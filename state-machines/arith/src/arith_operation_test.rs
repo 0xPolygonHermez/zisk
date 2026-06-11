@@ -1,6 +1,7 @@
 //! The `ArithOperationTest` module implements a comprehensive testing framework for validating
 //! the correctness of arithmetic operations executed by the `ArithOperation` module.
 
+use zisk_core::ops_core::*;
 use zisk_core::zisk_ops::*;
 
 use crate::{arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers};
@@ -200,8 +201,7 @@ impl ArithOperationTest {
             + aop.main_div as u64 * (aop.a[2] as u64 + aop.a[3] as u64 * CHUNK_SIZE);
 
         let bus_res_high =
-            if aop.sext && !(aop.div_overflow_mul_rz && aop.div) { 0xFFFF_FFFF } else { 0 }
-                + (1 - aop.m32 as u64) * bus_res_high_64;
+            if aop.sext { 0xFFFF_FFFF } else { 0 } + (1 - aop.m32 as u64) * bus_res_high_64;
 
         let expected_a_low = a & 0xFFFF_FFFF;
         let expected_a_high = (a >> 32) & 0xFFFF_FFFF;
