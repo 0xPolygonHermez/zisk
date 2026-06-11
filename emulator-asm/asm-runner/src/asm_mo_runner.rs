@@ -28,7 +28,7 @@ use mem_common::save_plans;
 #[cfg(gpu)]
 fn register_mo_shmem_pinned(
     gpu_count_and_plan: &GpuCountAndPlan,
-    shmem: &AsmMultiSharedMemory<AsmMOHeader>,
+    shmem: &AsmMultiShmem<AsmMOHeader>,
     registered: &mut usize,
 ) {
     if *registered == usize::MAX {
