@@ -1,8 +1,7 @@
+use crate::shmem_sys;
 use crate::AsmShmemHeader;
-use libc::{
-    c_uint, close, mmap, munmap, shm_open, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ,
-    PROT_WRITE, S_IRUSR, S_IWUSR,
-};
+use libc::{close, mmap, munmap, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
+
 use std::{
     ffi::CString,
     io,
@@ -27,7 +26,7 @@ struct MappedFile {
 /// File layout:
 /// - `{base_name}_0`: Initial file with size `initial_size`, contains the header
 /// - `{base_name}_1`, `_2`, ...: Incremental files with size `incremental_size`
-pub struct AsmMultiSharedMemory<H: AsmShmemHeader> {
+pub(crate) struct AsmMultiShmem<H: AsmShmemHeader> {
     base_name: String,
     reserved_ptr: *mut c_void,
     reserved_size: usize,
@@ -40,10 +39,14 @@ pub struct AsmMultiSharedMemory<H: AsmShmemHeader> {
     _phantom: std::marker::PhantomData<H>,
 }
 
-unsafe impl<H: AsmShmemHeader> Send for AsmMultiSharedMemory<H> {}
-unsafe impl<H: AsmShmemHeader> Sync for AsmMultiSharedMemory<H> {}
+// SAFETY: the non-auto fields are `reserved_ptr` (a raw pointer into a reserved
+// mmap region) and the mapped-file descriptors. The reserved address range is
+// fixed for the handle's lifetime and growth only maps into it without moving
+// existing mappings, so sending/sharing the handle across threads is sound.
+unsafe impl<H: AsmShmemHeader> Send for AsmMultiShmem<H> {}
+unsafe impl<H: AsmShmemHeader> Sync for AsmMultiShmem<H> {}
 
-impl<H: AsmShmemHeader> Drop for AsmMultiSharedMemory<H> {
+impl<H: AsmShmemHeader> Drop for AsmMultiShmem<H> {
     fn drop(&mut self) {
         for i in 0..self.mapped_files.len() {
             let file_name = format!("{}_{}", self.base_name, i);
@@ -68,7 +71,7 @@ impl<H: AsmShmemHeader> Drop for AsmMultiSharedMemory<H> {
     }
 }
 
-impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
+impl<H: AsmShmemHeader> AsmMultiShmem<H> {
     /// Opens and maps the initial shared memory file, reserving address space for growth.
     ///
     /// # Arguments
@@ -202,17 +205,10 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
     fn map_file(&mut self, file_idx: usize) -> Result<()> {
         let file_name = format!("{}_{}", self.base_name, file_idx);
 
+        let open_flags = if self.read_write { libc::O_RDWR } else { libc::O_RDONLY };
+        let fd = shmem_sys::open(&file_name, open_flags)?;
+
         unsafe {
-            let c_name = CString::new(file_name.clone())
-                .map_err(|_| anyhow!("Shared memory name contains null byte"))?;
-
-            let open_flags = if self.read_write { libc::O_RDWR } else { libc::O_RDONLY };
-            let fd = shm_open(c_name.as_ptr(), open_flags, S_IRUSR as c_uint | S_IWUSR as c_uint);
-            if fd == -1 {
-                let err = io::Error::last_os_error();
-                return Err(anyhow!("shm_open('{}') failed: {}", file_name, err));
-            }
-
             // For _0, validate that the header has a non-zero allocated size
             if file_idx == 0 {
                 let temp_map = mmap(ptr::null_mut(), size_of::<H>(), PROT_READ, MAP_SHARED, fd, 0);
@@ -274,6 +270,12 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
     }
 
     /// Reads the header from the shared memory (always from file `_0`).
+    ///
+    /// # Panics
+    /// Panics if no files are mapped yet. This is an invariant guard, not an I/O
+    /// path: with no mapped files there is no readable header and the read would
+    /// be UB. `open_and_map` always maps `_0` and `release_incremental` keeps it,
+    /// so on a live handle this never fires.
     pub fn map_header(&self) -> H {
         if self.mapped_files.is_empty() {
             panic!("Multi-shmem '{}' has no mapped files, cannot read header", self.base_name);
@@ -296,34 +298,76 @@ impl<H: AsmShmemHeader> AsmMultiSharedMemory<H> {
     pub fn total_mapped_size(&self) -> usize {
         self.total_mapped_size
     }
+}
 
-    /// Returns the number of currently mapped files.
-    pub fn num_mapped_files(&self) -> usize {
-        self.mapped_files.len()
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ShmemWriter;
+    use std::ffi::CString;
+
+    #[repr(C)]
+    #[derive(Debug)]
+    struct TestHeader {
+        allocated_size: u64,
+        _pad: u64,
+    }
+    impl AsmShmemHeader for TestHeader {
+        fn allocated_size(&self) -> u64 {
+            self.allocated_size
+        }
     }
 
-    /// Releases incremental shared memory files for a new execution.
-    ///
-    /// This closes file descriptors for incremental files (`_1`, `_2`, ...) while
-    /// keeping `_0` mapped. The reserved address space is preserved.
-    ///
-    /// Call this before starting a new execution when reusing the same instance
-    /// in a distributed context where `_0` remains valid across executions.
-    pub fn release_incremental(&mut self) {
-        let files_to_close = self.mapped_files.len().saturating_sub(1);
+    fn create_segment(name: &str, size: usize) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            libc::shm_unlink(c.as_ptr());
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0);
+            libc::close(fd);
+        }
+    }
 
-        // Close file descriptors for incremental files (_1, _2, ...), keep _0
-        while self.mapped_files.len() > 1 {
-            let mapped_file = self.mapped_files.pop().unwrap();
-            unsafe { close(mapped_file.fd) };
+    #[test]
+    fn open_and_map_maps_file_zero_and_reads_header() {
+        let base = format!("ZISK_unittest_multi_{}", std::process::id());
+        let initial = 4096usize;
+        let file0 = format!("{base}_0");
+        create_segment(&file0, initial);
+        // Header's allocated_size at offset 0 must be non-zero.
+        {
+            let w = ShmemWriter::new(&file0, initial, true).unwrap();
+            w.write_u64_at(0, initial as u64).unwrap();
         }
 
-        // Reset state to initial
-        self.total_mapped_size = self.initial_size;
+        let m = AsmMultiShmem::<TestHeader>::open_and_map(
+            &base,
+            initial,
+            initial,
+            initial * 4,
+            true,
+            false,
+        )
+        .unwrap();
+        assert_eq!(m.map_header().allocated_size(), initial as u64);
+        assert_eq!(m.total_mapped_size(), initial);
+        assert!(!m.mapped_ptr().is_null());
+        assert!(!m.data_ptr().is_null());
+        // Drop unlinks `{base}_0` and frees the reserved range.
+    }
 
-        debug!(
-            "Reset multi-shmem '{}': kept _0, closed {} incremental files, total_mapped_size={}",
-            self.base_name, files_to_close, self.total_mapped_size
+    #[test]
+    fn open_and_map_rejects_empty_base_name() {
+        assert!(
+            AsmMultiShmem::<TestHeader>::open_and_map("", 4096, 4096, 8192, true, false).is_err()
         );
+    }
+
+    #[test]
+    fn open_and_map_rejects_max_smaller_than_initial() {
+        let base = format!("ZISK_unittest_multibad_{}", std::process::id());
+        assert!(AsmMultiShmem::<TestHeader>::open_and_map(&base, 8192, 4096, 4096, true, false)
+            .is_err());
     }
 }

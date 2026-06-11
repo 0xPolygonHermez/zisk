@@ -11,22 +11,24 @@ use std::time::Instant;
 use tracing::{error, info, warn};
 
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiSharedMemory,
-    AsmRunError, AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE,
-    TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
+    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
+    AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
+    TRACE_MAX_SIZE,
 };
 
 use anyhow::{Context, Result};
 
-pub struct MTShMemReader {
-    pub output_shmem: AsmMultiSharedMemory<AsmMTHeader>,
+/// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
+pub struct MTShmemReader {
+    pub(crate) output_shmem: AsmMultiShmem<AsmMTHeader>,
 }
 
-impl MTShMemReader {
+impl MTShmemReader {
+    /// Creates a new `MTShmemReader` by opening and mapping the shared memory for the MT trace output.
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MT, None);
 
-        let output_shmem = AsmMultiSharedMemory::<AsmMTHeader>::open_and_map(
+        let output_shmem = AsmMultiShmem::<AsmMTHeader>::open_and_map(
             &output_name,
             TRACE_INITIAL_SIZE,
             TRACE_DELTA_SIZE,
@@ -39,19 +41,22 @@ impl MTShMemReader {
     }
 }
 
-// This struct is used to run the assembly code in a separate process and generate minimal traces.
+/// This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMT {
+    /// The generated trace chunks from the MT trace.
     pub vec_chunks: Vec<EmuTrace>,
 }
 
 impl AsmRunnerMT {
+    /// Creates a new `AsmRunnerMT` with the given trace chunks.
     pub fn new(vec_chunks: Vec<EmuTrace>) -> Self {
         Self { vec_chunks }
     }
 
+    /// Runs the assembly code in a separate process, collects the MT trace chunks, and generates execution info.
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<F, R>(
-        preloaded: &mut MTShMemReader,
+        preloaded: &mut MTShmemReader,
         max_steps: u64,
         chunk_size: u64,
         mut on_chunk: F,

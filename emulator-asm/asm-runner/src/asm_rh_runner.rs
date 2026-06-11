@@ -1,6 +1,6 @@
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmRHData, AsmRHHeader, AsmRunError, AsmService,
-    AsmServices, AsmSharedMemory, SEM_CHUNK_DONE_WAIT_DURATION,
+    AsmServices, AsmShmem, SEM_CHUNK_DONE_WAIT_DURATION,
 };
 use named_sem::NamedSemaphore;
 use std::sync::atomic::{fence, Ordering};
@@ -9,40 +9,50 @@ use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle};
 
 use anyhow::{Context, Result};
 
-pub struct RHShMemReader {
-    pub output_shmem: AsmSharedMemory<AsmRHHeader>,
+/// This struct manages the shared memory for reading ROM histogram results from the C++ side.
+pub struct RHShmemReader {
+    pub(crate) output_shmem: AsmShmem<AsmRHHeader>,
 }
 
-impl RHShMemReader {
+impl RHShmemReader {
+    /// Creates a new `RHShmemReader` by opening and mapping the shared memory for the ROM histogram output.
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::RH, Some(0));
 
         let output_shared_memory =
-            AsmSharedMemory::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
+            AsmShmem::<AsmRHHeader>::open_and_map(&output_name, unlock_mapped_memory)?;
 
         Ok(Self { output_shmem: output_shared_memory })
     }
 }
 
-// This struct is used to run the assembly code in a separate process and generate the ROM histogram.
+/// This struct is used to run the assembly code in a separate process and generate the ROM histogram.
 pub struct AsmRunnerRH {
+    /// The generated ROM histogram data from the RH trace.
     pub asm_rowh_output: AsmRHData,
 }
 
 impl Drop for AsmRunnerRH {
     fn drop(&mut self) {
-        // Forget all mem_reads Vec<u64> before unmapping
+        // Load-bearing invariant — pairs with `AsmRHData::from_shared_memory`
+        // (asm_rh.rs): `asm_rowh_output.inst_count` is a `Vec` built via
+        // `Vec::from_raw_parts` over the shared-memory mapping, NOT allocated by
+        // Rust's allocator. Letting it drop normally would free foreign pages
+        // (UB), so `forget` it here before the mapping is torn down. Do not
+        // remove this without also changing the `from_raw_parts` construction.
         std::mem::forget(std::mem::take(&mut self.asm_rowh_output));
     }
 }
 
 impl AsmRunnerRH {
+    /// Creates a new `AsmRunnerRH` with the given ROM histogram output data.
     pub fn new(asm_rowh_output: AsmRHData) -> Self {
         AsmRunnerRH { asm_rowh_output }
     }
 
+    /// Runs the assembly code in a separate process, collects the ROM histogram results, and generates execution info.
     pub fn run(
-        asm_shared_memory: &mut Option<RHShMemReader>,
+        asm_shared_memory: &mut Option<RHShmemReader>,
         max_steps: u64,
         asm_services: AsmServices,
         unlock_mapped_memory: bool,
@@ -91,7 +101,7 @@ impl AsmRunnerRH {
             );
             if asm_shared_memory.is_none() {
                 *asm_shared_memory =
-                    Some(RHShMemReader::new(asm_services.shm_prefix(), unlock_mapped_memory)?);
+                    Some(RHShmemReader::new(asm_services.shm_prefix(), unlock_mapped_memory)?);
             }
             tracing::debug!("[RH] Shared memory mapped, processing results...");
             let reader = asm_shared_memory.as_ref().ok_or_else(|| {

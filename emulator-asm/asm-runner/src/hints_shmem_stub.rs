@@ -1,3 +1,7 @@
+//! Non-Linux-x86_64 stub: placeholder type whose methods are unreachable. Off
+//! the supported platform these are never exercised, so they carry no docs.
+#![allow(missing_docs)]
+
 use crate::{AsmService, ControlShmem};
 use anyhow::Result;
 use std::sync::Arc;

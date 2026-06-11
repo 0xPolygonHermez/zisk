@@ -11,8 +11,8 @@ use crate::TRACE_DELTA_SIZE;
 use crate::TRACE_INITIAL_SIZE;
 use crate::TRACE_MAX_SIZE;
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiSharedMemory,
-    AsmRunError, AsmService, AsmServices, GpuBufferSource,
+    sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiShmem, AsmRunError,
+    AsmService, AsmServices, GpuBufferSource,
 };
 #[cfg(gpu)]
 use mem_planner_cpp::GpuCountAndPlan;
@@ -28,7 +28,7 @@ use mem_common::save_plans;
 #[cfg(gpu)]
 fn register_mo_shmem_pinned(
     gpu_count_and_plan: &GpuCountAndPlan,
-    shmem: &AsmMultiSharedMemory<AsmMOHeader>,
+    shmem: &AsmMultiShmem<AsmMOHeader>,
     registered: &mut usize,
 ) {
     if *registered == usize::MAX {
@@ -84,8 +84,9 @@ fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPl
     Some(gpu_count_and_plan)
 }
 
-pub struct MOShMemReader {
-    pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
+/// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
+pub struct MOShmemReader {
+    pub(crate) output_shmem: AsmMultiShmem<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
     #[cfg(gpu)]
@@ -94,7 +95,8 @@ pub struct MOShMemReader {
     registered_bytes: usize,
 }
 
-impl MOShMemReader {
+impl MOShmemReader {
+    /// Creates a new `MOShmemReader` by opening and mapping the shared memory for the MO trace output.
     pub fn new(
         shm_prefix: &str,
         unlock_mapped_memory: bool,
@@ -102,7 +104,7 @@ impl MOShMemReader {
     ) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
-        let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
+        let output_shared_memory = AsmMultiShmem::<AsmMOHeader>::open_and_map(
             &output_name,
             TRACE_INITIAL_SIZE,
             TRACE_DELTA_SIZE,
@@ -131,7 +133,7 @@ impl MOShMemReader {
     }
 }
 
-impl Drop for MOShMemReader {
+impl Drop for MOShmemReader {
     fn drop(&mut self) {
         if let Some(handle_mo) = self.handle_mo.take() {
             match handle_mo.join() {
@@ -140,26 +142,29 @@ impl Drop for MOShMemReader {
                     drop(mem_planner);
                 }
                 Err(e) => {
-                    eprintln!("Warning: background thread panicked in PreloadedMO: {e:?}");
+                    eprintln!("Warning: background thread panicked in MOShmemReader: {e:?}");
                 }
             }
         }
     }
 }
 
-// This struct is used to run the assembly code in a separate process and generate minimal traces.
+/// This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMO {
+    /// The generated plans from the MO trace.
     pub plans: Vec<Plan>,
 }
 
 impl AsmRunnerMO {
+    /// Creates a new `AsmRunnerMO` with the given plans.
     pub fn new(plans: Vec<Plan>) -> Self {
         Self { plans }
     }
 
+    /// Runs the assembly code in a separate process, collects the MO trace, and generates plans.
     #[allow(clippy::too_many_arguments)]
     pub fn run<R>(
-        preloaded: &mut MOShMemReader,
+        preloaded: &mut MOShmemReader,
         max_steps: u64,
         chunk_size: u64,
         on_runner_failure: R,
@@ -204,7 +209,7 @@ impl AsmRunnerMO {
                 .handle_mo
                 .take()
                 .ok_or_else(|| {
-                    anyhow::anyhow!("MOShMemReader: both mem_planner and handle_mo are None")
+                    anyhow::anyhow!("MOShmemReader: both mem_planner and handle_mo are None")
                 })?
                 .join()
                 .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
@@ -344,7 +349,7 @@ impl AsmRunnerMO {
 
         // Wind the C++ planner down before any further work. Without this,
         // its background threads stay parked waiting for more chunks, and
-        // the C++ destructor blocks on `Drop`, holding the `MOShMemReader`
+        // the C++ destructor blocks on `Drop`, holding the `MOShmemReader`
         // Mutex and hanging the next job's MO thread on lock acquisition.
         // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
