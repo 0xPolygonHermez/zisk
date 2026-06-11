@@ -34,8 +34,8 @@ message CoordinatorMessage {
     StreamData stream_data = 6;
     SetupProgram setup_program = 7;
     InputStreamData input_stream_data = 8;
-    SetupRecurserAggregator setup_recurser_aggregator = 9;
-    RunRecurserAggregator   run_recurser_aggregator   = 10;
+    SetupAggregationProgram setup_aggregation_program = 9;
+    RunAggregateProofs   run_aggregate_proofs   = 10;
   }
 }
 
@@ -50,8 +50,8 @@ message WorkerMessage {
     JobCancelledAck job_cancelled_ack = 6;
     SetupProgramAck setup_program_ack = 7;
     WorkerRecoveryComplete recovery_complete = 8;
-    SetupRecurserAggregatorAck setup_recurser_aggregator_ack = 9;
-    RunRecurserAggregatorAck   run_recurser_aggregator_ack   = 10;
+    SetupAggregationProgramAck setup_aggregation_program_ack = 9;
+    RunAggregateProofsAck   run_aggregate_proofs_ack   = 10;
   }
 }
 
@@ -86,21 +86,27 @@ message ProgramVk {
   string l3 = 4;
 }
 
-message RecurserSpec {
-  repeated ProgramVk program_vks            = 1;
-  uint64             n_private_inputs       = 2;
-  string             prepare_publics_body   = 3;
-  string             check_publics_body     = 4;
-  string             aggregate_publics_body = 5;
+// One normalization group: a NormalizePublics circom body applied to the
+// leaf proofs of the member programs (indices into program_vks).
+message NormalizeGroup {
+  repeated uint64 member_indices   = 1;
+  string          body             = 2;
+  uint64          n_free_inputs    = 3;
 }
 
-message SetupRecurserAggregator {
+message AggregationProgramSpec {
+  repeated ProgramVk      program_vks            = 1;
+  repeated NormalizeGroup normalize_groups       = 2;
+  string                  aggregate_publics_body = 3;
+}
+
+message SetupAggregationProgram {
   string       job_id      = 1;
   string       recurser_id = 2;
-  RecurserSpec spec        = 3;
+  AggregationProgramSpec spec        = 3;
 }
 
-message SetupRecurserAggregatorAck {
+message SetupAggregationProgramAck {
   string job_id        = 1;
   string worker_id     = 2;
   string recurser_id   = 3;
@@ -110,16 +116,17 @@ message SetupRecurserAggregatorAck {
   string hash_mode     = 7;
 }
 
-message RunRecurserAggregator {
+message RunAggregateProofs {
   string          job_id              = 1;
   string          recurser_id         = 2;
   bytes           proof_a             = 3; // bincode-serialized VadcopFinalProof
   bytes           proof_b             = 4;
-  repeated uint64 private_inputs      = 5;
-  repeated uint64 root_c_recurser_agg = 6; // optional override; len 0 or 4
+  repeated uint64 free_inputs_a       = 5; // proof_a's normalization side inputs
+  repeated uint64 free_inputs_b       = 6; // proof_b's normalization side inputs
+  repeated uint64 root_c_recurser_agg = 7; // optional override; len 0 or 4
 }
 
-message RunRecurserAggregatorAck {
+message RunAggregateProofsAck {
   string job_id        = 1;
   string worker_id     = 2;
   bool   success       = 3;

@@ -15,9 +15,9 @@ use zisk_coordinator_api::dto::DomainInputKind;
 use zisk_coordinator_client::CoordinatorClient;
 use zisk_prover_backend::GuestProgram;
 
+use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};
 use crate::lifecycle::{SetupTarget, UploadTarget};
-use crate::recurser::{Recurser, RegisterRecurserRequest};
-use crate::recurser_prove::RecurserProveRequest;
+use crate::recurser::Recurser;
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     hints::HintsSource,
@@ -128,34 +128,36 @@ impl Client for RemoteClient {
         self.do_wrap(proof, proof_kind, timeout, subs)
     }
 
-    fn run_upload_recurser(&self, agg: &Recurser) -> Result<UploadResult> {
-        self.do_upload_recurser(agg)
+    fn run_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
+        self.do_upload_aggregation_program(agg)
     }
 
-    fn run_setup_recurser(
+    fn run_setup_aggregation_program(
         &self,
         agg: &Recurser,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        self.do_setup_recurser(agg, timeout, subs)
+        self.do_setup_aggregation_program(agg, timeout, subs)
     }
 
-    fn run_recurser_prove(
+    fn run_aggregate_proofs(
         &self,
         agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_recurser_prove(
+        self.do_aggregate_proofs(
             agg,
             proof_a,
             proof_b,
-            private_inputs,
+            free_inputs_a,
+            free_inputs_b,
             root_c_recurser_agg,
             timeout,
             subs,
@@ -185,15 +187,15 @@ impl RemoteClient {
     }
 
     /// Submit a setup request. Accepts either a [`GuestProgram`] or a
-    /// [`Recurser`]; the latter is not yet supported on remote and
-    /// will error at `run()` time.
+    /// [`Recurser`]; the latter dispatches a recurser-setup job to a worker
+    /// (upload the spec first via [`RemoteClient::upload`]).
     #[must_use]
     pub fn setup<'a, T: Into<SetupTarget<'a>>>(&'a self, target: T) -> SetupRequest<'a, Self> {
         SetupRequest::new(self, target.into())
     }
 
     /// Upload/register a program or recurser with the coordinator. Recurser
-    /// uploads are not yet supported and will error at `run()` time.
+    /// uploads push the aggregation-program spec; re-uploads are idempotent.
     #[must_use]
     pub fn upload<'a, T: Into<UploadTarget<'a>>>(&'a self, target: T) -> UploadRequest<'a, Self> {
         UploadRequest::new(self, target.into())
@@ -209,26 +211,16 @@ impl RemoteClient {
         WrapRequest::new(self, proof, proof_kind)
     }
 
-    /// Begin building a recurser handle. Not yet supported on
-    /// remote; `run()` returns an error.
-    #[must_use]
-    pub fn register_setup_recurser<'a>(
-        &'a self,
-        programs: &'a [&'a GuestProgram],
-    ) -> RegisterRecurserRequest<'a, Self> {
-        RegisterRecurserRequest::new(self, programs)
-    }
-
     /// Submit a recurser prove request. Not yet supported on remote;
     /// `run()` returns an error.
     #[must_use]
-    pub fn recurser_prove<'a>(
+    pub fn aggregate_proofs<'a>(
         &'a self,
         agg: &'a Recurser,
-        proof_a: &'a Proof,
-        proof_b: &'a Proof,
-    ) -> RecurserProveRequest<'a, Self> {
-        RecurserProveRequest::new(self, agg, proof_a, proof_b)
+        input_a: impl Into<AggregationInput<'a>>,
+        input_b: impl Into<AggregationInput<'a>>,
+    ) -> AggregateProofsRequest<'a, Self> {
+        AggregateProofsRequest::new(self, agg, input_a.into(), input_b.into())
     }
 }
 

@@ -4,7 +4,7 @@
 //! **Adding a new program:** register it as a member of the `programs/` workspace
 //! so it gets built, then expose its ELF via a `load_program!` constant below.
 
-use zisk_sdk::{load_program, GuestProgram};
+use zisk_sdk::{load_aggregation_program, load_program, GuestProgram, LazyAggregationProgram};
 
 pub const ELF_ADD256: GuestProgram = load_program!("add256");
 pub const ELF_AGG_VERIFY: GuestProgram = load_program!("agg_verify");
@@ -36,7 +36,7 @@ pub const ELF_BIGINT: GuestProgram = load_program!("bigint");
 pub const ELF_PANIC_MODES: GuestProgram = load_program!("panic_modes");
 pub const ELF_POSEIDON1: GuestProgram = load_program!("poseidon1");
 pub const ELF_POSEIDON2: GuestProgram = load_program!("poseidon2");
-pub const ELF_RECURSER_CHAIN: GuestProgram = load_program!("recurser_chain");
+pub const ELF_CHAIN_SEGMENT: GuestProgram = load_program!("chain_segment");
 pub const ELF_SECP256K1: GuestProgram = load_program!("secp256k1");
 pub const ELF_SECP256K1_ADD: GuestProgram = load_program!("secp256k1_add");
 pub const ELF_SECP256K1_DBL: GuestProgram = load_program!("secp256k1_dbl");
@@ -45,3 +45,7 @@ pub const ELF_SECP256R1_ADD: GuestProgram = load_program!("secp256r1_add");
 pub const ELF_SECP256R1_DBL: GuestProgram = load_program!("secp256r1_dbl");
 pub const ELF_SHA256: GuestProgram = load_program!("sha256");
 pub const ELF_UINT256: GuestProgram = load_program!("uint256");
+
+// Aggregation programs — defined under `programs/aggregations/<name>.toml`
+// and resolved by the same `build_program` pass that builds the guest ELFs.
+pub static AGG_CHAIN: LazyAggregationProgram = load_aggregation_program!("chain");

@@ -37,7 +37,7 @@ impl<'a, C: Client> UploadRequest<'a, C> {
     pub fn run(self) -> Result<UploadResult> {
         match self.target {
             UploadTarget::Program(p) => self.client.run_upload(p),
-            UploadTarget::Recurser(a) => self.client.run_upload_recurser(a),
+            UploadTarget::Recurser(a) => self.client.run_upload_aggregation_program(a),
         }
     }
 }

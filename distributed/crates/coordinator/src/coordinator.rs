@@ -55,9 +55,9 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
 use zisk_cluster_common::{
-    ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
-    JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto, LaunchProofResponseDto,
-    PhaseTimings, ProofKind, RecurserSpecDto, SetupProgramDto, SetupRecurserAggregatorDto,
+    AggregationProgramSpecDto, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto,
+    InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto,
+    LaunchProofResponseDto, PhaseTimings, ProofKind, SetupAggregationProgramDto, SetupProgramDto,
     WorkerId, WorkerState,
 };
 use zisk_common::{SetupKey, ZiskPaths};
@@ -161,7 +161,7 @@ pub struct Coordinator {
 
     /// Registered recurser specs, keyed by `recurser_id`. In-memory
     /// only; coordinator restart loses the map and clients must re-register.
-    recurser_specs: RwLock<HashMap<String, RecurserSpecDto>>,
+    aggregation_program_specs: RwLock<HashMap<String, AggregationProgramSpecDto>>,
     /// In-flight recurser setup jobs (analog of `setup_pending`).
     recurser_setup_pending: RwLock<HashMap<JobId, RecurserSetupPendingState>>,
     /// `recurser_id`s with a completed setup on at least one worker. Replayed
@@ -189,12 +189,13 @@ struct TerminationOutcome {
     phase1_start: Option<DateTime<Utc>>,
 }
 
-/// Structural equality on `RecurserSpecDto`. The DTO has no `PartialEq` derive.
-fn recurser_spec_eq(a: &RecurserSpecDto, b: &RecurserSpecDto) -> bool {
+/// Structural equality on `AggregationProgramSpecDto`. The DTO has no `PartialEq` derive.
+fn aggregation_program_spec_eq(
+    a: &AggregationProgramSpecDto,
+    b: &AggregationProgramSpecDto,
+) -> bool {
     a.program_vks == b.program_vks
-        && a.n_private_inputs == b.n_private_inputs
-        && a.prepare_publics_body == b.prepare_publics_body
-        && a.check_publics_body == b.check_publics_body
+        && a.normalize_groups == b.normalize_groups
         && a.aggregate_publics_body == b.aggregate_publics_body
 }
 
@@ -225,7 +226,7 @@ impl Coordinator {
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
             active_setups: RwLock::new(HashMap::new()),
-            recurser_specs: RwLock::new(HashMap::new()),
+            aggregation_program_specs: RwLock::new(HashMap::new()),
             recurser_setup_pending: RwLock::new(HashMap::new()),
             active_recurser_setups: RwLock::new(HashSet::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
@@ -524,17 +525,17 @@ impl Coordinator {
     /// Stores `spec` under the SDK-supplied content-addressed `recurser_id`.
     /// Idempotent for same-content re-registers; logs a warning on overwrite
     /// with a divergent spec (client-side hash bug).
-    pub async fn register_recurser_aggregator(
+    pub async fn register_aggregation_program(
         &self,
         recurser_id: String,
-        spec: RecurserSpecDto,
+        spec: AggregationProgramSpecDto,
     ) -> CoordinatorResult<String> {
         if recurser_id.is_empty() {
             return Err(CoordinatorError::InvalidRequest("recurser_id must not be empty".into()));
         }
-        let mut specs = self.recurser_specs.write().await;
+        let mut specs = self.aggregation_program_specs.write().await;
         if let Some(prior) = specs.get(&recurser_id) {
-            if !recurser_spec_eq(prior, &spec) {
+            if !aggregation_program_spec_eq(prior, &spec) {
                 warn!(
                     "[Recurser] Overwriting spec for '{}' with divergent contents (client-side hash bug)",
                     recurser_id
@@ -545,18 +546,18 @@ impl Coordinator {
         Ok(recurser_id)
     }
 
-    /// Broadcasts `SetupRecurserAggregator` to every connected worker. Mirrors
+    /// Broadcasts `SetupAggregationProgram` to every connected worker. Mirrors
     /// `setup_program`'s ack / liveness semantics.
-    pub async fn setup_recurser_aggregator(&self, recurser_id: &str) -> CoordinatorResult<JobId> {
+    pub async fn setup_aggregation_program(&self, recurser_id: &str) -> CoordinatorResult<JobId> {
         let spec = self
-            .recurser_specs
+            .aggregation_program_specs
             .read()
             .await
             .get(recurser_id)
             .cloned()
             .ok_or_else(|| {
                 CoordinatorError::InvalidRequest(format!(
-                    "recurser_id '{recurser_id}' is not registered; call register_recurser_aggregator first"
+                    "recurser_id '{recurser_id}' is not registered; call register_aggregation_program first"
                 ))
             })?;
 
@@ -581,14 +582,14 @@ impl Coordinator {
         );
 
         for worker_id in &workers {
-            let msg = CoordinatorMessageDto::SetupRecurserAggregator(SetupRecurserAggregatorDto {
+            let msg = CoordinatorMessageDto::SetupAggregationProgram(SetupAggregationProgramDto {
                 job_id: job_id.as_string(),
                 recurser_id: recurser_id.to_string(),
                 spec: spec.clone(),
             });
             if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
                 warn!(
-                    "[Recurser] Failed to send SetupRecurserAggregator to worker {}: {}",
+                    "[Recurser] Failed to send SetupAggregationProgram to worker {}: {}",
                     worker_id, e
                 );
                 // Drop unreachable worker from pending set — don't block on it.
@@ -623,18 +624,19 @@ impl Coordinator {
         Ok(job_id)
     }
 
-    /// Sends a `RunRecurserAggregator` task to a single idle worker. Mirrors
+    /// Sends a `RunAggregateProofs` task to a single idle worker. Mirrors
     /// `launch_wrap`: the job lives in `self.jobs` so worker-disconnect machinery
     /// fails it automatically if the worker dies mid-prove.
-    pub async fn launch_recurser_prove(
+    pub async fn launch_aggregate_proofs(
         &self,
         recurser_id: String,
         proof_a: Vec<u8>,
         proof_b: Vec<u8>,
-        private_inputs: Vec<u64>,
+        free_inputs_a: Vec<u64>,
+        free_inputs_b: Vec<u64>,
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> CoordinatorResult<LaunchProofResponseDto> {
-        if !self.recurser_specs.read().await.contains_key(&recurser_id) {
+        if !self.aggregation_program_specs.read().await.contains_key(&recurser_id) {
             return Err(CoordinatorError::InvalidRequest(format!(
                 "recurser_id '{recurser_id}' is not registered; call register + setup first"
             )));
@@ -672,16 +674,16 @@ impl Coordinator {
         self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
 
         // The worker was already marked Computing by the atomic reservation above.
-        let msg = CoordinatorMessageDto::RunRecurserAggregator(
-            zisk_cluster_common::RunRecurserAggregatorDto {
+        let msg =
+            CoordinatorMessageDto::RunAggregateProofs(zisk_cluster_common::RunAggregateProofsDto {
                 job_id: job_id.as_string(),
                 recurser_id,
                 proof_a,
                 proof_b,
-                private_inputs,
+                free_inputs_a,
+                free_inputs_b,
                 root_c_recurser_agg,
-            },
-        );
+            });
         if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
             // Roll back so subscribers don't hang on a stuck Computing worker.
             let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
@@ -689,7 +691,7 @@ impl Coordinator {
             self.fire_job_event(
                 &job_id,
                 CoordinatorJobEvent::Failed(format!(
-                    "failed to send RunRecurserAggregator to worker {worker_id}: {e}"
+                    "failed to send RunAggregateProofs to worker {worker_id}: {e}"
                 )),
             )
             .await;
@@ -702,16 +704,16 @@ impl Coordinator {
 
     /// Recurser analog of `read_all_setup_dtos`. Each emitted DTO carries a
     /// fresh `job_id`; resulting acks fall through the "unknown job" branch.
-    pub(crate) async fn read_all_recurser_setup_dtos(&self) -> Vec<SetupRecurserAggregatorDto> {
+    pub(crate) async fn read_all_recurser_setup_dtos(&self) -> Vec<SetupAggregationProgramDto> {
         let active = self.active_recurser_setups.read().await.clone();
         if active.is_empty() {
             return Vec::new();
         }
-        let specs = self.recurser_specs.read().await;
+        let specs = self.aggregation_program_specs.read().await;
         let mut result = Vec::with_capacity(active.len());
         for recurser_id in active {
             if let Some(spec) = specs.get(&recurser_id) {
-                result.push(SetupRecurserAggregatorDto {
+                result.push(SetupAggregationProgramDto {
                     job_id: JobId::new().as_string(),
                     recurser_id,
                     spec: spec.clone(),
@@ -2995,8 +2997,8 @@ mod tests {
 
         // w0 acks successfully before its peer is lost.
         coordinator
-            .handle_stream_setup_recurser_aggregator_ack(
-                zisk_cluster_common::SetupRecurserAggregatorAckDto {
+            .handle_stream_setup_aggregation_program_ack(
+                zisk_cluster_common::SetupAggregationProgramAckDto {
                     job_id: setup_job.as_string(),
                     worker_id: w0.clone(),
                     recurser_id: "rid".into(),
@@ -3420,15 +3422,13 @@ mod tests {
     }
 
     use zisk_cluster_common::{
-        RecurserSpecDto, RunRecurserAggregatorAckDto, SetupRecurserAggregatorAckDto,
+        AggregationProgramSpecDto, RunAggregateProofsAckDto, SetupAggregationProgramAckDto,
     };
 
-    fn dummy_recurser_spec() -> RecurserSpecDto {
-        RecurserSpecDto {
+    fn dummy_aggregation_program_spec() -> AggregationProgramSpecDto {
+        AggregationProgramSpecDto {
             program_vks: vec![["1".into(), "2".into(), "3".into(), "4".into()]],
-            n_private_inputs: 0,
-            prepare_publics_body: String::new(),
-            check_publics_body: String::new(),
+            normalize_groups: vec![],
             aggregate_publics_body: "// body".into(),
         }
     }
@@ -3455,10 +3455,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_register_recurser_aggregator_empty_id_errors() {
+    async fn test_register_aggregation_program_empty_id_errors() {
         let coordinator = Coordinator::new(test_config_with(|_| {}));
         let err = coordinator
-            .register_recurser_aggregator(String::new(), dummy_recurser_spec())
+            .register_aggregation_program(String::new(), dummy_aggregation_program_spec())
             .await
             .unwrap_err();
         assert!(
@@ -3470,9 +3470,9 @@ mod tests {
 
     /// Spec lookup failure must surface as `InvalidRequest`, not `InsufficientCapacity`.
     #[tokio::test]
-    async fn test_setup_recurser_aggregator_unregistered_id_errors() {
+    async fn test_setup_aggregation_program_unregistered_id_errors() {
         let (coordinator, _workers) = coordinator_with_idle_workers(1).await;
-        let err = coordinator.setup_recurser_aggregator("never-registered").await.unwrap_err();
+        let err = coordinator.setup_aggregation_program("never-registered").await.unwrap_err();
         assert!(
             matches!(err, CoordinatorError::InvalidRequest(_)),
             "expected InvalidRequest for unregistered id, got {:?}",
@@ -3482,7 +3482,7 @@ mod tests {
 
     /// All sends failing must resolve the job as `Failed` immediately, not hang.
     #[tokio::test]
-    async fn test_setup_recurser_aggregator_all_sends_fail() {
+    async fn test_setup_aggregation_program_all_sends_fail() {
         use crate::worker_handlers::MessageSender;
 
         // Always-failing sender exercises the per-worker send-error branch.
@@ -3503,11 +3503,11 @@ mod tests {
                 .unwrap();
         }
         coordinator
-            .register_recurser_aggregator("rid-fail".into(), dummy_recurser_spec())
+            .register_aggregation_program("rid-fail".into(), dummy_aggregation_program_spec())
             .await
             .unwrap();
 
-        let job_id = coordinator.setup_recurser_aggregator("rid-fail").await.unwrap();
+        let job_id = coordinator.setup_aggregation_program("rid-fail").await.unwrap();
 
         // Pending must be cleared and a terminal `Failed` event stashed.
         assert!(
@@ -3528,12 +3528,12 @@ mod tests {
 
     /// Late ack for an unknown job is an idempotent no-op (mirrors program-setup).
     #[tokio::test]
-    async fn test_setup_recurser_aggregator_ack_after_terminal_is_noop() {
+    async fn test_setup_aggregation_program_ack_after_terminal_is_noop() {
         let (coordinator, workers) = coordinator_with_idle_workers(1).await;
         let w0 = workers[0].0.clone();
 
         // No `recurser_setup_pending` entry for this job_id.
-        let ack = SetupRecurserAggregatorAckDto {
+        let ack = SetupAggregationProgramAckDto {
             job_id: JobId::new().as_string(),
             worker_id: w0.clone(),
             recurser_id: "rid-x".into(),
@@ -3542,7 +3542,7 @@ mod tests {
             vk: vec![1u8; 32],
             hash_mode: "Poseidon1".to_string(),
         };
-        coordinator.handle_stream_setup_recurser_aggregator_ack(ack).await.unwrap();
+        coordinator.handle_stream_setup_aggregation_program_ack(ack).await.unwrap();
 
         // Worker was Ready; nothing should flip it.
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
@@ -3550,7 +3550,7 @@ mod tests {
 
     /// Ack must not pre-empt the recovery handshake's flip back to Ready.
     #[tokio::test]
-    async fn test_setup_recurser_aggregator_ack_respects_pending_recovery() {
+    async fn test_setup_aggregation_program_ack_respects_pending_recovery() {
         let (coordinator, workers) = coordinator_with_idle_workers(1).await;
         let w0 = workers[0].0.clone();
 
@@ -3568,7 +3568,7 @@ mod tests {
             },
         );
 
-        let ack = SetupRecurserAggregatorAckDto {
+        let ack = SetupAggregationProgramAckDto {
             job_id: job_id.as_string(),
             worker_id: w0.clone(),
             recurser_id: "rid-recover".into(),
@@ -3577,7 +3577,7 @@ mod tests {
             vk: vec![1u8; 32],
             hash_mode: "Poseidon1".to_string(),
         };
-        coordinator.handle_stream_setup_recurser_aggregator_ack(ack).await.unwrap();
+        coordinator.handle_stream_setup_aggregation_program_ack(ack).await.unwrap();
 
         // Worker stays SettingUp; recovery owns the flip back to Ready.
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::SettingUp),);
@@ -3586,7 +3586,7 @@ mod tests {
 
     /// Workers acking with different VKs must fire `Failed`, not `Completed`.
     #[tokio::test]
-    async fn test_setup_recurser_aggregator_vk_mismatch_fails_job() {
+    async fn test_setup_aggregation_program_vk_mismatch_fails_job() {
         let (coordinator, workers) = coordinator_with_idle_workers(2).await;
         let (w0, w1) = (workers[0].0.clone(), workers[1].0.clone());
 
@@ -3602,7 +3602,7 @@ mod tests {
         );
 
         // Two workers, two different VKs.
-        let ack0 = SetupRecurserAggregatorAckDto {
+        let ack0 = SetupAggregationProgramAckDto {
             job_id: job_id.as_string(),
             worker_id: w0.clone(),
             recurser_id: "rid-mismatch".into(),
@@ -3611,7 +3611,7 @@ mod tests {
             vk: vec![0u8; 32],
             hash_mode: "Poseidon1".to_string(),
         };
-        let ack1 = SetupRecurserAggregatorAckDto {
+        let ack1 = SetupAggregationProgramAckDto {
             job_id: job_id.as_string(),
             worker_id: w1.clone(),
             recurser_id: "rid-mismatch".into(),
@@ -3620,8 +3620,8 @@ mod tests {
             vk: vec![1u8; 32], // different
             hash_mode: "Poseidon1".to_string(),
         };
-        coordinator.handle_stream_setup_recurser_aggregator_ack(ack0).await.unwrap();
-        coordinator.handle_stream_setup_recurser_aggregator_ack(ack1).await.unwrap();
+        coordinator.handle_stream_setup_aggregation_program_ack(ack0).await.unwrap();
+        coordinator.handle_stream_setup_aggregation_program_ack(ack1).await.unwrap();
 
         let terminal = coordinator.get_terminal_event(&job_id).await.expect("terminal stashed");
         match terminal {
@@ -3636,7 +3636,7 @@ mod tests {
     /// Late ack on a Failed job must also park the worker Ready (mirror of
     /// the Cancelled-terminal test).
     #[tokio::test]
-    async fn test_run_recurser_aggregator_late_ack_on_failed_job_parks_ready() {
+    async fn test_run_aggregate_proofs_late_ack_on_failed_job_parks_ready() {
         let (coordinator, workers) = coordinator_with_idle_workers(1).await;
         let w0 = workers[0].0.clone();
 
@@ -3654,14 +3654,14 @@ mod tests {
             .await
             .unwrap();
 
-        let ack = RunRecurserAggregatorAckDto {
+        let ack = RunAggregateProofsAckDto {
             job_id: job_id.as_string(),
             worker_id: w0.clone(),
             success: true,
             error_message: None,
             proof: vec![],
         };
-        coordinator.handle_stream_run_recurser_aggregator_ack(ack).await.unwrap();
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
 
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
@@ -3670,7 +3670,7 @@ mod tests {
 
     /// Late ack on a resolved job must park the worker Ready and not revive the job.
     #[tokio::test]
-    async fn test_run_recurser_aggregator_late_ack_parks_worker_ready() {
+    async fn test_run_aggregate_proofs_late_ack_parks_worker_ready() {
         let (coordinator, workers) = coordinator_with_idle_workers(1).await;
         let w0 = workers[0].0.clone();
 
@@ -3691,14 +3691,14 @@ mod tests {
             .await
             .unwrap();
 
-        let ack = RunRecurserAggregatorAckDto {
+        let ack = RunAggregateProofsAckDto {
             job_id: job_id.as_string(),
             worker_id: w0.clone(),
             success: true,
             error_message: None,
             proof: vec![],
         };
-        coordinator.handle_stream_run_recurser_aggregator_ack(ack).await.unwrap();
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
 
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
@@ -3712,11 +3712,14 @@ mod tests {
 
         // Register two specs, but only one is "active" (completed setup at least once).
         coordinator
-            .register_recurser_aggregator("rid-active".into(), dummy_recurser_spec())
+            .register_aggregation_program("rid-active".into(), dummy_aggregation_program_spec())
             .await
             .unwrap();
         coordinator
-            .register_recurser_aggregator("rid-registered-only".into(), dummy_recurser_spec())
+            .register_aggregation_program(
+                "rid-registered-only".into(),
+                dummy_aggregation_program_spec(),
+            )
             .await
             .unwrap();
         coordinator.active_recurser_setups.write().await.insert("rid-active".to_string());
@@ -3740,7 +3743,7 @@ mod tests {
         coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::SettingUp).await.unwrap();
         assert!(!coordinator.pending_recovery.read().await.contains_key(&w0));
 
-        let ack = SetupRecurserAggregatorAckDto {
+        let ack = SetupAggregationProgramAckDto {
             job_id: JobId::new().as_string(),
             worker_id: w0.clone(),
             recurser_id: "rid-resend".into(),
@@ -3749,14 +3752,14 @@ mod tests {
             vk: vec![1u8; 32],
             hash_mode: "Poseidon1".to_string(),
         };
-        coordinator.handle_stream_setup_recurser_aggregator_ack(ack).await.unwrap();
+        coordinator.handle_stream_setup_aggregation_program_ack(ack).await.unwrap();
 
         assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
     }
 
     /// Failure ack: job → Failed, worker → Ready, error message preserved verbatim.
     #[tokio::test]
-    async fn test_run_recurser_aggregator_failure_ack_fails_job() {
+    async fn test_run_aggregate_proofs_failure_ack_fails_job() {
         let (coordinator, workers) = coordinator_with_idle_workers(1).await;
         let w0 = workers[0].0.clone();
 
@@ -3774,14 +3777,14 @@ mod tests {
             .await
             .unwrap();
 
-        let ack = RunRecurserAggregatorAckDto {
+        let ack = RunAggregateProofsAckDto {
             job_id: job_id.as_string(),
             worker_id: w0.clone(),
             success: false,
             error_message: Some("blst overflow".into()),
             proof: vec![],
         };
-        coordinator.handle_stream_run_recurser_aggregator_ack(ack).await.unwrap();
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
 
         let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
         assert_eq!(entry.read().await.state, JobState::Failed);

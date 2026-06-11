@@ -116,16 +116,16 @@ impl<'a, C: Client> SetupRequest<'a, C> {
                 Ok(handle)
             }
             SetupTarget::Recurser(agg) => {
-                let mut handle = self.client.run_setup_recurser(agg, self.timeout, subs)?;
+                let mut handle =
+                    self.client.run_setup_aggregation_program(agg, self.timeout, subs)?;
 
                 // Fill `agg.vk_cache` from the terminal response so a later
                 // `agg.vk()` doesn't fall through to a disk read.
                 let agg_clone = agg.clone();
                 handle.set_pre_process(move |status: &TerminalStatus| {
-                    if let TerminalStatus::Completed(DomainJobKindResponse::SetupRecurser {
-                        vk,
-                        hash_mode,
-                    }) = status
+                    if let TerminalStatus::Completed(
+                        DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode },
+                    ) = status
                     {
                         if vk.len() != 32 {
                             return Err(anyhow::anyhow!(

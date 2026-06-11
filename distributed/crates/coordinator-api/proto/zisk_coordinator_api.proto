@@ -21,10 +21,10 @@ service ZiskCoordinatorApi {
 
   // Register a recurser spec. Idempotent: the same spec always
   // returns the same recurser_id (a content hash of the inputs).
-  rpc RegisterRecurserAggregator(RegisterRecurserAggregatorRequest)
-      returns (RegisterRecurserAggregatorResponse);
+  rpc RegisterAggregationProgram(RegisterAggregationProgramRequest)
+      returns (RegisterAggregationProgramResponse);
 
-  // Submit a new job (setup, prove, wrap, execute, setup_recurser, recurser_prove).
+  // Submit a new job (setup, prove, wrap, execute, setup_aggregation_program, aggregate_proofs).
   rpc JobRequest(JobRequestMessage)
       returns (JobResponse);
 
@@ -168,25 +168,31 @@ message ProgramVk {
   string l3 = 4;
 }
 
-message RecurserSpec {
-  repeated ProgramVk program_vks            = 1;
-  uint64             n_private_inputs       = 2;
-  string             prepare_publics_body   = 3; // empty = recurser default
-  string             check_publics_body     = 4; // empty = recurser default
-  string             aggregate_publics_body = 5;
+// One normalization group: a NormalizePublics circom body applied to the
+// leaf proofs of the member programs (indices into program_vks).
+message NormalizeGroup {
+  repeated uint64 member_indices   = 1;
+  string          body             = 2;
+  uint64          n_free_inputs    = 3;
 }
 
-message RegisterRecurserAggregatorRequest {
+message AggregationProgramSpec {
+  repeated ProgramVk      program_vks            = 1;
+  repeated NormalizeGroup normalize_groups       = 2;
+  string                  aggregate_publics_body = 3;
+}
+
+message RegisterAggregationProgramRequest {
   // SDK-computed content hash. The coordinator stores the spec under this
   // id and echoes it back. Re-registering an already-known id is idempotent.
   // Computed by both SDK and worker from the same `RecurserManifestInputs`,
   // so a misaligned zisk_vk surfaces here as a "recurser_id not found" at
   // dispatch time rather than a silent divergence.
   string       recurser_id = 1;
-  RecurserSpec spec        = 2;
+  AggregationProgramSpec spec        = 2;
 }
 
-message RegisterRecurserAggregatorResponse {
+message RegisterAggregationProgramResponse {
   string recurser_id = 1; // echo of the request's recurser_id
 }
 
@@ -204,12 +210,12 @@ message JobResponse {
 
 message JobKind {
   oneof kind {
-    SetupRequest         setup         = 1;
-    ProveRequest         prove         = 2;
-    WrapRequest          wrap          = 3;
-    RecurserProveRequest recurser_prove = 4;
-    ExecuteRequest       execute       = 5;
-    SetupRecurserRequest setup_recurser = 6;
+    SetupRequest           setup            = 1;
+    ProveRequest           prove            = 2;
+    WrapRequest            wrap             = 3;
+    AggregateProofsRequest aggregate_proofs = 4;
+    ExecuteRequest         execute          = 5;
+    SetupAggregationProgramRequest   setup_aggregation_program   = 6;
   }
 }
 
@@ -252,24 +258,25 @@ message WrapResponse {
   Proof proof = 1;
 }
 
-message SetupRecurserRequest {
+message SetupAggregationProgramRequest {
   string recurser_id = 1;
 }
 
-message SetupRecurserResponse {
+message SetupAggregationProgramResponse {
   bytes vk = 1; // 32 bytes — 4 u64 little-endian limbs
   string hash_mode = 2;
 }
 
-message RecurserProveRequest {
+message AggregateProofsRequest {
   string          recurser_id          = 1;
   bytes           proof_a              = 2; // bincode-serialized VadcopFinalProof
   bytes           proof_b              = 3;
-  repeated uint64 private_inputs       = 4;
-  repeated uint64 root_c_recurser_agg  = 5; // optional override; len 0 or 4
+  repeated uint64 free_inputs_a        = 4; // proof_a's normalization side inputs
+  repeated uint64 free_inputs_b        = 5; // proof_b's normalization side inputs
+  repeated uint64 root_c_recurser_agg  = 6; // optional override; len 0 or 4
 }
 
-message RecurserProveResponse {
+message AggregateProofsResponse {
   Proof proof = 1;
 }
 
@@ -290,9 +297,9 @@ message JobKindResponse {
     SetupResponse         setup         = 1;
     ProveResponse         prove         = 2;
     WrapResponse          wrap          = 3;
-    RecurserProveResponse recurser_prove = 4;
+    AggregateProofsResponse aggregate_proofs = 4;
     ExecuteResponse       execute       = 5;
-    SetupRecurserResponse setup_recurser = 6;
+    SetupAggregationProgramResponse setup_aggregation_program = 6;
   }
 }
 

@@ -34,9 +34,10 @@ pub enum ProveValidationError {
     },
 
     #[error(
-        "private_inputs length ({got}) does not match the recurser setup's n_private_inputs ({expected})"
+        "free_inputs_{side} has {got} entries, but this recurser's normalization circuits \
+         consume at most {expected}"
     )]
-    PrivateInputsLength { got: usize, expected: usize },
+    FreeInputsLength { side: char, got: usize, expected: usize },
 
     #[error("manifest field {field} is not a valid u64 ({value:?}: {source})")]
     ManifestParse { field: &'static str, value: String, source: std::num::ParseIntError },
@@ -48,14 +49,21 @@ pub fn validate_prove_inputs(
     manifest_inputs: &RecurserManifestInputs,
     proof_a_publics: &[u64],
     proof_b_publics: &[u64],
-    private_inputs: &[u64],
+    free_inputs_a: &[u64],
+    free_inputs_b: &[u64],
     root_c_recurser_agg: &[u64; PROGRAM_VK_LEN],
 ) -> Result<(ProgramVkOrigin, ProgramVkOrigin), ProveValidationError> {
-    if private_inputs.len() != manifest_inputs.n_private_inputs {
-        return Err(ProveValidationError::PrivateInputsLength {
-            got: private_inputs.len(),
-            expected: manifest_inputs.n_private_inputs,
-        });
+    // Undersupply is fine — the prove path zero-pads each side to the
+    // circuit's fixed array size; only oversupply is a caller error.
+    let n_free_inputs = manifest_inputs.n_free_inputs();
+    for (side, inputs) in [('a', free_inputs_a), ('b', free_inputs_b)] {
+        if inputs.len() > n_free_inputs {
+            return Err(ProveValidationError::FreeInputsLength {
+                side,
+                got: inputs.len(),
+                expected: n_free_inputs,
+            });
+        }
     }
 
     let allowlist = parse_program_vks(&manifest_inputs.program_vks)?;
@@ -126,10 +134,19 @@ mod tests {
         values.map(|v| v.to_string())
     }
 
-    fn manifest(n_private_inputs: usize, program_vks: Vec<[u64; 4]>) -> RecurserManifestInputs {
+    fn manifest(n_free_inputs: usize, program_vks: Vec<[u64; 4]>) -> RecurserManifestInputs {
         let zisk_vk = vk_str([100, 101, 102, 103]);
         let vks: Vec<[String; 4]> = program_vks.into_iter().map(vk_str).collect();
-        RecurserManifestInputs::new(zisk_vk, n_private_inputs, vks, "p", "c", "a")
+        let groups = if n_free_inputs > 0 {
+            vec![crate::templates::NormalizeGroup {
+                member_indices: vec![0],
+                body: "norm".to_string(),
+                n_free_inputs,
+            }]
+        } else {
+            vec![]
+        };
+        RecurserManifestInputs::new(zisk_vk, vks, &groups, "a")
     }
 
     fn publics_with_program_vk(vk: [u64; 4]) -> Vec<u64> {
@@ -144,7 +161,7 @@ mod tests {
         let a = publics_with_program_vk([1, 2, 3, 4]);
         let b = publics_with_program_vk([5, 6, 7, 8]);
 
-        let (oa, ob) = validate_prove_inputs(&m, &a, &b, &[], &[0; 4]).unwrap();
+        let (oa, ob) = validate_prove_inputs(&m, &a, &b, &[], &[], &[0; 4]).unwrap();
         assert_eq!(oa, ProgramVkOrigin::RegisteredProgram(0));
         assert_eq!(ob, ProgramVkOrigin::RegisteredProgram(1));
     }
@@ -156,7 +173,7 @@ mod tests {
         let a = publics_with_program_vk([1, 2, 3, 4]);
         let b = publics_with_program_vk(root_c);
 
-        let (oa, ob) = validate_prove_inputs(&m, &a, &b, &[], &root_c).unwrap();
+        let (oa, ob) = validate_prove_inputs(&m, &a, &b, &[], &[], &root_c).unwrap();
         assert_eq!(oa, ProgramVkOrigin::RegisteredProgram(0));
         assert_eq!(ob, ProgramVkOrigin::PriorAggregation);
     }
@@ -167,18 +184,32 @@ mod tests {
         let a = publics_with_program_vk([1, 2, 3, 4]);
         let b = publics_with_program_vk([42, 42, 42, 42]);
 
-        let err = validate_prove_inputs(&m, &a, &b, &[], &[0; 4]).unwrap_err();
+        let err = validate_prove_inputs(&m, &a, &b, &[], &[], &[0; 4]).unwrap_err();
         assert!(matches!(err, ProveValidationError::UnregisteredProgramVk { side: 'b', .. }));
     }
 
     #[test]
-    fn rejects_wrong_private_inputs_length() {
+    fn accepts_undersupplied_free_inputs() {
         let m = manifest(3, vec![[1, 2, 3, 4]]);
         let a = publics_with_program_vk([1, 2, 3, 4]);
         let b = publics_with_program_vk([1, 2, 3, 4]);
 
-        let err = validate_prove_inputs(&m, &a, &b, &[1, 2], &[0; 4]).unwrap_err();
-        assert!(matches!(err, ProveValidationError::PrivateInputsLength { got: 2, expected: 3 }));
+        // Fewer than n_free_inputs is fine (the prove path zero-pads).
+        validate_prove_inputs(&m, &a, &b, &[1, 2], &[], &[0; 4]).unwrap();
+    }
+
+    #[test]
+    fn rejects_oversupplied_free_inputs() {
+        let m = manifest(3, vec![[1, 2, 3, 4]]);
+        let a = publics_with_program_vk([1, 2, 3, 4]);
+        let b = publics_with_program_vk([1, 2, 3, 4]);
+
+        let err =
+            validate_prove_inputs(&m, &a, &b, &[1, 2, 3, 4], &[1, 2, 3], &[0; 4]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProveValidationError::FreeInputsLength { side: 'a', got: 4, expected: 3 }
+        ));
     }
 
     #[test]
@@ -187,7 +218,7 @@ mod tests {
         let a = vec![1, 2];
         let b = publics_with_program_vk([1, 2, 3, 4]);
 
-        let err = validate_prove_inputs(&m, &a, &b, &[], &[0; 4]).unwrap_err();
+        let err = validate_prove_inputs(&m, &a, &b, &[], &[], &[0; 4]).unwrap_err();
         assert!(matches!(err, ProveValidationError::PublicsTooShort { side: 'a', got: 2 }));
     }
 }

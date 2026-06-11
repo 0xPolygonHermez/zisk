@@ -1,4 +1,5 @@
 mod builder;
+mod circuit;
 mod execute_client;
 mod guest;
 mod output;
@@ -13,6 +14,7 @@ pub use rom_setup::HashMode;
 pub use zisk_pil::get_packed_info;
 
 pub use builder::*;
+pub use circuit::*;
 pub use guest::*;
 pub use output::*;
 pub use prover::*;

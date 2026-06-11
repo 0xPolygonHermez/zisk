@@ -40,10 +40,10 @@ pub trait BackendService: Send + Sync + 'static {
 
     /// Register a recurser spec under the SDK-supplied `recurser_id`.
     /// Idempotent — re-registering the same id is a no-op. Returns the id (echo).
-    async fn register_recurser_aggregator(
+    async fn register_aggregation_program(
         &self,
         recurser_id: String,
-        spec: DomainRecurserSpec,
+        spec: DomainAggregationProgramSpec,
     ) -> ApiResult<String>;
 
     /// Submit a new job. Returns the job UUID.

@@ -82,6 +82,23 @@ impl RecurserArtifacts {
         self.stem_with_ext("verkey.bin")
     }
 
+    /// Read the recurser's own 4-limb verkey (32 bytes, little-endian).
+    /// Available once setup has completed.
+    pub fn read_verkey(&self) -> anyhow::Result<[u64; 4]> {
+        use anyhow::Context;
+        let path = self.verkey_bin_path();
+        let bytes =
+            std::fs::read(&path).with_context(|| format!("Failed to read {}", path.display()))?;
+        let bytes: [u8; 32] = bytes.as_slice().try_into().map_err(|_| {
+            anyhow::anyhow!("{} is {} bytes, expected 32", path.display(), bytes.len())
+        })?;
+        let mut limbs = [0u64; 4];
+        for (i, limb) in limbs.iter_mut().enumerate() {
+            *limb = u64::from_le_bytes(bytes[i * 8..(i + 1) * 8].try_into().unwrap());
+        }
+        Ok(limbs)
+    }
+
     /// Witness execution plan.
     pub fn exec_path(&self) -> PathBuf {
         self.stem_with_ext("exec")
@@ -91,9 +108,9 @@ impl RecurserArtifacts {
     /// this setup. The manifest is written last in the setup flow, after the
     /// verkey/const land and the witness-library build is awaited, so its
     /// presence is the commit marker: without it a setup that died mid-way
-    /// (e.g. at the witness `.so` build) would look warm while missing
+    /// (e.g. at the witness `.so` build) would look active while missing
     /// load-bearing files. proofman builds the `.consttree` itself at register
-    /// time, so that one is deliberately not part of warmness.
+    /// time, so that one is deliberately not part of the check.
     pub fn is_active(&self) -> bool {
         self.missing_artifacts().is_empty()
     }

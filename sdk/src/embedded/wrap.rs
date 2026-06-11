@@ -50,7 +50,8 @@ impl EmbeddedClient {
         override_publics: Option<&PublicValues>,
         override_program_vk: Option<&ProgramVK>,
     ) -> Result<ProveResult> {
-        let publics = override_publics.unwrap_or(&proof.publics);
+        let derived_publics = proof.publics();
+        let publics = override_publics.unwrap_or(&derived_publics);
         let program_vk = override_program_vk.unwrap_or(&proof.program_vk);
         let proof_words = match &proof.body {
             ProofBody::Vadcop { proof, .. } => proof.as_slice(),

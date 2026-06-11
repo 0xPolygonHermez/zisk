@@ -17,11 +17,11 @@ use crate::upload::UploadResult;
 use crate::JobEvent;
 
 impl EmbeddedClient {
-    pub(crate) fn do_upload_recurser(&self, agg: &Recurser) -> Result<UploadResult> {
+    pub(crate) fn do_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
         Ok(UploadResult::new(agg.recurser_id.clone()))
     }
 
-    pub(crate) fn do_setup_recurser(
+    pub(crate) fn do_setup_aggregation_program(
         &self,
         agg: &Recurser,
         timeout: Option<Duration>,
@@ -33,7 +33,7 @@ impl EmbeddedClient {
 
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
-            let result = run_setup_recurser_blocking(&prover, &agg);
+            let result = run_setup_aggregation_program_blocking(&prover, &agg);
             fire_result_event(&subs_cloned, &result);
             result
         });
@@ -42,12 +42,13 @@ impl EmbeddedClient {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn do_recurser_prove(
+    pub(crate) fn do_aggregate_proofs(
         &self,
         agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -55,18 +56,20 @@ impl EmbeddedClient {
         let agg = agg.clone();
         let vfp_a = proof_a.get_vadcop_final_proof()?;
         let vfp_b = proof_b.get_vadcop_final_proof()?;
-        let private_inputs = private_inputs.to_vec();
+        let free_inputs_a = free_inputs_a.to_vec();
+        let free_inputs_b = free_inputs_b.to_vec();
         let subs_cloned = Arc::clone(&subs);
         let prover = Arc::clone(&self.prover);
 
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
-            let result = run_recurser_prove_blocking(
+            let result = run_aggregate_proofs_blocking(
                 &prover,
                 &agg,
                 vfp_a,
                 vfp_b,
-                &private_inputs,
+                &free_inputs_a,
+                &free_inputs_b,
                 root_c_recurser_agg,
             );
             fire_result_event(&subs_cloned, &result);
@@ -77,7 +80,10 @@ impl EmbeddedClient {
     }
 }
 
-fn run_setup_recurser_blocking(prover: &EmbeddedProver, agg: &Recurser) -> Result<SetupResult> {
+fn run_setup_aggregation_program_blocking(
+    prover: &EmbeddedProver,
+    agg: &Recurser,
+) -> Result<SetupResult> {
     let artifacts = recurser::artifacts::RecurserArtifacts::new(&agg.output_dir, &agg.recurser_id);
     if artifacts.is_active() {
         tracing::info!(
@@ -97,19 +103,7 @@ fn run_setup_recurser_blocking(prover: &EmbeddedProver, agg: &Recurser) -> Resul
         setup_dir: agg.setup_dir.clone(),
         output_dir: agg.output_dir.clone(),
         program_vks: agg.program_vks.clone(),
-        n_private_inputs: agg.n_private_inputs,
-        prepare_publics_template: recurser::template_files::write_optional(
-            agg.prepare_publics_template.as_deref(),
-            "prepare_publics.circom",
-        )?,
-        check_publics_template: recurser::template_files::write_optional(
-            agg.check_publics_template.as_deref(),
-            "check_publics.circom",
-        )?,
-        aggregate_publics_template: recurser::template_files::write_required(
-            &agg.aggregate_publics_template,
-            "aggregate_publics.circom",
-        )?,
+        templates: agg.templates.clone(),
     };
 
     // Scoped 64 MB-stack rayon pool — proofman setup overflows the default
@@ -128,16 +122,24 @@ fn run_setup_recurser_blocking(prover: &EmbeddedProver, agg: &Recurser) -> Resul
     Ok(SetupResult { job_id: None })
 }
 
-fn run_recurser_prove_blocking(
+fn run_aggregate_proofs_blocking(
     prover: &EmbeddedProver,
     agg: &Recurser,
     proof_a: proofman_verifier::VadcopFinalProof,
     proof_b: proofman_verifier::VadcopFinalProof,
-    private_inputs: &[u64],
+    free_inputs_a: &[u64],
+    free_inputs_b: &[u64],
     root_c_override: Option<[u64; 4]>,
 ) -> Result<ProveResult> {
     let vfp = prover
-        .prove_recurser(&agg.recurser_id, &proof_a, &proof_b, private_inputs, root_c_override)
+        .prove_recurser(
+            &agg.recurser_id,
+            &proof_a,
+            &proof_b,
+            free_inputs_a,
+            free_inputs_b,
+            root_c_override,
+        )
         .context("recurser proof generation failed")?;
 
     // Recurser's own verkey → output Proof's zisk_vk.

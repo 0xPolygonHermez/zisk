@@ -21,9 +21,9 @@ use zisk_common::ProofKind;
 use zisk_common::{ProgramVK, Proof, PublicValues, ZiskPaths};
 use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
 
+use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};
 use crate::lifecycle::{SetupTarget, UploadTarget};
-use crate::recurser::{Recurser, RegisterRecurserRequest};
-use crate::recurser_prove::RecurserProveRequest;
+use crate::recurser::Recurser;
 use crate::upload::UploadResult;
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
@@ -269,16 +269,27 @@ impl EmbeddedProver {
         recurser_id: &str,
         proof_a: &proofman_verifier::VadcopFinalProof,
         proof_b: &proofman_verifier::VadcopFinalProof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> anyhow::Result<proofman_verifier::VadcopFinalProof> {
         match self {
-            EmbeddedProver::Emu(p) => {
-                p.prove_recurser(recurser_id, proof_a, proof_b, private_inputs, root_c_recurser_agg)
-            }
-            EmbeddedProver::Asm(p) => {
-                p.prove_recurser(recurser_id, proof_a, proof_b, private_inputs, root_c_recurser_agg)
-            }
+            EmbeddedProver::Emu(p) => p.prove_recurser(
+                recurser_id,
+                proof_a,
+                proof_b,
+                free_inputs_a,
+                free_inputs_b,
+                root_c_recurser_agg,
+            ),
+            EmbeddedProver::Asm(p) => p.prove_recurser(
+                recurser_id,
+                proof_a,
+                proof_b,
+                free_inputs_a,
+                free_inputs_b,
+                root_c_recurser_agg,
+            ),
         }
     }
 }
@@ -356,34 +367,36 @@ impl Client for EmbeddedClient {
         self.do_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
     }
 
-    fn run_upload_recurser(&self, agg: &Recurser) -> Result<UploadResult> {
-        self.do_upload_recurser(agg)
+    fn run_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
+        self.do_upload_aggregation_program(agg)
     }
 
-    fn run_setup_recurser(
+    fn run_setup_aggregation_program(
         &self,
         agg: &Recurser,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        self.do_setup_recurser(agg, timeout, subs)
+        self.do_setup_aggregation_program(agg, timeout, subs)
     }
 
-    fn run_recurser_prove(
+    fn run_aggregate_proofs(
         &self,
         agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_recurser_prove(
+        self.do_aggregate_proofs(
             agg,
             proof_a,
             proof_b,
-            private_inputs,
+            free_inputs_a,
+            free_inputs_b,
             root_c_recurser_agg,
             timeout,
             subs,
@@ -436,23 +449,14 @@ impl EmbeddedClient {
         WrapRequest::new(self, proof, proof_kind)
     }
 
-    /// Begin building a recurser handle from a list of guest programs.
-    #[must_use]
-    pub fn register_setup_recurser<'a>(
-        &'a self,
-        programs: &'a [&'a GuestProgram],
-    ) -> RegisterRecurserRequest<'a, Self> {
-        RegisterRecurserRequest::new(self, programs)
-    }
-
     /// Submit a recurser prove request — folds two Vadcop proofs into one.
     #[must_use]
-    pub fn recurser_prove<'a>(
+    pub fn aggregate_proofs<'a>(
         &'a self,
         agg: &'a Recurser,
-        proof_a: &'a Proof,
-        proof_b: &'a Proof,
-    ) -> RecurserProveRequest<'a, Self> {
-        RecurserProveRequest::new(self, agg, proof_a, proof_b)
+        input_a: impl Into<AggregationInput<'a>>,
+        input_b: impl Into<AggregationInput<'a>>,
+    ) -> AggregateProofsRequest<'a, Self> {
+        AggregateProofsRequest::new(self, agg, input_a.into(), input_b.into())
     }
 }

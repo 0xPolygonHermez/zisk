@@ -9,7 +9,8 @@ use pil2_stark_setup::output::witness_gen::WitnessTracker;
 use super::proving_key::{gen_recurser_setup, RecurserConfig};
 use super::resolve::{resolve_circom_exec, resolve_path_env};
 use crate::artifacts::RecurserArtifacts;
-use crate::manifest::{resolve_manifest_inputs, write_manifest_and_templates, RecurserManifest};
+use crate::manifest::{write_manifest_and_templates, RecurserManifest, RecurserManifestInputs};
+use crate::templates::validate_normalize_groups;
 use crate::CircomTemplates;
 
 pub struct SetupRecurserAggregatorOptions {
@@ -19,14 +20,9 @@ pub struct SetupRecurserAggregatorOptions {
     pub output_dir: String,
     /// Registered program VKs (4 Goldilocks limbs each, decimal strings).
     pub program_vks: Vec<[String; 4]>,
-    /// Number of side inputs threaded into the user's `PreparePublics`.
-    pub n_private_inputs: usize,
-    /// Path to a `PreparePublics` Circom body. `None` uses the identity default.
-    pub prepare_publics_template: Option<String>,
-    /// Path to a `CheckPublics` Circom body. `None` uses the no-op default.
-    pub check_publics_template: Option<String>,
-    /// Path to the `AggregatePublics` Circom body (required).
-    pub aggregate_publics_template: String,
+    /// Circom bodies: normalization groups (programs not covered by any group
+    /// get identity) plus the required `AggregatePublics`.
+    pub templates: CircomTemplates,
 }
 
 pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> Result<()> {
@@ -66,36 +62,15 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     }
     let program_vks = &opts.program_vks;
 
-    let load_optional = |opt: &Option<String>, name: &str| -> Result<Option<String>> {
-        match opt {
-            Some(path) => Ok(Some(
-                fs::read_to_string(path)
-                    .with_context(|| format!("Failed to read {}: {}", name, path))?,
-            )),
-            None => Ok(None),
-        }
-    };
-    let circom_templates = CircomTemplates {
-        prepare_publics: load_optional(&opts.prepare_publics_template, "prepare_publics_template")?,
-        check_publics: load_optional(&opts.check_publics_template, "check_publics_template")?,
-        aggregate_publics: fs::read_to_string(&opts.aggregate_publics_template).with_context(
-            || {
-                format!(
-                    "Failed to read aggregate_publics_template: {}",
-                    opts.aggregate_publics_template
-                )
-            },
-        )?,
-    };
+    let circom_templates = &opts.templates;
+    validate_normalize_groups(&circom_templates.normalize_groups, program_vks.len())?;
 
-    // Resolve defaults through the shared helper so the manifest hashes match
-    // every other id-deriving layer (SDK builder, worker claimed-id check).
-    let (manifest_inputs, resolved) = resolve_manifest_inputs(
+    // Derive the id through the shared constructor so the manifest hashes
+    // match every other id-deriving layer (SDK builder, worker claimed-id check).
+    let manifest_inputs = RecurserManifestInputs::new(
         zisk_vk.clone(),
-        opts.n_private_inputs,
         program_vks.clone(),
-        circom_templates.prepare_publics.as_deref(),
-        circom_templates.check_publics.as_deref(),
+        &circom_templates.normalize_groups,
         &circom_templates.aggregate_publics,
     );
     let recurser_id = manifest_inputs.compute_id();
@@ -128,9 +103,8 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
         zisk_vk: &zisk_vk,
         stark_info: &stark_info,
         verifier_info: &verifier_info,
-        n_private_inputs: opts.n_private_inputs,
         program_vks,
-        circom_templates: &circom_templates,
+        circom_templates,
         circom_exec: &circom_exec,
         circuits_gl_path: &circuits_gl_path,
         recurser_circuits_path: &recurser_circuits_path,
@@ -149,9 +123,8 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     write_manifest_and_templates(
         &files_dir,
         &manifest,
-        &resolved.prepare_publics,
-        &resolved.check_publics,
-        &resolved.aggregate_publics,
+        &circom_templates.normalize_groups,
+        &circom_templates.aggregate_publics,
     )
     .context("Failed to write recurser manifest")?;
 

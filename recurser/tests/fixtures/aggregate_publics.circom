@@ -1,16 +1,12 @@
 // Example AggregatePublics — inherits every slot from A (the "prev" side).
-template AggregatePublics(nPublics, nPrivateInputs) {
+template AggregatePublics(nPublics) {
     signal output aggregated_publics[nPublics];
     signal input a_publics[nPublics];
     signal input b_publics[nPublics];
-    signal input private_inputs[nPrivateInputs];
 
-    // Drain unused B-side inputs + private inputs.
+    // Drain unused B-side inputs.
     for (var i = 0; i < nPublics; i++) {
         _ <== b_publics[i];
-    }
-    for (var i = 0; i < nPrivateInputs; i++) {
-        _ <== private_inputs[i];
     }
 
     for (var i = 0; i < nPublics; i++) {

@@ -44,9 +44,13 @@ pub struct ZiskProveRecurserAggregator {
     #[arg(long = "root-c-recurser-agg")]
     pub root_c_recurser_agg: Option<String>,
 
-    /// `privateInputs` as comma-separated decimal `u64`s.
-    #[arg(long = "private-inputs")]
-    pub private_inputs: Option<String>,
+    /// Proof A's `freeInputs` as comma-separated decimal `u64`s.
+    #[arg(long = "free-inputs-a")]
+    pub free_inputs_a: Option<String>,
+
+    /// Proof B's `freeInputs` as comma-separated decimal `u64`s.
+    #[arg(long = "free-inputs-b")]
+    pub free_inputs_b: Option<String>,
 
     /// Use the GPU prover path.
     #[arg(long, default_value_t = false)]
@@ -72,7 +76,8 @@ impl ZiskProveRecurserAggregator {
             .map_err(|e| anyhow::anyhow!(e.to_string()))
             .with_context(|| format!("Failed to load proof_b: {}", self.proof_b.display()))?;
 
-        let private_inputs = parse_private_inputs(self.private_inputs.as_deref())?;
+        let free_inputs_a = parse_free_inputs(self.free_inputs_a.as_deref())?;
+        let free_inputs_b = parse_free_inputs(self.free_inputs_b.as_deref())?;
         let root_c_override = self.root_c_recurser_agg.as_deref().map(parse_root_c).transpose()?;
 
         let proving_key = ZiskPaths::get_proving_key(self.proving_key.as_ref());
@@ -91,7 +96,8 @@ impl ZiskProveRecurserAggregator {
             registered: &registered,
             proof_a: &proof_a,
             proof_b: &proof_b,
-            private_inputs: &private_inputs,
+            free_inputs_a: &free_inputs_a,
+            free_inputs_b: &free_inputs_b,
             root_c_recurser_agg: root_c_override,
         };
         let out = prove_recurser_aggregator(&proofman, &opts)?;
@@ -108,14 +114,14 @@ impl ZiskProveRecurserAggregator {
     }
 }
 
-fn parse_private_inputs(s: Option<&str>) -> Result<Vec<u64>> {
+fn parse_free_inputs(s: Option<&str>) -> Result<Vec<u64>> {
     match s {
         Some(s) if !s.trim().is_empty() => s
             .split(',')
             .map(|t| {
                 t.trim()
                     .parse::<u64>()
-                    .with_context(|| format!("private input '{t}' is not a valid u64"))
+                    .with_context(|| format!("free input '{t}' is not a valid u64"))
             })
             .collect(),
         _ => Ok(Vec::new()),

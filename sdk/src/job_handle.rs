@@ -363,9 +363,9 @@ impl FromWaitResult for SetupResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Setup { .. })
-            | TerminalStatus::Completed(DomainJobKindResponse::SetupRecurser { .. }) => {
-                Ok(SetupResult { job_id: Some(job_id) })
-            }
+            | TerminalStatus::Completed(DomainJobKindResponse::SetupAggregationProgram {
+                ..
+            }) => Ok(SetupResult { job_id: Some(job_id) }),
             TerminalStatus::Completed(other) => {
                 anyhow::bail!("unexpected response kind for setup: {:?}", other)
             }
@@ -392,7 +392,7 @@ impl FromWaitResult for crate::prove::ProveResult {
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof))
-            | TerminalStatus::Completed(DomainJobKindResponse::RecurserProve(proof)) => {
+            | TerminalStatus::Completed(DomainJobKindResponse::AggregateProofs(proof)) => {
                 let proof_with_pv: zisk_common::Proof =
                     bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
                         .map(|(v, _)| v)

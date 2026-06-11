@@ -4,10 +4,12 @@
 //! values: `publics[0] = old`, `publics[1] = new`. A proof therefore attests a
 //! single transition `old -> new`.
 //!
-//! Folding two such proofs with the test's `CheckPublics` (`a.new == b.old`)
-//! and `AggregatePublics` (`[a.old, b.new]`) stitches contiguous segments into
-//! one — `[10,20] + [20,30]` collapses to `[10,30]`. No hashing: the publics
-//! are the chain endpoints directly so the stitch logic is exercised cleanly.
+//! Folding two such proofs with the `chain` example's `AggregatePublics`
+//! (which enforces `a.new == b.old` and emits `[a.old, b.new]`) stitches
+//! contiguous segments into one — `[10,20] + [20,30]` collapses to `[10,30]`.
+//! The guest itself does no hashing; the digest in publics `[2..6)` is added
+//! in-circuit by the example's `NormalizePublics` (see
+//! `programs/aggregations/chain.toml`).
 #![no_main]
 ziskos::entrypoint!(main);
 

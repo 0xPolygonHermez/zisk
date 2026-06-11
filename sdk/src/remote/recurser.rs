@@ -5,7 +5,8 @@ use std::time::Duration;
 use anyhow::{anyhow, Context, Result};
 use zisk_common::Proof;
 use zisk_coordinator_api::dto::{
-    DomainJobKind, DomainRecurserProveRequest, DomainRecurserSpec, DomainSetupRecurserRequest,
+    DomainAggregateProofsRequest, DomainAggregationProgramSpec, DomainJobKind,
+    DomainNormalizeGroup, DomainSetupAggregationProgramRequest,
 };
 
 use super::RemoteClient;
@@ -17,24 +18,25 @@ use crate::upload::UploadResult;
 
 impl RemoteClient {
     /// Pushes the recurser spec to the coordinator; idempotent server-side.
-    pub(crate) fn do_upload_recurser(&self, agg: &Recurser) -> Result<UploadResult> {
-        let spec = DomainRecurserSpec {
+    pub(crate) fn do_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
+        let spec = DomainAggregationProgramSpec {
             program_vks: agg.program_vks.clone(),
-            n_private_inputs: agg.n_private_inputs as u64,
-            prepare_publics_body: agg
-                .prepare_publics_template
-                .clone()
-                .unwrap_or_else(|| recurser::templates::DEFAULT_PREPARE_PUBLICS.to_string()),
-            check_publics_body: agg
-                .check_publics_template
-                .clone()
-                .unwrap_or_else(|| recurser::templates::DEFAULT_CHECK_PUBLICS.to_string()),
-            aggregate_publics_body: agg.aggregate_publics_template.clone(),
+            normalize_groups: agg
+                .templates
+                .normalize_groups
+                .iter()
+                .map(|g| DomainNormalizeGroup {
+                    member_indices: g.member_indices.iter().map(|&i| i as u64).collect(),
+                    body: g.body.clone(),
+                    n_free_inputs: g.n_free_inputs as u64,
+                })
+                .collect(),
+            aggregate_publics_body: agg.templates.aggregate_publics.clone(),
         };
 
         let returned = self
             .gw
-            .register_recurser_aggregator(agg.recurser_id.clone(), spec)
+            .register_aggregation_program(agg.recurser_id.clone(), spec)
             .context("RegisterRecurser failed")?;
 
         if returned != agg.recurser_id {
@@ -47,26 +49,28 @@ impl RemoteClient {
         Ok(UploadResult::new(agg.recurser_id.clone()))
     }
 
-    pub(crate) fn do_setup_recurser(
+    pub(crate) fn do_setup_aggregation_program(
         &self,
         agg: &Recurser,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        let job_kind = DomainJobKind::SetupRecurser(DomainSetupRecurserRequest {
-            recurser_id: agg.recurser_id.clone(),
-        });
+        let job_kind =
+            DomainJobKind::SetupAggregationProgram(DomainSetupAggregationProgramRequest {
+                recurser_id: agg.recurser_id.clone(),
+            });
         let remote_job = self.gw.submit_job(job_kind)?;
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn do_recurser_prove(
+    pub(crate) fn do_aggregate_proofs(
         &self,
         agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -80,11 +84,12 @@ impl RemoteClient {
             .map_err(|e| anyhow!("failed to serialize proof_b: {e}"))?;
 
         // Server-side deadline not on the wire yet; `timeout` is honored client-side via JobHandle.
-        let job_kind = DomainJobKind::RecurserProve(DomainRecurserProveRequest {
+        let job_kind = DomainJobKind::AggregateProofs(DomainAggregateProofsRequest {
             recurser_id: agg.recurser_id.clone(),
             proof_a: bytes_a,
             proof_b: bytes_b,
-            private_inputs: private_inputs.to_vec(),
+            free_inputs_a: free_inputs_a.to_vec(),
+            free_inputs_b: free_inputs_b.to_vec(),
             root_c_recurser_agg,
         });
         let remote_job = self.gw.submit_job(job_kind)?;

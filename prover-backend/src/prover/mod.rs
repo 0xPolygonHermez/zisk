@@ -385,7 +385,8 @@ pub trait ProverEngine {
         recurser_id: &str,
         proof_a: &VadcopFinalProof,
         proof_b: &VadcopFinalProof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<VadcopFinalProof>;
 
@@ -664,14 +665,16 @@ impl<C: ZiskBackend> ZiskProver<C> {
         recurser_id: &str,
         proof_a: &VadcopFinalProof,
         proof_b: &VadcopFinalProof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<VadcopFinalProof> {
         self.prover.prove_recurser(
             recurser_id,
             proof_a,
             proof_b,
-            private_inputs,
+            free_inputs_a,
+            free_inputs_b,
             root_c_recurser_agg,
         )
     }
@@ -889,7 +892,8 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
 
     /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let publics = self.override_publics.unwrap_or(&self.proof.publics);
+        let derived_publics = self.proof.publics();
+        let publics = self.override_publics.unwrap_or(&derived_publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof.program_vk);
         let proof = match &self.proof.body {
             ProofBody::Vadcop { proof, .. } => proof.as_slice(),

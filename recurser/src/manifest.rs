@@ -4,29 +4,36 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-/// Bump when the layout of `RecurserManifestInputs` changes — old ids stop
-/// matching new ones, which is the point.
-pub const MANIFEST_SCHEMA_VERSION: u32 = 1;
+use crate::templates::NormalizeGroup;
 
 pub const MANIFEST_FILENAME: &str = "recurser.manifest.json";
-pub const PREPARE_TEMPLATE_FILENAME: &str = "prepare_publics.circom";
-pub const CHECK_TEMPLATE_FILENAME: &str = "check_publics.circom";
 pub const AGGREGATE_TEMPLATE_FILENAME: &str = "aggregate_publics.circom";
+
+pub fn normalize_template_filename(group_idx: usize) -> String {
+    format!("normalize_{group_idx}.circom")
+}
+
+/// One normalization group as committed into the `recurser_id`: which
+/// programs it covers, the hash of its Circom body, and its side-input count.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NormalizeGroupHash {
+    pub member_indices: Vec<usize>,
+    pub template_blake3: String,
+    pub n_free_inputs: usize,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TemplateHashes {
-    pub prepare_publics_blake3: String,
-    pub check_publics_blake3: String,
+    pub normalize_groups: Vec<NormalizeGroupHash>,
     pub aggregate_publics_blake3: String,
 }
 
-/// Everything the `recurser_id` is derived from. Field order is the
-/// serialization order and the id depends on it.
+/// Everything the `recurser_id` is derived from. The id is a blake3 of the
+/// JSON serialization, so any change to this struct's shape or contents
+/// produces a fresh id — no explicit schema versioning needed.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RecurserManifestInputs {
-    pub schema_version: u32,
     pub zisk_vk: [String; 4],
-    pub n_private_inputs: usize,
     pub program_vks: Vec<[String; 4]>,
     pub templates: TemplateHashes,
 }
@@ -38,22 +45,28 @@ pub struct RecurserManifest {
 }
 
 impl RecurserManifestInputs {
+    /// Build the id-bearing inputs from the resolved generation inputs.
+    /// Every layer that derives an id (SDK builder, setup command, worker
+    /// claimed-id check) must go through here so the derivation cannot
+    /// diverge.
     pub fn new(
         zisk_vk: [String; 4],
-        n_private_inputs: usize,
         program_vks: Vec<[String; 4]>,
-        prepare_publics_body: &str,
-        check_publics_body: &str,
+        normalize_groups: &[NormalizeGroup],
         aggregate_publics_body: &str,
     ) -> Self {
         Self {
-            schema_version: MANIFEST_SCHEMA_VERSION,
             zisk_vk,
-            n_private_inputs,
             program_vks,
             templates: TemplateHashes {
-                prepare_publics_blake3: blake3_hex(prepare_publics_body.as_bytes()),
-                check_publics_blake3: blake3_hex(check_publics_body.as_bytes()),
+                normalize_groups: normalize_groups
+                    .iter()
+                    .map(|g| NormalizeGroupHash {
+                        member_indices: g.member_indices.clone(),
+                        template_blake3: blake3_hex(g.body.as_bytes()),
+                        n_free_inputs: g.n_free_inputs,
+                    })
+                    .collect(),
                 aggregate_publics_blake3: blake3_hex(aggregate_publics_body.as_bytes()),
             },
         }
@@ -64,45 +77,12 @@ impl RecurserManifestInputs {
             serde_json::to_vec(self).expect("RecurserManifestInputs is always serializable");
         blake3_hex(&bytes)
     }
-}
 
-/// Template bodies after default resolution — exactly the bytes the
-/// `recurser_id` hashes. Persist these, not the caller's pre-resolution
-/// originals.
-pub struct ResolvedTemplates {
-    pub prepare_publics: String,
-    pub check_publics: String,
-    pub aggregate_publics: String,
-}
-
-/// Resolve a recurser spec's optional templates to the crate defaults and
-/// build the manifest inputs the `recurser_id` is derived from. Every layer
-/// that derives an id (SDK builder, setup command, worker claimed-id check)
-/// must go through here so the derivation cannot diverge.
-pub fn resolve_manifest_inputs(
-    zisk_vk: [String; 4],
-    n_private_inputs: usize,
-    program_vks: Vec<[String; 4]>,
-    prepare_publics_body: Option<&str>,
-    check_publics_body: Option<&str>,
-    aggregate_publics_body: &str,
-) -> (RecurserManifestInputs, ResolvedTemplates) {
-    let prepare = prepare_publics_body.unwrap_or(crate::templates::DEFAULT_PREPARE_PUBLICS);
-    let check = check_publics_body.unwrap_or(crate::templates::DEFAULT_CHECK_PUBLICS);
-    let inputs = RecurserManifestInputs::new(
-        zisk_vk,
-        n_private_inputs,
-        program_vks,
-        prepare,
-        check,
-        aggregate_publics_body,
-    );
-    let resolved = ResolvedTemplates {
-        prepare_publics: prepare.to_string(),
-        check_publics: check.to_string(),
-        aggregate_publics: aggregate_publics_body.to_string(),
-    };
-    (inputs, resolved)
+    /// Size of the circuit's per-side `freeInputs` arrays: the worst case
+    /// across normalization groups.
+    pub fn n_free_inputs(&self) -> usize {
+        self.templates.normalize_groups.iter().map(|g| g.n_free_inputs).max().unwrap_or(0)
+    }
 }
 
 impl RecurserManifest {
@@ -118,21 +98,21 @@ impl RecurserManifest {
 pub fn write_manifest_and_templates(
     dir: &Path,
     manifest: &RecurserManifest,
-    prepare_publics_body: &str,
-    check_publics_body: &str,
+    normalize_groups: &[NormalizeGroup],
     aggregate_publics_body: &str,
 ) -> Result<()> {
-    // Templates first, manifest last: the manifest is the warmness commit
-    // marker, so everything else must already be on disk when it appears —
-    // and it lands via rename so a torn write can never look warm.
-    for (name, body) in [
-        (PREPARE_TEMPLATE_FILENAME, prepare_publics_body),
-        (CHECK_TEMPLATE_FILENAME, check_publics_body),
-        (AGGREGATE_TEMPLATE_FILENAME, aggregate_publics_body),
-    ] {
-        let path = dir.join(name);
-        fs::write(&path, body).with_context(|| format!("Failed to write {}", path.display()))?;
+    // Templates first, manifest last: the manifest is the commit marker for a
+    // completed setup (see `RecurserArtifacts::is_active`), so everything else
+    // must already be on disk when it appears — and it lands via rename so a
+    // torn write can never look complete.
+    for (idx, group) in normalize_groups.iter().enumerate() {
+        let path = dir.join(normalize_template_filename(idx));
+        fs::write(&path, &group.body)
+            .with_context(|| format!("Failed to write {}", path.display()))?;
     }
+    let path = dir.join(AGGREGATE_TEMPLATE_FILENAME);
+    fs::write(&path, aggregate_publics_body)
+        .with_context(|| format!("Failed to write {}", path.display()))?;
 
     let manifest_path = dir.join(MANIFEST_FILENAME);
     let manifest_json = serde_json::to_string_pretty(manifest)?;
@@ -157,65 +137,73 @@ mod tests {
         [format!("{prefix}1"), format!("{prefix}2"), format!("{prefix}3"), format!("{prefix}4")]
     }
 
+    fn group(members: &[usize], body: &str, n: usize) -> NormalizeGroup {
+        NormalizeGroup {
+            member_indices: members.to_vec(),
+            body: body.to_string(),
+            n_free_inputs: n,
+        }
+    }
+
     #[test]
     fn id_is_deterministic() {
-        let a = RecurserManifestInputs::new(vk("z"), 3, vec![vk("p")], "prep", "check", "agg");
-        let b = RecurserManifestInputs::new(vk("z"), 3, vec![vk("p")], "prep", "check", "agg");
+        let g = [group(&[0], "norm", 3)];
+        let a = RecurserManifestInputs::new(vk("z"), vec![vk("p")], &g, "agg");
+        let b = RecurserManifestInputs::new(vk("z"), vec![vk("p")], &g, "agg");
         assert_eq!(a.compute_id(), b.compute_id());
     }
 
     #[test]
     fn id_changes_when_any_input_changes() {
-        let base = RecurserManifestInputs::new(vk("z"), 3, vec![vk("p")], "prep", "check", "agg");
-        let id = base.compute_id();
+        let g = [group(&[0], "norm", 3)];
+        let id = RecurserManifestInputs::new(vk("z"), vec![vk("p")], &g, "agg").compute_id();
 
+        assert_ne!(id, RecurserManifestInputs::new(vk("Z"), vec![vk("p")], &g, "agg").compute_id(),);
+        assert_ne!(id, RecurserManifestInputs::new(vk("z"), vec![vk("q")], &g, "agg").compute_id(),);
         assert_ne!(
             id,
-            RecurserManifestInputs::new(vk("Z"), 3, vec![vk("p")], "prep", "check", "agg")
+            RecurserManifestInputs::new(vk("z"), vec![vk("p"), vk("q")], &g, "agg").compute_id(),
+        );
+        assert_ne!(
+            id,
+            RecurserManifestInputs::new(vk("z"), vec![vk("p")], &[group(&[0], "NORM", 3)], "agg")
                 .compute_id(),
         );
         assert_ne!(
             id,
-            RecurserManifestInputs::new(vk("z"), 4, vec![vk("p")], "prep", "check", "agg")
+            RecurserManifestInputs::new(vk("z"), vec![vk("p")], &[group(&[0], "norm", 4)], "agg")
                 .compute_id(),
         );
+        assert_ne!(id, RecurserManifestInputs::new(vk("z"), vec![vk("p")], &g, "AGG").compute_id(),);
+        // No groups at all is a distinct configuration too.
         assert_ne!(
             id,
-            RecurserManifestInputs::new(vk("z"), 3, vec![vk("q")], "prep", "check", "agg")
-                .compute_id(),
-        );
-        assert_ne!(
-            id,
-            RecurserManifestInputs::new(vk("z"), 3, vec![vk("p"), vk("q")], "prep", "check", "agg")
-                .compute_id(),
-        );
-        assert_ne!(
-            id,
-            RecurserManifestInputs::new(vk("z"), 3, vec![vk("p")], "PREP", "check", "agg")
-                .compute_id(),
-        );
-        assert_ne!(
-            id,
-            RecurserManifestInputs::new(vk("z"), 3, vec![vk("p")], "prep", "CHECK", "agg")
-                .compute_id(),
-        );
-        assert_ne!(
-            id,
-            RecurserManifestInputs::new(vk("z"), 3, vec![vk("p")], "prep", "check", "AGG")
-                .compute_id(),
+            RecurserManifestInputs::new(vk("z"), vec![vk("p")], &[], "agg").compute_id(),
         );
     }
 
     #[test]
     fn id_is_64_hex_chars() {
-        let id = RecurserManifestInputs::new(vk("z"), 0, vec![vk("p")], "a", "b", "c").compute_id();
+        let id = RecurserManifestInputs::new(vk("z"), vec![vk("p")], &[], "c").compute_id();
         assert_eq!(id.len(), 64);
         assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
+    fn n_free_inputs_is_max_across_groups() {
+        let groups = [group(&[0], "a", 2), group(&[1], "b", 55), group(&[2], "c", 0)];
+        let m =
+            RecurserManifestInputs::new(vk("z"), vec![vk("p"), vk("q"), vk("r")], &groups, "agg");
+        assert_eq!(m.n_free_inputs(), 55);
+
+        let empty = RecurserManifestInputs::new(vk("z"), vec![vk("p")], &[], "agg");
+        assert_eq!(empty.n_free_inputs(), 0);
+    }
+
+    #[test]
     fn manifest_json_roundtrips() {
-        let inputs = RecurserManifestInputs::new(vk("z"), 2, vec![vk("p"), vk("q")], "a", "b", "c");
+        let groups = [group(&[0, 1], "norm", 2)];
+        let inputs = RecurserManifestInputs::new(vk("z"), vec![vk("p"), vk("q")], &groups, "agg");
         let recurser_id = inputs.compute_id();
         let manifest = RecurserManifest { recurser_id: recurser_id.clone(), inputs };
 

@@ -4,8 +4,8 @@ use anyhow::{Context, Result};
 use tonic::transport::Channel;
 use uuid::Uuid;
 use zisk_coordinator_api::dto::{
-    DomainJobKind, DomainRecurserSpec, RegisterGuestProgramRequestDto,
-    RegisterRecurserAggregatorRequestDto,
+    DomainAggregationProgramSpec, DomainJobKind, RegisterAggregationProgramRequestDto,
+    RegisterGuestProgramRequestDto,
 };
 use zisk_coordinator_api::grpc::proto::CancelJobRequest;
 use zisk_coordinator_api::grpc::ZiskCoordinatorApiClient;
@@ -52,18 +52,18 @@ impl CoordinatorClient {
 
     /// Registers a recurser spec under the SDK-supplied `recurser_id`.
     /// Idempotent for same-content re-registers.
-    pub fn register_recurser_aggregator(
+    pub fn register_aggregation_program(
         &self,
         recurser_id: String,
-        spec: DomainRecurserSpec,
+        spec: DomainAggregationProgramSpec,
     ) -> Result<String> {
         block_on(async {
             let mut gw = self.inner.clone();
-            let req = RegisterRecurserAggregatorRequestDto { recurser_id, spec };
+            let req = RegisterAggregationProgramRequestDto { recurser_id, spec };
             let resp = gw
-                .register_recurser_aggregator(req)
+                .register_aggregation_program(req)
                 .await
-                .context("RegisterRecurserAggregator RPC failed")?;
+                .context("RegisterAggregationProgram RPC failed")?;
             Ok(resp.into_inner().recurser_id)
         })
     }

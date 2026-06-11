@@ -6,12 +6,12 @@ include "mux1.circom";
 include "iszero.circom";
 include "publics_helpers.circom";
 
-{{ check_publics_template }}
-
 {{ aggregate_publics_template }}
 
-{{ prepare_publics_template }}
+{% for g in normalize_groups %}
+{{ g.body }}
 
+{% endfor %}
 // Helper: returns 1 iff the two 4-element VKs are element-wise equal, 0 otherwise.
 template IsEqualVK() {
     signal input a[4];
@@ -27,7 +27,7 @@ template IsEqualVK() {
     out <== eq01 * eq23;
 }
 
-template Main(nPublics, nPrivateInputs, nPrograms) {
+template Main(nPublics, nFreeInputs, nPrograms) {
     // Publics layout (matches ZisK's `publics.json` / `common/src/proof.rs`):
     //   [0 .. PROGRAM_VK_LEN)            programVK (the `rom_root`, verificationKey=true)
     //   [PROGRAM_VK_LEN .. nPublics+VK)  the nPublics user inputs
@@ -38,11 +38,16 @@ template Main(nPublics, nPrivateInputs, nPrograms) {
 
     signal output aggregatedPublics[PROGRAM_VK_LEN + nPublics];
 
+    // Proofman fills the witness buffer (zkin) positionally, so input
+    // declaration order is a contract with `generate_recurser_aggregator_proof`:
+    // stark inputs A, stark inputs B, freeInputsA, freeInputsB, rootCRecurserAgg.
+    // Reordering these shears the witness silently.
 {{ define_stark_inputs_a }}
 
 {{ define_stark_inputs_b }}
 
-    signal input privateInputs[nPrivateInputs];
+    signal input freeInputsA[nFreeInputs];
+    signal input freeInputsB[nFreeInputs];
 
     signal input rootCRecurserAgg[4];
 
@@ -96,21 +101,76 @@ template Main(nPublics, nPrivateInputs, nPrograms) {
         aPublics[i] <== a_sv_publics[PROGRAM_VK_LEN + i];
         bPublics[i] <== b_sv_publics[PROGRAM_VK_LEN + i];
     }
+{% if normalize_groups %}
 
-    // -- PreparePublics + mux: apply preparation to leaf inputs, pass aggregated inputs through unchanged.
-    signal aPublicsPrepared[nPublics] <== PreparePublics(nPublics, nPrivateInputs)(aPublics, privateInputs);
-    signal bPublicsPrepared[nPublics] <== PreparePublics(nPublics, nPrivateInputs)(bPublics, privateInputs);
+    // -- Normalization group membership: inGroupX_g = 1 - ∏_{k ∈ members}(1 - eqX[k]).
+    //    Product-complement form for the same {binary}-tag reason as above.
+    //    Groups are disjoint and programVKs unique (enforced at generation),
+    //    so at most one inGroupX_g fires per proof.
+{% for g in normalize_groups %}
+    signal {binary} noGrpA_{{ g.idx }}[{{ g.members | length }}];
+    signal {binary} noGrpB_{{ g.idx }}[{{ g.members | length }}];
+{% for m in g.members %}{% if loop.first %}    noGrpA_{{ g.idx }}[0] <== 1 - eqA[{{ m }}];
+    noGrpB_{{ g.idx }}[0] <== 1 - eqB[{{ m }}];
+{% else %}    noGrpA_{{ g.idx }}[{{ loop.index0 }}] <== noGrpA_{{ g.idx }}[{{ loop.index0 - 1 }}] * (1 - eqA[{{ m }}]);
+    noGrpB_{{ g.idx }}[{{ loop.index0 }}] <== noGrpB_{{ g.idx }}[{{ loop.index0 - 1 }}] * (1 - eqB[{{ m }}]);
+{% endif %}{% endfor %}    signal {binary} inGroupA_{{ g.idx }} <== 1 - noGrpA_{{ g.idx }}[{{ g.last_member_pos }}];
+    signal {binary} inGroupB_{{ g.idx }} <== 1 - noGrpB_{{ g.idx }}[{{ g.last_member_pos }}];
+{% endfor %}
 
+    // -- Identity weight: aggregated proofs (no eq fires) and ungrouped leaves
+    //    pass their publics through raw. Weights sum to 1 by construction.
+    signal wIdA <== 1{% for g in normalize_groups %} - inGroupA_{{ g.idx }}{% endfor %};
+    signal wIdB <== 1{% for g in normalize_groups %} - inGroupB_{{ g.idx }}{% endfor %};
+
+    // -- Run every group's circuit on both sides (the circuit is static; the
+    //    mux below selects at most one result). Each group sees the leading
+    //    n_g slots of its side's freeInputs array.
+{% for g in normalize_groups %}
+    signal fInA_{{ g.idx }}[{{ g.n }}];
+    signal fInB_{{ g.idx }}[{{ g.n }}];
+    for (var i = 0; i < {{ g.n }}; i++) {
+        fInA_{{ g.idx }}[i] <== freeInputsA[i];
+        fInB_{{ g.idx }}[i] <== freeInputsB[i];
+    }
+    signal normA_{{ g.idx }}[nPublics] <== NormalizePublics_{{ g.idx }}(nPublics, {{ g.n }})(aPublics, fInA_{{ g.idx }});
+    signal normB_{{ g.idx }}[nPublics] <== NormalizePublics_{{ g.idx }}(nPublics, {{ g.n }})(bPublics, fInB_{{ g.idx }});
+{% endfor %}
+
+    // -- Sum-of-masks mux: raw publics under the identity weight plus each
+    //    group's normalized publics under its membership flag.
+{% for g in normalize_groups %}
+    signal selA_{{ g.idx }}[nPublics];
+    signal selB_{{ g.idx }}[nPublics];
+{% endfor %}
+    signal idA[nPublics];
+    signal idB[nPublics];
     signal ziskPublicsA[nPublics];
     signal ziskPublicsB[nPublics];
     for (var i = 0; i < nPublics; i++) {
-        ziskPublicsA[i] <== Mux1()([aPublics[i], aPublicsPrepared[i]], isRegisteredProgramA);
-        ziskPublicsB[i] <== Mux1()([bPublics[i], bPublicsPrepared[i]], isRegisteredProgramB);
+{% for g in normalize_groups %}
+        selA_{{ g.idx }}[i] <== inGroupA_{{ g.idx }} * normA_{{ g.idx }}[i];
+        selB_{{ g.idx }}[i] <== inGroupB_{{ g.idx }} * normB_{{ g.idx }}[i];
+{% endfor %}
+        idA[i] <== wIdA * aPublics[i];
+        idB[i] <== wIdB * bPublics[i];
+        ziskPublicsA[i] <== idA[i]{% for g in normalize_groups %} + selA_{{ g.idx }}[i]{% endfor %};
+        ziskPublicsB[i] <== idB[i]{% for g in normalize_groups %} + selB_{{ g.idx }}[i]{% endfor %};
     }
+{% else %}
 
-    // -- Consistency + aggregation (VK-agnostic).
-    CheckPublics(nPublics, nPrivateInputs)(ziskPublicsA, ziskPublicsB, privateInputs);
-    signal aggPublics[nPublics] <== AggregatePublics(nPublics, nPrivateInputs)(ziskPublicsA, ziskPublicsB, privateInputs);
+    // -- No normalization groups: every proof's publics pass through raw.
+    signal ziskPublicsA[nPublics];
+    signal ziskPublicsB[nPublics];
+    for (var i = 0; i < nPublics; i++) {
+        ziskPublicsA[i] <== aPublics[i];
+        ziskPublicsB[i] <== bPublics[i];
+    }
+{% endif %}
+
+    // -- Consistency + aggregation (VK-agnostic). AggregatePublics both asserts
+    //    the user's consistency constraints and produces the merged publics.
+    signal aggPublics[nPublics] <== AggregatePublics(nPublics)(ziskPublicsA, ziskPublicsB);
 
     // Re-emit in the same VK-first layout: user publics after the VK slot.
     for (var i = 0; i < nPublics; i++) {
@@ -124,7 +184,7 @@ template Main(nPublics, nPrivateInputs, nPrograms) {
     }
 
     // -- Output programVK selection:
-    //      both leaves          -> rootCRecurserAgg (this aggregator's free input)
+    //      both leaves          -> rootCRecurserAgg (prover-supplied)
     //      A aggregated         -> programVK_A (covers "A agg, B leaf" and "both agg")
     //      A leaf, B aggregated -> programVK_B
     //    Selectors are mutually exclusive and sum to 1.
@@ -132,8 +192,6 @@ template Main(nPublics, nPrivateInputs, nPrograms) {
     signal selectAVK <== 1 - isRegisteredProgramA;
     signal selectBVK <== isRegisteredProgramA * (1 - isRegisteredProgramB);
 
-    // R1CS shape is A*B=C (one product), so we can't sum three selector*vk
-    // products in one <==. Materialize each, sum linearly.
     signal aggTerm[4];
     signal aTerm[4];
     signal bTerm[4];
@@ -145,4 +203,4 @@ template Main(nPublics, nPrivateInputs, nPrograms) {
     }
 }
 
-component main = Main(64, {{ n_private_inputs }}, {{ n_programs }});
+component main = Main(64, {{ n_free_inputs }}, {{ n_programs }});

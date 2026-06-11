@@ -11,8 +11,8 @@ use uuid::Uuid;
 
 use crate::backend::{
     BackendService, DomainJobKind, InputChunkStream, JobEventStream,
-    RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto,
-    RegisterRecurserAggregatorRequestDto, RegisterRecurserAggregatorResponseDto, WaitResult,
+    RegisterAggregationProgramRequestDto, RegisterAggregationProgramResponseDto,
+    RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto, WaitResult,
 };
 
 use zisk_coordinator_api::dto::SubmitJobResult;
@@ -36,13 +36,13 @@ impl<B: BackendService> CoordinatorHandler<B> {
         Ok(RegisterGuestProgramResponseDto { hash_id })
     }
 
-    pub async fn register_recurser_aggregator(
+    pub async fn register_aggregation_program(
         &self,
-        req: RegisterRecurserAggregatorRequestDto,
-    ) -> ApiResult<RegisterRecurserAggregatorResponseDto> {
+        req: RegisterAggregationProgramRequestDto,
+    ) -> ApiResult<RegisterAggregationProgramResponseDto> {
         let recurser_id =
-            self.backend.register_recurser_aggregator(req.recurser_id, req.spec).await?;
-        Ok(RegisterRecurserAggregatorResponseDto { recurser_id })
+            self.backend.register_aggregation_program(req.recurser_id, req.spec).await?;
+        Ok(RegisterAggregationProgramResponseDto { recurser_id })
     }
 
     pub async fn submit_job(&self, job: DomainJobKind) -> ApiResult<SubmitJobResult> {

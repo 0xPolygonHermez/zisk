@@ -55,8 +55,13 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
 
         execute_build_program(&default_args, Some(program_dir.to_path_buf()))
     };
-    if let Err(err) = path_output {
-        panic!("Failed to build ZisK program: {err}.");
+    let target_elf_paths = match path_output {
+        Ok(paths) => paths,
+        Err(err) => panic!("Failed to build ZisK program: {err}."),
+    };
+
+    if let Err(err) = crate::aggregation::process_aggregations(program_dir, &target_elf_paths) {
+        panic!("Failed to process ZisK aggregation definitions: {err:#}.");
     }
 }
 

@@ -203,11 +203,11 @@ impl CoordinatorGrpc {
                     Self::validate_same_worker_id(worker_id, &rc.worker_id)?;
                     coordinator.handle_stream_recovery_complete(worker_id).await
                 }
-                worker_message::Payload::SetupRecurserAggregatorAck(ack) => {
+                worker_message::Payload::SetupAggregationProgramAck(ack) => {
                     Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
                     coordinator
-                        .handle_stream_setup_recurser_aggregator_ack(
-                            zisk_cluster_common::SetupRecurserAggregatorAckDto {
+                        .handle_stream_setup_aggregation_program_ack(
+                            zisk_cluster_common::SetupAggregationProgramAckDto {
                                 job_id: ack.job_id,
                                 worker_id: worker_id.clone(),
                                 recurser_id: ack.recurser_id,
@@ -223,11 +223,11 @@ impl CoordinatorGrpc {
                         )
                         .await
                 }
-                worker_message::Payload::RunRecurserAggregatorAck(ack) => {
+                worker_message::Payload::RunAggregateProofsAck(ack) => {
                     Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
                     coordinator
-                        .handle_stream_run_recurser_aggregator_ack(
-                            zisk_cluster_common::RunRecurserAggregatorAckDto {
+                        .handle_stream_run_aggregate_proofs_ack(
+                            zisk_cluster_common::RunAggregateProofsAckDto {
                                 job_id: ack.job_id,
                                 worker_id: worker_id.clone(),
                                 success: ack.success,

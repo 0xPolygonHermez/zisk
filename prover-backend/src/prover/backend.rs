@@ -421,8 +421,8 @@ impl ProverBackend {
                                     vadcop_vk: vadcop_vk_u64,
                                     plonk_vkey,
                                 }),
+                                publics,
                             },
-                            publics,
                             program_vk,
                         },
                     ))
@@ -437,17 +437,17 @@ impl ProverBackend {
                 execution_result,
                 start.elapsed(),
                 Proof {
+                    program_vk: ProgramVK::new_from_publics_with_mode(
+                        &p.public_values,
+                        self.hash_mode()?,
+                    ),
                     body: ProofBody::Vadcop {
                         proof: p.proof,
                         zisk_vk: vadcop_vk_u64,
                         minimal,
                         hash: self.hash()?,
+                        publics_full: p.public_values,
                     },
-                    publics: PublicValues::new_from_u64(&p.public_values),
-                    program_vk: ProgramVK::new_from_publics_with_mode(
-                        &p.public_values,
-                        self.hash_mode()?,
-                    ),
                 },
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
@@ -476,17 +476,17 @@ impl ProverBackend {
         let time = start.elapsed();
 
         let proof = Proof {
+            program_vk: ProgramVK::new_from_publics_with_mode(
+                &minimal_proof.public_values,
+                self.hash_mode()?,
+            ),
             body: ProofBody::Vadcop {
                 proof: minimal_proof.proof.clone(),
                 zisk_vk: self.get_vadcop_vk(true)?,
                 minimal: true,
                 hash,
+                publics_full: minimal_proof.public_values,
             },
-            publics: PublicValues::new_from_u64(&minimal_proof.public_values),
-            program_vk: ProgramVK::new_from_publics_with_mode(
-                &minimal_proof.public_values,
-                self.hash_mode()?,
-            ),
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -534,8 +534,8 @@ impl ProverBackend {
                     vadcop_vk: self.get_vadcop_vk(false)?,
                     plonk_vkey,
                 }),
+                publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
             },
-            publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
@@ -615,7 +615,8 @@ impl ProverBackend {
         recurser_id: &str,
         proof_a: &VadcopFinalProof,
         proof_b: &VadcopFinalProof,
-        private_inputs: &[u64],
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<VadcopFinalProof> {
         let registered =
@@ -631,7 +632,8 @@ impl ProverBackend {
             registered: &registered,
             proof_a,
             proof_b,
-            private_inputs,
+            free_inputs_a,
+            free_inputs_b,
             root_c_recurser_agg,
         };
         prove_recurser_aggregator(&self.proofman, &opts)

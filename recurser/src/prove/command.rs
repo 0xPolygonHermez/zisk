@@ -1,6 +1,3 @@
-use std::fs;
-use std::io::Read;
-
 use anyhow::{bail, Context, Result};
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
@@ -70,7 +67,7 @@ where
     let manifest = RecurserManifest::load(artifacts.dir())
         .with_context(|| format!("Failed to load recurser manifest for id '{recurser_id}'"))?;
 
-    let verkey = read_verkey(&artifacts).context("Failed to read the recurser's verkey.bin")?;
+    let verkey = artifacts.read_verkey().context("Failed to read the recurser's verkey.bin")?;
 
     proofman
         .register_recurser_setup(recurser_id, &artifacts.setup_stem())
@@ -86,7 +83,8 @@ pub struct ProveRecurserAggregatorOptions<'a> {
     pub registered: &'a RegisteredRecurser,
     pub proof_a: &'a VadcopFinalProof,
     pub proof_b: &'a VadcopFinalProof,
-    pub private_inputs: &'a [u64],
+    pub free_inputs_a: &'a [u64],
+    pub free_inputs_b: &'a [u64],
     /// When `None`, defaults to the recurser's verkey (`registered.verkey()`).
     pub root_c_recurser_agg: Option<[u64; PROGRAM_VK_LEN]>,
 }
@@ -121,7 +119,8 @@ where
         &registered.manifest().inputs,
         &opts.proof_a.public_values,
         &opts.proof_b.public_values,
-        opts.private_inputs,
+        opts.free_inputs_a,
+        opts.free_inputs_b,
         &root_c,
     )?;
     tracing::info!(
@@ -130,31 +129,29 @@ where
         format_origin(origin_b),
     );
 
+    // The circuit's per-side arrays are fixed at n_free_inputs; zero-pad each
+    // side so callers (CLI, SDK) only supply what their proof's group consumes.
+    let n_free_inputs = registered.manifest().inputs.n_free_inputs();
+    let pad = |v: &[u64]| -> Vec<u64> {
+        let mut padded = v.to_vec();
+        padded.resize(n_free_inputs, 0);
+        padded
+    };
+    let free_inputs_a = pad(opts.free_inputs_a);
+    let free_inputs_b = pad(opts.free_inputs_b);
+
     tracing::info!("Proving recurser '{}'", registered.recurser_id());
     let out = proofman
         .prove_recurser_aggregator(
             registered.recurser_id(),
             opts.proof_a,
             opts.proof_b,
-            opts.private_inputs,
+            &free_inputs_a,
+            &free_inputs_b,
             &root_c,
         )
         .map_err(|e| anyhow::anyhow!("prove_recurser_aggregator failed: {e}"))?;
     Ok(out)
-}
-
-fn read_verkey(artifacts: &RecurserArtifacts) -> Result<[u64; PROGRAM_VK_LEN]> {
-    let path = artifacts.verkey_bin_path();
-    let mut file = fs::File::open(&path).with_context(|| format!("Failed to open {:?}", path))?;
-    let mut bytes = [0u8; PROGRAM_VK_LEN * 8];
-    file.read_exact(&mut bytes)
-        .with_context(|| format!("Failed to read {} bytes from {:?}", bytes.len(), path))?;
-    let mut limbs = [0u64; PROGRAM_VK_LEN];
-    for i in 0..PROGRAM_VK_LEN {
-        let chunk: [u8; 8] = bytes[i * 8..(i + 1) * 8].try_into().unwrap();
-        limbs[i] = u64::from_le_bytes(chunk);
-    }
-    Ok(limbs)
 }
 
 fn format_origin(origin: ProgramVkOrigin) -> String {

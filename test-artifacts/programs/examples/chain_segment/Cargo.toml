@@ -1,5 +1,5 @@
 [package]
-name = "recurser_chain"
+name = "chain_segment"
 version.workspace = true
 edition.workspace = true
 
