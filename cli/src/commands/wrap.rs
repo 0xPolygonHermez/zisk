@@ -41,6 +41,11 @@ pub struct ZiskWrap {
     #[arg(short = 'g', long)]
     pub gpu: bool,
 
+    /// Run mops planner on CPU even when --gpu is set (no-op for wrap, accepted for flag-parity)
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(long)]
+    pub cpu_mops: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8,
@@ -69,6 +74,10 @@ impl ZiskWrap {
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             prover_options = prover_options.gpu();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
 
         let prover =

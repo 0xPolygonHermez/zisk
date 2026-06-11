@@ -22,13 +22,13 @@ MemCounter::MemCounter(uint32_t id, std::shared_ptr<MemContext> context)
     first_chunk_us = 0;
     tot_wait_us = 0;
     addr_count_table = (AddrCount *)malloc(ADDR_TABLE_SIZE * sizeof(AddrCount));
-    explicit_bzero(addr_count_table, ADDR_TABLE_SIZE * sizeof(AddrCount));
+    memset(addr_count_table, 0, ADDR_TABLE_SIZE * sizeof(AddrCount));
 
     // no memset because informations is overrided.
     addr_slots = (uint32_t *)std::aligned_alloc(64, ADDR_SLOTS_SIZE * sizeof(uint32_t));
 
     memset(first_offset, 0xFF, sizeof(first_offset));
-    explicit_bzero(last_offset, sizeof(last_offset));
+    memset(last_offset, 0, sizeof(last_offset));
 
     free_slot = 0;
     addr_count = 0;

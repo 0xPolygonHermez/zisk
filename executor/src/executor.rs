@@ -238,6 +238,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         stats_begin!(self.state.stats, 0, _exec_scope, "EXECUTE", 0);
         self.state.stats.set_start_time(Instant::now());
 
+        let is_asm_emulator = self.execution.is_asm_execution();
+
+        // Reserve proofman's unified GPU buffer for MO count-and-plan
+        // (no-op on CPU / standalone).
+        if is_asm_emulator {
+            if let Some(extras) = proofman_extras {
+                extras.acquire_gpu_buffer();
+            }
+        }
+
         // ────────────────────────────────────────────────────────────
         // Phase 1.1: Emulate
         // ────────────────────────────────────────────────────────────
@@ -262,7 +272,6 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // Phase 1.2: Plan + assign main, then populate main (witness only)
         // ────────────────────────────────────────────────────────────
         let steps = output.steps;
-        let is_asm_emulator = self.execution.is_asm_execution();
 
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
@@ -289,6 +298,13 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             &self.state.stats,
             &_exec_scope,
         )?;
+
+        // MO runner joined in `run_secondary`; release the buffer back to proofman.
+        if is_asm_emulator {
+            if let Some(extras) = proofman_extras {
+                extras.release_gpu_buffer();
+            }
+        }
 
         timer_start_info!(WAIT_ASM_RH);
         if let Some(rh_data) = backend.await_rom_histogram()? {

@@ -7,7 +7,7 @@ use crate::{
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{AsmResources, AsmSharedResources, ZiskExecutor};
+use executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -15,6 +15,7 @@ use proofman::{
 use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
+use proofman_starks_lib_c::{get_unified_buffer_gpu_c, get_unified_buffer_gpu_size_c};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
@@ -100,6 +101,7 @@ impl AsmProver {
         options: ProofmanOptions,
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
+        cpu_mops: bool,
     ) -> Result<Self> {
         AsmServices::cleanup_stale_shmem();
         let core_prover = AsmCoreProver::new(
@@ -114,6 +116,7 @@ impl AsmProver {
             options,
             is_distributed,
             logging_config,
+            cpu_mops,
         )?;
         Ok(Self {
             core_prover,
@@ -196,6 +199,19 @@ impl AsmProver {
             asm_runner_options,
         )?;
 
+        // Borrow proofman's already-allocated unified GPU buffer.
+        // Zero values when CUDA is unavailable; downstream consumers no-op on (0, 0).
+        // When --cpu-mops is set, force the planner onto CPU regardless of buffer
+        // availability; proofman still runs proof generation on GPU.
+        let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
+            GpuBufferSource::Cpu
+        } else {
+            let device_buffers_ptr = pctx.get_device_buffers_ptr();
+            let gpu_buf_ptr = get_unified_buffer_gpu_c(device_buffers_ptr) as usize;
+            let gpu_buf_size = get_unified_buffer_gpu_size_c(device_buffers_ptr);
+            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
+        };
+
         let shared = Arc::new(AsmSharedResources::new(
             local_rank,
             unlock_mapped_memory,
@@ -204,6 +220,7 @@ impl AsmProver {
             init_rom,
             with_hints,
             asm_services.shm_prefix(),
+            gpu_buffer_source,
         )?);
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
@@ -639,6 +656,7 @@ pub struct AsmInfo {
     pub verbose: VerboseMode,
     pub no_auto_setup: bool,
     pub n_setups: AtomicU64,
+    pub cpu_mops: bool,
 }
 
 pub struct AsmCoreProver {
@@ -661,6 +679,7 @@ impl AsmCoreProver {
         options: ProofmanOptions,
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
+        cpu_mops: bool,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
@@ -717,6 +736,7 @@ impl AsmCoreProver {
                 verbose: options.verbose_mode,
                 no_auto_setup,
                 n_setups: AtomicU64::new(0),
+                cpu_mops,
             },
         })
     }

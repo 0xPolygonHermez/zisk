@@ -12,23 +12,94 @@ use crate::TRACE_INITIAL_SIZE;
 use crate::TRACE_MAX_SIZE;
 use crate::{
     sem_chunk_done_name, shmem_output_name, AsmMOChunk, AsmMOHeader, AsmMultiSharedMemory,
-    AsmRunError, AsmService, AsmServices,
+    AsmRunError, AsmService, AsmServices, GpuBufferSource,
 };
+#[cfg(gpu)]
+use mem_planner_cpp::GpuCountAndPlan;
 use mem_planner_cpp::MemPlanner;
+#[cfg(gpu)]
+use proofman_util::{timer_start_info, timer_stop_and_log_info};
 
 use anyhow::{Context, Result};
 
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 
+#[cfg(gpu)]
+fn register_mo_shmem_pinned(
+    gpu_count_and_plan: &GpuCountAndPlan,
+    shmem: &AsmMultiSharedMemory<AsmMOHeader>,
+    registered: &mut usize,
+) {
+    if *registered == usize::MAX {
+        return; // registration unsupported on this device
+    }
+    let total = shmem.total_mapped_size();
+    if total <= *registered {
+        return;
+    }
+    let new_ptr = unsafe { (shmem.mapped_ptr() as *const c_void).add(*registered) };
+    if gpu_count_and_plan.register_input_pinned(new_ptr, total - *registered) {
+        *registered = total;
+    } else {
+        *registered = usize::MAX; // give up; do not retry
+    }
+}
+
+#[cfg(gpu)]
+fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPlan> {
+    let (d_buf, bytes): (*mut c_void, usize) = match gpu_buffer {
+        GpuBufferSource::Cpu => {
+            tracing::info!("[gpu] no GPU buffer requested; using CPU mem_planner path");
+            return None;
+        }
+        GpuBufferSource::Borrowed { ptr, size } if ptr == 0 || size == 0 => {
+            tracing::info!(
+                "[gpu] borrowed buffer is empty (--gpu not set at runtime); using CPU mem_planner path"
+            );
+            return None;
+        }
+        GpuBufferSource::Borrowed { ptr, size } => (ptr as *mut c_void, size),
+        GpuBufferSource::SelfAllocated => (std::ptr::null_mut(), 0),
+    };
+
+    let gpu_count_and_plan = GpuCountAndPlan::new();
+    // SAFETY: `d_buf` is either null (self-allocated) or a device buffer of
+    // `bytes` bytes borrowed from the prover, which outlives this planner.
+    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0) } {
+        tracing::error!("[gpu] GpuCountAndPlan::setup returned false; falling back to CPU");
+        return None;
+    }
+    match gpu_buffer {
+        GpuBufferSource::SelfAllocated => {
+            tracing::info!("[gpu] GpuCountAndPlan set up (self-allocated device buffer)");
+        }
+        _ => {
+            tracing::info!(
+                "[gpu] GpuCountAndPlan set up (borrowed {:.3} GB)",
+                bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+            );
+        }
+    }
+    Some(gpu_count_and_plan)
+}
+
 pub struct MOShMemReader {
     pub output_shmem: AsmMultiSharedMemory<AsmMOHeader>,
     mem_planner: Option<MemPlanner>,
     handle_mo: Option<std::thread::JoinHandle<MemPlanner>>,
+    #[cfg(gpu)]
+    gpu_count_and_plan: Option<GpuCountAndPlan>,
+    #[cfg(gpu)]
+    registered_bytes: usize,
 }
 
 impl MOShMemReader {
-    pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
+    pub fn new(
+        shm_prefix: &str,
+        unlock_mapped_memory: bool,
+        buffer_source: GpuBufferSource,
+    ) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MO, None);
 
         let output_shared_memory = AsmMultiSharedMemory::<AsmMOHeader>::open_and_map(
@@ -37,12 +108,25 @@ impl MOShMemReader {
             TRACE_DELTA_SIZE,
             TRACE_MAX_SIZE,
             unlock_mapped_memory,
+            cfg!(gpu),
         )?;
+
+        #[cfg(gpu)]
+        let gpu_count_and_plan = setup_gpu_count_and_plan(buffer_source);
+        #[cfg(not(gpu))]
+        let _ = buffer_source;
 
         Ok(Self {
             output_shmem: output_shared_memory,
             mem_planner: Some(MemPlanner::new()),
             handle_mo: None,
+            #[cfg(gpu)]
+            gpu_count_and_plan,
+            // When the caller opted out of MAP_LOCKED, the user can't afford
+            // pinned pages, the `usize::MAX` sentinel is the existing
+            // "give up" mechanism in `register_mo_shmem_pinned`
+            #[cfg(gpu)]
+            registered_bytes: if unlock_mapped_memory { usize::MAX } else { 0 },
         })
     }
 }
@@ -125,11 +209,25 @@ impl AsmRunnerMO {
                 .join()
                 .map_err(|_| anyhow::anyhow!("MO preload background thread panicked"))?,
         };
+        // Take the optional GPU planner for this block.
+        #[cfg(gpu)]
+        let gpu_count_and_plan_opt: Option<GpuCountAndPlan> = preloaded.gpu_count_and_plan.take();
 
-        // Get the pointer to the data in the shared memory.
         let mut data_ptr = preloaded.output_shmem.data_ptr() as *const AsmMOChunk;
 
-        // Initialize C++ memory operations trace
+        #[cfg(gpu)]
+        if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
+            gpu_count_and_plan.reset();
+            register_mo_shmem_pinned(
+                gpu_count_and_plan,
+                &preloaded.output_shmem,
+                &mut preloaded.registered_bytes,
+            );
+        } else {
+            mem_planner.execute();
+        }
+
+        #[cfg(not(gpu))]
         mem_planner.execute();
 
         stats_begin!(_stats, &_runner_scope, _process_scope, "MO_PROCESS_CHUNKS", 0);
@@ -182,6 +280,14 @@ impl AsmRunnerMO {
                                             - threshold_bytes,
                                     ) as *const AsmMOChunk
                                 };
+                                #[cfg(gpu)]
+                                if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
+                                    register_mo_shmem_pinned(
+                                        gpu_count_and_plan,
+                                        &preloaded.output_shmem,
+                                        &mut preloaded.registered_bytes,
+                                    );
+                                }
                             }
                             Ok(false) => {}
                             Err(e) => {
@@ -199,6 +305,18 @@ impl AsmRunnerMO {
 
                     stats_mark!(_stats, &_runner_scope, "MO_CHUNK_DONE", 0);
 
+                    // Feed this chunk to whichever planner is active
+                    #[cfg(gpu)]
+                    if let Some(ref gpu_count_and_plan) = gpu_count_and_plan_opt {
+                        if !gpu_count_and_plan
+                            .add_chunk(chunk.mem_ops_size, data_ptr as *const c_void)
+                        {
+                            tracing::error!("[gpu] add_chunk failed (n={})", chunk.mem_ops_size);
+                        }
+                    } else {
+                        mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
+                    }
+                    #[cfg(not(gpu))]
                     mem_planner.add_chunk(chunk.mem_ops_size, data_ptr as *const c_void);
 
                     if chunk.end == 1 {
@@ -228,15 +346,36 @@ impl AsmRunnerMO {
         // its background threads stay parked waiting for more chunks, and
         // the C++ destructor blocks on `Drop`, holding the `MOShMemReader`
         // Mutex and hanging the next job's MO thread on lock acquisition.
+        // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
+
+        // GPU path: evaluate metas
+        #[cfg(gpu)]
+        timer_start_info!(GPU_MOPS_TIME);
+        #[cfg(gpu)]
+        let gpu_metas_view: Option<(*const c_void, u32)> = gpu_count_and_plan_opt
+            .as_ref()
+            .and_then(|gpu_count_and_plan| gpu_count_and_plan.run())
+            .map(|metas| (metas.as_ptr() as *const c_void, metas.len() as u32));
+        #[cfg(gpu)]
+        timer_stop_and_log_info!(GPU_MOPS_TIME);
+
+        // owner: join CPU workers; no-op in GPU mode (null-guarded)
         mem_planner.wait();
 
         let joined = handle.join();
 
         crate::drain_chunk_done(&mut sem_chunk_done);
 
-        // Compute the result; on any error we still fall through to the
-        // single re-stash point below so the next job has a planner ready.
+        // inject GPU-produced segments to the C++ segment table
+        #[cfg(gpu)]
+        if let Some((metas_ptr, n)) = gpu_metas_view {
+            let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(metas_ptr, n) };
+            if !ok {
+                tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
+            }
+        }
+
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
             let exit_code = loop_result?;
             if exit_code != 0 {
@@ -264,7 +403,16 @@ impl AsmRunnerMO {
                 ));
             }
 
+            // Use GPU-built align plans if available, otherwise wait on the
+            // CPU mem-align worker.
+            #[cfg(gpu)]
+            let mut mem_align_plans = gpu_count_and_plan_opt
+                .as_ref()
+                .map(|gpu_count_and_plan| gpu_count_and_plan.build_align_plans())
+                .unwrap_or_else(|| mem_planner.wait_mem_align_plans());
+            #[cfg(not(gpu))]
             let mut mem_align_plans = mem_planner.wait_mem_align_plans();
+
             stats_end!(_stats, &_process_scope);
             stats_begin!(_stats, &_runner_scope, _collect_scope, "MO_COLLECT_PLANS", 0);
             let plans = mem_planner.collect_plans(&mut mem_align_plans);
@@ -277,6 +425,11 @@ impl AsmRunnerMO {
             drop(mem_planner);
             MemPlanner::new()
         }));
+        // Always re-stash the gpu_count_and_plan so the next call has one to take.
+        #[cfg(gpu)]
+        if let Some(gpu_count_and_plan) = gpu_count_and_plan_opt {
+            preloaded.gpu_count_and_plan = Some(gpu_count_and_plan);
+        }
 
         let plans = result?;
 

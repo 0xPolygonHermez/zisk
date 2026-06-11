@@ -29,14 +29,15 @@ pub struct AsmExecClient {
     executor: Arc<ZiskExecutor<Goldilocks>>,
     asm_cache_dir: PathBuf,
     verbose: VerboseMode,
+    gpu: bool,
     program: Mutex<Option<AsmSetupState>>,
 }
 
 impl AsmExecClient {
-    pub fn new(verbose: VerboseMode, asm_cache_dir: Option<PathBuf>) -> Result<Self> {
+    pub fn new(verbose: VerboseMode, asm_cache_dir: Option<PathBuf>, gpu: bool) -> Result<Self> {
         let asm_cache_dir = rom_setup::get_output_path(&asm_cache_dir)?;
         let executor = ZiskExecutor::<Goldilocks>::new_standalone(verbose, true)?;
-        Ok(Self { executor, asm_cache_dir, verbose, program: Mutex::new(None) })
+        Ok(Self { executor, asm_cache_dir, verbose, gpu, program: Mutex::new(None) })
     }
 
     pub fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
@@ -54,6 +55,7 @@ impl AsmExecClient {
                 &mt_path,
                 with_hints,
                 self.verbose,
+                self.gpu,
             )
             .context("AsmResources::new_standalone failed")?,
         );

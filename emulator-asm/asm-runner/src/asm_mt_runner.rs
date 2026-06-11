@@ -32,6 +32,7 @@ impl MTShMemReader {
             TRACE_DELTA_SIZE,
             TRACE_MAX_SIZE,
             unlock_mapped_memory,
+            false,
         )?;
 
         Ok(Self { output_shmem })

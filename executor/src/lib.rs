@@ -16,6 +16,7 @@ mod state;
 mod witness;
 
 // External API
+pub use asm_runner::GpuBufferSource;
 pub use execution::asm::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
 

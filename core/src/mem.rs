@@ -342,6 +342,13 @@ impl Mem {
             return value;
         }
 
+        // Special case for the input address, which is a read-only address that can be read at any
+        // time
+        if addr == INPUT_ADDR && width == 8 {
+            // increment of pointer is done by the fcall_get
+            return self.free_input;
+        }
+
         // Search for the section that contains the address using binary search (dicothomic search).
         // Read sections are ordered by start address to allow this search.
         let section = if let Ok(section) = self.read_sections.binary_search_by(|section| {
@@ -354,16 +361,19 @@ impl Mem {
             }
         }) {
             &self.read_sections[section]
+        } else if addr >= (INPUT_ADDR + 8) && addr <= (INPUT_ADDR + MAX_INPUT_SIZE - width) {
+            // We allow to read from the input address range, even if it has not been set as a read
+            // section, since its default value is 0 for the whole range
+            match width {
+                1 | 2 | 4 | 8 => return 0,
+                _ => panic!("Mem::read() invalid width={width}"),
+            }
         } else {
             panic!("Mem::read() section not found for addr: {addr}={addr:x} with width: {width}");
         };
 
         // Calculate the buffer relative read position
         let read_position: usize = (addr - section.start) as usize;
-        if addr == INPUT_ADDR && width == 8 {
-            // increment of pointer is done by the fcall_get
-            return self.free_input;
-        }
 
         // Read the requested data based on the provided width
         match width {

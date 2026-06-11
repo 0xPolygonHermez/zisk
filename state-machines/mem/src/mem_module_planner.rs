@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use crate::{MemCountersCursor, MemPlanCalculator};
 use mem_common::{MemCounters, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
@@ -10,15 +10,15 @@ pub struct MemModulePlanner {
     last_addr: u32, // addr of last addr uses
 
     segments: Vec<MemModuleSegmentCheckPoint>,
-    current_segment_chunks: HashMap<ChunkId, MemModuleCheckPoint>,
 
-    first_chunk_id: Option<ChunkId>, // first chunk in segment, used for open segment
     last_chunk: Option<ChunkId>,
     current_chunk_id: Option<ChunkId>,
     reference_addr_chunk: Option<ChunkId>,
     reference_addr: u32,
     reference_skip: u32,
     cursor: MemCountersCursor,
+    current_segment: MemModuleSegmentCheckPoint,
+    previous_segment_addr: u32,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -43,13 +43,13 @@ impl MemModulePlanner {
             rows_available: config.rows,
             segments: Vec::new(),
             current_chunk_id: None,
-            current_segment_chunks: HashMap::new(),
             reference_addr_chunk: None,
             reference_addr: config.from_addr,
             reference_skip: 0,
             last_chunk: None,
             cursor: MemCountersCursor::new(counters, config.addr_index),
-            first_chunk_id: None,
+            current_segment: MemModuleSegmentCheckPoint::default(),
+            previous_segment_addr: config.from_addr,
         }
     }
     pub fn module_plan(&mut self) {
@@ -96,12 +96,8 @@ impl MemModulePlanner {
         self.current_chunk_id = Some(chunk_id);
     }
     fn close_segment(&mut self, is_last_segment: bool) {
-        let chunks = std::mem::take(&mut self.current_segment_chunks);
-        self.segments.push(MemModuleSegmentCheckPoint {
-            chunks,
-            is_last_segment,
-            first_chunk_id: self.first_chunk_id,
-        });
+        self.current_segment.is_last_segment = is_last_segment;
+        self.segments.push(std::mem::take(&mut self.current_segment));
     }
 
     fn open_segment(&mut self) {
@@ -111,11 +107,11 @@ impl MemModulePlanner {
         if let Some(reference_chunk) = self.reference_addr_chunk {
             // not use skip, because we use accumulated skip over reference, after open this segment,
             // add a block, if this block is the same chunk, local skips is ignored
-            self.current_segment_chunks.insert(
+            self.current_segment.chunks.insert(
                 reference_chunk,
                 MemModuleCheckPoint::new(self.reference_addr, self.reference_skip, 0),
             );
-            self.first_chunk_id = Some(reference_chunk);
+            self.current_segment.first_chunk_id = Some(reference_chunk);
         }
 
         // all rows are available
@@ -127,10 +123,11 @@ impl MemModulePlanner {
     }
 
     fn add_chunk_to_segment(&mut self, chunk_id: ChunkId, addr: u32, count: u32, skip: u32) {
-        if self.current_segment_chunks.is_empty() {
-            self.first_chunk_id = Some(chunk_id);
+        if self.current_segment.chunks.is_empty() {
+            self.current_segment.first_chunk_id = Some(chunk_id);
         }
-        self.current_segment_chunks
+        self.current_segment
+            .chunks
             .entry(chunk_id)
             .and_modify(|checkpoint| checkpoint.add_rows(addr, count))
             .or_insert(MemModuleCheckPoint::new(addr, skip, count));
@@ -160,8 +157,18 @@ impl MemModulePlanner {
         }
 
         self.add_chunk_to_segment(chunk_id, addr, rows, skip);
+
+        let mut offset = self.config.rows - self.rows_available;
+        if self.segments.is_empty() || offset > 0 {
+            offset += 1;
+        } else if !self.segments.is_empty() && offset == 0 && skip == 0 {
+            self.current_segment.add_addr_offset(self.previous_segment_addr, 0);
+            offset += 1;
+        }
+        self.current_segment.add_addr_offset(addr, offset);
         self.rows_available -= rows;
         self.reference_skip += rows;
+        self.previous_segment_addr = addr;
     }
     fn consume_intermediate_rows(&mut self, addr: u32, rows: u32, skip: u32) {
         if rows == 0 && self.rows_available > 0 {
