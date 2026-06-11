@@ -35,12 +35,10 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
 
-      - name: Install Rust
-        run: |
-          apt-get update
-          apt-get install -y curl build-essential pkg-config libssl-dev git
-          curl https://sh.rustup.rs -sSf | sh -s -- -y
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Add Cargo to PATH
+        # install_deps.sh already installs Rust via rustup into ~/.cargo/bin;
+        # just expose it to subsequent steps.
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Show versions
         run: |
