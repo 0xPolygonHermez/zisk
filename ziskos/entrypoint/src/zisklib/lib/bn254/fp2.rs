@@ -22,6 +22,11 @@ fn to_syscall_complex_x(limbs: &[u64; 4]) -> SyscallComplex256 {
     SyscallComplex256 { x: *limbs, y: [0u64; 4] }
 }
 
+#[inline]
+fn to_syscall_complex_y(limbs: &[u64; 4]) -> SyscallComplex256 {
+    SyscallComplex256 { x: [0u64; 4], y: *limbs }
+}
+
 /// Helper to convert from syscall representation to array representation
 #[inline]
 fn from_syscall_complex(complex: &SyscallComplex256) -> [u64; 8] {
@@ -191,7 +196,7 @@ pub fn conjugate_fp2_bn254(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 8] {
     let mut f1 = to_syscall_complex_x(&a[0..4].try_into().unwrap());
-    let f2 = to_syscall_complex_x(&a[4..8].try_into().unwrap());
+    let f2 = to_syscall_complex_y(&a[4..8].try_into().unwrap());
 
     let mut params = SyscallBn254ComplexSubParams { f1: &mut f1, f2: &f2 };
     syscall_bn254_complex_sub(
