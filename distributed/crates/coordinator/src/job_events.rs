@@ -19,8 +19,8 @@ pub enum CoordinatorJobResult {
     Prove { proof_bytes: Vec<u8>, stats: CoordinatorExecutionStats },
     Execute { stats: CoordinatorExecutionStats, public_outputs: Vec<u8> },
     Wrap { proof_bytes: Vec<u8> },
-    SetupAggregator { vk: Vec<u8>, hash_mode: String },
-    Aggregate { proof_bytes: Vec<u8> },
+    SetupRecurser { vk: Vec<u8>, hash_mode: String },
+    RecurserProve { proof_bytes: Vec<u8> },
 }
 
 /// Execution statistics forwarded to the coordinator on job completion.

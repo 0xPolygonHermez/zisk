@@ -106,7 +106,7 @@ pub enum ComputationResult {
         proof_type: ProofKind,
         instances: u64,
     },
-    /// Recurser-aggregator setup or prove result. The blocking handler builds
+    /// Recurser setup or prove result. The blocking handler builds
     /// the full ack (`SetupRecurserAggregatorAck` / `RunRecurserAggregatorAck`)
     /// itself; the event loop just forwards it to the coordinator. Carried this
     /// way so the heavy work runs off the message loop (heartbeats keep flowing)
@@ -121,7 +121,7 @@ pub enum ComputationResult {
 /// completions share one channel — same lifetime, single source of truth.
 #[derive(Debug)]
 pub enum LoopEvent {
-    Computation(ComputationResult),
+    Computation(Box<ComputationResult>),
     RecoveryComplete(zisk_cluster_api::WorkerRecoveryComplete),
 }
 
@@ -131,7 +131,7 @@ pub enum LoopEvent {
 pub struct LoopEventSender(mpsc::UnboundedSender<LoopEvent>);
 
 /// Zero-sized send error: callers discard the payload, so we don't carry the
-/// 600-byte `LoopEvent` around just to retrieve it.
+/// returned `LoopEvent` around just to retrieve it.
 #[derive(Debug)]
 pub struct LoopChannelClosed;
 
@@ -149,7 +149,7 @@ impl LoopEventSender {
     }
 
     pub fn send_computation(&self, result: ComputationResult) -> Result<(), LoopChannelClosed> {
-        self.0.send(LoopEvent::Computation(result)).map_err(|_| LoopChannelClosed)
+        self.0.send(LoopEvent::Computation(Box::new(result))).map_err(|_| LoopChannelClosed)
     }
 
     pub fn send_recovery_complete(
@@ -695,7 +695,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
-    pub fn handle_aggregate(
+    pub fn handle_recurser_prove(
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,

@@ -497,7 +497,7 @@ impl WorkersPool {
 
     /// Transitions workers currently `Computing((job_id, _))` to `SettingUp`
     /// and returns the IDs that were transitioned. Workers that have already
-    /// been freed (e.g. via `resolve_aggregator_assignment` after Phase 2 and
+    /// been freed (e.g. via `resolve_recurser_assignment` after Phase 2 and
     /// then reassigned to a different job) are NOT touched — clobbering a
     /// `Computing(other_job, _)` state here would (a) park a worker that
     /// doesn't owe a `WorkerRecoveryComplete` for `job_id` (the worker side

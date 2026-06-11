@@ -38,12 +38,12 @@ pub trait BackendService: Send + Sync + 'static {
     /// returns the same `hash_id`.
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String>;
 
-    /// Register a recurser-aggregator spec under the SDK-supplied `recurser_id`.
+    /// Register a recurser spec under the SDK-supplied `recurser_id`.
     /// Idempotent — re-registering the same id is a no-op. Returns the id (echo).
     async fn register_recurser_aggregator(
         &self,
         recurser_id: String,
-        spec: DomainAggregatorSpec,
+        spec: DomainRecurserSpec,
     ) -> ApiResult<String>;
 
     /// Submit a new job. Returns the job UUID.

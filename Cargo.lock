@@ -1639,7 +1639,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "num-bigint",
@@ -2159,7 +2159,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3930,7 +3930,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
@@ -3950,7 +3950,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "anyhow",
  "clap",
@@ -3976,7 +3976,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4357,7 +4357,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "bincode",
  "blake3",
@@ -4391,7 +4391,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "bincode",
  "borsh",
@@ -4422,7 +4422,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "itoa",
@@ -4435,7 +4435,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4445,7 +4445,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4454,7 +4454,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "bincode",
  "colored",
@@ -4477,7 +4477,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "bincode",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
@@ -5844,7 +5844,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "anyhow",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
@@ -7554,7 +7554,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#08d66957b82190f0e4c9d3813adf573ae9002b68"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#de614cb8e403c44730875a1f53ad0d0a6c94ad09"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
@@ -7967,6 +7967,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "recurser",
  "rom-setup",
  "serde",
  "tracing",

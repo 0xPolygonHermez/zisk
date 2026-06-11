@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use tonic::transport::Channel;
 use uuid::Uuid;
 use zisk_coordinator_api::dto::{
-    DomainAggregatorSpec, DomainJobKind, RegisterGuestProgramRequestDto,
+    DomainJobKind, DomainRecurserSpec, RegisterGuestProgramRequestDto,
     RegisterRecurserAggregatorRequestDto,
 };
 use zisk_coordinator_api::grpc::proto::CancelJobRequest;
@@ -50,12 +50,12 @@ impl CoordinatorClient {
         })
     }
 
-    /// Registers a recurser-aggregator spec under the SDK-supplied `recurser_id`.
+    /// Registers a recurser spec under the SDK-supplied `recurser_id`.
     /// Idempotent for same-content re-registers.
     pub fn register_recurser_aggregator(
         &self,
         recurser_id: String,
-        spec: DomainAggregatorSpec,
+        spec: DomainRecurserSpec,
     ) -> Result<String> {
         block_on(async {
             let mut gw = self.inner.clone();

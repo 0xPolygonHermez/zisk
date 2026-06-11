@@ -689,6 +689,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "az"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be5eb007b7cacc6c660343e96f650fedf4b5a77512399eb952ca6642cf8d13f7"
+
+[[package]]
 name = "base16ct"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -883,6 +889,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
+dependencies = [
+ "memchr",
+ "serde",
+]
+
+[[package]]
 name = "build-probe-mpi"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1003,6 +1019,28 @@ dependencies = [
  "serde",
  "wasm-bindgen",
  "windows-link 0.2.1",
+]
+
+[[package]]
+name = "chrono-tz"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93698b29de5e97ad0ae26447b344c482a7284c737d9ddc5f9e52b74a336671bb"
+dependencies = [
+ "chrono",
+ "chrono-tz-build",
+ "phf",
+]
+
+[[package]]
+name = "chrono-tz-build"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c088aee841df9c3041febbb73934cfc39708749bf96dc827e3359cd39ef11b1"
+dependencies = [
+ "parse-zoneinfo",
+ "phf",
+ "phf_codegen",
 ]
 
 [[package]]
@@ -1336,9 +1374,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "num-bigint",
  "num-traits",
 ]
@@ -1503,6 +1541,12 @@ dependencies = [
  "syn 2.0.117",
  "unicode-xid",
 ]
+
+[[package]]
+name = "deunicode"
+version = "1.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abd57806937c9cc163efc8ea3910e00a62e2aeb0b8119f1793a978088f8f6b04"
 
 [[package]]
 name = "digest"
@@ -1684,7 +1728,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "mem-common",
  "named-sem",
  "paste",
@@ -1770,7 +1814,18 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
+
+[[package]]
+name = "fields"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2010,6 +2065,40 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "globset"
+version = "0.4.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52dfc19153a48bde0cbd630453615c8151bce3a5adfac7a0aebfbf0a1e1f57e3"
+dependencies = [
+ "aho-corasick",
+ "bstr",
+ "log",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "globwalk"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0bf760ebf69878d9fd8f110c89703d90ce35095324d1f1edcb595c63945ee757"
+dependencies = [
+ "bitflags",
+ "ignore",
+ "walkdir",
+]
+
+[[package]]
+name = "gmp-mpfr-sys"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7db155b537cb791b133341f99f68371d86ee7fa4c79aacfbc376d72d23c70531"
+dependencies = [
+ "libc",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2149,6 +2238,15 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
+name = "humansize"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cb51c9a029ddc91b07a787f1d86b53ccfa49b0e86688c946ebe8d3555685dd7"
+dependencies = [
+ "libm",
+]
 
 [[package]]
 name = "hybrid-array"
@@ -2354,6 +2452,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ignore"
+version = "0.4.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b915661dd01db3f05050265b2477bcc6527b3792388e2749b41623cc592be67d"
+dependencies = [
+ "crossbeam-deque",
+ "globset",
+ "log",
+ "memchr",
+ "regex-automata",
+ "same-file",
+ "walkdir",
+ "winapi-util",
+]
+
+[[package]]
 name = "impl-codec"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2523,9 +2637,9 @@ dependencies = [
 
 [[package]]
 name = "keccak-asm"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1766b89733097006f3a1388a02849865d6bc98c89273cb622e29fdd209922183"
+checksum = "dd5dc2c0d691cbf7595cde551ced329cca99c2387c2cbc97754c5d0cd045d3ee"
 dependencies = [
  "digest 0.10.7",
  "sha3-asm",
@@ -2644,6 +2758,12 @@ dependencies = [
 
 [[package]]
 name = "linux-raw-sys"
+version = "0.4.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d26c52dbd32dccf2d10cac7725f8eae5296885fb5703b261f7d0a0739ec807ab"
+
+[[package]]
+name = "linux-raw-sys"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
@@ -2706,7 +2826,7 @@ name = "mem-common"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -3079,6 +3199,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "parse-zoneinfo"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f2a05b18d44e2957b88f96ba460715e295bc1d7510468a2f3d3b44535d26c24"
+dependencies = [
+ "regex",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3117,6 +3246,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "pest_derive"
+version = "2.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11f486f1ea21e6c10ed15d5a7c77165d0ee443402f0780849d1768e7d9d6fe77"
+dependencies = [
+ "pest",
+ "pest_generator",
+]
+
+[[package]]
+name = "pest_generator"
+version = "2.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8040c4647b13b210a963c1ed407c1ff4fdfa01c31d6d2a098218702e6664f94f"
+dependencies = [
+ "pest",
+ "pest_meta",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "pest_meta"
+version = "2.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89815c69d36021a140146f26659a81d6c2afa33d216d736dd4be5381a7362220"
+dependencies = [
+ "pest",
+ "sha2",
+]
+
+[[package]]
+name = "petgraph"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
+dependencies = [
+ "fixedbitset",
+ "indexmap",
+]
+
+[[package]]
 name = "petgraph"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3128,12 +3300,50 @@ dependencies = [
 ]
 
 [[package]]
+name = "phf"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1fd6780a80ae0c52cc120a26a1a42c1ae51b247a253e4e06113d23d2c2edd078"
+dependencies = [
+ "phf_shared",
+]
+
+[[package]]
+name = "phf_codegen"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aef8048c789fa5e851558d709946d6d79a8ff88c0440c587967f8e94bfb1216a"
+dependencies = [
+ "phf_generator",
+ "phf_shared",
+]
+
+[[package]]
+name = "phf_generator"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
+dependencies = [
+ "phf_shared",
+ "rand 0.8.6",
+]
+
+[[package]]
+name = "phf_shared"
+version = "0.11.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
+dependencies = [
+ "siphasher",
+]
+
+[[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3145,6 +3355,43 @@ dependencies = [
  "serde_json",
  "tracing",
  "witness",
+]
+
+[[package]]
+name = "pil2-stark-setup"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
+dependencies = [
+ "anyhow",
+ "clap",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "indexmap",
+ "mpi",
+ "pilout",
+ "proofman-common",
+ "proofman-starks-lib-c",
+ "proofman-util",
+ "prost 0.13.5",
+ "rayon",
+ "rug",
+ "serde",
+ "serde_json",
+ "stark-recurser",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "which",
+]
+
+[[package]]
+name = "pilout"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
+dependencies = [
+ "bytes",
+ "prost 0.13.5",
+ "prost-build 0.13.5",
+ "tracing",
 ]
 
 [[package]]
@@ -3222,7 +3469,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "lazy_static",
  "lib-c",
  "num-bigint",
@@ -3249,7 +3496,7 @@ version = "1.0.0-beta"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -3272,7 +3519,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "lib-c",
  "pil-std-lib",
  "precompiles-common",
@@ -3289,7 +3536,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -3305,7 +3552,7 @@ dependencies = [
 name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -3323,7 +3570,7 @@ name = "precomp-keccakf"
 version = "1.0.0-beta"
 dependencies = [
  "circuit",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -3342,7 +3589,7 @@ dependencies = [
 name = "precomp-poseidon"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -3358,7 +3605,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -3374,7 +3621,7 @@ dependencies = [
 name = "precompiles-common"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -3476,7 +3723,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "bincode",
  "blake3",
@@ -3486,7 +3733,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -3497,7 +3744,7 @@ dependencies = [
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "rayon",
  "serde",
  "serde_json",
@@ -3510,7 +3757,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "bincode",
  "borsh",
@@ -3519,7 +3766,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "lazy_static",
  "libc",
  "libloading",
@@ -3541,9 +3788,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -3554,7 +3801,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3564,7 +3811,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3573,7 +3820,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "bincode",
  "colored",
@@ -3584,10 +3831,20 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#17aafeba7a608cf429e238975cd4c34a27df76e1"
+dependencies = [
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1)",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "bincode",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "num-traits",
  "rayon",
  "serde",
@@ -3615,12 +3872,42 @@ dependencies = [
 
 [[package]]
 name = "prost"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2796faa41db3ec313a31f7624d9286acf277b52de526150b7e69f3debf891ee5"
+dependencies = [
+ "bytes",
+ "prost-derive 0.13.5",
+]
+
+[[package]]
+name = "prost"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "528ac67416ff8646872a3c02cad9cc4ee5dc9f9540c9b10771855c95cb2e5ae1"
 dependencies = [
  "bytes",
- "prost-derive",
+ "prost-derive 0.14.4",
+]
+
+[[package]]
+name = "prost-build"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
+dependencies = [
+ "heck",
+ "itertools 0.14.0",
+ "log",
+ "multimap",
+ "once_cell",
+ "petgraph 0.7.1",
+ "prettyplease",
+ "prost 0.13.5",
+ "prost-types 0.13.5",
+ "regex",
+ "syn 2.0.117",
+ "tempfile",
 ]
 
 [[package]]
@@ -3633,15 +3920,28 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "multimap",
- "petgraph",
+ "petgraph 0.8.3",
  "prettyplease",
- "prost",
- "prost-types",
+ "prost 0.14.4",
+ "prost-types 0.14.4",
  "pulldown-cmark",
  "pulldown-cmark-to-cmark",
  "regex",
  "syn 2.0.117",
  "tempfile",
+]
+
+[[package]]
+name = "prost-derive"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
+dependencies = [
+ "anyhow",
+ "itertools 0.14.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -3659,11 +3959,20 @@ dependencies = [
 
 [[package]]
 name = "prost-types"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52c2c1bf36ddb1a1c396b3601a3cec27c2462e45f07c386894ec3ccf5332bd16"
+dependencies = [
+ "prost 0.13.5",
+]
+
+[[package]]
+name = "prost-types"
 version = "0.14.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f94967dc7688f3054c7fac87473ffae4cc4c3904800e2d9f5b857246d8963b0a"
 dependencies = [
- "prost",
+ "prost 0.14.4",
 ]
 
 [[package]]
@@ -3890,6 +4199,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "recurser"
+version = "1.0.0-beta"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "pil2-stark-setup",
+ "pilout",
+ "proofman",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "serde",
+ "serde_json",
+ "stark-recurser",
+ "tera",
+ "thiserror 2.0.18",
+ "tracing",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3991,13 +4319,25 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "blake3",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "proofman-common",
  "sm-rom",
  "tracing",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
+]
+
+[[package]]
+name = "rug"
+version = "1.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07a8857882aec59d27254b02481c709327c13de6fad1da60bfc4f9783eaaa61e"
+dependencies = [
+ "az",
+ "gmp-mpfr-sys",
+ "libc",
+ "libm",
 ]
 
 [[package]]
@@ -4100,6 +4440,19 @@ dependencies = [
 
 [[package]]
 name = "rustix"
+version = "0.38.44"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdb5bc1ae2baa591800df16c9ca78619bf65c0488b41b96ccec5d11220d8c154"
+dependencies = [
+ "bitflags",
+ "errno",
+ "libc",
+ "linux-raw-sys 0.4.15",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "rustix"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
@@ -4107,7 +4460,7 @@ dependencies = [
  "bitflags",
  "errno",
  "libc",
- "linux-raw-sys",
+ "linux-raw-sys 0.12.1",
  "windows-sys 0.61.2",
 ]
 
@@ -4421,9 +4774,9 @@ dependencies = [
 
 [[package]]
 name = "sha3-asm"
-version = "0.1.7"
+version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f3f15d4e239ebe08413eed880e0f9b5af4b40ee0472543320efa91d488e96a7"
+checksum = "a6287fd675f713484342a89cbf0a386abef5f15919cfad607e5e1f19e1e15331"
 dependencies = [
  "cc",
  "cfg-if",
@@ -4495,10 +4848,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
+name = "slug"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "882a80f72ee45de3cc9a5afeb2da0331d58df69e4e7d8eeb5d3c7784ae67e724"
+dependencies = [
+ "deunicode",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -4514,7 +4877,7 @@ dependencies = [
 name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -4531,7 +4894,7 @@ name = "sm-frequent-ops"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "proofman-common",
  "static_assertions",
  "zisk-core",
@@ -4541,7 +4904,7 @@ dependencies = [
 name = "sm-main"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -4558,7 +4921,7 @@ dependencies = [
 name = "sm-mem"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -4575,7 +4938,7 @@ name = "sm-rom"
 version = "1.0.0-beta"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "proofman-common",
  "rayon",
  "thiserror 2.0.18",
@@ -4616,6 +4979,23 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "stark-recurser"
+version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
+dependencies = [
+ "anyhow",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "indexmap",
+ "num-bigint",
+ "num-traits",
+ "proofman-common",
+ "serde",
+ "serde_json",
+ "tera",
+ "tracing",
+]
 
 [[package]]
 name = "static_assertions"
@@ -4760,8 +5140,30 @@ dependencies = [
  "fastrand",
  "getrandom 0.4.2",
  "once_cell",
- "rustix",
+ "rustix 1.1.4",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "tera"
+version = "1.20.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e8004bca281f2d32df3bacd59bc67b312cb4c70cea46cbd79dbe8ac5ed206722"
+dependencies = [
+ "chrono",
+ "chrono-tz",
+ "globwalk",
+ "humansize",
+ "lazy_static",
+ "percent-encoding",
+ "pest",
+ "pest_derive",
+ "rand 0.8.6",
+ "regex",
+ "serde",
+ "serde_json",
+ "slug",
+ "unicode-segmentation",
 ]
 
 [[package]]
@@ -5067,7 +5469,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "50849f68853be452acf590cde0b146665b8d507b3b8af17261df47e02c209ea0"
 dependencies = [
  "bytes",
- "prost",
+ "prost 0.14.4",
  "tonic",
 ]
 
@@ -5079,8 +5481,8 @@ checksum = "654e5643eff75d7f8c99197ce1440ed19a3474eada74c12bbac488b2cafdae27"
 dependencies = [
  "prettyplease",
  "proc-macro2",
- "prost-build",
- "prost-types",
+ "prost-build 0.14.4",
+ "prost-types 0.14.4",
  "quote",
  "syn 2.0.117",
  "tempfile",
@@ -5542,6 +5944,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "which"
+version = "6.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
+dependencies = [
+ "either",
+ "home",
+ "rustix 0.38.44",
+ "winsafe",
+]
+
+[[package]]
 name = "winapi"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5767,6 +6181,15 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
+dependencies = [
+ "windows-targets 0.52.6",
+]
+
+[[package]]
+name = "windows-sys"
+version = "0.59.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]
@@ -6012,6 +6435,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "winsafe"
+version = "0.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
+
+[[package]]
 name = "wit-bindgen"
 version = "0.51.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6108,10 +6537,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1#a2ee52746f622b84d64965c7578e9c2de8946cbb"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#272b7fb80b18f5cb8775b1ccb6a68a63154d2e78"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -6323,12 +6752,12 @@ dependencies = [
  "bincode",
  "clap",
  "dirs",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "libc",
  "paste",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "serde",
  "serde_json",
  "sha2",
@@ -6346,8 +6775,8 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "chrono",
- "prost",
- "prost-types",
+ "prost 0.14.4",
+ "prost-types 0.14.4",
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
@@ -6375,7 +6804,7 @@ name = "zisk-core"
 version = "1.0.0-beta"
 dependencies = [
  "elf",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "lib-c",
  "paste",
  "precompiles-helpers",
@@ -6395,7 +6824,7 @@ version = "1.0.0-beta"
 name = "zisk-pil"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "proofman-common",
  "proofman-macros",
  "serde",
@@ -6413,12 +6842,13 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "recurser",
  "rom-setup",
  "serde",
  "tracing",
@@ -6435,10 +6865,17 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "bincode",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "proofman",
  "proofman-common",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "rayon",
+ "recurser",
  "rom-setup",
  "serde",
+ "serde_json",
  "tokio",
+ "tracing",
  "uuid",
  "zisk-build",
  "zisk-common",
@@ -6465,7 +6902,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.0.0-beta"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1)",
 ]
 
 [[package]]
@@ -6474,7 +6911,7 @@ version = "1.0.0-beta"
 dependencies = [
  "clap",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "flate2",
  "mem-common",
  "memmap2",
@@ -6510,7 +6947,7 @@ dependencies = [
  "bytes",
  "cfg-if",
  "ctor",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fadd_poseidon1)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -6541,7 +6978,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",

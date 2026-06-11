@@ -13,6 +13,7 @@ use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
+use proofman_verifier::VadcopFinalProof;
 use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
@@ -377,6 +378,17 @@ pub trait ProverEngine {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
 
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()>;
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof>;
+
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     fn hash(&self) -> Result<String>;
 
@@ -637,6 +649,31 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     pub fn hash(&self) -> Result<String> {
         self.prover.hash()
+    }
+
+    /// Register a recurser setup so it can prove. One-time, like registering a
+    /// program; must precede [`prove_recurser`](Self::prove_recurser).
+    pub fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.prover.register_recurser(output_dir, recurser_id)
+    }
+
+    /// Fold two recurser proofs through an already-registered recurser, reusing
+    /// this prover's already-initialized proofman (one MPI init per process).
+    pub fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.prover.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            private_inputs,
+            root_c_recurser_agg,
+        )
     }
 
     pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {

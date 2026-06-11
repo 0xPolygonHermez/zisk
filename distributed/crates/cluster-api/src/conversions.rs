@@ -10,13 +10,12 @@
 
 use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
-    execute_task_response, AggParams, AggregatorSpec, Challenges,
-    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage,
-    ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, InputStreamData,
-    JobCancelled, ProgramVk, ProofList, ProofStark, ProveParams, ReconnectionAction,
-    ReconnectionDirective, RunRecurserAggregator, SetupProgram, SetupRecurserAggregator, Shutdown,
-    StreamData, StreamPayload, StreamType, TaskType, WorkerError, WorkerReconnectRequest,
-    WorkerRegisterRequest, WorkerRegisterResponse,
+    execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
+    ContributionParams, CoordinatorMessage, ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat,
+    HeartbeatAck, InputStreamData, JobCancelled, ProgramVk, ProofList, ProofStark, ProveParams,
+    ReconnectionAction, ReconnectionDirective, RecurserSpec, RunRecurserAggregator, SetupProgram,
+    SetupRecurserAggregator, Shutdown, StreamData, StreamPayload, StreamType, TaskType,
+    WorkerError, WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
 
@@ -115,9 +114,9 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
     }
 }
 
-impl From<AggregatorSpecDto> for AggregatorSpec {
-    fn from(dto: AggregatorSpecDto) -> Self {
-        AggregatorSpec {
+impl From<RecurserSpecDto> for RecurserSpec {
+    fn from(dto: RecurserSpecDto) -> Self {
+        RecurserSpec {
             program_vks: dto
                 .program_vks
                 .into_iter()
@@ -131,9 +130,9 @@ impl From<AggregatorSpecDto> for AggregatorSpec {
     }
 }
 
-impl From<AggregatorSpec> for AggregatorSpecDto {
-    fn from(spec: AggregatorSpec) -> Self {
-        AggregatorSpecDto {
+impl From<RecurserSpec> for RecurserSpecDto {
+    fn from(spec: RecurserSpec) -> Self {
+        RecurserSpecDto {
             program_vks: spec
                 .program_vks
                 .into_iter()

@@ -66,6 +66,45 @@ impl RecurserManifestInputs {
     }
 }
 
+/// Template bodies after default resolution — exactly the bytes the
+/// `recurser_id` hashes. Persist these, not the caller's pre-resolution
+/// originals.
+pub struct ResolvedTemplates {
+    pub prepare_publics: String,
+    pub check_publics: String,
+    pub aggregate_publics: String,
+}
+
+/// Resolve a recurser spec's optional templates to the crate defaults and
+/// build the manifest inputs the `recurser_id` is derived from. Every layer
+/// that derives an id (SDK builder, setup command, worker claimed-id check)
+/// must go through here so the derivation cannot diverge.
+pub fn resolve_manifest_inputs(
+    zisk_vk: [String; 4],
+    n_private_inputs: usize,
+    program_vks: Vec<[String; 4]>,
+    prepare_publics_body: Option<&str>,
+    check_publics_body: Option<&str>,
+    aggregate_publics_body: &str,
+) -> (RecurserManifestInputs, ResolvedTemplates) {
+    let prepare = prepare_publics_body.unwrap_or(crate::templates::DEFAULT_PREPARE_PUBLICS);
+    let check = check_publics_body.unwrap_or(crate::templates::DEFAULT_CHECK_PUBLICS);
+    let inputs = RecurserManifestInputs::new(
+        zisk_vk,
+        n_private_inputs,
+        program_vks,
+        prepare,
+        check,
+        aggregate_publics_body,
+    );
+    let resolved = ResolvedTemplates {
+        prepare_publics: prepare.to_string(),
+        check_publics: check.to_string(),
+        aggregate_publics: aggregate_publics_body.to_string(),
+    };
+    (inputs, resolved)
+}
+
 impl RecurserManifest {
     pub fn load(dir: &Path) -> Result<Self> {
         let path = dir.join(MANIFEST_FILENAME);
@@ -83,11 +122,9 @@ pub fn write_manifest_and_templates(
     check_publics_body: &str,
     aggregate_publics_body: &str,
 ) -> Result<()> {
-    let manifest_path = dir.join(MANIFEST_FILENAME);
-    let manifest_json = serde_json::to_string_pretty(manifest)?;
-    fs::write(&manifest_path, manifest_json)
-        .with_context(|| format!("Failed to write {}", manifest_path.display()))?;
-
+    // Templates first, manifest last: the manifest is the warmness commit
+    // marker, so everything else must already be on disk when it appears —
+    // and it lands via rename so a torn write can never look warm.
     for (name, body) in [
         (PREPARE_TEMPLATE_FILENAME, prepare_publics_body),
         (CHECK_TEMPLATE_FILENAME, check_publics_body),
@@ -96,6 +133,15 @@ pub fn write_manifest_and_templates(
         let path = dir.join(name);
         fs::write(&path, body).with_context(|| format!("Failed to write {}", path.display()))?;
     }
+
+    let manifest_path = dir.join(MANIFEST_FILENAME);
+    let manifest_json = serde_json::to_string_pretty(manifest)?;
+    let tmp_path = manifest_path.with_extension("json.tmp");
+    fs::write(&tmp_path, manifest_json)
+        .with_context(|| format!("Failed to write {}", tmp_path.display()))?;
+    fs::rename(&tmp_path, &manifest_path).with_context(|| {
+        format!("Failed to rename {} -> {}", tmp_path.display(), manifest_path.display())
+    })?;
     Ok(())
 }
 

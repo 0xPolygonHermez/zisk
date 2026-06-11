@@ -15,10 +15,11 @@ use stark_recurser::stark2circom::stark_inputs::{
 };
 use stark_recurser::stark2circom::{gen_stark_verifier, StarkVerifierOptions};
 
+use crate::artifacts::RecurserArtifacts;
 use crate::templates::StarkInputBlocks;
-use crate::{gen_aggregator, CircomTemplates};
+use crate::{gen_recurser, CircomTemplates};
 
-pub struct RecurserAggregatorConfig<'a> {
+pub struct RecurserConfig<'a> {
     /// Where artifacts land (must differ from setup_dir).
     pub output_dir: &'a str,
     /// Content-addressed setup id. Artifacts land under
@@ -31,7 +32,7 @@ pub struct RecurserAggregatorConfig<'a> {
     pub hash: &'a str,
 
     /// Inner ZisK verifier's verkey (4 Goldilocks limbs). Baked into the
-    /// aggregator as `rootCVadcopFinalZisk`.
+    /// recurser as `rootCVadcopFinalZisk`.
     pub zisk_vk: &'a [String; 4],
     pub stark_info: &'a Value,
     pub verifier_info: &'a Value,
@@ -55,15 +56,16 @@ pub struct RecurserAggregatorConfig<'a> {
     pub vadcop_final_starkinfo_path: &'a str,
 }
 
-pub fn gen_recurser_aggregator_setup(
-    config: &RecurserAggregatorConfig<'_>,
+pub fn gen_recurser_setup(
+    config: &RecurserConfig<'_>,
     witness_tracker: &WitnessTracker,
 ) -> Result<()> {
     let template = "recurser_aggregator";
     let verifier_name = "vadcop_final_stark.verifier.circom";
     let output_dir = PathBuf::from(config.output_dir);
 
-    let files_dir = output_dir.join("provingKey").join("recurser").join(config.recurser_id);
+    let artifacts = RecurserArtifacts::new(config.output_dir, config.recurser_id);
+    let files_dir = artifacts.dir().to_path_buf();
     fs::create_dir_all(&files_dir)?;
 
     let circom_dir = output_dir.join("circom");
@@ -73,7 +75,7 @@ pub fn gen_recurser_aggregator_setup(
     fs::create_dir_all(&build_path)?;
     fs::create_dir_all(&pil_dir)?;
 
-    // verkey_input=true so rootC is a signal driven by the aggregator mux.
+    // verkey_input=true so rootC is a signal driven by the recurser mux.
     {
         let rust_opts = StarkVerifierOptions {
             skip_main: true,
@@ -90,7 +92,7 @@ pub fn gen_recurser_aggregator_setup(
             config.verifier_info,
             &rust_opts,
         )
-        .context("gen_stark_verifier failed in recurser_aggregator setup")?;
+        .context("gen_stark_verifier failed in recurser setup")?;
         fs::write(circom_dir.join(verifier_name), &circom_src)
             .context("Failed to write inner verifier circom")?;
     }
@@ -118,7 +120,7 @@ pub fn gen_recurser_aggregator_setup(
 
     let circom_out = circom_dir.join(format!("{}.circom", template));
     {
-        let circom_src = gen_aggregator(
+        let circom_src = gen_recurser(
             config.n_private_inputs,
             verifier_name,
             &config.zisk_vk[..],
@@ -126,9 +128,8 @@ pub fn gen_recurser_aggregator_setup(
             &stark_inputs,
             config.circom_templates,
         )
-        .map_err(|e| anyhow::anyhow!("gen_aggregator failed: {e}"))?;
-        fs::write(&circom_out, &circom_src)
-            .context("Failed to write recurser_aggregator circom")?;
+        .map_err(|e| anyhow::anyhow!("gen_recurser failed: {e}"))?;
+        fs::write(&circom_out, &circom_src).context("Failed to write recurser circom")?;
     }
 
     tracing::info!("Compiling {}...", template);
@@ -149,7 +150,7 @@ pub fn gen_recurser_aggregator_setup(
         .arg("-o")
         .arg(build_path.to_str().unwrap())
         .output()
-        .context("Failed to execute circom for recurser_aggregator setup")?;
+        .context("Failed to execute circom for recurser setup")?;
 
     if !compile_output.status.success() {
         let stderr = String::from_utf8_lossy(&compile_output.stderr);
@@ -181,9 +182,9 @@ pub fn gen_recurser_aggregator_setup(
         hash_id: config.hash.to_string(),
     };
     let plonk_result: PlonkResult = plonk2pil::plonk2pil(&r1cs_data, "aggregation", &plonk_opts)
-        .context("plonk2pil failed in recurser_aggregator setup")?;
+        .context("plonk2pil failed in recurser setup")?;
 
-    // The aggregator's output proof must share vadcop_final's STARK domain so
+    // The recurser's output proof must share vadcop_final's STARK domain so
     // it can be fed back into the next fold level (same circuit).
     let vadcop_n_bits = config
         .stark_info
@@ -194,7 +195,7 @@ pub fn gen_recurser_aggregator_setup(
         .context("vadcop_final stark_info is missing starkStruct.nBits")?;
     if plonk_result.n_bits != vadcop_n_bits {
         bail!(
-            "Recurser-aggregator n_bits ({}) does not match vadcop_final starkStruct.nBits ({}). \
+            "Recurser n_bits ({}) does not match vadcop_final starkStruct.nBits ({}). \
              Reduce circuit size (fewer publics ops, smaller templates) or rebuild \
              vadcop_final with a larger nBits.",
             plonk_result.n_bits,
@@ -219,7 +220,7 @@ pub fn gen_recurser_aggregator_setup(
     let pil_path = pil_dir.join(format!("{}.pil", template));
     fs::write(&pil_path, &plonk_result.pil_str)?;
 
-    let exec_path = files_dir.join(format!("{}.exec", template));
+    let exec_path = artifacts.exec_path();
     let exec_bytes: Vec<u8> = plonk_result.exec.iter().flat_map(|v| v.to_le_bytes()).collect();
     fs::write(&exec_path, &exec_bytes)?;
 
@@ -232,30 +233,33 @@ pub fn gen_recurser_aggregator_setup(
         config.std_pil_path,
         config.recurser_pil_path,
     )
-    .context("compile_pil failed for recurser_aggregator")?;
+    .context("compile_pil failed for recurser")?;
 
     let pilout_proxy = PilOutProxy::new(pilout_path.to_str().unwrap())
-        .map_err(|e| anyhow::anyhow!("Failed to load recurser_aggregator pilout: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("Failed to load recurser pilout: {e}"))?;
     let pilout = &pilout_proxy.pilout;
     if pilout.air_groups.is_empty() || pilout.air_groups[0].airs.is_empty() {
-        bail!("recurser_aggregator pilout has no AIR groups: {:?}", pilout_path);
+        bail!("recurser pilout has no AIR groups: {:?}", pilout_path);
     }
     let air = &pilout.air_groups[0].airs[0];
 
-    let const_path = files_dir.join(format!("{}.const", template));
+    let const_path = artifacts.const_path();
     let plonk_values =
         fixed_cols::reorder_plonk_pols_for_pilout(&plonk_result.fixed_pols, &pilout.symbols, 0, 0);
     fixed_cols::write_const_file(const_path.to_str().unwrap(), air, &plonk_values)
         .context("write_const_file failed for recurser_aggregator")?;
 
-    let verkey_json_path = files_dir.join(format!("{}.verkey.json", template));
+    // Compute the verkey. proofman generates the `.consttree` itself at register
+    // time (its `calculate_fixed_tree` writes-or-loads the tree), so setup only
+    // needs to land the verkey here.
+    let verkey_json_path = artifacts.verkey_json_path();
     let const_root = bctree::compute_const_tree(
         const_path.to_str().unwrap(),
         config.vadcop_final_starkinfo_path,
         verkey_json_path.to_str().unwrap(),
     );
     let verkey_bin: Vec<u8> = const_root.iter().flat_map(|v| v.to_le_bytes()).collect();
-    fs::write(files_dir.join(format!("{}.verkey.bin", template)), &verkey_bin)?;
+    fs::write(artifacts.verkey_bin_path(), &verkey_bin)?;
 
     witness_tracker.await_all()?;
     Ok(())

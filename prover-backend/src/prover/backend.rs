@@ -16,6 +16,10 @@ use proofman::{
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
+use recurser::prove::{
+    prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
+    RegisteredRecurser,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,6 +38,10 @@ pub(crate) struct ProverBackend {
     executor: Arc<ZiskExecutor<Goldilocks>>,
     proving_key_path: PathBuf,
     proving_key_snark_path: Option<PathBuf>,
+    /// Recurser setups registered with `proofman`, keyed by `recurser_id`.
+    /// A recurser must be registered (via [`register_recurser`]) before it can
+    /// prove — the same register-then-prove lifecycle as a regular program.
+    registered_recursers: std::sync::Mutex<HashMap<String, RegisteredRecurser>>,
 }
 
 impl ProverBackend {
@@ -44,7 +52,14 @@ impl ProverBackend {
         proving_key_path: PathBuf,
         proving_key_snark_path: Option<PathBuf>,
     ) -> Self {
-        Self { proofman, snark_wrapper, executor, proving_key_path, proving_key_snark_path }
+        Self {
+            proofman,
+            snark_wrapper,
+            executor,
+            proving_key_path,
+            proving_key_snark_path,
+            registered_recursers: std::sync::Mutex::new(HashMap::new()),
+        }
     }
 
     fn asm_emulator(&self) -> Option<&EmulatorAsm> {
@@ -578,6 +593,49 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
 
         Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))
+    }
+
+    /// Register a recurser setup with proofman so it can later prove. The same
+    /// lifecycle as registering a program: do this once, then prove many times.
+    /// Idempotent — re-registering an already-registered `recurser_id` is cheap.
+    pub(crate) fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        if self.registered_recursers.lock().unwrap().contains_key(recurser_id) {
+            return Ok(());
+        }
+        let registered = register_recurser_setup(&self.proofman, output_dir, recurser_id)
+            .map_err(|e| anyhow::anyhow!("recurser registration failed: {e:#}"))?;
+        self.registered_recursers.lock().unwrap().insert(recurser_id.to_string(), registered);
+        Ok(())
+    }
+
+    /// Fold two proofs through a previously-registered recurser. Errors if the
+    /// recurser was not registered first via [`register_recurser`].
+    pub(crate) fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        let registered =
+            self.registered_recursers.lock().unwrap().get(recurser_id).cloned().ok_or_else(
+                || {
+                    anyhow::anyhow!(
+                        "recurser '{recurser_id}' is not registered; call register_recurser first"
+                    )
+                },
+            )?;
+
+        let opts = ProveRecurserAggregatorOptions {
+            registered: &registered,
+            proof_a,
+            proof_b,
+            private_inputs,
+            root_c_recurser_agg,
+        };
+        prove_recurser_aggregator(&self.proofman, &opts)
+            .map_err(|e| anyhow::anyhow!("recurser proof generation failed: {e:#}"))
     }
 
     pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {

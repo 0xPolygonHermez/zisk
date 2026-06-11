@@ -295,8 +295,8 @@ pub struct Job {
     pub metadata: BTreeMap<String, String>,
     pub execution_only: bool,
     pub proof_type: ProofKind,
-    /// Aggregation task currently in-flight to the aggregator (sent, not yet acked).
-    /// Re-sent verbatim if the aggregator reconnects before returning its result.
+    /// Aggregation task currently in-flight to the recurser (sent, not yet acked).
+    /// Re-sent verbatim if the recurser reconnects before returning its result.
     pub agg_task_inflight: Option<PendingAggTask>,
     pub agg_task_queue: VecDeque<PendingAggTask>,
 }
@@ -508,7 +508,7 @@ pub enum JobPhase {
     Execution,
     Contributions,
     Prove,
-    Aggregate,
+    Recurse,
     ContributionsInputsStream,
     ContributionsHintsStream,
 }
@@ -521,7 +521,7 @@ impl TryFrom<u8> for JobPhase {
             0 => Ok(JobPhase::Execution),
             1 => Ok(JobPhase::Contributions),
             2 => Ok(JobPhase::Prove),
-            3 => Ok(JobPhase::Aggregate),
+            3 => Ok(JobPhase::Recurse),
             4 => Ok(JobPhase::ContributionsInputsStream),
             5 => Ok(JobPhase::ContributionsHintsStream),
             _ => Err(anyhow::anyhow!("Invalid JobPhase byte: {}", value)),
@@ -535,7 +535,7 @@ impl fmt::Display for JobPhase {
             JobPhase::Execution => write!(f, "Execution"),
             JobPhase::Contributions => write!(f, "Contributions"),
             JobPhase::Prove => write!(f, "Prove"),
-            JobPhase::Aggregate => write!(f, "Aggregate"),
+            JobPhase::Recurse => write!(f, "Recurse"),
             JobPhase::ContributionsInputsStream => write!(f, "ContributionsInputsStream"),
             JobPhase::ContributionsHintsStream => write!(f, "ContributionsHintsStream"),
         }

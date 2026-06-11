@@ -19,10 +19,10 @@ impl SetupResult {
     }
 }
 
-/// Builder for a program or aggregator setup request.
+/// Builder for a program or recurser setup request.
 ///
-/// Obtain via `client.setup(&program)` or `client.setup(&aggregator)`.
-/// - Embedded: runs ROM / aggregator setup locally, idempotent.
+/// Obtain via `client.setup(&program)` or `client.setup(&recurser)`.
+/// - Embedded: runs ROM / recurser setup locally, idempotent.
 /// - Remote: dispatches setup work to workers via the coordinator.
 pub struct SetupRequest<'a, C> {
     client: &'a C,
@@ -69,7 +69,7 @@ impl<'a, C: Client> SetupRequest<'a, C> {
     }
 
     /// Set the directory where the verkey file will be stored after setup
-    /// completes. Only applies to [`SetupTarget::Program`] — aggregator
+    /// completes. Only applies to [`SetupTarget::Program`] — recurser
     /// artifacts are written to an SDK-managed location.
     #[must_use]
     pub fn output_dir(mut self, dir: PathBuf) -> Self {
@@ -115,14 +115,14 @@ impl<'a, C: Client> SetupRequest<'a, C> {
 
                 Ok(handle)
             }
-            SetupTarget::Aggregator(agg) => {
-                let mut handle = self.client.run_setup_aggregator(agg, self.timeout, subs)?;
+            SetupTarget::Recurser(agg) => {
+                let mut handle = self.client.run_setup_recurser(agg, self.timeout, subs)?;
 
                 // Fill `agg.vk_cache` from the terminal response so a later
                 // `agg.vk()` doesn't fall through to a disk read.
                 let agg_clone = agg.clone();
                 handle.set_pre_process(move |status: &TerminalStatus| {
-                    if let TerminalStatus::Completed(DomainJobKindResponse::SetupAggregator {
+                    if let TerminalStatus::Completed(DomainJobKindResponse::SetupRecurser {
                         vk,
                         hash_mode,
                     }) = status

@@ -19,12 +19,12 @@ service ZiskCoordinatorApi {
   rpc RegisterGuestProgram(RegisterGuestProgramRequest)
       returns (RegisterGuestProgramResponse);
 
-  // Register a recurser-aggregator spec. Idempotent: the same spec always
+  // Register a recurser spec. Idempotent: the same spec always
   // returns the same recurser_id (a content hash of the inputs).
   rpc RegisterRecurserAggregator(RegisterRecurserAggregatorRequest)
       returns (RegisterRecurserAggregatorResponse);
 
-  // Submit a new job (setup, prove, wrap, execute, setup_aggregator, aggregate).
+  // Submit a new job (setup, prove, wrap, execute, setup_recurser, recurser_prove).
   rpc JobRequest(JobRequestMessage)
       returns (JobResponse);
 
@@ -86,7 +86,7 @@ enum JobPhase {
   JOB_PHASE_UNSPECIFIED   = 0;
   JOB_PHASE_CONTRIBUTIONS = 1; // witness generation and partial contributions
   JOB_PHASE_PROVE         = 2; // proof generation
-  JOB_PHASE_AGGREGATE     = 3; // proof aggregation
+  JOB_PHASE_RECURSE       = 3; // recurser prove phase
 }
 
 message InputChunk {
@@ -168,7 +168,7 @@ message ProgramVk {
   string l3 = 4;
 }
 
-message AggregatorSpec {
+message RecurserSpec {
   repeated ProgramVk program_vks            = 1;
   uint64             n_private_inputs       = 2;
   string             prepare_publics_body   = 3; // empty = recurser default
@@ -182,8 +182,8 @@ message RegisterRecurserAggregatorRequest {
   // Computed by both SDK and worker from the same `RecurserManifestInputs`,
   // so a misaligned zisk_vk surfaces here as a "recurser_id not found" at
   // dispatch time rather than a silent divergence.
-  string         recurser_id = 1;
-  AggregatorSpec spec        = 2;
+  string       recurser_id = 1;
+  RecurserSpec spec        = 2;
 }
 
 message RegisterRecurserAggregatorResponse {
@@ -204,12 +204,12 @@ message JobResponse {
 
 message JobKind {
   oneof kind {
-    SetupRequest           setup            = 1;
-    ProveRequest           prove            = 2;
-    WrapRequest            wrap             = 3;
-    AggregateRequest       aggregate        = 4;
-    ExecuteRequest         execute          = 5;
-    SetupAggregatorRequest setup_aggregator = 6;
+    SetupRequest         setup         = 1;
+    ProveRequest         prove         = 2;
+    WrapRequest          wrap          = 3;
+    RecurserProveRequest recurser_prove = 4;
+    ExecuteRequest       execute       = 5;
+    SetupRecurserRequest setup_recurser = 6;
   }
 }
 
@@ -252,16 +252,16 @@ message WrapResponse {
   Proof proof = 1;
 }
 
-message SetupAggregatorRequest {
+message SetupRecurserRequest {
   string recurser_id = 1;
 }
 
-message SetupAggregatorResponse {
+message SetupRecurserResponse {
   bytes vk = 1; // 32 bytes — 4 u64 little-endian limbs
   string hash_mode = 2;
 }
 
-message AggregateRequest {
+message RecurserProveRequest {
   string          recurser_id          = 1;
   bytes           proof_a              = 2; // bincode-serialized VadcopFinalProof
   bytes           proof_b              = 3;
@@ -269,7 +269,7 @@ message AggregateRequest {
   repeated uint64 root_c_recurser_agg  = 5; // optional override; len 0 or 4
 }
 
-message AggregateResponse {
+message RecurserProveResponse {
   Proof proof = 1;
 }
 
@@ -287,12 +287,12 @@ message ExecuteResponse {
 
 message JobKindResponse {
   oneof kind {
-    SetupResponse           setup            = 1;
-    ProveResponse           prove            = 2;
-    WrapResponse            wrap             = 3;
-    AggregateResponse       aggregate        = 4;
-    ExecuteResponse         execute          = 5;
-    SetupAggregatorResponse setup_aggregator = 6;
+    SetupResponse         setup         = 1;
+    ProveResponse         prove         = 2;
+    WrapResponse          wrap          = 3;
+    RecurserProveResponse recurser_prove = 4;
+    ExecuteResponse       execute       = 5;
+    SetupRecurserResponse setup_recurser = 6;
   }
 }
 

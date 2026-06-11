@@ -13,7 +13,7 @@ use zisk_prover_backend::{setup_logger, GuestProgram};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Generate the recurser-aggregator setup on top of an existing vadcop_final
+/// Generate the recurser setup on top of an existing vadcop_final
 /// build directory. See recurser/docs/aggregator-flow.md.
 pub struct ZiskSetupRecurserAggregator {
     /// ZisK setup directory. Defaults to `~/.zisk`.

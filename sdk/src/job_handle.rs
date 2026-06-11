@@ -19,7 +19,7 @@ const CANCELLED: &str = "Cancelled";
 
 const PROGRESS_CONTRIBUTIONS: u8 = 25;
 const PROGRESS_PROVE: u8 = 75;
-const PROGRESS_AGGREGATE: u8 = 90;
+const PROGRESS_RECURSE: u8 = 90;
 
 pub(crate) type Subscriber = (JobEvent, Arc<dyn Fn(JobEvent) + Send + Sync>);
 pub(crate) type PreProcessHook = Box<dyn FnOnce(&TerminalStatus) -> Result<()> + Send>;
@@ -317,7 +317,7 @@ fn map_domain_event(subs: &SubscriberList, event: &DomainJobEvent) -> bool {
             let pct = match p.phase {
                 DomainJobPhase::Contributions => PROGRESS_CONTRIBUTIONS,
                 DomainJobPhase::Prove => PROGRESS_PROVE,
-                DomainJobPhase::Aggregate => PROGRESS_AGGREGATE,
+                DomainJobPhase::Recurse => PROGRESS_RECURSE,
             };
             fire_event(subs, JobEvent::Progress(pct));
             false
@@ -363,7 +363,7 @@ impl FromWaitResult for SetupResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Setup { .. })
-            | TerminalStatus::Completed(DomainJobKindResponse::SetupAggregator { .. }) => {
+            | TerminalStatus::Completed(DomainJobKindResponse::SetupRecurser { .. }) => {
                 Ok(SetupResult { job_id: Some(job_id) })
             }
             TerminalStatus::Completed(other) => {
@@ -392,7 +392,7 @@ impl FromWaitResult for crate::prove::ProveResult {
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof))
-            | TerminalStatus::Completed(DomainJobKindResponse::Aggregate(proof)) => {
+            | TerminalStatus::Completed(DomainJobKindResponse::RecurserProve(proof)) => {
                 let proof_with_pv: zisk_common::Proof =
                     bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
                         .map(|(v, _)| v)

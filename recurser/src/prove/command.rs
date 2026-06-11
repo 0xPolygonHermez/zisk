@@ -1,6 +1,5 @@
 use std::fs;
 use std::io::Read;
-use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
@@ -8,48 +7,106 @@ use proofman::ProofMan;
 use proofman_verifier::VadcopFinalProof;
 
 use super::validate::{validate_prove_inputs, ProgramVkOrigin};
+use crate::artifacts::RecurserArtifacts;
 use crate::manifest::RecurserManifest;
 
 const PROGRAM_VK_LEN: usize = 4;
 
+#[derive(Clone)]
+pub struct RegisteredRecurser {
+    recurser_id: String,
+    manifest: RecurserManifest,
+    verkey: [u64; PROGRAM_VK_LEN],
+}
+
+impl RegisteredRecurser {
+    pub fn recurser_id(&self) -> &str {
+        &self.recurser_id
+    }
+
+    pub fn manifest(&self) -> &RecurserManifest {
+        &self.manifest
+    }
+
+    /// This recurser's verification key. It is also the default
+    /// `rootCRecurserAgg` used when the caller does not pass one (an aggregated
+    /// input proof carries this VK as its own `programVK`).
+    pub fn verkey(&self) -> [u64; PROGRAM_VK_LEN] {
+        self.verkey
+    }
+}
+
+/// Register a previously-generated recurser setup with `proofman`.
+///
+/// This is the *only* prove-side function that knows where setup put its files.
+/// It resolves the artifact layout, refuses to proceed unless setup actually
+/// completed (see [`RecurserArtifacts::is_active`]), loads the manifest, and hands
+/// the setup to proofman. proofman builds the const-tree on first registration
+/// and persists it next to the other artifacts; later registrations load it
+/// from disk.
+///
+/// Run this once per `recurser_id` per `ProofMan` instance; [`prove_recurser_aggregator`]
+/// can then be called any number of times.
+pub fn register_recurser_setup<F: PrimeField64>(
+    proofman: &ProofMan<F>,
+    output_dir: &str,
+    recurser_id: &str,
+) -> Result<RegisteredRecurser>
+where
+    GoldilocksQuinticExtension: ExtensionField<F>,
+{
+    let artifacts = RecurserArtifacts::new(output_dir, recurser_id);
+
+    if !artifacts.is_active() {
+        bail!(
+            "Recurser setup '{}' is not ready at {:?}: setup has not completed for this id \
+             (missing: {}). Run `cargo-zisk setup-recurser-aggregator` first.",
+            recurser_id,
+            artifacts.dir(),
+            artifacts.missing_artifacts().join(", "),
+        );
+    }
+
+    let manifest = RecurserManifest::load(artifacts.dir())
+        .with_context(|| format!("Failed to load recurser manifest for id '{recurser_id}'"))?;
+
+    let verkey = read_verkey(&artifacts).context("Failed to read the recurser's verkey.bin")?;
+
+    proofman
+        .register_recurser_setup(recurser_id, &artifacts.setup_stem())
+        .map_err(|e| anyhow::anyhow!("register_recurser_setup failed: {e}"))?;
+
+    Ok(RegisteredRecurser { recurser_id: recurser_id.to_string(), manifest, verkey })
+}
+
+/// Inputs to a single recurser proof against an already-registered
+/// setup. No filesystem or layout knowledge lives here — everything is the
+/// validated, in-memory result of [`register_recurser_setup`] plus the proofs.
 pub struct ProveRecurserAggregatorOptions<'a> {
-    /// Same `<output_dir>` the setup ran against.
-    pub output_dir: &'a str,
-    /// Content-addressed id logged at the end of setup.
-    pub recurser_id: &'a str,
+    pub registered: &'a RegisteredRecurser,
     pub proof_a: &'a VadcopFinalProof,
     pub proof_b: &'a VadcopFinalProof,
     pub private_inputs: &'a [u64],
-    /// When `None`, defaults to the recurser's own `recurser_aggregator.verkey.bin`.
+    /// When `None`, defaults to the recurser's verkey (`registered.verkey()`).
     pub root_c_recurser_agg: Option<[u64; PROGRAM_VK_LEN]>,
 }
 
-pub fn run_prove_recurser_aggregator<F: PrimeField64>(
+/// Fold two `vadcop_final`-shape proofs into one against an already-registered
+/// recurser setup.
+///
+/// Pure with respect to the on-disk layout: it validates the proofs against the
+/// registered manifest and delegates to proofman. It does not read setup files
+/// or register anything — call [`register_recurser_setup`] first.
+pub fn prove_recurser_aggregator<F: PrimeField64>(
     proofman: &ProofMan<F>,
     opts: &ProveRecurserAggregatorOptions<'_>,
 ) -> Result<VadcopFinalProof>
 where
     GoldilocksQuinticExtension: ExtensionField<F>,
 {
-    let setup_dir = recurser_setup_dir(opts.output_dir, opts.recurser_id);
-    let setup_stem = setup_dir.join("recurser_aggregator");
+    let registered = opts.registered;
 
-    if !sibling_exists(&setup_stem, ".verkey.json") {
-        bail!(
-            "Recurser setup not found at {:?}. Run `cargo-zisk setup-recurser-aggregator` first.",
-            setup_stem
-        );
-    }
-
-    let manifest = RecurserManifest::load(&setup_dir).with_context(|| {
-        format!("Failed to load recurser manifest for id '{}'", opts.recurser_id)
-    })?;
-
-    let root_c = match opts.root_c_recurser_agg {
-        Some(r) => r,
-        None => read_verkey_4(&setup_stem)
-            .context("Failed to default rootCRecurserAgg from recurser's verkey.bin")?,
-    };
+    let root_c = opts.root_c_recurser_agg.unwrap_or_else(|| registered.verkey());
 
     if opts.proof_a.hash != opts.proof_b.hash {
         bail!(
@@ -61,7 +118,7 @@ where
     }
 
     let (origin_a, origin_b) = validate_prove_inputs(
-        &manifest.inputs,
+        &registered.manifest().inputs,
         &opts.proof_a.public_values,
         &opts.proof_b.public_values,
         opts.private_inputs,
@@ -73,14 +130,10 @@ where
         format_origin(origin_b),
     );
 
-    proofman
-        .register_recurser_setup(opts.recurser_id, &setup_stem)
-        .map_err(|e| anyhow::anyhow!("register_recurser_setup failed: {e}"))?;
-
-    tracing::info!("Proving recurser-aggregator '{}'", opts.recurser_id);
+    tracing::info!("Proving recurser '{}'", registered.recurser_id());
     let out = proofman
         .prove_recurser_aggregator(
-            opts.recurser_id,
+            registered.recurser_id(),
             opts.proof_a,
             opts.proof_b,
             opts.private_inputs,
@@ -90,21 +143,9 @@ where
     Ok(out)
 }
 
-fn recurser_setup_dir(output_dir: &str, recurser_id: &str) -> PathBuf {
-    PathBuf::from(output_dir).join("provingKey").join("recurser").join(recurser_id)
-}
-
-fn sibling_exists(stem: &Path, ext: &str) -> bool {
-    let mut p = stem.as_os_str().to_owned();
-    p.push(ext);
-    Path::new(&p).is_file()
-}
-
-fn read_verkey_4(stem: &Path) -> Result<[u64; PROGRAM_VK_LEN]> {
-    let mut path = stem.as_os_str().to_owned();
-    path.push(".verkey.bin");
-    let mut file =
-        fs::File::open(Path::new(&path)).with_context(|| format!("Failed to open {:?}", path))?;
+fn read_verkey(artifacts: &RecurserArtifacts) -> Result<[u64; PROGRAM_VK_LEN]> {
+    let path = artifacts.verkey_bin_path();
+    let mut file = fs::File::open(&path).with_context(|| format!("Failed to open {:?}", path))?;
     let mut bytes = [0u8; PROGRAM_VK_LEN * 8];
     file.read_exact(&mut bytes)
         .with_context(|| format!("Failed to read {} bytes from {:?}", bytes.len(), path))?;

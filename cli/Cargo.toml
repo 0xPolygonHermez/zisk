@@ -28,7 +28,7 @@ proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-verifier = { workspace = true }
 pil2-stark-setup = { workspace = true }
-recurser = { workspace = true, features = ["setup", "prove"] }
+recurser = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }

@@ -1,14 +1,14 @@
 //! Target enums that let `upload()` and `setup()` accept either a
-//! [`GuestProgram`] or a [`RecurserAggregator`].
+//! [`GuestProgram`] or a [`Recurser`].
 
 use zisk_prover_backend::GuestProgram;
 
-use crate::aggregator::RecurserAggregator;
+use crate::recurser::Recurser;
 
 /// What `client.upload()` is targeting.
 pub enum UploadTarget<'a> {
     Program(&'a GuestProgram),
-    Aggregator(&'a RecurserAggregator),
+    Recurser(&'a Recurser),
 }
 
 impl<'a> From<&'a GuestProgram> for UploadTarget<'a> {
@@ -17,16 +17,16 @@ impl<'a> From<&'a GuestProgram> for UploadTarget<'a> {
     }
 }
 
-impl<'a> From<&'a RecurserAggregator> for UploadTarget<'a> {
-    fn from(a: &'a RecurserAggregator) -> Self {
-        UploadTarget::Aggregator(a)
+impl<'a> From<&'a Recurser> for UploadTarget<'a> {
+    fn from(a: &'a Recurser) -> Self {
+        UploadTarget::Recurser(a)
     }
 }
 
 /// What `client.setup()` is targeting.
 pub enum SetupTarget<'a> {
     Program(&'a GuestProgram),
-    Aggregator(&'a RecurserAggregator),
+    Recurser(&'a Recurser),
 }
 
 impl<'a> From<&'a GuestProgram> for SetupTarget<'a> {
@@ -35,8 +35,8 @@ impl<'a> From<&'a GuestProgram> for SetupTarget<'a> {
     }
 }
 
-impl<'a> From<&'a RecurserAggregator> for SetupTarget<'a> {
-    fn from(a: &'a RecurserAggregator) -> Self {
-        SetupTarget::Aggregator(a)
+impl<'a> From<&'a Recurser> for SetupTarget<'a> {
+    fn from(a: &'a Recurser) -> Self {
+        SetupTarget::Recurser(a)
     }
 }

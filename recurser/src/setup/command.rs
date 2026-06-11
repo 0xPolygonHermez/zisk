@@ -6,10 +6,10 @@ use serde_json::Value;
 
 use pil2_stark_setup::output::witness_gen::WitnessTracker;
 
-use super::proving_key::{gen_recurser_aggregator_setup, RecurserAggregatorConfig};
+use super::proving_key::{gen_recurser_setup, RecurserConfig};
 use super::resolve::{resolve_circom_exec, resolve_path_env};
-use crate::manifest::{write_manifest_and_templates, RecurserManifest, RecurserManifestInputs};
-use crate::templates::{DEFAULT_CHECK_PUBLICS, DEFAULT_PREPARE_PUBLICS};
+use crate::artifacts::RecurserArtifacts;
+use crate::manifest::{resolve_manifest_inputs, write_manifest_and_templates, RecurserManifest};
 use crate::CircomTemplates;
 
 pub struct SetupRecurserAggregatorOptions {
@@ -57,8 +57,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
         }
     }
 
-    let zisk_vk =
-        parse_verkey_4(&verkey_path).context("Failed to parse vadcop_final.verkey.json")?;
+    let zisk_vk = parse_verkey(&verkey_path).context("Failed to parse vadcop_final.verkey.json")?;
     let stark_info: Value = serde_json::from_str(&fs::read_to_string(&starkinfo_path)?)?;
     let verifier_info: Value = serde_json::from_str(&fs::read_to_string(&verifier_info_path)?)?;
 
@@ -89,20 +88,15 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
         )?,
     };
 
-    // Resolve defaults up-front so the manifest hashes match the aggregator's
-    // actual inputs, not the caller's None-vs-Some distinction.
-    let resolved_prepare =
-        circom_templates.prepare_publics.as_deref().unwrap_or(DEFAULT_PREPARE_PUBLICS);
-    let resolved_check = circom_templates.check_publics.as_deref().unwrap_or(DEFAULT_CHECK_PUBLICS);
-    let resolved_aggregate = circom_templates.aggregate_publics.as_str();
-
-    let manifest_inputs = RecurserManifestInputs::new(
+    // Resolve defaults through the shared helper so the manifest hashes match
+    // every other id-deriving layer (SDK builder, worker claimed-id check).
+    let (manifest_inputs, resolved) = resolve_manifest_inputs(
         zisk_vk.clone(),
         opts.n_private_inputs,
         program_vks.clone(),
-        resolved_prepare,
-        resolved_check,
-        resolved_aggregate,
+        circom_templates.prepare_publics.as_deref(),
+        circom_templates.check_publics.as_deref(),
+        &circom_templates.aggregate_publics,
     );
     let recurser_id = manifest_inputs.compute_id();
     tracing::info!("Recurser id: {}", recurser_id);
@@ -127,7 +121,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     let vadcop_final_starkinfo_path =
         starkinfo_path.to_str().context("vadcop_final starkinfo path is not valid UTF-8")?;
 
-    let config = RecurserAggregatorConfig {
+    let config = RecurserConfig {
         output_dir,
         recurser_id: &recurser_id,
         hash: &hash,
@@ -146,24 +140,22 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
         vadcop_final_starkinfo_path,
     };
 
-    tracing::info!("Running recurser-aggregator setup for '{}'", name);
-    gen_recurser_aggregator_setup(&config, &witness_tracker)
-        .context("Recurser-aggregator setup failed")?;
+    tracing::info!("Running recurser setup for '{}'", name);
+    gen_recurser_setup(&config, &witness_tracker).context("Recurser setup failed")?;
     witness_tracker.await_all()?;
 
-    let files_dir =
-        PathBuf::from(output_dir).join("provingKey").join("recurser").join(&recurser_id);
+    let files_dir = RecurserArtifacts::new(output_dir, &recurser_id).dir().to_path_buf();
     let manifest = RecurserManifest { recurser_id: recurser_id.clone(), inputs: manifest_inputs };
     write_manifest_and_templates(
         &files_dir,
         &manifest,
-        resolved_prepare,
-        resolved_check,
-        resolved_aggregate,
+        &resolved.prepare_publics,
+        &resolved.check_publics,
+        &resolved.aggregate_publics,
     )
     .context("Failed to write recurser manifest")?;
 
-    tracing::info!("Recurser-aggregator setup complete");
+    tracing::info!("Recurser setup complete");
     Ok(())
 }
 
@@ -180,7 +172,28 @@ pub fn read_proving_key_hash(setup_dir: &str) -> Result<String> {
     Ok(hash_from_global_info(&global_info))
 }
 
-fn parse_verkey_4(path: &std::path::Path) -> Result<[String; 4]> {
+/// Read the local proving key's vadcop_final verkey as 4 decimal-string limbs.
+/// Shared by every layer that derives a `recurser_id` (SDK builder, setup
+/// command, worker claimed-id check) — the verkey is part of the id digest.
+pub fn read_vadcop_final_verkey(setup_dir: &str) -> Result<[String; 4]> {
+    let global_info_path =
+        PathBuf::from(setup_dir).join("provingKey").join("pilout.globalInfo.json");
+    let global_info: Value =
+        serde_json::from_str(&fs::read_to_string(&global_info_path).with_context(|| {
+            format!("Failed to read global info at {}", global_info_path.display())
+        })?)
+        .with_context(|| format!("Failed to parse {}", global_info_path.display()))?;
+    let name = global_info.get("name").and_then(|v| v.as_str()).unwrap_or("pilout");
+
+    let verkey_path = PathBuf::from(setup_dir)
+        .join("provingKey")
+        .join(name)
+        .join("vadcop_final")
+        .join("vadcop_final.verkey.json");
+    parse_verkey(&verkey_path).context("Failed to parse vadcop_final.verkey.json")
+}
+
+fn parse_verkey(path: &std::path::Path) -> Result<[String; 4]> {
     let s =
         fs::read_to_string(path).with_context(|| format!("Failed to read verkey: {:?}", path))?;
     let v: Vec<Value> = serde_json::from_str(&s)

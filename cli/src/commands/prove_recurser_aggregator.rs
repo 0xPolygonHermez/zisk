@@ -6,14 +6,16 @@ use fields::Goldilocks;
 use proofman::ProofMan;
 use proofman_common::{ProofmanOptions, VerboseMode};
 use proofman_verifier::VadcopFinalProof;
-use recurser::prove::{run_prove_recurser_aggregator, ProveRecurserAggregatorOptions};
+use recurser::prove::{
+    prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
+};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::ZiskPaths;
 use zisk_prover_backend::setup_logger;
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Fold two `vadcop_final`-shape proofs into one recurser-aggregator proof.
+/// Fold two `vadcop_final`-shape proofs into one recurser proof.
 /// See recurser/docs/aggregator-flow.md.
 pub struct ZiskProveRecurserAggregator {
     /// Directory the recurser setup wrote its artifacts to.
@@ -83,15 +85,16 @@ impl ZiskProveRecurserAggregator {
         let proofman = ProofMan::<Goldilocks>::new(proving_key, pm_options)
             .map_err(|e| anyhow::anyhow!("ProofMan::new failed: {e}"))?;
 
+        let registered = register_recurser_setup(&proofman, &self.output_dir, &self.recurser_id)?;
+
         let opts = ProveRecurserAggregatorOptions {
-            output_dir: &self.output_dir,
-            recurser_id: &self.recurser_id,
+            registered: &registered,
             proof_a: &proof_a,
             proof_b: &proof_b,
             private_inputs: &private_inputs,
             root_c_recurser_agg: root_c_override,
         };
-        let out = run_prove_recurser_aggregator(&proofman, &opts)?;
+        let out = prove_recurser_aggregator(&proofman, &opts)?;
 
         if let Some(parent) = self.output.parent() {
             fs::create_dir_all(parent)
@@ -100,7 +103,7 @@ impl ZiskProveRecurserAggregator {
         out.save(&self.output)
             .map_err(|e| anyhow::anyhow!(e.to_string()))
             .with_context(|| format!("Failed to save output proof to {}", self.output.display()))?;
-        tracing::info!("Recurser-aggregator proof written to {}", self.output.display());
+        tracing::info!("Recurser proof written to {}", self.output.display());
         Ok(())
     }
 }

@@ -29,7 +29,7 @@ pub struct RegisterGuestProgramResponseDto {
 pub type DomainProgramVk = [String; 4];
 
 #[derive(Debug, Clone)]
-pub struct DomainAggregatorSpec {
+pub struct DomainRecurserSpec {
     pub program_vks: Vec<DomainProgramVk>,
     pub n_private_inputs: u64,
     /// Empty string = use recurser default.
@@ -42,7 +42,7 @@ pub struct DomainAggregatorSpec {
 pub struct RegisterRecurserAggregatorRequestDto {
     /// SDK-computed content hash; the coordinator stores the spec under this key.
     pub recurser_id: String,
-    pub spec: DomainAggregatorSpec,
+    pub spec: DomainRecurserSpec,
 }
 
 pub struct RegisterRecurserAggregatorResponseDto {
@@ -77,7 +77,7 @@ impl From<zisk_common::ProofKind> for DomainProofKind {
 pub enum DomainJobPhase {
     Contributions,
     Prove,
-    Aggregate,
+    Recurse,
 }
 
 #[derive(Debug, Clone)]
@@ -109,8 +109,8 @@ pub enum DomainJobKind {
     Prove(DomainProveRequest),
     Wrap(DomainWrapRequest),
     Execute(DomainExecuteRequest),
-    SetupAggregator(DomainSetupAggregatorRequest),
-    Aggregate(DomainAggregateRequest),
+    SetupRecurser(DomainSetupRecurserRequest),
+    RecurserProve(DomainRecurserProveRequest),
 }
 
 /// Optional compute capacity hint attached to a job request.
@@ -154,12 +154,12 @@ pub struct DomainExecuteRequest {
 }
 
 #[derive(Debug, Clone)]
-pub struct DomainSetupAggregatorRequest {
+pub struct DomainSetupRecurserRequest {
     pub recurser_id: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct DomainAggregateRequest {
+pub struct DomainRecurserProveRequest {
     pub recurser_id: String,
     /// bincode-serialized VadcopFinalProof.
     pub proof_a: Vec<u8>,
@@ -186,8 +186,8 @@ pub enum DomainJobKindResponse {
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },
-    SetupAggregator { vk: Vec<u8>, hash_mode: String },
-    Aggregate(DomainProof),
+    SetupRecurser { vk: Vec<u8>, hash_mode: String },
+    RecurserProve(DomainProof),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

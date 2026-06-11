@@ -15,29 +15,10 @@ tera = { workspace = true }
 blake3 = { workspace = true }
 anyhow = { workspace = true }
 
-pil2-stark-setup = { workspace = true, optional = true }
-pilout = { workspace = true, optional = true }
-stark-recurser = { workspace = true, optional = true }
-proofman = { workspace = true, optional = true }
-proofman-verifier = { workspace = true, optional = true }
-fields = { workspace = true, optional = true }
-tracing = { workspace = true, optional = true }
-
-[features]
-default = []
-# Generates witness-side artifacts (.circom, .r1cs, .dat, .pil, .fixed.bin,
-# .exec, .const, .verkey.{json,bin}) for the recurser-aggregator stage.
-setup = [
-    "dep:pil2-stark-setup",
-    "dep:pilout",
-    "dep:stark-recurser",
-    "dep:tracing",
-]
-# Validates inputs against the recurser manifest, then delegates to
-# proofman's `prove_recurser_aggregator`.
-prove = [
-    "dep:proofman",
-    "dep:proofman-verifier",
-    "dep:fields",
-    "dep:tracing",
-]
+pil2-stark-setup = { workspace = true }
+pilout = { workspace = true }
+stark-recurser = { workspace = true }
+proofman = { workspace = true }
+proofman-verifier = { workspace = true }
+fields = { workspace = true }
+tracing = { workspace = true }

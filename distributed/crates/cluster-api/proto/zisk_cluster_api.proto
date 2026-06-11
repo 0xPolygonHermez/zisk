@@ -86,7 +86,7 @@ message ProgramVk {
   string l3 = 4;
 }
 
-message AggregatorSpec {
+message RecurserSpec {
   repeated ProgramVk program_vks            = 1;
   uint64             n_private_inputs       = 2;
   string             prepare_publics_body   = 3;
@@ -95,9 +95,9 @@ message AggregatorSpec {
 }
 
 message SetupRecurserAggregator {
-  string         job_id      = 1;
-  string         recurser_id = 2;
-  AggregatorSpec spec        = 3;
+  string       job_id      = 1;
+  string       recurser_id = 2;
+  RecurserSpec spec        = 3;
 }
 
 message SetupRecurserAggregatorAck {

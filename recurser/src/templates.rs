@@ -2,7 +2,7 @@ use tera::{Context, Tera};
 
 use crate::error::Result;
 
-const AGGREGATOR_TMPL: &str = include_str!("../templates/aggregator.circom.tera");
+const RECURSER_TMPL: &str = include_str!("../templates/aggregator.circom.tera");
 /// Identity passthrough — used when the caller passes `prepare_publics: None`.
 pub const DEFAULT_PREPARE_PUBLICS: &str = include_str!("../templates/prepare_publics.circom");
 /// No-op (no stitching constraints) — used when the caller passes `check_publics: None`.
@@ -26,7 +26,7 @@ pub struct StarkInputBlocks<'a> {
 }
 
 /// Circom bodies for the three publics-handling sub-templates, injected
-/// verbatim into the aggregator. Required signatures are documented in
+/// verbatim into the recurser. Required signatures are documented in
 /// `recurser/docs/aggregator-flow.md`.
 #[derive(Debug, Clone)]
 pub struct CircomTemplates {
@@ -37,7 +37,7 @@ pub struct CircomTemplates {
     pub aggregate_publics: String,
 }
 
-pub fn gen_aggregator(
+pub fn gen_recurser(
     n_private_inputs: usize,
     verifier_filename: &str,
     zisk_vk: &[String],
@@ -67,5 +67,5 @@ pub fn gen_aggregator(
     ctx.insert("assign_stark_inputs_a", stark_inputs.assign_a);
     ctx.insert("assign_stark_inputs_b", stark_inputs.assign_b);
 
-    render(AGGREGATOR_TMPL, &ctx)
+    render(RECURSER_TMPL, &ctx)
 }

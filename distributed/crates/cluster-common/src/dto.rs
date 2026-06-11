@@ -94,11 +94,11 @@ pub enum CoordinatorMessageDto {
 }
 
 /// 4-limb Goldilocks verification key, decimal-encoded.
-pub type AggregatorProgramVk = [String; 4];
+pub type RecurserProgramVk = [String; 4];
 
 #[derive(Debug, Clone)]
-pub struct AggregatorSpecDto {
-    pub program_vks: Vec<AggregatorProgramVk>,
+pub struct RecurserSpecDto {
+    pub program_vks: Vec<RecurserProgramVk>,
     pub n_private_inputs: u64,
     pub prepare_publics_body: String,
     pub check_publics_body: String,
@@ -109,7 +109,7 @@ pub struct AggregatorSpecDto {
 pub struct SetupRecurserAggregatorDto {
     pub job_id: String,
     pub recurser_id: String,
-    pub spec: AggregatorSpecDto,
+    pub spec: RecurserSpecDto,
 }
 
 #[derive(Debug, Clone)]

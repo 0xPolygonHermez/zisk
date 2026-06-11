@@ -185,7 +185,7 @@ impl Coordinator {
         }
     }
 
-    async fn finalize_aggregator_setup(
+    async fn finalize_recurser_setup(
         &self,
         job_id: &JobId,
         vks: Vec<(WorkerId, Vec<u8>, String)>,
@@ -193,9 +193,9 @@ impl Coordinator {
     ) {
         let event = match validate_setup_vks(job_id.as_str(), vks) {
             Ok((vk, hash_mode)) => {
-                self.active_aggregator_setups.write().await.insert(recurser_id);
+                self.active_recurser_setups.write().await.insert(recurser_id);
                 CoordinatorJobEvent::Completed(
-                    crate::job_events::CoordinatorJobResult::SetupAggregator { vk, hash_mode },
+                    crate::job_events::CoordinatorJobResult::SetupRecurser { vk, hash_mode },
                 )
             }
             Err(e) => {
@@ -206,9 +206,9 @@ impl Coordinator {
         self.fire_job_event(job_id, event).await;
     }
 
-    async fn prune_aggregator_setup_pending_for_lost_worker(&self, worker_id: &WorkerId) {
+    async fn prune_recurser_setup_pending_for_lost_worker(&self, worker_id: &WorkerId) {
         let completions = {
-            let mut pending = self.aggregator_setup_pending.write().await;
+            let mut pending = self.recurser_setup_pending.write().await;
             let mut completions = Vec::new();
             pending.retain(|job_id, state| {
                 if !state.pending.remove(worker_id) {
@@ -227,14 +227,14 @@ impl Coordinator {
 
         for (job_id, vks, recurser_id) in completions {
             info!(
-                "[Recurser] Worker {} lost; finalizing in-flight aggregator setup {} with collected acks",
+                "[Recurser] Worker {} lost; finalizing in-flight recurser setup {} with collected acks",
                 worker_id, job_id
             );
-            self.finalize_aggregator_setup(&job_id, vks, recurser_id).await;
+            self.finalize_recurser_setup(&job_id, vks, recurser_id).await;
         }
     }
 
-    /// Aggregator-setup ack counterpart of [`Self::handle_stream_setup_program_ack`].
+    /// Recurser-setup ack counterpart of [`Self::handle_stream_setup_program_ack`].
     pub(crate) async fn handle_stream_setup_recurser_aggregator_ack(
         &self,
         ack: SetupRecurserAggregatorAckDto,
@@ -243,12 +243,12 @@ impl Coordinator {
 
         if ack.success {
             info!(
-                "[Recurser] Worker {} completed aggregator setup for job_id {} recurser_id {}",
+                "[Recurser] Worker {} completed recurser setup for job_id {} recurser_id {}",
                 ack.worker_id, ack.job_id, ack.recurser_id
             );
         } else {
             error!(
-                "[Recurser] Worker {} failed aggregator setup for job_id {} recurser_id {}: {}",
+                "[Recurser] Worker {} failed recurser setup for job_id {} recurser_id {}: {}",
                 ack.worker_id,
                 ack.job_id,
                 ack.recurser_id,
@@ -266,7 +266,7 @@ impl Coordinator {
         }
 
         let outcome = {
-            let mut pending = self.aggregator_setup_pending.write().await;
+            let mut pending = self.recurser_setup_pending.write().await;
             if let Some(state) = pending.get_mut(&job_id) {
                 state.pending.remove(&ack.worker_id);
                 if ack.success {
@@ -287,9 +287,9 @@ impl Coordinator {
         };
 
         if let Some((vks, recurser_id)) = outcome {
-            self.finalize_aggregator_setup(&job_id, vks, recurser_id.clone()).await;
+            self.finalize_recurser_setup(&job_id, vks, recurser_id.clone()).await;
             info!(
-                "[Recurser] All workers acknowledged aggregator setup for job_id {} (recurser_id {})",
+                "[Recurser] All workers acknowledged recurser setup for job_id {} (recurser_id {})",
                 ack.job_id, recurser_id
             );
         }
@@ -297,7 +297,7 @@ impl Coordinator {
         Ok(())
     }
 
-    /// Aggregator-prove ack counterpart of [`crate::coordinator::wrap::handle_wrap_completion`].
+    /// Recurser-prove ack counterpart of [`crate::coordinator::wrap::handle_wrap_completion`].
     pub(crate) async fn handle_stream_run_recurser_aggregator_ack(
         &self,
         ack: RunRecurserAggregatorAckDto,
@@ -345,7 +345,7 @@ impl Coordinator {
             self.fire_job_event(
                 &job_id,
                 CoordinatorJobEvent::Failed(format!(
-                    "Recurser-aggregator prove failed on worker {worker_id}: {reason}"
+                    "Recurser prove failed on worker {worker_id}: {reason}"
                 )),
             )
             .await;
@@ -358,9 +358,9 @@ impl Coordinator {
         }
         self.fire_job_event(
             &job_id,
-            CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Aggregate {
-                proof_bytes: ack.proof,
-            }),
+            CoordinatorJobEvent::Completed(
+                crate::job_events::CoordinatorJobResult::RecurserProve { proof_bytes: ack.proof },
+            ),
         )
         .await;
         info!("[Recurser] Job {} completed successfully on worker {}", job_id, worker_id);
@@ -479,13 +479,13 @@ impl Coordinator {
                         warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
                     }
                 }
-                // Rehydrate aggregator setups so this worker can serve `Aggregate` jobs.
-                for agg in self.read_all_aggregator_setup_dtos().await {
+                // Rehydrate recurser setups so this worker can serve recurser-prove jobs.
+                for agg in self.read_all_recurser_setup_dtos().await {
                     let recurser_id = agg.recurser_id.clone();
                     let msg = CoordinatorMessageDto::SetupRecurserAggregator(agg);
                     if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                         warn!(
-                            "[Recurser] Failed to resend aggregator setup '{}' to {}: {}",
+                            "[Recurser] Failed to resend recurser setup '{}' to {}: {}",
                             recurser_id, worker_id, e
                         );
                     }
@@ -578,7 +578,7 @@ impl Coordinator {
                     // send buffer, so the worker never received it.
                     if let Some(job_id) = last_known_job_id.as_ref() {
                         if let Err(e) =
-                            self.replay_inflight_agg_task_if_aggregator(&worker_id, job_id).await
+                            self.replay_inflight_agg_task_if_recurser(&worker_id, job_id).await
                         {
                             warn!(
                                 "Failed to replay in-flight agg task for {worker_id} on reconnect: {e}"
@@ -600,13 +600,13 @@ impl Coordinator {
                 );
             }
         }
-        // Rehydrate aggregator setups (symmetric with the registration path).
-        for agg in self.read_all_aggregator_setup_dtos().await {
+        // Rehydrate recurser setups (symmetric with the registration path).
+        for agg in self.read_all_recurser_setup_dtos().await {
             let recurser_id = agg.recurser_id.clone();
             let msg = CoordinatorMessageDto::SetupRecurserAggregator(agg);
             if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                 warn!(
-                    "[Recurser] Failed to resend aggregator setup '{}' on reconnect to {}: {}",
+                    "[Recurser] Failed to resend recurser setup '{}' on reconnect to {}: {}",
                     recurser_id, worker_id, e
                 );
             }
@@ -687,7 +687,7 @@ impl Coordinator {
         // will never ACK this job_id (a re-registered process gets a
         // fresh setup id from active_setups).
         self.prune_setup_pending_for_lost_worker(worker_id).await;
-        self.prune_aggregator_setup_pending_for_lost_worker(worker_id).await;
+        self.prune_recurser_setup_pending_for_lost_worker(worker_id).await;
         self.workers_pool.unregister_worker(worker_id).await
     }
 
@@ -704,7 +704,7 @@ impl Coordinator {
             // active_setups). Without this prune the in-flight setup
             // hangs forever — there is no setup-phase monitor timeout.
             self.prune_setup_pending_for_lost_worker(worker_id).await;
-            self.prune_aggregator_setup_pending_for_lost_worker(worker_id).await;
+            self.prune_recurser_setup_pending_for_lost_worker(worker_id).await;
         }
         Ok(())
     }
@@ -749,7 +749,7 @@ impl Coordinator {
             .await?;
         if disconnected {
             self.prune_setup_pending_for_lost_worker(worker_id).await;
-            self.prune_aggregator_setup_pending_for_lost_worker(worker_id).await;
+            self.prune_recurser_setup_pending_for_lost_worker(worker_id).await;
         }
         Ok(())
     }
@@ -906,7 +906,7 @@ impl Coordinator {
                 self.handle_proofs_completion(message).await
             }
             ExecuteTaskResponseResultDataDto::FinalProof(_) => {
-                self.handle_aggregation_completion(message).await
+                self.handle_recurser_completion(message).await
             }
             ExecuteTaskResponseResultDataDto::WrapResult(_) => {
                 self.handle_wrap_completion(message).await

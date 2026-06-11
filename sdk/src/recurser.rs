@@ -1,24 +1,22 @@
-//! Recurser-aggregator handle and the builder that constructs it.
+//! Recurser handle and the builder that constructs it.
 //!
-//! A [`RecurserAggregator`] is the sibling of [`GuestProgram`] for proof
-//! aggregation: it identifies a content-addressed recurser setup and flows
-//! through `client.upload()` / `client.setup()` / `client.aggregate_proof()`.
+//! A [`Recurser`] is the sibling of [`GuestProgram`] for proof
+//! folding: it identifies a content-addressed recurser setup and flows
+//! through `client.upload()` / `client.setup()` / `client.recurser_prove()`.
 
 use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use anyhow::{anyhow, bail, Context, Result};
-use recurser::manifest::RecurserManifestInputs;
-use serde_json::Value;
 use zisk_common::{HashMode, ProgramVK, ZiskPaths};
 use zisk_prover_backend::GuestProgram;
 
 use crate::Client;
 
-/// Handle to a recurser-aggregator. Cheap to clone (paths plus an `Arc`-shared
+/// Handle to a recurser. Cheap to clone (paths plus an `Arc`-shared
 /// VK cache). Heavy setup artifacts live on disk under `output_dir`.
 #[derive(Clone)]
-pub struct RecurserAggregator {
+pub struct Recurser {
     pub(crate) recurser_id: String,
     pub(crate) program_vks: Vec<[String; 4]>,
     pub(crate) n_private_inputs: usize,
@@ -31,7 +29,7 @@ pub struct RecurserAggregator {
     pub(crate) vk_cache: Arc<OnceLock<ProgramVK>>,
 }
 
-impl RecurserAggregator {
+impl Recurser {
     /// Content-addressed identifier; stable across runs for identical inputs.
     pub fn recurser_id(&self) -> &str {
         &self.recurser_id
@@ -47,7 +45,7 @@ impl RecurserAggregator {
             recurser_setup_dir(&self.output_dir, &self.recurser_id).join("recurser_aggregator");
         let limbs = read_verkey_bin_4(&stem).with_context(|| {
             format!(
-                "Failed to read recurser-aggregator verkey at {}. Did `client.setup(&agg).run()` complete?",
+                "Failed to read recurser verkey at {}. Did `client.setup(&agg).run()` complete?",
                 stem.with_extension("verkey.bin").display()
             )
         })?;
@@ -62,7 +60,7 @@ impl RecurserAggregator {
 }
 
 pub(crate) fn recurser_setup_dir(output_dir: &str, recurser_id: &str) -> PathBuf {
-    PathBuf::from(output_dir).join("provingKey").join("recurser").join(recurser_id)
+    recurser::RecurserArtifacts::new(output_dir, recurser_id).dir().to_path_buf()
 }
 
 /// Read the recurser's hash family from the proving key's `globalInfo.json`,
@@ -88,8 +86,8 @@ fn read_verkey_bin_4(stem: &std::path::Path) -> Result<[u64; 4]> {
     Ok(limbs)
 }
 
-/// Builder returned by `client.register_setup_aggregation(...)`.
-pub struct RegisterAggregationRequest<'a, C> {
+/// Builder returned by `client.register_setup_recurser(...)`.
+pub struct RegisterRecurserRequest<'a, C> {
     client: &'a C,
     programs: &'a [&'a GuestProgram],
     aggregate_publics_template: Option<String>,
@@ -99,7 +97,7 @@ pub struct RegisterAggregationRequest<'a, C> {
 }
 
 #[allow(private_bounds)]
-impl<'a, C: Client> RegisterAggregationRequest<'a, C> {
+impl<'a, C: Client> RegisterRecurserRequest<'a, C> {
     pub(crate) fn new(client: &'a C, programs: &'a [&'a GuestProgram]) -> Self {
         Self {
             client,
@@ -139,11 +137,11 @@ impl<'a, C: Client> RegisterAggregationRequest<'a, C> {
         self
     }
 
-    /// Resolves the inputs into a [`RecurserAggregator`]. Cheap: derives each
+    /// Resolves the inputs into a [`Recurser`]. Cheap: derives each
     /// program's 4-limb VK and computes the content-addressed `recurser_id`.
     /// Even on remote, reads the SDK process's local vadcop_final verkey —
     /// it must match the workers' copy or `recurser_id` will diverge.
-    pub fn run(self) -> Result<RecurserAggregator> {
+    pub fn run(self) -> Result<Recurser> {
         let _client = self.client; // captured for API parity; construction is pure data
         let aggregate_publics_template = self
             .aggregate_publics_template
@@ -164,7 +162,7 @@ impl<'a, C: Client> RegisterAggregationRequest<'a, C> {
             .context("~/.zisk/recurser path is not valid UTF-8")?
             .to_string();
 
-        let zisk_vk = read_vadcop_final_verkey(&setup_dir).with_context(|| {
+        let zisk_vk = recurser::setup::read_vadcop_final_verkey(&setup_dir).with_context(|| {
             "Failed to locate local vadcop_final verkey. Run `cargo-zisk setup --recursive` \
              on this machine (required even when using a remote coordinator)."
         })?;
@@ -191,27 +189,19 @@ impl<'a, C: Client> RegisterAggregationRequest<'a, C> {
             program_vks.push(limbs_str);
         }
 
-        // Resolve template defaults here so the manifest hash matches the recurser crate's.
-        let resolved_prepare = self
-            .prepare_publics_template
-            .as_deref()
-            .unwrap_or(recurser::templates::DEFAULT_PREPARE_PUBLICS);
-        let resolved_check = self
-            .check_publics_template
-            .as_deref()
-            .unwrap_or(recurser::templates::DEFAULT_CHECK_PUBLICS);
-
-        let inputs = RecurserManifestInputs::new(
+        // The shared helper owns template-default resolution, so this id is
+        // byte-identical to the one setup and the worker derive.
+        let (inputs, _resolved) = recurser::manifest::resolve_manifest_inputs(
             zisk_vk,
             self.n_private_inputs,
             program_vks.clone(),
-            resolved_prepare,
-            resolved_check,
+            self.prepare_publics_template.as_deref(),
+            self.check_publics_template.as_deref(),
             aggregate_publics_template.as_str(),
         );
         let recurser_id = inputs.compute_id();
 
-        Ok(RecurserAggregator {
+        Ok(Recurser {
             recurser_id,
             program_vks,
             n_private_inputs: self.n_private_inputs,
@@ -225,46 +215,12 @@ impl<'a, C: Client> RegisterAggregationRequest<'a, C> {
     }
 }
 
-/// Reads the vadcop_final verkey as 4 decimal-string limbs.
-fn read_vadcop_final_verkey(setup_dir: &str) -> Result<[String; 4]> {
-    let global_info_path =
-        PathBuf::from(setup_dir).join("provingKey").join("pilout.globalInfo.json");
-    let global_info: Value =
-        serde_json::from_str(&std::fs::read_to_string(&global_info_path).with_context(|| {
-            format!("Failed to read global info at {}", global_info_path.display())
-        })?)?;
-    let name = global_info.get("name").and_then(|v| v.as_str()).unwrap_or("pilout").to_string();
-
-    let verkey_path = PathBuf::from(setup_dir)
-        .join("provingKey")
-        .join(&name)
-        .join("vadcop_final")
-        .join("vadcop_final.verkey.json");
-    let s = std::fs::read_to_string(&verkey_path)
-        .with_context(|| format!("Failed to read verkey at {}", verkey_path.display()))?;
-    let v: Vec<Value> = serde_json::from_str(&s)
-        .with_context(|| format!("Failed to parse verkey JSON at {}", verkey_path.display()))?;
-    if v.len() != 4 {
-        bail!("verkey.json has {} elements, expected 4", v.len());
-    }
-    let to_str = |i: usize, e: &Value| -> Result<String> {
-        if let Some(s) = e.as_str() {
-            Ok(s.to_string())
-        } else if let Some(n) = e.as_u64() {
-            Ok(n.to_string())
-        } else {
-            bail!("verkey.json element {} is not a number or string: {}", i, e)
-        }
-    };
-    Ok([to_str(0, &v[0])?, to_str(1, &v[1])?, to_str(2, &v[2])?, to_str(3, &v[3])?])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn dummy_agg() -> RecurserAggregator {
-        RecurserAggregator {
+    fn dummy_agg() -> Recurser {
+        Recurser {
             recurser_id: "rid".into(),
             program_vks: vec![],
             n_private_inputs: 0,

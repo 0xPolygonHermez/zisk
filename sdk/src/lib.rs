@@ -1,5 +1,3 @@
-mod aggregate_proof;
-mod aggregator;
 mod cancel;
 mod client;
 mod embedded;
@@ -11,6 +9,8 @@ mod job_handle;
 mod lifecycle;
 mod opts;
 mod prove;
+mod recurser;
+mod recurser_prove;
 mod remote;
 mod setup;
 mod stdin;
@@ -19,8 +19,6 @@ mod verify;
 mod verify_constraints;
 mod wrap;
 
-pub use aggregate_proof::AggregateProofRequest;
-pub use aggregator::{RecurserAggregator, RegisterAggregationRequest};
 pub use cancel::CancellationToken;
 pub use client::ProverClient;
 pub use embedded::{
@@ -34,6 +32,8 @@ pub use input_stream::ZiskStream;
 pub use job_handle::JobHandle;
 pub use lifecycle::{SetupTarget, UploadTarget};
 pub use prove::{JobEvent, ProveRequest, ProveResult};
+pub use recurser::{Recurser, RegisterRecurserRequest};
+pub use recurser_prove::RecurserProveRequest;
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
@@ -138,21 +138,18 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
 
-    fn run_upload_aggregator(
-        &self,
-        agg: &crate::aggregator::RecurserAggregator,
-    ) -> Result<UploadResult>;
+    fn run_upload_recurser(&self, agg: &crate::recurser::Recurser) -> Result<UploadResult>;
 
-    fn run_setup_aggregator(
+    fn run_setup_recurser(
         &self,
-        agg: &crate::aggregator::RecurserAggregator,
+        agg: &crate::recurser::Recurser,
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<SetupResult>>;
 
-    fn run_aggregate_proof(
+    fn run_recurser_prove(
         &self,
-        agg: &crate::aggregator::RecurserAggregator,
+        agg: &crate::recurser::Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
         private_inputs: &[u64],

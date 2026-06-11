@@ -1,8 +1,8 @@
 //! Remote backend client — connects to a ZisK Coordinator for distributed proving.
 
-pub(crate) mod aggregator;
 pub(crate) mod execute;
 pub(crate) mod prove;
+pub(crate) mod recurser;
 pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod wrap;
@@ -15,9 +15,9 @@ use zisk_coordinator_api::dto::DomainInputKind;
 use zisk_coordinator_client::CoordinatorClient;
 use zisk_prover_backend::GuestProgram;
 
-use crate::aggregate_proof::AggregateProofRequest;
-use crate::aggregator::{RecurserAggregator, RegisterAggregationRequest};
 use crate::lifecycle::{SetupTarget, UploadTarget};
+use crate::recurser::{Recurser, RegisterRecurserRequest};
+use crate::recurser_prove::RecurserProveRequest;
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     hints::HintsSource,
@@ -128,22 +128,22 @@ impl Client for RemoteClient {
         self.do_wrap(proof, proof_kind, timeout, subs)
     }
 
-    fn run_upload_aggregator(&self, agg: &RecurserAggregator) -> Result<UploadResult> {
-        self.do_upload_aggregator(agg)
+    fn run_upload_recurser(&self, agg: &Recurser) -> Result<UploadResult> {
+        self.do_upload_recurser(agg)
     }
 
-    fn run_setup_aggregator(
+    fn run_setup_recurser(
         &self,
-        agg: &RecurserAggregator,
+        agg: &Recurser,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        self.do_setup_aggregator(agg, timeout, subs)
+        self.do_setup_recurser(agg, timeout, subs)
     }
 
-    fn run_aggregate_proof(
+    fn run_recurser_prove(
         &self,
-        agg: &RecurserAggregator,
+        agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
         private_inputs: &[u64],
@@ -151,7 +151,7 @@ impl Client for RemoteClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_aggregate_proof(
+        self.do_recurser_prove(
             agg,
             proof_a,
             proof_b,
@@ -185,14 +185,14 @@ impl RemoteClient {
     }
 
     /// Submit a setup request. Accepts either a [`GuestProgram`] or a
-    /// [`RecurserAggregator`]; the latter is not yet supported on remote and
+    /// [`Recurser`]; the latter is not yet supported on remote and
     /// will error at `run()` time.
     #[must_use]
     pub fn setup<'a, T: Into<SetupTarget<'a>>>(&'a self, target: T) -> SetupRequest<'a, Self> {
         SetupRequest::new(self, target.into())
     }
 
-    /// Upload/register a program or aggregator with the coordinator. Aggregator
+    /// Upload/register a program or recurser with the coordinator. Recurser
     /// uploads are not yet supported and will error at `run()` time.
     #[must_use]
     pub fn upload<'a, T: Into<UploadTarget<'a>>>(&'a self, target: T) -> UploadRequest<'a, Self> {
@@ -209,26 +209,26 @@ impl RemoteClient {
         WrapRequest::new(self, proof, proof_kind)
     }
 
-    /// Begin building a recurser-aggregator handle. Not yet supported on
+    /// Begin building a recurser handle. Not yet supported on
     /// remote; `run()` returns an error.
     #[must_use]
-    pub fn register_setup_aggregation<'a>(
+    pub fn register_setup_recurser<'a>(
         &'a self,
         programs: &'a [&'a GuestProgram],
-    ) -> RegisterAggregationRequest<'a, Self> {
-        RegisterAggregationRequest::new(self, programs)
+    ) -> RegisterRecurserRequest<'a, Self> {
+        RegisterRecurserRequest::new(self, programs)
     }
 
-    /// Submit an aggregation proof request. Not yet supported on remote;
+    /// Submit a recurser prove request. Not yet supported on remote;
     /// `run()` returns an error.
     #[must_use]
-    pub fn aggregate_proof<'a>(
+    pub fn recurser_prove<'a>(
         &'a self,
-        agg: &'a RecurserAggregator,
+        agg: &'a Recurser,
         proof_a: &'a Proof,
         proof_b: &'a Proof,
-    ) -> AggregateProofRequest<'a, Self> {
-        AggregateProofRequest::new(self, agg, proof_a, proof_b)
+    ) -> RecurserProveRequest<'a, Self> {
+        RecurserProveRequest::new(self, agg, proof_a, proof_b)
     }
 }
 

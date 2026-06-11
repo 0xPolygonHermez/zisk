@@ -1,4 +1,4 @@
-use recurser::{gen_aggregator, templates::StarkInputBlocks, CircomTemplates};
+use recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates};
 
 const PREPARE: &str = include_str!("fixtures/prepare_publics.circom");
 const CHECK: &str = include_str!("fixtures/check_publics.circom");
@@ -33,7 +33,7 @@ fn vk_row(prefix: &str) -> [String; 4] {
 }
 
 #[test]
-fn aggregator_renders_required_layout() {
+fn recurser_renders_required_layout() {
     let stark = StarkInputBlocks {
         define_a: "    // <define a placeholder>",
         define_b: "    // <define b placeholder>",
@@ -45,7 +45,7 @@ fn aggregator_renders_required_layout() {
     let templates = fixture_templates();
 
     let out =
-        gen_aggregator(0, "zisk_final.verifier.circom", &zisk_vk, &program_vks, &stark, &templates)
+        gen_recurser(0, "zisk_final.verifier.circom", &zisk_vk, &program_vks, &stark, &templates)
             .unwrap();
 
     // Includes and pragmas.
@@ -88,15 +88,15 @@ fn aggregator_renders_required_layout() {
 /// `state-machines/publics.json` (rom_root initialPos 0, inputs initialPos 4) and
 /// `common/src/proof.rs`. The circuit must read/emit the VK from the LEADING slots,
 /// not the trailing ones. This pins that so the layout can't silently flip back —
-/// a flip would make the aggregator verify the wrong 4 limbs as the VK (soundness bug).
+/// a flip would make the recurser verify the wrong 4 limbs as the VK (soundness bug).
 #[test]
-fn aggregator_uses_vk_first_publics_layout() {
+fn recurser_uses_vk_first_publics_layout() {
     let stark = StarkInputBlocks { define_a: "", define_b: "", assign_a: "", assign_b: "" };
     let zisk_vk: [String; 4] = std::array::from_fn(|_| "0".to_string());
     let program_vks = [vk_row("p")];
     let templates = fixture_templates();
 
-    let out = gen_aggregator(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
+    let out = gen_recurser(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
 
     // VK extracted from the leading slots a_sv_publics[i], i in [0,4).
     assert!(out.contains("programVK_A[i] <== a_sv_publics[i];"), "VK_A must read leading slots");
@@ -129,50 +129,50 @@ fn aggregator_uses_vk_first_publics_layout() {
 }
 
 #[test]
-fn aggregator_threads_private_inputs_count() {
+fn recurser_threads_private_inputs_count() {
     let stark = StarkInputBlocks { define_a: "", define_b: "", assign_a: "", assign_b: "" };
     let zisk_vk: [String; 4] = std::array::from_fn(|_| "0".to_string());
     let program_vks = [vk_row("p")];
     let templates = fixture_templates();
 
-    let out = gen_aggregator(7, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
+    let out = gen_recurser(7, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
     assert!(out.contains("component main = Main(64, 7, 1);"));
 }
 
 #[test]
-fn aggregator_uses_default_prepare_publics_when_omitted() {
+fn recurser_uses_default_prepare_publics_when_omitted() {
     let stark = StarkInputBlocks { define_a: "", define_b: "", assign_a: "", assign_b: "" };
     let zisk_vk: [String; 4] = std::array::from_fn(|_| "0".to_string());
     let program_vks = [vk_row("p")];
     let templates = fixture_templates_default_prepare();
 
-    let out = gen_aggregator(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
+    let out = gen_recurser(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
     // Default identity body shows up — recurser_publics[i] <== publics[i].
     assert!(out.contains("template PreparePublics(nPublics, nPrivateInputs)"));
     assert!(out.contains("recurser_publics[i] <== publics[i]"));
 }
 
 #[test]
-fn aggregator_uses_default_check_publics_when_omitted() {
+fn recurser_uses_default_check_publics_when_omitted() {
     let stark = StarkInputBlocks { define_a: "", define_b: "", assign_a: "", assign_b: "" };
     let zisk_vk: [String; 4] = std::array::from_fn(|_| "0".to_string());
     let program_vks = [vk_row("p")];
     let templates = fixture_templates_default_check();
 
-    let out = gen_aggregator(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
+    let out = gen_recurser(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
     // Default no-op body shows up — emits no `===` constraints in CheckPublics.
     assert!(out.contains("template CheckPublics(nPublics, nPrivateInputs)"));
     assert!(out.contains("// Default CheckPublics — no-op"));
 }
 
 #[test]
-fn aggregator_injects_all_program_vks() {
+fn recurser_injects_all_program_vks() {
     let stark = StarkInputBlocks { define_a: "", define_b: "", assign_a: "", assign_b: "" };
     let zisk_vk: [String; 4] = std::array::from_fn(|_| "0".to_string());
     let program_vks = [vk_row("x"), vk_row("y"), vk_row("z")];
     let templates = fixture_templates();
 
-    let out = gen_aggregator(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
+    let out = gen_recurser(0, "v.circom", &zisk_vk, &program_vks, &stark, &templates).unwrap();
     assert!(out.contains("[[x1,x2,x3,x4],[y1,y2,y3,y4],[z1,z2,z3,z4]]"));
     assert!(out.contains("component main = Main(64, 0, 3);"));
 }

@@ -17,11 +17,11 @@ impl UploadResult {
     }
 }
 
-/// Builder for a program or aggregator upload request.
+/// Builder for a program or recurser upload request.
 ///
-/// Obtain via `client.upload(&program)` or `client.upload(&aggregator)`.
+/// Obtain via `client.upload(&program)` or `client.upload(&recurser)`.
 /// - Embedded: no-op (artifacts are already local).
-/// - Remote: registers the program ELF or aggregator spec on the coordinator.
+/// - Remote: registers the program ELF or recurser spec on the coordinator.
 pub struct UploadRequest<'a, C> {
     client: &'a C,
     target: UploadTarget<'a>,
@@ -37,7 +37,7 @@ impl<'a, C: Client> UploadRequest<'a, C> {
     pub fn run(self) -> Result<UploadResult> {
         match self.target {
             UploadTarget::Program(p) => self.client.run_upload(p),
-            UploadTarget::Aggregator(a) => self.client.run_upload_aggregator(a),
+            UploadTarget::Recurser(a) => self.client.run_upload_recurser(a),
         }
     }
 }

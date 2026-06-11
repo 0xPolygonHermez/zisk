@@ -1,9 +1,9 @@
 //! Embedded backend client
 
-pub(crate) mod aggregator;
 pub(crate) mod execute;
 pub(crate) mod execute_only;
 pub(crate) mod prove;
+pub(crate) mod recurser;
 pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod verify_constraints;
@@ -21,9 +21,9 @@ use zisk_common::ProofKind;
 use zisk_common::{ProgramVK, Proof, PublicValues, ZiskPaths};
 use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
 
-use crate::aggregate_proof::AggregateProofRequest;
-use crate::aggregator::{RecurserAggregator, RegisterAggregationRequest};
 use crate::lifecycle::{SetupTarget, UploadTarget};
+use crate::recurser::{Recurser, RegisterRecurserRequest};
+use crate::recurser_prove::RecurserProveRequest;
 use crate::upload::UploadResult;
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
@@ -206,12 +206,7 @@ impl EmbeddedClientBuilder {
             ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, backend_opts, self.proof_kind)?,
             ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, backend_opts, self.proof_kind)?,
         };
-        Ok(EmbeddedClient {
-            prover: Arc::new(prover),
-            executor: self.executor,
-            proving_key,
-            gpu: self.gpu,
-        })
+        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor, proving_key })
     }
 
     fn build_emu(
@@ -261,14 +256,37 @@ enum EmbeddedProver {
     Asm(ZiskProver<Asm>),
 }
 
+impl EmbeddedProver {
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> anyhow::Result<()> {
+        match self {
+            EmbeddedProver::Emu(p) => p.register_recurser(output_dir, recurser_id),
+            EmbeddedProver::Asm(p) => p.register_recurser(output_dir, recurser_id),
+        }
+    }
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &proofman_verifier::VadcopFinalProof,
+        proof_b: &proofman_verifier::VadcopFinalProof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> anyhow::Result<proofman_verifier::VadcopFinalProof> {
+        match self {
+            EmbeddedProver::Emu(p) => {
+                p.prove_recurser(recurser_id, proof_a, proof_b, private_inputs, root_c_recurser_agg)
+            }
+            EmbeddedProver::Asm(p) => {
+                p.prove_recurser(recurser_id, proof_a, proof_b, private_inputs, root_c_recurser_agg)
+            }
+        }
+    }
+}
+
 pub struct EmbeddedClient {
     prover: Arc<EmbeddedProver>,
     executor: ExecutorKind,
     pub(crate) proving_key: PathBuf,
-    /// GPU flag from the builder. The normal prove path bakes it into `prover`;
-    /// the recurser-aggregate path builds its own `ProofmanOptions`, so it reads
-    /// this directly to honor `.gpu()`.
-    pub(crate) gpu: bool,
 }
 
 impl Clone for EmbeddedClient {
@@ -277,7 +295,6 @@ impl Clone for EmbeddedClient {
             prover: Arc::clone(&self.prover),
             executor: self.executor,
             proving_key: self.proving_key.clone(),
-            gpu: self.gpu,
         }
     }
 }
@@ -339,22 +356,22 @@ impl Client for EmbeddedClient {
         self.do_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
     }
 
-    fn run_upload_aggregator(&self, agg: &RecurserAggregator) -> Result<UploadResult> {
-        self.do_upload_aggregator(agg)
+    fn run_upload_recurser(&self, agg: &Recurser) -> Result<UploadResult> {
+        self.do_upload_recurser(agg)
     }
 
-    fn run_setup_aggregator(
+    fn run_setup_recurser(
         &self,
-        agg: &RecurserAggregator,
+        agg: &Recurser,
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<SetupResult>> {
-        self.do_setup_aggregator(agg, timeout, subs)
+        self.do_setup_recurser(agg, timeout, subs)
     }
 
-    fn run_aggregate_proof(
+    fn run_recurser_prove(
         &self,
-        agg: &RecurserAggregator,
+        agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
         private_inputs: &[u64],
@@ -362,7 +379,7 @@ impl Client for EmbeddedClient {
         timeout: Option<Duration>,
         subs: SubscriberList,
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
-        self.do_aggregate_proof(
+        self.do_recurser_prove(
             agg,
             proof_a,
             proof_b,
@@ -396,14 +413,14 @@ impl EmbeddedClient {
     }
 
     /// Submit a setup request. Accepts either a [`GuestProgram`] or a
-    /// [`RecurserAggregator`].
+    /// [`Recurser`].
     #[must_use]
     pub fn setup<'a, T: Into<SetupTarget<'a>>>(&'a self, target: T) -> SetupRequest<'a, Self> {
         SetupRequest::new(self, target.into())
     }
 
     /// Submit an upload request. Accepts either a [`GuestProgram`] or a
-    /// [`RecurserAggregator`]. Embedded uploads are no-ops.
+    /// [`Recurser`]. Embedded uploads are no-ops.
     #[must_use]
     pub fn upload<'a, T: Into<UploadTarget<'a>>>(&'a self, target: T) -> UploadRequest<'a, Self> {
         UploadRequest::new(self, target.into())
@@ -419,23 +436,23 @@ impl EmbeddedClient {
         WrapRequest::new(self, proof, proof_kind)
     }
 
-    /// Begin building a recurser-aggregator handle from a list of guest programs.
+    /// Begin building a recurser handle from a list of guest programs.
     #[must_use]
-    pub fn register_setup_aggregation<'a>(
+    pub fn register_setup_recurser<'a>(
         &'a self,
         programs: &'a [&'a GuestProgram],
-    ) -> RegisterAggregationRequest<'a, Self> {
-        RegisterAggregationRequest::new(self, programs)
+    ) -> RegisterRecurserRequest<'a, Self> {
+        RegisterRecurserRequest::new(self, programs)
     }
 
-    /// Submit an aggregation proof request — folds two Vadcop proofs into one.
+    /// Submit a recurser prove request — folds two Vadcop proofs into one.
     #[must_use]
-    pub fn aggregate_proof<'a>(
+    pub fn recurser_prove<'a>(
         &'a self,
-        agg: &'a RecurserAggregator,
+        agg: &'a Recurser,
         proof_a: &'a Proof,
         proof_b: &'a Proof,
-    ) -> AggregateProofRequest<'a, Self> {
-        AggregateProofRequest::new(self, agg, proof_a, proof_b)
+    ) -> RecurserProveRequest<'a, Self> {
+        RecurserProveRequest::new(self, agg, proof_a, proof_b)
     }
 }

@@ -16,6 +16,7 @@ use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use proofman_verifier::VadcopFinalProof;
 use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -582,6 +583,27 @@ impl ProverEngine for AsmProver {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
+    }
+
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.core_prover.backend.register_recurser(output_dir, recurser_id)
+    }
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.core_prover.backend.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            private_inputs,
+            root_c_recurser_agg,
+        )
     }
 
     fn hash(&self) -> Result<String> {

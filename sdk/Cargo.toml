@@ -29,7 +29,7 @@ zisk-coordinator-client = { workspace = true }
 rom-setup = { workspace = true }
 
 # Recurser-aggregator support
-recurser = { workspace = true, features = ["setup", "prove"] }
+recurser = { workspace = true }
 proofman = { workspace = true }
 proofman-verifier = { workspace = true }
 rayon = { workspace = true }

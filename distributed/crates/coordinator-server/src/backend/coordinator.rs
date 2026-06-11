@@ -19,11 +19,11 @@ use zisk_coordinator::{
 };
 
 use super::{
-    BackendService, DomainAggregatorSpec, DomainExecutionStats, DomainInputKind, DomainJobEvent,
-    DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
-    DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure,
-    DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof,
-    DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
+    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
+    DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
+    DomainRecurserSpec, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{internal, ApiError, ApiResult};
 use zisk_cluster_common::{
@@ -87,11 +87,11 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         CoordinatorJobResult::Wrap { proof_bytes } => {
             DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
         }
-        CoordinatorJobResult::SetupAggregator { vk, hash_mode } => {
-            DomainJobKindResponse::SetupAggregator { vk, hash_mode }
+        CoordinatorJobResult::SetupRecurser { vk, hash_mode } => {
+            DomainJobKindResponse::SetupRecurser { vk, hash_mode }
         }
-        CoordinatorJobResult::Aggregate { proof_bytes } => {
-            DomainJobKindResponse::Aggregate(make_proof(hash_id.to_string(), proof_bytes))
+        CoordinatorJobResult::RecurserProve { proof_bytes } => {
+            DomainJobKindResponse::RecurserProve(make_proof(hash_id.to_string(), proof_bytes))
         }
     }
 }
@@ -103,7 +103,7 @@ fn coord_phase_to_domain(phase: &JobPhase) -> DomainJobPhase {
         | JobPhase::ContributionsHintsStream
         | JobPhase::Execution => DomainJobPhase::Contributions,
         JobPhase::Prove => DomainJobPhase::Prove,
-        JobPhase::Aggregate => DomainJobPhase::Aggregate,
+        JobPhase::Recurse => DomainJobPhase::Recurse,
     }
 }
 
@@ -236,12 +236,12 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
         JobState::Running(phase) => {
             let mut events = vec![queued, started];
             // Synthesize Progress events for phases already past.
-            // Progress(Prove) fires when Prove starts; Progress(Aggregate) when Aggregate starts.
+            // Progress(Prove) fires when Prove starts; Progress(Recurse) when Recurse starts.
             match phase {
                 JobPhase::Prove => events.push(progress(DomainJobPhase::Prove)),
-                JobPhase::Aggregate => {
+                JobPhase::Recurse => {
                     events.push(progress(DomainJobPhase::Prove));
-                    events.push(progress(DomainJobPhase::Aggregate));
+                    events.push(progress(DomainJobPhase::Recurse));
                 }
                 _ => {}
             }
@@ -266,11 +266,11 @@ impl BackendService for CoordinatorBackend {
     async fn register_recurser_aggregator(
         &self,
         recurser_id: String,
-        spec: DomainAggregatorSpec,
+        spec: DomainRecurserSpec,
     ) -> ApiResult<String> {
         // Trust the SDK-supplied `recurser_id`; misalignment surfaces at
         // dispatch time as "recurser_id not found".
-        let cluster_spec = zisk_cluster_common::AggregatorSpecDto {
+        let cluster_spec = zisk_cluster_common::RecurserSpecDto {
             program_vks: spec.program_vks,
             n_private_inputs: spec.n_private_inputs,
             prepare_publics_body: spec.prepare_publics_body,
@@ -364,7 +364,7 @@ impl BackendService for CoordinatorBackend {
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
                 Ok(SubmitJobResult { job_id })
             }
-            DomainJobKind::SetupAggregator(r) => {
+            DomainJobKind::SetupRecurser(r) => {
                 let job_id_internal = self
                     .coordinator
                     .setup_recurser_aggregator(&r.recurser_id)
@@ -374,10 +374,10 @@ impl BackendService for CoordinatorBackend {
                     .map_err(|e| internal(format!("invalid job_id: {e}")))?;
                 Ok(SubmitJobResult { job_id })
             }
-            DomainJobKind::Aggregate(r) => {
+            DomainJobKind::RecurserProve(r) => {
                 let response = self
                     .coordinator
-                    .launch_aggregate_proof(
+                    .launch_recurser_prove(
                         r.recurser_id,
                         r.proof_a,
                         r.proof_b,

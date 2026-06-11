@@ -14,6 +14,7 @@ use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
+use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -267,6 +268,27 @@ impl ProverEngine for EmuProver {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
+    }
+
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.core_prover.backend.register_recurser(output_dir, recurser_id)
+    }
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        private_inputs: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.core_prover.backend.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            private_inputs,
+            root_c_recurser_agg,
+        )
     }
 
     fn hash(&self) -> Result<String> {

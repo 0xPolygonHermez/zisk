@@ -31,7 +31,7 @@ zisk-pil = { workspace = true }
 bincode = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
 rayon = { workspace = true }
-recurser = { workspace = true, features = ["setup", "prove"] }
+recurser = { workspace = true }
 
 tonic = { workspace = true }
 tokio = { workspace = true }
