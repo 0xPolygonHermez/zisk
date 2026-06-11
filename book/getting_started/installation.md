@@ -189,34 +189,19 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 [NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
 
-1. Clone the `pil2-proofman` repository in the parent folder of the `zisk` folder created in the previous section:
-    ```bash
-    git clone https://github.com/0xPolygonHermez/pil2-proofman.git
-    ```
-
-2. Install packages:
-    ```bash
-    (cd pil2-proofman && npm install)
-    ```
-
-3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
+1. All subsequent commands must be executed from the `zisk` folder created in the previous section:
     ```bash
     cd zisk
     ```
 
-4. Set `PIL2C_EXEC` environment variable:
-    ```bash
-    export PIL2C_EXEC="../pil2-proofman/node_modules/.bin/pil2com"
-    ```
-
-5. Generate fixed data:
+2. Generate fixed data:
     ```bash
     cargo run --release --bin arith_frops_fixed_gen
     cargo run --release --bin binary_basic_frops_fixed_gen
     cargo run --release --bin binary_extension_frops_fixed_gen
     ```
 
-6. Compile ZisK PIL:
+3. Compile ZisK PIL:
     ```bash
     cargo-zisk proofman-setup compile-pil \
         --pil pil/zisk.pil \
@@ -229,7 +214,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
     This command will create the `pil/zisk.pilout` file
 
-7. Generate pil-helpers:
+4. Generate pil-helpers:
     ```bash
     cargo run --release --manifest-path "../pil2-proofman/Cargo.toml" -p proofman-cli -- pil-helpers \
         --pilout pil/zisk.pilout \
@@ -237,7 +222,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
         -o
     ```
 
-8. Generate setup files:
+5. Generate setup files:
     ```bash
     cargo-zisk proofman-setup setup \
         --airout pil/zisk.pilout \
@@ -253,16 +238,15 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
     First, download the powers-of-tau file into the parent folder of `zisk`:
     ```bash
-    (cd .. && curl -L -O https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_27.ptau)
+    (cd .. && curl -L -O https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau)
     ```
 
     Then generate the snark wrapper:
     ```bash
-    export SNARKJS_PATH="../pil2-proofman/node_modules/snarkjs"
     cargo-zisk proofman-setup setup-snark \
         --build-dir $HOME/.zisk \
         --publics-info state-machines/publics.json \
-        --powers-of-tau ../powersOfTau28_hez_final_27.ptau
+        --powers-of-tau ../powersOfTau28_hez_final_24.ptau
     ```
 
     It is stored under the `$HOME/.zisk/provingKeySnark` directory.
