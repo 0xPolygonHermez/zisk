@@ -15,7 +15,7 @@ use std::{
     ops::Range,
 };
 use tracing::error;
-use zisk_common::{Proof, ZiskExecutorTime};
+use zisk_common::{Proof, StatsCostPerType, ZiskExecutorTime};
 
 use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind};
 
@@ -470,6 +470,7 @@ pub struct ContributionsResult {
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     pub instances: u64,
+    pub cost_per_type: StatsCostPerType,
 }
 
 #[derive(Debug, Clone)]
@@ -479,6 +480,8 @@ pub struct ExecutionResult {
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     pub public_outputs: Vec<u8>,
+    pub cost_per_type: StatsCostPerType,
+    pub plan: Vec<zisk_common::AirInstanceCount>,
 }
 
 #[derive(Debug, Clone)]

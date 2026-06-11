@@ -357,6 +357,20 @@ fn domain_stats_to_cost(stats: &DomainExecutionStats) -> zisk_common::StatsCostP
     }
 }
 
+fn domain_stats_to_executor_time(stats: &DomainExecutionStats) -> zisk_common::ZiskExecutorTime {
+    let et = &stats.executor_time;
+    zisk_common::ZiskExecutorTime {
+        total_duration: et.total_duration,
+        execution_duration: et.execution_duration,
+        count_and_plan_duration: et.count_and_plan_duration,
+        count_and_plan_mo_duration: et.count_and_plan_mo_duration,
+        asm_execution_duration: et
+            .asm
+            .as_ref()
+            .map(|a| zisk_common::AsmExecutionInfo { time: a.time, mhz: a.mhz }),
+    }
+}
+
 // ── FromWaitResult impls ──────────────────────────────────────────────────────
 
 impl FromWaitResult for SetupResult {
@@ -424,10 +438,14 @@ impl FromWaitResult for crate::execute::ExecuteResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
             TerminalStatus::Completed(DomainJobKindResponse::Execute { stats, public_outputs }) => {
+                let plan: Vec<(usize, usize, u64)> =
+                    stats.plan.iter().map(|p| (p.airgroup_id, p.air_id, p.count)).collect();
                 let output = zisk_prover_backend::ExecuteOutput::from_remote(
                     stats.steps,
                     Duration::from_nanos(stats.duration_nanos),
                     domain_stats_to_cost(&stats),
+                    domain_stats_to_executor_time(&stats),
+                    &plan,
                     &public_outputs,
                 );
                 Ok(crate::execute::ExecuteResult::new(output, Some(job_id)))

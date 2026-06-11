@@ -25,7 +25,8 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues, ZiskExecutorTime,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+    StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 
@@ -308,6 +309,12 @@ pub trait ProverEngine {
 
     fn executed_steps(&self) -> u64;
 
+    /// Per-type execution cost from the last execution or proof run.
+    fn execution_cost_per_type(&self) -> StatsCostPerType;
+
+    /// Per-AIR instance plan from the last execution or proof run.
+    fn execution_plan(&self) -> Vec<AirInstanceCount>;
+
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
 
     fn get_instance_trace(
@@ -496,6 +503,16 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Get the number of executed steps by the prover after a proof generation or execution.
     pub fn executed_steps(&self) -> u64 {
         self.prover.executed_steps()
+    }
+
+    /// Get the per-type execution cost from the last execution or proof run.
+    pub fn execution_cost_per_type(&self) -> StatsCostPerType {
+        self.prover.execution_cost_per_type()
+    }
+
+    /// Get the per-AIR instance plan from the last execution or proof run.
+    pub fn execution_plan(&self) -> Vec<AirInstanceCount> {
+        self.prover.execution_plan()
     }
 
     /// Get the executor time from the last execution or proof run.

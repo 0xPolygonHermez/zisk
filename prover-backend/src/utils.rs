@@ -27,10 +27,10 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 }
 
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
-    let name = elf.name();
+    // Content-addressed by the ELF hash only — the same ELF maps to the same artifacts
+    // regardless of the program name, so a given hash is generated once.
     let hash = get_elf_data_hash(elf.elf());
-    let prefix = if name != hash { format!("{name}-{hash}") } else { hash };
-    let base = if with_hints { format!("{prefix}-hints") } else { prefix };
+    let base = if with_hints { format!("{hash}-hints") } else { hash };
 
     Ok((format!("{base}-mt.bin"), format!("{base}-rh.bin")))
 }

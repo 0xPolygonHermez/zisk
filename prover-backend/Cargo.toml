@@ -16,6 +16,7 @@ proofman-verifier = { workspace = true, features = ["parallel"] }
 proofman-starks-lib-c = { workspace = true }
 
 # Zisk internal crates
+zisk-program-macros = { path = "macros" }
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }

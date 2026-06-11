@@ -63,6 +63,20 @@ pub struct GuestProgram {
 }
 
 impl GuestProgram {
+    /// Construct a `GuestProgram` from a static name, precomputed hash, and embedded ELF bytes.
+    ///
+    /// `const`-compatible. This is the constructor emitted by the `load_program!` proc macro,
+    /// which computes the blake3 hash at compile time so the result can be a plain `const`/`static`
+    /// (no runtime hashing, no `LazyLock`). Prefer the macro over calling this directly.
+    #[doc(hidden)]
+    pub const fn from_static(
+        name: &'static str,
+        hash_id: &'static str,
+        elf: &'static [u8],
+    ) -> Self {
+        Self { program_id: ProgramId::new_static(name, hash_id), elf: Elf::from_embedded(elf) }
+    }
+
     /// Create a new guest program from a URI (file://, http://, or plain path)
     pub fn from_uri(uri: &str) -> Result<Self> {
         let path = if let Some(pos) = uri.find("://") {
@@ -184,43 +198,6 @@ impl GuestProgram {
     }
 }
 
-/// Macro to load a guest program at compile time
-///
-/// This macro creates a static `GuestProgram` directly from embedded ELF data.
-/// The ELF binary and its blake3 hash are included at compile time with zero runtime overhead.
-///
-/// # Example
-/// ```ignore
-/// use zisk_sdk::load_program;
-///
-/// // Create a static program that can be used throughout your application
-/// static PROGRAM: GuestProgram = load_program!("my_program");
-///
-/// fn main() {
-///     println!("Program hash: {}", PROGRAM.hash());
-/// }
-/// ```
-///
-/// For dynamic loading from a file path, use `GuestProgram::from_uri()` instead.
-#[macro_export]
-macro_rules! load_program {
-    ($name:literal) => {{
-        #[cfg(zisk_skip_guest_build)]
-        {
-            $crate::GuestProgram {
-                program_id: $crate::ProgramId::new_static($name, ""),
-                elf: $crate::Elf::from_embedded(&[]),
-            }
-        }
-        #[cfg(not(zisk_skip_guest_build))]
-        {
-            $crate::GuestProgram {
-                program_id: $crate::ProgramId::new_static(
-                    $name,
-                    env!(concat!("ZISK_ELF_HASH_", $name)),
-                ),
-                elf: $crate::Elf::from_embedded(include_bytes!(env!(concat!("ZISK_ELF_", $name)))),
-            }
-        }
-    }};
-}
+// `load_program!` is now a proc macro defined in the `zisk-program-macros` crate (re-exported
+// from this crate's root). For fully dynamic loading from a file path at runtime, use
+// `GuestProgram::from_uri()` instead.

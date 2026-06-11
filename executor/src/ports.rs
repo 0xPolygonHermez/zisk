@@ -129,6 +129,13 @@ pub trait ProofRegistry: Dctx {
     /// Each entry is `(index, value32)`; the adapter handles any
     /// field-specific conversion (e.g. `F::from_u32`).
     fn write_pub_outs(&self, pub_outs: &[(u64, u32)]);
+
+    /// Per-`(airgroup_id, air_id)` count of instances registered during planning.
+    /// Used to build the execution plan summary. Defaults to empty for registries
+    /// that don't track it.
+    fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
+        std::collections::HashMap::new()
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────

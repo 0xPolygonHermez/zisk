@@ -27,6 +27,16 @@ impl ZiskStdin {
         Ok(Self(ZiskStdinInner::from_file(path)?))
     }
 
+    /// Creates stdin from a URI string.
+    ///
+    /// - `None` → empty stdin
+    /// - `file://path` → read from file
+    /// - `inline://[[1,2],[3]]` → inline input, a JSON array of u64 arrays
+    /// - No scheme → treated as a file path
+    pub fn from_uri<S: Into<String>>(uri: Option<S>) -> anyhow::Result<Self> {
+        Ok(Self(ZiskStdinInner::from_uri(uri)?))
+    }
+
     /// Reads all data from the stdin buffer.
     pub fn read_data(&self) -> Vec<u8> {
         self.0.read_data()

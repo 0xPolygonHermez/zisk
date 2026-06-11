@@ -16,3 +16,4 @@ pub use guest::*;
 pub use output::*;
 pub use prover::*;
 pub use utils::*;
+pub use zisk_program_macros::load_program;

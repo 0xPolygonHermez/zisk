@@ -27,7 +27,8 @@ use std::sync::{
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey,
+    StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -365,7 +366,6 @@ impl ProverEngine for AsmProver {
                 let output_path = get_output_path(&None)?;
                 generate_assembly(
                     elf.elf(),
-                    elf.name(),
                     &output_path,
                     with_hints,
                     self.core_prover.asm_info.verbose != VerboseMode::Info,
@@ -451,6 +451,22 @@ impl ProverEngine for AsmProver {
             .execution_result()
             .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
+    }
+
+    fn execution_cost_per_type(&self) -> StatsCostPerType {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.cost_per_type)
+            .unwrap_or_default()
+    }
+
+    fn execution_plan(&self) -> Vec<AirInstanceCount> {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.plan)
+            .unwrap_or_default()
     }
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {

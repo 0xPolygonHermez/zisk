@@ -95,7 +95,6 @@ impl AsmExecClient {
     /// via `rom_setup::generate_assembly` if any are missing.
     fn ensure_asm_binaries(&self, program: &GuestProgram, with_hints: bool) -> Result<PathBuf> {
         let [mt, rh, mo] = rom_setup::get_assembly_file_paths_from_id(
-            program.name(),
             program.hash(),
             &self.asm_cache_dir,
             with_hints,
@@ -117,14 +116,8 @@ impl AsmExecClient {
             with_hints
         );
         let gen_verbose = matches!(self.verbose, VerboseMode::Debug | VerboseMode::Trace);
-        rom_setup::generate_assembly(
-            program.elf(),
-            program.name(),
-            &self.asm_cache_dir,
-            with_hints,
-            gen_verbose,
-        )
-        .context("rom_setup::generate_assembly failed")?;
+        rom_setup::generate_assembly(program.elf(), &self.asm_cache_dir, with_hints, gen_verbose)
+            .context("rom_setup::generate_assembly failed")?;
         tracing::info!("ASM binaries generated for ELF '{}'", program.name());
         Ok(mt)
     }

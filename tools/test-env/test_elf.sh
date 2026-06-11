@@ -77,8 +77,8 @@ resolve_verify_proof_file() {
 #   $4 (desc)          – Descriptive label for logging
 #
 # Each proving mode is enabled by populating the corresponding input variable:
-#   <PREFIX>_SINGLE      — non-empty → runs "cargo-zisk prove" (no mpirun)
-#   <PREFIX>_MPI         — non-empty → runs "cargo-zisk prove" via mpirun
+#   <PREFIX>_SINGLE      — non-empty → runs "cargo-zisk-dev prove" (no mpirun)
+#   <PREFIX>_MPI         — non-empty → runs "cargo-zisk-dev prove" via mpirun
 # Leave any variable empty to skip that mode.
 #
 # Example:
@@ -142,7 +142,14 @@ test_elf() {
     if [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]"; then
         gpu_flag="--gpu"
     fi
-    
+
+    # The Rust emulator is the default backend; force the ASM backend (the
+    # production path) everywhere except macOS, which has no ASM support.
+    local asm_flag=""
+    if [[ "${PLATFORM}" != "darwin" ]]; then
+        asm_flag="--asm"
+    fi
+
     # Build mpi command
     MPI_CMD="mpirun --allow-run-as-root --bind-to none -np $MPI_PROCESSES -x OMP_NUM_THREADS=$MPI_THREADS -x RAYON_NUM_THREADS=$MPI_THREADS"
 
@@ -151,7 +158,7 @@ test_elf() {
     verify_files_exist "$INPUTS_PATH" "${mpi_inputs[@]}" || return 1
 
     # -------------------------------------------------------------------------
-    # single: cargo-zisk prove (no mpirun)
+    # single: cargo-zisk-dev prove (no mpirun)
     # -------------------------------------------------------------------------
     if [ ${num_inputs} -gt 0 ]; then
         for input_file in "${inputs[@]}"; do
@@ -162,9 +169,10 @@ test_elf() {
             fi
 
             step "Verifying constraints for ${input_file}..."
-            ensure cargo-zisk verify-constraints \
+            ensure cargo-zisk-dev verify-constraints \
                 -e "${ELF_FILE}" \
                 ${input_flag} \
+                ${asm_flag} \
                 ${gpu_flag} \
                 2>&1 | tee "${LOGS_DIR}/single/constraints_${input_file}.log" || return 1
             if ! grep -F "All global constraints were successfully verified" \
@@ -177,10 +185,11 @@ test_elf() {
                 step "Proving (single) for ${input_file}..."
                 rm -rf ${PROOF_DIR}
 
-                ensure cargo-zisk prove \
+                ensure cargo-zisk-dev prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
                     -o proof.bin $PROVE_FLAGS \
+                    ${asm_flag} \
                     ${gpu_flag} \
                     2>&1 | tee "${LOGS_DIR}/single/prove_${input_file}.log" || return 1
                 if ! grep -F "Vadcop Final proof was verified" "${LOGS_DIR}/single/prove_${input_file}.log"; then
@@ -212,7 +221,7 @@ test_elf() {
     fi
 
     # -------------------------------------------------------------------------
-    # mpi: cargo-zisk prove via mpirun
+    # mpi: cargo-zisk-dev prove via mpirun
     # -------------------------------------------------------------------------
     if [ ${num_mpi_inputs} -gt 0 ]; then
         if [[ "${DISABLE_PROVE}" != "1" ]]; then
@@ -227,11 +236,11 @@ test_elf() {
                 rm -rf ${PROOF_DIR}
 
                 export RAYON_NUM_THREADS=$MPI_THREADS
-                ensure $MPI_CMD cargo-zisk prove \
+                ensure $MPI_CMD cargo-zisk-dev prove \
                     -e "${ELF_FILE}" \
                     ${input_flag} \
-                    -p 6100 \
                     -o ${PROOF_DIR} $PROVE_FLAGS \
+                    ${asm_flag} \
                     ${gpu_flag} \
                     2>&1 | tee "${LOGS_DIR}/mpi/prove_mpi_${input_file}.log" || return 1
                 if ! grep -qF "Vadcop Final proof was verified" \

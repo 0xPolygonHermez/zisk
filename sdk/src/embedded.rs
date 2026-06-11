@@ -10,6 +10,7 @@ pub(crate) mod wrap;
 
 pub use execute_only::{EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient};
 
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -30,14 +31,23 @@ use crate::{
     setup::SetupRequest,
     upload::UploadRequest,
     wrap::WrapRequest,
-    Client, ExecutorKind,
+    Client, ClientSync, ExecutorKind,
 };
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
     "Assembly executor not enabled — call .assembly() on the builder";
 
-/// Builder for an embedded [`ProverClient`].
-pub struct EmbeddedClientBuilder {
+/// Builder for an embedded client.
+///
+/// The `Out` type parameter selects what [`build`](Self::build) returns, and is fixed by the
+/// constructor used:
+/// - [`ProverClient::embedded`](crate::ProverClient::embedded) → `Out = EmbeddedClient` (the
+///   concrete, fully-typed client).
+/// - [`ZiskClient::embedded`](crate::ZiskClient::embedded) → `Out = ZiskClient` (the runtime-dispatch
+///   façade).
+///
+/// The parameter is inferred at call sites and never needs to be named.
+pub struct EmbeddedClientBuilder<Out = EmbeddedClient> {
     executor: ExecutorKind,
     proof_kind: ProofKind,
     embedded_opts: EmbeddedOpts,
@@ -45,12 +55,20 @@ pub struct EmbeddedClientBuilder {
     asm_options: Option<AsmOptions>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
+    verbose: u8,
     no_aggregation: bool,
     verify_constraints: bool,
+    _out: PhantomData<fn() -> Out>,
 }
 
-impl Default for EmbeddedClientBuilder {
-    fn default() -> Self {
+impl<Out> EmbeddedClientBuilder<Out> {
+    /// Construct a builder with default settings for a given output type.
+    ///
+    /// Generic over `Out` so both [`ProverClient::embedded`](crate::ProverClient::embedded)
+    /// (`Out = EmbeddedClient`) and [`ZiskClient::embedded`](crate::ZiskClient::embedded)
+    /// (`Out = ZiskClient`) can construct one. Public construction goes through those entry points
+    /// or [`Default`] (which is implemented only for `Out = EmbeddedClient`).
+    pub(crate) fn for_output() -> Self {
         Self {
             executor: ExecutorKind::Emulator,
             proof_kind: ProofKind::VadcopFinalMinimal,
@@ -59,9 +77,20 @@ impl Default for EmbeddedClientBuilder {
             asm_options: None,
             proving_key: None,
             proving_key_snark: None,
+            verbose: 0,
             no_aggregation: false,
             verify_constraints: false,
+            _out: PhantomData,
         }
+    }
+}
+
+// Implemented only for the concrete output so `EmbeddedClientBuilder::default()` resolves
+// unambiguously to `EmbeddedClientBuilder<EmbeddedClient>`. The `ZiskClient` variant is built via
+// [`ZiskClient::embedded`](crate::ZiskClient::embedded), not `Default`.
+impl Default for EmbeddedClientBuilder<EmbeddedClient> {
+    fn default() -> Self {
+        Self::for_output()
     }
 }
 
@@ -87,7 +116,7 @@ pub trait WitnessBuilderExt: Sized {
     fn verify_constraints(self) -> Self;
 }
 
-impl WitnessBuilderExt for EmbeddedClientBuilder {
+impl<Out> WitnessBuilderExt for EmbeddedClientBuilder<Out> {
     fn no_aggregation(mut self) -> Self {
         self.no_aggregation = true;
         self
@@ -99,7 +128,7 @@ impl WitnessBuilderExt for EmbeddedClientBuilder {
     }
 }
 
-impl EmbeddedClientBuilder {
+impl<Out> EmbeddedClientBuilder<Out> {
     /// Set the executor kind. Default is [`ExecutorKind::Emulator`].
     #[must_use]
     pub fn executor(mut self, executor: ExecutorKind) -> Self {
@@ -163,44 +192,16 @@ impl EmbeddedClientBuilder {
         self
     }
 
+    /// Set the prover verbosity level (`0` = quiet, higher = more verbose).
+    #[must_use]
+    pub fn verbose(mut self, level: u8) -> Self {
+        self.verbose = level;
+        self
+    }
+
     #[must_use]
     pub fn execute_only(self) -> EmbeddedExecuteOnlyBuilder {
         EmbeddedExecuteOnlyBuilder::from_parts(self.executor, self.asm_options)
-    }
-
-    /// Build the [`EmbeddedClient`].
-    pub fn build(self) -> Result<EmbeddedClient> {
-        crate::client::ensure_single_instance();
-        if self.asm_options.is_some() && self.executor != ExecutorKind::Assembly {
-            panic!(
-                "asm_options were set but the executor is not Assembly. \
-                 Call .assembly() on the builder before setting asm_options."
-            );
-        }
-        let mut embedded_opts = self.embedded_opts;
-        if let Some(pk) = self.proving_key {
-            embedded_opts.proving_key = Some(pk);
-        }
-        if let Some(pk) = self.proving_key_snark {
-            embedded_opts.proving_key_snark = Some(pk);
-        }
-        let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
-        if self.no_aggregation {
-            backend_opts = backend_opts.no_aggregation();
-        }
-        if self.verify_constraints {
-            backend_opts = backend_opts.verify_constraints();
-        }
-        if let Some(asm_opts) = self.asm_options {
-            *backend_opts.asm_options_mut() = asm_opts;
-        }
-        let pk = ZiskPaths::get_proving_key(backend_opts.get_proving_key());
-        let pk_snark = ZiskPaths::get_proving_key_snark(backend_opts.get_proving_key_snark());
-        let prover = match self.executor {
-            ExecutorKind::Emulator => Self::build_emu(pk, pk_snark, backend_opts, self.proof_kind)?,
-            ExecutorKind::Assembly => Self::build_asm(pk, pk_snark, backend_opts, self.proof_kind)?,
-        };
-        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor })
     }
 
     fn build_emu(
@@ -246,6 +247,60 @@ impl EmbeddedClientBuilder {
     }
 }
 
+impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
+    /// Build the client.
+    ///
+    /// Returns the type fixed by the constructor: an [`EmbeddedClient`] via
+    /// [`ProverClient::embedded`](crate::ProverClient::embedded), or an
+    /// [`ZiskClient`](crate::ZiskClient) via [`ZiskClient::embedded`](crate::ZiskClient::embedded).
+    pub fn build(self) -> Result<Out> {
+        crate::client::ensure_single_instance();
+        if self.asm_options.is_some() && self.executor != ExecutorKind::Assembly {
+            panic!(
+                "asm_options were set but the executor is not Assembly. \
+                 Call .assembly() on the builder before setting asm_options."
+            );
+        }
+        let mut embedded_opts = self.embedded_opts;
+        if let Some(pk) = self.proving_key {
+            embedded_opts.proving_key = Some(pk);
+        }
+        if let Some(pk) = self.proving_key_snark {
+            embedded_opts.proving_key_snark = Some(pk);
+        }
+        let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
+        if self.verbose > 0 {
+            backend_opts = backend_opts.verbose(self.verbose);
+        }
+        if self.no_aggregation {
+            backend_opts = backend_opts.no_aggregation();
+        }
+        if self.verify_constraints {
+            backend_opts = backend_opts.verify_constraints();
+        }
+        if let Some(asm_opts) = self.asm_options {
+            *backend_opts.asm_options_mut() = asm_opts;
+        }
+        let pk = ZiskPaths::get_proving_key(backend_opts.get_proving_key());
+        let pk_snark = ZiskPaths::get_proving_key_snark(backend_opts.get_proving_key_snark());
+        let prover = match self.executor {
+            ExecutorKind::Emulator => EmbeddedClientBuilder::<Out>::build_emu(
+                pk,
+                pk_snark,
+                backend_opts,
+                self.proof_kind,
+            )?,
+            ExecutorKind::Assembly => EmbeddedClientBuilder::<Out>::build_asm(
+                pk,
+                pk_snark,
+                backend_opts,
+                self.proof_kind,
+            )?,
+        };
+        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor }.into())
+    }
+}
+
 enum EmbeddedProver {
     Emu(ZiskProver<Emu>),
     Asm(ZiskProver<Asm>),
@@ -263,10 +318,6 @@ impl Clone for EmbeddedClient {
 }
 
 impl Client for EmbeddedClient {
-    fn default_executor(&self) -> ExecutorKind {
-        self.executor
-    }
-
     fn run_upload(&self, program: &GuestProgram) -> Result<crate::upload::UploadResult> {
         self.do_upload(program)
     }
@@ -320,7 +371,64 @@ impl Client for EmbeddedClient {
     }
 }
 
+impl ClientSync for EmbeddedClient {
+    fn run_setup_sync(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+        emulator_only: bool,
+        subs: SubscriberList,
+    ) -> Result<SetupResult> {
+        self.do_setup_sync(program, with_hints, emulator_only, subs)
+    }
+
+    fn run_prove_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        proof_kind: ProofKind,
+        subs: SubscriberList,
+    ) -> Result<crate::prove::ProveResult> {
+        self.do_prove_sync(program, stdin, hints, executor, proof_kind, subs)
+    }
+
+    fn run_execute_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        subs: SubscriberList,
+    ) -> Result<ExecuteResult> {
+        self.do_execute_sync(program, stdin, hints, executor, subs)
+    }
+
+    fn run_wrap_sync(
+        &self,
+        proof: &Proof,
+        proof_kind: ProofKind,
+        override_publics: Option<PublicValues>,
+        override_program_vk: Option<ProgramVK>,
+        subs: SubscriberList,
+    ) -> Result<crate::prove::ProveResult> {
+        self.do_wrap_sync(proof, proof_kind, override_publics, override_program_vk, subs)
+    }
+}
+
 impl EmbeddedClient {
+    /// The executor this client was built with.
+    ///
+    /// Crate-internal: used by [`ZiskClient`](crate::ZiskClient) to forward the configured executor
+    /// into `prove`/`execute` requests, mirroring the behavior of this client's own request
+    /// builders. Not part of the public surface — `RemoteClient` selects an executor per request
+    /// and has no single value to mirror.
+    #[must_use]
+    pub(crate) fn executor(&self) -> ExecutorKind {
+        self.executor
+    }
+
     /// Submit a prove request.
     #[must_use]
     pub fn prove<'a>(
@@ -328,7 +436,7 @@ impl EmbeddedClient {
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> ProveRequest<'a, Self> {
-        ProveRequest::new(self, program, stdin)
+        ProveRequest::new(self, program, stdin, self.executor)
     }
 
     /// Submit an execute request (dry-run, no proof).
@@ -338,7 +446,7 @@ impl EmbeddedClient {
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
     ) -> ExecuteRequest<'a, Self> {
-        ExecuteRequest::new(self, program, stdin)
+        ExecuteRequest::new(self, program, stdin, self.executor)
     }
 
     /// Submit a ROM setup request.
