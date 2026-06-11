@@ -1,4 +1,4 @@
-use ziskos::zisklib::{fcall_uint256_div, fcall_uint256_inv, fcall_uint256_inv_mod};
+use ziskos::zisklib::{fcall_uint256_div, fcall_uint256_inv, fcall_uint256_inv_mod, ModInvResult};
 
 pub fn diagnostic_uint256() {
     diagnostic_uint256_div();
@@ -20,6 +20,8 @@ fn diagnostic_uint256_inv() {
 
 fn diagnostic_uint256_inv_mod() {
     // 2⁻¹ mod 5 = 3.
-    let inv = fcall_uint256_inv_mod(&[2, 0, 0, 0], &[5, 0, 0, 0]);
-    assert_eq!(inv, Some([3, 0, 0, 0]));
+    match fcall_uint256_inv_mod(&[2, 0, 0, 0], &[5, 0, 0, 0]) {
+        ModInvResult::Inverse(inv) => assert_eq!(inv, [3, 0, 0, 0]),
+        ModInvResult::NoInverse { .. } => panic!("2 must be invertible mod 5"),
+    }
 }

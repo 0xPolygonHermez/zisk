@@ -123,7 +123,11 @@ pub fn bls_core_aggregate_verify_bls12_381(
     // Aggregate the pks of the same message to l sets of pks
     // Compute the pairings and accumulate the result in c1
     let n = pks_compressed.len();
-    let mut c1: [u64; 72] = [0; 72];
+    let mut c1: [u64; 72] = {
+        let mut tmp = [0u64; 72];
+        tmp[0] = 1; // Identity element of Fp12
+        tmp
+    };
     for i in 0..n {
         // Find a non-seen message
         let mut seen_earlier = false;
