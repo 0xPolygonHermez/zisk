@@ -3,7 +3,9 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
-use crate::zisklib::{eq, fcall_bn254_twist_add_line_coeffs, fcall_bn254_twist_dbl_line_coeffs};
+use crate::zisklib::{
+    eq, fcall_bn254_twist_add_line_coeffs, fcall_bn254_twist_dbl_line_coeffs, is_zero,
+};
 
 use super::{
     fp::{inv_fp_bn254, mul_fp_bn254, neg_fp_bn254},
@@ -521,6 +523,11 @@ fn is_line_twist_bn254(
     mu: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
+    // Chord (λ,μ) is uniquely determined only when the two points have distinct x
+    if eq(&q1[0..8], &q2[0..8]) {
+        return false;
+    }
+
     // Check if the line passes through q1
     let check_q1 = line_check_twist_bn254(
         q1,
@@ -549,6 +556,13 @@ fn is_tangent_twist_bn254(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     // Check if the line is tangent to the curve at q
+    let x: &[u64; 8] = q[0..8].try_into().unwrap();
+    let y: &[u64; 8] = q[8..16].try_into().unwrap();
+
+    // Tangent (λ,μ) is uniquely determined only when y != 0 (rejects (0,0)/2-torsion)
+    if is_zero(y) {
+        return false;
+    }
 
     // Check if the line passes through q
     let check_q = line_check_twist_bn254(
@@ -559,8 +573,6 @@ fn is_tangent_twist_bn254(
         hints,
     );
     // Check that 2𝜆y = 3x²
-    let x: &[u64; 8] = q[0..8].try_into().unwrap();
-    let y: &[u64; 8] = q[8..16].try_into().unwrap();
     let mut lhs = mul_fp2_bn254(
         lambda,
         y,
