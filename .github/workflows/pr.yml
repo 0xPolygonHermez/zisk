@@ -22,9 +22,10 @@ jobs:
     name: Cargo tests
     runs-on: rocket
     container:
-      image: ubuntu:latest
+      image: ubuntu:22.04
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
     steps:
       - name: Free disk space
         uses: jlumbroso/free-disk-space@main
@@ -45,26 +46,29 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./install_deps.sh
 
+      - name: Install Rust
+        run: |
+          apt-get update
+          apt-get install -y curl build-essential pkg-config libssl-dev git
+          curl https://sh.rustup.rs -sSf | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Show versions
+        run: |
+          rustc --version
+          cargo --version
+
       - name: Build cargo-zisk
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin cargo-zisk
+        run: cargo build --bin cargo-zisk
 
       - name: Install ZisK rust toolchain
         run: ./target/debug/cargo-zisk toolchain install
 
       - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --all-targets # --all-features
+        run: cargo check --all-targets
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --release
+        run: cargo test --workspace --release
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
