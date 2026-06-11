@@ -316,7 +316,7 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   [ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
 
   rm -rf "$BUILD_DIR/provingKey"
-  cargo run --release --bin cargo-zisk -- proofman-setup setup \
+  cargo run --release --bin cargo-zisk-dev -- proofman-setup setup \
     --airout pil/zisk.pilout \
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
