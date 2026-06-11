@@ -47,6 +47,11 @@ pub(crate) struct ZiskEmbeddedExecute {
     #[arg(short = 'u', long, requires = "asm")]
     unlock_mapped_memory: bool,
 
+    /// Use GPU acceleration
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(short = 'g', long)]
+    gpu: bool,
+
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -72,6 +77,10 @@ impl ZiskEmbeddedExecute {
         let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
         if self.asm {
             builder = builder.assembly();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            builder = builder.gpu();
         }
         // `--unlock-mapped-memory` requires `--asm` (clap-enforced); the ASM
         // options carry into the execute-only client built below.
