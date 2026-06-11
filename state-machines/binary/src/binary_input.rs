@@ -1,5 +1,6 @@
 use zisk_common::{ExtOperationData, OperationBusData};
 
+#[derive(Debug, Default)]
 pub struct BinaryInput {
     pub op: u8,
     pub a: u64,

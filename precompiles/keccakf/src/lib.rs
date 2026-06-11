@@ -38,3 +38,31 @@ mod keccakf_tests {
         ELF_KECCAK.run_emulation(stdin, None).expect("keccak guest emulation failed");
     }
 }
+
+// =====================================================================
+// Unit-test framework marker.
+//
+// NOTE: Keccakf packs multiple inputs per circuit; a constant
+// `rows_per_input` can't express it cleanly. Hooks see absolute
+// `row_idx` in `input_idx` with `clock` = 0; the closure can recompute
+// mappings from `precomp_keccakf` constants if needed.
+// =====================================================================
+
+use zisk_common::unit_test_sm;
+use zisk_pil::{KeccakfTrace, KeccakfTraceRow, KeccakfTraceRowPacked, KECCAKF_AIR_IDS};
+
+// The `trace:` line additionally emits the raw trace-authoring override
+// impl, letting a unit test bypass `compute_witness` and write the Keccakf
+// trace directly (see `TraceOverrideBag`).
+unit_test_sm! {
+    KeccakfSm => {
+        name: "Keccakf",
+        air: KECCAKF_AIR_IDS[0],
+        input: KeccakfInput,
+        manager: KeccakfSM<F>,
+        row: KeccakfTraceRow<F>,
+        row_packed: KeccakfTraceRowPacked<F>,
+        trace: KeccakfTrace,
+        chunk_size: |sm| sm.num_available_keccakfs,
+    }
+}

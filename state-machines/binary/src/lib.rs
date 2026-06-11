@@ -34,5 +34,56 @@ pub use binary_extension_collector::*;
 pub use binary_extension_frops::*;
 pub use binary_extension_instance::*;
 use binary_extension_table::*;
-use binary_input::*;
+pub use binary_input::*;
 use binary_planner::*;
+// =====================================================================
+// Unit-test framework markers. One marker per AIR id; all use the
+// inner SM directly as `Manager` so the macro can call
+// `sm.compute_witness(...)` without needing an accessor name.
+// =====================================================================
+
+use zisk_common::unit_test_sm;
+use zisk_pil::{
+    BinaryAddTrace, BinaryAddTraceRow, BinaryAddTraceRowPacked, BinaryExtensionTrace,
+    BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked, BinaryTrace, BinaryTraceRow,
+    BinaryTraceRowPacked, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
+};
+
+unit_test_sm! {
+    BinarySm => {
+        name: "Binary",
+        air: BINARY_AIR_IDS[0],
+        input: BinaryInput,
+        manager: BinaryBasicSM<F>,
+        row: BinaryTraceRow<F>,
+        row_packed: BinaryTraceRowPacked<F>,
+        trace: BinaryTrace,
+        chunk_size: |_| BinaryTrace::<usize>::NUM_ROWS,
+    }
+}
+
+unit_test_sm! {
+    BinaryAddSm => {
+        name: "BinaryAdd",
+        air: BINARY_ADD_AIR_IDS[0],
+        input: [u64; 2],
+        manager: BinaryAddSM<F>,
+        row: BinaryAddTraceRow<F>,
+        row_packed: BinaryAddTraceRowPacked<F>,
+        trace: BinaryAddTrace,
+        chunk_size: |_| BinaryAddTrace::<usize>::NUM_ROWS,
+    }
+}
+
+unit_test_sm! {
+    BinaryExtensionSm => {
+        name: "BinaryExtension",
+        air: BINARY_EXTENSION_AIR_IDS[0],
+        input: BinaryInput,
+        manager: BinaryExtensionSM<F>,
+        row: BinaryExtensionTraceRow<F>,
+        row_packed: BinaryExtensionTraceRowPacked<F>,
+        trace: BinaryExtensionTrace,
+        chunk_size: |_| BinaryExtensionTrace::<usize>::NUM_ROWS,
+    }
+}

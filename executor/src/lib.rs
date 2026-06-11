@@ -9,16 +9,24 @@ mod bus;
 mod error;
 mod execution;
 mod executor;
+mod executor_test;
 mod plan;
 mod ports;
 mod sm;
 mod state;
+/// Post-hoc trace-row hooks for the unit-test executor path.
+pub mod unit_test_hooks;
+/// Registry of per-SM unit-test targets and the AIR-id → inner-SM manager map.
+pub mod unit_test_targets;
+/// Raw trace-authoring overrides that bypass `compute_witness`.
+pub mod unit_test_trace_override;
 mod witness;
 
 // External API
 pub use asm_runner::GpuBufferSource;
 pub use execution::asm::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
+pub use executor_test::*; // ZiskExecutorTest (unit-test path)
 pub use witness::AirClassifier; // AIR id → display name (used to label remote execution plans)
 
 pub(crate) use adapters::*;

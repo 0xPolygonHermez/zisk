@@ -18,6 +18,7 @@ members = [
   "cli",
   "core",
   "integration-tests",
+  "unit-tests",
   "data-bus",
   "emulator",
   "executor",

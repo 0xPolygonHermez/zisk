@@ -33,3 +33,24 @@ mod sha256f_tests {
         ELF_SHA256.run_emulation(stdin, None).expect("sha256f guest emulation failed");
     }
 }
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+use zisk_common::unit_test_sm;
+use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowPacked, SHA_256_F_AIR_IDS};
+
+unit_test_sm! {
+    Sha256fSm => {
+        name: "Sha256f",
+        air: SHA_256_F_AIR_IDS[0],
+        input: Sha256fInput,
+        manager: Sha256fSM<F>,
+        row: Sha256fTraceRow<F>,
+        row_packed: Sha256fTraceRowPacked<F>,
+        trace: Sha256fTrace,
+        rows_per_input: CLOCKS,
+        chunk_size: |sm| sm.num_available_sha256fs,
+    }
+}

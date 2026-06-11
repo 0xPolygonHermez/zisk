@@ -139,3 +139,24 @@ mod arith_eq_tests {
             .expect("bn254_complex_sub guest emulation failed");
     }
 }
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+use zisk_common::unit_test_sm;
+use zisk_pil::{ArithEqTrace, ArithEqTraceRow, ArithEqTraceRowPacked, ARITH_EQ_AIR_IDS};
+
+unit_test_sm! {
+    ArithEqSm => {
+        name: "ArithEq",
+        air: ARITH_EQ_AIR_IDS[0],
+        input: ArithEqInput,
+        manager: ArithEqSM<F>,
+        row: ArithEqTraceRow<F>,
+        row_packed: ArithEqTraceRowPacked<F>,
+        trace: ArithEqTrace,
+        rows_per_input: ARITH_EQ_ROWS_BY_OP,
+        chunk_size: |_| ArithEqTrace::<usize>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP,
+    }
+}

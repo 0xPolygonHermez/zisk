@@ -26,3 +26,23 @@ use arith_table_helpers::*;
 
 #[cfg(test)]
 mod arith_operation_test;
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+use zisk_common::{unit_test_sm, OperationData};
+use zisk_pil::{ArithTrace, ArithTraceRow, ArithTraceRowPacked, ARITH_AIR_IDS};
+
+unit_test_sm! {
+    ArithSm => {
+        name: "Arith",
+        air: ARITH_AIR_IDS[0],
+        input: OperationData<u64>,
+        manager: ArithFullSM<F>,
+        row: ArithTraceRow<F>,
+        row_packed: ArithTraceRowPacked<F>,
+        trace: ArithTrace,
+        chunk_size: |_| ArithTrace::<usize>::NUM_ROWS,
+    }
+}

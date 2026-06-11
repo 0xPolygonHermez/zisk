@@ -51,6 +51,21 @@ impl<F: PrimeField64> BinarySM<F> {
 
         Arc::new(Self { binary_basic_sm, binary_extension_sm, binary_add_sm, std })
     }
+
+    /// Inner basic-binary SM. Exposed for the unit-test executor registry.
+    pub fn binary_basic_sm(&self) -> &Arc<BinaryBasicSM<F>> {
+        &self.binary_basic_sm
+    }
+
+    /// Inner binary-extension SM. Exposed for the unit-test executor registry.
+    pub fn binary_extension_sm(&self) -> &Arc<BinaryExtensionSM<F>> {
+        &self.binary_extension_sm
+    }
+
+    /// Inner binary-add SM. Exposed for the unit-test executor registry.
+    pub fn binary_add_sm(&self) -> &Arc<BinaryAddSM<F>> {
+        &self.binary_add_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentPlanBuilder<F> for BinarySM<F> {

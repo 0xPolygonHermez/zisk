@@ -39,6 +39,16 @@ impl<F: PrimeField64> ArithSM<F> {
 
         Arc::new(Self { arith_full_sm, std })
     }
+
+    /// Input generator for arith ops. Exposed for the unit-test executor registry.
+    pub fn build_arith_input_generator(&self) -> ArithCounterInputGen {
+        ArithCounterInputGen::new(BusDeviceMode::InputGenerator)
+    }
+
+    /// Inner full-arith SM. Exposed for the unit-test executor registry.
+    pub fn arith_full_sm(&self) -> &Arc<ArithFullSM<F>> {
+        &self.arith_full_sm
+    }
 }
 
 impl<F: PrimeField64> ComponentPlanBuilder<F> for ArithSM<F> {

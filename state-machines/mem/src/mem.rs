@@ -34,6 +34,31 @@ impl<F: PrimeField64> Mem<F> {
 
         Arc::new(Self { mem_align_sm, mem_sm, input_data_sm, rom_data_sm, mem_align_byte_sm })
     }
+
+    /// Inner mem-align SM. Exposed for the unit-test executor registry.
+    pub fn mem_align_sm(&self) -> &Arc<MemAlignSM<F>> {
+        &self.mem_align_sm
+    }
+
+    /// Inner mem SM. Exposed for the unit-test executor registry.
+    pub fn mem_sm(&self) -> &Arc<MemSM<F>> {
+        &self.mem_sm
+    }
+
+    /// Inner rom-data SM. Exposed for the unit-test executor registry.
+    pub fn rom_data_sm(&self) -> &Arc<RomDataSM<F>> {
+        &self.rom_data_sm
+    }
+
+    /// Inner input-data SM. Exposed for the unit-test executor registry.
+    pub fn input_data_sm(&self) -> &Arc<InputDataSM<F>> {
+        &self.input_data_sm
+    }
+
+    /// Memory counters. Exposed for the unit-test executor registry.
+    pub fn build_mem_counter(&self) -> MemCounters {
+        MemCounters::new()
+    }
 }
 
 impl<F: PrimeField64> ComponentPlanBuilder<F> for Mem<F> {

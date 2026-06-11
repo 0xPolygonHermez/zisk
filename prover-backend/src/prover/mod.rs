@@ -3,12 +3,87 @@ mod asm_exec;
 mod backend;
 mod emu;
 mod emu_exec;
+mod unit_test;
+mod verify_input;
 use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
 pub use asm_exec::*;
 use backend::*;
 pub use emu::*;
 pub use emu_exec::*;
+pub use unit_test::*;
+pub use verify_input::VerifyInput;
+
+// Re-export the unit-test trait + hook bag so test code only imports
+// from `zisk_prover_backend`.
+pub use executor::unit_test_hooks::UnitTestHookBag;
+pub use executor::unit_test_trace_override::TraceOverrideBag;
+pub use zisk_common::UnitTestSm;
+// Per-SM markers come from each SM crate (where the trait impl lives).
+pub use precomp_arith_eq::ArithEqSm;
+pub use precomp_arith_eq_384::ArithEq384Sm;
+pub use precomp_big_int::Add256Sm;
+pub use precomp_blake2::Blake2Sm;
+pub use precomp_dma::{
+    Dma64AlignedInputCpySm, Dma64AlignedMemCpySm, Dma64AlignedMemSetSm, Dma64AlignedMemSm,
+    Dma64AlignedSm, DmaInputCpySm, DmaMemCpySm, DmaPrePostInputCpySm, DmaPrePostMemCpySm,
+    DmaPrePostSm, DmaSm, DmaUnalignedSm,
+};
+pub use precomp_keccakf::KeccakfSm;
+pub use precomp_poseidon2::Poseidon2Sm;
+pub use precomp_sha256f::Sha256fSm;
+pub use sm_arith::ArithSm;
+pub use sm_binary::{BinaryAddSm, BinaryExtensionSm, BinarySm};
+pub use sm_mem::{InputDataSm, MemAlignSm, MemSm, RomDataSm};
+
+// Convenience re-exports of typed input + row types so tests only need a
+// single `use zisk_prover_backend::*;` line.
+pub mod inputs {
+    pub use precomp_arith_eq::{
+        Arith256Input, Arith256ModInput, ArithEqInput, Bn254ComplexAddInput, Bn254ComplexMulInput,
+        Bn254ComplexSubInput, Bn254CurveAddInput, Bn254CurveDblInput, Secp256k1AddInput,
+        Secp256k1DblInput, Secp256r1AddInput, Secp256r1DblInput,
+    };
+    pub use precomp_arith_eq_384::{
+        Arith384ModInput, ArithEq384Input, Bls12_381ComplexAddInput, Bls12_381ComplexMulInput,
+        Bls12_381ComplexSubInput, Bls12_381CurveAddInput, Bls12_381CurveDblInput,
+    };
+    pub use precomp_big_int::Add256Input;
+    pub use precomp_blake2::Blake2Input;
+    pub use precomp_dma::{Dma64AlignedInput, DmaInput, DmaPrePostInput, DmaUnalignedInput};
+    pub use precomp_keccakf::KeccakfInput;
+    pub use precomp_poseidon2::Poseidon2Input;
+    pub use precomp_sha256f::Sha256fInput;
+    pub use sm_binary::BinaryInput;
+    pub use sm_mem::{MemAlignInput, MemInput};
+    pub use zisk_common::OperationData;
+}
+
+pub mod rows {
+    pub use zisk_pil::{
+        Add256TraceRow, ArithEq384TraceRow, ArithEqTraceRow, ArithTraceRow, BinaryAddTraceRow,
+        BinaryExtensionTraceRow, BinaryTraceRow, Blake2brTraceRow, Dma64AlignedInputCpyTraceRow,
+        Dma64AlignedMemCpyTraceRow, Dma64AlignedMemSetTraceRow, Dma64AlignedMemTraceRow,
+        Dma64AlignedTraceRow, DmaInputCpyTraceRow, DmaMemCpyTraceRow, DmaPrePostInputCpyTraceRow,
+        DmaPrePostMemCpyTraceRow, DmaPrePostTraceRow, DmaTraceRow, DmaUnalignedTraceRow,
+        InputDataTraceRow, KeccakfTraceRow, MemAlignTraceRow, MemTraceRow, Poseidon2TraceRow,
+        RomDataTraceRow, Sha256fTraceRow,
+    };
+}
+
+/// Concrete trace types, for the raw trace-authoring override path
+/// (`VerifyInput::trace_override`). Each is `Trace<Row>` over the same row
+/// types re-exported in [`rows`].
+pub mod traces {
+    pub use zisk_pil::{
+        Add256Trace, ArithEq384Trace, ArithEqTrace, ArithTrace, BinaryAddTrace,
+        BinaryExtensionTrace, BinaryTrace, Blake2brTrace, Dma64AlignedInputCpyTrace,
+        Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace,
+        DmaInputCpyTrace, DmaMemCpyTrace, DmaPrePostInputCpyTrace, DmaPrePostMemCpyTrace,
+        DmaPrePostTrace, DmaTrace, DmaUnalignedTrace, InputDataTrace, KeccakfTrace, MemAlignTrace,
+        MemTrace, Poseidon2Trace, RomDataTrace, Sha256fTrace,
+    };
+}
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };

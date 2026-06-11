@@ -6696,6 +6696,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
+name = "unit-tests"
+version = "1.0.0-beta"
+dependencies = [
+ "fields",
+ "serial_test",
+ "zisk-prover-backend",
+]
+
+[[package]]
 name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8006,6 +8015,14 @@ dependencies = [
  "colored",
  "executor",
  "fields",
+ "precomp-arith-eq",
+ "precomp-arith-eq-384",
+ "precomp-big-int",
+ "precomp-blake2",
+ "precomp-dma",
+ "precomp-keccakf",
+ "precomp-poseidon2",
+ "precomp-sha256f",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -8014,6 +8031,9 @@ dependencies = [
  "proofman-verifier",
  "rom-setup",
  "serde",
+ "sm-arith",
+ "sm-binary",
+ "sm-mem",
  "tracing",
  "zisk-cluster-common",
  "zisk-common",

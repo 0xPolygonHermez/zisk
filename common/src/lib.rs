@@ -13,6 +13,7 @@ mod proof_log;
 mod regular_counters;
 mod regular_planner;
 mod types;
+pub mod unit_test_sm;
 mod utils;
 mod zisk_precompile;
 
@@ -30,5 +31,6 @@ pub use proof_log::*;
 pub use regular_counters::*;
 pub use regular_planner::*;
 pub use types::*;
+pub use unit_test_sm::{DynTraceOverride, DynUnitTestSm, TraceOverrideFn, UnitTestSm};
 pub use utils::*;
 pub use zisk_precompile::*;

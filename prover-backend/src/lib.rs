@@ -3,6 +3,7 @@ mod execute_client;
 mod guest;
 mod output;
 mod prover;
+pub mod testing;
 mod utils;
 
 pub use execute_client::ExecuteClient;

@@ -1,0 +1,25 @@
+[package]
+name = "unit-tests"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+publish = false
+
+# Per-AIR unit tests for ZisK state machines and precompiles. Drop a `*.rs`
+# file in `tests/` and use the `zisk-prover-backend` test API
+# (`with_prover` + `verify_input().input()/.hook()/.trace_override().run()`)
+# to feed honest or malicious witnesses and assert what the constraints do.
+# Has no library or binary of its own — only the `tests/` directory matters.
+# It is a workspace member so `cargo test --workspace` runs these tests.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+zisk-prover-backend = { workspace = true }
+fields = { workspace = true }
+serial_test = { workspace = true }
