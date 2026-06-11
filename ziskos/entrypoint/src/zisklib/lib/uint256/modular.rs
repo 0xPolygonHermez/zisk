@@ -153,7 +153,9 @@ pub fn pow_mod256(
     rec_exp[bit_pos / 64] = 1u64 << (bit_pos % 64);
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
         if is_zero(&result) {
-            return ZERO;
+            // Exit with result = 0 if the result is already zero,
+            // since it will remain zero regardless of the remaining bits
+            break;
         }
 
         // Compute result = result² (mod modulus)

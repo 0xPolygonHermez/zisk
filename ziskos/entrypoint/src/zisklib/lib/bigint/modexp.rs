@@ -114,6 +114,8 @@ fn modexp_short(
         #[cfg(feature = "hints")]
         hints,
     );
+
+    // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
@@ -132,7 +134,9 @@ fn modexp_short(
     let mut out = base;
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
         if out.is_zero() {
-            return vec![U256::ZERO];
+            // Exit with out = 0 if the result is already zero,
+            // since it will remain zero regardless of the remaining bits
+            break;
         }
 
         // Compute out = out² (mod modulus)
@@ -192,6 +196,8 @@ fn modexp_long(
         #[cfg(feature = "hints")]
         hints,
     );
+
+    // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
 
     // We should recompose the exponent from bits to verify correctness
@@ -210,7 +216,9 @@ fn modexp_long(
     let mut out = base.clone();
     for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
         if out.len() == 1 && out[0].is_zero() {
-            return vec![U256::ZERO];
+            // Exit with out = 0 if the result is already zero,
+            // since it will remain zero regardless of the remaining bits
+            break;
         }
 
         // Compute out = out² (mod modulus)
