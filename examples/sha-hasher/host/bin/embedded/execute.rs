@@ -26,20 +26,14 @@ async fn main() -> Result<()> {
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
-    let result = client
-        .execute(&ELF_SHA_HASHER, &stdin)
-        .executor(ExecutorKind::Emulator)
-        .run()?
-        .await?;
+    let result =
+        client.execute(&ELF_SHA_HASHER, &stdin).executor(ExecutorKind::Emulator).run()?.await?;
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
     println!("Duration: {} ms", result.get_execution_time());
 
-    let result = client
-        .execute(&ELF_SHA_HASHER, &stdin)
-        .executor(ExecutorKind::Assembly)
-        .run()?
-        .await?;
+    let result =
+        client.execute(&ELF_SHA_HASHER, &stdin).executor(ExecutorKind::Assembly).run()?.await?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use executor::PlanSummaryEntry;
+use executor::{AirClassifier, PlanSummaryEntry};
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
@@ -140,19 +140,35 @@ impl ExecuteOutput {
     }
 
     /// Construct a result from a remote coordinator response.
+    ///
+    /// `plan` carries raw `(airgroup_id, air_id, count)` triples from the wire; the
+    /// AIR display name is resolved here via [`AirClassifier`] so remote output matches
+    /// the embedded plan.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_remote(
         steps: u64,
         execution_time: Duration,
         cost_per_type: StatsCostPerType,
+        executor_time: ZiskExecutorTime,
+        plan: &[(usize, usize, u64)],
         publics: &[u8],
     ) -> Self {
+        let plan: Vec<PlanSummaryEntry> = plan
+            .iter()
+            .map(|&(airgroup_id, air_id, count)| PlanSummaryEntry {
+                airgroup_id,
+                air_id,
+                name: AirClassifier::name(airgroup_id, air_id),
+                count: count as usize,
+            })
+            .collect();
         Self {
             steps,
             time: execution_time.as_millis() as u64,
             cost: Some(cost_per_type.total_cost()),
-            executor_time: ZiskExecutorTime::default(),
+            executor_time,
             publics: PublicValues::new(publics),
-            plan: None,
+            plan: (!plan.is_empty()).then_some(plan),
         }
     }
 }

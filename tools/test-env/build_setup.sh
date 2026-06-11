@@ -61,7 +61,7 @@ main() {
     fi
     local no_agg_flag=""
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && no_agg_flag="--no-aggregation"
-    ensure cargo-zisk check-setup ${gpu_flag} ${no_agg_flag} || return 1
+    ensure cargo-zisk-dev check-setup ${gpu_flag} ${no_agg_flag} || return 1
 
     success "ZisK setup completed successfully!"
 }

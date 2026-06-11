@@ -346,7 +346,11 @@ impl Equation {
     }
 
     fn index_to_row_offset(index: usize, row: usize, terms_by_clock: usize) -> i32 {
-        index.checked_div(terms_by_clock).map(|q| q as i32 - row as i32).unwrap_or(0)
+        if let Some(irow) = index.checked_div(terms_by_clock) {
+            irow as i32 - row as i32
+        } else {
+            0
+        }
     }
     // fn add_zero_terms(&mut self) {
     //     let total_chunks = self.config.chunks * 2;

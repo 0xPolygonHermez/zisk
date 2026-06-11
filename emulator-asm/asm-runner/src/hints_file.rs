@@ -13,9 +13,6 @@ pub struct HintsFile {
     file: Mutex<File>,
 }
 
-unsafe impl Send for HintsFile {}
-unsafe impl Sync for HintsFile {}
-
 impl HintsFile {
     /// Create a new HintsFile with the given filename.
     ///
@@ -62,5 +59,49 @@ impl Drop for HintsFile {
         if let Ok(mut file) = self.file.lock() {
             let _ = file.flush();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Read;
+    use zisk_common::io::StreamSink;
+
+    #[test]
+    fn submit_writes_u64s_little_endian_then_flushes_on_drop() {
+        let path =
+            std::env::temp_dir().join(format!("zisk_hintsfile_test_{}.bin", std::process::id()));
+        let path_str = path.to_str().unwrap().to_string();
+        let values = [1u64, 0x0203, u64::MAX];
+
+        {
+            let hf = HintsFile::new(path_str.clone()).unwrap();
+            hf.submit(&values).unwrap();
+        } // Drop flushes and closes.
+
+        let mut bytes = Vec::new();
+        std::fs::File::open(&path).unwrap().read_to_end(&mut bytes).unwrap();
+
+        let expected: Vec<u8> = values.iter().flat_map(|v| v.to_le_bytes()).collect();
+        assert_eq!(bytes, expected);
+
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn submit_appends_across_calls() {
+        let path =
+            std::env::temp_dir().join(format!("zisk_hintsfile_append_{}.bin", std::process::id()));
+        let path_str = path.to_str().unwrap().to_string();
+        {
+            let hf = HintsFile::new(path_str).unwrap();
+            hf.submit(&[1u64]).unwrap();
+            hf.submit(&[2u64]).unwrap();
+        }
+        let mut bytes = Vec::new();
+        std::fs::File::open(&path).unwrap().read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes.len(), 16); // two u64s
+        std::fs::remove_file(&path).ok();
     }
 }

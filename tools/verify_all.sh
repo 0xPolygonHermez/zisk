@@ -222,7 +222,7 @@ if [[ $elf_mode -eq 0 ]]; then
         echo ""
         echo "Verifying ELF file $counter of $max_counter: \"$elf_file\" with no inputs"
 
-        if (cargo run --release --bin cargo-zisk verify-constraints \
+        if (cargo run --release --bin cargo-zisk-dev verify-constraints \
         --emulator \
         --elf "$elf_file" \
         --proving-key "$proving_key"); then
@@ -245,7 +245,7 @@ else
         # No input path provided
         echo "Verifying ELF file: \"$elf_file\" with no inputs"
 
-        if (cargo run --release --bin cargo-zisk verify-constraints \
+        if (cargo run --release --bin cargo-zisk-dev verify-constraints \
         --emulator \
         --elf "$elf_file" \
         --proving-key "$proving_key"); then
@@ -258,7 +258,7 @@ else
         # Single input file provided
         echo "Verifying ELF file: \"$elf_file\" with input file: \"$input_path\""
 
-        if (cargo run --release --bin cargo-zisk verify-constraints \
+        if (cargo run --release --bin cargo-zisk-dev verify-constraints \
         --emulator \
         --elf "$elf_file" \
         --input "$input_path" \
@@ -290,7 +290,7 @@ else
 
             echo "Verifying input $input_counter of $input_total: \"$input_file\""
 
-            if (cargo run --release --bin cargo-zisk verify-constraints \
+            if (cargo run --release --bin cargo-zisk-dev verify-constraints \
             --emulator \
             --elf "$elf_file" \
             --input "$input_file" \

@@ -1,0 +1,16 @@
+[package]
+name = "zisk-program-macros"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = "2"
+quote = "1"
+proc-macro2 = "1"
+proc-macro-crate = "3"
+blake3 = { workspace = true }

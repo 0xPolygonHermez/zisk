@@ -1,7 +1,7 @@
 use super::stdio::StdioService;
-use super::{RequestData, ResponseData};
 use crate::{
     AsmRunnerOptions, MemoryOperationsResponse, MinimalTraceResponse, RomHistogramResponse,
+    NAMESPACE,
 };
 use anyhow::{Context, Result};
 
@@ -11,14 +11,19 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, path::Path, process::Command};
 
+/// This enum represents the different assembly services (MO, MT, RH) that can be run as separate processes. It provides methods to get the command path for each service, build the command to run the service with the appropriate options and shared memory/semaphore prefixes, and handle shutdown and cleanup of resources.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsmService {
+    /// Memory Operations service, responsible for collecting memory operation traces.
     MO,
+    /// Minimal Trace service, responsible for collecting minimal execution traces.
     MT,
+    /// ROM Histogram service, responsible for collecting ROM histogram data.
     RH,
 }
 
 impl AsmService {
+    /// Returns a string representation of the service, used for command paths and logging.
     pub fn as_str(&self) -> &'static str {
         match self {
             AsmService::MO => "MO",
@@ -105,23 +110,6 @@ impl AsmService {
 
         command
     }
-
-    /// Clean up a specific service's shared memory entries for a given prefix.
-    fn cleanup_shmem_for_prefix(&self, shm_prefix: &str) -> Result<()> {
-        let pattern = format!("{}_{}_", shm_prefix, self);
-        let exact = format!("{}_{}", shm_prefix, self);
-        let dev_shm = std::path::Path::new("/dev/shm");
-        if let Ok(entries) = std::fs::read_dir(dev_shm) {
-            for entry in entries.flatten() {
-                if let Some(name) = entry.file_name().to_str() {
-                    if name.starts_with(&pattern) || name == exact {
-                        shm_unlink_by_name(name)?;
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
 }
 
 impl fmt::Display for AsmService {
@@ -154,6 +142,7 @@ struct AsmServicesInner {
 }
 
 impl AsmServices {
+    /// Array of all services, used for iteration in setup and cleanup.
     pub const SERVICES: [AsmService; 3] = [AsmService::MO, AsmService::MT, AsmService::RH];
 
     /// Returns the shared memory prefix  `ZISK_{pid}_{rank}`.
@@ -166,10 +155,12 @@ impl AsmServices {
         &self.inner.sem_prefix
     }
 
+    /// Returns the local rank of the process.
     pub fn local_rank(&self) -> i32 {
         self.inner.service.local_rank
     }
 
+    /// Returns the world rank of the process.
     pub fn world_rank(&self) -> i32 {
         self.inner.service.world_rank
     }
@@ -186,9 +177,9 @@ impl AsmServices {
         let pid = std::process::id();
         let hash8 = &hash_id[..hash_id.len().min(8)];
 
-        let shm_prefix = format!("ZISK_{pid}_{local_rank}");
+        let shm_prefix = format!("{NAMESPACE}_{pid}_{local_rank}");
         let sem_prefix = format!(
-            "ZISK_{pid}_{hash8}_{local_rank}{hints}",
+            "{NAMESPACE}_{pid}_{hash8}_{local_rank}{hints}",
             hints = if with_hints { "_h" } else { "" }
         );
 
@@ -234,52 +225,7 @@ impl AsmServices {
     /// Scan `/dev/shm` for stale `ZISK_*` shmem segments and `sem.ZISK_*` semaphores
     /// left by dead processes and unlink them.
     pub fn cleanup_stale_shmem() {
-        tracing::info!("Cleaning up stale shared memory and semaphores");
-        let dev_shm = std::path::Path::new("/dev/shm");
-        let entries = match std::fs::read_dir(dev_shm) {
-            Ok(entries) => entries,
-            Err(_) => return,
-        };
-
-        for entry in entries.flatten() {
-            let name = match entry.file_name().into_string() {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-
-            // stdio shmem: "ZISK_{pid}_{rank}_..."        → parts[1] is PID
-            // stdio sem:   "sem.ZISK_{pid}_{hash}_{rank}_..."
-            let is_sem = name.starts_with("sem.ZISK_");
-            let is_shm = name.starts_with("ZISK_");
-            if !is_shm && !is_sem {
-                continue;
-            }
-
-            let parts: Vec<&str> = name.splitn(3, '_').collect();
-            if parts.len() < 3 {
-                continue;
-            }
-            let Ok(pid) = parts[1].parse::<u32>() else { continue };
-
-            // Check if the process is still alive.
-            let alive = unsafe { libc::kill(pid as i32, 0) };
-            if alive == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM) {
-                continue; // process alive or owned by another user
-            }
-
-            // Process is dead (ESRCH) — unlink the stale entry.
-            if is_sem {
-                // sem file "sem.FOO" → POSIX name "/FOO"
-                let sem_name = format!("/{}", &name["sem.".len()..]);
-                tracing::debug!("Cleaning up stale semaphore: /dev/shm/{}", name);
-                if let Ok(cstr) = std::ffi::CString::new(sem_name) {
-                    unsafe { libc::sem_unlink(cstr.as_ptr()) };
-                }
-            } else {
-                tracing::debug!("Cleaning up stale shared memory: /dev/shm/{}", name);
-                let _ = shm_unlink_by_name(&name);
-            }
-        }
+        super::janitor::cleanup_stale();
     }
 
     /// Create all of the shared-memory segments.
@@ -323,12 +269,11 @@ impl AsmServices {
         });
 
         if result.is_err() {
-            // Cleanup any segments that may have been created before returning the error.
-            for service in &Self::SERVICES {
-                if let Err(e) = service.cleanup_shmem_for_prefix(shm_prefix) {
-                    tracing::debug!("Cleanup of shmem for {service} failed: {e}");
-                }
-            }
+            // Roll back any segments the partial creation left behind. Unlinks
+            // all `{shm_prefix}*` entries (per-service *and* the untagged
+            // `_input`/`_precompile`/`_control` ones); the semaphore sweep is a
+            // no-op here since no semaphores exist yet at creation time.
+            super::janitor::cleanup_prefix(shm_prefix, sem_prefix);
         }
         result
     }
@@ -399,12 +344,18 @@ impl AsmServices {
 
         spawn_result?; // surface the spawn error only after reaping live children
         if any_failed {
-            anyhow::bail!("One or more shmem creation commands failed");
+            // Roll back any segments the partial creation left behind. Unlinks
+            // all `{shm_prefix}*` entries (per-service *and* the untagged
+            // `_input`/`_precompile`/`_control` ones); the semaphore sweep is a
+            // no-op here since no semaphores exist yet at creation time.
+            super::janitor::cleanup_prefix(shm_prefix, sem_prefix);
+            return Err(anyhow::anyhow!("One or more shmem creation commands failed"));
         }
         Ok(())
     }
 
-    pub fn send_minimal_trace_request(
+    /// Send a minimal trace request to the MT service and return the response.
+    pub(crate) fn send_minimal_trace_request(
         &self,
         max_steps: u64,
         chunk_len: u64,
@@ -412,32 +363,21 @@ impl AsmServices {
         self.inner.service.send_minimal_trace_request(max_steps, chunk_len)
     }
 
-    pub fn send_rom_histogram_request(&self, max_steps: u64) -> Result<RomHistogramResponse> {
+    /// Send a ROM histogram request to the RH service and return the response.
+    pub(crate) fn send_rom_histogram_request(
+        &self,
+        max_steps: u64,
+    ) -> Result<RomHistogramResponse> {
         self.inner.service.send_rom_histogram_request(max_steps)
     }
 
-    pub fn send_memory_ops_request(
+    /// Send a memory operations request to the MO service and return the response.
+    pub(crate) fn send_memory_ops_request(
         &self,
         max_steps: u64,
         chunk_len: u64,
     ) -> Result<MemoryOperationsResponse> {
         self.inner.service.send_memory_ops_request(max_steps, chunk_len)
-    }
-
-    pub(super) fn encode_request(request: RequestData) -> [u8; 40] {
-        let mut buf = [0u8; 40];
-        for (i, word) in request.iter().enumerate() {
-            buf[i * 8..(i + 1) * 8].copy_from_slice(&word.to_le_bytes());
-        }
-        buf
-    }
-
-    pub(super) fn decode_response(buf: &[u8; 40]) -> Result<ResponseData> {
-        let mut response = ResponseData::default();
-        for (i, chunk) in buf.chunks_exact(8).enumerate() {
-            response[i] = u64::from_le_bytes(chunk.try_into()?);
-        }
-        Ok(response)
     }
 }
 
@@ -464,6 +404,7 @@ impl AsmServicesInner {
         }
     }
 
+    /// Sends a shutdown request to the specified service and waits for its completion.
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
     fn send_shutdown_and_wait(&self, service: &AsmService) -> Result<()> {
         // Graceful shutdown handshake.
@@ -521,6 +462,8 @@ impl AsmServicesInner {
         Ok(())
     }
 
+    /// Sends a shutdown request to the specified service and waits for its
+    /// completion. No-op off Linux-x86_64, where the ASM services never run.
     #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
     fn send_shutdown_and_wait(&self, _: &AsmService) -> Result<()> {
         Ok(())
@@ -533,28 +476,7 @@ impl AsmServicesInner {
     /// the parent has to do it. Call after `stop_asm_services` so the
     /// children are already detached from the segments.
     fn cleanup_my_shmem(&self) {
-        let dev_shm = std::path::Path::new("/dev/shm");
-        let entries = match std::fs::read_dir(dev_shm) {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::warn!("Cannot scan /dev/shm for cleanup: {e}");
-                return;
-            }
-        };
-        let sem_marker = format!("sem.{}", self.sem_prefix);
-        for entry in entries.flatten() {
-            let Some(name) = entry.file_name().to_str().map(str::to_string) else { continue };
-            if name.starts_with(&self.shm_prefix) {
-                let _ = shm_unlink_by_name(&name);
-            } else if let Some(rest) = name.strip_prefix("sem.") {
-                if name.starts_with(&sem_marker) {
-                    let sem_name = format!("/{rest}");
-                    if let Ok(cstr) = std::ffi::CString::new(sem_name) {
-                        unsafe { libc::sem_unlink(cstr.as_ptr()) };
-                    }
-                }
-            }
-        }
+        super::janitor::cleanup_prefix(&self.shm_prefix, &self.sem_prefix);
     }
 }
 
@@ -578,8 +500,40 @@ impl Drop for AsmServicesInner {
     }
 }
 
-fn shm_unlink_by_name(name: &str) -> Result<()> {
-    let cstr = std::ffi::CString::new(name)?;
-    unsafe { libc::shm_unlink(cstr.as_ptr()) };
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gen_index_matches_c_binary_contract() {
+        // These are the `--gen=N` values the ziskemuasm C binary expects.
+        assert_eq!(AsmService::MT.gen_index(), 1);
+        assert_eq!(AsmService::RH.gen_index(), 2);
+        assert_eq!(AsmService::MO.gen_index(), 7);
+    }
+
+    #[test]
+    fn as_str_is_uppercase_used_for_segment_names() {
+        assert_eq!(AsmService::MO.as_str(), "MO");
+        assert_eq!(AsmService::MT.as_str(), "MT");
+        assert_eq!(AsmService::RH.as_str(), "RH");
+    }
+
+    #[test]
+    fn display_is_lowercase_and_drives_binary_path() {
+        // Display (lowercase) names the per-service binary; as_str (uppercase)
+        // names the shmem segments. Keeping them distinct is deliberate.
+        assert_eq!(AsmService::MO.to_string(), "mo");
+        assert_eq!(AsmService::RH.to_string(), "rh");
+        assert_eq!(AsmService::MO.command_path_for("/x/ziskemuasm"), "/x/ziskemuasm-mo.bin");
+        assert_eq!(AsmService::RH.command_path_for("base"), "base-rh.bin");
+    }
+
+    #[test]
+    fn services_array_is_indexed_consistently() {
+        assert_eq!(AsmServices::SERVICES, [AsmService::MO, AsmService::MT, AsmService::RH]);
+        for (i, s) in AsmServices::SERVICES.iter().enumerate() {
+            assert_eq!(s.as_index(), i, "as_index must match position in SERVICES");
+        }
+    }
 }

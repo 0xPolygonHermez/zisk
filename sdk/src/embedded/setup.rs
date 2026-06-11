@@ -25,7 +25,7 @@ impl EmbeddedClient {
         let handle = tokio::task::spawn_blocking(move || {
             fire_event(&subs_cloned, JobEvent::Started);
 
-            let result = Self::do_setup_inner(with_hints, emulator_only, program, prover)?;
+            let result = Self::do_setup_inner(with_hints, emulator_only, &program, prover);
 
             fire_result_event(&subs_cloned, &result);
 
@@ -35,19 +35,35 @@ impl EmbeddedClient {
         Ok(JobHandle::new_embedded(handle, subs, timeout))
     }
 
+    /// Run ROM setup synchronously on the calling thread.
+    ///
+    /// Unlike [`do_setup`](Self::do_setup), this performs no `spawn_blocking`
+    /// and returns the result directly, so it requires no async runtime.
+    pub(crate) fn do_setup_sync(
+        &self,
+        program: &GuestProgram,
+        with_hints: bool,
+        emulator_only: bool,
+        subs: SubscriberList,
+    ) -> Result<SetupResult> {
+        fire_event(&subs, JobEvent::Started);
+        let result = Self::do_setup_inner(with_hints, emulator_only, program, self.prover.clone());
+        fire_result_event(&subs, &result);
+        result
+    }
+
     fn do_setup_inner(
         with_hints: bool,
         emulator_only: bool,
-        program: GuestProgram,
+        program: &GuestProgram,
         prover: Arc<EmbeddedProver>,
-    ) -> Result<std::result::Result<SetupResult, anyhow::Error>, anyhow::Error> {
-        let result = match prover.as_ref() {
+    ) -> Result<SetupResult> {
+        match prover.as_ref() {
             EmbeddedProver::Emu(p) => {
-                p.setup(&program).run()?;
-                Ok(SetupResult { job_id: None })
+                p.setup(program).run()?;
             }
             EmbeddedProver::Asm(p) => {
-                let mut builder = p.setup(&program);
+                let mut builder = p.setup(program);
                 if with_hints {
                     builder = builder.with_hints();
                 }
@@ -55,9 +71,8 @@ impl EmbeddedClient {
                     builder = builder.emulator_only();
                 }
                 builder.run()?;
-                Ok(SetupResult { job_id: None })
             }
-        };
-        Ok(result)
+        }
+        Ok(SetupResult { job_id: None })
     }
 }
