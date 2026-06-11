@@ -1020,7 +1020,7 @@ impl Riscv2ZiskContext<'_> {
             let next_inst_size = if next_instructions[0].inst.starts_with("c.") { 2 } else { 4 };
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
             let jump_pc = (i.rom_address as i64
-                + ((i.imm as i64)/* already shifted << 12 at decoding time */)
+                + (i.imm as i64) // already shifted << 12 at decoding time
                 + next_instructions[0].imm as i64) as u64
                 & JALR_MASK;
 
@@ -2430,7 +2430,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 
     // Calculate the trap handler rom pc address as an offset from the current instruction address
     // to the beginning of the ecall section
-    let trap_handler: u64 = rom.next_init_inst_addr + 0x38;
+    let trap_handler: u64 = rom.next_init_inst_addr + 0x54;
 
     // :0000 we note the rom pc address offset from the first address for each instruction
     // Store the Zisk architecture ID into memory
@@ -2608,7 +2608,88 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // :0034 jump to end (success)
+    // We read the input data boundaries of 128MB chunks to make sure we can prove large input data
+    // sizes that are not continuous, i.e. when the program reads 2 input data chunks distant more
+    // than 128MB, we can still prove the program by reading the input data in 128MB steps
+
+    // :0034 -> read input[128M]
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", INPUT_ADDR + 128 * 1024 * 1024, false);
+    zib.src_b("ind", 0, false);
+    zib.ind_width(8);
+    zib.op("copyb").unwrap();
+    zib.j(4, 4);
+    zib.verbose("Read input[128M]");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :0038 -> read input[256M]
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", INPUT_ADDR + 2 * 128 * 1024 * 1024, false);
+    zib.src_b("ind", 0, false);
+    zib.ind_width(8);
+    zib.op("copyb").unwrap();
+    zib.j(4, 4);
+    zib.verbose("Read input[256M]");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :003c -> read input[384M]
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", INPUT_ADDR + 3 * 128 * 1024 * 1024, false);
+    zib.src_b("ind", 0, false);
+    zib.ind_width(8);
+    zib.op("copyb").unwrap();
+    zib.j(4, 4);
+    zib.verbose("Read input[384M]");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :0040 -> read input[512M]
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", INPUT_ADDR + 4 * 128 * 1024 * 1024, false);
+    zib.src_b("ind", 0, false);
+    zib.ind_width(8);
+    zib.op("copyb").unwrap();
+    zib.j(4, 4);
+    zib.verbose("Read input[512M]");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :0044 -> read input[640M]
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", INPUT_ADDR + 5 * 128 * 1024 * 1024, false);
+    zib.src_b("ind", 0, false);
+    zib.ind_width(8);
+    zib.op("copyb").unwrap();
+    zib.j(4, 4);
+    zib.verbose("Read input[640M]");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :0048 -> read input[768M]
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", INPUT_ADDR + 6 * 128 * 1024 * 1024, false);
+    zib.src_b("ind", 0, false);
+    zib.ind_width(8);
+    zib.op("copyb").unwrap();
+    zib.j(4, 4);
+    zib.verbose("Read input[768M]");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :004c -> read input[896M]
+    let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
+    zib.src_a("imm", INPUT_ADDR + 7 * 128 * 1024 * 1024, false);
+    zib.src_b("ind", 0, false);
+    zib.ind_width(8);
+    zib.op("copyb").unwrap();
+    zib.j(4, 4);
+    zib.verbose("Read input[896M]");
+    zib.build(rom);
+    rom.next_init_inst_addr += 4;
+
+    // :0050 jump to end (success)
     // Jump to the last instruction (ROM_EXIT) to properly finish the program execution
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);
@@ -2620,7 +2701,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // :0038 trap_handle -> This is the address offset we use at the beginning of the function
+    // :0054 trap_handle -> This is the address offset we use at the beginning of the function
     // This code is executed when the program makes an ecall (system call).
     // The pc is set to this address, and after the system call, it returns to the pc next to the
     // one that made the ecall
@@ -2630,12 +2711,12 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.src_a("reg", 17, false);
     zib.src_b("imm", CAUSE_EXIT, false);
     zib.op("eq").unwrap();
-    zib.j(-36, 4);
+    zib.j(-64, 4);
     zib.verbose(&format!("beq r17, {CAUSE_EXIT} # Check if is exit, jump to output, then end"));
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
-    // :003c
+    // :0058
     // Return to the instruction next to the one that made this ecall
     let mut zib = ZiskInstBuilder::new(rom.next_init_inst_addr);
     zib.src_a("imm", 0, false);

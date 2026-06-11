@@ -1,7 +1,9 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use asm_runner::{AsmRunnerOptions, AsmServices, ControlShmem, HintsShmem, InputsShmemWriter};
+use asm_runner::{
+    AsmRunnerOptions, AsmServices, ControlShmem, GpuBufferSource, HintsShmem, InputsShmemWriter,
+};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use asm_runner::{MOShmemReader, MTShmemReader, RHShmemReader};
 use precompiles_hints::{HintsProcessor, MpiBroadcastFn};
@@ -40,14 +42,18 @@ pub struct AsmShmemReaders {
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 impl AsmShmemReaders {
-    fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> ExecutorResult<Self> {
+    fn new(
+        shm_prefix: &str,
+        unlock_mapped_memory: bool,
+        gpu_buffer_src: GpuBufferSource,
+    ) -> ExecutorResult<Self> {
         Ok(Self {
             mt: Arc::new(Mutex::new(
                 MTShmemReader::new(shm_prefix, unlock_mapped_memory)
                     .map_err(ExecutorError::asm_backend)?,
             )),
             mo: Arc::new(Mutex::new(
-                MOShmemReader::new(shm_prefix, unlock_mapped_memory)
+                MOShmemReader::new(shm_prefix, unlock_mapped_memory, gpu_buffer_src)
                     .map_err(ExecutorError::asm_backend)?,
             )),
             rh: Arc::new(Mutex::new(None)),
@@ -102,9 +108,14 @@ impl AsmSharedResources {
         init_rom: bool,
         with_hints: bool,
         shm_prefix: &str,
+        gpu_buffer_src: GpuBufferSource,
     ) -> ExecutorResult<Self> {
         #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        let readers = AsmShmemReaders::new(shm_prefix, unlock_mapped_memory)?;
+        let readers = AsmShmemReaders::new(shm_prefix, unlock_mapped_memory, gpu_buffer_src)?;
+
+        // Avoid "unused variable" warnings on non-x86_64/Linux targets where the readers aren't used.
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let _ = gpu_buffer_src;
 
         let control_writer = Arc::new(
             ControlShmem::new(shm_prefix, unlock_mapped_memory)
@@ -195,10 +206,13 @@ impl AsmResources {
         asm_mt_path: &Path,
         with_hints: bool,
         verbose: proofman_common::VerboseMode,
+        gpu: bool,
     ) -> ExecutorResult<Self> {
         let options = AsmRunnerOptions::new().with_local_rank(0);
         let services = AsmServices::new(0, 0, elf_hash, asm_mt_path, with_hints, options)
             .map_err(ExecutorError::asm_backend)?;
+        let gpu_buffer_src =
+            if gpu { GpuBufferSource::SelfAllocated } else { GpuBufferSource::Cpu };
         let shared = Arc::new(AsmSharedResources::new(
             0,
             false,
@@ -207,6 +221,7 @@ impl AsmResources {
             true,
             with_hints,
             services.shm_prefix(),
+            gpu_buffer_src,
         )?);
         Self::new(shared, services)
     }

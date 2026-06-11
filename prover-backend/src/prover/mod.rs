@@ -87,6 +87,7 @@ pub struct BackendProverOpts {
 
     // ProofmanOptions fields (flattened)
     pub(crate) gpu: bool,
+    pub(crate) cpu_mops: bool,
     pub(crate) packed: bool,
     pub(crate) max_witness_stored: Option<usize>,
     pub(crate) number_threads_witness: Option<usize>,
@@ -110,6 +111,7 @@ impl Default for BackendProverOpts {
             preload_plonk: false,
             plonk: false,
             gpu: false,
+            cpu_mops: false,
             packed: false,
             max_witness_stored: None,
             number_threads_witness: None,
@@ -180,6 +182,10 @@ impl BackendProverOpts {
         self.preload_plonk
     }
 
+    pub fn cpu_mops_enabled(&self) -> bool {
+        self.cpu_mops
+    }
+
     // Builder methods for all configuration
     pub fn aggregation(mut self, value: bool) -> Self {
         self.aggregation = value;
@@ -232,6 +238,11 @@ impl BackendProverOpts {
 
     pub fn gpu(mut self) -> Self {
         self.gpu = true;
+        self
+    }
+
+    pub fn cpu_mops(mut self) -> Self {
+        self.cpu_mops = true;
         self
     }
 

@@ -45,6 +45,11 @@ pub struct ZiskVerifyConstraints {
     #[arg(short = 'g', long)]
     pub gpu: bool,
 
+    /// Run mops planner on CPU even when --gpu is set (fallback for GPU-planner issues)
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(long)]
+    pub cpu_mops: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     pub verbose: u8,
@@ -155,6 +160,10 @@ impl ZiskVerifyConstraints {
         if self.gpu {
             prover_options = prover_options.gpu();
         }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            prover_options = prover_options.cpu_mops();
+        }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
         }
@@ -181,6 +190,10 @@ impl ZiskVerifyConstraints {
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             prover_options = prover_options.gpu();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());

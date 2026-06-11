@@ -54,6 +54,7 @@ mod shmem_utils;
 mod shmem_writer;
 
 // Internal layout/header structs — not part of the public API.
+pub use asm_mo::GpuBufferSource;
 pub(crate) use asm_mo::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_mo_runner::*;

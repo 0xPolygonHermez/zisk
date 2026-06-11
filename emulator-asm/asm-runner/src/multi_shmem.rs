@@ -1,6 +1,7 @@
 use crate::shmem_sys;
 use crate::AsmShmemHeader;
-use libc::{close, mmap, munmap, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ};
+use libc::{close, mmap, munmap, shm_unlink, MAP_FAILED, MAP_SHARED, PROT_READ, PROT_WRITE};
+
 use std::{
     ffi::CString,
     io,
@@ -34,6 +35,7 @@ pub(crate) struct AsmMultiShmem<H: AsmShmemHeader> {
     mapped_files: Vec<MappedFile>,
     total_mapped_size: usize,
     unlock_mapped_memory: bool,
+    read_write: bool,
     _phantom: std::marker::PhantomData<H>,
 }
 
@@ -78,12 +80,16 @@ impl<H: AsmShmemHeader> AsmMultiShmem<H> {
     /// * `incremental_size` - Size of subsequent files (`_1`, `_2`, ...)
     /// * `max_size` - Total virtual address space to reserve
     /// * `unlock_mapped_memory` - If true, don't use MAP_LOCKED
+    /// * `read_write` - If true, open `O_RDWR` and map `PROT_READ|PROT_WRITE`
+    ///   (needed only so the region can be registered as default-pinned for GPU
+    ///   H2D; the consumer itself never writes).
     pub fn open_and_map(
         base_name: &str,
         initial_size: usize,
         incremental_size: usize,
         max_size: usize,
         unlock_mapped_memory: bool,
+        read_write: bool,
     ) -> Result<Self> {
         if base_name.is_empty() {
             return Err(anyhow!("Shared memory base name cannot be empty"));
@@ -135,6 +141,7 @@ impl<H: AsmShmemHeader> AsmMultiShmem<H> {
             mapped_files: Vec::with_capacity(8),
             total_mapped_size: 0,
             unlock_mapped_memory,
+            read_write,
             _phantom: std::marker::PhantomData,
         };
 
@@ -198,7 +205,8 @@ impl<H: AsmShmemHeader> AsmMultiShmem<H> {
     fn map_file(&mut self, file_idx: usize) -> Result<()> {
         let file_name = format!("{}_{}", self.base_name, file_idx);
 
-        let fd = shmem_sys::open(&file_name, libc::O_RDONLY)?;
+        let open_flags = if self.read_write { libc::O_RDWR } else { libc::O_RDONLY };
+        let fd = shmem_sys::open(&file_name, open_flags)?;
 
         unsafe {
             // For _0, validate that the header has a non-zero allocated size
@@ -236,7 +244,8 @@ impl<H: AsmShmemHeader> AsmMultiShmem<H> {
                 flags |= libc::MAP_LOCKED;
             }
 
-            let mapped_ptr = mmap(target_addr, file_size, PROT_READ, flags, fd, 0);
+            let prot = if self.read_write { PROT_READ | PROT_WRITE } else { PROT_READ };
+            let mapped_ptr = mmap(target_addr, file_size, prot, flags, fd, 0);
             if mapped_ptr == MAP_FAILED {
                 let err = io::Error::last_os_error();
                 close(fd);

@@ -48,5 +48,26 @@ public:
         }
         return nullptr;
     }
+    bool compare(const MemSegments &other) const {
+        bool equal = true;
+        for (const auto &[segment_id, segment] : segments) {
+            auto it = other.segments.find(segment_id);
+            if (it == other.segments.end()) {
+                printf("DIFF segment %d: only in A (%d chunks)\n", segment_id, segment->size());
+                equal = false;
+            } else {
+                if (!segment->compare(*it->second, segment_id)) {
+                    equal = false;
+                }
+            }
+        }
+        for (const auto &[segment_id, segment] : other.segments) {
+            if (segments.find(segment_id) == segments.end()) {
+                printf("DIFF segment %d: only in B (%d chunks)\n", segment_id, segment->size());
+                equal = false;
+            }
+        }
+        return equal;
+    }
 };
 #endif
