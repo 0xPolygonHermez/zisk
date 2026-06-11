@@ -58,6 +58,9 @@ pub fn overflowing_pow256(
             hints,
         );
 
+        // Bound before use as index/shift
+        assert!(limb < 4 && bit < 64, "msb_pos hint out of range");
+
         // Check that the hinted bit position matches the original exponent
         let mut check_exp = [0u64; 4];
         check_exp[limb as usize] = 1u64 << (bit as usize);
@@ -159,6 +162,9 @@ pub fn wrapping_pow256(
             #[cfg(feature = "hints")]
             hints,
         );
+
+        // Bound before use as index/shift
+        assert!(limb < 4 && bit < 64, "msb_pos hint out of range");
 
         // Check that the hinted bit position matches the original exponent
         let mut check_exp = [0u64; 4];

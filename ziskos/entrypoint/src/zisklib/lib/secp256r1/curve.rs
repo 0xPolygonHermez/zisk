@@ -129,10 +129,14 @@ pub fn scalar_mul_secp256r1(
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let k_top = (k[max_limb] >> max_bit) & 1;
-    assert!(k_top == 1);
+    assert!(k_top == 1, "At least the top bit of the scalar must be set");
 
     // 3. Strauss-Shamir loop with bit-by-bit reconstruction of the scalar.
     let mut res = IDENTITY_POINT;
@@ -295,11 +299,18 @@ pub fn double_scalar_mul_with_g_secp256r1(
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let k1_top = (k1[max_limb] >> max_bit) & 1;
     let k2_top = (k2[max_limb] >> max_bit) & 1;
-    assert!(k1_top == 1 || k2_top == 1);
+    assert!(
+        k1_top == 1 || k2_top == 1,
+        "At least one of the half-scalars must have its top bit set"
+    );
 
     // 3. Strauss-Shamir loop with bit-by-bit reconstruction of each scalar.
     let mut res = IDENTITY_POINT;

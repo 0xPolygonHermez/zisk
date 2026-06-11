@@ -107,11 +107,18 @@ pub fn glv_scalar_mul_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let k1_top = (k1[max_limb] >> max_bit) & 1;
     let k2_top = (k2[max_limb] >> max_bit) & 1;
-    assert!(k1_top == 1 || k2_top == 1);
+    assert!(
+        k1_top == 1 || k2_top == 1,
+        "At least one of the half-scalars must have its top bit set"
+    );
 
     // 5. Strauss-Shamir loop with bit-by-bit reconstruction of each half-scalar.
     let mut res = IDENTITY_POINT;
@@ -443,13 +450,20 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let a1_top = (a1[max_limb] >> max_bit) & 1;
     let a2_top = (a2[max_limb] >> max_bit) & 1;
     let b1_top = (b1[max_limb] >> max_bit) & 1;
     let b2_top = (b2[max_limb] >> max_bit) & 1;
-    assert!(a1_top == 1 || a2_top == 1 || b1_top == 1 || b2_top == 1);
+    assert!(
+        a1_top == 1 || a2_top == 1 || b1_top == 1 || b2_top == 1,
+        "At least one of the half-scalars must have its top bit set"
+    );
 
     // 5. Strauss-Shamir loop with bit-by-bit reconstruction of each half-scalar.
     let mut res = IDENTITY_POINT;

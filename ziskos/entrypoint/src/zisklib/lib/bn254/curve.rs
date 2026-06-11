@@ -306,6 +306,9 @@ pub fn scalar_mul_bn254(
         hints,
     );
 
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     // Perform the loop, based on the binary representation of k
 
     // We do the first iteration separately
@@ -313,7 +316,7 @@ pub fn scalar_mul_bn254(
     let max_bit = max_bit as usize;
 
     // The first received bit should be 1
-    assert_eq!((k[max_limb] >> max_bit) & 1, 1);
+    assert_eq!((k[max_limb] >> max_bit) & 1, 1, "The most significant bit of the scalar must be 1");
 
     // Start at P
     let x1: [u64; 4] = p[0..4].try_into().unwrap();

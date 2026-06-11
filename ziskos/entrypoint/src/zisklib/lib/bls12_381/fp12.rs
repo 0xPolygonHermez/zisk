@@ -506,11 +506,14 @@ pub fn exp_fp12_bls12_381(
         hints,
     );
 
+    // Bound max_bit before using it as a shift
+    assert!(max_bit < 64, "msb_pos hint out of range");
+
     // Perform the loop, based on the binary representation of e
 
     // We do the first iteration separately
     let e_bit = (e >> max_bit) & 1;
-    assert_eq!(e_bit, 1); // the first received bit should be 1
+    assert_eq!(e_bit, 1, "The most significant bit of e must be 1");
 
     // Start the loop at a
     let mut result = *a;
