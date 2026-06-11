@@ -177,6 +177,7 @@ pub fn diagnostic_riscv_ima() {
     riscv_csrrc();
     riscv_csrrci();
 
+    // Combine corner-case values for both a and b to test all combinations of edge cases
     diagnostic_riscv_m_combinations();
 
     println!("All RISC-V IMA diagnostics passed!");
