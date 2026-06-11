@@ -162,12 +162,17 @@ impl ExecuteCmd {
                     .build()?,
             ),
             (false, true) => Box::new(
-                ProverClientBuilder::new().emu().with_prover_options(prover_options).build()?,
+                ProverClientBuilder::new()
+                    .emu()
+                    .with_prover_options(prover_options)
+                    .witness()
+                    .build()?,
             ),
             (false, false) => Box::new(
                 ProverClientBuilder::new()
                     .asm()
                     .with_prover_options(prover_options.with_asm_options(self.make_asm_options()))
+                    .witness()
                     .build()?,
             ),
         };
