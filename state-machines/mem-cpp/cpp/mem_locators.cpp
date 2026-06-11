@@ -4,12 +4,13 @@
 MemLocators::MemLocators() {
 }
 
-void MemLocators::push_locator(uint32_t thread_index, uint32_t offset, uint32_t cpos, uint32_t skip) {
+void MemLocators::push_locator(uint32_t thread_index, uint32_t offset, uint32_t cpos, uint32_t skip, uint32_t previous_addr) {
     size_t pos = write_pos.load(std::memory_order_relaxed);
     assert(pos < MAX_LOCATORS);
     locators[pos].thread_index = thread_index;
     locators[pos].offset = offset;
     locators[pos].cpos = cpos;
+    locators[pos].previous_addr = previous_addr;
     locators[pos].skip = skip;
     write_pos.store(pos + 1, std::memory_order_relaxed);
 }

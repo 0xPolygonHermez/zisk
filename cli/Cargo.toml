@@ -55,7 +55,7 @@ predicates = "3"
 
 [features]
 default = []
-cpu-only = ["zisk-build/cpu-only"]
+cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only"]
 diagnostic = ["zisk-prover-backend/diagnostic"]
 custom_rust_llvm = []
 stats = []

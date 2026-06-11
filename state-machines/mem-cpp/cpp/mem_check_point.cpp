@@ -2,11 +2,15 @@
 #include "mem_check_point.hpp"
 
 void MemCheckPoint::set(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count) {
+    set(chunk_id, from_addr, skip, from_addr, count, count);
+}
+
+void MemCheckPoint::set(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t to_addr, uint32_t to_count, uint32_t count) {
     this->chunk_id = chunk_id;
     this->from_addr = from_addr;
     this->from_skip = skip;
-    this->to_addr = from_addr;
-    this->to_count = count;
+    this->to_addr = to_addr;
+    this->to_count = to_count;
     this->count = count;
 }
 

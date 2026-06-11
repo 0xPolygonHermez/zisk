@@ -1,43 +1,42 @@
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use libc::shm_unlink;
-use libc::{
-    c_uint, close, mmap, munmap, shm_open, MAP_FAILED, MAP_SHARED, PROT_READ, S_IRUSR, S_IWUSR,
-};
-use proofman_common::format_bytes;
-use std::{
-    ffi::CString,
-    fmt::Debug,
-    io,
-    os::raw::c_void,
-    ptr,
-    sync::atomic::{fence, Ordering},
-};
-use tracing::info;
+use libc::{close, munmap, PROT_READ};
+use std::{fmt::Debug, io, os::raw::c_void, ptr};
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-pub enum AsmSharedMemoryMode {
-    ReadOnly,
-    ReadWrite,
-}
+use crate::shmem_sys;
 
-pub struct AsmSharedMemory<H: AsmShmemHeader> {
+pub(crate) struct AsmShmem<H: AsmShmemHeader> {
+    /// The file descriptor for the shared memory segment.
     _fd: i32,
+    /// Pointer to the mapped shared memory region.
     mapped_ptr: *mut c_void,
+    /// Size of the mapped shared memory region.
     mapped_size: usize,
+    /// Name of the shared memory segment.
     shmem_name: String,
+    /// PhantomData to associate the header type `H` with this struct.
     _phantom: std::marker::PhantomData<H>,
 }
 
-unsafe impl<H: AsmShmemHeader> Send for AsmSharedMemory<H> {}
-unsafe impl<H: AsmShmemHeader> Sync for AsmSharedMemory<H> {}
+// SAFETY: the only non-auto field is `mapped_ptr`, a raw pointer into an mmap'd
+// shared-memory region. The mapping address is stable for the handle's lifetime
+// (set once in `open_and_map`, only torn down by `unmap`/`Drop`), so sending or
+// sharing the handle across threads is sound. This does not by itself provide
+// any data-race guarantees for the mapped bytes.
+unsafe impl<H: AsmShmemHeader> Send for AsmShmem<H> {}
+unsafe impl<H: AsmShmemHeader> Sync for AsmShmem<H> {}
 
-pub trait AsmShmemHeader: Debug {
+/// Trait for the header of an `AsmShmem` region, which must provide the allocated size
+/// of the producer's shared memory segment.
+pub(crate) trait AsmShmemHeader: Debug {
+    /// Total allocated mapping size in bytes.
     fn allocated_size(&self) -> u64;
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
+impl<H: AsmShmemHeader> Drop for AsmShmem<H> {
     fn drop(&mut self) {
         if let Ok(c_name) = std::ffi::CString::new(self.shmem_name.clone()) {
             unsafe { shm_unlink(c_name.as_ptr()) };
@@ -49,181 +48,66 @@ impl<H: AsmShmemHeader> Drop for AsmSharedMemory<H> {
     }
 }
 
-impl<H: AsmShmemHeader> AsmSharedMemory<H> {
+impl<H: AsmShmemHeader> AsmShmem<H> {
+    /// Opens and maps a shared memory region, returning an `AsmShmem` handle that owns the mapping.
     pub fn open_and_map(name: &str, _unlock_mapped_memory: bool) -> Result<Self> {
+        if name.is_empty() {
+            return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
+        }
+
+        let fd = shmem_sys::open(name, libc::O_RDONLY)?;
+
+        // `MAP_LOCKED` only exists on Linux; elsewhere the lock flag is ignored.
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        let lock = !_unlock_mapped_memory;
+        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        let lock = false;
+
+        // First map only the header to learn the producer's allocated size.
+        let size_header = std::mem::size_of::<H>();
+        let header_ptr = match shmem_sys::map(fd, size_header, PROT_READ, lock, name) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                unsafe { close(fd) };
+                return Err(e.into());
+            }
+        };
+
+        let allocated_size = unsafe { (header_ptr as *const H).read().allocated_size() as usize };
+
+        // Done with the header-only mapping; release it before the full map.
         unsafe {
-            if name.is_empty() {
-                return Err(anyhow::anyhow!("Shared memory name {name} cannot be empty"));
-            }
-
-            let c_name = CString::new(name)
-                .map_err(|_| anyhow::anyhow!("Shared memory name contains null byte"))?;
-
-            let fd =
-                shm_open(c_name.as_ptr(), libc::O_RDONLY, S_IRUSR as c_uint | S_IWUSR as c_uint);
-            if fd == -1 {
-                let err = io::Error::last_os_error();
-                return Err(anyhow::anyhow!("shm_open('{name}') failed: {err}"));
-            }
-
-            #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-            let flags = MAP_SHARED;
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            let mut flags = MAP_SHARED;
-            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-            if !_unlock_mapped_memory {
-                flags |= libc::MAP_LOCKED;
-            }
-
-            let size_header = size_of::<H>();
-            let mapped_ptr = mmap(ptr::null_mut(), size_header, PROT_READ, flags, fd, 0);
-            if mapped_ptr == MAP_FAILED {
-                let err = io::Error::last_os_error();
-                close(fd);
-                return Err(anyhow::anyhow!(
-                    "mmap failed for '{name}': {err:?} ({size_header} bytes)",
-                ));
-            }
-
-            // let header = Self::map_header(&self);
-            let header = (mapped_ptr as *const H).read();
-            let allocated_size = header.allocated_size() as usize;
-
-            // Ensure the size is valid
-            if allocated_size == 0 {
-                if munmap(mapped_ptr, size_header) != 0 {
-                    let err = io::Error::last_os_error();
-                    return Err(anyhow::anyhow!("munmap failed for '{name}': {err}"));
-                }
-
-                close(fd);
-
-                return Err(anyhow::anyhow!("Shared memory '{}' has zero allocated size", name));
-            }
-
-            if munmap(mapped_ptr, size_header) != 0 {
+            if munmap(header_ptr, size_header) != 0 {
                 let err = io::Error::last_os_error();
                 close(fd);
                 return Err(anyhow::anyhow!("munmap failed for '{name}': {err}"));
             }
-
-            let mapped_ptr = mmap(ptr::null_mut(), allocated_size, PROT_READ, flags, fd, 0);
-
-            if mapped_ptr == MAP_FAILED {
-                let err = io::Error::last_os_error();
-                close(fd);
-                return Err(anyhow::anyhow!(
-                    "mmap failed for '{name}': {err:?} ({size_header} bytes)",
-                ));
-            }
-
-            Ok(Self {
-                _fd: fd,
-                mapped_ptr,
-                mapped_size: allocated_size,
-                shmem_name: name.to_string(),
-                _phantom: std::marker::PhantomData::<H>,
-            })
         }
+
+        if allocated_size == 0 {
+            unsafe { close(fd) };
+            return Err(anyhow::anyhow!("Shared memory '{}' has zero allocated size", name));
+        }
+
+        // Remap the full region now that the real size is known.
+        let mapped_ptr = match shmem_sys::map(fd, allocated_size, PROT_READ, lock, name) {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                unsafe { close(fd) };
+                return Err(e.into());
+            }
+        };
+
+        Ok(Self {
+            _fd: fd,
+            mapped_ptr,
+            mapped_size: allocated_size,
+            shmem_name: name.to_string(),
+            _phantom: std::marker::PhantomData::<H>,
+        })
     }
 
-    pub fn remap(&mut self, new_size: usize) -> Result<()> {
-        if !self.is_mapped() {
-            return Err(anyhow::anyhow!(
-                "Shared memory '{}' is not currently mapped, cannot remap",
-                self.shmem_name
-            ));
-        }
-
-        if new_size == 0 {
-            return Err(anyhow::anyhow!("New size must be greater than zero"));
-        }
-
-        // Use mremap to extend the existing mapping at the same address
-        let new_ptr = self.remap_region(new_size)?;
-
-        // Update the struct with new mapping info
-        self.mapped_ptr = new_ptr;
-        self.mapped_size = new_size;
-
-        Ok(())
-    }
-
-    /// Remaps the shared memory region to a new size.
-    /// # Safety
-    /// The caller must ensure that:
-    /// - `new_size` is the desired new size for the mapping.
-    pub fn remap_region(&self, new_size: usize) -> Result<*mut c_void> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            let flags = libc::MREMAP_MAYMOVE;
-            let new_ptr =
-                unsafe { libc::mremap(self.mapped_ptr, self.mapped_size, new_size, flags) };
-            if new_ptr == MAP_FAILED {
-                Err(anyhow::anyhow!(
-                    "Failed to remap shared memory '{}' from size {} to {}: {}",
-                    self.shmem_name,
-                    self.mapped_size,
-                    new_size,
-                    io::Error::last_os_error()
-                ))
-            } else {
-                Ok(new_ptr)
-            }
-        }
-
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        {
-            // On macOS / other systems without mremap:
-            // just unmap and remap a fresh region — no data copy.
-            if unsafe { munmap(self.mapped_ptr, self.mapped_size) } != 0 {
-                return Err(anyhow::anyhow!(
-                    "munmap failed for '{}': {}",
-                    self.shmem_name,
-                    io::Error::last_os_error()
-                ));
-            }
-
-            let new_ptr =
-                unsafe { mmap(ptr::null_mut(), new_size, PROT_READ, MAP_SHARED, self._fd, 0) };
-
-            if new_ptr == MAP_FAILED {
-                Err(anyhow::anyhow!(
-                    "mmap failed for '{}': {}",
-                    self.shmem_name,
-                    io::Error::last_os_error()
-                ))
-            } else {
-                Ok(new_ptr)
-            }
-        }
-    }
-
-    pub fn check_size_changed<T>(&mut self, current_read_ptr: &mut *const T) -> Result<bool> {
-        let read_mapped_size = self.map_header().allocated_size();
-
-        if read_mapped_size == self.mapped_size as u64 {
-            return Ok(false);
-        }
-
-        info!(
-            "Remapping shared memory {}: {} => {}",
-            self.shmem_name,
-            format_bytes(self.mapped_size as f64),
-            format_bytes(read_mapped_size as f64)
-        );
-
-        let offset = (*current_read_ptr as usize).wrapping_sub(self.mapped_ptr as usize);
-
-        self.remap(read_mapped_size as usize)?;
-
-        *current_read_ptr = unsafe { self.mapped_ptr.add(offset) as *const T };
-
-        fence(Ordering::Acquire);
-
-        Ok(true)
-    }
-
+    /// Unmap the shared-memory region and mark this handle as unmapped.
     pub fn unmap(&mut self) -> Result<()> {
         unsafe {
             if munmap(self.mapped_ptr, self.mapped_size) != 0 {
@@ -242,6 +126,14 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         Ok(())
     }
 
+    /// Read and return a copy of the header from the start of the mapping.
+    ///
+    /// # Panics
+    /// Panics if the region is not currently mapped. This is an invariant guard,
+    /// not an I/O path: an unmapped handle has a null `mapped_ptr`, so reading the
+    /// header would dereference null (UB). On a live handle the mapping is set up
+    /// in the constructor and only torn down by `unmap`/`Drop`, so this never
+    /// fires in correct use.
     pub fn map_header(&self) -> H {
         if !self.is_mapped() {
             panic!("Shared memory '{}' is not mapped, cannot read header", self.shmem_name);
@@ -254,17 +146,9 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
         !self.mapped_ptr.is_null()
     }
 
-    pub fn header_ptr(&self) -> *mut c_void {
-        self.mapped_ptr
-    }
-
-    pub fn mapped_ptr(&self) -> *mut c_void {
-        self.mapped_ptr
-    }
-
     pub fn data_ptr(&self) -> *mut c_void {
         // Skip the header size to get the data pointer
-        unsafe { self.mapped_ptr.add(size_of::<H>()) }
+        unsafe { self.mapped_ptr.add(std::mem::size_of::<H>()) }
     }
 
     pub fn mapped_size(&self) -> usize {
@@ -272,58 +156,77 @@ impl<H: AsmShmemHeader> AsmSharedMemory<H> {
     }
 }
 
-pub fn open_shmem(name: &str, flags: i32, mode: u32) -> Result<i32> {
-    let c_name = CString::new(name)?;
-    let fd = unsafe { shm_open(c_name.as_ptr(), flags, mode) };
-
-    if fd == -1 {
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-        {
-            return Err(anyhow!(format!("shm_open('{name}') failed")));
-        }
-
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            let errno_value = unsafe { *libc::__errno_location() };
-            let err = io::Error::from_raw_os_error(errno_value);
-            let err2 = io::Error::last_os_error();
-            return Err(anyhow!(format!(
-                "shm_open('{name}') failed: libc::errno:{err} #### last_os_error:{err2}"
-            )));
-        }
-    }
-
-    Ok(fd)
-}
-
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub fn map(fd: i32, size: usize, prot: i32, unlock_mapped_memory: bool, desc: &str) -> *mut c_void {
-    let mut flags = MAP_SHARED;
-    if !unlock_mapped_memory {
-        flags |= libc::MAP_LOCKED;
-    }
-    let mapped = unsafe { mmap(ptr::null_mut(), size, prot, flags, fd, 0) };
-    if mapped == MAP_FAILED {
-        let err = io::Error::last_os_error();
-        panic!("mmap failed for '{desc}': {err:?} ({size} bytes)");
-    }
-    mapped
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ShmemWriter;
+    use std::ffi::CString;
 
-#[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
-pub fn map(_: i32, _: usize, _: i32, _: bool, _: &str) -> *mut c_void {
-    ptr::null_mut()
-}
+    /// A minimal header for exercising `AsmShmem`: `allocated_size` lives at offset 0.
+    #[repr(C)]
+    #[derive(Debug)]
+    struct TestHeader {
+        allocated_size: u64,
+        _other: u64,
+    }
+    impl AsmShmemHeader for TestHeader {
+        fn allocated_size(&self) -> u64 {
+            self.allocated_size
+        }
+    }
 
-/// Unmaps memory at the given raw pointer.
-///
-/// # Safety
-/// The caller must ensure that:
-/// - `ptr` was returned by a successful call to `mmap`,
-/// - `size` matches the original mapped size,
-/// - the region pointed to by `ptr` is not already unmapped.
-pub unsafe fn unmap(ptr: *mut c_void, size: usize) {
-    if munmap(ptr, size) != 0 {
-        tracing::error!("munmap failed: {:?}", io::Error::last_os_error());
+    fn seg_name(tag: &str) -> String {
+        format!("ZISK_unittest_shmem_{}_{tag}", std::process::id())
+    }
+    fn create_segment(name: &str, size: usize) {
+        let c = CString::new(name).unwrap();
+        unsafe {
+            libc::shm_unlink(c.as_ptr());
+            let fd = libc::shm_open(c.as_ptr(), libc::O_CREAT | libc::O_RDWR, 0o600);
+            assert!(fd >= 0);
+            assert_eq!(libc::ftruncate(fd, size as libc::off_t), 0);
+            libc::close(fd);
+        }
+    }
+    fn unlink_segment(name: &str) {
+        let c = CString::new(name).unwrap();
+        unsafe { libc::shm_unlink(c.as_ptr()) };
+    }
+
+    #[test]
+    fn open_and_map_reads_header_and_maps_allocated_size() {
+        let name = seg_name("hdr");
+        create_segment(&name, 4096);
+        // Populate the header's allocated_size field (offset 0).
+        {
+            let w = ShmemWriter::new(&name, 4096, true).unwrap();
+            w.write_u64_at(0, 4096).unwrap();
+        }
+        let shm = AsmShmem::<TestHeader>::open_and_map(&name, true).unwrap();
+        assert_eq!(shm.map_header().allocated_size(), 4096);
+        assert_eq!(shm.mapped_size(), 4096);
+        assert!(shm.is_mapped());
+        // `AsmShmem`'s Drop shm_unlinks the segment, so no manual cleanup here.
+    }
+
+    #[test]
+    fn open_and_map_rejects_zero_allocated_size() {
+        let name = seg_name("zero");
+        create_segment(&name, 4096); // ftruncate zero-fills → allocated_size == 0
+        assert!(AsmShmem::<TestHeader>::open_and_map(&name, true).is_err());
+        unlink_segment(&name); // open failed → AsmShmem didn't take ownership
+    }
+
+    #[test]
+    fn open_and_map_rejects_empty_name() {
+        assert!(AsmShmem::<TestHeader>::open_and_map("", true).is_err());
+    }
+
+    #[test]
+    fn open_and_map_rejects_missing_segment() {
+        let name = seg_name("absent");
+        unlink_segment(&name);
+        assert!(AsmShmem::<TestHeader>::open_and_map(&name, true).is_err());
     }
 }

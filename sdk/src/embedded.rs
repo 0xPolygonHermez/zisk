@@ -241,6 +241,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
             backend_opts.build_proofman_options(), // options
             false,                                 // is_distributed
             None,                                  // logging_config
+            backend_opts.cpu_mops_enabled(),       // cpu_mops
         )?;
         Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm, backend_opts)))
     }

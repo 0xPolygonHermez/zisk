@@ -1,8 +1,11 @@
 #include "immutable_mem_planner.hpp"
+#include <vector>
 
 ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size, bool intermediate_rows):
     rows_by_segment(rows),
-    intermediate_rows(intermediate_rows) {
+    intermediate_rows(intermediate_rows),
+    last_addr(0) {
+
     #ifndef MEM_CHECK_POINT_MAP
     hash_table = new MemSegmentHashTable(MAX_CHUNKS);   // 2^18 * 2^18 = 2^36   // 2^14 * 2^18 = 2^32
     #endif
@@ -26,6 +29,7 @@ ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint
         msg << "MemPlanner::constructor: from_addr " << std::hex << from_addr << " not aligned to page " << std::dec << from_page;
         throw std::runtime_error(msg.str());
     }
+    segments_pages.reserve(512);
     initial_last_addr = MemCounter::page_to_addr(from_page);
     #ifndef MEM_CHECK_POINT_MAP
     chunk_table = (uint32_t *)malloc(MAX_CHUNKS * sizeof(uint32_t));
@@ -37,6 +41,10 @@ ImmutableMemPlanner::ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint
     tot_chunks = 0;
     large_segments = 0;
     #endif
+    
+    // Initialize offset tracking with id=0 for immutable planner
+    this->mb_size = mb_size;
+    mem_offsets = new MemOffsets(from_page);
 }
 
 ImmutableMemPlanner::~ImmutableMemPlanner() {
@@ -45,11 +53,132 @@ ImmutableMemPlanner::~ImmutableMemPlanner() {
     delete hash_table;
     free(chunk_table);
     #endif
+    delete mem_offsets;
 }
+
+// Calculate memory requirements for offset pages across all segments
+// This function estimates the number of pages needed by identifying collapsible pages
+// (pages with only one offset value), allowing us to:
+// - Accurately predict memory consumption before allocation
+// - Avoid running into memory limits during execution
+// - Optimize storage by collapsing empty or single-value pages
+void ImmutableMemPlanner::calculate_pages(const std::vector<MemCounter *> &workers) {
+    uint32_t rows_available = rows_by_segment;
+    uint32_t last_addr_with_data = 0;
+    uint32_t segment_first_addr = 0;
+    uint32_t offset, last_offset;
+    uint32_t collapsible_pages = 0;
+
+    uint32_t count = 0;
+    for (uint32_t page = from_page; page <= to_page; ++page) {
+        get_offset_limits(workers, page, offset, last_offset);
+        for (; offset <= last_offset; ++offset) {
+            for (uint32_t thread_index = 0; thread_index < MAX_THREADS; ++thread_index) {
+                uint32_t real_count = workers[thread_index]->get_count_table(offset);
+                if (real_count == 0) continue;
+                
+                uint32_t real_addr = MemCounter::offset_to_addr(offset, thread_index);
+                
+                // Process the real address and any intermediate addresses that precede it.
+                // When intermediate_rows is enabled and the gap to the previous address exceeds
+                // MAX_IMMUTABLE_ADDR_DISTANCE, we inject intermediate addresses (count=1 each)
+                // to fill the gap, advancing MAX_IMMUTABLE_ADDR_DISTANCE at a time until we
+                // reach real_addr. Intermediates are treated as regular addresses for row/segment
+                // accounting purposes. The first address never generates intermediates
+                // (last_addr_with_data == 0).
+                uint32_t addr = 0;
+                while (addr < real_addr) {
+                    if (intermediate_rows && last_addr_with_data != 0 && (real_addr - last_addr_with_data) > MAX_IMMUTABLE_ADDR_DISTANCE) {
+                        // Inject an intermediate address at MAX_IMMUTABLE_ADDR_DISTANCE from last data
+                        addr = last_addr_with_data + MAX_IMMUTABLE_ADDR_DISTANCE;
+                        count = 1;
+                    } else {
+                        // No intermediates needed: process the real address with its full count
+                        addr = real_addr;
+                        count = real_count;
+                    }
+
+                    // Process 'addr' (intermediate or real), handling segment boundaries:
+                    // a single address with count > rows_available may span multiple segments.
+                    while (count > 0) {
+                        if (rows_available == 0) {
+                            // Current segment is full: store its page/collapsible info and open a new one
+                            if (segment_first_addr != 0) {
+                                // Round up to nearest page
+                                // + 8/8 - 1 = 0
+                                uint32_t pages = (((last_addr_with_data - segment_first_addr + 1) / 8) + OFFSET_PAGE_SIZE) / OFFSET_PAGE_SIZE; 
+                                segments_pages.push_back(std::make_pair(pages, collapsible_pages));
+                                collapsible_pages = 0;
+                            }
+                            rows_available = rows_by_segment;
+                            segment_first_addr = 0; // Will be set on first addr of new segment
+                            last_addr_with_data = 0; // Reset: collapsible pages must not span segment boundaries
+                        }
+                        
+                        // Record the first address of the current segment
+                        if (segment_first_addr == 0) {                        
+                            segment_first_addr = addr;
+                        }
+                        
+                        // Calculate collapsible pages between last_addr_with_data and addr.
+                        // A page is collapsible if it contains only one offset value:
+                        // either it is fully within the gap (all slots filled with offset_value),
+                        // or its last slot is 'addr' and all preceding slots are in the gap
+                        // (all slots also have offset_value since it only increments after adding).
+                        // Page p is collapsible iff: p >= last_data_page+1 AND p <= page_next_addr-1
+                        // => collapsible count = page_next_addr - last_data_page - 1
+                        if (last_addr_with_data != 0 && addr > (last_addr_with_data + 8)) {
+                            // Distance in number of addresses (each address is 8 bytes apart)
+                            uint32_t distance = (addr - last_addr_with_data) / 8;
+                            
+                            // Only relevant if the gap spans at least one full page
+                            if ((distance + 1) >= OFFSET_PAGE_SIZE) {
+                                // Index of last_addr_with_data within the segment
+                                uint32_t index = (last_addr_with_data - segment_first_addr) / 8;
+                                
+                                // Page containing last_addr_with_data
+                                uint32_t last_data_page = index / OFFSET_PAGE_SIZE;
+                                
+                                // Page of the slot immediately after addr
+                                // (equals addr's page + 1 when addr is the last slot of its page)
+                                uint32_t page_next_addr = (index + distance + 1) / OFFSET_PAGE_SIZE;
+                                
+                                // Collapsible pages are those entirely within [last_data_page+1, page_next_addr-1]
+                                if (page_next_addr > last_data_page + 1) {
+                                    uint32_t new_collapsible = page_next_addr - last_data_page - 1;
+                                    uint32_t first_coll_page = last_data_page + 1;
+                                    uint32_t last_coll_page  = page_next_addr - 1;
+                                    uint32_t coll_addr_start = segment_first_addr + first_coll_page * OFFSET_PAGE_SIZE * 8;
+                                    uint32_t coll_addr_end   = segment_first_addr + (last_coll_page + 1) * OFFSET_PAGE_SIZE * 8 - 8;
+                                    collapsible_pages += new_collapsible;
+                                }
+                            }
+                        }
+                        
+                        // Consume rows for this address (may be partial if near segment boundary)
+                        uint32_t consumed = std::min(count, rows_available);
+                        rows_available -= consumed;
+                        count -= consumed;
+                        
+                        last_addr_with_data = addr;
+                    }
+                }
+            }
+        }
+    }
+    if (rows_available < rows_by_segment) {
+        // + 8/8 - 1 = 0
+        uint32_t pages = (((last_addr_with_data - segment_first_addr + 1) / 8) + OFFSET_PAGE_SIZE) / OFFSET_PAGE_SIZE;
+        segments_pages.push_back(std::make_pair(pages, collapsible_pages));
+    }
+}
+
 void ImmutableMemPlanner::execute(const std::vector<MemCounter *> &workers) {
     uint32_t addr = 0;
     uint32_t offset;
     uint32_t last_offset;
+    calculate_pages(workers);
+    init_mem_offsets();
     last_addr = initial_last_addr;
     for (uint32_t page = from_page; page <= to_page; ++page) {
         get_offset_limits(workers, page, offset, last_offset);
@@ -92,13 +221,28 @@ void ImmutableMemPlanner::close_segment() {
     }
     tot_chunks += segment_chunks;
     #endif
-
+    #ifdef MEM_SAVE_CPP_OFFSETS
+    mem_offsets->save_offsets_to_file("tmp/" + std::string(MemCounter::page_to_tag(from_page)) + "_trace_" + std::to_string((uint32_t)segments.size()) + "_cpp_offsets.txt", false);
+    #endif
+    
+    // Move MemOffsets data to current_segment->offsets before saving
+    mem_offsets->move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr);
+    
     segments.emplace_back(current_segment);
+    init_mem_offsets();
+    
     #ifdef MEM_CHECK_POINT_MAP
     current_segment = new MemSegment();
     #else
     current_segment = new MemSegment(hash_table);
     #endif
+}
+void ImmutableMemPlanner::init_mem_offsets() {
+    uint32_t next_segment_index = segments.size();
+    if (next_segment_index < segments_pages.size()) {
+        const auto pages_info = segments_pages[next_segment_index];
+        mem_offsets->allocate(pages_info.first, pages_info.second); // Clear mem_offsets for next segment
+    }
 }
 void ImmutableMemPlanner::open_segment() {
     #ifndef MEM_CHECK_POINT_MAP
@@ -111,6 +255,7 @@ void ImmutableMemPlanner::open_segment() {
         #else
         current_segment->add_or_update(hash_table, reference_addr_chunk, reference_addr, reference_skip, 0);
         #endif
+        mem_offsets->update(reference_addr, reference_skip > 0 ? 0: 1);
     }
     rows_available = rows_by_segment;
 }
@@ -137,6 +282,10 @@ void ImmutableMemPlanner::consume_rows(uint32_t addr, uint32_t row_count, uint32
     if (rows_available == 0) {
         open_segment();
     }
+    
+    // Track offset before adding chunk
+    mem_offsets->update(addr, rows_available == 0 && skip > 0 ? 0 : (rows_by_segment - rows_available + 1));
+    
     add_chunk_to_segment(current_chunk, addr, row_count, skip);
     rows_available -= row_count;
     reference_skip += row_count;
@@ -212,4 +361,8 @@ void ImmutableMemPlanner::collect_segments(MemSegments &mem_segments) {
 
 void ImmutableMemPlanner::stats() {
 
+}
+
+void ImmutableMemPlanner::save_offsets_to_file(const std::string &filename, bool compact) {
+    mem_offsets->save_offsets_to_file(filename, compact);
 }

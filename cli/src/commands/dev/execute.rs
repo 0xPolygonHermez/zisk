@@ -68,6 +68,20 @@ pub(crate) struct ExecuteCmd {
     #[arg(long, conflicts_with = "proving_key")]
     pub standalone: bool,
 
+    /// Run the memory-ops count-and-plan on the GPU. On `--standalone` the
+    /// executor self-allocates its own device arena; on the proofman path it
+    /// borrows proofman's unified buffer. Requires a CUDA build and a usable
+    /// GPU; falls back to the CPU planner otherwise. Defaults to CPU.
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(short = 'g', long)]
+    pub gpu: bool,
+
+    /// Force the mops planner onto CPU even when --gpu is set
+    /// (fallback for GPU-planner issues).
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(long)]
+    pub cpu_mops: bool,
+
     // Hidden flags
     /// ASM file path (implies `--asm`)
     #[arg(short = 's', long, hide = true, requires = "asm")]
@@ -202,6 +216,14 @@ impl ExecuteCmd {
         let mut opts = BackendProverOpts::default().verbose(self.verbose);
         if let Some(ref path) = self.proving_key {
             opts = opts.proving_key(path.clone());
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            opts = opts.gpu();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            opts = opts.cpu_mops();
         }
         opts
     }

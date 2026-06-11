@@ -46,6 +46,11 @@ pub(crate) struct VerifyConstraintsCmd {
     #[arg(short = 'g', long)]
     gpu: bool,
 
+    /// Run mops planner on CPU even when --gpu is set (fallback for GPU-planner issues)
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(long)]
+    pub cpu_mops: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -156,6 +161,10 @@ impl VerifyConstraintsCmd {
         if self.gpu {
             prover_options = prover_options.gpu();
         }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            prover_options = prover_options.cpu_mops();
+        }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
         }
@@ -182,6 +191,10 @@ impl VerifyConstraintsCmd {
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             prover_options = prover_options.gpu();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());

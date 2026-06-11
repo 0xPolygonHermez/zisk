@@ -26,6 +26,7 @@
 #include "mem_locators.hpp"
 #include "mem_locator.hpp"
 #include "mem_segments.hpp"
+#include "mem_offsets.hpp"
 
 class ImmutableMemPlanner {
 private:
@@ -58,11 +59,18 @@ private:
     #endif
     std::vector<MemSegment *> segments;
     bool intermediate_rows;
+    
+    // Offset tracking (optional)
+    MemOffsets *mem_offsets;
+    uint32_t mb_size; // Store mb_size for recreating MemOffsets
+    std::vector<std::pair<uint32_t, uint32_t>> segments_pages;
+
 
 public:
     ImmutableMemPlanner(uint32_t rows, uint32_t from_addr, uint32_t mb_size, bool intermediate_rows = true);
     ~ImmutableMemPlanner();
     void execute(const std::vector<MemCounter *> &workers);
+    void calculate_pages(const std::vector<MemCounter *> &workers);
     void get_offset_limits(const std::vector<MemCounter *> &workers, uint32_t page, uint32_t &first_offset, uint32_t &last_offset);
     inline void add_to_current_segment(uint32_t chunk_id, uint32_t addr, uint32_t count);
     inline void set_reference(uint32_t chunk_id, uint32_t addr);
@@ -81,7 +89,10 @@ public:
     uint32_t add_intermediates(uint32_t addr);
     void collect_segments(MemSegments &mem_segments);
     void stats();
-    void set_last_addr(uint32_t addr) { initial_last_addr = addr; }    
+    void set_last_addr(uint32_t addr) { initial_last_addr = addr; }
+    void save_offsets_to_file(const std::string &filename, bool compact = true);
+    MemOffsets* get_mem_offsets() { return mem_offsets; }
+    void init_mem_offsets();
 };
 
 void ImmutableMemPlanner::add_to_current_segment(uint32_t chunk_id, uint32_t addr, uint32_t count) {

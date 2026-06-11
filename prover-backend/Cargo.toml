@@ -13,6 +13,7 @@ proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 proofman-verifier = { workspace = true, features = ["parallel"] }
+proofman-starks-lib-c = { workspace = true }
 
 # Zisk internal crates
 zisk-program-macros = { path = "macros" }
@@ -40,6 +41,6 @@ alloy-sol-types = { version = "1.5.7" }
 
 [features]
 default = []
-cpu-only = ["proofman-common/cpu-only"]
+cpu-only = ["proofman-common/cpu-only", "executor/cpu-only"]
 stats = []
 diagnostic = ["proofman-common/diagnostic"]
