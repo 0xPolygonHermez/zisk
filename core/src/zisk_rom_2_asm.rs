@@ -2971,7 +2971,7 @@ impl ZiskRom2Asm {
                             ctx.comment_str("address &= 7")
                         );
                         *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
-                        *unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
                         Self::c_store_mem_not_aligned(ctx, unusual_code);
                         *unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                     }
@@ -2996,7 +2996,7 @@ impl ZiskRom2Asm {
                             ctx.comment_str("address &= 7")
                         );
                         *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
-                        *unusual_code += &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                        *unusual_code += &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
                         // Increment chunk player address
                         *unusual_code += &format!(
                             "\tadd {}, 16 {}\n",
@@ -3047,32 +3047,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &ctx.full_line_comment(format!("STORE_IND width={}", instruction.ind_width));
 
-                // Calculate memory address and store it in REG_ADDRESS
-                if !ctx.chunk_player_mem_reads_collect_main() {
-                    *code += &format!(
-                        "\tmov {}, {} {}\n",
-                        REG_ADDRESS,
-                        ctx.a.string_value,
-                        ctx.comment_str("address = a")
-                    );
-                    if instruction.store_offset != 0 {
-                        *code += &format!(
-                            "\tadd {}, 0x{:x} {}\n",
-                            REG_ADDRESS,
-                            instruction.store_offset as u64,
-                            ctx.comment_str("address += i.store_offset")
-                        );
-                    }
-                    if instruction.store_use_sp {
-                        *code += &format!(
-                            "\tadd {}, {} {}\n",
-                            REG_ADDRESS,
-                            ctx.mem_sp,
-                            ctx.comment_str("address += sp")
-                        );
-                    }
-                }
-
+                // Check if address is constant and calculate it if so, to optimize code and get alignment info
                 let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
                 let address_constant_value = if address_is_constant {
                     (ctx.a.constant_value as i64 + instruction.store_offset) as u64
@@ -3083,6 +3058,45 @@ impl ZiskRom2Asm {
                 ctx.address_constant_value = address_constant_value;
                 let address_is_aligned =
                     address_is_constant && ((address_constant_value & 0x7) == 0);
+
+                let reg_address = REG_A;
+                // Calculate memory address and store it in reg_address (reusing REG_A)
+                if !ctx.chunk_player_mem_reads_collect_main() {
+                    if ctx.address_is_constant {
+                        *code += &format!(
+                            "\tmov {}, 0x{:x} {}\n",
+                            reg_address,
+                            ctx.address_constant_value,
+                            ctx.comment_str("a(address) = constant")
+                        );
+                    } else {
+                        // If `a` is an immediate and wasn't materialized into a register, load it
+                        // now, adding the offset, before applying SP adjustments.
+                        if ctx.a.is_constant && !ctx.a.is_saved {
+                            *code += &format!(
+                                "\tmov {}, 0x{:x} {}\n",
+                                reg_address,
+                                ctx.a.constant_value + instruction.store_offset as u64,
+                                ctx.comment_str("a(address) = imm + offset")
+                            );
+                        } else if instruction.store_offset != 0 {
+                            *code += &format!(
+                                "\tadd {}, 0x{:x} {}\n",
+                                reg_address,
+                                instruction.store_offset as u64,
+                                ctx.comment_str("a(address) += i.store_offset")
+                            );
+                        }
+                        if instruction.store_use_sp {
+                            *code += &format!(
+                                "\tadd {}, {} {}\n",
+                                reg_address,
+                                ctx.mem_sp,
+                                ctx.comment_str("a(address) += sp")
+                            );
+                        }
+                    }
+                }
 
                 // Generate mem_reads
                 if ctx.minimal_trace() || ctx.zip() {
@@ -3102,18 +3116,18 @@ impl ZiskRom2Asm {
                             // Check if address is aligned, i.e. it is a multiple of 8
                             if address_is_constant {
                                 if !address_is_aligned {
-                                    Self::c_store_ind_8_not_aligned(ctx, code);
+                                    Self::c_store_ind_8_not_aligned(ctx, code, reg_address);
                                 }
                             } else {
                                 *code += &format!(
                                     "\ttest {}, 0x7 {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("address &= 7")
                                 );
                                 *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                                 *unusual_code +=
-                                    &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
-                                Self::c_store_ind_8_not_aligned(ctx, unusual_code);
+                                    &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                Self::c_store_ind_8_not_aligned(ctx, unusual_code, reg_address);
                                 *unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                                 *code += &format!("pc_{:x}_c_address_done:\n", ctx.pc);
                             }
@@ -3123,7 +3137,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmov {}, {} {}\n",
                                 REG_AUX,
-                                REG_ADDRESS,
+                                reg_address,
                                 ctx.comment_str("aux = address")
                             );
 
@@ -3149,11 +3163,11 @@ impl ZiskRom2Asm {
                                 ctx.comment_str("mem_reads[@+size*8] = prev_c")
                             );
 
-                            // FIX: compute next_aligned from ORIGINAL addr (REG_ADDRESS), not prev_aligned
+                            // FIX: compute next_aligned from ORIGINAL addr (reg_address), not prev_aligned
                             *code += &format!(
                                 "\tmov {}, {} {}\n",
                                 REG_VALUE,
-                                REG_ADDRESS,
+                                reg_address,
                                 ctx.comment_str("value = original address")
                             );
                             let address_increment = instruction.ind_width - 1;
@@ -3189,7 +3203,8 @@ impl ZiskRom2Asm {
 
                             // Different address
 
-                            *unusual_code += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+                            *unusual_code +=
+                                &format!("\npc_{:x}_c_ind_different_address:\n", ctx.pc);
 
                             // FIX: REG_VALUE holds next_aligned address — read mem at it
                             *unusual_code += &format!(
@@ -3230,7 +3245,7 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov {}, [{}] {}\n",
                                     REG_VALUE,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("value = mem[address]")
                                 );
                                 *code += &format!(
@@ -3252,7 +3267,7 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov {}, {} {}\n",
                                     REG_AUX,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("aux = address")
                                 );
 
@@ -3310,12 +3325,12 @@ impl ZiskRom2Asm {
                             } else {
                                 *code += &format!(
                                     "\ttest {}, 0x7 {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     ctx.comment_str("address &= 7")
                                 );
                                 *code += &format!("\tjnz pc_{:x}_c_address_not_aligned\n", ctx.pc);
                                 *unusual_code +=
-                                    &format!("pc_{:x}_c_address_not_aligned:\n", ctx.pc);
+                                    &format!("\npc_{:x}_c_address_not_aligned:\n", ctx.pc);
                                 Self::chunk_player_mem_write(ctx, unusual_code, 8, REG_C, 2);
                                 *unusual_code += &format!("\tjmp pc_{:x}_c_address_done\n", ctx.pc);
                                 Self::chunk_player_mem_write(ctx, code, 8, REG_C, 0);
@@ -3327,7 +3342,7 @@ impl ZiskRom2Asm {
                             *code += &format!(
                                 "\tmov {}, {} {}\n",
                                 REG_AUX,
-                                REG_ADDRESS,
+                                reg_address,
                                 ctx.comment_str("aux = address")
                             );
 
@@ -3380,7 +3395,8 @@ impl ZiskRom2Asm {
                             // Different address
                             ////////////////////
 
-                            *unusual_code += &format!("pc_{:x}_c_ind_different_address:\n", ctx.pc);
+                            *unusual_code +=
+                                &format!("\npc_{:x}_c_ind_different_address:\n", ctx.pc);
 
                             Self::chunk_player_mem_write(
                                 ctx,
@@ -3422,14 +3438,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov qword {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=8: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C,
                                     ctx.comment_str("width=8: mem[address] = c")
                                 );
@@ -3440,14 +3456,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov dword {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=4: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C_W,
                                     ctx.comment_str("width=4: mem[address] = c")
                                 );
@@ -3458,14 +3474,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov word {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=2: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C_H,
                                     ctx.comment_str("width=2: mem[address] = c")
                                 );
@@ -3476,14 +3492,14 @@ impl ZiskRom2Asm {
                                 *code += &format!(
                                     "\tmov word {}[{}], {} {}\n",
                                     ctx.ptr,
-                                    REG_ADDRESS,
+                                    reg_address,
                                     (ctx.pc as i64 + instruction.jmp_offset2) as u64,
                                     ctx.comment_str("width=1: mem[address] = pc + jmp_offset2")
                                 );
                             } else {
                                 *code += &format!(
                                     "\tmov [{}], {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_C_B,
                                     ctx.comment_str("width=1: mem[address] = c")
                                 );
@@ -3496,7 +3512,7 @@ impl ZiskRom2Asm {
                                 );
                                 *code += &format!(
                                     "\tcmp {}, {} {}\n",
-                                    REG_ADDRESS,
+                                    reg_address,
                                     REG_FLAG,
                                     ctx.comment_str("width=1: if address = USART then print char")
                                 );
@@ -3538,7 +3554,7 @@ impl ZiskRom2Asm {
                 }
 
                 if ctx.mem_op() {
-                    Self::c_store_ind_mem_op(ctx, code, instruction.ind_width);
+                    Self::c_store_ind_mem_op(ctx, code, instruction.ind_width, reg_address);
                 }
             }
             _ => panic!(
@@ -4018,7 +4034,7 @@ impl ZiskRom2Asm {
                     *code += &format!(
                         "\tsar {}, 0x{:x} {}\n",
                         REG_VALUE_W,
-                        ctx.b.constant_value & 0x3f,
+                        ctx.b.constant_value & 0x1f,
                         ctx.comment_str("SraW: c = a >> b")
                     );
                     *code += &format!(
@@ -4062,7 +4078,7 @@ impl ZiskRom2Asm {
                     *code += &format!(
                         "\tshr {}, 0x{:x} {}\n",
                         REG_VALUE_W,
-                        ctx.b.constant_value & 0x3f,
+                        ctx.b.constant_value & 0x1f,
                         ctx.comment_str("SrlW: c = a >> b")
                     );
                     *code += &format!(
@@ -4530,14 +4546,16 @@ impl ZiskRom2Asm {
                 assert!(ctx.store_b_in_b);
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
-                // If b==0 return 0xffffffffffffffff
+
+                // Divide by zero:
+                // If b==0 return 0xffffffffffffffff, and set flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B,
                     ctx.comment_str("Divu: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_divu_b_is_not_zero {}\n",
+                    "\tjne pc_{:x}_divu_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("Divu: if b is not zero, divide")
                 );
@@ -4546,9 +4564,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Divu: set result to f's")
                 );
-                *code += &format!("\tje pc_{:x}_divu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_divu_b_is_not_zero:\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_divu_done\n", ctx.pc);
 
+                // Divide: calculate quotient and set flag to false
+                *code += &format!("pc_{:x}_divu_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE,
@@ -4571,22 +4591,26 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Divu: c = quotient(rax)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_divu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Remu => {
                 assert!(ctx.store_b_in_b);
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
-                // If b==0 return a
+
+                // Divide by zero:
+                // If b==0 return a, and set flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B,
                     ctx.comment_str("Remu: if b == 0 return a")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_remu_b_is_not_zero {}\n",
+                    "\tjne pc_{:x}_remu_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("Remu: if b is not zero, divide")
                 );
@@ -4594,11 +4618,13 @@ impl ZiskRom2Asm {
                     "\tmov {}, {} {}\n",
                     REG_C,
                     ctx.a.string_value,
-                    ctx.comment_str("Remu: set result to f's")
+                    ctx.comment_str("Remu: set result to a")
                 );
-                *code += &format!("\tje pc_{:x}_remu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_remu_b_is_not_zero:\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_remu_done\n", ctx.pc);
 
+                // Divide: calculate remainder and set flag to false
+                *code += &format!("pc_{:x}_remu_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE,
@@ -4621,9 +4647,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Remu: c = remainder(rdx)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_remu_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Div => {
                 assert!(ctx.store_a_in_a);
@@ -4631,13 +4659,13 @@ impl ZiskRom2Asm {
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
                 // be -MIN_I64, which cannot be represented with 64 bits (overflow)
-                // and it returns c=a.
+                // and it returns c=a, and sets flag to false.
 
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
 
                 // Check divide by zero:
-                // If b==0 return 0xffffffffffffffff
+                // If b==0 return 0xffffffffffffffff, and set flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B,
@@ -4648,17 +4676,18 @@ impl ZiskRom2Asm {
                     ctx.pc,
                     ctx.comment_str("Div: if b is zero, jump")
                 );
-                *unusual_code += &format!("pc_{:x}_div_by_zero:\n", ctx.pc);
+                *unusual_code += &format!("\npc_{:x}_div_by_zero:\n", ctx.pc);
                 *unusual_code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
-                    ctx.comment_str("Div: set result to f's")
+                    ctx.comment_str("Div: c=f's")
                 );
-
+                *unusual_code +=
+                    &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *unusual_code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
                 // Check underflow:
-                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a, and flag=false
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4697,10 +4726,10 @@ impl ZiskRom2Asm {
                     REG_A,
                     ctx.comment_str("Div: set result to a")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
-                *code += &format!("\tje pc_{:x}_div_done\n", ctx.pc);
-
-                // Divide
+                // Divide: calculate quotient and set flag to false
                 *code += &format!("pc_{:x}_div_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4731,28 +4760,27 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Div: c = quotient(rax)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_div_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Rem => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // If b=0 (divide by zero) it sets c to a, and sets flag to true.
                 // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
                 // be -MIN_I64, which cannot be represented with 64 bits (overflow)
-                // and it returns c=a.
+                // and it sets c to 0, and sets flag to false.
 
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
 
                 // Check divide by zero:
-                // If b==0 return 0xffffffffffffffff
-                *code += &format!(
-                    "\tcmp {}, 0 {}\n",
-                    REG_B,
-                    ctx.comment_str("Rem: if b == 0 return f's")
-                );
+                // If b==0 return a, and set flag to true
+                *code +=
+                    &format!("\tcmp {}, 0 {}\n", REG_B, ctx.comment_str("Rem: if b == 0 return a"));
                 *code += &format!(
                     "\tjne pc_{:x}_rem_check_underflow {}\n",
                     ctx.pc,
@@ -4764,12 +4792,12 @@ impl ZiskRom2Asm {
                     REG_A,
                     ctx.comment_str("Rem: set result to a")
                 );
-
-                *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
                 // Check underflow:
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=0, and flag=false
                 *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
-                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4795,23 +4823,18 @@ impl ZiskRom2Asm {
                     "\tcmp {}, {} {}\n",
                     REG_B,
                     REG_VALUE,
-                    ctx.comment_str("Rem: if b == 0xffffffffffffffff, then return a")
+                    ctx.comment_str("Rem: if b == 0xffffffffffffffff, then return 0")
                 );
                 *code += &format!(
                     "\tjne pc_{:x}_rem_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("Rem: if b is not 0xffffffffffffffff, divide")
                 );
-                *code += &format!(
-                    "\txor {}, {} {}\n",
-                    REG_C,
-                    REG_C,
-                    ctx.comment_str("Rem: set result to 0")
-                );
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Rem: c = 0"));
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
-                *code += &format!("\tje pc_{:x}_rem_done\n", ctx.pc);
-
-                // Divide
+                // Divide: calculate remainder and set flag to false
                 *code += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4842,20 +4865,25 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("Rem: c = remainder(rdx)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_rem_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivuW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
+
+                // Check divide by zero:
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("DivuW: if b==0 then return all f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_divuw_b_is_not_zero {}\n",
+                    "\tjne pc_{:x}_divuw_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("DivuW: if b is not zero, divide")
                 );
@@ -4864,9 +4892,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("DivuW: set result to f's")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_divuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_divuw_b_is_not_zero:\n", ctx.pc);
 
+                // Divide: calculate quotient and set flag to false
+                *code += &format!("pc_{:x}_divuw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -4885,28 +4915,35 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("DivuW: sign extend 32 to 64 bits")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_divuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::RemuW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
+
+                // Check divide by zero
+                // If b=0 (divide by zero) it sets c to a, and sets flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("RemuW: if b==0 then return a")
                 );
-                *code += &format!("\tjne pc_{:x}_remuw_b_is_not_zero\n", ctx.pc);
+                *code += &format!("\tjne pc_{:x}_remuw_divide\n", ctx.pc);
                 *code += &format!(
                     "\tmovsxd {}, {} {}\n",
                     REG_C,
                     REG_A_W,
                     ctx.comment_str("RemuW: return a, sign extend 32 to 64 bits")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_remuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_remuw_b_is_not_zero:\n", ctx.pc);
 
+                // Divide: calculate remainder and set flag to false
+                *code += &format!("pc_{:x}_remuw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
                     REG_VALUE_W,
@@ -4925,38 +4962,73 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("RemuW: sign extend 32 to 64 bits")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_remuw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::DivW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
 
                 // Check divide by zero:
-                // If b==0 return 0xffffffffffffffff
+                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
                     ctx.comment_str("DivW: if b == 0 return f's")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_divw_divide {}\n",
+                    "\tjne pc_{:x}_divw_check_overflow {}\n",
                     ctx.pc,
-                    ctx.comment_str("DivW: if b is not zero, divide")
+                    ctx.comment_str("DivW: if b is not zero, check overflow")
                 );
                 *code += &format!(
                     "\tmov {}, 0xffffffffffffffff {}\n",
                     REG_C,
-                    ctx.comment_str("DivW: set result to f's")
+                    ctx.comment_str("DivW: result=f's")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
 
-                *code += &format!("\tje pc_{:x}_divw_done\n", ctx.pc);
+                // Check overflow:
+                // If a=0x80000000 (MIN_I32) and b=0xffffffff (-1) the result should be -MIN_I32,
+                // which cannot be represented with 32 bits, so return 0xffffffff80000000,
+                // which is -MIN_I32 sign-extended to 64 bits, and set flag to false
+                *code += &format!("pc_{:x}_divw_check_overflow:\n", ctx.pc);
+                *code += &format!(
+                    "\tcmp {}, 0x80000000 {}\n",
+                    REG_A_W,
+                    ctx.comment_str("DivW: if a == MIN_I32")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_divw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("DivW: if a is not MIN_I32, divide")
+                );
+                *code += &format!(
+                    "\tcmp {}, 0xffffffff {}\n",
+                    REG_B_W,
+                    ctx.comment_str("DivW: if b == -1")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_divw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("DivW: if b is not -1, divide")
+                );
+                *code += &format!(
+                    "\tmov {}, 0xffffffff80000000 {}\n",
+                    REG_C,
+                    ctx.comment_str("DivW: result=MIN_I32 (sign-extended)")
+                );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate quotient and set flag to false
                 *code += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4977,28 +5049,31 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("DivW: c = quotient(rax)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_divw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::RemW => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder.
 
                 // Check divide by zero:
-                // If b==0 return a
+                // If b=0 (divide by zero) it sets c to a (sign-extended to 64 bits), and sets flag
+                // to true.
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B_W,
-                    ctx.comment_str("RemW: if b == 0 return f's")
+                    ctx.comment_str("RemW: if b == 0 return a")
                 );
                 *code += &format!(
-                    "\tjne pc_{:x}_remw_divide {}\n",
+                    "\tjne pc_{:x}_remw_check_overflow {}\n",
                     ctx.pc,
-                    ctx.comment_str("RemW: if b is not zero, divide")
+                    ctx.comment_str("RemW: if b is not zero, check overflow")
                 );
                 *code += &format!(
                     "\tmovsx {}, {} {}\n",
@@ -5006,10 +5081,43 @@ impl ZiskRom2Asm {
                     REG_A_W,
                     ctx.comment_str("RemW: set result to a")
                 );
+                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
+                *code += &format!("\tjmp pc_{:x}_remw_done\n", ctx.pc);
 
-                *code += &format!("\tje pc_{:x}_remw_done\n", ctx.pc);
+                // Check overflow:
+                // If a==0x80000000 (MIN_I32) and b==0xffffffff (-1) the result should be -MIN_I32,
+                // which cannot be represented with 32 bits, so return 0, and set flag to false
+                *code += &format!("pc_{:x}_remw_check_overflow:\n", ctx.pc);
+                *code += &format!(
+                    "\tcmp {}, 0x80000000 {}\n",
+                    REG_A_W,
+                    ctx.comment_str("RemW: if a == MIN_I32")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_remw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("RemW: if a is not MIN_I32, divide")
+                );
+                *code += &format!(
+                    "\tcmp {}, 0xffffffff {}\n",
+                    REG_B_W,
+                    ctx.comment_str("RemW: if b == -1")
+                );
+                *code += &format!(
+                    "\tjne pc_{:x}_remw_divide {}\n",
+                    ctx.pc,
+                    ctx.comment_str("RemW: if b is not -1, divide")
+                );
+                *code += &format!(
+                    "\txor {}, {} {}\n",
+                    REG_C,
+                    REG_C,
+                    ctx.comment_str("RemW: set result to 0")
+                );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+                *code += &format!("\tjmp pc_{:x}_remw_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate remainder and set flag to false
                 *code += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -5030,9 +5138,11 @@ impl ZiskRom2Asm {
                     REG_C,
                     ctx.comment_str("RemW: c = remainder(edx)")
                 );
+                *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
+
+                // Done
                 *code += &format!("pc_{:x}_remw_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
-                ctx.flag_is_always_zero = true;
             }
             ZiskOp::Minu => {
                 assert!(ctx.store_a_in_c);
@@ -7676,7 +7786,7 @@ impl ZiskRom2Asm {
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
                     ctx.next_pc,
-                    ctx.comment_str("flag=0: pc += 4")
+                    ctx.comment_str("flag=0: pc=next_pc")
                 );
             }
         } else if ctx.flag_is_always_one {
@@ -7703,7 +7813,37 @@ impl ZiskRom2Asm {
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
                     ctx.next_pc,
-                    ctx.comment_str("flag=1: pc += 4")
+                    ctx.comment_str("flag=1: pc=next_pc")
+                );
+            }
+        } else if !ctx.flag_is_always_one
+            && !ctx.flag_is_always_zero
+            && (instruction.jmp_offset1 == instruction.jmp_offset2)
+        {
+            let new_pc = (ctx.pc as i64 + instruction.jmp_offset1) as u64;
+            if new_pc != ctx.next_pc {
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    new_pc,
+                    ctx.comment_str("pc += offset1 and offset2 are the same")
+                );
+                // Check if target address exists in ROM before generating static jump
+                if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
+                    ctx.jump_to_static_pc = format!(
+                        "\tjmp pc_{:x} {}\n",
+                        new_pc,
+                        ctx.comment_str("jump to pc+offset1 and offset2 are the same")
+                    );
+                } else {
+                    ctx.jump_to_dynamic_pc = true;
+                }
+            } else if id == "z" {
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    ctx.next_pc,
+                    ctx.comment_str("pc=next_pc because offset1 and offset2 are the same")
                 );
             }
         } else {
@@ -7974,10 +8114,10 @@ impl ZiskRom2Asm {
         );
     }
 
-    fn c_store_ind_8_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String) {
+    fn c_store_ind_8_not_aligned(ctx: &mut ZiskAsmContext, code: &mut String, reg_address: &str) {
         // Get a copy of the address to preserve it
         *code +=
-            &format!("\tmov {}, {} {}\n", REG_AUX, REG_ADDRESS, ctx.comment_str("aux = address"));
+            &format!("\tmov {}, {} {}\n", REG_AUX, reg_address, ctx.comment_str("aux = address"));
 
         // Calculate previous aligned address
         *code += &format!(
@@ -8230,7 +8370,12 @@ impl ZiskRom2Asm {
         *code += &format!("\tinc {REG_MEM_READS_SIZE} {}\n", ctx.comment_str("mem_reads_size++"));
     }
 
-    fn c_store_ind_mem_op(ctx: &mut ZiskAsmContext, code: &mut String, width: u64) {
+    fn c_store_ind_mem_op(
+        ctx: &mut ZiskAsmContext,
+        code: &mut String,
+        width: u64,
+        reg_address: &str,
+    ) {
         // Dynamic trace value: if rest of bytes were zero, set flag on bit F_MEM_CLEAR_WRITE_BYTE
         // With this information, the mem_planner can use a specific state machine for
         // this kind of byte writes
@@ -8254,8 +8399,8 @@ impl ZiskRom2Asm {
                     }
             };
             *code += &format!(
-                "\tmov {REG_ADDRESS}, 0x{mops:x} {}\n",
-                ctx.comment_str("aux = constant mem op")
+                "\tmov {reg_address}, 0x{mops:x} {}\n",
+                ctx.comment_str("address = constant mem op")
             );
         } else {
             let mops = match width {
@@ -8268,7 +8413,7 @@ impl ZiskRom2Asm {
             *code +=
                 &format!("\tmov {REG_AUX}, 0x{mops:x} {}\n", ctx.comment_str("aux = mem op mask"));
             *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
+                "\tor {reg_address}, {REG_AUX} {}\n",
                 ctx.comment_str("address |= mem op mask")
             );
         }
@@ -8287,7 +8432,7 @@ impl ZiskRom2Asm {
                 ctx.comment_str("aux = F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!(
-                "\tor {REG_ADDRESS}, {REG_AUX} {}\n",
+                "\tor {reg_address}, {REG_AUX} {}\n",
                 ctx.comment_str("address |= F_MEM_CLEAR_WRITE_BYTE")
             );
             *code += &format!("\npc_{}_rest_of_bytes_not_zero:\n", ctx.pc);
@@ -8295,7 +8440,7 @@ impl ZiskRom2Asm {
 
         // Copy read data into mem_reads_address and increment it
         *code += &format!(
-            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {REG_ADDRESS} {}\n",
+            "\tmov [{REG_MEM_READS_ADDRESS} + {REG_MEM_READS_SIZE}*8], {reg_address} {}\n",
             ctx.comment_str("mem_reads[@+size*8] = mem op")
         );
 
@@ -8847,7 +8992,7 @@ impl ZiskRom2Asm {
 
         // Call wait_for_prec_avail()
         *unusual_code +=
-            &format!("pc_{:x}_{}_wait_for_prec_avail:\n", ctx.pc, ctx.wait_for_prec_counter);
+            &format!("\npc_{:x}_{}_wait_for_prec_avail:\n", ctx.pc, ctx.wait_for_prec_counter);
         Self::push_internal_registers(ctx, unusual_code, false);
         *unusual_code += "\tcall _wait_for_prec_avail\n";
         *unusual_code += "\tcmp rax, 0\n";
@@ -8916,7 +9061,7 @@ impl ZiskRom2Asm {
         *code += &format!("pc_{:x}_wait_for_input_avail_done:\n", ctx.pc);
 
         // Call wait_for_input_avail()
-        *unusual_code += &format!("pc_{:x}_wait_for_input_avail:\n", ctx.pc);
+        *unusual_code += &format!("\npc_{:x}_wait_for_input_avail:\n", ctx.pc);
         Self::push_internal_registers(ctx, unusual_code, false);
         *unusual_code += "\tcall _wait_for_input_avail\n";
         *unusual_code += "\tcmp rax, 0\n";
