@@ -33,29 +33,25 @@ require "blake2/pil/blake2br.pil"
 
 enable_range_stats();
 
+// Selectors for continuations
 proofval enable_input_data;
-enable_input_data * (1 - enable_input_data);
-
 proofval enable_rom_data;
-enable_rom_data * (1 - enable_rom_data);
-
 proofval enable_dma_64_aligned;
-enable_dma_64_aligned * (1 - enable_dma_64_aligned);
-
 proofval enable_dma_64_aligned_inputcpy;
-enable_dma_64_aligned_inputcpy * (1 - enable_dma_64_aligned_inputcpy);
-
 proofval enable_dma_64_aligned_mem;
-enable_dma_64_aligned_mem * (1 - enable_dma_64_aligned_mem);
-
 proofval enable_dma_64_aligned_memcpy;
-enable_dma_64_aligned_memcpy * (1 - enable_dma_64_aligned_memcpy);
-
 proofval enable_dma_64_aligned_memset;
-enable_dma_64_aligned_memset * (1 - enable_dma_64_aligned_memset);
-
 proofval enable_dma_unaligned;
-enable_dma_unaligned * (1 - enable_dma_unaligned);
+
+// Binary constraints to continuations enable proofvals
+enable_input_data * (1 - enable_input_data) === 0;
+enable_rom_data * (1 - enable_rom_data) === 0;
+enable_dma_64_aligned * (1 - enable_dma_64_aligned) === 0;
+enable_dma_64_aligned_inputcpy * (1 - enable_dma_64_aligned_inputcpy) === 0;
+enable_dma_64_aligned_mem * (1 - enable_dma_64_aligned_mem) === 0;
+enable_dma_64_aligned_memcpy * (1 - enable_dma_64_aligned_memcpy) === 0;
+enable_dma_64_aligned_memset * (1 - enable_dma_64_aligned_memset) === 0; 
+enable_dma_unaligned * (1 - enable_dma_unaligned) === 0;
 
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
 public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
@@ -70,32 +66,9 @@ airgroup Zisk {
     set_max_bits_virtual_tables(21);
     set_num_virtual_tables(2);
 
-    virtual DualRange(id: DUAL_RANGE_7_BITS_ID, min1: 0, max1: P2_7-1, min2: 0, max2: P2_7-1) alias DualRange7Bits;
-    virtual DualRange(id: DUAL_RANGE_BYTE_ID, min1: 0, max1: P2_8-1, min2: 0, max2: P2_8-1) alias DualByte;
-
-    Dma();
-    Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;
-    Dma(enable: E_DMA_INPUTCPY) alias DmaInputCpy;
-
-    Dma64Aligned(enable_flag: enable_dma_64_aligned);
-    Dma64Aligned(enable: E_DMA_INPUTCPY, enable_flag: enable_dma_64_aligned_inputcpy) alias Dma64AlignedInputCpy;
-    Dma64Aligned(enable: E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_memset, op_x_row: 8) alias Dma64AlignedMemSet;
-    Dma64Aligned(enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem) alias Dma64AlignedMem;
-    Dma64Aligned(enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, op_x_row: 8) alias Dma64AlignedMemCpy;
-
-    DmaUnaligned(enable_flag: enable_dma_unaligned);
-
-    DmaPrePost();
-    DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;
-    DmaPrePost(enable: E_DMA_INPUTCPY) alias DmaPrePostInputCpy;
-
-    virtual DmaByteCmpTable();
-    virtual DmaRom();
-    virtual DmaPrePostTable();
     // Main Program
     Main(N: 2**22);
     Rom(N: 2**22);
-    
 
     // Memory
     Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
@@ -140,6 +113,28 @@ airgroup Zisk {
     Poseidon2(N: 2**17);
 
     Blake2br(N: 2**18);
+
+    Dma();
+    Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;
+    Dma(enable: E_DMA_INPUTCPY) alias DmaInputCpy;
+
+    Dma64Aligned(enable_flag: enable_dma_64_aligned);
+    Dma64Aligned(enable: E_DMA_INPUTCPY, enable_flag: enable_dma_64_aligned_inputcpy) alias Dma64AlignedInputCpy;
+    Dma64Aligned(enable: E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_memset, op_x_row: 8) alias Dma64AlignedMemSet;
+    Dma64Aligned(enable: E_DMA_MEMCPY|E_DMA_MEMCMP|E_DMA_MEMSET, enable_flag: enable_dma_64_aligned_mem) alias Dma64AlignedMem;
+    Dma64Aligned(enable: E_DMA_MEMCPY, enable_flag: enable_dma_64_aligned_memcpy, op_x_row: 8) alias Dma64AlignedMemCpy;
+
+    DmaUnaligned(enable_flag: enable_dma_unaligned);
+
+    DmaPrePost();
+    DmaPrePost(enable: E_DMA_MEMCPY) alias DmaPrePostMemCpy;
+    DmaPrePost(enable: E_DMA_INPUTCPY) alias DmaPrePostInputCpy;
+
+    virtual DmaByteCmpTable();
+    virtual DmaRom();
+    virtual DmaPrePostTable();
+    virtual DualRange(id: DUAL_RANGE_7_BITS_ID, min1: 0, max1: P2_7-1, min2: 0, max2: P2_7-1) alias DualRange7Bits;
+    virtual DualRange(id: DUAL_RANGE_BYTE_ID, min1: 0, max1: P2_8-1, min2: 0, max2: P2_8-1) alias DualByte;
 
     // Public Inputs
     for (int i = 0; i < PUBLIC_INPUTS_64_BITS; i++) {

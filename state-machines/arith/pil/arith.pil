@@ -5,9 +5,6 @@ require "opids.pil"
 require "arith_table.pil"
 require "arith_range_table.pil"
 
-//          full   mul_64  full_32  mul_32
-// TOTAL      88       77       57      44
-
 airtemplate Arith(const int N = 2**18) {
 
     const int CHUNK_SIZE = 2**16;
@@ -64,19 +61,20 @@ airtemplate Arith(const int N = 2**18) {
         sum_all_bs = sum_all_bs + b[i];                 // all b are values of 16 bits (verified by range_check)
     }
 
-    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    // when div_by_zero = 1, a (quotient) it's free (a * 0), with this force a must be 0xFFFF
     div_by_zero * (a[0] - 0xFFFF) === 0;
     div_by_zero * (a[1] - 0xFFFF) === 0;
     div_by_zero * (a[2] - (1 - m32) * 0xFFFF) === 0;
     div_by_zero * (a[3] - (1 - m32) * 0xFFFF) === 0;
 
-    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    // overflow => -MAX / -1 = non-representable number because signed integers are asymmetric
+    // when div_overflow = 1 the divisor must be -1 (0xFF...FF)
     div_overflow * (b[0] - 0xFFFF) === 0;
     div_overflow * (b[1] - 0xFFFF) === 0;
     div_overflow * (b[2] - (1 - m32) * 0xFFFF) === 0;
     div_overflow * (b[3] - (1 - m32) * 0xFFFF) === 0;
 
-    // when div_by_zero, a it's free, with this force a must be 0xFFFF
+    // when div_overflow = 1 then dividend must be 0x800..000
     div_overflow * c[0] === 0;
     div_overflow * (c[1] - m32 * 0x8000) === 0;
     div_overflow * c[2] === 0;

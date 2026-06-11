@@ -2,7 +2,7 @@ require "std_lookup.pil"
 require "opids.pil"
 public rom_root[4];
 
-airtemplate Rom(const int N = 2**21, const int rom_bus_id = ROM_BUS_ID) {
+airtemplate Rom(const int N = 2**21, const int rom_bus_id = ROM_BUS_ID, int stack_enabled = 0) {
     commit stage(0) public(rom_root) rom;
 
                              // CODE            DATA
@@ -18,11 +18,19 @@ airtemplate Rom(const int N = 2**21, const int rom_bus_id = ROM_BUS_ID) {
     col rom jmp_offset1;     // jmp_offset1     value[3][1]
     col rom jmp_offset2;     
     col rom flags;           // flags           mem_op = MEMORY_ROM_INIT_OP|MEMORY_STORE _OP 
+    if (stack_enabled) {
+        col rom air.inc_sp;
+    }
 
     col witness multiplicity;
 
-    lookup_proves(rom_bus_id, [line, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
-                                op, store_offset, jmp_offset1, jmp_offset2, flags], mul: multiplicity);
+    if (stack_enabled) {
+        lookup_proves(rom_bus_id, [line, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
+                                    op, store_offset, jmp_offset1, jmp_offset2, inc_sp, flags], mul: multiplicity);
+    } else {
+        lookup_proves(rom_bus_id, [line, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
+                                    op, store_offset, jmp_offset1, jmp_offset2, flags], mul: multiplicity);
+    }
     
     is_data * multiplicity === 0; // data rows don't use rom program lines multiplicity.
 
