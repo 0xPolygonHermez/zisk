@@ -347,8 +347,8 @@ airtemplate ArithEq384(const int N) {
     // 2 - last clock
     const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
 
-    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: sel_check_x_lt_prime);
-    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: sel_check_y_lt_prime);
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: sel_check_x_lt_prime, sel_is_binary: 1);
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: sel_check_y_lt_prime, sel_is_binary: 1);
 
     col witness bits(64, signed) carry[MAX_CEQS][CBC];
     for (int i = 0; i < MAX_CEQS; ++i) {

@@ -210,8 +210,8 @@ airtemplate Blake2br(const int N = 2**20) {
     const expr perm_active_expr = clock_set(in_use, start: 0, end: CLOCKS - NUM_G_FUNCTIONS, step: 2, skip: 1);
     perm_active <== perm_active_expr;
 
-    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX, m[0], m[1]], sel: perm_active);
-    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [sigma_idx, ms[0], ms[1]], sel: perm_active);
+    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX, m[0], m[1]], sel: perm_active, sel_is_binary: 1);
+    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [sigma_idx, ms[0], ms[1]], sel: perm_active, sel_is_binary: 1);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // G-FUNCTION STATE VARIABLES

@@ -4,7 +4,7 @@ const int OPERATION_BUS_ID = 5000;
 // Continuation ids
 const int MAIN_CONTINUATION_ID = 1000;
 const int MEMORY_CONTINUATION_ID = 11;
-
+const int ROM_DATA_CONTINUATION_ID = 12;
 // ROM id
 const int ROM_BUS_ID = 7890;
 
@@ -39,3 +39,5 @@ const int DMA_BYTE_CMP_TABLE_ID = 8003;
 // Ranges
 const int DUAL_RANGE_7_BITS_ID = 77;
 const int DUAL_RANGE_BYTE_ID = 88;
+
+
