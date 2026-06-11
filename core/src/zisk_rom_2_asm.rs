@@ -4542,7 +4542,7 @@ impl ZiskRom2Asm {
                 // Remainder
 
                 // Divide by zero:
-                // If b==0 return 0xffffffffffffffff
+                // If b==0 return 0xffffffffffffffff, and set flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B,
@@ -4561,7 +4561,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_divu_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate quotient and set flag to false
                 *code += &format!("pc_{:x}_divu_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4597,7 +4597,7 @@ impl ZiskRom2Asm {
                 // Remainder
 
                 // Divide by zero:
-                // If b==0 return a
+                // If b==0 return a, and set flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B,
@@ -4617,7 +4617,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_remu_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate remainder and set flag to false
                 *code += &format!("pc_{:x}_remu_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4653,13 +4653,13 @@ impl ZiskRom2Asm {
                 // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
                 // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
                 // be -MIN_I64, which cannot be represented with 64 bits (overflow)
-                // and it returns c=a.
+                // and it returns c=a, and sets flag to false.
 
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
 
                 // Check divide by zero:
-                // If b==0 return 0xffffffffffffffff
+                // If b==0 return 0xffffffffffffffff, and set flag to true
                 *code += &format!(
                     "\tcmp {}, 0 {}\n",
                     REG_B,
@@ -4681,7 +4681,7 @@ impl ZiskRom2Asm {
                 *unusual_code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
                 // Check underflow:
-                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=a, and flag=false
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4723,7 +4723,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_div_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate quotient and set flag to false
                 *code += &format!("pc_{:x}_div_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4772,7 +4772,7 @@ impl ZiskRom2Asm {
                 // Remainder
 
                 // Check divide by zero:
-                // If b==0 return a
+                // If b==0 return a, and set flag to true
                 *code +=
                     &format!("\tcmp {}, 0 {}\n", REG_B, ctx.comment_str("Rem: if b == 0 return a"));
                 *code += &format!(
@@ -4790,8 +4790,8 @@ impl ZiskRom2Asm {
                 *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
                 // Check underflow:
+                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=0, and flag=false
                 *code += &format!("pc_{:x}_rem_check_underflow:\n", ctx.pc);
-                // If a==0x8000000000000000 && b==0xffffffffffffffff then c=0
                 *code += &format!(
                     "\tmov {}, 0x8000000000000000 {}\n",
                     REG_VALUE,
@@ -4828,7 +4828,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate remainder and set flag to false
                 *code += &format!("pc_{:x}_rem_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4889,7 +4889,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_divuw_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate quotient and set flag to false
                 *code += &format!("pc_{:x}_divuw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4936,7 +4936,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("\tjmp pc_{:x}_remuw_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate remainder and set flag to false
                 *code += &format!("pc_{:x}_remuw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -4991,7 +4991,8 @@ impl ZiskRom2Asm {
 
                 // Check overflow:
                 // If a=0x80000000 (MIN_I32) and b=0xffffffff (-1) the result should be -MIN_I32,
-                // which cannot be represented with 32 bits, so return 0xffffffff80000000
+                // which cannot be represented with 32 bits, so return 0xffffffff80000000,
+                // which is -MIN_I32 sign-extended to 64 bits, and set flag to false
                 *code += &format!("pc_{:x}_divw_check_overflow:\n", ctx.pc);
                 *code += &format!(
                     "\tcmp {}, 0x80000000 {}\n",
@@ -5021,7 +5022,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_divw_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate quotient and set flag to false
                 *code += &format!("pc_{:x}_divw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
@@ -5079,7 +5080,7 @@ impl ZiskRom2Asm {
 
                 // Check overflow:
                 // If a==0x80000000 (MIN_I32) and b==0xffffffff (-1) the result should be -MIN_I32,
-                // which cannot be represented with 32 bits, so return 0
+                // which cannot be represented with 32 bits, so return 0, and set flag to false
                 *code += &format!("pc_{:x}_remw_check_overflow:\n", ctx.pc);
                 *code += &format!(
                     "\tcmp {}, 0x80000000 {}\n",
@@ -5110,7 +5111,7 @@ impl ZiskRom2Asm {
                 *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_remw_done\n", ctx.pc);
 
-                // Divide
+                // Divide: calculate remainder and set flag to false
                 *code += &format!("pc_{:x}_remw_divide:\n", ctx.pc);
                 *code += &format!(
                     "\tmov {}, {} {}\n",
