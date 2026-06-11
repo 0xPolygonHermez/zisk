@@ -20,7 +20,9 @@ permissions:
 jobs:
   cargo-tests:
     name: Cargo tests
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
+    container:
+      image: ubuntu:latest
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
@@ -130,7 +132,7 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
-    runs-on: gpu-hosted
+    runs-on: gpu-hosted-2
     timeout-minutes: 180
     # NOTE: We intentionally use 'docker exec' in individual steps rather than
     # defining a job-level container. The test scripts deploy systemd services
