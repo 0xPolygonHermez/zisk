@@ -4763,21 +4763,18 @@ impl ZiskRom2Asm {
             ZiskOp::Rem => {
                 assert!(ctx.store_a_in_a);
                 assert!(ctx.store_b_in_b);
-                // If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+                // If b=0 (divide by zero) it sets c to a, and sets flag to true.
                 // If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should
                 // be -MIN_I64, which cannot be represented with 64 bits (overflow)
-                // and it returns c=a.
+                // and it sets c to 0, and sets flag to false.
 
                 // Unsigned divide RDX:RAX by r/m64, with result stored in RAX := Quotient, RDX :=
                 // Remainder
 
                 // Check divide by zero:
                 // If b==0 return a
-                *code += &format!(
-                    "\tcmp {}, 0 {}\n",
-                    REG_B,
-                    ctx.comment_str("Rem: if b == 0 return f's")
-                );
+                *code +=
+                    &format!("\tcmp {}, 0 {}\n", REG_B, ctx.comment_str("Rem: if b == 0 return a"));
                 *code += &format!(
                     "\tjne pc_{:x}_rem_check_underflow {}\n",
                     ctx.pc,
@@ -4820,14 +4817,14 @@ impl ZiskRom2Asm {
                     "\tcmp {}, {} {}\n",
                     REG_B,
                     REG_VALUE,
-                    ctx.comment_str("Rem: if b == 0xffffffffffffffff, then return a")
+                    ctx.comment_str("Rem: if b == 0xffffffffffffffff, then return 0")
                 );
                 *code += &format!(
                     "\tjne pc_{:x}_rem_divide {}\n",
                     ctx.pc,
                     ctx.comment_str("Rem: if b is not 0xffffffffffffffff, divide")
                 );
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Rem: c=0"));
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Rem: c = 0"));
                 *code += &format!("\tmov {}, 0 {}\n", REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_rem_done\n", ctx.pc);
 
