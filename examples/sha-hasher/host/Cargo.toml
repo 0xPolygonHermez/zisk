@@ -8,6 +8,10 @@ zisk-sdk = { workspace = true }
 sha-hasher-common = { path = "../common" }
 anyhow = "1.0"
 sha2 = "0.10.8"
+# Pin: time 0.3.48 triggers a rustc E0119 coherence false-positive when built
+# alongside rcgen 0.14.x (transitive via zisk-sdk). 0.3.47 is the newest version
+# that satisfies vergen-git2's `time ^0.3.45` and avoids the bug.
+time = "=0.3.47"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
