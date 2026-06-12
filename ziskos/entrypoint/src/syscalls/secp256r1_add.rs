@@ -32,8 +32,8 @@ pub struct SyscallSecp256r1AddParams<'a> {
 /// The caller must ensure that `p1` is neither equal to `p2` nor the negation of `p2`
 /// (i.e. `p1 ≠ p2` and `p1 ≠ -p2`).
 ///
-/// The coordinates of `p1` and `p2` are not required to be canonical representatives of
-/// elements in the Secp256r1 base field.
+/// The caller must ensure that the coordinates of `p1` and `p2` are canonical representatives
+/// of elements in the Secp256r1 base field.
 ///
 /// The resulting point will have both coordinates reduced to canonical representatives
 /// in the range of the Secp256r1 base field.

@@ -21,8 +21,8 @@ use super::point::SyscallPoint256;
 /// The caller must ensure that `p` is a finite point on the Secp256r1 curve.
 /// The point at infinity is not allowed.
 ///
-/// The coordinates of `p` are not required to be canonical representatives of
-/// elements in the Secp256r1 base field.
+/// The caller must ensure that the coordinates of `p` are canonical representatives
+/// of elements in the Secp256r1 base field.
 ///
 /// The resulting point will have both coordinates reduced to canonical representatives
 /// in the range of the Secp256r1 base field.
