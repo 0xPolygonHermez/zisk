@@ -4,7 +4,7 @@ use crate::{
     add_end_and_lib,
     elf_extraction::{
         collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes,
-        merge_adjacent_data_sections, DataSection, ElfPayload,
+        merge_adjacent_data_sections, merge_ro_sections, DataSection, ElfPayload,
     },
     riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code},
     AsmGenerationMethod, DataSection64, ZiskRom, ZiskRom2Asm, RAM_ADDR, RAM_SIZE, ROM_ADDR,
@@ -93,21 +93,12 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         }
     }
 
-    // Merge adjacent read-only and read_write data sections for efficiency
-    ro_data = merge_adjacent_data_sections(&ro_data);
+    // Merge adjacent read-write data sections for efficiency.
     rw_data = merge_adjacent_data_sections(&rw_data);
 
-    // Add trailing zeros in every data section of the ROM to make their size a multiple of 32 bytes
-    ro_data = ro_data
-        .into_iter()
-        .map(|section| {
-            let mut data = section.data;
-            while data.len() % 32 != 0 {
-                data.push(0);
-            }
-            DataSection { addr: section.addr, data }
-        })
-        .collect();
+    // Merge and pad RO sections to a 32-byte multiple, coalescing any sections
+    // that the padding would otherwise make overlap (see merge_ro_sections).
+    ro_data = merge_ro_sections(&ro_data)?;
 
     // Delete trailing zeros in every data section of the RAM, and delete the section if needed
     rw_data = rw_data
