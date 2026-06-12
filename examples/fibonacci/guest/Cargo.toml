@@ -1,0 +1,8 @@
+[package]
+name = "fibonacci-guest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ziskos = { workspace = true }
+fibonacci-common = { path = "../common" }

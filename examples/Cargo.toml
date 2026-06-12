@@ -5,6 +5,18 @@ members = [
   "aggregation/host",
   "big-program/host",
   "hints/host",
+  "hash/host",
+  "hash/guest",
+  "fibonacci/host",
+  "fibonacci/guest",
+  "merkle-tree/host",
+  "gcd/host",
+  "gcd/guest",
+  "primes/host",
+  "primes/guest",
+  "collatz/host",
+  "collatz/guest",
+  "utils"
 ]
 
 resolver = "2"
@@ -16,3 +28,4 @@ opt-level = 3
 ziskos = { path = "../ziskos/entrypoint" }
 zisk-sdk = { path = "../sdk" }
 test-artifacts = { path = "../test-artifacts" }
+examples-utils = { path = "utils"}

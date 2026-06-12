@@ -1,0 +1,21 @@
+[package]
+name = "merkle-guest"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[dependencies]
+ziskos = { path = "../../../ziskos/entrypoint" }
+merkle-common = { path = "../common" }
+
+#[patch.crates-io]
+#sha2 = { git = "https://github.com/0xPolygonHermez/zisk-patch-hashes", package = "sha2", tag = "patch-sha2-0.10.9-zisk-0.16.0+" }
+
+[[bin]]
+name = "inline-guest"
+path = "src/inline.rs"
+
+[[bin]]
+name = "zisklib-guest"
+path = "src/zisklib.rs"

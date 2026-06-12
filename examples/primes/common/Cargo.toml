@@ -1,0 +1,8 @@
+[package]
+name = "primes-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = "1.0.228"
+rkyv = { version = "0.8.16" , features = ["std", "alloc"]}
