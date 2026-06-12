@@ -226,3 +226,7 @@ reqwest = { version = "0.12", features = [
 ], default-features = false }
 vergen-git2 = { version = "9", default-features = false, features = ["build"] }
 env = "1.0.1"
+# Pin: time 0.3.48 triggers a rustc E0119 coherence false-positive when built
+# alongside rcgen 0.14.x. 0.3.47 is the newest version that satisfies
+# vergen-git2's `time ^0.3.45` and avoids the bug. Consumed by cli (workspace=true).
+time = "=0.3.47"

@@ -1047,6 +1047,7 @@ dependencies = [
  "sysinfo 0.38.4",
  "target-lexicon",
  "tempfile",
+ "time",
  "tokio",
  "tracing",
  "vergen-git2",

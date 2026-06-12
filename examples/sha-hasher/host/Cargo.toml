@@ -8,6 +8,7 @@ zisk-sdk = { workspace = true }
 sha-hasher-common = { path = "../common" }
 anyhow = "1.0"
 sha2 = "0.10.8"
+time = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]
