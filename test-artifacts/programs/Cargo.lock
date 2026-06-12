@@ -6756,6 +6756,7 @@ dependencies = [
  "sm-binary",
  "symbolic-demangle",
  "sysinfo 0.38.4",
+ "time",
  "vergen-git2",
  "zisk-common",
  "zisk-core",
