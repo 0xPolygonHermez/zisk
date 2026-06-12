@@ -60,6 +60,8 @@ fn nvidia_smi_sees_gpu() -> bool {
 
 fn main() {
     println!("cargo:rerun-if-env-changed=CUDA_ARCHS");
+    println!("cargo:rerun-if-env-changed=CUDA_ARCH");
+    println!("cargo:rerun-if-env-changed=CUDA_GENCODE_FLAGS");
     println!("cargo::rustc-check-cfg=cfg(gpu)");
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
@@ -150,7 +152,7 @@ fn main() {
         .any(|v| env::var_os(v).is_some_and(|s| !s.is_empty()));
     if !arch_env_set && !nvidia_smi_sees_gpu() {
         println!(
-            "cargo:warning=[BUILD INFO] no GPU visible (nvidia-smi probe failed) — building for all major CUDA archs; set CUDA_ARCHS explicitly to suppress this warning"
+            "cargo:warning=[BUILD INFO] could not detect host GPU arch (nvidia-smi unavailable or failed) — building for all major CUDA archs; set CUDA_ARCHS explicitly to suppress this warning"
         );
     }
 
