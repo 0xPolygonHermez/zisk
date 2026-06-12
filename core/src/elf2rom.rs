@@ -98,7 +98,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Merge and pad RO sections to a 32-byte multiple, coalescing any sections
     // that the padding would otherwise make overlap (see merge_ro_sections).
-    ro_data = merge_ro_sections(&ro_data, 32)?;
+    ro_data = merge_ro_sections(&ro_data)?;
 
     // Delete trailing zeros in every data section of the RAM, and delete the section if needed
     rw_data = rw_data

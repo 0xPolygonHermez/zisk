@@ -165,13 +165,16 @@ pub fn merge_adjacent_data_sections(sections: &[DataSection]) -> Vec<DataSection
     merged
 }
 
-/// Merge read-only data sections and pad each to a multiple of `align` bytes.
+/// Byte alignment each RO section's length is padded to (the ROM-init row format).
+const RO_SECTION_ALIGN: u64 = 32;
+
+/// Merge read-only data sections and pad each to a multiple of `RO_SECTION_ALIGN`.
 ///
 /// Unlike `merge_adjacent_data_sections`, this also coalesces sections that the
 /// padding would otherwise make overlap (the inter-section gap is zero-filled),
 /// so no RO address gets two ROM-init entries — which `rom_data.pil` rejects on an
-/// honest run. `align` must be a multiple of 8; section addresses are 8-aligned.
-pub fn merge_ro_sections(sections: &[DataSection], align: u64) -> Result<Vec<DataSection>, String> {
+/// honest run.
+pub fn merge_ro_sections(sections: &[DataSection]) -> Result<Vec<DataSection>, String> {
     if sections.is_empty() {
         return Ok(Vec::new());
     }
@@ -182,7 +185,7 @@ pub fn merge_ro_sections(sections: &[DataSection], align: u64) -> Result<Vec<Dat
     let mut current = sections[0].clone();
     for next in sections.into_iter().skip(1) {
         let end = current.addr + current.data.len() as u64;
-        let padded_end = current.addr + (current.data.len() as u64).next_multiple_of(align);
+        let padded_end = current.addr + (current.data.len() as u64).next_multiple_of(RO_SECTION_ALIGN);
         if next.addr < end {
             return Err(format!(
                 "overlapping read-only data sections at 0x{:x} and 0x{:x}",
@@ -202,7 +205,7 @@ pub fn merge_ro_sections(sections: &[DataSection], align: u64) -> Result<Vec<Dat
     merged.push(current);
 
     for s in &mut merged {
-        s.data.resize((s.data.len() as u64).next_multiple_of(align) as usize, 0);
+        s.data.resize((s.data.len() as u64).next_multiple_of(RO_SECTION_ALIGN) as usize, 0);
     }
     Ok(merged)
 }
@@ -372,7 +375,7 @@ mod tests {
 
     #[test]
     fn test_merge_ro_empty() {
-        let result = merge_ro_sections(&[], 32).unwrap();
+        let result = merge_ro_sections(&[]).unwrap();
         assert_eq!(result.len(), 0);
     }
 
@@ -384,7 +387,7 @@ mod tests {
             DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] }, // ends 0x1008
             DataSection { addr: 0x1010, data: vec![9, 10, 11, 12, 13, 14, 15, 16] }, // gap of 8
         ];
-        let result = merge_ro_sections(&sections, 32).unwrap();
+        let result = merge_ro_sections(&sections).unwrap();
         assert_eq!(result.len(), 1, "near sections must be coalesced, not left to overlap");
         assert_eq!(result[0].addr, 0x1000);
         // [sec0][8-byte zero gap][sec1] then padded to a 32-byte multiple.
@@ -408,7 +411,7 @@ mod tests {
             DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] },
             DataSection { addr: 0x1008, data: vec![9, 10, 11, 12, 13, 14, 15, 16] },
         ];
-        let result = merge_ro_sections(&sections, 32).unwrap();
+        let result = merge_ro_sections(&sections).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(
@@ -427,7 +430,7 @@ mod tests {
             DataSection { addr: 0x1000, data: first },
             DataSection { addr: 0x1020, data: vec![0xBB, 0, 0, 0, 0, 0, 0, 0] },
         ];
-        let result = merge_ro_sections(&sections, 32).unwrap();
+        let result = merge_ro_sections(&sections).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data.len(), 64); // 32 + 8 padded to 32 = 64
@@ -444,7 +447,7 @@ mod tests {
             DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] },
             DataSection { addr: 0x1020, data: vec![9, 10, 11, 12, 13, 14, 15, 16] },
         ];
-        let result = merge_ro_sections(&sections, 32).unwrap();
+        let result = merge_ro_sections(&sections).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].addr, 0x1000);
         assert_eq!(result[0].data.len(), 32);
@@ -461,6 +464,6 @@ mod tests {
             DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] }, // ends 0x1008
             DataSection { addr: 0x1004, data: vec![9, 10, 11, 12] }, // overlaps real data
         ];
-        assert!(merge_ro_sections(&sections, 32).is_err());
+        assert!(merge_ro_sections(&sections).is_err());
     }
 }
