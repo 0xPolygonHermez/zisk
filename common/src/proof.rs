@@ -754,8 +754,10 @@ impl Proof {
             CommonError::Invalid(format!("unrecognized proof hash family {hash:?}: {e}"))
         })?;
 
-        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal, hash.clone())
-            .map_err(|e| CommonError::InvalidProof(format!("Failed to parse Vadcop proof: {}", e)))?;
+        let vadcop_proof =
+            VadcopFinalProof::new_from_proof(proof, minimal, hash.clone()).map_err(|e| {
+                CommonError::InvalidProof(format!("Failed to parse Vadcop proof: {}", e))
+            })?;
 
         Ok(Self {
             body: ProofBody::Vadcop { proof: vadcop_proof.proof, zisk_vk, minimal, hash },
