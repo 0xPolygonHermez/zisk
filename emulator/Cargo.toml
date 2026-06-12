@@ -38,6 +38,10 @@ num-format = "0.4"
 symbolic-demangle = { version = "12.16", features = ["rust", "cpp"] }
 regex = "1.11.1"
 
+# Not used directly; pins the transitive `time` to =0.3.47 (workspace dep) to
+# avoid the rcgen 0.14.x E0119 coherence bug triggered by time 0.3.48.
+time = { workspace = true }
+
 [build-dependencies]
 vergen-git2 = { workspace = true }
 
