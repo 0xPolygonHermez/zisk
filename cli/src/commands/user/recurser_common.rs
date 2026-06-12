@@ -67,9 +67,7 @@ pub(crate) fn parse_free_inputs(s: Option<&str>) -> Result<Vec<u64>> {
     match s {
         Some(s) if !s.trim().is_empty() => s
             .split(',')
-            .map(|x| {
-                x.trim().parse::<u64>().map_err(|e| anyhow!("invalid free input '{x}': {e}"))
-            })
+            .map(|x| x.trim().parse::<u64>().map_err(|e| anyhow!("invalid free input '{x}': {e}")))
             .collect(),
         _ => Ok(Vec::new()),
     }

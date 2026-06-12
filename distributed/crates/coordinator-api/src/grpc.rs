@@ -13,13 +13,15 @@ pub use proto::zisk_coordinator_api_client::ZiskCoordinatorApiClient;
 pub use proto::zisk_coordinator_api_server::{ZiskCoordinatorApi, ZiskCoordinatorApiServer};
 
 use crate::dto::{
-    DomainAirInstanceCount, DomainAggregationProgramSpec, DomainAsmExecution, DomainExecuteRequest, DomainExecutionStats,
-    DomainExecutorTime, DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled, DomainNormalizeGroup, RegisterAggregationProgramResponseDto, DomainSetupAggregationProgramRequest,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued, DomainAggregateProofsRequest,
+    DomainAggregateProofsRequest, DomainAggregationProgramSpec, DomainAirInstanceCount,
+    DomainAsmExecution, DomainExecuteRequest, DomainExecutionStats, DomainExecutorTime,
+    DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
+    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
-    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    DomainProveRequest, DomainSetupRequest, DomainWrapRequest,  RegisterAggregationProgramRequestDto,RegisterGuestProgramRequestDto,
-    RegisterGuestProgramResponseDto,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainNormalizeGroup, DomainProof,
+    DomainProofKind, DomainProveRequest, DomainSetupAggregationProgramRequest, DomainSetupRequest,
+    DomainWrapRequest, RegisterAggregationProgramRequestDto, RegisterAggregationProgramResponseDto,
+    RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto,
 };
 use anyhow::Result;
 use prost_types::Timestamp;
