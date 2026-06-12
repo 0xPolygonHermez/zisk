@@ -64,7 +64,6 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
         self.pctx.acquire_first_gpu_buffer();
     }
 
-    
     #[inline]
     pub fn release_gpu_buffer(&self) {
         self.pctx.release_first_gpu_buffer();
