@@ -195,7 +195,7 @@ pub fn is_on_curve_twist_bls12_381(
     eq(&x_cubed_plus_b, &y_sq) || eq(p, &G2_IDENTITY)
 }
 
-/// Check if a non-zero point `p` is on the BLS12-381 twist subgroup
+/// Check if a point `p` is on the BLS12-381 twist subgroup
 ///
 /// # Soundness
 /// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).

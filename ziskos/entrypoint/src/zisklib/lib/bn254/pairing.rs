@@ -31,6 +31,9 @@ const PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP: u8 = 6;
 ///          input: P ∈ G1 and Q ∈ G2
 ///          output: e(P,Q) ∈ GT
 ///
+/// # Soundness
+/// Both points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn pairing_bn254(
     p: &[u64; 8],
     q: &[u64; 16],
@@ -63,6 +66,10 @@ pub fn pairing_bn254(
 /// Computes the optimal Ate pairing for a batch of G1 and G2 points over the BN254 curve
 /// and multiplies the results together, i.e.:
 ///     e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT
+///
+/// # Soundness
+/// All points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn pairing_batch_bn254(
     g1_points: &[[u64; 8]],
     g2_points: &[[u64; 16]],
@@ -114,23 +121,8 @@ pub fn pairing_batch_bn254(
     )
 }
 
-/// BN254 pairing check with validation.
-///
-/// Validates all points have canonical field elements, are on curve, and G2 points are in subgroup.
-///
-/// # Arguments
-/// * `g1_points` - Slice of G1 points as [u64; 8]
-/// * `g2_points` - Slice of G2 points as [u64; 16]
-///
-/// # Returns
-/// * `Ok(true)` - Pairing check passed (product of pairings == 1)
-/// * `Ok(false)` - Pairing check failed (product of pairings != 1)
-/// * `Err(PAIRING_CHECK_ERR_G1_NOT_CANONICAL)` - G1 field element not canonical (>= P)
-/// * `Err(PAIRING_CHECK_ERR_G1_NOT_ON_CURVE)` - G1 point not on curve
-/// * `Err(PAIRING_CHECK_ERR_G2_NOT_CANONICAL)` - G2 field element not canonical (>= P)
-/// * `Err(PAIRING_CHECK_ERR_G2_NOT_ON_CURVE)` - G2 point not on twist curve
-/// * `Err(PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP)` - G2 point not in subgroup
-pub fn pairing_check_bn254(
+/// BN254 pairing check with validation
+pub fn pairing_check_safe_bn254(
     g1_points: &[[u64; 8]],
     g2_points: &[[u64; 16]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -207,16 +199,16 @@ pub fn pairing_check_bn254(
 ///   Each pair is: 64 bytes G1 point + 128 bytes G2 point
 ///
 /// # Returns
-/// - 0 = pairing check passed
-/// - 1 = pairing check failed
-/// - 2 = G1 field element invalid
-/// - 3 = G1 point not on curve
-/// - 4 = G2 field element invalid
-/// - 5 = G2 point not on curve
-/// - 6 = G2 point not in subgroup
+/// - [PAIRING_CHECK_SUCCESS] = pairing check passed
+/// - [PAIRING_CHECK_FAILED] = pairing check failed (result not 1)
+/// - [PAIRING_CHECK_ERR_G1_NOT_CANONICAL] = error (at least one G1 point coordinate not in field)
+/// - [PAIRING_CHECK_ERR_G1_NOT_ON_CURVE] = error (at least one G1 point not on curve)
+/// - [PAIRING_CHECK_ERR_G2_NOT_CANONICAL] = error (at least one G2 point coordinate not in field)
+/// - [PAIRING_CHECK_ERR_G2_NOT_ON_CURVE] = error (at least one G2 point not on curve)
+/// - [PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP] = error (at least one G2 point not in subgroup)
 #[allow(dead_code)]
 #[inline]
-pub(crate) unsafe fn bn254_pairing_check_c(
+pub(crate) unsafe fn pairing_check_safe_bn254_c(
     pairs: *const u8,
     num_pairs: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -236,7 +228,7 @@ pub(crate) unsafe fn bn254_pairing_check_c(
     }
 
     // Perform pairing check with validation
-    match pairing_check_bn254(
+    match pairing_check_safe_bn254(
         &g1_points,
         &g2_points,
         #[cfg(feature = "hints")]

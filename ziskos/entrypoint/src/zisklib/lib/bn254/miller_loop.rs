@@ -26,6 +26,10 @@ const LOOP_LENGTH: [i8; 65] = [
 ];
 
 /// Computes the Miller loop of a non-zero point `p` in G1 and a non-zero point `q` in G2
+///
+/// # Soundness
+/// Both points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn miller_loop_bn254(
     p: &[u64; 8],
     q: &[u64; 16],
@@ -255,6 +259,10 @@ pub fn miller_loop_bn254(
 }
 
 /// Computes the Miller loop for the BN254 curve for a batch of non-zero points `p_i` in G1 and non-zero points `q_i` in G2
+///
+/// # Soundness
+/// All points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn miller_loop_batch_bn254(
     g1_points: &[[u64; 8]],
     g2_points: &[[u64; 16]],

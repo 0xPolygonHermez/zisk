@@ -24,10 +24,10 @@ use super::{
 pub(crate) const PAIRING_CHECK_SUCCESS: u8 = 0;
 #[allow(dead_code)]
 pub(crate) const PAIRING_CHECK_FAILED: u8 = 1;
-const PAIRING_CHECK_ERR_G1_NOT_IN_FIELD: u8 = 2;
+const PAIRING_CHECK_ERR_G1_NOT_CANONICAL: u8 = 2;
 const PAIRING_CHECK_ERR_G1_NOT_ON_CURVE: u8 = 3;
 const PAIRING_CHECK_ERR_G1_NOT_IN_SUBGROUP: u8 = 4;
-const PAIRING_CHECK_ERR_G2_NOT_IN_FIELD: u8 = 5;
+const PAIRING_CHECK_ERR_G2_NOT_CANONICAL: u8 = 5;
 const PAIRING_CHECK_ERR_G2_NOT_ON_CURVE: u8 = 6;
 const PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP: u8 = 7;
 
@@ -137,7 +137,7 @@ pub fn pairing_check_safe_bls12_381(
             let x1: [u64; 6] = g1[0..6].try_into().unwrap();
             let y1: [u64; 6] = g1[6..12].try_into().unwrap();
             if !lt(&x1, &P) || !lt(&y1, &P) {
-                return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
+                return Err(PAIRING_CHECK_ERR_G1_NOT_CANONICAL);
             }
             if !is_on_curve_bls12_381(
                 g1,
@@ -164,7 +164,7 @@ pub fn pairing_check_safe_bls12_381(
             let y2_0: [u64; 6] = g2[12..18].try_into().unwrap();
             let y2_1: [u64; 6] = g2[18..24].try_into().unwrap();
             if !lt(&x2_0, &P) || !lt(&x2_1, &P) || !lt(&y2_0, &P) || !lt(&y2_1, &P) {
-                return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
+                return Err(PAIRING_CHECK_ERR_G2_NOT_CANONICAL);
             }
             if !is_on_curve_twist_bls12_381(
                 g2,
@@ -187,7 +187,7 @@ pub fn pairing_check_safe_bls12_381(
         let x1: [u64; 6] = g1[0..6].try_into().unwrap();
         let y1: [u64; 6] = g1[6..12].try_into().unwrap();
         if !lt(&x1, &P) || !lt(&y1, &P) {
-            return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
+            return Err(PAIRING_CHECK_ERR_G1_NOT_CANONICAL);
         }
         if !is_on_curve_bls12_381(
             g1,
@@ -209,7 +209,7 @@ pub fn pairing_check_safe_bls12_381(
         let y2_0: [u64; 6] = g2[12..18].try_into().unwrap();
         let y2_1: [u64; 6] = g2[18..24].try_into().unwrap();
         if !lt(&x2_0, &P) || !lt(&x2_1, &P) || !lt(&y2_0, &P) || !lt(&y2_1, &P) {
-            return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
+            return Err(PAIRING_CHECK_ERR_G2_NOT_CANONICAL);
         }
         if !is_on_curve_twist_bls12_381(
             g2,
@@ -259,10 +259,10 @@ pub fn pairing_check_safe_bls12_381(
 /// # Returns
 /// - [PAIRING_CHECK_SUCCESS] = pairing check passed
 /// - [PAIRING_CHECK_FAILED] = pairing check failed
-/// - [PAIRING_CHECK_ERR_G1_NOT_IN_FIELD] = error (at least one G1 point coordinate not in field)
+/// - [PAIRING_CHECK_ERR_G1_NOT_CANONICAL] = error (at least one G1 point coordinate not in field)
 /// - [PAIRING_CHECK_ERR_G1_NOT_ON_CURVE] = error (at least one G1 point not on curve)
 /// - [PAIRING_CHECK_ERR_G1_NOT_IN_SUBGROUP] = error (at least one G1 point not in subgroup)
-/// - [PAIRING_CHECK_ERR_G2_NOT_IN_FIELD] = error (at least one G2 point coordinate not in field)
+/// - [PAIRING_CHECK_ERR_G2_NOT_CANONICAL] = error (at least one G2 point coordinate not in field)
 /// - [PAIRING_CHECK_ERR_G2_NOT_ON_CURVE] = error (at least one G2 point not on curve)
 /// - [PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP] = error (at least one G2 point not in subgroup)
 #[allow(dead_code)]
