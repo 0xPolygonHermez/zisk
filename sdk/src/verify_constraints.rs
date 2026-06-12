@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use crate::hints::HintsSource;
@@ -145,7 +145,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
 /// ```rust,ignore
 /// use zisk_sdk::{EmbeddedClientBuilder, load_program, ZiskStdin, VerifyConstraintsExtension};
 ///
-/// # async fn example() -> anyhow::Result<()> {
+/// # async fn example() -> zisk_sdk::Result<()> {
 /// let client = EmbeddedClientBuilder::default().build()?;
 /// let program = load_program!("program.elf");
 /// let stdin = ZiskStdin::new();

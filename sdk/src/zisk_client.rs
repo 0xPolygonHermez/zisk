@@ -8,7 +8,7 @@
 //! ```rust,ignore
 //! use zisk_sdk::{ZiskClient, ExecutorKind};
 //!
-//! # async fn example(embedded: bool, elf: &zisk_sdk::GuestProgram) -> anyhow::Result<()> {
+//! # async fn example(embedded: bool, elf: &zisk_sdk::GuestProgram) -> zisk_sdk::Result<()> {
 //! let client = if embedded {
 //!     ZiskClient::embedded().executor(ExecutorKind::Assembly).build()?
 //! } else {
@@ -36,7 +36,7 @@
 //!
 //! ```rust,ignore
 //! # use zisk_sdk::ZiskClient;
-//! # fn example(client: &ZiskClient, elf: &zisk_sdk::GuestProgram, stdin: zisk_sdk::ZiskStdin) -> anyhow::Result<()> {
+//! # fn example(client: &ZiskClient, elf: &zisk_sdk::GuestProgram, stdin: zisk_sdk::ZiskStdin) -> zisk_sdk::Result<()> {
 //! if let Some(embedded) = client.as_embedded() {
 //!     // sync path — no async runtime needed
 //!     embedded.prove(elf, stdin).run_sync()?;
@@ -47,7 +47,7 @@
 
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 use zisk_prover_backend::GuestProgram;
 

@@ -6722,11 +6722,11 @@ dependencies = [
 name = "zisk-sdk"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
  "bincode",
  "proofman-common",
  "rom-setup",
  "serde",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
  "zisk-build",

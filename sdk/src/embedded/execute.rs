@@ -4,8 +4,7 @@ use crate::execute::ExecuteResult;
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
 use crate::job_handle::{fire_event, fire_result_event, JobHandle, SubscriberList};
-use crate::{ExecutorKind, JobEvent};
-use anyhow::Result;
+use crate::{ExecutorKind, JobEvent, Result, SdkError};
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::io::StreamSource;
@@ -66,67 +65,77 @@ impl EmbeddedClient {
         let output = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
                 if hints.is_some() {
-                    anyhow::bail!("Hints require Assembly executor");
+                    return Err(SdkError::UnsupportedExecutor(
+                        "Hints require Assembly executor".to_string(),
+                    ));
                 }
                 if matches!(stdin, InputSource::Stream(_)) {
-                    anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
+                    return Err(SdkError::UnsupportedExecutor("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor".to_string()));
                 }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute(program, s.into_inner())?
+                p.execute(program, s.into_inner()).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
-                anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
+                return Err(SdkError::UnsupportedExecutor(ERR_ASSEMBLY_NOT_ENABLED.to_string()))
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
                 if hints.is_some() {
-                    anyhow::bail!("Hints require Assembly executor");
+                    return Err(SdkError::UnsupportedExecutor(
+                        "Hints require Assembly executor".to_string(),
+                    ));
                 }
                 if matches!(stdin, InputSource::Stream(_)) {
-                    anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
+                    return Err(SdkError::UnsupportedExecutor("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor".to_string()));
                 }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.execute_emulator(program, s.into_inner())?
+                p.execute_emulator(program, s.into_inner()).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {
                     if !p.was_setup_with_hints() {
-                        anyhow::bail!(
+                        return Err(SdkError::InvalidConfig(
                             "Program was set up without hints — call setup().with_hints() first"
-                        );
+                                .to_string(),
+                        ));
                     }
                     match hints {
                         HintsSource::Hints(h) => {
-                            p.register_hints_stream(h.into_inner())?;
+                            p.register_hints_stream(h.into_inner()).map_err(SdkError::backend)?;
                         }
                         HintsSource::Stream(stream) => {
                             if stream.is_grpc() {
-                                anyhow::bail!("gRPC streams are not supported with the embedded executor — use a remote client");
+                                return Err(SdkError::UnsupportedExecutor("gRPC streams are not supported with the embedded executor — use a remote client".to_string()));
                             }
                             stream.start()?;
                             let uri = stream.uri().to_string();
-                            let source = StreamSource::from_uri(&uri)?;
-                            p.register_hints_stream(source)?;
+                            let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
+                            p.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    p.execute(program, zisk_common::io::ZiskStdin::new())?
+                    p.execute(program, zisk_common::io::ZiskStdin::new())
+                        .map_err(SdkError::backend)?
                 } else {
                     if p.was_setup_with_hints() {
-                        anyhow::bail!(
+                        return Err(SdkError::InvalidConfig(
                             "Program was set up with hints — call .hints() on the request"
-                        );
+                                .to_string(),
+                        ));
                     }
                     match stdin {
                         InputSource::Stream(stream) => {
                             if stream.is_grpc() {
-                                anyhow::bail!("gRPC streams are not supported with the embedded executor — use a remote client");
+                                return Err(SdkError::UnsupportedExecutor("gRPC streams are not supported with the embedded executor — use a remote client".to_string()));
                             }
                             stream.start()?;
                             let uri = stream.uri().to_string();
-                            let source = StreamSource::from_uri(&uri)?;
-                            p.register_inputs_stream(source)?;
-                            p.execute(program, zisk_common::io::ZiskStdin::new())?
+                            let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
+                            p.register_inputs_stream(source).map_err(SdkError::backend)?;
+                            p.execute(program, zisk_common::io::ZiskStdin::new())
+                                .map_err(SdkError::backend)?
                         }
-                        InputSource::Stdin(s) => p.execute(program, s.into_inner())?,
+                        InputSource::Stdin(s) => {
+                            p.execute(program, s.into_inner()).map_err(SdkError::backend)?
+                        }
                     }
                 }
             }

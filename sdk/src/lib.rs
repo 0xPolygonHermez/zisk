@@ -1,6 +1,7 @@
 mod cancel;
 mod client;
 mod embedded;
+mod error;
 mod execute;
 mod hints;
 mod input_source;
@@ -23,6 +24,7 @@ pub use embedded::{
     EmbeddedClient, EmbeddedClientBuilder, EmbeddedExecuteOnlyBuilder, EmbeddedExecuteOnlyClient,
     WitnessBuilderExt,
 };
+pub use error::{Result, SdkError};
 pub use zisk_client::ZiskClient;
 
 pub use execute::{ExecuteRequest, ExecuteResult};
@@ -63,15 +65,13 @@ pub use zisk_common::{
 
 pub use zisk_build::*;
 
-use anyhow::Result;
-
 /// Run the ZisK emulator with the given program and stdin.
 pub fn run(
     program: &GuestProgram,
     stdin: ZiskStdin,
     profiling: Option<ProfilingMode>,
 ) -> Result<()> {
-    program.run_emulation(stdin.into_inner(), profiling)
+    program.run_emulation(stdin.into_inner(), profiling).map_err(SdkError::backend)
 }
 
 use crate::{setup::SetupResult, upload::UploadResult};

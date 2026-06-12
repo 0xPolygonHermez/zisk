@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_common::ProofKind;
 use zisk_prover_backend::{GuestProgram, ProveOutput};
 

@@ -1,6 +1,6 @@
 use super::EmbeddedClient;
 use crate::upload::UploadResult;
-use anyhow::Result;
+use crate::Result;
 use zisk_prover_backend::GuestProgram;
 
 impl EmbeddedClient {

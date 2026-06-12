@@ -16,7 +16,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::setup::SetupResult;
-use anyhow::Result;
+use crate::{Result, SdkError};
 use zisk_common::ProofKind;
 use zisk_common::{ProgramVK, Proof, PublicValues, ZiskPaths};
 use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
@@ -218,7 +218,8 @@ impl<Out> EmbeddedClientBuilder<Out> {
             true,                                  // shared_tables
             backend_opts.build_proofman_options(), // options
             None,                                  // logging_config
-        )?;
+        )
+        .map_err(SdkError::backend)?;
         Ok(EmbeddedProver::Emu(ZiskProver::<Emu>::new(emu, backend_opts)))
     }
 
@@ -242,7 +243,8 @@ impl<Out> EmbeddedClientBuilder<Out> {
             false,                                 // is_distributed
             None,                                  // logging_config
             backend_opts.cpu_mops_enabled(),       // cpu_mops
-        )?;
+        )
+        .map_err(SdkError::backend)?;
         Ok(EmbeddedProver::Asm(ZiskProver::<Asm>::new(asm, backend_opts)))
     }
 }

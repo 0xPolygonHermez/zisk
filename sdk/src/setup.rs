@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::{Result, SdkError};
 use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
 use zisk_coordinator_api::dto::{DomainJobKindResponse, TerminalStatus};
 use zisk_prover_backend::GuestProgram;
@@ -95,12 +95,14 @@ impl<'a, C: Client> SetupRequest<'a, C> {
                 // The hash mode is dictated by the worker's proving key, not the
                 // client; use the authoritative value returned with the setup to
                 // name the verkey artifact.
-                let hash_mode = hash_mode.parse::<HashMode>()?;
-                let output_path = get_output_path(&output_dir)?;
+                let hash_mode = hash_mode.parse::<HashMode>().map_err(SdkError::backend)?;
+                let output_path = get_output_path(&output_dir).map_err(SdkError::backend)?;
                 let path =
-                    get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path, hash_mode)?;
-                std::fs::write(&path, vk)?;
+                    get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path, hash_mode)
+                        .map_err(SdkError::backend)?;
+                std::fs::write(&path, vk).map_err(SdkError::backend)?;
             }
+
             Ok(())
         });
 

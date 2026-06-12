@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::{Result, SdkError};
 use zisk_common::{ProgramVK, Proof, PublicValues};
 
 /// Builder for proof verification with externally-supplied overrides.
@@ -31,5 +31,6 @@ impl<'a> VerifyBuilder<'a> {
             (None, Some(v)) => self.proof.with_program_vk(v).verify(),
             (Some(p), Some(v)) => self.proof.with_publics(p).with_program_vk(v).verify(),
         }
+        .map_err(SdkError::backend)
     }
 }

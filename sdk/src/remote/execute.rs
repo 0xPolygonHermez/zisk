@@ -5,12 +5,13 @@ use crate::hints::HintsSource;
 use crate::input_source::InputSource;
 use crate::job_handle::{JobHandle, SubscriberList};
 use crate::ExecutorKind;
+use crate::SdkError;
 
 use std::time::Duration;
 use zisk_coordinator_api::dto::{deadline_from_now, DomainExecuteRequest, DomainJobKind};
 use zisk_prover_backend::GuestProgram;
 
-use anyhow::Result;
+use crate::Result;
 
 impl RemoteClient {
     pub(crate) fn do_execute(
@@ -39,7 +40,7 @@ impl RemoteClient {
         let job_kind =
             DomainJobKind::Execute(DomainExecuteRequest { hash_id, input, hints, execute_timeout });
 
-        let remote_job = self.gw.submit_job(job_kind)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
 
         // gRPC streams need an InputSender injected after job submission.
         if let Some(ref stream) = maybe_stream {

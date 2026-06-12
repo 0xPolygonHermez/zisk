@@ -5,7 +5,7 @@ use crate::{
     prove::ProveResult,
     JobEvent,
 };
-use anyhow::Result;
+use crate::{Result, SdkError};
 use std::{sync::Arc, time::Duration};
 use zisk_common::{ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
 use zisk_prover_backend::ProverEngine;
@@ -79,7 +79,7 @@ impl EmbeddedClient {
         let proof_words = match &proof.body {
             ProofBody::Vadcop { proof, .. } => proof.as_slice(),
             ProofBody::Plonk { .. } => {
-                return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
+                return Err(SdkError::InvalidConfig("Cannot wrap a Plonk proof".to_string()));
             }
         };
 
@@ -87,11 +87,13 @@ impl EmbeddedClient {
             EmbeddedProver::Emu(p) => p
                 .prover
                 .wrap_proof(proof_words, publics, program_vk, proof_kind)
-                .map(ProveResult::from),
+                .map(ProveResult::from)
+                .map_err(SdkError::backend),
             EmbeddedProver::Asm(p) => p
                 .prover
                 .wrap_proof(proof_words, publics, program_vk, proof_kind)
-                .map(ProveResult::from),
+                .map(ProveResult::from)
+                .map_err(SdkError::backend),
         }
     }
 }

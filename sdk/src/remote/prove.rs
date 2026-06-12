@@ -11,7 +11,7 @@ use zisk_common::ProofKind;
 use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
 use zisk_prover_backend::GuestProgram;
 
-use anyhow::Result;
+use crate::{Result, SdkError};
 
 impl RemoteClient {
     #[allow(clippy::too_many_arguments)]
@@ -48,7 +48,7 @@ impl RemoteClient {
             proof_dest,
         });
 
-        let remote_job = self.gw.submit_job(job_kind)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
 
         // gRPC streams need an InputSender injected after job submission.
         if let Some(ref stream) = maybe_stream {

@@ -4,7 +4,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::{Result, SdkError};
 use zisk_coordinator_api::dto::{
     DomainExecutionStats, DomainJobEvent, DomainJobFailure, DomainJobKindResponse, DomainJobPhase,
     TerminalStatus,
@@ -218,8 +218,12 @@ impl<T> JobHandle<T> {
             Some(JobHandleInner::Embedded(_handle)) => {
                 unimplemented!("cancelling embedded jobs is not supported yet")
             }
-            Some(JobHandleInner::Remote { remote_job, .. }) => remote_job.cancel_async().await,
-            None => anyhow::bail!("cannot cancel: JobHandle already consumed"),
+            Some(JobHandleInner::Remote { remote_job, .. }) => {
+                remote_job.cancel_async().await.map_err(SdkError::backend)
+            }
+            None => Err(SdkError::InvalidConfig(
+                "cannot cancel: JobHandle already consumed".to_string(),
+            )),
         }
     }
 }
@@ -230,13 +234,11 @@ impl<T: FromWaitResult> JobHandle<T> {
         handle: tokio::task::JoinHandle<Result<T>>,
         timeout: Option<Duration>,
     ) -> Result<T> {
-        let join = |h: tokio::task::JoinHandle<Result<T>>| async {
-            h.await.map_err(|e| anyhow::anyhow!("task panicked: {e}"))?
-        };
+        let join = |h: tokio::task::JoinHandle<Result<T>>| async { h.await? };
         match timeout {
-            Some(dur) => tokio::time::timeout(dur, join(handle))
-                .await
-                .map_err(|_| anyhow::anyhow!("job timed out after {dur:?}"))?,
+            Some(dur) => {
+                tokio::time::timeout(dur, join(handle)).await.map_err(|_| SdkError::Timeout(dur))?
+            }
             None => join(handle).await,
         }
     }
@@ -248,7 +250,7 @@ impl<T: FromWaitResult> JobHandle<T> {
         pre_process: Option<PreProcessHook>,
     ) -> Result<T> {
         let job_id = JobId(remote_job.job_id().to_string());
-        let terminal = remote_job.wait_async(timeout).await?;
+        let terminal = remote_job.wait_async(timeout).await.map_err(SdkError::backend)?;
 
         // Fire terminal event from the authoritative WaitJobResult response.
         match &terminal {
@@ -380,10 +382,10 @@ impl FromWaitResult for SetupResult {
                 Ok(SetupResult { job_id: Some(job_id) })
             }
             TerminalStatus::Completed(other) => {
-                anyhow::bail!("unexpected response kind for setup: {:?}", other)
+                Err(SdkError::UnexpectedResponse(format!("expected setup, got {:?}", other)))
             }
-            TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
-            TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
+            TerminalStatus::Failed(f) => Err(SdkError::JobFailed(format_failure(&f))),
+            TerminalStatus::Cancelled => Err(SdkError::Cancelled),
         }
     }
 }
@@ -395,7 +397,9 @@ impl FromWaitResult for crate::prove::ProveResult {
                 let proof_with_pv: zisk_common::Proof =
                     bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
                         .map(|(v, _)| v)
-                        .map_err(|e| anyhow::anyhow!("failed to deserialize proof: {e}"))?;
+                        .map_err(|e| {
+                            SdkError::Serialization(format!("failed to deserialize proof: {e}"))
+                        })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     stats.steps,
@@ -408,7 +412,11 @@ impl FromWaitResult for crate::prove::ProveResult {
                 let proof_with_pv: zisk_common::Proof =
                     bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
                         .map(|(v, _)| v)
-                        .map_err(|e| anyhow::anyhow!("failed to deserialize wrapped proof: {e}"))?;
+                        .map_err(|e| {
+                            SdkError::Serialization(format!(
+                                "failed to deserialize wrapped proof: {e}"
+                            ))
+                        })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     0,
@@ -418,10 +426,10 @@ impl FromWaitResult for crate::prove::ProveResult {
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(other) => {
-                anyhow::bail!("unexpected job kind response for prove/wrap: {:?}", other)
+                Err(SdkError::UnexpectedResponse(format!("expected prove/wrap, got {:?}", other)))
             }
-            TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
-            TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
+            TerminalStatus::Failed(f) => Err(SdkError::JobFailed(format_failure(&f))),
+            TerminalStatus::Cancelled => Err(SdkError::Cancelled),
         }
     }
 }
@@ -430,7 +438,9 @@ impl FromWaitResult for crate::verify_constraints::VerifyConstraintsResult {
     fn from_terminal(_status: TerminalStatus, _job_id: JobId) -> Result<Self> {
         // RemoteClient does not implement VerifyConstraintsExtension, so this path
         // is unreachable in practice — kept only to satisfy the IntoFuture bound.
-        anyhow::bail!("verify_constraints is not supported on RemoteClient")
+        Err(SdkError::UnsupportedExecutor(
+            "verify_constraints is not supported on RemoteClient".to_string(),
+        ))
     }
 }
 
@@ -451,10 +461,10 @@ impl FromWaitResult for crate::execute::ExecuteResult {
                 Ok(crate::execute::ExecuteResult::new(output, Some(job_id)))
             }
             TerminalStatus::Completed(other) => {
-                anyhow::bail!("unexpected job kind response for execute: {:?}", other)
+                Err(SdkError::UnexpectedResponse(format!("expected execute, got {:?}", other)))
             }
-            TerminalStatus::Failed(f) => anyhow::bail!(format_failure(&f)),
-            TerminalStatus::Cancelled => anyhow::bail!("job was cancelled"),
+            TerminalStatus::Failed(f) => Err(SdkError::JobFailed(format_failure(&f))),
+            TerminalStatus::Cancelled => Err(SdkError::Cancelled),
         }
     }
 }

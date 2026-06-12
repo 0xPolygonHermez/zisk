@@ -5,7 +5,7 @@ use crate::{
     setup::SetupResult,
     JobEvent,
 };
-use anyhow::Result;
+use crate::{Result, SdkError};
 use std::{sync::Arc, time::Duration};
 use zisk_prover_backend::GuestProgram;
 
@@ -60,7 +60,7 @@ impl EmbeddedClient {
     ) -> Result<SetupResult> {
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => {
-                p.setup(program).run()?;
+                p.setup(program).run().map_err(SdkError::backend)?;
             }
             EmbeddedProver::Asm(p) => {
                 let mut builder = p.setup(program);
@@ -70,7 +70,7 @@ impl EmbeddedClient {
                 if emulator_only {
                     builder = builder.emulator_only();
                 }
-                builder.run()?;
+                builder.run().map_err(SdkError::backend)?;
             }
         }
         Ok(SetupResult { job_id: None })

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 
 use crate::job_handle::{new_subscriber_list, JobHandle};
