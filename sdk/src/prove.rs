@@ -11,16 +11,19 @@ use crate::input_source::InputSource;
 use crate::job_handle::{subscriber_list_from, JobHandle, JobId, Subscriber, SubscriberList};
 use crate::{Client, ClientSync, ExecutorKind};
 
+/// Result of a prove operation.
 pub struct ProveResult {
     pub(crate) job_id: Option<JobId>,
     output: ProveOutput,
 }
 
 impl ProveResult {
+    /// Create a new `ProveResult` with the given output and job ID.
     pub fn new(output: ProveOutput, job_id: Option<JobId>) -> Self {
         Self { output, job_id }
     }
 
+    /// Get the ID of the job that produced this result, if available.
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }

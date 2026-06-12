@@ -11,7 +11,9 @@ use crate::{Result, SdkError};
 /// - `Hints(ZiskHints)` — inline hints data (memory or file)
 /// - `Stream(ZiskStream)` — hints delivered via a live gRPC stream
 pub enum HintsSource {
+    /// Inline hints data, either from memory or a file.
     Hints(Box<ZiskHints>),
+    /// Streamed hints.
     Stream(Box<ZiskStream>),
 }
 

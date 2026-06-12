@@ -1,3 +1,10 @@
+//! ZisK prover SDK: client library for proving and verifying ZisK programs.
+//! This crate provides a high-level API for interacting with ZisK proving backends,
+//! including both embedded and remote options.
+
+#![deny(missing_docs)]
+#![deny(rustdoc::all)]
+
 mod cancel;
 mod client;
 mod embedded;

@@ -199,6 +199,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
         self
     }
 
+    /// Build a client that supports only `execute` (no proof generation).
     #[must_use]
     pub fn execute_only(self) -> EmbeddedExecuteOnlyBuilder {
         EmbeddedExecuteOnlyBuilder::from_parts(self.executor, self.asm_options)
@@ -308,6 +309,7 @@ enum EmbeddedProver {
     Asm(ZiskProver<Asm>),
 }
 
+/// Embedded client implementation.
 pub struct EmbeddedClient {
     prover: Arc<EmbeddedProver>,
     executor: ExecutorKind,

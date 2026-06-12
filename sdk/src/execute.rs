@@ -9,20 +9,24 @@ use crate::input_source::InputSource;
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
 use crate::{Client, ClientSync, ExecutorKind};
 
+/// Result of an execute operation.
 pub struct ExecuteResult {
     job_id: Option<JobId>,
     output: ExecuteOutput,
 }
 
 impl ExecuteResult {
+    /// Create a new `ExecuteResult` with the given output and job ID.
     pub fn new(output: ExecuteOutput, job_id: Option<JobId>) -> Self {
         Self { output, job_id }
     }
 
+    /// Get the ID of the job that produced this result, if available.
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }
 
+    /// Get the output of the execution.
     pub fn output(&self) -> &ExecuteOutput {
         &self.output
     }

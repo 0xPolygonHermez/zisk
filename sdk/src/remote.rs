@@ -86,6 +86,7 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
     }
 }
 
+/// Remote client implementation.
 #[derive(Clone)]
 pub struct RemoteClient {
     pub(crate) gw: CoordinatorClient,

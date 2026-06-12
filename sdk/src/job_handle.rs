@@ -194,6 +194,7 @@ impl<T> JobHandle<T> {
         self
     }
 
+    /// Get the ID of the job, if available (only for remote jobs that have been submitted).
     pub fn job_id(&self) -> Option<JobId> {
         match &self.inner {
             Some(JobHandleInner::Embedded(_)) => None,

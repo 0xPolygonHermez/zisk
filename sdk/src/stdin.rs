@@ -13,6 +13,7 @@ impl ZiskStdin {
         Self(ZiskStdinInner::new())
     }
 
+    /// Creates stdin from a byte vector.
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         let stdin = Self(ZiskStdinInner::new());
         stdin.write_slice(&bytes);
@@ -48,6 +49,7 @@ impl ZiskStdin {
         self.0.read().map_err(SdkError::backend)
     }
 
+    /// Reads the next `n` bytes from the stdin buffer.
     pub fn read_bytes(&self) -> Vec<u8> {
         self.0.read_bytes()
     }
