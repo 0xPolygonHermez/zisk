@@ -1,10 +1,14 @@
+//! Non-Linux-x86_64 stub: placeholder types whose methods error/panic. Off the
+//! supported platform these are never exercised, so they carry no docs.
+#![allow(missing_docs)]
+
 use zisk_common::{ExecutorStatsHandle, Plan};
 
 use std::fmt::Debug;
 
 use anyhow::Result;
 
-pub struct PreloadedMO {}
+pub struct MOShmemReader {}
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
@@ -12,16 +16,13 @@ pub struct AsmRunnerMO {
     pub plans: Vec<Plan>,
 }
 
-unsafe impl Send for AsmRunnerMO {}
-unsafe impl Sync for AsmRunnerMO {}
-
 impl AsmRunnerMO {
     pub fn new(plans: Vec<Plan>) -> Self {
         AsmRunnerMO { plans }
     }
 
     pub fn run(
-        _: &mut PreloadedMO,
+        _: &mut MOShmemReader,
         _: u64,
         _: u64,
         _: i32,

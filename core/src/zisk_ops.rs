@@ -18,9 +18,11 @@ use crate::{
     ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST, DMA_64_ALIGNED_COST,
     DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST,
     DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
-    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON2_COST, REG_A0, SHA256_COST, SYS_ADDR,
+    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, SHA256_COST, SYS_ADDR,
 };
-use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
+use fields::{
+    poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
+};
 use paste::paste;
 use std::{
     collections::HashMap,
@@ -31,6 +33,8 @@ use std::{
 use tiny_keccak::keccakf;
 use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
+use crate::ops_core::*;
+use crate::ops_core_context::*;
 use crate::{FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE};
 
 /// Determines the type of a [`ZiskOp`].
@@ -48,7 +52,7 @@ pub enum OpType {
     BinaryE,
     Keccak,
     Sha256,
-    Poseidon2,
+    Poseidon,
     PubOut,
     ArithEq,
     Fcall,
@@ -68,7 +72,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::Sha256 => ZiskOperationType::Sha256,
-            OpType::Poseidon2 => ZiskOperationType::Poseidon2,
+            OpType::Poseidon => ZiskOperationType::Poseidon,
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
@@ -92,7 +96,7 @@ impl Display for OpType {
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
             Self::Sha256 => write!(f, "Sha256"),
-            Self::Poseidon2 => write!(f, "Poseidon2"),
+            Self::Poseidon => write!(f, "Poseidon"),
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
@@ -118,7 +122,7 @@ impl FromStr for OpType {
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
             "s" => Ok(Self::Sha256),
-            "p" => Ok(Self::Poseidon2),
+            "p" => Ok(Self::Poseidon),
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
@@ -451,7 +455,8 @@ define_ops! {
     // opcodes 0xda-0xdf reserved for dma extra operations (costs)
     // opcodes 0xe0 is available
     (Profile, "profile", Profile, 0, 0xe0, 0, 0, opc_profile, op_profile, ops_profile),
-    (Poseidon2, "poseidon2", Poseidon2, POSEIDON2_COST, 0xe1, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
+    (Poseidon2, "poseidon2", Poseidon, POSEIDON_COST, 0xeb, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
+    (Poseidon1, "poseidon1", Poseidon, POSEIDON_COST, 0xec, 128, 128, opc_poseidon1, op_poseidon1, ops_poseidon1),
     (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
     (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
     (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
@@ -477,763 +482,6 @@ define_ops! {
     (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
     (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
     (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, 0, opc_halt, op_halt, ops_none),
-}
-
-/* INTERNAL operations */
-
-/// Sets flag to true (and c to 0)
-#[inline(always)]
-pub const fn op_flag(_a: u64, _b: u64) -> (u64, bool) {
-    (0, true)
-}
-
-/// InstContext-based wrapper over op_flag()
-#[inline(always)]
-pub fn opc_flag(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_flag(ctx.a, ctx.b);
-}
-
-/// Copies register b into c (and flag to false)
-#[inline(always)]
-pub const fn op_copyb(_a: u64, b: u64) -> (u64, bool) {
-    (b, false)
-}
-
-/// InstContext-based wrapper over op_copyb()
-#[inline(always)]
-pub fn opc_copyb(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_copyb(ctx.a, ctx.b);
-}
-
-/* SIGN EXTEND operations for different data widths (i8, i16 and i32) --> i64 --> u64 */
-
-/// Sign extends an i8.
-///
-/// Converts b from a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of
-/// the same value, adding 0xFFFFFFFFFFFFFF00 if negative, and stores the result in c as a u64 (and
-/// sets flag to false)
-#[inline(always)]
-pub const fn op_signextend_b(_a: u64, b: u64) -> (u64, bool) {
-    ((b as i8) as u64, false)
-}
-
-/// InstContext-based wrapper over op_signextend_b()
-#[inline(always)]
-pub fn opc_signextend_b(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_signextend_b(ctx.a, ctx.b);
-}
-
-/// Sign extends an i16.
-///
-/// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
-/// of the same value, adding 0xFFFFFFFFFFFF0000 if negative, and stores the result in c as a u64
-/// (and sets flag to false)
-#[inline(always)]
-pub const fn op_signextend_h(_a: u64, b: u64) -> (u64, bool) {
-    ((b as i16) as u64, false)
-}
-
-/// InstContext-based wrapper over op_signextend_h()
-#[inline(always)]
-pub fn opc_signextend_h(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_signextend_h(ctx.a, ctx.b);
-}
-
-/// Sign extends an i32.
-///
-/// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
-/// 64-bit number of the same value, adding 0xFFFFFFFF00000000 if negative  and stores the result in
-/// c as a u64 (and sets flag to false)
-#[inline(always)]
-pub const fn op_signextend_w(_a: u64, b: u64) -> (u64, bool) {
-    ((b as i32) as u64, false)
-}
-
-/// InstContext-based wrapper over op_signextend_w()
-#[inline(always)]
-pub fn opc_signextend_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_signextend_w(ctx.a, ctx.b);
-}
-
-/* ADD AND SUB operations for different data widths (i32 and u64) */
-
-/// Adds a and b as 64-bit unsigned values, and stores the result in c (and sets flag to false)
-#[inline(always)]
-pub fn op_add(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a) + Wrapping(b)).0, false)
-}
-
-/// InstContext-based wrapper over op_add()
-#[inline(always)]
-pub fn opc_add(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_add(ctx.a, ctx.b);
-}
-
-/// Adds a and b as 32-bit signed values, and stores the result in c (and flag to false)
-#[inline(always)]
-pub fn op_add_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) + Wrapping(b as i32)).0 as u64, false)
-}
-
-/// InstContext-based wrapper over op_add_w()
-#[inline(always)]
-pub fn opc_add_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_add_w(ctx.a, ctx.b);
-}
-
-/// Subtracts a and b as 64-bit unsigned values, and stores the result in c (and sets flag to false)
-#[inline(always)]
-pub fn op_sub(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a) - Wrapping(b)).0, false)
-}
-
-/// InstContext-based wrapper over op_sub()
-#[inline(always)]
-pub fn opc_sub(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_sub(ctx.a, ctx.b);
-}
-
-/// Subtracts a and b as 32-bit signed values, and stores the result in c (and sets flag to false)
-#[inline(always)]
-pub fn op_sub_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) - Wrapping(b as i32)).0 as u64, false)
-}
-
-/// InstContext-based wrapper over op_sub_w()
-#[inline(always)]
-pub fn opc_sub_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_sub_w(ctx.a, ctx.b);
-}
-
-/* SHIFT operations */
-
-/// Shifts a as a 64-bits unsigned value to the left b mod 64 bits, and stores the result in c (and
-/// sets flag to false)
-#[inline(always)]
-pub const fn op_sll(a: u64, b: u64) -> (u64, bool) {
-    (a << (b & 0x3f), false)
-}
-
-/// InstContext-based wrapper over op_sll()
-#[inline(always)]
-pub fn opc_sll(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_sll(ctx.a, ctx.b);
-}
-
-/// Shifts a as a 32-bits unsigned value to the left b mod 64 bits, and stores the result in c (and
-/// sets flag to false)
-#[inline(always)]
-pub fn op_sll_w(a: u64, b: u64) -> (u64, bool) {
-    (((Wrapping(a as u32) << (b & 0x3f) as usize).0 as i32) as u64, false)
-}
-
-/// InstContext-based wrapper over op_sll_w()
-#[inline(always)]
-pub fn opc_sll_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_sll_w(ctx.a, ctx.b);
-}
-
-/// Shifts a as a 64-bits signed value to the right b mod 64 bits, and stores the result in c (and
-/// sets flag to false)
-#[inline(always)]
-pub const fn op_sra(a: u64, b: u64) -> (u64, bool) {
-    (((a as i64) >> (b & 0x3f)) as u64, false)
-}
-
-/// InstContext-based wrapper over op_sra()
-#[inline(always)]
-pub fn opc_sra(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_sra(ctx.a, ctx.b);
-}
-
-/// Shifts a as a 64-bits unsigned value to the right b mod 64 bits, and stores the result in c (and
-/// sets flag to false)
-#[inline(always)]
-pub const fn op_srl(a: u64, b: u64) -> (u64, bool) {
-    (a >> (b & 0x3f), false)
-}
-
-/// InstContext-based wrapper over op_srl()
-#[inline(always)]
-pub fn opc_srl(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_srl(ctx.a, ctx.b);
-}
-
-/// Shifts a as a 32-bits signed value to the right b mod 64 bits, and stores the result in c (and
-/// sets flag to false)
-#[inline(always)]
-pub fn op_sra_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) >> (b & 0x3f) as usize).0 as u64, false)
-}
-
-/// InstContext-based wrapper over op_sra_w()
-#[inline(always)]
-pub fn opc_sra_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_sra_w(ctx.a, ctx.b);
-}
-
-/// Shifts a as a 32-bits unsigned value to the right b mod 64 bits, and stores the result in c (and
-/// sets flag to false)
-#[inline(always)]
-pub fn op_srl_w(a: u64, b: u64) -> (u64, bool) {
-    (((Wrapping(a as u32) >> (b & 0x3f) as usize).0 as i32) as u64, false)
-}
-
-/// InstContext-based wrapper over op_srl_w()
-#[inline(always)]
-pub fn opc_srl_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_srl_w(ctx.a, ctx.b);
-}
-
-/* COMPARISON operations */
-
-/// If a and b are equal, it returns c=1, flag=true; otherwise it returns c=0, flag=false
-#[inline(always)]
-pub const fn op_eq(a: u64, b: u64) -> (u64, bool) {
-    if a == b {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_eq()
-#[inline(always)]
-pub fn opc_eq(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_eq(ctx.a, ctx.b);
-}
-
-/// If a and b as 32-bit signed values are equal, as 64-bit unsigned values, it returns c=1,
-/// flag=true; otherwise it returns c=0, flag=false
-#[inline(always)]
-pub const fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) == (b as i32) {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_eq_w()
-#[inline(always)]
-pub fn opc_eq_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_eq_w(ctx.a, ctx.b);
-}
-
-/// If a is strictly less than b, as 64-bit unsigned values, it returns c=1, flag=true; otherwise it
-/// returns c=0, flag=false
-#[inline(always)]
-pub const fn op_ltu(a: u64, b: u64) -> (u64, bool) {
-    if a < b {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_ltu()
-#[inline(always)]
-pub fn opc_ltu(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_ltu(ctx.a, ctx.b);
-}
-
-/// If a is strictly less than b, as 64-bit signed values, it returns c=1, flag=true; otherwise it
-/// returns c=0, flag=false
-#[inline(always)]
-pub const fn op_lt(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) < (b as i64) {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_lt()
-#[inline(always)]
-pub fn opc_lt(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_lt(ctx.a, ctx.b);
-}
-
-/// If a is strictly less than b, as 32-bit unsigned values, it returns c=1, flag=true; otherwise it
-/// returns c=0, flag=false
-#[inline(always)]
-pub const fn op_ltu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) < (b as u32) {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_ltu_w()
-#[inline(always)]
-pub fn opc_ltu_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_ltu_w(ctx.a, ctx.b);
-}
-
-/// If a is strictly less than b, as 32-bit signed values, it returns c=1, flag=true; otherwise it
-/// returns c=0, flag=false
-#[inline(always)]
-pub const fn op_lt_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) < (b as i32) {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_lt_w()
-#[inline(always)]
-pub fn opc_lt_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_lt_w(ctx.a, ctx.b);
-}
-
-/// If a is less than or equal to b, as 64-bit unsigned values, it returns c=1, flag=true; otherwise
-/// it returns c=0, flag=false
-#[inline(always)]
-pub const fn op_leu(a: u64, b: u64) -> (u64, bool) {
-    if a <= b {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_leu()
-#[inline(always)]
-pub fn opc_leu(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_leu(ctx.a, ctx.b);
-}
-
-/// If a is less than or equal to b, as 64-bit signed values, it returns c=1, flag=true; otherwise
-/// it returns c=0, flag=false
-#[inline(always)]
-pub const fn op_le(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) <= (b as i64) {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_le()
-#[inline(always)]
-pub fn opc_le(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_le(ctx.a, ctx.b);
-}
-
-/// If a is less than or equal to b, as 32-bit unsigned values, it returns c=1, flag=true; otherwise
-/// it returns c=0, flag=false
-#[inline(always)]
-pub const fn op_leu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) <= (b as u32) {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_leu_w()
-#[inline(always)]
-pub fn opc_leu_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_leu_w(ctx.a, ctx.b);
-}
-
-/// If a is less than or equal to b, as 32-bit signed values, it returns c=1, flag=true; otherwise
-/// it returns c=0, flag=false
-#[inline(always)]
-pub const fn op_le_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) <= (b as i32) {
-        (1, true)
-    } else {
-        (0, false)
-    }
-}
-
-/// InstContext-based wrapper over op_le_w()
-#[inline(always)]
-pub fn opc_le_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_le_w(ctx.a, ctx.b);
-}
-
-/* LOGICAL operations */
-
-/// Sets c to a AND b, and flag to false
-#[inline(always)]
-pub const fn op_and(a: u64, b: u64) -> (u64, bool) {
-    (a & b, false)
-}
-
-/// InstContext-based wrapper over op_and()
-#[inline(always)]
-pub fn opc_and(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_and(ctx.a, ctx.b);
-}
-
-/// Sets c to a OR b, and flag to false
-#[inline(always)]
-pub const fn op_or(a: u64, b: u64) -> (u64, bool) {
-    (a | b, false)
-}
-
-/// InstContext-based wrapper over op_or()
-#[inline(always)]
-pub fn opc_or(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_or(ctx.a, ctx.b);
-}
-
-/// Sets c to a XOR b, and flag to false
-#[inline(always)]
-pub const fn op_xor(a: u64, b: u64) -> (u64, bool) {
-    (a ^ b, false)
-}
-
-/// InstContext-based wrapper over op_xor()
-#[inline(always)]
-pub fn opc_xor(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_xor(ctx.a, ctx.b);
-}
-
-/* ARITHMETIC operations: div / mul / rem */
-
-/// Sets c to a x b, as 64-bits unsigned values, and flag to false
-#[inline(always)]
-pub fn op_mulu(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a) * Wrapping(b)).0, false)
-}
-
-/// InstContext-based wrapper over op_mulu()
-#[inline(always)]
-pub fn opc_mulu(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_mulu(ctx.a, ctx.b);
-}
-
-/// Sets c to a x b, as 64-bits signed values, and flag to false
-#[inline(always)]
-pub fn op_mul(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i64) * Wrapping(b as i64)).0 as u64, false)
-}
-
-/// InstContext-based wrapper over op_mul()
-#[inline(always)]
-pub fn opc_mul(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_mul(ctx.a, ctx.b);
-}
-
-/// Sets c to a x b, as 32-bits signed values, and flag to false
-#[inline(always)]
-pub fn op_mul_w(a: u64, b: u64) -> (u64, bool) {
-    ((Wrapping(a as i32) * Wrapping(b as i32)).0 as u64, false)
-}
-
-/// InstContext-based wrapper over op_mul_w()
-#[inline(always)]
-pub fn opc_mul_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_mul_w(ctx.a, ctx.b);
-}
-
-/// Sets c to the highest 64-bits of a x b, as 128-bits unsigned values, and flag to false
-#[inline(always)]
-pub const fn op_muluh(a: u64, b: u64) -> (u64, bool) {
-    (((a as u128 * b as u128) >> 64) as u64, false)
-}
-
-/// InstContext-based wrapper over op_muluh()
-#[inline(always)]
-pub fn opc_muluh(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_muluh(ctx.a, ctx.b);
-}
-
-/// Sets c to the highest 64-bits of a x b, as 128-bits unsigned values, and flag to false
-#[inline(always)]
-pub const fn op_mulh(a: u64, b: u64) -> (u64, bool) {
-    (((((a as i64) as i128) * ((b as i64) as i128)) >> 64) as u64, false)
-}
-
-/// InstContext-based wrapper over op_mulh()
-#[inline(always)]
-pub fn opc_mulh(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_mulh(ctx.a, ctx.b);
-}
-
-/// Sets c to the highest 64-bits of a x b, as 128-bits signed values, and flag to false
-#[inline(always)]
-pub const fn op_mulsuh(a: u64, b: u64) -> (u64, bool) {
-    (((((a as i64) as i128) * (b as i128)) >> 64) as u64, false)
-}
-
-/// InstContext-based wrapper over op_mulsuh()
-#[inline(always)]
-pub fn opc_mulsuh(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_mulsuh(ctx.a, ctx.b);
-}
-
-/// Sets c to a / b, as 64-bits unsigned values, and flag to false.
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-#[inline(always)]
-pub const fn op_divu(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (M64, true);
-    }
-
-    (a / b, false)
-}
-
-/// InstContext-based wrapper over op_divu()
-#[inline(always)]
-pub fn opc_divu(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_divu(ctx.a, ctx.b);
-}
-
-/// Sets c to a / b, as 64-bits signed values, and flag to false.
-///
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-/// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
-/// which cannot be represented with 64 bits (overflow) and it returns c=a.
-#[inline(always)]
-pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (M64, true);
-    }
-    ((((a as i64) as i128) / ((b as i64) as i128)) as u64, false)
-}
-
-/// InstContext-based wrapper over op_div()
-#[inline(always)]
-pub fn opc_div(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_div(ctx.a, ctx.b);
-}
-
-/// Sets c to a / b, as 32-bits unsigned values, and flag to false.
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-#[inline(always)]
-pub const fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
-    if b as u32 == 0 {
-        return (M64, true);
-    }
-
-    (((a as u32 / b as u32) as i32) as u64, false)
-}
-
-/// InstContext-based wrapper over op_divu_w()
-#[inline(always)]
-pub fn opc_divu_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_divu_w(ctx.a, ctx.b);
-}
-
-/// Sets c to a / b, as 32-bits signed values, and flag to false.
-/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
-#[inline(always)]
-pub const fn op_div_w(a: u64, b: u64) -> (u64, bool) {
-    if b as i32 == 0 {
-        return (M64, true);
-    }
-
-    ((((a as i32) as i64) / ((b as i32) as i64)) as u64, false)
-}
-
-/// InstContext-based wrapper over op_div_w()
-#[inline(always)]
-pub fn opc_div_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_div_w(ctx.a, ctx.b);
-}
-
-/// Sets c to a mod b, as 64-bits unsigned values, and flag to false.
-/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
-#[inline(always)]
-pub const fn op_remu(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (a, true);
-    }
-
-    (a % b, false)
-}
-
-/// InstContext-based wrapper over op_remu()
-#[inline(always)]
-pub fn opc_remu(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_remu(ctx.a, ctx.b);
-}
-
-/// Sets c to a mod b, as 64-bits signed values, and flag to false.
-/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
-#[inline(always)]
-pub const fn op_rem(a: u64, b: u64) -> (u64, bool) {
-    if b == 0 {
-        return (a, true);
-    }
-
-    ((((a as i64) as i128) % ((b as i64) as i128)) as u64, false)
-}
-
-/// InstContext-based wrapper over op_rem()
-#[inline(always)]
-pub fn opc_rem(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_rem(ctx.a, ctx.b);
-}
-
-/// Sets c to a mod b, as 32-bits unsigned values, and flag to false.
-/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
-#[inline(always)]
-pub const fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
-    if (b as u32) == 0 {
-        return ((a as i32) as u64, true);
-    }
-
-    ((((a as u32) % (b as u32)) as i32) as u64, false)
-}
-
-/// InstContext-based wrapper over op_remu_w()
-#[inline(always)]
-pub fn opc_remu_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_remu_w(ctx.a, ctx.b);
-}
-
-/// Sets c to a mod b, as 32-bits signed values, and flag to false.
-/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
-#[inline(always)]
-pub const fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
-    if (b as i32) == 0 {
-        return ((a as i32) as u64, true);
-    }
-
-    ((((a as i32) as i64) % ((b as i32) as i64)) as u64, false)
-}
-
-/// InstContext-based wrapper over op_rem_w()
-#[inline(always)]
-pub fn opc_rem_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_rem_w(ctx.a, ctx.b);
-}
-
-/* MIN / MAX operations */
-
-/// Sets c to the minimum of a and b as 64-bits unsigned values (and flag to false)
-#[inline(always)]
-pub const fn op_minu(a: u64, b: u64) -> (u64, bool) {
-    if a < b {
-        (a, false)
-    } else {
-        (b, false)
-    }
-}
-
-/// InstContext-based wrapper over op_minu()
-#[inline(always)]
-pub fn opc_minu(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_minu(ctx.a, ctx.b);
-}
-
-/// Sets c to the minimum of a and b as 64-bits signed values (and flag to false)
-#[inline(always)]
-pub const fn op_min(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) < (b as i64) {
-        (a, false)
-    } else {
-        (b, false)
-    }
-}
-
-/// InstContext-based wrapper over op_min()
-#[inline(always)]
-pub fn opc_min(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_min(ctx.a, ctx.b);
-}
-
-/// Sets c to the minimum of a and b as 32-bits unsigned values (and flag to false)
-#[inline(always)]
-pub const fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) < (b as u32) {
-        (a as i32 as i64 as u64, false)
-    } else {
-        (b as i32 as i64 as u64, false)
-    }
-}
-
-/// InstContext-based wrapper over op_minu_w()
-#[inline(always)]
-pub fn opc_minu_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_minu_w(ctx.a, ctx.b);
-}
-
-/// Sets c to the minimum of a and b as 32-bits signed values (and flag to false)
-#[inline(always)]
-pub const fn op_min_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) < (b as i32) {
-        (a as i32 as i64 as u64, false)
-    } else {
-        (b as i32 as i64 as u64, false)
-    }
-}
-
-/// InstContext-based wrapper over op_min_w()
-#[inline(always)]
-pub fn opc_min_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_min_w(ctx.a, ctx.b);
-}
-
-/// Sets c to the maximum of a and b as 64-bits unsigned values (and flag to false)
-#[inline(always)]
-pub const fn op_maxu(a: u64, b: u64) -> (u64, bool) {
-    if a > b {
-        (a, false)
-    } else {
-        (b, false)
-    }
-}
-
-/// InstContext-based wrapper over op_maxu()
-#[inline(always)]
-pub fn opc_maxu(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_maxu(ctx.a, ctx.b);
-}
-
-/// Sets c to the maximum of a and b as 64-bits signed values (and flag to false)
-#[inline(always)]
-pub const fn op_max(a: u64, b: u64) -> (u64, bool) {
-    if (a as i64) > (b as i64) {
-        (a, false)
-    } else {
-        (b, false)
-    }
-}
-
-/// InstContext-based wrapper over op_max()
-#[inline(always)]
-pub fn opc_max(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_max(ctx.a, ctx.b);
-}
-
-/// Sets c to the maximum of a and b as 32-bits unsigned values (and flag to false)
-#[inline(always)]
-pub const fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as u32) > (b as u32) {
-        (a as i32 as i64 as u64, false)
-    } else {
-        (b as i32 as i64 as u64, false)
-    }
-}
-
-/// InstContext-based wrapper over op_maxu_w()
-#[inline(always)]
-pub fn opc_maxu_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_maxu_w(ctx.a, ctx.b);
-}
-
-/// Sets c to the maximum of a and b as 32-bits signed values (and flag to false)
-#[inline(always)]
-pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
-    if (a as i32) > (b as i32) {
-        (a as i32 as i64 as u64, false)
-    } else {
-        (b as i32 as i64 as u64, false)
-    }
-}
-
-/// InstContext-based wrapper over op_max_w()
-#[inline(always)]
-pub fn opc_max_w(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_max_w(ctx.a, ctx.b);
 }
 
 /* PRECOMPILED operations */
@@ -1387,7 +635,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
 
             // Call poseidon2
             let data_gl = data.map(Goldilocks::new);
-            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
             }
@@ -1411,7 +659,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
 
             // Call poseidon2
             let data_gl = data.map(Goldilocks::new);
-            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
             }
@@ -1452,6 +700,98 @@ pub fn op_poseidon2(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn ops_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 16, 16);
+}
+
+/// Performs a Poseidon1 hash over a 16 elements stored in memory at the address
+/// specified by register A0, and stores the output state in the same memory address
+#[inline(always)]
+pub fn opc_poseidon1(ctx: &mut InstContext) {
+    // Get address from b (a = step)
+    let address = ctx.b;
+    if address & 0x7 != 0 {
+        panic!("opc_poseidon1() found address not aligned to 8 bytes");
+    }
+
+    // Allocate room for 16 u64 = 128 bytes = 1024 bits
+    const WORDS: usize = 16;
+    let mut data = [0u64; WORDS];
+
+    // Get input data from memory or from the precompiled context
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Call poseidon1
+            let data_gl = data.map(Goldilocks::new);
+            let res_gl = poseidon1_hash::<Goldilocks, Poseidon1_16, 16>(&data_gl);
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = res_gl[i].as_canonical_u64();
+            }
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+        }
+        EmulationMode::GenerateMemReads => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Copy data to the precompiled context
+            ctx.precompiled.input_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.input_data.push(*d);
+            }
+
+            // Call poseidon1
+            let data_gl = data.map(Goldilocks::new);
+            let res_gl = poseidon1_hash::<Goldilocks, Poseidon1_16, 16>(&data_gl);
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = res_gl[i].as_canonical_u64();
+            }
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+
+            // Write data to the precompiled context
+            ctx.precompiled.output_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.output_data.push(*d);
+            }
+        }
+        EmulationMode::ConsumeMemReads => {
+            // Check input data has the expected length
+            if ctx.precompiled.input_data.len() != WORDS {
+                panic!(
+                    "opc_poseidon1() found ctx.precompiled.input_data.len={} != {}",
+                    ctx.precompiled.input_data.len(),
+                    WORDS
+                );
+            }
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Poseidon1 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_poseidon1(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_poseidon1() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_poseidon1(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 16, 16);
 }
 

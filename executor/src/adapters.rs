@@ -24,12 +24,30 @@ use crate::state::ExecutionState;
 pub struct ProofmanAdapter<'a, F: PrimeField64> {
     pctx: &'a ProofCtx<F>,
     sctx: &'a SetupCtx<F>,
+    /// Per-`(airgroup_id, air_id)` instance count accumulated during planning, so the
+    /// execution plan summary can be built without re-planning. Same lifetime as the
+    /// adapter, which spans a single `execute_inner` call.
+    instance_counts: std::sync::Mutex<std::collections::HashMap<(usize, usize), usize>>,
 }
 
 impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     #[inline]
     pub fn new(pctx: &'a ProofCtx<F>, sctx: &'a SetupCtx<F>) -> Self {
-        Self { pctx, sctx }
+        Self {
+            pctx,
+            sctx,
+            instance_counts: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    #[inline]
+    fn track(&self, info: &InstanceInfo) {
+        *self
+            .instance_counts
+            .lock()
+            .expect("instance_counts mutex")
+            .entry((info.airgroup_id, info.air_id))
+            .or_insert(0) += 1;
     }
 
     /// Raw `ProofCtx<F>` borrow — used by `WitnessPhase::configure_sm_instances`
@@ -38,6 +56,18 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     #[inline]
     pub fn pctx(&self) -> &ProofCtx<F> {
         self.pctx
+    }
+
+    /// Reserve proofman's unified GPU buffer for the MO count-and-plan window.
+    #[inline]
+    pub fn acquire_gpu_buffer(&self) {
+        self.pctx.acquire_first_gpu_buffer();
+    }
+
+    /// Release the buffer back to proofman once the MO runner has joined.
+    #[inline]
+    pub fn release_gpu_buffer(&self) {
+        self.pctx.release_first_gpu_buffer();
     }
 
     /// Per-stats-type proving cost. Sole `SetupCtx<F>` consumer in the
@@ -102,15 +132,22 @@ impl<F: PrimeField64> Dctx for ProofmanAdapter<'_, F> {
 
 impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
     fn add_instance(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
+        self.track(&info);
         Ok(GlobalId(self.pctx.add_instance(info.airgroup_id, info.air_id)?))
     }
 
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
+        self.track(&info);
         Ok(GlobalId(self.pctx.add_instance_assign(info.airgroup_id, info.air_id)?))
     }
 
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
+        self.track(&info);
         Ok(GlobalId(self.pctx.add_table(info.airgroup_id, info.air_id)?))
+    }
+
+    fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
+        self.instance_counts.lock().expect("instance_counts mutex").clone()
     }
 
     fn find_instance_id(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
@@ -196,5 +233,8 @@ impl ProofRegistry for NoopProofRegistry {
     fn set_chunks(&self, _gid: GlobalId, _chunks: &[usize], _is_memory_related: bool) {}
     fn write_pub_outs(&self, pub_outs: &[(u64, u32)]) {
         self.pub_outs.lock().expect("pub_outs mutex").extend_from_slice(pub_outs);
+    }
+    fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
+        self.instance_counts.lock().expect("instance_counts mutex").clone()
     }
 }

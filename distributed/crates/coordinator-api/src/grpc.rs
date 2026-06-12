@@ -13,12 +13,13 @@ pub use proto::zisk_coordinator_api_client::ZiskCoordinatorApiClient;
 pub use proto::zisk_coordinator_api_server::{ZiskCoordinatorApi, ZiskCoordinatorApiServer};
 
 use crate::dto::{
-    DomainExecuteRequest, DomainExecutionStats, DomainInputChunk, DomainInputKind, DomainJobEvent,
-    DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
-    DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure,
-    DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof,
-    DomainProofKind, DomainProveRequest, DomainSetupRequest, DomainWrapRequest,
-    RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto,
+    DomainAirInstanceCount, DomainAsmExecution, DomainExecuteRequest, DomainExecutionStats,
+    DomainExecutorTime, DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
+    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
+    DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
+    DomainProveRequest, DomainSetupRequest, DomainWrapRequest, RegisterGuestProgramRequestDto,
+    RegisterGuestProgramResponseDto,
 };
 use anyhow::Result;
 use prost_types::Timestamp;
@@ -302,6 +303,22 @@ impl From<DomainExecutionStats> for ExecutionStats {
                 tables: stats.tables_cost,
                 other: stats.other_cost,
             }),
+            executor_time: Some(ExecutorTime {
+                total_duration: stats.executor_time.total_duration,
+                execution_duration: stats.executor_time.execution_duration,
+                count_and_plan_duration: stats.executor_time.count_and_plan_duration,
+                count_and_plan_mo_duration: stats.executor_time.count_and_plan_mo_duration,
+                asm: stats.executor_time.asm.map(|a| AsmExecution { time: a.time, mhz: a.mhz }),
+            }),
+            plan: stats
+                .plan
+                .into_iter()
+                .map(|p| AirInstanceCount {
+                    airgroup_id: p.airgroup_id as u32,
+                    air_id: p.air_id as u32,
+                    count: p.count,
+                })
+                .collect(),
         }
     }
 }
@@ -310,7 +327,9 @@ impl From<DomainJobKindResponse> for JobKindResponse {
     fn from(value: DomainJobKindResponse) -> Self {
         use job_kind_response::Kind;
         let kind = match value {
-            DomainJobKindResponse::Setup { vk } => Kind::Setup(SetupResponse { vk }),
+            DomainJobKindResponse::Setup { vk, hash_mode } => {
+                Kind::Setup(SetupResponse { vk, hash_mode })
+            }
             DomainJobKindResponse::Prove { proof, stats } => {
                 Kind::Prove(ProveResponse { proof: Some(proof.into()), stats: Some(stats.into()) })
             }
@@ -432,6 +451,7 @@ impl From<DomainJobEvent> for JobEvent {
 impl From<ExecutionStats> for DomainExecutionStats {
     fn from(stats: ExecutionStats) -> Self {
         let cost = stats.cost_per_type.unwrap_or_default();
+        let et = stats.executor_time.unwrap_or_default();
         DomainExecutionStats {
             steps: stats.steps,
             duration_nanos: stats.duration_nanos,
@@ -441,6 +461,22 @@ impl From<ExecutionStats> for DomainExecutionStats {
             precompile_cost: cost.precompile,
             tables_cost: cost.tables,
             other_cost: cost.other,
+            executor_time: DomainExecutorTime {
+                total_duration: et.total_duration,
+                execution_duration: et.execution_duration,
+                count_and_plan_duration: et.count_and_plan_duration,
+                count_and_plan_mo_duration: et.count_and_plan_mo_duration,
+                asm: et.asm.map(|a| DomainAsmExecution { time: a.time, mhz: a.mhz }),
+            },
+            plan: stats
+                .plan
+                .into_iter()
+                .map(|p| DomainAirInstanceCount {
+                    airgroup_id: p.airgroup_id as usize,
+                    air_id: p.air_id as usize,
+                    count: p.count,
+                })
+                .collect(),
         }
     }
 }
@@ -524,7 +560,7 @@ impl TryFrom<JobKindResponse> for DomainJobKindResponse {
     fn try_from(resp: JobKindResponse) -> std::result::Result<Self, Self::Error> {
         use job_kind_response::Kind;
         match resp.kind.ok_or_else(|| "job_kind_response.kind must be set".to_string())? {
-            Kind::Setup(r) => Ok(DomainJobKindResponse::Setup { vk: r.vk }),
+            Kind::Setup(r) => Ok(DomainJobKindResponse::Setup { vk: r.vk, hash_mode: r.hash_mode }),
             Kind::Prove(r) => {
                 let proof =
                     r.proof.ok_or_else(|| "prove.proof must be set".to_string())?.try_into()?;

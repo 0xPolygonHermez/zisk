@@ -106,7 +106,7 @@ do
     echo ""
     echo "Proving file ${COUNTER} of ${MAX_COUNTER}: ${ELF_FILE}"
 
-    if ! cargo-zisk rom-setup -e $ELF_FILE; then
+    if ! cargo-zisk-dev program-setup -e $ELF_FILE; then
         echo "❌ Failed to setup ROM for ELF file ${ELF_FILE}"
         FAILED_COUNTER=$((FAILED_COUNTER+1))
         # Record result for final report
@@ -114,7 +114,7 @@ do
         TEST_RESULTS+=("FAILED")
         TEST_INDEXES+=("$COUNTER")
         continue;
-    elif ! cargo-zisk prove -e $ELF_FILE -i $INPUT_FILE; then
+    elif ! cargo-zisk-dev prove -e $ELF_FILE -i $INPUT_FILE; then
         echo "❌ Failed to generate proof for ELF file ${ELF_FILE}"
         FAILED_COUNTER=$((FAILED_COUNTER+1))
         # Record result for final report

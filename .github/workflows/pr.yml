@@ -20,49 +20,42 @@ permissions:
 jobs:
   cargo-tests:
     name: Cargo tests
-    runs-on: ubuntu-latest
+    runs-on: rocket
+    container:
+      image: ubuntu:22.04
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-    steps:
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: false
 
+    steps:
       - name: Checkout sources
         uses: actions/checkout@v4
 
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          sudo ./install_deps.sh
+          ./install_deps.sh
+
+      - name: Add Cargo to PATH
+        # install_deps.sh already installs Rust via rustup into ~/.cargo/bin;
+        # just expose it to subsequent steps.
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Show versions
+        run: |
+          rustc --version
+          cargo --version
 
       - name: Build cargo-zisk
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --bin cargo-zisk
+        run: cargo build --bin cargo-zisk
 
       - name: Install ZisK rust toolchain
         run: ./target/debug/cargo-zisk toolchain install
 
       - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --all-targets # --all-features
+        run: cargo check --all-targets
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --release
+        run: cargo test --workspace --release
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
@@ -91,12 +84,12 @@ jobs:
         with:
           cache-on-failure: true
 
-      - name: Build cargo-zisk
-        run: cargo build --release -p cargo-zisk --bin cargo-zisk
+      - name: Build cargo-zisk-dev
+        run: cargo build --release -p cargo-zisk --bin cargo-zisk-dev
 
       - name: Generate Solidity calldata fixture
         working-directory: zisk-contracts
-        run: ../target/release/cargo-zisk export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
+        run: ../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
 
       - name: Install JS dependencies
         working-directory: zisk-contracts
@@ -130,7 +123,8 @@ jobs:
 
   test-x86_64:
     name: Test on Ubuntu x86_64
-    runs-on: gpu-hosted
+    runs-on:
+      group: zisk-gpu
     timeout-minutes: 180
     # NOTE: We intentionally use 'docker exec' in individual steps rather than
     # defining a job-level container. The test scripts deploy systemd services

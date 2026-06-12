@@ -7,7 +7,7 @@ use crate::{
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{AsmResources, AsmSharedResources, ZiskExecutor};
+use executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -26,7 +26,8 @@ use std::sync::{
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey, ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey,
+    StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -100,6 +101,7 @@ impl AsmProver {
         options: ProofmanOptions,
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
+        cpu_mops: bool,
     ) -> Result<Self> {
         AsmServices::cleanup_stale_shmem();
         let core_prover = AsmCoreProver::new(
@@ -114,6 +116,7 @@ impl AsmProver {
             options,
             is_distributed,
             logging_config,
+            cpu_mops,
         )?;
         Ok(Self {
             core_prover,
@@ -184,9 +187,11 @@ impl AsmProver {
             return Ok(());
         }
 
-        // Each program has its own shm_prefix (includes program hash), so each needs
-        // its own shmem creation + AsmSharedResources. Previous programs' resources
-        // stay alive in the pool via Arc.
+        // The program hash is carried in the sem_prefix (so the semaphores are
+        // per-program), while the shmem segments are keyed by pid+local_rank only
+        // and are shared/reused across program hashes. Each program still gets its
+        // own AsmSharedResources; previous programs' resources stay alive in the
+        // pool via Arc.
         let asm_services = AsmServices::new(
             world_rank,
             local_rank,
@@ -196,6 +201,17 @@ impl AsmProver {
             asm_runner_options,
         )?;
 
+        // Borrow proofman's already-allocated unified GPU buffer.
+        // Zero values when CUDA is unavailable; downstream consumers no-op on (0, 0).
+        // When --cpu-mops is set, force the planner onto CPU regardless of buffer
+        // availability; proofman still runs proof generation on GPU.
+        let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
+            GpuBufferSource::Cpu
+        } else {
+            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
+            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
+        };
+
         let shared = Arc::new(AsmSharedResources::new(
             local_rank,
             unlock_mapped_memory,
@@ -204,6 +220,7 @@ impl AsmProver {
             init_rom,
             with_hints,
             asm_services.shm_prefix(),
+            gpu_buffer_source,
         )?);
         timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
 
@@ -346,7 +363,6 @@ impl ProverEngine for AsmProver {
                 let output_path = get_output_path(&None)?;
                 generate_assembly(
                     elf.elf(),
-                    elf.name(),
                     &output_path,
                     with_hints,
                     self.core_prover.asm_info.verbose != VerboseMode::Info,
@@ -432,6 +448,22 @@ impl ProverEngine for AsmProver {
             .execution_result()
             .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
+    }
+
+    fn execution_cost_per_type(&self) -> StatsCostPerType {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.cost_per_type)
+            .unwrap_or_default()
+    }
+
+    fn execution_plan(&self) -> Vec<AirInstanceCount> {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.plan)
+            .unwrap_or_default()
     }
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
@@ -584,6 +616,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_vadcop_vk(minimal)
     }
 
+    fn hash(&self) -> Result<String> {
+        self.core_prover.backend.hash()
+    }
+
     fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
         self.core_prover.backend.submit_hint(bytes)
     }
@@ -639,6 +675,7 @@ pub struct AsmInfo {
     pub verbose: VerboseMode,
     pub no_auto_setup: bool,
     pub n_setups: AtomicU64,
+    pub cpu_mops: bool,
 }
 
 pub struct AsmCoreProver {
@@ -661,6 +698,7 @@ impl AsmCoreProver {
         options: ProofmanOptions,
         is_distributed: bool,
         logging_config: Option<LoggingConfig>,
+        cpu_mops: bool,
     ) -> Result<Self> {
         check_paths_exist(&proving_key)?;
         let proofman = ProofMan::new(proving_key.clone(), options.clone())
@@ -717,6 +755,7 @@ impl AsmCoreProver {
                 verbose: options.verbose_mode,
                 no_auto_setup,
                 n_setups: AtomicU64::new(0),
+                cpu_mops,
             },
         })
     }

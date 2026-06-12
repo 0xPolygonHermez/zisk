@@ -7,7 +7,7 @@
 #   - have cargo on PATH
 #
 # Variables this defines (read by callers):
-#   PROOFMAN_DIR    resolved pil2-proofman checkout (env override honored)
+#   PROOFMAN_DIR    resolved pil2-proofman checkout
 #   VERSION         zisk version from Cargo.toml
 #   INCLUDE_PATHS   --include arg for compile-pil
 #
@@ -31,49 +31,32 @@ sha256_hex() {
   fi | awk '{print $1}'
 }
 
-# Resolve the pil2-proofman checkout. PROOFMAN_DIR env wins (handy for local dev
-# against an unpushed branch, and required when proofman is a local path dep).
-# Otherwise read the `proofman` git revision from Cargo.lock and locate cargo's
-# checkout for it — that's the source actually compiled into cargo-zisk, so it's
-# also the one whose package.json must feed the cache key.
+# Resolve the pil2-proofman checkout — always whatever cargo actually compiled
+# into cargo-zisk, so this script can never drift from the build. `cargo metadata`
+# reports proofman's on-disk manifest_path regardless of how it's depended on:
+#   - git dep  => ~/.cargo/git/checkouts/pil2-proofman-<hash>/<short-sha>/proofman
+#   - path dep => the local checkout, e.g. ../pil2-proofman/proofman
+# That points at the `proofman` crate subdir; the checkout root (one level up)
+# is what holds package.json and pil2-components, so strip the crate segment.
 resolve_proofman_dir() {
   cargo fetch >&2
-  # Cargo.lock stores, for a git dep:
-  #   source = "git+<url>?<query>#<full-sha>"
-  # cargo checks the repo out under
-  #   ~/.cargo/git/checkouts/pil2-proofman-<urlhash>/<short-sha>/
-  # where <short-sha> is the first 7 chars of the rev. (No jq / cargo-metadata
-  # JSON — coreutils only.)
-  local src rev short dir
-  src="$(awk '
-    /^\[\[package\]\]/        { p=0 }
-    /^name = "proofman"$/      { p=1 }
-    p && /^source = "git\+/    { print; exit }
-  ' "$ROOT_DIR/Cargo.lock")"
-  if [ -z "$src" ]; then
-    echo "proofman is not a git dependency in $ROOT_DIR/Cargo.lock — set PROOFMAN_DIR to the pil2-proofman checkout" >&2
+  local manifest root
+  manifest="$(cargo metadata --format-version 1 2>/dev/null \
+    | jq -r '.packages[] | select(.name=="proofman") | .manifest_path')"
+  if [ -z "$manifest" ] || [ "$manifest" = "null" ]; then
+    echo "cargo metadata did not report a 'proofman' package — is it in the dependency tree?" >&2
     return 1
   fi
-  rev="${src##*#}"   # strip everything up to the final '#'
-  rev="${rev%\"}"    # strip the trailing quote
-  short="${rev:0:7}"
-  for dir in "$HOME"/.cargo/git/checkouts/pil2-proofman-*/"$short"; do
-    if [ -f "$dir/package.json" ] && [ -d "$dir/pil2-components/lib/std/pil" ]; then
-      printf '%s\n' "$dir"
-      return 0
-    fi
-  done
-  echo "could not locate the pil2-proofman checkout for rev $short under ~/.cargo/git/checkouts/ — set PROOFMAN_DIR to override" >&2
+  root="$(cd "${manifest%/Cargo.toml}/.." && pwd)"
+  if [ -f "$root/package.json" ] && [ -d "$root/pil2-components/lib/std/pil" ]; then
+    printf '%s\n' "$root"
+    return 0
+  fi
+  echo "proofman manifest '$manifest' does not resolve to a pil2-proofman checkout ($root)" >&2
   return 1
 }
 
-if [ -n "${PROOFMAN_DIR:-}" ]; then
-  [ -d "$PROOFMAN_DIR" ] || { echo "PROOFMAN_DIR not a directory: $PROOFMAN_DIR" >&2; exit 1; }
-else
-  PROOFMAN_DIR="$(resolve_proofman_dir)"
-fi
-[ -f "$PROOFMAN_DIR/package.json" ] || { echo "package.json not found at $PROOFMAN_DIR/package.json" >&2; exit 1; }
-[ -d "$PROOFMAN_DIR/pil2-components/lib/std/pil" ] || { echo "pil2-components/lib/std/pil not found at $PROOFMAN_DIR" >&2; exit 1; }
+PROOFMAN_DIR="$(resolve_proofman_dir)" || exit 1
 echo "proofman dir: $PROOFMAN_DIR" >&2
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
@@ -124,19 +107,43 @@ compute_input_hash() (
   [ -n "$pil2_compiler_version" ] || \
     { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
 
-  # pil2-stark-setup is a transitive git dep, not a workspace member. Read its
+  # pil2-stark-setup is a transitive dep, not a workspace member. Prefer its
   # source straight from Cargo.lock: for a git dep that's a stable
   #   source = "git+https://.../pil2-proofman.git?branch=X#<sha>"
   # — the same string on every machine (so the cache key is host-independent).
-  # A local path dep has no `source` line, so this comes back empty and we abort
-  # rather than fall back to a machine-specific path. (No jq / cargo-metadata.)
+  # A local path dep has no `source` line; that case is handled below.
+  # (No jq / cargo-metadata — coreutils only.)
   pil2_stark_setup_source="$(awk '
     /^\[\[package\]\]/                { p=0 }
     /^name = "pil2-stark-setup"$/      { p=1 }
     p && /^source = /                  { sub(/^source = "/, ""); sub(/"$/, ""); print; exit }
   ' "$ROOT_DIR/Cargo.lock")"
-  [ -n "$pil2_stark_setup_source" ] || \
-    { echo "pil2-stark-setup has no git source in $ROOT_DIR/Cargo.lock — is it a local path dep? cache key would be machine-specific. aborting." >&2; exit 1; }
+  if [ -z "$pil2_stark_setup_source" ]; then
+    # No `source` line => local path dep (local dev). The key is necessarily
+    # machine-specific here, which is correct: on a local checkout you're editing
+    # proofman, so the key MUST track those edits or a stale setup gets reused.
+    # Derive it from the checkout's HEAD plus the working-tree state of the
+    # pil2-stark-setup crate, so uncommitted edits bust the cache.
+    local stark_dir head wt
+    stark_dir="$PROOFMAN_DIR/setup/pil2-stark"
+    if git -C "$PROOFMAN_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      head="$(git -C "$PROOFMAN_DIR" rev-parse HEAD 2>/dev/null)"
+      # Hash tracked-but-modified + untracked files under the crate dir. Empty
+      # (clean tree) => stable hash of "", so a clean checkout keys off HEAD alone.
+      wt="$( { git -C "$PROOFMAN_DIR" diff HEAD -- "$stark_dir";
+               git -C "$PROOFMAN_DIR" ls-files --others --exclude-standard -- "$stark_dir" \
+                 | while IFS= read -r f; do printf '== %s ==\n' "$f"; cat "$PROOFMAN_DIR/$f"; done
+             } 2>/dev/null | sha256_hex )"
+      pil2_stark_setup_source="local-path:$head:$wt"
+    else
+      # Not a git checkout — hash the crate's source tree contents. cat the files
+      # in sorted order through one digest so the result is path-stable.
+      wt="$(find "$stark_dir" -type f \( -name '*.rs' -o -name '*.toml' \) \
+        | LC_ALL=C sort | xargs cat 2>/dev/null | sha256_hex)"
+      pil2_stark_setup_source="local-path:$wt"
+    fi
+    echo "pil2-stark-setup is a local path dep — using content-derived cache key ($pil2_stark_setup_source)" >&2
+  fi
 
   echo "hashing $(wc -l < "$pil_list") .pil files + starkstructs.json + ${#fixed_bins[@]} *_fixed.bin + tool refs" >&2
   {

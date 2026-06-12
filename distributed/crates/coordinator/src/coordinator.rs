@@ -56,14 +56,15 @@ use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
 use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
-    JobExecutionMode, JobId, JobPhase, JobState, LaunchProofRequestDto, LaunchProofResponseDto,
-    PhaseTimings, ProofKind, SetupProgramDto, WorkerId, WorkerState,
+    JobExecutionMode, JobId, JobPhase, JobResultData, JobState, LaunchProofRequestDto,
+    LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, StatsCostPerType, WorkerId,
+    WorkerState,
 };
-use zisk_common::{SetupKey, ZiskPaths};
+use zisk_common::{AirInstanceCount, SetupKey, ZiskExecutorTime, ZiskPaths};
 
 struct SetupPendingState {
     pending: HashSet<WorkerId>,
-    vks: Vec<(WorkerId, Vec<u8>)>,
+    vks: Vec<(WorkerId, Vec<u8>, String)>,
     hash_id: String,
     program_name: String,
     with_hints: bool,
@@ -75,6 +76,7 @@ struct SetupPendingState {
 pub(crate) struct ActiveSetup {
     pub program_name: String,
     pub vk: Vec<u8>,
+    pub hash_mode: String,
 }
 
 /// Per-job event channel: live broadcast sender plus a one-slot stash for the
@@ -172,11 +174,67 @@ struct TerminationOutcome {
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
+    let cost = cost_per_type_from_job(job);
     CoordinatorExecutionStats {
         steps: job.executed_steps.unwrap_or(0),
         duration_nanos: job.duration_ms.unwrap_or(0).saturating_mul(1_000_000),
-        ..Default::default()
+        main_cost: cost.main_cost,
+        opcode_cost: cost.opcode_cost,
+        memory_cost: cost.memory_cost,
+        precompile_cost: cost.precompile_cost,
+        tables_cost: cost.tables_cost,
+        other_cost: cost.other_cost,
+        executor_time: executor_time_from_job(job),
+        plan: plan_from_job(job),
     }
+}
+
+/// Extracts the per-AIR instance plan from a job's stored execution result.
+/// Only execute jobs carry a plan (the `Execution` result); prove jobs return empty.
+fn plan_from_job(job: &Job) -> Vec<AirInstanceCount> {
+    job.results
+        .get(&JobPhase::Execution)
+        .and_then(|m| m.values().next())
+        .and_then(|r| match &r.data {
+            JobResultData::Execution(e) => Some(e.plan.clone()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+/// Extracts the per-phase executor timing from a job's stored worker results.
+/// Mirrors [`cost_per_type_from_job`]: Execute-only jobs carry it on the
+/// `Execution` result, prove jobs on the `Challenges` (contributions) result.
+fn executor_time_from_job(job: &Job) -> ZiskExecutorTime {
+    let from_phase = |phase: &JobPhase| {
+        job.results.get(phase).and_then(|m| m.values().next()).and_then(|r| match &r.data {
+            JobResultData::Execution(e) => Some(e.zisk_executor_time.clone()),
+            JobResultData::Challenges(c) => Some(c.zisk_executor_time.clone()),
+            _ => None,
+        })
+    };
+    from_phase(&JobPhase::Execution)
+        .or_else(|| from_phase(&JobPhase::Contributions))
+        .unwrap_or_default()
+}
+
+/// Extracts the per-type execution cost from a job's stored worker results.
+///
+/// Execute-only jobs store the cost on the `Execution` result; prove jobs carry
+/// it on the `Challenges` (contributions) result. The cost reflects the whole
+/// program (computed from full execution stats), so any one worker's result is
+/// representative.
+fn cost_per_type_from_job(job: &Job) -> StatsCostPerType {
+    let from_phase = |phase: &JobPhase| {
+        job.results.get(phase).and_then(|m| m.values().next()).and_then(|r| match &r.data {
+            JobResultData::Execution(e) => Some(e.cost_per_type.clone()),
+            JobResultData::Challenges(c) => Some(c.cost_per_type.clone()),
+            _ => None,
+        })
+    };
+    from_phase(&JobPhase::Execution)
+        .or_else(|| from_phase(&JobPhase::Contributions))
+        .unwrap_or_default()
 }
 
 impl Coordinator {
@@ -394,12 +452,14 @@ impl Coordinator {
             emulator_only,
         )) {
             let vk = setup.vk.clone();
+            let hash_mode = setup.hash_mode.clone();
             self.alloc_job_events(&job_id).await;
             self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
             self.fire_job_event(
                 &job_id,
                 CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                     vk,
+                    hash_mode,
                 }),
             )
             .await;
@@ -1648,6 +1708,8 @@ mod tests {
                         task_received_time: 0.0,
                     },
                     publics: vec![],
+                    cost_per_type: StatsCostPerType::default(),
+                    plan: Vec::new(),
                 },
             )),
             worker_in_recovery: false,
@@ -1971,7 +2033,11 @@ mod tests {
         let cached_vk = vec![0xA, 0xB, 0xC];
         coordinator.active_setups.write().await.insert(
             SetupKey::new(hash_id.to_string(), false, false),
-            ActiveSetup { program_name: "p".into(), vk: cached_vk.clone() },
+            ActiveSetup {
+                program_name: "p".into(),
+                vk: cached_vk.clone(),
+                hash_mode: "Poseidon1".into(),
+            },
         );
 
         // setup_program for the SAME (hash_id, with_hints) must succeed
@@ -1993,6 +2059,7 @@ mod tests {
         match terminal {
             CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                 vk,
+                ..
             }) => {
                 assert_eq!(vk, cached_vk);
             }
@@ -2214,6 +2281,8 @@ mod tests {
                         task_received_time: 0.0,
                     },
                     publics: vec![],
+                    cost_per_type: StatsCostPerType::default(),
+                    plan: Vec::new(),
                 },
             )),
             worker_in_recovery: false,
@@ -2688,6 +2757,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -2842,6 +2912,8 @@ mod tests {
                         task_received_time: 0.0,
                     },
                     publics: vec![],
+                    cost_per_type: StatsCostPerType::default(),
+                    plan: Vec::new(),
                 },
             )),
             worker_in_recovery: false,
@@ -2946,6 +3018,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![0xFF, 0xFF],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -2959,6 +3032,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -2971,6 +3045,7 @@ mod tests {
         match terminal {
             CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                 vk,
+                ..
             }) => {
                 assert_eq!(vk, vec![1, 2, 3]);
             }
@@ -3045,6 +3120,7 @@ mod tests {
                 &setup_job,
                 CoordinatorJobEvent::Completed(crate::job_events::CoordinatorJobResult::Setup {
                     vk: vec![0xAB],
+                    hash_mode: "Poseidon1".into(),
                 }),
             )
             .await;
@@ -3122,6 +3198,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();
@@ -3233,6 +3310,7 @@ mod tests {
                 success: true,
                 error_message: None,
                 vk: vec![1, 2, 3],
+                hash_mode: "Poseidon1".into(),
             })
             .await
             .unwrap();

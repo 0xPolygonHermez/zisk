@@ -19,7 +19,8 @@ use zisk_coordinator::{
 };
 
 use super::{
-    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
+    BackendService, DomainAirInstanceCount, DomainAsmExecution, DomainExecutionStats,
+    DomainExecutorTime, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
     DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
@@ -60,6 +61,7 @@ fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
 }
 
 fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
+    let et = s.executor_time;
     DomainExecutionStats {
         steps: s.steps,
         duration_nanos: s.duration_nanos,
@@ -69,12 +71,30 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
         precompile_cost: s.precompile_cost,
         tables_cost: s.tables_cost,
         other_cost: s.other_cost,
+        executor_time: DomainExecutorTime {
+            total_duration: et.total_duration,
+            execution_duration: et.execution_duration,
+            count_and_plan_duration: et.count_and_plan_duration,
+            count_and_plan_mo_duration: et.count_and_plan_mo_duration,
+            asm: et.asm_execution_duration.map(|a| DomainAsmExecution { time: a.time, mhz: a.mhz }),
+        },
+        plan: s
+            .plan
+            .into_iter()
+            .map(|p| DomainAirInstanceCount {
+                airgroup_id: p.airgroup_id,
+                air_id: p.air_id,
+                count: p.count,
+            })
+            .collect(),
     }
 }
 
 fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> DomainJobKindResponse {
     match result {
-        CoordinatorJobResult::Setup { vk } => DomainJobKindResponse::Setup { vk },
+        CoordinatorJobResult::Setup { vk, hash_mode } => {
+            DomainJobKindResponse::Setup { vk, hash_mode }
+        }
         CoordinatorJobResult::Prove { proof_bytes, stats } => DomainJobKindResponse::Prove {
             proof: make_proof(hash_id.to_string(), proof_bytes),
             stats: coord_stats_to_domain(stats),

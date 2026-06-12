@@ -11,6 +11,10 @@ categories = { workspace = true }
 name = "cargo-zisk"
 path = "src/bin/cargo-zisk.rs"
 
+[[bin]]
+name = "cargo-zisk-dev"
+path = "src/bin/cargo-zisk-dev.rs"
+
 [build-dependencies]
 vergen-git2.workspace = true
 
@@ -18,6 +22,7 @@ vergen-git2.workspace = true
 zisk-common = { workspace = true }
 zisk-build = { workspace = true }
 zisk-prover-backend = { workspace = true }
+zisk-sdk = { workspace = true }
 rom-setup = { workspace = true }
 zisk-pil = { workspace = true }
 
@@ -25,7 +30,6 @@ colored = { workspace = true }
 fields = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
-proofman-util = { workspace = true }
 pil2-stark-setup = { workspace = true }
 sysinfo = { workspace = true }
 tracing = { workspace = true }
@@ -35,6 +39,9 @@ anyhow = { workspace = true }
 hex = { workspace = true }
 rayon = { workspace = true }
 rand = { workspace = true }
+# Not used directly; pins the transitive `time` to =0.3.47 (workspace dep) to
+# avoid the rcgen 0.14.x E0119 coherence bug triggered by time 0.3.48.
+time = { workspace = true }
 
 clap = { workspace = true }
 target-lexicon = "0.13"
@@ -44,9 +51,14 @@ indicatif = "0.17.8"
 futures = { workspace = true }
 yansi = "1.0.1"
 
+[dev-dependencies]
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+
 [features]
 default = []
-cpu-only = ["zisk-build/cpu-only"]
+cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only"]
 diagnostic = ["zisk-prover-backend/diagnostic"]
 custom_rust_llvm = []
 stats = []

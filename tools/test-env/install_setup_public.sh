@@ -31,7 +31,7 @@ main () {
     step "Generating constant tree files..."
     local gpu_flag=""
     [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
-    ensure cargo-zisk check-setup ${gpu_flag} || return 1
+    ensure cargo-zisk-dev check-setup ${gpu_flag} || return 1
 
     step "Deleting downloaded public proving key..."
     rm -rf "${ZISK_SETUP_FILE}"

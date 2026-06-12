@@ -77,8 +77,8 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     airval segment_last_c[RC];         // Last value stored in current instance.
 
     if (stack_enabled) {
-        airval segment_initial_sp;     // Initial value of `sp`, it matches the `sp` value at row 0.
-        airval segment_next_sp;        // The initial `sp` of next instance.
+        airval air.segment_initial_sp;     // Initial value of `sp`, it matches the `sp` value at row 0.
+        airval air.segment_next_sp;        // The initial `sp` of next instance.
     }
 
     // main_last_segment is a boolean value
@@ -480,16 +480,30 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     b_src_reg * (1 - b_src_reg) === 0;
     store_reg * (1 - store_reg) === 0;
 
-    const expr rom_flags = 1 + 2 * a_src_imm + 4 * a_src_mem + 8 * is_precompiled + 16 * b_src_imm
-                           + 32 * b_src_mem + 64 * is_external_op + 128 * store_pc + 256 * store_mem
-                           + 512 * store_ind + 1024 * set_pc + 2048 * m32 + 4096 * b_src_ind
-                           + 8192 * a_src_reg + 16384 * b_src_reg + 32768 * store_reg;
+    expr _flags = 1 + 2 * a_src_imm + 2**2 * a_src_mem + 2**3 * is_precompiled + 2**4 * b_src_imm
+                  + 2**5 * b_src_mem + 2**6 * is_external_op + 2**7 * store_pc + 2**8 * store_mem
+                  + 2**9 * store_ind + 2**10 * set_pc + 2**11 * m32 + 2**12 * b_src_ind
+                  + 2**13 * a_src_reg + 2**14 * b_src_reg + 2**15 * store_reg;
+
+    if (stack_enabled) {
+        a_src_sp * (1 - a_src_sp) === 0;
+        store_use_sp * (1 - store_use_sp) === 0;
+        set_sp * (1 - set_sp) === 0;
+
+        _flags = _flags + 2**20 * a_src_sp + 2**21 * store_use_sp + 2**22 * set_sp;
+    }
+
+    const expr rom_flags = _flags;
 
     // Lookup in ROM to ensure that only program instructions are executed.
 
-    lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
-                                op, store_offset, jmp_offset1, jmp_offset2, rom_flags]);
-
+    if (stack_enabled) {
+        lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_use_sp_imm1, b_offset_imm0, b_use_sp_imm1, ind_width,
+                                    op, store_offset, jmp_offset1, jmp_offset2, inc_sp, rom_flags]);
+    } else {
+        lookup_assumes(ROM_BUS_ID, [pc, a_offset_imm0, a_imm1, b_offset_imm0, b_imm1, ind_width,
+                                    op, store_offset, jmp_offset1, jmp_offset2, rom_flags]);
+    }
     // Continuations between segments, we assume initial state and proves the final state.
 
     // The next segment increments the current segment by one, except for the last segment, which

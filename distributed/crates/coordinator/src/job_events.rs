@@ -1,4 +1,5 @@
 use zisk_cluster_common::JobPhase;
+use zisk_common::{AirInstanceCount, ZiskExecutorTime};
 
 /// Events broadcast on the per-job channel as the job transitions through states.
 #[derive(Debug, Clone)]
@@ -15,7 +16,7 @@ pub enum CoordinatorJobEvent {
 /// The result payload carried by a `Completed` event.
 #[derive(Debug, Clone)]
 pub enum CoordinatorJobResult {
-    Setup { vk: Vec<u8> },
+    Setup { vk: Vec<u8>, hash_mode: String },
     Prove { proof_bytes: Vec<u8>, stats: CoordinatorExecutionStats },
     Execute { stats: CoordinatorExecutionStats, public_outputs: Vec<u8> },
     Wrap { proof_bytes: Vec<u8> },
@@ -32,4 +33,6 @@ pub struct CoordinatorExecutionStats {
     pub precompile_cost: u64,
     pub tables_cost: u64,
     pub other_cost: u64,
+    pub executor_time: ZiskExecutorTime,
+    pub plan: Vec<AirInstanceCount>,
 }

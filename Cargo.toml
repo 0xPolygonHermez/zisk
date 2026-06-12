@@ -9,8 +9,8 @@ categories = ["cryptography"]
 [workspace.metadata]
 gha_package_setup_version = "pre-develop-1.0.0-beta"
 gha_zisk_testvectors_branch = "develop-0.3.0"
-gha_zisk_ethproofs_branch = "develop-0.10.0"
-gha_zisk_eth_client_branch = "develop-0.10.0"
+gha_zisk_ethproofs_branch = "pre-develop-1.0.0-beta"
+gha_zisk_eth_client_branch = "pre-develop-1.0.0-beta"
 gha_zisk_template_branch = "pre-develop-1.0.0-beta"
 
 [workspace]
@@ -23,6 +23,7 @@ members = [
   "executor",
   "pil",
   "prover-backend",
+  "prover-backend/macros",
   "riscv",
   "rom-setup",
   "state-machines/arith",
@@ -46,7 +47,7 @@ members = [
   "precompiles/blake2",
   "precompiles/big_int",
   "precompiles/dma",
-  "precompiles/poseidon2",
+  "precompiles/poseidon",
   "lib-c",
   "lib-float",
   "emulator-asm/asm-runner",
@@ -96,7 +97,7 @@ precompiles-helpers = { path = "precompiles/helpers" }
 precomp-keccakf = { path = "precompiles/keccakf" }
 precomp-sha256f = { path = "precompiles/sha256f" }
 precomp-blake2 = { path = "precompiles/blake2" }
-precomp-poseidon2 = { path = "precompiles/poseidon2" }
+precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
 riscv = { path = "riscv" }
@@ -141,7 +142,6 @@ pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", br
 witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
- 
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
@@ -223,3 +223,8 @@ reqwest = { version = "0.12", features = [
   "rustls-tls",
 ], default-features = false }
 vergen-git2 = { version = "9", default-features = false, features = ["build"] }
+env = "1.0.1"
+# Pin: time 0.3.48 triggers a rustc E0119 coherence false-positive when built
+# alongside rcgen 0.14.x. 0.3.47 is the newest version that satisfies
+# vergen-git2's `time ^0.3.45` and avoids the bug. Consumed by cli (workspace=true).
+time = "=0.3.47"

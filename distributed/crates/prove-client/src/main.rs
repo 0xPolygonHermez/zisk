@@ -349,13 +349,13 @@ async fn main() -> Result<()> {
     match &cli.command {
         Commands::Register { elf } => {
             let (hash_id, _) = register_elf(&client, elf)?;
-            println!("Register completed. hash_id: {hash_id}");
+            println!("Register completed. Hash ID: {hash_id}");
         }
 
         Commands::Setup { elf, with_hints, emulator_only } => {
             let (hash_id, program_name) = register_elf(&client, elf)?;
             run_setup(&client, &hash_id, program_name, *with_hints, *emulator_only)?;
-            println!("Setup completed for hash_id: {hash_id}");
+            println!("Setup completed for Hash ID: {hash_id}");
         }
 
         Commands::Prove { hash_id, input, hints, proof, output, timeout } => {

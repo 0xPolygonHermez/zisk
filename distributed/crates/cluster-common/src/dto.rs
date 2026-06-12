@@ -22,7 +22,9 @@ pub enum InputsModeDto {
     InputsStream(String),
 }
 
+pub use zisk_common::AirInstanceCount;
 pub use zisk_common::ProofKind;
+pub use zisk_common::StatsCostPerType;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HintsModeDto {
@@ -242,6 +244,8 @@ pub struct ExecutionResultDataDto {
     pub executed_steps: u64,
     pub zisk_executor_time: ZiskExecutorTimeDto,
     pub publics: Vec<u64>,
+    pub cost_per_type: StatsCostPerType,
+    pub plan: Vec<AirInstanceCount>,
 }
 
 pub struct AggParamsDto {
@@ -278,6 +282,7 @@ pub struct ContributionsResultDataDto {
     pub challenges: Vec<ChallengesDto>,
     pub witness_info: WitnessInfoDto,
     pub zisk_executor_time: ZiskExecutorTimeDto,
+    pub cost_per_type: StatsCostPerType,
 }
 
 pub enum ExecuteTaskResponseResultDataDto {
@@ -303,6 +308,7 @@ pub struct SetupProgramAckDto {
     pub success: bool,
     pub error_message: Option<String>,
     pub vk: Vec<u8>,
+    pub hash_mode: String,
 }
 
 pub struct WorkerErrorDto {

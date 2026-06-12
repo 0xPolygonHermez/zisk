@@ -34,12 +34,12 @@
 #   - state-machines/starkstructs.json
 #   - the three *_fixed.bin files written by the frops generators
 #   - pil2-compiler dep ref from ${PROOFMAN_DIR}/package.json
-#   - pil2-stark-setup source string from Cargo.lock
+#   - pil2-stark-setup ref: its git source string from Cargo.lock, or — when
+#     proofman is a local path dep — a content key from the local checkout
 #
-# Env vars
-#   PROOFMAN_DIR    override path to a pil2-proofman checkout. By default the
-#                   checkout cargo fetched for the git dep in Cargo.toml is used
-#                   (~/.cargo/git/checkouts/pil2-proofman-*/<rev>/).
+# The pil2-proofman checkout is resolved from `cargo metadata` — whatever cargo
+# compiled into cargo-zisk-dev, be it the git dep's checkout under
+# ~/.cargo/git/checkouts/ or a local path dep. No env var, nothing to keep in sync.
 
 set -euo pipefail
 
@@ -98,6 +98,7 @@ CACHE_ENTRY=""
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
+HASH="${HASH:-Poseidon1}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 
@@ -115,6 +116,7 @@ while [ $# -gt 0 ]; do
     --cache-dir)         CACHE_DIR="$2";          shift 2 ;;
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
+    --hash)              HASH="$2";               shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
@@ -158,36 +160,6 @@ cd "$ROOT_DIR"
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
-# node/npm are only needed to run compile-pil (pil2com) and setup-snark (snarkjs),
-# both from $PROOFMAN_DIR/node_modules. Set them up lazily — a --cache-dir hit or
-# --skip-compile-pil never compiles or snarks, so it must not require node at all.
-NODE_DEPS_READY=0
-ensure_node_deps() {
-  [ "$NODE_DEPS_READY" -eq 1 ] && return 0
-  # compile-pil resolves pil2com via PIL2C_EXEC, then ./node_modules/.bin (cwd), then
-  # walks up from the binary, then PATH. None of those reach the cargo git checkout,
-  # so point it at the binary explicitly.
-  local pil2c="$PROOFMAN_DIR/node_modules/.bin/pil2com"
-  local snarkjs="$PROOFMAN_DIR/node_modules/snarkjs"
-
-  # Reinstall from a clean tree so a partial or stale node_modules can't yield a
-  # missing pil2com/snarkjs. The NODE_DEPS_READY guard caps this at one run per invocation.
-  command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler in $PROOFMAN_DIR)" >&2; exit 1; }
-  rm -rf "$PROOFMAN_DIR/node_modules"
-  echo "==> npm install in $PROOFMAN_DIR"
-  (cd "$PROOFMAN_DIR" && npm install)
-
-  [ -x "$pil2c" ] || [ -L "$pil2c" ] \
-    || { echo "pil2com missing at $pil2c after npm install" >&2; exit 1; }
-  export PIL2C_EXEC="$pil2c"
-
-  [ -d "$snarkjs" ] \
-    || { echo "snarkjs missing at $snarkjs after npm install" >&2; exit 1; }
-  export SNARKJS_PATH="$snarkjs"
-
-  NODE_DEPS_READY=1
-}
-
 echo "version: $VERSION  mode: $MODE" >&2
 
 run_compile_pil() {
@@ -196,12 +168,11 @@ run_compile_pil() {
     echo "==> compile-pil (SKIPPED — reusing pil/zisk.pilout and existing pil_helpers)"
     return
   fi
-  ensure_node_deps
   echo "==> compile-pil"
   # --no-proto-fixed-data keeps fixed-column values out of the pilout protobuf
   # (they live on disk under tmp/fixed/ via --fixed-dir + --fixed-to-file). Avoids
   # the ~115 GB V8 heap peak on Keccakf-scale PILs.
-  cargo run --release -p cargo-zisk -- proofman-setup compile-pil \
+  cargo run --release --bin cargo-zisk-dev -- proofman-setup compile-pil \
     --pil pil/zisk.pil \
     --include "$INCLUDE_PATHS" \
     --output pil/zisk.pilout \
@@ -219,7 +190,7 @@ run_compile_pil() {
 # overwrites the existing pil_helpers/ directory (it's always present in tree).
 run_pil_helpers() {
   echo "==> pil-helpers (regenerating pil/src/pil_helpers/traces.rs)"
-  cargo run --release --manifest-path "$PROOFMAN_DIR/Cargo.toml" -p proofman-cli -- \
+  cargo run --release --manifest-path "$PROOFMAN_DIR/Cargo.toml" --bin proofman-cli -- \
     pil-helpers \
       --pilout pil/zisk.pilout \
       --path pil/src \
@@ -241,7 +212,7 @@ case "$MODE" in
     generate_frops
     run_compile_pil
     echo "==> proofman-setup stats"
-    cargo run --release -p cargo-zisk -- proofman-setup stats \
+    cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
       --airout pil/zisk.pilout \
       --starkstructs state-machines/starkstructs.json \
       -o tmp/stats.txt \
@@ -261,12 +232,17 @@ case "$MODE" in
     PUBLICS_INFO="state-machines/publics.json"
     [ -f "$PUBLICS_INFO" ] || { echo "missing $PUBLICS_INFO — final.circom needs publics layout (nPublics, chunks, hasProgramVK)" >&2; exit 1; }
 
-    PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_27.ptau}"
-    [ -f "$PTAU_PATH" ] || { echo "missing $PTAU_PATH — set PTAU_PATH=/path/to/ptau if elsewhere" >&2; exit 1; }
+    PTAU_PATH="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
+    if [ ! -f "$PTAU_PATH" ]; then
+      echo "missing powers-of-tau file: $PTAU_PATH" >&2
+      echo "download it (~18 GB) into the parent folder of the repo with:" >&2
+      echo "  (cd .. && curl -L -O https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau)" >&2
+      echo "or point PTAU_PATH=/path/to/ptau at an existing copy." >&2
+      exit 1
+    fi
 
-    ensure_node_deps   # setup-snark needs snarkjs
     echo "==> proofman-setup setup-snark"
-    cargo run --release -p cargo-zisk -- proofman-setup setup-snark \
+    cargo run --release --bin cargo-zisk-dev -- proofman-setup setup-snark \
       --build-dir "$BUILD_DIR" \
       --publics-info "$PUBLICS_INFO" \
       --powers-of-tau "$PTAU_PATH"
@@ -277,9 +253,8 @@ case "$MODE" in
 
   compressed_final)
     [ -d "$BUILD_DIR/provingKey" ] || { echo "$BUILD_DIR/provingKey not found — run setup --recursive first" >&2; exit 1; }
-    ensure_node_deps
     echo "==> proofman-setup setup-compressed-final"
-    cargo run --release -p cargo-zisk -- proofman-setup setup-compressed-final --build-dir "$BUILD_DIR"
+    cargo run --release --bin cargo-zisk-dev -- proofman-setup setup-compressed-final --build-dir "$BUILD_DIR"
     echo "done. vadcop_final_compressed/ regenerated under $BUILD_DIR/provingKey/"
     echo "to repackage the updated provingKey/: (cd tools/test-env && ./package_setup.sh)"
     exit 0
@@ -343,11 +318,12 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   [ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
 
   rm -rf "$BUILD_DIR/provingKey"
-  cargo run --release -p cargo-zisk -- proofman-setup setup \
+  cargo run --release --bin cargo-zisk-dev -- proofman-setup setup \
     --airout pil/zisk.pilout \
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
     --stark-structs state-machines/starkstructs.json \
+    --hash "$HASH" \
     ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
     ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}
 

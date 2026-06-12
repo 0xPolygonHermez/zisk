@@ -11,7 +11,10 @@ use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{
+    AirInstanceCount, ProgramVK, Proof, ProofKind, SetupKey, StatsCostPerType, ZiskExecutorTime,
+    ZiskPaths,
+};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
@@ -83,14 +86,23 @@ pub enum ComputationResult {
     Execution {
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64)>, // (witness_info, exec_time, instances, executed_steps)
+        #[allow(clippy::type_complexity)]
+        result: Result<(
+            WitnessInfo,
+            ZiskExecutorTime,
+            u64,
+            u64,
+            StatsCostPerType,
+            Vec<AirInstanceCount>,
+        )>, // (witness_info, exec_time, instances, executed_steps, cost_per_type, plan)
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     /// Partial contribution with challenges
     Contribution {
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
+        result:
+            Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64, StatsCostPerType)>,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     Proofs {
@@ -110,7 +122,12 @@ pub enum ComputationResult {
 
 /// Events driving the worker event loop. Compute results and recovery
 /// completions share one channel — same lifetime, single source of truth.
+///
+/// `Computation` is intentionally large (it carries the full witness payload);
+/// boxing it would add a heap allocation per event through the hot loop channel
+/// for no benefit, so the size disparity with `RecoveryComplete` is accepted.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum LoopEvent {
     Computation(ComputationResult),
     RecoveryComplete(zisk_cluster_api::WorkerRecoveryComplete),
@@ -478,6 +495,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.get_vadcop_vk(minimal)
     }
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    pub fn hash(&self) -> Result<String> {
+        self.prover.hash()
+    }
+
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
         self.prover.clone()
     }
@@ -737,6 +759,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
                     let instances = witness_info.total_instances as u64;
+                    let cost_per_type = prover.execution_cost_per_type();
 
                     let mut guard = job.blocking_lock();
                     guard.instances = instances;
@@ -747,7 +770,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         Ok(data) => ComputationResult::Contribution {
                             job_id: job_id.clone(),
                             success: true,
-                            result: Ok((witness_info, zisk_execution_time, data, instances)),
+                            result: Ok((
+                                witness_info,
+                                zisk_execution_time,
+                                data,
+                                instances,
+                                cost_per_type,
+                            )),
                             task_received_time,
                         },
                         Err(error) => {
@@ -835,6 +864,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         Ok((num_instances, publics)) => {
                             let instances = num_instances as u64;
                             let executed_steps = prover.executed_steps();
+                            let cost_per_type = prover.execution_cost_per_type();
+                            let plan = prover.execution_plan();
                             job.blocking_lock().instances = instances;
 
                             // witness_info.publics is empty in execution-only mode (no witness
@@ -845,7 +876,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             ComputationResult::Execution {
                                 job_id: job_id.clone(),
                                 success: true,
-                                result: Ok((wi, zisk_execution_time, instances, executed_steps)),
+                                result: Ok((
+                                    wi,
+                                    zisk_execution_time,
+                                    instances,
+                                    executed_steps,
+                                    cost_per_type,
+                                    plan,
+                                )),
                                 task_received_time,
                             }
                         }

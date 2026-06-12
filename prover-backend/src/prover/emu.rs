@@ -20,7 +20,8 @@ use std::sync::{Arc, RwLock};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
-    io::ZiskStdin, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, ZiskExecutorTime,
+    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues,
+    StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
 
@@ -139,6 +140,22 @@ impl ProverEngine for EmuProver {
             .execution_result()
             .map(|(exec_result, _)| exec_result.steps)
             .unwrap_or(0)
+    }
+
+    fn execution_cost_per_type(&self) -> StatsCostPerType {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.cost_per_type)
+            .unwrap_or_default()
+    }
+
+    fn execution_plan(&self) -> Vec<AirInstanceCount> {
+        self.core_prover
+            .backend
+            .execution_result()
+            .map(|(exec_result, _)| exec_result.plan)
+            .unwrap_or_default()
     }
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
@@ -267,6 +284,10 @@ impl ProverEngine for EmuProver {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
+    }
+
+    fn hash(&self) -> Result<String> {
+        self.core_prover.backend.hash()
     }
 
     fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {

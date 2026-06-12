@@ -43,6 +43,30 @@ impl EmbeddedClient {
         Ok(JobHandle::new_embedded(handle, subs, timeout))
     }
 
+    /// Wrap/convert a proof synchronously on the calling thread.
+    ///
+    /// Unlike [`do_wrap`](Self::do_wrap), this performs no `spawn_blocking`
+    /// and returns the result directly, so it requires no async runtime.
+    pub(crate) fn do_wrap_sync(
+        &self,
+        proof: &Proof,
+        proof_kind: ProofKind,
+        override_publics: Option<PublicValues>,
+        override_program_vk: Option<ProgramVK>,
+        subs: SubscriberList,
+    ) -> Result<ProveResult> {
+        fire_event(&subs, JobEvent::Started);
+        let result = Self::do_wrap_inner(
+            self.prover.clone(),
+            proof,
+            proof_kind,
+            override_publics.as_ref(),
+            override_program_vk.as_ref(),
+        );
+        fire_result_event(&subs, &result);
+        result
+    }
+
     fn do_wrap_inner(
         prover: Arc<EmbeddedProver>,
         proof: &Proof,

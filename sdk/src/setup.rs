@@ -2,12 +2,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::Result;
-use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path};
+use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
 use zisk_coordinator_api::dto::{DomainJobKindResponse, TerminalStatus};
 use zisk_prover_backend::GuestProgram;
 
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
-use crate::Client;
+use crate::{Client, ClientSync};
 
 pub struct SetupResult {
     pub job_id: Option<JobId>,
@@ -89,14 +89,35 @@ impl<'a, C: Client> SetupRequest<'a, C> {
         let hash_id = self.program.program_id.hash_id.to_string();
         let output_dir = self.output_dir.clone();
         handle.set_pre_process(move |status: &TerminalStatus| {
-            if let TerminalStatus::Completed(DomainJobKindResponse::Setup { vk }) = status {
+            if let TerminalStatus::Completed(DomainJobKindResponse::Setup { vk, hash_mode }) =
+                status
+            {
+                // The hash mode is dictated by the worker's proving key, not the
+                // client; use the authoritative value returned with the setup to
+                // name the verkey artifact.
+                let hash_mode = hash_mode.parse::<HashMode>()?;
                 let output_path = get_output_path(&output_dir)?;
-                let path = get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path)?;
+                let path =
+                    get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path, hash_mode)?;
                 std::fs::write(&path, vk)?;
             }
             Ok(())
         });
 
         Ok(handle)
+    }
+}
+
+#[allow(private_bounds)]
+impl<'a, C: ClientSync> SetupRequest<'a, C> {
+    /// Run ROM setup synchronously, returning the result directly.
+    ///
+    /// Unlike [`run`](Self::run), this drives the work on the calling thread and
+    /// requires no async runtime — use it when embedding the SDK in a
+    /// synchronous program. Available only for clients that implement
+    /// [`ClientSync`] (the embedded client).
+    pub fn run_sync(self) -> Result<SetupResult> {
+        let subs = new_subscriber_list();
+        self.client.run_setup_sync(self.program, self.with_hints, self.emulator_only, subs)
     }
 }

@@ -1,11 +1,11 @@
 //! HintsShmem is responsible for writing precompile processed hints to shared memory.
 //!
 //! It implements the HintsSink trait to receive processed hints and write them to shared memory
-//! using SharedMemoryWriter instances.
+//! using ShmemWriter instances.
 
 use crate::{
-    sem_available_name, sem_read_name, shmem_control_reader_name, shmem_precompile_name,
-    AsmService, AsmServices, ControlShmem, SharedMemoryReader, SharedMemoryWriter,
+    sem_prec_available_name, sem_prec_read_name, shmem_control_output_name, shmem_precompile_name,
+    AsmService, AsmServices, ControlShmem, ShmemReader, ShmemWriter,
 };
 use anyhow::Result;
 use named_sem::NamedSemaphore;
@@ -21,21 +21,15 @@ use zisk_common::io::StreamSink;
 /// `submit` (slowest-consumer wait); the C side resets it to 0 itself
 /// in `server_reset_fast()` after every emulation.
 struct SeparateShm {
-    control_reader: SharedMemoryReader,
+    control_reader: ShmemReader,
 }
 
-// SAFETY: serialised by the enclosing `Mutex<Vec<SeparateShm>>`.
-unsafe impl Send for SeparateShm {}
-unsafe impl Sync for SeparateShm {}
-
 impl SeparateShm {
+    /// Opens and maps the control shared memory for a specific service.
     pub fn new(shm_prefix: &str, service: AsmService) -> Result<Self> {
-        let name = shmem_control_reader_name(shm_prefix, service);
+        let name = shmem_control_output_name(shm_prefix, service);
         Ok(Self {
-            control_reader: SharedMemoryReader::new(
-                &name,
-                HintsShmem::CONTROL_PRECOMPILE_SIZE as usize,
-            )?,
+            control_reader: ShmemReader::new(&name, HintsShmem::CONTROL_PRECOMPILE_SIZE as usize)?,
         })
     }
 }
@@ -58,12 +52,8 @@ struct UnifiedResources {
     control_writer: Arc<ControlShmem>,
     /// One data writer per service — each C service has its own precompile shmem segment,
     /// so Rust writes the same hint data to all of them to keep them in sync.
-    data_writer: SharedMemoryWriter,
+    data_writer: ShmemWriter,
 }
-
-// SAFETY: writes are serialized by the enclosing `Mutex<UnifiedResources>`.
-unsafe impl Send for UnifiedResources {}
-unsafe impl Sync for UnifiedResources {}
 
 /// HintsShmem struct manages the writing of processed precompile hints to shared memory.
 pub struct HintsShmem {
@@ -91,7 +81,7 @@ impl HintsShmem {
     ) -> Result<Self> {
         // Create unified resources (single data buffer and control writer)
         let unified = Self::create_unified(shm_prefix, unlock_mapped_memory, control_writer)?;
-        unified.control_writer.reset();
+        unified.control_writer.reset()?;
 
         // Create separate resources
         let separate_shm = AsmServices::SERVICES
@@ -113,8 +103,8 @@ impl HintsShmem {
         let sems = AsmServices::SERVICES
             .iter()
             .map(|service| {
-                let avail_name = sem_available_name(sem_prefix, *service);
-                let read_name = sem_read_name(sem_prefix, *service);
+                let avail_name = sem_prec_available_name(sem_prefix, *service);
+                let read_name = sem_prec_read_name(sem_prefix, *service);
                 Ok(SeparateSem {
                     sem_available: NamedSemaphore::create(&avail_name, 0).map_err(|e| {
                         anyhow::anyhow!("Failed to create semaphore '{}': {}", avail_name, e)
@@ -155,11 +145,8 @@ impl HintsShmem {
         debug!("Initializing unified resources for precompile hints");
 
         let name = shmem_precompile_name(shm_prefix);
-        let data_writer = SharedMemoryWriter::new(
-            &name,
-            Self::MAX_PRECOMPILE_SIZE as usize,
-            unlock_mapped_memory,
-        )?;
+        let data_writer =
+            ShmemWriter::new(&name, Self::MAX_PRECOMPILE_SIZE as usize, unlock_mapped_memory)?;
 
         Ok(UnifiedResources { control_writer, data_writer })
     }
@@ -256,7 +243,7 @@ impl StreamSink for HintsShmem {
         fence(Ordering::Release);
 
         // Update write position ONCE in control memory
-        unified.control_writer.set_prec_hints_size(write_pos + data_size);
+        unified.control_writer.set_prec_hints_size(write_pos + data_size)?;
 
         fence(Ordering::Release);
 
@@ -270,7 +257,9 @@ impl StreamSink for HintsShmem {
 
     fn reset(&self) {
         let mut unified = self.unified.lock().expect("unified mutex poisoned");
-        unified.control_writer.reset();
+        if let Err(e) = unified.control_writer.reset() {
+            tracing::error!("HintsShmem::reset: control flush failed: {e}");
+        }
         unified.data_writer.reset();
 
         // Drain any leftover semaphore counts from the previous run.

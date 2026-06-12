@@ -41,6 +41,27 @@ impl EmbeddedClient {
         Ok(JobHandle::new_embedded(handle, subs, timeout))
     }
 
+    /// Run proof generation synchronously on the calling thread.
+    ///
+    /// Unlike [`do_prove`](Self::do_prove), this performs no `spawn_blocking`
+    /// and returns the result directly, so it requires no async runtime.
+    /// Registered event callbacks fire synchronously during the call.
+    pub(crate) fn do_prove_sync(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        proof_kind: ProofKind,
+        subs: SubscriberList,
+    ) -> Result<ProveResult> {
+        fire_event(&subs, JobEvent::Started);
+        let result =
+            Self::do_prove_inner(self.prover.clone(), program, stdin, hints, executor, proof_kind);
+        fire_result_event(&subs, &result);
+        result
+    }
+
     fn do_prove_inner(
         prover: Arc<EmbeddedProver>,
         program: &GuestProgram,

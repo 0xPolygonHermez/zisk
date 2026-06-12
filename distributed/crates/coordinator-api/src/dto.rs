@@ -137,11 +137,38 @@ pub struct DomainExecutionStats {
     pub precompile_cost: u64,
     pub tables_cost: u64,
     pub other_cost: u64,
+    pub executor_time: DomainExecutorTime,
+    /// Per-AIR instance plan (execute jobs only; empty otherwise).
+    pub plan: Vec<DomainAirInstanceCount>,
+}
+
+/// Per-AIR planned instance count; the AIR name is derived from the ids by the consumer.
+#[derive(Debug, Clone, Default)]
+pub struct DomainAirInstanceCount {
+    pub airgroup_id: usize,
+    pub air_id: usize,
+    pub count: u64,
+}
+
+/// Per-phase executor timing breakdown (milliseconds).
+#[derive(Debug, Clone, Default)]
+pub struct DomainExecutorTime {
+    pub total_duration: u64,
+    pub execution_duration: u64,
+    pub count_and_plan_duration: u64,
+    pub count_and_plan_mo_duration: u64,
+    pub asm: Option<DomainAsmExecution>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainAsmExecution {
+    pub time: f32,
+    pub mhz: f32,
 }
 
 #[derive(Debug, Clone)]
 pub enum DomainJobKindResponse {
-    Setup { vk: Vec<u8> },
+    Setup { vk: Vec<u8>, hash_mode: String },
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },
@@ -172,6 +199,9 @@ pub enum DomainJobFailure {
     Cancelled,
 }
 
+// The `Completed` variant is inherently large (it carries proofs + full execution
+// stats); boxing it would add indirection to the common terminal path for no real gain.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum DomainJobEvent {
     Queued(DomainJobEventQueued),
@@ -229,6 +259,9 @@ pub struct DomainJobEventFailed {
 }
 
 /// The terminal outcome of a job once it has reached a final state.
+// `Completed` is inherently large (proofs + full execution stats); boxing it would add
+// indirection to the common path for no real gain.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum TerminalStatus {
     Completed(DomainJobKindResponse),
