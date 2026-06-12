@@ -186,7 +186,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
-    use zisk_common::io::BytesPushSender;
+    use zisk_common::io::{BytesPushSender, StreamError};
 
     // ── Test helpers ────────────────────────────────────────────────────
 
@@ -219,13 +219,10 @@ mod tests {
     /// A no-op push sender used to mark a gRPC stream live without a real RPC.
     struct NoopPushSender;
     impl BytesPushSender for NoopPushSender {
-        // `BytesPushSender` is defined in an upstream crate and returns
-        // `anyhow::Result`, so these impls must name `anyhow` explicitly
-        // (it is a dev-dependency of the SDK for exactly this reason).
-        fn send_blocking(&self, _data: Vec<u8>) -> anyhow::Result<()> {
+        fn send_blocking(&self, _data: Vec<u8>) -> Result<(), StreamError> {
             Ok(())
         }
-        fn close_blocking(self: Box<Self>) -> anyhow::Result<()> {
+        fn close_blocking(self: Box<Self>) -> Result<(), StreamError> {
             Ok(())
         }
     }
@@ -233,11 +230,11 @@ mod tests {
     /// A push sender that records every chunk it receives.
     struct RecordingSender(Arc<Mutex<Vec<Vec<u8>>>>);
     impl BytesPushSender for RecordingSender {
-        fn send_blocking(&self, data: Vec<u8>) -> anyhow::Result<()> {
+        fn send_blocking(&self, data: Vec<u8>) -> Result<(), StreamError> {
             self.0.lock().unwrap().push(data);
             Ok(())
         }
-        fn close_blocking(self: Box<Self>) -> anyhow::Result<()> {
+        fn close_blocking(self: Box<Self>) -> Result<(), StreamError> {
             Ok(())
         }
     }

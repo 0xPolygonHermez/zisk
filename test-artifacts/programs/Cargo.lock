@@ -6738,7 +6738,6 @@ dependencies = [
 name = "zisk-stream"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
  "libc",
  "quinn",
  "rcgen",

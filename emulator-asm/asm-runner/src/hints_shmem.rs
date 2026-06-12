@@ -14,7 +14,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use tracing::debug;
-use zisk_common::io::StreamSink;
+use zisk_common::io::{StreamError, StreamSink};
 
 /// Per-service control-output shmem (the C side's
 /// `precompile_read_address`). Read by the parent for flow control in
@@ -165,7 +165,7 @@ impl StreamSink for HintsShmem {
     /// * `Ok(())` - If hints were successfully written to shared memory
     /// * `Err` - If writing to shared memory fails
     #[inline]
-    fn submit(&self, processed: &[u64]) -> anyhow::Result<()> {
+    fn submit(&self, processed: &[u64]) -> Result<(), StreamError> {
         let data_size = processed.len() as u64;
 
         if data_size == 0 {
@@ -174,11 +174,11 @@ impl StreamSink for HintsShmem {
 
         // Validate data size fits in buffer
         if data_size > Self::BUFFER_CAPACITY_U64 {
-            return Err(anyhow::anyhow!(
+            return Err(StreamError::Invalid(format!(
                 "Processed data size ({} u64 elements) exceeds buffer capacity ({} u64 elements)",
                 data_size,
                 Self::BUFFER_CAPACITY_U64
-            ));
+            )));
         }
 
         let mut unified = self.unified.lock().expect("unified mutex poisoned");
@@ -243,13 +243,16 @@ impl StreamSink for HintsShmem {
         fence(Ordering::Release);
 
         // Update write position ONCE in control memory
-        unified.control_writer.set_prec_hints_size(write_pos + data_size)?;
+        unified
+            .control_writer
+            .set_prec_hints_size(write_pos + data_size)
+            .map_err(StreamError::other)?;
 
         fence(Ordering::Release);
 
         // Notify ALL consumers that new data is available
         for res in &mut separate_sem[0..active] {
-            res.sem_available.post()?;
+            res.sem_available.post().map_err(StreamError::other)?;
         }
 
         Ok(())

@@ -4,7 +4,7 @@ use crate::{
     ChannelStreamReader, FileStreamReader, MemoryStreamReader, StreamRead, UnixSocketStreamReader,
 };
 
-use anyhow::Result;
+use crate::error::{Result, StreamError};
 
 pub enum StreamSource {
     File(FileStreamReader),
@@ -73,9 +73,11 @@ impl StreamSource {
                 "file" => Self::from_file(path),
                 "unix" => Self::from_unix_socket(path),
                 #[cfg(feature = "quic")]
-                "quic" => Self::from_quic(path.parse()?),
+                "quic" => Self::from_quic(path.parse().map_err(|e| {
+                    StreamError::Invalid(format!("invalid QUIC socket address '{path}': {e}"))
+                })?),
                 // Unknown scheme - could error or fallback
-                _ => Err(anyhow::anyhow!("Unknown stream source scheme: {}", scheme)),
+                _ => Err(StreamError::UnknownScheme(scheme.to_string())),
             }
         } else {
             // No "://" found - fallback as a file path

@@ -70,20 +70,11 @@ mod tests {
 
     #[test]
     fn backend_wraps_into_backend_variant_and_is_transparent() {
-        let io = std::io::Error::new(std::io::ErrorKind::Other, "disk on fire");
+        let io = std::io::Error::other("disk on fire");
         let err = SdkError::backend(io);
         assert!(matches!(err, SdkError::Backend(_)));
         // `#[error(transparent)]` delegates Display straight to the wrapped error.
         assert_eq!(err.to_string(), "disk on fire");
-    }
-
-    #[test]
-    fn backend_accepts_anyhow_without_the_sdk_naming_it_in_a_signature() {
-        // `anyhow` is a dev-dependency; this mirrors the real boundary where
-        // `.map_err(SdkError::backend)` converts an `anyhow::Error`.
-        let err = SdkError::backend(anyhow::anyhow!("upstream {}", "boom"));
-        assert!(matches!(err, SdkError::Backend(_)));
-        assert_eq!(err.to_string(), "upstream boom");
     }
 
     #[test]

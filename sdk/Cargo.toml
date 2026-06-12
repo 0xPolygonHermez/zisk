@@ -30,7 +30,6 @@ rom-setup = { workspace = true }
 
 [dev-dependencies]
 test-artifacts = { workspace = true }
-anyhow = { workspace = true }
 
 [features]
 default = []

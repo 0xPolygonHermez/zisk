@@ -5,7 +5,7 @@
 use crate::{AsmService, ControlShmem};
 use anyhow::Result;
 use std::sync::Arc;
-use zisk_common::io::StreamSink;
+use zisk_common::io::{StreamError, StreamSink};
 
 pub struct HintsShmem;
 
@@ -41,7 +41,7 @@ impl HintsShmem {
 }
 
 impl StreamSink for HintsShmem {
-    fn submit(&self, _processed: &[u64]) -> anyhow::Result<()> {
+    fn submit(&self, _processed: &[u64]) -> Result<(), StreamError> {
         unreachable!(
             "HintsShmem::submit() is not supported on this platform. Only Linux x86_64 is supported."
         );

@@ -12,7 +12,6 @@ name = "zisk_stream"
 path = "src/lib.rs"
 
 [dependencies]
-anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

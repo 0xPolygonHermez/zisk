@@ -1,6 +1,6 @@
 //! ZiskStream is responsible for reading precompile hints from a stream source and sent to a hints processor.
 
-use anyhow::Result;
+use crate::error::{Result, StreamError};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
@@ -13,7 +13,7 @@ pub trait StreamProcessor: Send + Sync + 'static {
     ///
     /// # Returns
     /// `true` if CTRL_END was encountered (signals end of stream), `false` otherwise.
-    fn process_hints(&self, data: &[u64], first_batch: bool) -> anyhow::Result<bool>;
+    fn process_hints(&self, data: &[u64], first_batch: bool) -> Result<bool>;
 
     fn reset(&self) {}
 }
@@ -27,7 +27,7 @@ pub trait StreamProcessor: Send + Sync + 'static {
 /// * `Ok(())` - If hints were successfully submitted
 /// * `Err` - If submission fails
 pub trait StreamSink: Send + Sync + 'static {
-    fn submit(&self, processed: &[u64]) -> anyhow::Result<()>;
+    fn submit(&self, processed: &[u64]) -> Result<()>;
 
     fn reset(&self) {}
 }
@@ -173,16 +173,23 @@ impl<P: StreamProcessor> ZiskStream<P> {
     /// * `Err` - If there's no active thread or the channel is closed
     pub fn start_stream(&mut self) -> Result<()> {
         if !self.initialized.load(Ordering::SeqCst) {
-            return Err(anyhow::anyhow!("Stream is not initialized. Call set_stream_src first."));
+            return Err(StreamError::Transport(
+                "Stream is not initialized. Call set_stream_src first.".to_string(),
+            ));
         }
 
         if let Some(tx) = &self.tx {
             tx.send(ThreadCommand::Process).map_err(|e| {
-                anyhow::anyhow!("Failed to send process command to background thread: {}", e)
+                StreamError::Transport(format!(
+                    "Failed to send process command to background thread: {}",
+                    e
+                ))
             })?;
             Ok(())
         } else {
-            Err(anyhow::anyhow!("No background thread running. Call set_stream_src first."))
+            Err(StreamError::Transport(
+                "No background thread running. Call set_stream_src first.".to_string(),
+            ))
         }
     }
 
@@ -226,12 +233,12 @@ fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
     }
 
     if v.as_ptr() as usize % std::mem::align_of::<U>() != 0 {
-        return Err(anyhow::anyhow!(
+        return Err(StreamError::Invalid(format!(
             "Vec<{}> is not properly aligned for Vec<{}> (requires {}-byte alignment)",
             std::any::type_name::<T>(),
             std::any::type_name::<U>(),
             std::mem::align_of::<U>()
-        ));
+        )));
     }
 
     let len = (v.len() * size_t) / size_u;

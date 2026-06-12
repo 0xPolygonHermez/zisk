@@ -26,7 +26,7 @@
 
 use std::sync::{Arc, Condvar, Mutex};
 
-use anyhow::Result;
+use crate::error::{Result, StreamError};
 
 use crate::{StreamWrite, CONNECT_DEADLINE};
 
@@ -304,7 +304,10 @@ impl ZiskStreamWriter {
         let mut guard = self.inner.live_state.lock().unwrap();
         while !guard.ready {
             if let Some(err) = &guard.last_start_error {
-                return Err(anyhow::anyhow!("ZiskStreamWriter start failed: {}", err));
+                return Err(StreamError::Transport(format!(
+                    "ZiskStreamWriter start failed: {}",
+                    err
+                )));
             }
             let (g, _) = self
                 .inner
@@ -352,7 +355,10 @@ impl ZiskStreamWriter {
         let mut guard = self.inner.live_state.lock().unwrap();
         while !guard.ready {
             if let Some(err) = &guard.last_start_error {
-                return Err(anyhow::anyhow!("ZiskStreamWriter start failed: {}", err));
+                return Err(StreamError::Transport(format!(
+                    "ZiskStreamWriter start failed: {}",
+                    err
+                )));
             }
             guard = self.inner.live_cond.wait(guard).unwrap();
         }
@@ -362,10 +368,9 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        let sender = guard
-            .push_sender
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Push transport: ready=true but sender not set"))?;
+        let sender = guard.push_sender.as_ref().ok_or_else(|| {
+            StreamError::Transport("Push transport: ready=true but sender not set".to_string())
+        })?;
 
         let chunk_size = aligned_chunk_size(PUSH_DEFAULT_CHUNK_SIZE);
 
@@ -475,24 +480,32 @@ impl ZiskStreamWriter {
             let deadline = std::time::Instant::now() + CONNECT_DEADLINE;
             let result = loop {
                 if inner.live_state.lock().unwrap().start_generation != my_gen {
-                    break Err(anyhow::anyhow!("start superseded before peer connected"));
+                    break Err(StreamError::Transport(
+                        "start superseded before peer connected".to_string(),
+                    ));
                 }
                 let connected = {
                     let mut transport = inner.transport.lock().unwrap();
                     match &mut *transport {
                         TransportKind::Direct(writer) => writer.is_client_connected(),
-                        _ => break Err(anyhow::anyhow!("transport closed before peer connected")),
+                        _ => {
+                            break Err(StreamError::Transport(
+                                "transport closed before peer connected".to_string(),
+                            ))
+                        }
                     }
                 };
                 if connected {
                     let mut transport = inner.transport.lock().unwrap();
                     let TransportKind::Direct(writer) = &mut *transport else {
-                        break Err(anyhow::anyhow!("transport closed before drain"));
+                        break Err(StreamError::Transport(
+                            "transport closed before drain".to_string(),
+                        ));
                     };
                     let mut pending = inner.pending.lock().unwrap();
                     let chunk_size = aligned_chunk_size(writer.max_message_size());
                     let mut sent = 0;
-                    let mut drain_err: Option<anyhow::Error> = None;
+                    let mut drain_err: Option<StreamError> = None;
                     while sent < pending.len() {
                         let take = std::cmp::min(chunk_size, pending.len() - sent);
                         if let Err(e) = writer.write(&pending[sent..sent + take]) {
@@ -509,10 +522,10 @@ impl ZiskStreamWriter {
                     break Ok(());
                 }
                 if std::time::Instant::now() >= deadline {
-                    break Err(anyhow::anyhow!(
+                    break Err(StreamError::Transport(format!(
                         "Timed out waiting for peer to connect to {}",
                         inner.uri
-                    ));
+                    )));
                 }
                 std::thread::sleep(CONNECT_POLL_INTERVAL);
             };
@@ -920,7 +933,7 @@ mod tests {
         fn write(&mut self, item: &[u8]) -> Result<usize> {
             let n = self.call_count.fetch_add(1, Ordering::Relaxed);
             if n >= self.fail_on {
-                Err(anyhow::anyhow!("mock write failure on call {n}"))
+                Err(StreamError::Invalid(format!("mock write failure on call {n}")))
             } else {
                 Ok(item.len())
             }
@@ -1013,7 +1026,7 @@ mod tests {
         fn send_blocking(&self, data: Vec<u8>) -> Result<()> {
             let n = self.call_count.fetch_add(1, Ordering::Relaxed);
             if n >= self.fail_after.load(Ordering::Relaxed) {
-                return Err(anyhow::anyhow!("mock push failure on call {n}"));
+                return Err(StreamError::Invalid(format!("mock push failure on call {n}")));
             }
             self.sent.lock().unwrap().push(data);
             Ok(())

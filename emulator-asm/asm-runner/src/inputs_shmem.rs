@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use named_sem::NamedSemaphore;
 use zisk_common::{
-    io::{StreamProcessor, StreamSink},
+    io::{StreamError, StreamProcessor, StreamSink},
     reinterpret_vec,
 };
 use zisk_core::MAX_INPUT_SIZE;
@@ -121,8 +121,9 @@ impl InputsShmemWriter {
 }
 
 impl StreamSink for InputsShmemWriter {
-    fn submit(&self, hints: &[u64]) -> anyhow::Result<()> {
-        self.append_input(&reinterpret_vec(hints.to_vec())?)
+    fn submit(&self, hints: &[u64]) -> Result<(), StreamError> {
+        let bytes = reinterpret_vec(hints.to_vec()).map_err(StreamError::other)?;
+        self.append_input(&bytes).map_err(StreamError::other)
     }
 
     fn reset(&self) {
@@ -131,7 +132,7 @@ impl StreamSink for InputsShmemWriter {
 }
 
 impl StreamProcessor for InputsShmemWriter {
-    fn process_hints(&self, data: &[u64], _first_batch: bool) -> anyhow::Result<bool> {
+    fn process_hints(&self, data: &[u64], _first_batch: bool) -> Result<bool, StreamError> {
         self.submit(data)?;
         Ok(false)
     }

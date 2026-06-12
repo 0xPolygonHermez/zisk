@@ -8026,7 +8026,6 @@ dependencies = [
 name = "zisk-sdk"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
  "bincode",
  "proofman-common",
  "rom-setup",
@@ -8046,7 +8045,6 @@ dependencies = [
 name = "zisk-stream"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
  "libc",
  "quinn",
  "rcgen",

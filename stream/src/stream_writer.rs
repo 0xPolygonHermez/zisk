@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 
 /// Upper bound on how long any peer-connect poll loop waits before giving up.
 /// Shared between [`ZiskStreamWriter`](crate::ZiskStreamWriter)'s background
