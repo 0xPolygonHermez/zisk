@@ -386,6 +386,29 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
 bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_ptr, uint32_t n) {
     if (!mcp || (!gpu_metas_ptr && n != 0)) return false;
     const InstanceMeta *gpu_metas = static_cast<const InstanceMeta *>(gpu_metas_ptr);
+
+    // Validate every meta before trusting it
+    for (uint32_t i = 0; i < n; ++i) {
+        const InstanceMeta &m = gpu_metas[i];
+        if (m.n_chunks > MAX_CHUNKS) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has n_chunks=%u > MAX_CHUNKS=%u; reject\n",
+                    i, m.n_chunks, (uint32_t)MAX_CHUNKS);
+            return false;
+        }
+        if (m.n_chunks != 0 && m.count_per_chunk == nullptr) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has n_chunks=%u but count_per_chunk is null; reject\n",
+                    i, m.n_chunks);
+            return false;
+        }
+        if (m.kind >= MEM_TYPES) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has kind=%u >= MEM_TYPES=%u; reject\n",
+                    i, m.kind, (uint32_t)MEM_TYPES);
+            return false;
+        }
+    }
     std::vector<InstanceMeta> metas(gpu_metas, gpu_metas + n);
     generate_mem_segments_into(mcp->segments, metas);
     return true;
@@ -393,19 +416,23 @@ bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_
 
 uint32_t get_mem_segment_count(MemCountAndPlan *mcp, uint32_t mem_id)
 {
+    if (mem_id >= MEM_TYPES) return 0;
     return mcp->segments[mem_id].size();
 }
 
 const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count)
 {
+    if (mem_id >= MEM_TYPES) { count = 0; return nullptr; }
     auto segment = mcp->segments[mem_id].get(segment_id);
-    count = segment ? segment->size() : 0;
+    if (!segment) { count = 0; return nullptr; }
+    count = segment->size();
     return segment->get_chunks();
 }
 
 PagedOffsets get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
                                           uint32_t &offsets_base_addr_out)
 {
+    if (mem_id >= MEM_TYPES) { offsets_base_addr_out = 0; return PagedOffsets{nullptr, nullptr, nullptr, 0, 0, 0}; }
     auto segment = mcp->segments[mem_id].get(segment_id);
     if (segment) {
         offsets_base_addr_out = segment->offsets_base_addr;

@@ -242,11 +242,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         // Reserve proofman's unified GPU buffer for MO count-and-plan
         // (no-op on CPU / standalone).
-        if is_asm_emulator {
-            if let Some(extras) = proofman_extras {
-                extras.acquire_gpu_buffer();
-            }
-        }
+        let gpu_buffer_guard = if is_asm_emulator {
+            proofman_extras.map(|extras| extras.acquire_gpu_buffer())
+        } else {
+            None
+        };
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.1: Emulate
@@ -300,11 +300,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         )?;
 
         // MO runner joined in `run_secondary`; release the buffer back to proofman.
-        if is_asm_emulator {
-            if let Some(extras) = proofman_extras {
-                extras.release_gpu_buffer();
-            }
-        }
+        drop(gpu_buffer_guard);
 
         timer_start_info!(WAIT_ASM_RH);
         if let Some(rh_data) = backend.await_rom_histogram()? {

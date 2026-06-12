@@ -89,12 +89,27 @@ struct BlockOpSpill {
 
 
 // 64-bit RAM sort-key bit layout (see kernels below).
+//   bit 0        : kind_w
+//   bits 1..23   : orig_pos (potential index, must cover [0, MAX_POT_PER_CHUNK))
+//   bits 24..49  : compact_ram (RAM word index, < 2^26)
+// orig_pos must span the full potential range (MAX_POT_PER_CHUNK); too few bits
+// would let the top index bit bleed into compact_ram. The static_asserts below
+// pin orig_pos width and the sort end-bit to MAX_POT_PER_CHUNK and RAM size.
 #define KIND_W_BIT          0u
 #define ORIG_POS_SHIFT      1u
-#define ORIG_POS_BITS       21u
+#define ORIG_POS_BITS       23u
 #define ORIG_POS_MASK       ((1u << ORIG_POS_BITS) - 1u)
-#define COMPACT_ADDR_SHIFT  (ORIG_POS_SHIFT + ORIG_POS_BITS)   // 22
-#define RAM_KEY_END_BIT     48
+#define COMPACT_ADDR_SHIFT  (ORIG_POS_SHIFT + ORIG_POS_BITS)   // 24
+#define RAM_KEY_END_BIT     50
+
+// orig_pos must represent every potential index in a chunk without truncation.
+static_assert((1ull << ORIG_POS_BITS) >= (uint64_t)MAX_POT_PER_CHUNK,
+              "ORIG_POS_BITS too small: orig_pos would overflow into compact_ram");
+// the radix sort (bits [0, RAM_KEY_END_BIT)) must cover the whole compact_ram
+// field sitting above orig_pos.
+static_assert((((uint64_t)(ZISK_RAM_SIZE_BYTES >> 3) - 1) << COMPACT_ADDR_SHIFT)
+                  < (1ull << RAM_KEY_END_BIT),
+              "RAM_KEY_END_BIT too small to cover compact_ram above orig_pos");
 
 #define CUDA_CHECK(call) do {                                                  \
     cudaError_t _err = (call);                                                 \
@@ -104,6 +119,11 @@ struct BlockOpSpill {
         exit(1);                                                               \
     }                                                                          \
 } while (0)
+
+// Check for a kernel-launch error at the launch site (host-side, no device sync).
+// Catches a bad launch config immediately instead of letting it surface,
+// misattributed, at a later synchronizing CUDA call.
+#define CUDA_CHECK_LAUNCH() CUDA_CHECK(cudaGetLastError())
 
 __host__ __device__ __forceinline__
 bool is_ram_addr(uint32_t addr) {
@@ -1373,53 +1393,60 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
         &d_chunk_counters_per_chunk_[c],
         d_spill_[s], d_spill_count_[s],
         d_invalid_mode_flag_);
+    CUDA_CHECK_LAUNCH();
 
     {
         size_t bytes = cub_temp_bytes_;
-        cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes,
-            d_counts_[s], d_potential_offsets_[s], n + 1, st);
+        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes,
+            d_counts_[s], d_potential_offsets_[s], n + 1, st));
     }
 
     decode_emit_kernel<<<g_memops, BLOCK, 0, st>>>(
         d_memops_[s], n, d_potential_offsets_[s], d_spill_status_[s], d_potentials_[s]);
+    CUDA_CHECK_LAUNCH();
 
     blockop_emit_kernel<<<MAX_BLOCKOP_SPILL_PER_CHUNK, 256, 0, st>>>(
         d_spill_[s], d_spill_count_[s], d_potential_offsets_[s], d_potentials_[s]);
+    CUDA_CHECK_LAUNCH();
 
     gather_ram_events_with_hist_kernel<<<g_pot, BLOCK, 0, st>>>(
         d_potentials_[s], (uint32_t)pot,
         d_ram_keys_[s], d_ram_count_[s], d_emit_bits_[s],
         d_histogram_, d_max_compact_);
+    CUDA_CHECK_LAUNCH();
 
     if (ram > 0) {
         size_t bytes_sort = cub_temp_bytes_;
-        cub::DeviceRadixSort::SortKeys(d_cub_temp_[s], bytes_sort,
-            d_ram_keys_[s], d_ram_keys_sorted_[s], ram, 0, RAM_KEY_END_BIT, st);
+        CUDA_CHECK(cub::DeviceRadixSort::SortKeys(d_cub_temp_[s], bytes_sort,
+            d_ram_keys_[s], d_ram_keys_sorted_[s], ram, 0, RAM_KEY_END_BIT, st));
 
         extract_sorted_addr_kernel<<<g_ram, BLOCK, 0, st>>>(
             d_ram_keys_sorted_[s], ram, d_sorted_addr_[s]);
+        CUDA_CHECK_LAUNCH();
 
         extract_sorted_packed_kernel<<<g_ram, BLOCK, 0, st>>>(
             d_ram_keys_sorted_[s], ram, d_ram_vals_sorted_[s]);
+        CUDA_CHECK_LAUNCH();
 
         size_t bytes_rle = cub_temp_bytes_;
-        cub::DeviceRunLengthEncode::Encode(d_cub_temp_[s], bytes_rle,
+        CUDA_CHECK(cub::DeviceRunLengthEncode::Encode(d_cub_temp_[s], bytes_rle,
             d_sorted_addr_[s], thrust::discard_iterator<>{},
-            d_run_lengths_[s], d_num_unique_[s], ram, st);
+            d_run_lengths_[s], d_num_unique_[s], ram, st));
 
         size_t bytes_sr = cub_temp_bytes_;
-        cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_sr,
-            d_run_lengths_[s], d_run_offsets_[s], ram + 1, st);
+        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes_sr,
+            d_run_lengths_[s], d_run_offsets_[s], ram + 1, st));
 
         state_machine_by_run_with_hist_kernel<<<g_ram, BLOCK, 0, st>>>(
             d_run_offsets_[s], d_num_unique_[s], d_ram_vals_sorted_[s],
             d_sorted_addr_[s], d_emit_bits_[s], d_histogram_, d_max_compact_);
+        CUDA_CHECK_LAUNCH();
     }
 
     {
         size_t bytes = cub_temp_bytes_;
-        cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes,
-            d_emit_bits_[s], d_final_offsets_[s], (uint32_t)pot + 1, st);
+        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_cub_temp_[s], bytes,
+            d_emit_bits_[s], d_final_offsets_[s], (uint32_t)pot + 1, st));
     }
 
     CUDA_CHECK(cudaMemcpyAsync(&h_n_emits_all_[c],
@@ -1428,6 +1455,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
     compact_kernel_with_shift<<<g_pot, BLOCK, 0, st>>>(
         d_potentials_[s], d_emit_bits_[s], d_final_offsets_[s],
         (uint32_t)pot, d_chunk_out);
+    CUDA_CHECK_LAUNCH();
 
     return true;
 }
@@ -1641,22 +1669,24 @@ void CountAndPlan::prepare_global_() {
     if (prepared_) return;
     {
         uint32_t n_rom = h_max_compact_[REGION_ROM] + 2;
-        cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
-            d_histogram_ + 0, d_prefix_ + 0, n_rom);
+        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
+            d_histogram_ + 0, d_prefix_ + 0, n_rom));
 
         uint32_t n_in = h_max_compact_[REGION_INPUT] + 2;
-        cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
-            d_histogram_ + N_ADDR_ROM, d_prefix_ + N_ADDR_ROM, n_in);
+        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
+            d_histogram_ + N_ADDR_ROM, d_prefix_ + N_ADDR_ROM, n_in));
         add_const_kernel<<<(n_in + 255) / 256, 256>>>(
             d_prefix_ + N_ADDR_ROM, d_prefix_ + h_max_compact_[REGION_ROM] + 1, n_in);
+        CUDA_CHECK_LAUNCH();
 
         uint32_t n_ram = h_max_compact_[REGION_RAM] + 2;
-        cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
+        CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_hist_, d_temp_hist_bytes_,
             d_histogram_ + N_ADDR_ROM + N_ADDR_INPUT,
-            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, n_ram);
+            d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT, n_ram));
         add_const_kernel<<<(n_ram + 255) / 256, 256>>>(
             d_prefix_ + N_ADDR_ROM + N_ADDR_INPUT,
             d_prefix_ + N_ADDR_ROM + h_max_compact_[REGION_INPUT] + 1, n_ram);
+        CUDA_CHECK_LAUNCH();
     }
 
     uint32_t h_boundary[3];
@@ -1729,6 +1759,7 @@ void CountAndPlan::process_worker_() {
             region_n_ops_[r], INSTANCE_SIZE[r],
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
             d_offset_starts_ + off, na);
+        CUDA_CHECK_LAUNCH();
     }
 
     int fml_block, fml_grid;
@@ -1738,6 +1769,7 @@ void CountAndPlan::process_worker_() {
         d_ops_pool_, d_gappy_offsets_, d_packed_chunk_offsets_,
         d_active_first_, d_active_last_,
         d_fml_, num_active_, n_chunks_, num_ops_);
+    CUDA_CHECK_LAUNCH();
 
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(h_active_first_.data(), d_active_first_, num_active_ * 4, cudaMemcpyDeviceToHost));
@@ -1793,11 +1825,13 @@ void CountAndPlan::process_worker_() {
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
             d_result_nops_ + (size_t)off * n_chunks_,
             d_meta_scalars_ + off * 4, na, n_chunks_);
+        CUDA_CHECK_LAUNCH();
 
         compute_addr_offsets_kernel<<<na, 1024, 0, d2h_stream_>>>(
             d_prefix_, REGION_ADDR_START[r], region_n_ops_[r], INSTANCE_SIZE[r],
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
             d_addr_offsets_, d_offset_starts_ + off, na);
+        CUDA_CHECK_LAUNCH();
     }
 
     CUDA_CHECK(cudaMemcpyAsync(h_meta_scalars_, d_meta_scalars_,
@@ -1839,6 +1873,7 @@ void CountAndPlan::process_worker_() {
         d_page_meta_starts_, d_pages_dense_starts_,
         num_active_,
         d_present_counters_, d_page_starts_, d_page_single_, d_pages_dense_);
+    CUDA_CHECK_LAUNCH();
 
     // Pull per-instance present counts so we know the per-instance D2H sizes.
     CUDA_CHECK(cudaMemcpyAsync(h_present_counters_, d_present_counters_,

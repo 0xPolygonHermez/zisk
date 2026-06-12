@@ -25,6 +25,13 @@ use anyhow::{Context, Result};
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
 
+// ASYNC-DMA SAFETY INVARIANT: the GPU issues async H2D copies straight from this
+// shmem region, so the source must stay immutable until `run()` drains the streams.
+// This holds because (1) MultiShMem reserves its address range once and only
+// MAP_FIXEDs new files — existing mappings never move (see multi_shmem.rs
+// `check_size_changed`), and (2) the MO trace is strictly append-only: bytes are
+// never rewritten once `chunk_done` is signaled. In-place rewrites of already-emitted
+// regions (or ring-buffer reuse of offsets within a run) would reintroduce a race.
 #[cfg(gpu)]
 fn register_mo_shmem_pinned(
     gpu_count_and_plan: &GpuCountAndPlan,
@@ -372,14 +379,14 @@ impl AsmRunnerMO {
 
         crate::drain_chunk_done(&mut sem_chunk_done);
 
-        // inject GPU-produced segments to the C++ segment table
+        // inject GPU-produced segments to the C++ segment table.
         #[cfg(gpu)]
-        if let Some((metas_ptr, n)) = gpu_metas_view {
-            let ok = unsafe { mem_planner.inject_gpu_metas_from_pointers(metas_ptr, n) };
-            if !ok {
-                tracing::error!("[gpu] inject_gpu_metas_from_pointers failed");
-            }
-        }
+        let inject_ok = match gpu_metas_view {
+            Some((metas_ptr, n)) => unsafe {
+                mem_planner.inject_gpu_metas_from_pointers(metas_ptr, n)
+            },
+            None => true,
+        };
 
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
             let exit_code = loop_result?;
@@ -405,6 +412,15 @@ impl AsmRunnerMO {
                     "ASM MO service trace_len ({}) exceeds allocated_len ({})",
                     response.trace_len,
                     response.allocated_len
+                ));
+            }
+
+            // GPU metas failed validation in inject; the segment table is
+            // unpopulated, so fail the run rather than collect a wrong plan.
+            #[cfg(gpu)]
+            if !inject_ok {
+                return Err(anyhow::anyhow!(
+                    "[gpu] inject_gpu_metas_from_pointers rejected the GPU metas; aborting MO run"
                 ));
             }
 

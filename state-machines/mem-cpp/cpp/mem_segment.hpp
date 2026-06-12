@@ -52,12 +52,14 @@ public:
         chunks = (MemCheckPoint *)malloc(sizeof(MemCheckPoint) * MAX_CHUNKS);
     }
     void push(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t count) {
+        if (chunks_count >= MAX_CHUNKS) return;
         uint32_t next_index = chunks_count++;
         mapping.emplace(chunk_id, next_index);
         chunks[next_index].set(chunk_id, from_addr, skip, count);
     }
 
     void push(uint32_t chunk_id, uint32_t from_addr, uint32_t skip, uint32_t to_addr, uint32_t to_count, uint32_t count) {
+        if (chunks_count >= MAX_CHUNKS) return;
         uint32_t next_index = chunks_count++;
         mapping.emplace(chunk_id, next_index);
         chunks[next_index].set(chunk_id, from_addr, skip, to_addr, to_count, count);

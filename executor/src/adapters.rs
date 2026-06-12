@@ -59,14 +59,17 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     }
 
     /// Reserve proofman's unified GPU buffer for the MO count-and-plan window.
+    /// Returns a [`GpuBufferGuard`] that releases the reservation on drop
+
     #[inline]
-    pub fn acquire_gpu_buffer(&self) {
+    pub fn acquire_gpu_buffer(&self) -> GpuBufferGuard<'_, 'a, F> {
         self.pctx.acquire_first_gpu_buffer();
+        GpuBufferGuard { adapter: self }
     }
 
-    /// Release the buffer back to proofman once the MO runner has joined.
+    /// Release the buffer back to proofman. Invoked by [`GpuBufferGuard::drop`].
     #[inline]
-    pub fn release_gpu_buffer(&self) {
+    fn release_gpu_buffer(&self) {
         self.pctx.release_first_gpu_buffer();
     }
 
@@ -108,6 +111,20 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
         }
 
         Ok(cost_per_type)
+    }
+}
+
+/// RAII guard for the unified GPU buffer reservation. Releasing on drop ensures
+/// the buffer is returned to proofman on every exit path (including an early `?`
+/// return) between acquire and release. Drop `release` to free explicitly.
+#[must_use = "the GPU buffer is released when the guard is dropped"]
+pub struct GpuBufferGuard<'g, 'a, F: PrimeField64> {
+    adapter: &'g ProofmanAdapter<'a, F>,
+}
+
+impl<F: PrimeField64> Drop for GpuBufferGuard<'_, '_, F> {
+    fn drop(&mut self) {
+        self.adapter.release_gpu_buffer();
     }
 }
 
