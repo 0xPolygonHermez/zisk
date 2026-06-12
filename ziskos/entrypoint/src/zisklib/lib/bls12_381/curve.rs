@@ -8,7 +8,7 @@ use crate::{
         syscall_bls12_381_curve_add, syscall_bls12_381_curve_dbl, SyscallBls12_381CurveAddParams,
         SyscallPoint384,
     },
-    zisklib::{eq, fcall_msb_pos_256, is_zero, lt},
+    zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt},
 };
 
 use super::{
@@ -491,25 +491,27 @@ pub fn scalar_mul_bls12_381(
     k: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 12] {
+    // Reduce the scalar
+    let k = reduce_fr_bls12_381(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Direct cases: k = 0, k = 1, k = 2
-    match k {
-        [0, 0, 0, 0] => {
-            // Return 𝒪
-            return G1_IDENTITY;
-        }
-        [1, 0, 0, 0] => {
-            // Return p
-            return *p;
-        }
-        [2, 0, 0, 0] => {
-            // Return 2p
-            return dbl_bls12_381(
-                p,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-        }
-        _ => {}
+    if is_zero(&k) {
+        // Return 𝒪
+        return G1_IDENTITY;
+    } else if is_one(&k) {
+        // Return p
+        return *p;
+    } else if is_two(&k) {
+        // Return 2p
+        return dbl_bls12_381(
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     // We can assume k > 2 from now on
@@ -517,7 +519,7 @@ pub fn scalar_mul_bls12_381(
     // We will verify the output by recomposing k
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -580,7 +582,7 @@ pub fn scalar_mul_bls12_381(
     }
 
     // Check that the reconstructed k is equal to the input k
-    assert_eq!(k_rec, *k);
+    assert!(eq(&k, &k_rec), "Reconstructed scalar does not match input scalar");
 
     // Convert the result back to a single array
     let mut result = [0u64; 12];
@@ -594,11 +596,15 @@ pub fn scalar_mul_bls12_381(
 /// # Soundness
 /// The point must be on-curve, non-identity, and have **canonical** coordinates
 /// (`x, y < p`).
+/// The scalar is assumed to be in [0, r-1].
 pub fn scalar_mul_bin_bls12_381(
     p: &[u64; 12],
     k: &[u8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 12] {
+    debug_assert!(!k.is_empty(), "Scalar must not be empty");
+    debug_assert!(k.len() <= 256, "Scalar must be at most 256 bits");
+
     let x1: [u64; 6] = p[0..6].try_into().unwrap();
     let y1: [u64; 6] = p[6..12].try_into().unwrap();
     let p = SyscallPoint384 { x: x1, y: y1 };

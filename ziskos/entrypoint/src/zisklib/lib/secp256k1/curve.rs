@@ -7,18 +7,18 @@ use crate::{
         syscall_secp256k1_add, syscall_secp256k1_dbl, SyscallPoint256, SyscallSecp256k1AddParams,
     },
     zisklib::{
-        be_bytes_to_u64_4, eq, fcall_msb_pos_256, fcall_msb_pos_256_2, is_one, is_zero, ONE_256,
-        TWO_256, ZERO_256,
+        be_bytes_to_u64_4, eq, fcall_msb_pos_256, fcall_msb_pos_256_2, is_one, is_two, is_zero,
+        ONE_256, TWO_256, ZERO_256,
     },
 };
 
 use super::{
-    constants::{BETA, E_B, G, G_NEG_Y, G_X, G_Y, IDENTITY_X, IDENTITY_Y},
+    constants::{BETA, E_B, G, G_NEG_Y, G_X, G_Y, IDENTITY, IDENTITY_X, IDENTITY_Y},
     field::{
         add_fp_secp256k1, inv_fp_secp256k1, mul_fp_secp256k1, neg_fp_secp256k1, sqrt_fp_secp256k1,
         square_fp_secp256k1,
     },
-    scalar::{add_fn_secp256k1, sub_fn_secp256k1},
+    scalar::{add_fn_secp256k1, reduce_fn_secp256k1, sub_fn_secp256k1},
 };
 
 // Precomputed points
@@ -32,8 +32,11 @@ pub fn jacobian_to_affine_secp256k1(
 ) -> [u64; 8] {
     let z: [u64; 4] = [p[8], p[9], p[10], p[11]];
 
-    // Point at infinity cannot be converted to affine
-    debug_assert!(z != ZERO_256, "Cannot convert point at infinity to affine");
+    if is_zero(&z) {
+        return IDENTITY;
+    } else if is_one(&z) {
+        return [p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]];
+    }
 
     let zinv = inv_fp_secp256k1(
         &z,
@@ -113,7 +116,6 @@ pub fn lift_x_secp256k1(
 }
 
 /// Checks whether the given point `p` is on the Secp256k1 curve.
-/// It assumes that `p` is not the point at infinity.
 pub fn is_on_curve_secp256k1(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
@@ -141,7 +143,7 @@ pub fn is_on_curve_secp256k1(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&lhs, &rhs)
+    eq(&lhs, &rhs) || eq(p, &IDENTITY)
 }
 
 /// Applies the secp256k1 GLV endomorphism `φ : (x, y) ↦ (β·x, y)` to a point.
@@ -160,26 +162,11 @@ pub(crate) fn phi_secp256k1(
     SyscallPoint256 { x: beta_x, y: [p.y[0], p.y[1], p.y[2], p.y[3]] }
 }
 
-/// Negates a point on the secp256k1 curve.
-/// The identity point is mapped to itself.
-#[inline]
-pub(crate) fn neg_secp256k1(
-    p: &SyscallPoint256,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> SyscallPoint256 {
-    SyscallPoint256 {
-        x: p.x,
-        y: neg_fp_secp256k1(
-            &p.y,
-            #[cfg(feature = "hints")]
-            hints,
-        ),
-    }
-}
-
-/// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
-/// It assumes that `p1` and `p2` are from the Secp256k1 curve, that `p1,p2 != 𝒪`
-/// Returns true if the result is the point at infinity.
+/// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[inline]
 pub(crate) fn add_non_infinity_points_secp256k1(
     p1: &mut SyscallPoint256,
@@ -207,8 +194,12 @@ pub(crate) fn add_non_infinity_points_secp256k1(
     }
 }
 
-/// Adds two points on the secp256k1 curve. Assumes both are non-infinity.
+/// Adds two points on the secp256k1 curve.
 /// Returns None if the result is the point at infinity.
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn point_add_secp256k1(
     p1: &[u64; 8],
     p2: &[u64; 8],
@@ -230,21 +221,45 @@ pub fn point_add_secp256k1(
     }
 }
 
+/// Negates a point on the secp256k1 curve
+#[inline]
+pub(crate) fn neg_secp256k1(
+    p: &SyscallPoint256,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> SyscallPoint256 {
+    SyscallPoint256 {
+        x: p.x,
+        y: neg_fp_secp256k1(
+            &p.y,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+    }
+}
+
 /// Given a non-infinity point `p` and a scalar `k`, computes the scalar multiplication `k·p`
 ///
-/// Note: There are no (non-infinity) points of order 2 in Secp256k1.
-///       All (non-infinity) points are of prime order N.
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_secp256k1(
     k: &[u64; 4],
     p: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
+    // Reduce the scalar
+    let k = reduce_fn_secp256k1(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Trivial cases: k = 0, k = 1, k = 2.
-    if eq(k, &ZERO_256) {
+    if is_zero(&k) {
         return None;
-    } else if eq(k, &ONE_256) {
+    } else if is_one(&k) {
         return Some(*p);
-    } else if eq(k, &TWO_256) {
+    } else if is_two(&k) {
         let mut res = SyscallPoint256 { x: [p[0], p[1], p[2], p[3]], y: [p[4], p[5], p[6], p[7]] };
         syscall_secp256k1_dbl(
             &mut res,
@@ -265,7 +280,7 @@ pub fn scalar_mul_secp256k1(
     //    the loop reconstructs the scalar bit-by-bit and asserts the
     //    recomposition matches the input.
     let (max_limb, max_bit) = fcall_msb_pos_256(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -330,7 +345,7 @@ pub fn scalar_mul_secp256k1(
     }
 
     // Soundness: the reconstructed scalar must match the input.
-    assert!(eq(&k_rec, k));
+    assert!(eq(&k_rec, &k));
 
     if res_is_infinity {
         None
@@ -340,22 +355,37 @@ pub fn scalar_mul_secp256k1(
 }
 
 /// Given a point `p` and scalars `k1` and `k2`, computes the double scalar multiplication `k1·G + k2·p`
-/// It assumes that `k1,k2 ∈ [0, N-1]` and that `p != 𝒪`
+///
+/// # Soundness
+/// The points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn double_scalar_mul_with_g_secp256k1(
     k1: &[u64; 4],
     k2: &[u64; 4],
     p: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
+    // Reduce the scalars
+    let k1 = reduce_fn_secp256k1(
+        k1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let k2 = reduce_fn_secp256k1(
+        k2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Handle zero scalars:
     //  - If k1 = k2 = 0, then k1·G + k2·p = 𝒪.
     //  - If k1 = 0 and k2 > 0, then k1·G + k2·p = k2·p
     //  - If k2 = 0 and k1 > 0, then k1·G + k2·p = k1·G
-    match (is_zero(k1), is_zero(k2)) {
+    match (is_zero(&k1), is_zero(&k2)) {
         (true, true) => return None,
         (true, false) => {
             return scalar_mul_secp256k1(
-                k2,
+                &k2,
                 p,
                 #[cfg(feature = "hints")]
                 hints,
@@ -363,7 +393,7 @@ pub fn double_scalar_mul_with_g_secp256k1(
         }
         (false, true) => {
             return scalar_mul_secp256k1(
-                k1,
+                &k1,
                 &G,
                 #[cfg(feature = "hints")]
                 hints,
@@ -373,7 +403,7 @@ pub fn double_scalar_mul_with_g_secp256k1(
     }
 
     // If k1 = k2 => k1·G + k2·P = k1·(G + P)
-    if eq(k1, k2) {
+    if eq(&k1, &k2) {
         let mut gp = G_POINT;
         let gp_is_infinity = add_non_infinity_points_secp256k1(
             &mut gp,
@@ -385,7 +415,7 @@ pub fn double_scalar_mul_with_g_secp256k1(
             return None;
         }
         return scalar_mul_secp256k1(
-            k1,
+            &k1,
             &[gp.x[0], gp.x[1], gp.x[2], gp.x[3], gp.y[0], gp.y[1], gp.y[2], gp.y[3]],
             #[cfg(feature = "hints")]
             hints,
@@ -397,14 +427,14 @@ pub fn double_scalar_mul_with_g_secp256k1(
     if eq(&p[0..4], &G_X) {
         let k1k2 = match eq(&p[4..8], &G_NEG_Y) {
             true => sub_fn_secp256k1(
-                k1,
-                k2,
+                &k1,
+                &k2,
                 #[cfg(feature = "hints")]
                 hints,
             ),
             false => add_fn_secp256k1(
-                k1,
-                k2,
+                &k1,
+                &k2,
                 #[cfg(feature = "hints")]
                 hints,
             ),
@@ -434,8 +464,8 @@ pub fn double_scalar_mul_with_g_secp256k1(
     //    the loop reconstructs each scalar bit-by-bit and asserts the
     //    recomposition matches the input.
     let (max_limb, max_bit) = fcall_msb_pos_256_2(
-        k1,
-        k2,
+        &k1,
+        &k2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -526,8 +556,8 @@ pub fn double_scalar_mul_with_g_secp256k1(
     }
 
     // Soundness: the reconstructed scalars must match the input.
-    assert!(eq(&k1_rec, k1));
-    assert!(eq(&k2_rec, k2));
+    assert!(eq(&k1_rec, &k1));
+    assert!(eq(&k2_rec, &k2));
 
     if res_is_infinity {
         None
@@ -538,8 +568,10 @@ pub fn double_scalar_mul_with_g_secp256k1(
 
 /// Multi-scalar multiplication using Pippenger's bucket method: Σ kᵢ·Pᵢ.
 /// Returns None if the result is the point at infinity.
-/// Assumes all points are non-infinity and on the curve. Scalars must be in [0, N-1].
-pub fn multi_scalar_mul_secp256k1(
+///
+/// # Soundness
+/// All points must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
+pub fn msm_secp256k1(
     scalars: &[[u64; 4]],
     points: &[[u64; 8]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -550,8 +582,18 @@ pub fn multi_scalar_mul_secp256k1(
         return None;
     }
 
-    multi_scalar_mul_secp256k1_max_bits(
-        scalars,
+    // Reduce each scalar
+    let mut reduced: Vec<[u64; 4]> = Vec::with_capacity(n);
+    for k in scalars.iter() {
+        reduced.push(reduce_fn_secp256k1(
+            k,
+            #[cfg(feature = "hints")]
+            hints,
+        ));
+    }
+
+    msm_secp256k1_max_bits(
+        &reduced,
         points,
         256,
         #[cfg(feature = "hints")]
@@ -562,8 +604,11 @@ pub fn multi_scalar_mul_secp256k1(
 /// Multi-scalar multiplication using Pippenger's bucket method: Σ kᵢ·Pᵢ.
 /// Scalars are processed up to `max_bits` bits.
 /// Returns None if the result is the point at infinity.
-/// Assumes all points are non-infinity and on the curve. Scalars must be in [0, N-1].
-pub(crate) fn multi_scalar_mul_secp256k1_max_bits(
+///
+/// # Soundness
+/// All points must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
+/// All scalars must be reduced mod N and have at most `max_bits` bits (i.e., the bits above `max_bits` must be zero).
+pub(crate) fn msm_secp256k1_max_bits(
     scalars: &[[u64; 4]],
     points: &[[u64; 8]],
     max_bits: usize,
@@ -756,6 +801,27 @@ fn optimal_window_size(n: usize) -> usize {
 
 // ==================== C FFI Functions ====================
 
+/// Converts a non-infinity secp256k1 point from Jacobian `[u64; 12]` to affine `[u64; 8]`.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (Jacobian coordinates, non-infinity)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_jacobian_to_affine_secp256k1_c")]
+pub unsafe extern "C" fn jacobian_to_affine_secp256k1_c(
+    p_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) {
+    let p = &*(p_ptr as *const [u64; 12]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    *result = jacobian_to_affine_secp256k1(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+}
+
 /// Lift an x-coordinate (32 big-endian bytes) to a secp256k1 point.
 /// Writes the resulting point as `[u64; 8]` little-endian limbs (x ‖ y) to `result_ptr`.
 /// Returns 1 on success, 0 if no point with that x-coordinate exists on the curve.
@@ -763,6 +829,9 @@ fn optimal_window_size(n: usize) -> usize {
 /// # Safety
 /// - `x_ptr` must point to at least 32 bytes
 /// - `result_ptr` must point to a writable `[u64; 8]` array
+///
+/// # Soundness
+/// The y-coordinate is computed canonically, but the returned x is the **raw input x, not reduced**.
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_lift_x_secp256k1_c")]
 pub unsafe extern "C" fn lift_x_secp256k1_c(
@@ -789,27 +858,6 @@ pub unsafe extern "C" fn lift_x_secp256k1_c(
     }
 }
 
-/// Converts a non-infinity secp256k1 point from Jacobian `[u64; 12]` to affine `[u64; 8]`.
-///
-/// # Safety
-/// - `p_ptr` must point to a valid `[u64; 12]` array (Jacobian coordinates, non-infinity)
-/// - `result_ptr` must point to a writable `[u64; 8]` array
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_jacobian_to_affine_secp256k1_c")]
-pub unsafe extern "C" fn jacobian_to_affine_secp256k1_c(
-    p_ptr: *const u64,
-    result_ptr: *mut u64,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) {
-    let p = &*(p_ptr as *const [u64; 12]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
-    *result = jacobian_to_affine_secp256k1(
-        p,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-}
-
 /// Computes `k1·G + k2·p` on the secp256k1 curve. Writes the result to `result_ptr`.
 /// Returns 1 if the result is a finite point, 0 if it is the point at infinity.
 ///
@@ -818,6 +866,10 @@ pub unsafe extern "C" fn jacobian_to_affine_secp256k1_c(
 /// - `k2_ptr` must point to a valid `[u64; 4]` array
 /// - `p_ptr` must point to a valid `[u64; 8]` array (non-infinity affine point)
 /// - `result_ptr` must point to a writable `[u64; 8]` array
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_double_scalar_mul_with_g_secp256k1_c")]
 pub unsafe extern "C" fn double_scalar_mul_with_g_secp256k1_c(

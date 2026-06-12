@@ -3,7 +3,7 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
-use crate::zisklib::{eq, fcall_msb_pos_256, is_zero, lt};
+use crate::zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt};
 
 use super::{
     constants::{
@@ -838,25 +838,27 @@ pub fn scalar_mul_twist_bls12_381(
     k: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 24] {
+    // Reduce the scalar
+    let k = reduce_fr_bls12_381(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Direct cases: k = 0, k = 1, k = 2
-    match k {
-        [0, 0, 0, 0] => {
-            // Return 𝒪
-            return G2_IDENTITY;
-        }
-        [1, 0, 0, 0] => {
-            // Return p
-            return *p;
-        }
-        [2, 0, 0, 0] => {
-            // Return 2p
-            return dbl_twist_bls12_381(
-                p,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-        }
-        _ => {}
+    if is_zero(&k) {
+        // Return 𝒪
+        return G2_IDENTITY;
+    } else if is_one(&k) {
+        // Return p
+        return *p;
+    } else if is_two(&k) {
+        // Return 2p
+        return dbl_twist_bls12_381(
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     // We can assume k > 2 from now on
@@ -864,7 +866,7 @@ pub fn scalar_mul_twist_bls12_381(
     // We will verify the output by recomposing k
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -924,7 +926,7 @@ pub fn scalar_mul_twist_bls12_381(
     }
 
     // Check that the reconstructed k is equal to the input k
-    assert_eq!(k_rec, *k);
+    assert!(eq(&k, &k_rec), "Reconstructed scalar does not match input scalar");
 
     // Convert the result back to a single array
     q
@@ -935,6 +937,7 @@ pub fn scalar_mul_twist_bls12_381(
 /// # Soundness
 /// The point must be on-curve, non-identity, and have **canonical** coordinates
 /// (`x, y < p`).
+/// The scalar is assumed to be in [0, r-1].
 pub fn scalar_mul_bin_twist_bls12_381(
     p: &[u64; 24],
     k: &[u8],
@@ -964,6 +967,7 @@ pub fn scalar_mul_bin_twist_bls12_381(
 /// # Soundness
 /// The point must be on-curve, non-identity, and have **canonical** coordinates
 /// (`x, y < p`).
+/// The scalar is assumed to be in [0, r-1].
 pub fn scalar_mul_by_abs_x_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

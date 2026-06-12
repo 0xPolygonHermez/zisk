@@ -8,7 +8,7 @@ use crate::{
         syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallBn254CurveAddParams,
         SyscallPoint256,
     },
-    zisklib::{eq, fcall_msb_pos_256, is_one, is_zero, lt},
+    zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt},
 };
 
 use super::{
@@ -287,25 +287,27 @@ pub fn scalar_mul_bn254(
     k: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 8] {
+    // Reduce the scalar
+    let k = reduce_fr_bn254(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Direct cases: k = 0, k = 1, k = 2
-    match k {
-        [0, 0, 0, 0] => {
-            // Return 𝒪
-            return G1_IDENTITY;
-        }
-        [1, 0, 0, 0] => {
-            // Return p
-            return *p;
-        }
-        [2, 0, 0, 0] => {
-            // Return 2p
-            return dbl_bn254(
-                p,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-        }
-        _ => {}
+    if is_zero(&k) {
+        // Return 𝒪
+        return G1_IDENTITY;
+    } else if is_one(&k) {
+        // Return p
+        return *p;
+    } else if is_two(&k) {
+        // Return 2p
+        return dbl_bn254(
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     // We can assume k > 2 from now on
@@ -313,7 +315,7 @@ pub fn scalar_mul_bn254(
     // We will verify the output by recomposing k
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -376,7 +378,7 @@ pub fn scalar_mul_bn254(
     }
 
     // Check that the reconstructed k is equal to the input k
-    assert_eq!(k_rec, *k);
+    assert!(eq(&k, &k_rec), "Reconstructed scalar does not match input scalar");
 
     // Convert the result back to a single array
     let x3 = q.x;

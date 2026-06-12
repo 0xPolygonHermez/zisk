@@ -85,6 +85,14 @@ pub fn is_one(x: &[u64]) -> bool {
     }
 }
 
+/// Returns true if x == 2
+pub fn is_two(x: &[u64]) -> bool {
+    match x.split_first() {
+        Some((&first, rest)) => first == 2 && rest.iter().all(|&w| w == 0),
+        None => false,
+    }
+}
+
 /// Returns true if x is a power of two
 pub fn is_power_of_two(x: &[u64]) -> bool {
     // A multiple-word number is a power of two if it has exactly one bit set across all words
