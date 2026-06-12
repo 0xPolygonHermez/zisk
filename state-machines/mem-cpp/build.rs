@@ -40,24 +40,6 @@ fn cuda_lib_dir(nvcc: &Path) -> PathBuf {
     PathBuf::from("/usr/local/cuda/lib64")
 }
 
-/// Mirror of detect_cuda_arch.sh's probe, used only to decide whether to
-/// surface the Makefile's major-archs fallback as a cargo warning.
-fn nvidia_smi_sees_gpu() -> bool {
-    Command::new("nvidia-smi")
-        .args(["--query-gpu=compute_cap", "--format=csv,noheader"])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .next()
-                .map(|l| l.trim().replace('.', ""))
-                .is_some_and(|cap| !cap.is_empty() && cap.chars().all(|c| c.is_ascii_digit()))
-        })
-        .unwrap_or(false)
-}
-
 fn main() {
     println!("cargo:rerun-if-env-changed=CUDA_ARCHS");
     println!("cargo:rerun-if-env-changed=CUDA_ARCH");
@@ -143,18 +125,6 @@ fn main() {
 
     let gpu_build_dir = Path::new(&out_dir).join("memcpp_cu");
     fs::create_dir_all(&gpu_build_dir).unwrap();
-
-    // The Makefile's auto-detect fallback only warns on make's stderr, which
-    // cargo hides on success — surface it as a cargo warning so a multi-arch
-    // fallback build is visible in the console.
-    let arch_env_set = ["CUDA_ARCHS", "CUDA_ARCH", "CUDA_GENCODE_FLAGS"]
-        .iter()
-        .any(|v| env::var_os(v).is_some_and(|s| !s.is_empty()));
-    if !arch_env_set && !nvidia_smi_sees_gpu() {
-        println!(
-            "cargo:warning=[BUILD INFO] could not detect host GPU arch (nvidia-smi unavailable or failed) — building for all major CUDA archs; set CUDA_ARCHS explicitly to suppress this warning"
-        );
-    }
 
     // Invoke the cu/Makefile, which owns all CUDA arch resolution (CUDA_ARCHS
     // et al. reach it via the process environment).
