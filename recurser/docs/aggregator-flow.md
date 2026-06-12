@@ -410,7 +410,7 @@ Every check is in-circuit, so a passing proof is sound.
 
 The definition is authored once (a TOML next to the guest programs) and
 consumed twice: by `build_program` at host-build time (for the SDK path)
-and by the `cargo-zisk setup-recurser-aggregator` CLI at setup time.
+and by the `cargo-zisk recurser setup` CLI at setup time.
 
 ### Prerequisites
 
@@ -422,7 +422,7 @@ output directory — input and output paths must differ, so one ZisK setup
 can feed any number of recurser configurations without cross-contaminating
 the proving-key tree.
 
-Output layout (under `--output-dir`, default `./build`):
+Output layout (under the output directory, `~/.zisk/recurser` via the CLI/SDK):
 
 ```
 provingKey/recurser/<recurser-id>/    recurser_aggregator.{dat,exec} + witness library
@@ -482,22 +482,24 @@ The CLI consumes the same TOML, resolving guest names against the built
 ELFs (so run the guests' `cargo build` first):
 
 ```text
-cargo-zisk setup-recurser-aggregator --aggregation programs/aggregations/chain.toml
+cargo-zisk recurser setup --aggregation programs/aggregations/chain.toml
 ```
+
+The command runs the setup through the SDK: it reads the vadcop_final setup
+from `~/.zisk` and writes the recurser artifacts to
+`~/.zisk/recurser/<recurser-id>` (the SDK-managed location `recurser prove`
+and the workers resolve against).
 
 | Flag | Required | Description |
 |---|---|---|
 | `--aggregation` | yes | The definition TOML under `<programs>/aggregations/` |
 | `--release` | no | Resolve guest ELFs from the release profile instead of debug |
-| `--setup-dir` | no | ZisK setup directory to read from (contains `provingKey/<name>/vadcop_final/`). Defaults to `~/.zisk` |
-| `--output-dir` | no | Where to write the recurser-aggregator artifacts. Must differ from `--setup-dir`. Defaults to `./build` |
-| `--proving-key` | no | Path to the proving key used to build the `ProofCtx` rom-setup runs against. Defaults to the standard ZisK location |
-| `--cache-dir` | no | rom-setup cache directory (`<elfHash>_<pkHash>_…verkey.bin` artifacts). Defaults to `~/.zisk/cache` |
+| `--proving-key` | no | Path to a precomputed proving key. Defaults to the standard ZisK location |
 
-VK derivation is cache-aware: if `rom_merkle_setup`
-finds the matching `*.verkey.bin` already in `--cache-dir`, it just reads
-it (no recompute). The subcommand lives at
-[`cli/src/commands/setup_recurser_aggregator.rs`](../../cli/src/commands/setup_recurser_aggregator.rs);
+VK derivation is cache-aware: if the matching `*.verkey.bin` is already in
+the rom-setup cache (`~/.zisk/cache`), it is read back without recompute.
+The subcommand lives at
+[`cli/src/commands/user/embedded/recurser.rs`](../../cli/src/commands/user/embedded/recurser.rs);
 the lib API ([`SetupRecurserAggregatorOptions`](../src/setup/command.rs))
 takes program VKs and circuit bodies inline for callers that already have
 them.
