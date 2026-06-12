@@ -385,7 +385,10 @@ impl AsmRunnerMO {
             Some((metas_ptr, n)) => unsafe {
                 mem_planner.inject_gpu_metas_from_pointers(metas_ptr, n)
             },
-            None => true,
+            // No metas with the GPU planner active means run() failed: chunks
+            // were fed only to the GPU, so the segment table was never
+            // populated and collecting plans would silently return them empty.
+            None => gpu_count_and_plan_opt.is_none(),
         };
 
         let result: Result<Vec<Plan>> = (|| -> Result<Vec<Plan>> {
@@ -415,12 +418,14 @@ impl AsmRunnerMO {
                 ));
             }
 
-            // GPU metas failed validation in inject; the segment table is
-            // unpopulated, so fail the run rather than collect a wrong plan.
+            // The GPU planner produced no metas or they failed validation in
+            // inject; the segment table is unpopulated, so fail the run rather
+            // than collect a wrong plan.
             #[cfg(gpu)]
             if !inject_ok {
                 return Err(anyhow::anyhow!(
-                    "[gpu] inject_gpu_metas_from_pointers rejected the GPU metas; aborting MO run"
+                    "[gpu] GPU count-and-plan produced no metas or they were rejected; \
+                     segment table is unpopulated, aborting MO run"
                 ));
             }
 
