@@ -211,7 +211,9 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
+            let device_buffers_ptr = pctx.get_device_buffers_ptr();
+            let gpu_buf_ptr = get_unified_buffer_gpu_c(device_buffers_ptr) as usize;
+            let gpu_buf_size = get_unified_buffer_gpu_size_c(device_buffers_ptr);
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
         };
 

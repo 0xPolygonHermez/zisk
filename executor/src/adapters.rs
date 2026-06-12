@@ -7,6 +7,7 @@
 
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, Setup, SetupCtx};
+use proofman_starks_lib_c::{acquire_first_gpu_buffer, release_first_gpu_buffer};
 use zisk_common::{StatsCostPerType, StatsType};
 use zisk_pil::{
     ZiskPublicValues, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
@@ -61,13 +62,17 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     /// Reserve proofman's unified GPU buffer for the MO count-and-plan window.
     #[inline]
     pub fn acquire_gpu_buffer(&self) {
-        self.pctx.acquire_first_gpu_buffer();
+        if self.pctx.gpu {
+            unsafe { acquire_first_gpu_buffer(self.pctx.get_device_buffers_ptr()) };
+        }
     }
 
     /// Release the buffer back to proofman once the MO runner has joined.
     #[inline]
     pub fn release_gpu_buffer(&self) {
-        self.pctx.release_first_gpu_buffer();
+        if self.pctx.gpu {
+            unsafe { release_first_gpu_buffer(self.pctx.get_device_buffers_ptr()) };
+        }
     }
 
     /// Per-stats-type proving cost. Sole `SetupCtx<F>` consumer in the
