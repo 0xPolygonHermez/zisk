@@ -24,6 +24,16 @@ use crate::{
 /// keyed by SM name. Mirrors `ErasedInputs` on the prover-backend side.
 type ErasedInputMap = HashMap<String, Vec<Box<dyn Any + Send + Sync>>>;
 
+/// Post-hoc mutator for one AIR's flat `airvalues` buffer, applied to every
+/// instance of that AIR (identified by the 0-based per-AIR instance index)
+/// after its witness (and any row hooks) are done.
+pub type AirValuesFn = Box<dyn Fn(usize, &mut Vec<Goldilocks>) + Send + Sync>;
+
+/// Mutator for the proof-wide values, applied once per run through the
+/// typed [`zisk_pil::ZiskProofValues`] view over `pctx`'s buffer.
+pub type ProofValuesFn =
+    Box<dyn for<'a> Fn(&mut zisk_pil::ZiskProofValues<'a, Goldilocks>) + Send + Sync>;
+
 /// Alternative `WitnessComponent` used by the unit-test backend.
 ///
 /// The struct is concrete to `Goldilocks` because the registry of per-SM
@@ -34,27 +44,24 @@ type ErasedInputMap = HashMap<String, Vec<Box<dyn Any + Send + Sync>>>;
 pub struct ZiskExecutorTest {
     sm_bundle: Arc<StaticSMBundle<Goldilocks>>,
     /// Per-AIR-id erased Manager arcs, built once from the bundle.
-    /// Indexed by AIR id; the dispatcher passes the right one to each
-    /// trait method based on the planned instance.
     managers: HashMap<usize, Arc<dyn Any + Send + Sync>>,
     /// Per-instance erased input chunks, keyed by global_id.
     inputs: RwLock<HashMap<usize, Box<dyn Any + Send + Sync>>>,
-    /// Per-instance AIR id (so `calculate_witness` can look up the right
-    /// SM in the registry without touching pctx again).
+    /// Per-instance AIR id, recorded at planning time.
     air_ids: RwLock<HashMap<usize, usize>>,
-    /// Type-erased input data set by the `verify_input()` builder before each
-    /// run (per-SM batches of boxed `S::Input`). The only input source for the
-    /// unit-test executor.
+    /// Type-erased input data set by the `VerifyInput` builder before each
+    /// run. The only input source for the unit-test executor.
     input_data_value: RwLock<Option<ErasedInputMap>>,
-    /// Per-AIR-id post-hoc trace-row hooks. Empty by default; set via
-    /// [`ZiskExecutorTest::set_hooks`]. Cleared at the start of every
-    /// `execute()` so leftover hooks from a previous run don't apply.
+    /// Per-AIR-id post-hoc trace-row hooks ([`ZiskExecutorTest::set_hooks`]).
     hooks: RwLock<UnitTestHookBag>,
-    /// Per-AIR-id raw trace-authoring overrides. Empty by default; set via
-    /// [`ZiskExecutorTest::set_trace_overrides`]. When an override is present
-    /// for an AIR id, the executor bypasses that SM's `compute_witness` and
-    /// builds the `AirInstance` from the override closure instead.
+    /// Per-AIR-id raw trace-authoring overrides
+    /// ([`ZiskExecutorTest::set_trace_overrides`]); an override bypasses the
+    /// SM's `compute_witness` for that AIR id.
     trace_overrides: RwLock<TraceOverrideBag>,
+    /// Per-AIR-id air-values mutators ([`ZiskExecutorTest::set_air_values_hooks`]).
+    air_values_hooks: RwLock<HashMap<usize, AirValuesFn>>,
+    /// Proof-values mutator ([`ZiskExecutorTest::set_proof_values_fn`]).
+    proof_values_fn: RwLock<Option<ProofValuesFn>>,
     packed: AtomicBool,
 }
 
@@ -71,6 +78,8 @@ impl ZiskExecutorTest {
             input_data_value: RwLock::new(None),
             hooks: RwLock::new(UnitTestHookBag::new()),
             trace_overrides: RwLock::new(TraceOverrideBag::new()),
+            air_values_hooks: RwLock::new(HashMap::new()),
+            proof_values_fn: RwLock::new(None),
             packed: AtomicBool::new(false),
         }
     }
@@ -100,9 +109,22 @@ impl ZiskExecutorTest {
     }
 
     /// Set the type-erased input data. This is the only input path: the typed
-    /// `verify_input()` builder boxes each input into this map before running.
+    /// `VerifyInput` builder boxes each input into this map before running.
     pub fn set_input_data_value(&self, value: ErasedInputMap) {
         *self.input_data_value.write().unwrap() = Some(value);
+    }
+
+    /// Replace the per-AIR-id air-values mutators. Each closure runs against
+    /// the flat `airvalues` of every instance of its AIR, after the witness
+    /// and any row hooks. Pass an empty map to remove them all.
+    pub fn set_air_values_hooks(&self, hooks: HashMap<usize, AirValuesFn>) {
+        *self.air_values_hooks.write().unwrap() = hooks;
+    }
+
+    /// Replace the proof-values mutator, run once per `execute()` against the
+    /// typed `ZiskProofValues` view. Pass `None` to remove it.
+    pub fn set_proof_values_fn(&self, f: Option<ProofValuesFn>) {
+        *self.proof_values_fn.write().unwrap() = f;
     }
 
     /// Switches between packed and non-packed trace-row layouts. GPU mode
@@ -135,6 +157,13 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
     ) -> ProofmanResult<()> {
         let raw = self.take_input_map()?;
 
+        // Proof-wide values first: they are reset by the proofman before
+        // every run, so this is the earliest seam where writes survive.
+        if let Some(f) = self.proof_values_fn.read().unwrap().as_ref() {
+            let mut pv = zisk_pil::ZiskProofValues::from_vec_guard(pctx.get_proof_values());
+            f(&mut pv);
+        }
+
         // Drive the registry: for every SM-name key, look up the matching SM,
         // collect its already-typed (erased) inputs, and let the SM plan its
         // own AIR instances. The unit-test executor itself is fully generic
@@ -159,18 +188,20 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
 
         // Shape-driven planning for trace-authoring overrides: `trace()`
         // takes no inputs, so an override whose AIR id was not planned from
-        // inputs gets exactly one instance here (its size is the AIR's fixed
-        // NUM_ROWS — nothing input-dependent to decide).
-        for &air_id in self.trace_overrides.read().unwrap().overrides.keys() {
+        // inputs gets its requested number of instances here (each sized to
+        // the AIR's fixed NUM_ROWS — nothing input-dependent to decide).
+        for (&air_id, slot) in &self.trace_overrides.read().unwrap().overrides {
             if planned_air_ids.contains(&air_id) {
                 continue;
             }
-            let gid = pctx.add_instance(zisk_pil::ZISK_AIRGROUP_ID, air_id)?;
-            global_ids.write().unwrap().push(gid);
-            self.air_ids.write().unwrap().insert(gid, air_id);
-            // Marker entry so `calculate_witness` picks the instance up; the
-            // override path never reads it.
-            self.inputs.write().unwrap().insert(gid, Box::new(()));
+            for _ in 0..slot.instances {
+                let gid = pctx.add_instance(zisk_pil::ZISK_AIRGROUP_ID, air_id)?;
+                global_ids.write().unwrap().push(gid);
+                self.air_ids.write().unwrap().insert(gid, air_id);
+                // Marker entry so `calculate_witness` picks the instance up;
+                // the override path never reads it.
+                self.inputs.write().unwrap().insert(gid, Box::new(()));
+            }
         }
 
         Ok(())
@@ -215,12 +246,12 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
                     ))
                 })?;
                 let trace_buffer = buffer_pool.take_buffer();
+                // 0-based instance index within this AIR — lets multi-instance
+                // hooks/overrides tell instances apart (e.g. segment chains).
+                let instance_idx = pctx.dctx_find_air_instance_id(global_id)?;
 
-                // Raw trace authoring: if registered for this AIR id, bypass
-                // `compute_witness` and let the user closure write the trace
-                // directly (with the shared `Std` handle for emitting
-                // range-check / lookup multiplicities). Otherwise take the
-                // normal path.
+                // Raw trace authoring: an override bypasses `compute_witness`
+                // and lets the user closure write the trace directly.
                 let mut air_instance = {
                     let overrides_guard = self.trace_overrides.read().unwrap();
                     if let Some(slot) = overrides_guard.overrides.get(&air_id) {
@@ -239,6 +270,7 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
                             slot.override_fn.as_ref(),
                             &self.sm_bundle.get_std(),
                             trace_buffer,
+                            instance_idx,
                         )?
                     } else {
                         drop(overrides_guard);
@@ -247,10 +279,8 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
                     }
                 };
 
-                // Post-hoc trace-row injection: if a hook is registered
-                // for this AIR id, walk the buffer one row at a time and
-                // call the user closure. Hooks are typed; the cast back to
-                // `&mut Row` happens inside the per-SM erased closure.
+                // Post-hoc trace-row injection: walk the buffer one row at a
+                // time and call the registered hooks in order.
                 {
                     let hooks_guard = self.hooks.read().unwrap();
                     if let Some(slot) = hooks_guard.hooks.get(&air_id) {
@@ -263,10 +293,20 @@ impl WitnessComponent<Goldilocks> for ZiskExecutorTest {
                         let n_rows = buf.len() / slot.row_size;
                         for row_idx in 0..n_rows {
                             let start = row_idx * slot.row_size;
-                            let end = start + slot.row_size;
-                            (slot.apply)(row_idx, &mut buf[start..end]);
+                            let row = &mut buf[start..start + slot.row_size];
+                            for hook in &slot.hooks {
+                                hook(row_idx, row);
+                            }
                         }
                     }
+                }
+
+                // Air-values injection: runs last, so it sees (and can fix up
+                // or corrupt) whatever the witness path produced. For authored
+                // traces the buffer starts empty — fill it from the AIR's
+                // generated `<Air>AirValues::new()` + `get_buffer()`.
+                if let Some(f) = self.air_values_hooks.read().unwrap().get(&air_id) {
+                    f(instance_idx, &mut air_instance.airvalues);
                 }
 
                 pctx.add_air_instance(air_instance, global_id);

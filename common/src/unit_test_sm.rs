@@ -14,13 +14,18 @@ const ZISK_AIRGROUP_ID: usize = 0;
 /// Per-SM contract used by the unit-test executor.
 pub trait UnitTestSm<F: PrimeField64>: Send + Sync + 'static {
     /// SM-specific input type. Carried type-erased (`Box<dyn Any>`) from the
-    /// `verify_input()` builder into the executor, then downcast back here —
+    /// `VerifyInput` builder into the executor, then downcast back here —
     /// no serialization round-trip.
     type Input: Send + Sync + 'static;
 
     /// The non-packed trace row type the SM writes. Hooks receive
     /// `&mut Self::Row` and call its inherent `set_<col>` setters.
     type Row: TraceRow + Default + Copy + Send + Sync + 'static;
+
+    /// The SM's concrete typed trace (e.g. `ArithEqTrace<ArithEqTraceRow<F>>`).
+    /// Raw trace-authoring closures receive `&mut Self::Trace`, so callers
+    /// never have to spell the trace type out themselves.
+    type Trace: 'static;
 
     /// SM-specific runtime handle (typically `<Sm>Manager<F>` or `<Sm>SM<F>`).
     /// Stored erased in the executor's manager registry and downcast back
@@ -84,9 +89,8 @@ pub trait UnitTestSm<F: PrimeField64>: Send + Sync + 'static {
 /// Two forms:
 ///
 /// **Shorthand** — for SMs whose witness call is just
-/// `mgr.<accessor>().compute_witness::<Row>(&[inputs], buf)`. Provide
-/// `row`, `row_packed`, and `accessor` instead of writing the
-/// packed/non-packed branch by hand:
+/// `sm.compute_witness::<Row>(&[inputs], buf)`; provide `row` + `row_packed`
+/// and the packed/non-packed branch is generated:
 ///
 /// ```ignore
 /// unit_test_sm! {
@@ -95,42 +99,18 @@ pub trait UnitTestSm<F: PrimeField64>: Send + Sync + 'static {
 ///         air: BLAKE_2_BR_AIR_IDS[0],
 ///         input: Blake2Input,
 ///         manager: Blake2Manager<F>,
-///         accessor: blake2_sm,
 ///         row: Blake2brTraceRow<F>,
 ///         row_packed: Blake2brTraceRowPacked<F>,
+///         trace: Blake2brTrace,
 ///         rows_per_input: CLOCKS,
 ///         chunk_size: |mgr| mgr.blake2_sm().num_available_blake2s,
 ///     }
 /// }
 /// ```
 ///
-/// **Full form** — for SMs whose call has a different shape (extra
-/// `sctx`, packed-as-argument, segment id, …). Provide an explicit
-/// `compute` closure:
-///
-/// ```ignore
-/// unit_test_sm! {
-///     ArithEqSm => {
-///         name: "ArithEq",
-///         air: ARITH_EQ_AIR_IDS[0],
-///         input: ArithEqInput,
-///         row: ArithEqTraceRow<F>,
-///         manager: ArithEqManager<F>,
-///         rows_per_input: ARITH_EQ_ROWS_BY_OP,
-///         chunk_size: |_| ArithEqTrace::<usize>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP,
-///         compute: |mgr, sctx, inputs, buf, packed| {
-///             let inputs = vec![inputs];
-///             if packed {
-///                 mgr.arith_eq_sm()
-///                     .compute_witness::<ArithEqTraceRowPacked<F>>(sctx, &inputs, buf)
-///             } else {
-///                 mgr.arith_eq_sm()
-///                     .compute_witness::<ArithEqTraceRow<F>>(sctx, &inputs, buf)
-///             }
-///         },
-///     }
-/// }
-/// ```
+/// **Full form** — for any other call shape, replace `row_packed` with an
+/// explicit `compute: |mgr, sctx, inputs, buf, packed| { … }` closure (see
+/// the precompile crates' `lib.rs` for real examples).
 ///
 /// `rows_per_input: <expr>` is optional in either form (default 1).
 #[macro_export]
@@ -200,6 +180,7 @@ macro_rules! unit_test_sm {
         impl<F: ::fields::PrimeField64> $crate::UnitTestSm<F> for $marker {
             type Input = $input_ty;
             type Row = $row_ty;
+            type Trace = $trace<$row_ty>;
             type Manager = $mgr_ty;
 
             fn air_id() -> usize { $air }
@@ -346,31 +327,21 @@ impl<F: PrimeField64, T: UnitTestSm<F>> DynUnitTestSm<F> for T {
 }
 
 // =====================================================================
-// Raw trace authoring.
-//
-// The `UnitTestSm::compute_witness` path turns typed inputs into a trace
-// deterministically. The trace-authoring path is the escape hatch beneath
-// it: it hands the caller the freshly-allocated *typed* trace (e.g.
-// `KeccakfTrace<Row>`) plus the shared `Std` handle and lets them write
-// columns directly — bypassing `compute_witness` entirely. No inputs are
-// involved: the executor plans one max-size instance for the AIR from its
-// fixed shape. The `Std` handle is what lets an authored trace also emit
-// the side-effects `compute_witness` would (range-check / lookup
-// multiplicities), so a trace can be authored as fully *valid* — or as
-// invalid in exactly one chosen way.
-//
-// The concrete trace type is SM-specific, so the type-safe glue is emitted
-// by the [`unit_test_trace_override!`] macro (which knows the trace type).
-// Registration is opt-in per SM; an SM with no override registered keeps
-// running through `compute_witness` as before.
+// Raw trace authoring: the escape hatch beneath `compute_witness`. The
+// caller gets the freshly-allocated typed trace plus the shared `Std`
+// handle (for emitting the range-check / lookup multiplicities a fully
+// *valid* authored trace needs) and writes columns directly. The concrete
+// trace type is SM-specific, so the type-safe glue is emitted per marker
+// by [`unit_test_trace_override!`].
 // =====================================================================
 
 /// The user-supplied raw-trace authoring closure, before type erasure.
-/// Receives the freshly-allocated typed trace and the shared [`Std`]
-/// handle (for emitting range-check / lookup multiplicities); writes the
-/// trace in place.
+/// Receives the per-AIR instance index (0-based — an override can author
+/// several instances of its AIR), the freshly-allocated typed trace, and
+/// the shared [`Std`] handle (for emitting range-check / lookup
+/// multiplicities); writes the trace in place.
 pub type TraceOverrideFn<F, Trace> =
-    Box<dyn Fn(&mut Trace, &Std<F>) -> ProofmanResult<()> + Send + Sync + 'static>;
+    Box<dyn Fn(usize, &mut Trace, &Std<F>) -> ProofmanResult<()> + Send + Sync + 'static>;
 
 /// Object-safe builder that turns a (type-erased) [`TraceOverrideFn`] plus a
 /// trace buffer into a finished [`AirInstance`], bypassing the SM's
@@ -390,6 +361,7 @@ pub trait DynTraceOverride<F: PrimeField64>: Send + Sync {
         override_fn: &(dyn Any + Send + Sync),
         std: &Std<F>,
         trace_buffer: Vec<F>,
+        instance_idx: usize,
     ) -> ProofmanResult<AirInstance<F>>;
 }
 
@@ -407,15 +379,8 @@ pub trait DynTraceOverride<F: PrimeField64>: Send + Sync {
 /// }
 /// ```
 ///
-/// Then register a closure on the executor's `TraceOverrideBag`:
-///
-/// ```ignore
-/// TraceOverrideBag::new().with::<KeccakfSm>(|trace, std| {
-///     // write rows directly, e.g. trace.buffer[0].set_step_addr(1),
-///     // and emit std side-effects (range checks, lookups) as needed.
-///     Ok(())
-/// })
-/// ```
+/// Then register a closure on the executor's `TraceOverrideBag` via
+/// `bag.register::<KeccakfSm>(|trace, std| { … })`.
 #[macro_export]
 macro_rules! unit_test_trace_override {
     (
@@ -435,6 +400,7 @@ macro_rules! unit_test_trace_override {
                 override_fn: &(dyn ::std::any::Any + ::std::marker::Send + ::std::marker::Sync),
                 std: &::pil_std_lib::Std<F>,
                 trace_buffer: ::std::vec::Vec<F>,
+                instance_idx: ::std::primitive::usize,
             ) -> ::proofman_common::ProofmanResult<::proofman_common::AirInstance<F>> {
                 let f = override_fn
                     .downcast_ref::<$crate::TraceOverrideFn<F, $trace<$row_ty>>>()
@@ -446,7 +412,7 @@ macro_rules! unit_test_trace_override {
                 })?;
 
                 let mut trace = <$trace<$row_ty>>::new_from_vec_zeroes(trace_buffer)?;
-                f(&mut trace, std)?;
+                f(instance_idx, &mut trace, std)?;
 
                 ::std::result::Result::Ok(::proofman_common::AirInstance::new_from_trace(
                     ::proofman_common::FromTrace::new(&mut trace),

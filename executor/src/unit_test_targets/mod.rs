@@ -31,36 +31,50 @@ use zisk_pil::{
 
 use crate::{BuiltinSMs, Precompiles, StateMachines, StaticSMBundle};
 
-/// All SMs registered with the unit-test framework. Order doesn't matter;
-/// the executor looks SMs up by AIR id or JSON key.
-pub const REGISTRY: &[&'static dyn DynUnitTestSm<Goldilocks>] = &[
-    &BinarySm,
-    &BinaryAddSm,
-    &BinaryExtensionSm,
-    &ArithSm,
-    &KeccakfSm,
-    &Sha256fSm,
-    &Poseidon2Sm,
-    &Blake2Sm,
-    &ArithEqSm,
-    &ArithEq384Sm,
-    &Add256Sm,
-    &MemSm,
-    &RomDataSm,
-    &InputDataSm,
-    &MemAlignSm,
-    &DmaSm,
-    &DmaMemCpySm,
-    &DmaInputCpySm,
-    &DmaPrePostSm,
-    &DmaPrePostMemCpySm,
-    &DmaPrePostInputCpySm,
-    &Dma64AlignedSm,
-    &Dma64AlignedMemCpySm,
-    &Dma64AlignedInputCpySm,
-    &Dma64AlignedMemSetSm,
-    &Dma64AlignedMemSm,
-    &DmaUnalignedSm,
+/// Declares the single list of SM markers registered with the unit-test
+/// framework and expands it into both trait-object registries (every
+/// `unit_test_sm!` marker implements both `DynUnitTestSm` and
+/// `DynTraceOverride`, so the two lists are always identical).
+macro_rules! registry {
+    ($($sm:expr),* $(,)?) => {
+        /// All SMs registered with the unit-test framework. Order doesn't
+        /// matter; the executor looks SMs up by AIR id or name.
+        pub const REGISTRY: &[&'static dyn DynUnitTestSm<Goldilocks>] = &[$(&$sm),*];
+
+        /// Raw trace-authoring override builders, one per SM (see
+        /// [`crate::unit_test_trace_override`]).
+        pub const OVERRIDE_REGISTRY: &[&'static dyn DynTraceOverride<Goldilocks>] = &[$(&$sm),*];
+    };
+}
+
+registry![
+    BinarySm,
+    BinaryAddSm,
+    BinaryExtensionSm,
+    ArithSm,
+    KeccakfSm,
+    Sha256fSm,
+    Poseidon2Sm,
+    Blake2Sm,
+    ArithEqSm,
+    ArithEq384Sm,
+    Add256Sm,
+    MemSm,
+    RomDataSm,
+    InputDataSm,
+    MemAlignSm,
+    DmaSm,
+    DmaMemCpySm,
+    DmaInputCpySm,
+    DmaPrePostSm,
+    DmaPrePostMemCpySm,
+    DmaPrePostInputCpySm,
+    Dma64AlignedSm,
+    Dma64AlignedMemCpySm,
+    Dma64AlignedInputCpySm,
+    Dma64AlignedMemSetSm,
+    Dma64AlignedMemSm,
+    DmaUnalignedSm,
 ];
 
 /// Look up an SM in the registry by AIR id.
@@ -72,40 +86,6 @@ pub fn lookup_by_air_id(air_id: usize) -> Option<&'static dyn DynUnitTestSm<Gold
 pub fn lookup_by_name(name: &str) -> Option<&'static dyn DynUnitTestSm<Goldilocks>> {
     REGISTRY.iter().copied().find(|s| s.name() == name)
 }
-
-/// Raw trace-authoring override builders, one per SM. Every SM declared via
-/// `unit_test_sm!` gets a `DynTraceOverride` impl, so this mirrors
-/// [`REGISTRY`]. Each entry knows how to allocate its concrete trace and run
-/// a user closure against it (see [`crate::unit_test_trace_override`]).
-pub const OVERRIDE_REGISTRY: &[&'static dyn DynTraceOverride<Goldilocks>] = &[
-    &BinarySm,
-    &BinaryAddSm,
-    &BinaryExtensionSm,
-    &ArithSm,
-    &KeccakfSm,
-    &Sha256fSm,
-    &Poseidon2Sm,
-    &Blake2Sm,
-    &ArithEqSm,
-    &ArithEq384Sm,
-    &Add256Sm,
-    &MemSm,
-    &RomDataSm,
-    &InputDataSm,
-    &MemAlignSm,
-    &DmaSm,
-    &DmaMemCpySm,
-    &DmaInputCpySm,
-    &DmaPrePostSm,
-    &DmaPrePostMemCpySm,
-    &DmaPrePostInputCpySm,
-    &Dma64AlignedSm,
-    &Dma64AlignedMemCpySm,
-    &Dma64AlignedInputCpySm,
-    &Dma64AlignedMemSetSm,
-    &Dma64AlignedMemSm,
-    &DmaUnalignedSm,
-];
 
 /// Look up a trace-override builder by AIR id. `None` means the SM has no
 /// override support, so the executor takes the normal `compute_witness` path.
@@ -131,10 +111,8 @@ pub fn build_manager_registry(
 ) -> HashMap<usize, Arc<dyn Any + Send + Sync>> {
     let mut map: HashMap<usize, Arc<dyn Any + Send + Sync>> = HashMap::new();
 
-    /// Coerce `&Arc<T>` to `Arc<dyn Any + Send + Sync>`. We bind the
-    /// concrete clone first so the unsize-coercion fires on the return
-    /// expression (return-type inference would otherwise resolve
-    /// `Arc::clone`'s generic to the trait object and fail).
+    /// Coerce `&Arc<T>` to `Arc<dyn Any + Send + Sync>` (the intermediate
+    /// binding keeps `Arc::clone`'s generic from resolving to the trait object).
     fn erase<T: Any + Send + Sync + 'static>(arc: &Arc<T>) -> Arc<dyn Any + Send + Sync> {
         let cloned: Arc<T> = arc.clone();
         cloned

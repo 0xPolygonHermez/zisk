@@ -1,7 +1,4 @@
-use crate::{
-    create_debug_info, prover::verify_input::VerifyInput, BackendProverOpts,
-    VerifyConstraintsOutput,
-};
+use crate::{create_debug_info, prover::verify_input::VerifyInput, BackendProverOpts};
 use anyhow::Result;
 use colored::Colorize;
 use executor::{
@@ -10,18 +7,19 @@ use executor::{
 };
 use fields::Goldilocks;
 use proofman::ProofMan;
-use proofman_common::initialize_logger;
+use proofman_common::{initialize_logger, ConstraintsVerificationResult};
 use std::any::Any;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use zisk_common::{PublicValues, ZiskExecutorSummary, ZiskPaths};
+use zisk_common::{PublicValues, UnitTestSm, ZiskPaths};
 //
 // Note: `proofman.get_publics()` returns `Vec<u8>`; we wrap with `PublicValues::new` when we
 // need the typed view (mirrors `prover-backend/src/prover/backend.rs`).
 
 /// Unit-test prover. Constructed via [`UnitTestProver::new`]; runs constraint verification
-/// against a JSON input file via [`UnitTestProver::verify_constraints`].
+/// for in-memory typed inputs via the builder started by [`UnitTestProver::input`],
+/// [`UnitTestProver::hook`] or [`UnitTestProver::trace`].
 pub struct UnitTestProver {
     proofman: ProofMan<Goldilocks>,
     executor: Arc<ZiskExecutorTest>,
@@ -63,63 +61,124 @@ impl UnitTestProver {
         Ok(Self { proofman, executor, proving_key_path: proving_key })
     }
 
-    /// Begin a typed verify-input builder for in-memory test workflows.
+    /// Begin a builder with one typed input for SM `S` — the usual entry
+    /// point for in-memory test workflows.
     ///
     /// ```ignore
-    /// let result = prover.verify_input()
+    /// let result = prover
     ///     .input::<BinarySm>(BinaryInput { op: 15, a: 5, b: 3 })
     ///     .hook::<BinarySm>(|input_idx, _clock, row| { /* mutate row */ })
     ///     .run()?;
+    /// assert!(result.valid);
     /// ```
-    pub fn verify_input(&self) -> VerifyInput<'_> {
-        VerifyInput::new(self)
+    pub fn input<S>(&self, input: S::Input) -> VerifyInput<'_>
+    where
+        S: UnitTestSm<Goldilocks>,
+    {
+        VerifyInput::new(self).input::<S>(input)
+    }
+
+    /// Begin a builder with many inputs for SM `S` in one call.
+    pub fn inputs<S, I>(&self, inputs: I) -> VerifyInput<'_>
+    where
+        S: UnitTestSm<Goldilocks>,
+        I: IntoIterator<Item = S::Input>,
+    {
+        VerifyInput::new(self).inputs::<S, I>(inputs)
+    }
+
+    /// Begin a builder with a typed trace-row hook for SM `S`. See
+    /// [`VerifyInput::hook`].
+    pub fn hook<S>(
+        &self,
+        hook: impl Fn(usize, usize, &mut S::Row) + Send + Sync + 'static,
+    ) -> VerifyInput<'_>
+    where
+        S: UnitTestSm<Goldilocks>,
+    {
+        VerifyInput::new(self).hook::<S>(hook)
+    }
+
+    /// Begin a builder that authors SM `S`'s trace directly, bypassing
+    /// `compute_witness`. See [`VerifyInput::trace`].
+    pub fn trace<S>(
+        &self,
+        author: impl Fn(&mut S::Trace, &pil_std_lib::Std<Goldilocks>) -> proofman_common::ProofmanResult<()>
+            + Send
+            + Sync
+            + 'static,
+    ) -> VerifyInput<'_>
+    where
+        S: UnitTestSm<Goldilocks>,
+    {
+        VerifyInput::new(self).trace::<S>(author)
+    }
+
+    /// Begin a builder that authors several instances of SM `S`'s AIR (e.g.
+    /// a segment chain). See [`VerifyInput::traces`].
+    pub fn traces<S>(
+        &self,
+        instances: usize,
+        author: impl Fn(
+                usize,
+                &mut S::Trace,
+                &pil_std_lib::Std<Goldilocks>,
+            ) -> proofman_common::ProofmanResult<()>
+            + Send
+            + Sync
+            + 'static,
+    ) -> VerifyInput<'_>
+    where
+        S: UnitTestSm<Goldilocks>,
+    {
+        VerifyInput::new(self).traces::<S>(instances, author)
     }
 
     /// Internal entry used by the [`VerifyInput`] builder.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn run_verify_input(
         &self,
         inputs: HashMap<String, Vec<Box<dyn Any + Send + Sync>>>,
         hooks: UnitTestHookBag,
         trace_overrides: TraceOverrideBag,
+        air_values: HashMap<usize, executor::AirValuesFn>,
+        proof_values: Option<executor::ProofValuesFn>,
+        global_constraints: Vec<usize>,
         debug_info: Option<Option<String>>,
-    ) -> Result<VerifyConstraintsOutput> {
-        let start = std::time::Instant::now();
+    ) -> Result<ConstraintsVerificationResult> {
         self.executor.set_input_data_value(inputs);
         self.executor.set_hooks(hooks);
         self.executor.set_trace_overrides(trace_overrides);
-        let result = self.run_verify(start, debug_info);
-        // Always clear hooks and overrides for the next call.
+        self.executor.set_air_values_hooks(air_values);
+        self.executor.set_proof_values_fn(proof_values);
+        let result = self.run_verify(global_constraints, debug_info);
+        // Always clear the injection state for the next call.
         self.executor.set_hooks(UnitTestHookBag::new());
         self.executor.set_trace_overrides(TraceOverrideBag::new());
+        self.executor.set_air_values_hooks(HashMap::new());
+        self.executor.set_proof_values_fn(None);
         result
     }
 
     fn run_verify(
         &self,
-        start: std::time::Instant,
+        global_constraints: Vec<usize>,
         debug_info: Option<Option<String>>,
-    ) -> Result<VerifyConstraintsOutput> {
+    ) -> Result<ConstraintsVerificationResult> {
         let mut debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
 
-        // Skip global-constraint verification: in unit-test mode only a
-        // subset of state machines is fed inputs, so cross-SM range-check
-        // multiplicities can never balance. Sentinel entry in
+        // Skip global-constraint verification by default: in unit-test mode
+        // only a subset of state machines is fed inputs, so cross-SM
+        // range-check multiplicities can never balance. Sentinel entry in
         // `debug_instances` flips the proofman's global-constraint check
-        // to false without disturbing per-AIR verification.
+        // to false without disturbing per-AIR verification. An explicit
+        // `global_constraints` list opts back in for just those ids.
         debug_info.debug_instances.insert(0, HashMap::new());
+        debug_info.debug_global_instances = global_constraints;
 
         self.proofman
             .verify_proof_constraints_from_lib(&debug_info)
-            .map_err(|e| anyhow::anyhow!("Constraint verification failed: {}", e))?;
-
-        let publics = self.proofman.get_publics();
-        let elapsed = start.elapsed();
-
-        Ok(VerifyConstraintsOutput::new(
-            ZiskExecutorSummary::default(),
-            elapsed.as_millis() as u64,
-            &publics,
-        ))
+            .map_err(|e| anyhow::anyhow!("Constraint verification failed: {}", e))
     }
 
     /// Reference to the inner `ZiskExecutorTest` for advanced callers.
@@ -147,7 +206,7 @@ impl UnitTestProver {
         println!(
             "{: >12} {}",
             "Unit Test".bright_green().bold(),
-            "Verifying constraints from JSON inputs".bright_yellow()
+            "Per-AIR constraint verification".bright_yellow()
         );
         println!("{: >12} {}", "Proving Key".bright_green().bold(), proving_key.display());
         println!();

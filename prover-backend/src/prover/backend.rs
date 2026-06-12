@@ -284,9 +284,25 @@ impl ProverBackend {
 
         self.executor.set_stdin(stdin)?;
 
-        self.proofman
+        let constraints = self
+            .proofman
             .verify_proof_constraints_from_lib(&debug_info)
-            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Error verifying constraints: {}", e))?;
+        if !constraints.valid {
+            let failed: Vec<String> = constraints
+                .instances
+                .iter()
+                .filter(|i| !i.valid())
+                .map(|i| format!("{} (instance {})", i.air_name, i.air_instance_id))
+                .collect();
+            anyhow::bail!(
+                "Constraint verification failed: {} instance(s) with failing constraints [{}], \
+                 {} failing global constraint(s)",
+                failed.len(),
+                failed.join(", "),
+                constraints.failed_global_constraints.len()
+            );
+        }
         let elapsed = start.elapsed();
 
         let (result, _stats) = self.executor.get_execution_result();

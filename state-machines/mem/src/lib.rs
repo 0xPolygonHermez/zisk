@@ -96,6 +96,8 @@ unit_test_sm! {
         chunk_size: |_| MemTrace::<usize>::NUM_ROWS,
         compute: |sm, _sctx, inputs, buf, packed| {
             let prev = MemPreviousSegment { addr: RAM_W_ADDR_INIT, step: 0, value: 0 };
+            // TODO: the offsets path needs a planner-grade checkpoint
+            // (per-address first-row offsets); the default panics/fails.
             sm.compute_witness(
                 &inputs,
                 SegmentId(0),
