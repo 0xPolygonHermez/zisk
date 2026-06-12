@@ -5,6 +5,8 @@ use pil2_stark_setup::commands::setup_recursive_test::{
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 
+const DEFAULT_HASH: &str = "Poseidon1";
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Set up a test recursive circuit from a user-provided circom file.
@@ -25,6 +27,10 @@ pub(crate) struct ZiskProofmanSetupRecursiveTest {
     #[arg(short = 't', long, default_value = "aggregation")]
     pub r#type: String,
 
+    /// Hash function to use: Poseidon1 or Poseidon2
+    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2"])]
+    pub hash: String,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -35,6 +41,7 @@ impl ZiskProofmanSetupRecursiveTest {
         setup_logger(self.verbose.into());
 
         let opts = SetupRecursiveTestOptions {
+            hash: self.hash.clone(),
             build_dir: self.build_dir.clone(),
             circom_path: self.circom_path.clone(),
             circom_name: self.circom_name.clone(),

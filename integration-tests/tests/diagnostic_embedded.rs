@@ -23,7 +23,9 @@
 use std::path::PathBuf;
 
 use test_artifacts::ELF_DIAGNOSTIC;
-use zisk_sdk::{EmbeddedClientBuilder, ExecutorKind, VerifyConstraintsExtension, ZiskStdin};
+use zisk_sdk::{
+    EmbeddedClientBuilder, ExecutorKind, VerifyConstraintsExtension, WitnessBuilderExt, ZiskStdin,
+};
 
 #[tokio::test]
 #[ignore = "requires a generated proving key; run with --ignored"]
@@ -36,6 +38,11 @@ async fn test_diagnostic_embedded() {
     #[cfg(target_os = "linux")]
     {
         builder = builder.assembly();
+    }
+
+    if std::env::var_os("ZISK_TEST_NO_AGGREGATION").is_some() {
+        eprintln!("[diagnostic_smoke] ZISK_TEST_NO_AGGREGATION set — disabling aggregation");
+        builder = builder.no_aggregation();
     }
 
     if std::env::var_os("ZISK_TEST_GPU").is_some() {
@@ -92,9 +99,9 @@ async fn test_diagnostic_embedded() {
     // which an Emu-built prover serves end-to-end.
     #[cfg(target_os = "linux")]
     let prove_executor = ExecutorKind::Assembly;
+
     #[cfg(not(target_os = "linux"))]
     let prove_executor = ExecutorKind::Emulator;
-
     client
         .prove(&ELF_DIAGNOSTIC, ZiskStdin::new())
         .executor(prove_executor)

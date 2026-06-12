@@ -19,18 +19,19 @@
   },
   "VirtualTableZisk1": {
     "lastLevelVerification": 1,
-     "powBits": 20
-  },
-  "Poseidon2": {
-    "blowupFactor": 2
+    "powBits": 20
   },
   "Rom": {
     "powBits": 20
   },
-  "DmaPrePost": {
+  "Blake2br": {
     "hasCompressor": true
   },
-  "Blake2br": {
+  "Poseidon": {
+    "blowupFactor": 2,
+    "hasCompressor": true
+  },
+  "DmaPrePost": {
     "hasCompressor": true
   }
 }

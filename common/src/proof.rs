@@ -1,10 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use proofman::{verify_snark_proof, SnarkProof, SnarkProtocol};
+use proofman_verifier::verifier;
 use proofman_verifier::VadcopFinalProof;
-use proofman_verifier::{
-    expected_vadcop_final_compressed_proof_bytes, expected_vadcop_final_proof_bytes,
-    verify_vadcop_final, verify_vadcop_final_compressed,
-};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs::File;
@@ -13,6 +10,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
 
+use crate::HashMode;
+
+/// Cache key for a built setup (per program + build flavor).
+///
+/// `hash_mode` is intentionally NOT part of the key: a worker/prover is started
+/// against a single proving key whose hash family is fixed for the process
+/// lifetime, so a given `hash_id` only ever resolves to one `hash_mode` within
+/// a cache. Adding the mode would be dead discriminator. (If proving keys ever
+/// become hot-swappable per process, revisit this.)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SetupKey {
     pub hash_id: String,
@@ -29,22 +35,29 @@ impl SetupKey {
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramVK {
     pub vk: Vec<u64>,
+    pub hash_mode: HashMode,
 }
 
 impl ProgramVK {
-    /// Build from the first `PROGRAM_VK_LEN` u64 elements of a publics blob.
-    pub fn new_from_publics(publics: &[u64]) -> Self {
+    /// Build from the first `PROGRAM_VK_LEN` u64 elements of a publics blob,
+    /// recording the [`HashMode`] the verkey was produced under.
+    pub fn new_from_publics_with_mode(publics: &[u64], hash_mode: HashMode) -> Self {
         assert!(
             publics.len() >= PROGRAM_VK_LEN,
             "Not enough u64 publics to extract program VK (expected at least {})",
             PROGRAM_VK_LEN
         );
 
-        Self { vk: publics[..PROGRAM_VK_LEN].to_vec() }
+        Self { vk: publics[..PROGRAM_VK_LEN].to_vec(), hash_mode }
+    }
+
+    /// Build from publics using the default [`HashMode`].
+    pub fn new_from_publics(publics: &[u64]) -> Self {
+        Self::new_from_publics_with_mode(publics, HashMode::default())
     }
 
     pub fn new_empty() -> Self {
-        Self { vk: vec![0u64; PROGRAM_VK_LEN] }
+        Self { vk: vec![0u64; PROGRAM_VK_LEN], hash_mode: HashMode::default() }
     }
 }
 
@@ -331,13 +344,18 @@ impl PublicValues {
 /// vkey strings on the Vadcop variant — Vadcop is the common case and most-cloned.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProofBody {
-    Vadcop { proof: Vec<u64>, zisk_vk: Vec<u64>, minimal: bool },
+    Vadcop { proof: Vec<u64>, zisk_vk: Vec<u64>, minimal: bool, hash: String },
     Plonk { proof_bytes: Vec<u8>, plonk_vk: Box<PlonkVkBlob> },
 }
 
 impl Default for ProofBody {
     fn default() -> Self {
-        ProofBody::Vadcop { proof: Vec::new(), zisk_vk: vec![0u64; PROGRAM_VK_LEN], minimal: false }
+        ProofBody::Vadcop {
+            proof: Vec::new(),
+            zisk_vk: vec![0u64; PROGRAM_VK_LEN],
+            minimal: false,
+            hash: String::new(),
+        }
     }
 }
 
@@ -441,12 +459,21 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 result?;
                 Ok(())
             }
-            ProofBody::Vadcop { proof, zisk_vk, minimal } => {
+            ProofBody::Vadcop { proof, zisk_vk, minimal, hash } => {
                 let minimal = *minimal;
+
+                if program_vk.hash_mode.as_str() != hash {
+                    return Err(anyhow!(
+                        "verkey hash mode {} does not match proof hash family {hash:?}",
+                        program_vk.hash_mode.as_str()
+                    ));
+                }
+
+                let v = verifier(hash);
                 let expected_len = if minimal {
-                    expected_vadcop_final_compressed_proof_bytes()
+                    v.expected_vadcop_final_compressed_proof_bytes()
                 } else {
-                    expected_vadcop_final_proof_bytes()
+                    v.expected_vadcop_final_proof_bytes()
                 };
                 if proof.len() * 8 != expected_len {
                     return Err(anyhow!(
@@ -459,12 +486,13 @@ impl<'a> ZiskVerifyBuilder<'a> {
 
                 let mut pubs_u64 = program_vk.vk.clone();
                 pubs_u64.extend(publics.public_u64());
-                let vadcop_final_proof = VadcopFinalProof::new(proof.clone(), pubs_u64, minimal);
+                let vadcop_final_proof =
+                    VadcopFinalProof::new(proof.clone(), pubs_u64, minimal, hash.clone());
 
                 let is_valid = if minimal {
-                    verify_vadcop_final_compressed(&vadcop_final_proof, zisk_vk)
+                    v.verify_vadcop_final_compressed(&vadcop_final_proof, zisk_vk)
                 } else {
-                    verify_vadcop_final(&vadcop_final_proof, zisk_vk)
+                    v.verify_vadcop_final(&vadcop_final_proof, zisk_vk)
                 };
 
                 if !is_valid {
@@ -528,10 +556,10 @@ impl Proof {
 
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.body {
-            ProofBody::Vadcop { proof, minimal, .. } => {
+            ProofBody::Vadcop { proof, minimal, hash, .. } => {
                 let mut pubs_u64 = self.program_vk.vk.clone();
                 pubs_u64.extend(self.publics.public_u64());
-                Ok(VadcopFinalProof::new(proof.clone(), pubs_u64, *minimal))
+                Ok(VadcopFinalProof::new(proof.clone(), pubs_u64, *minimal, hash.clone()))
             }
             ProofBody::Plonk { .. } => Err(anyhow::anyhow!("Proof is not a Vadcop final proof")),
         }
@@ -539,7 +567,7 @@ impl Proof {
 
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
         match &self.body {
-            ProofBody::Vadcop { proof, zisk_vk, minimal } => {
+            ProofBody::Vadcop { proof, zisk_vk, minimal, .. } => {
                 if self.program_vk.vk.len() != PROGRAM_VK_LEN {
                     return Err(anyhow!(
                         "Invalid program_vk length: expected {}, got {}",
@@ -602,18 +630,39 @@ impl Proof {
     /// * `proof` - The proof as a slice of u64 values
     /// * `minimal` - Whether the proof is minimal
     /// * `zisk_vk` - The Vadcop verification key (4 u64s)
+    /// * `hash` - Hash family the proof was generated with (e.g. "Poseidon1" / "Poseidon2")
     ///
     /// # Returns
     ///
     /// A Proof containing the parsed proof, publics, and program VK
-    pub fn new_from_vadcop_proof(proof: &[u64], minimal: bool, zisk_vk: Vec<u64>) -> Result<Self> {
-        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal)
+    pub fn new_from_vadcop_proof(
+        proof: &[u64],
+        minimal: bool,
+        zisk_vk: Vec<u64>,
+        hash: String,
+    ) -> Result<Self> {
+        if zisk_vk.len() != PROGRAM_VK_LEN {
+            return Err(anyhow!(
+                "Invalid zisk_vk length: expected {}, got {}",
+                PROGRAM_VK_LEN,
+                zisk_vk.len()
+            ));
+        }
+
+        let hash_mode = hash
+            .parse::<HashMode>()
+            .with_context(|| format!("unrecognized proof hash family {hash:?}"))?;
+
+        let vadcop_proof = VadcopFinalProof::new_from_proof(proof, minimal, hash.clone())
             .map_err(|e| anyhow::anyhow!("Failed to parse Vadcop proof: {}", e))?;
 
         Ok(Self {
-            body: ProofBody::Vadcop { proof: vadcop_proof.proof, zisk_vk, minimal },
+            body: ProofBody::Vadcop { proof: vadcop_proof.proof, zisk_vk, minimal, hash },
             publics: PublicValues::new_from_u64(&vadcop_proof.public_values),
-            program_vk: ProgramVK::new_from_publics(&vadcop_proof.public_values),
+            program_vk: ProgramVK::new_from_publics_with_mode(
+                &vadcop_proof.public_values,
+                hash_mode,
+            ),
         })
     }
 
@@ -675,7 +724,12 @@ mod tests {
     #[test]
     fn verify_returns_err_for_malformed_vadcop_final_minimal() {
         let result = Proof::new(
-            ProofBody::Vadcop { proof: vec![], zisk_vk: vec![0u64; PROGRAM_VK_LEN], minimal: true },
+            ProofBody::Vadcop {
+                proof: vec![],
+                zisk_vk: vec![0u64; PROGRAM_VK_LEN],
+                minimal: true,
+                hash: "Poseidon2".to_string(),
+            },
             PublicValues::new_empty(),
             ProgramVK::new_empty(),
         )
@@ -691,6 +745,7 @@ mod tests {
                 proof: vec![],
                 zisk_vk: vec![0u64; PROGRAM_VK_LEN],
                 minimal: false,
+                hash: "Poseidon2".to_string(),
             },
             PublicValues::new_empty(),
             ProgramVK::new_empty(),
@@ -708,6 +763,7 @@ mod tests {
                 proof: vec![1, 2, 3, 4],
                 zisk_vk: vec![10, 20, 30, 40],
                 minimal: true,
+                hash: "Poseidon2".to_string(),
             },
             PublicValues::new_empty(),
             ProgramVK::new_from_publics(&[7, 8, 9, 10]),
@@ -719,10 +775,11 @@ mod tests {
 
         assert_eq!(loaded.kind(), ProofKind::VadcopFinalMinimal);
         match loaded.body {
-            ProofBody::Vadcop { proof, zisk_vk, minimal } => {
+            ProofBody::Vadcop { proof, zisk_vk, minimal, hash } => {
                 assert_eq!(proof, vec![1, 2, 3, 4]);
                 assert_eq!(zisk_vk, vec![10, 20, 30, 40]);
                 assert!(minimal);
+                assert_eq!(hash, "Poseidon2");
             }
             ProofBody::Plonk { .. } => panic!("expected Vadcop body after roundtrip"),
         }
@@ -732,7 +789,12 @@ mod tests {
     #[test]
     fn proof_kind_derivation() {
         let vadcop = Proof::new(
-            ProofBody::Vadcop { proof: vec![], zisk_vk: vec![], minimal: false },
+            ProofBody::Vadcop {
+                proof: vec![],
+                zisk_vk: vec![],
+                minimal: false,
+                hash: "Poseidon2".to_string(),
+            },
             PublicValues::new_empty(),
             ProgramVK::new_empty(),
         );
@@ -740,7 +802,12 @@ mod tests {
         assert!(vadcop.is_empty());
 
         let minimal = Proof::new(
-            ProofBody::Vadcop { proof: vec![1], zisk_vk: vec![], minimal: true },
+            ProofBody::Vadcop {
+                proof: vec![1],
+                zisk_vk: vec![],
+                minimal: true,
+                hash: "Poseidon2".to_string(),
+            },
             PublicValues::new_empty(),
             ProgramVK::new_empty(),
         );

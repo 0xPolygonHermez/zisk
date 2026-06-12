@@ -18,6 +18,7 @@
 #include "../../lib-c/c/src/bn254/bn254.hpp"
 #include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "../../lib-c/c/src/poseidon2/poseidon2_goldilocks.hpp"
+#include "../../lib-c/c/src/poseidon1/poseidon1_goldilocks.hpp"
 #include "../../lib-c/c/src/blake2/blake2.hpp"
 #include "../../lib-c/c/src/chfast/zisk_keccak.h"
 
@@ -43,6 +44,8 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.blake2_duration = 0;
     asm_call_metrics.poseidon2_counter = 0;
     asm_call_metrics.poseidon2_duration = 0;
+    asm_call_metrics.poseidon1_counter = 0;
+    asm_call_metrics.poseidon1_duration = 0;
     asm_call_metrics.arith256_counter = 0;
     asm_call_metrics.arith256_duration = 0;
     asm_call_metrics.arith256_mod_counter = 0;
@@ -130,6 +133,16 @@ void print_asm_call_metrics (uint64_t total_duration)
     asm_printf("Poseidon2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.poseidon2_counter,
         asm_call_metrics.poseidon2_duration,
+        duration,
+        percentage);
+
+    // Print poseidon1 metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.poseidon1_duration * 1000) / total_duration;
+    duration = asm_call_metrics.poseidon1_counter == 0 ? 0 : (asm_call_metrics.poseidon1_duration * 1000) / asm_call_metrics.poseidon1_counter;
+    asm_call_total_duration += asm_call_metrics.poseidon1_duration;
+    asm_printf("Poseidon1: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.poseidon1_counter,
+        asm_call_metrics.poseidon1_duration,
         duration,
         percentage);
 
@@ -684,6 +697,48 @@ extern int _opcode_poseidon2(uint64_t address)
     asm_call_metrics.poseidon2_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.poseidon2_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_poseidon1(uint64_t address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+#ifdef DEBUG
+#ifdef ASM_CALL_METRICS
+    if (emu_verbose) asm_printf("opcode_poseidon1() calling poseidon1_hash() counter=%lu address=%08lx\n", asm_call_metrics.poseidon1_counter, address);
+#else
+    if (emu_verbose) asm_printf("opcode_poseidon1() calling poseidon1_hash() address=%08lx\n", address);
+#endif
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call poseidon1 compression function
+        poseidon1_hash((uint64_t *)address);
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address, 16*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address, 16*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose) asm_printf("opcode_poseidon1() called poseidon1_hash()\n");
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.poseidon1_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.poseidon1_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }

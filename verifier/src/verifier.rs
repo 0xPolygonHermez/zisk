@@ -1,4 +1,4 @@
-use proofman_verifier::{verify_vadcop_final_compressed_u64, verify_vadcop_final_u64};
+use proofman_verifier::verifier;
 
 /// Length, in u64 words, of the Vadcop final verification key appended to a serialized proof.
 pub const VADCOP_VK_LEN_WORDS: usize = 4;
@@ -12,7 +12,7 @@ pub const PROGRAM_VK_LEN: usize = 4;
 /// Expected `n_publics` header value: program VK + publics.
 const EXPECTED_N_PUBLICS: u64 = (PROGRAM_VK_LEN + ZISK_PUBLICS) as u64;
 
-pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64]) -> bool {
+pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64], hash: &str) -> bool {
     // Format: [minimal(1)][n_publics(1)][publics(EXPECTED_N_PUBLICS)][proof]
 
     if zisk_proof.len() < (2 + EXPECTED_N_PUBLICS as usize) {
@@ -30,9 +30,10 @@ pub fn verify_vadcop_final_proof(zisk_proof: &[u64], vadcop_final_vk: &[u64]) ->
         return false;
     }
 
+    let v = verifier(hash);
     if minimal {
-        verify_vadcop_final_compressed_u64(vadcop_proof, vadcop_final_vk)
+        v.verify_vadcop_final_compressed_u64(vadcop_proof, vadcop_final_vk)
     } else {
-        verify_vadcop_final_u64(vadcop_proof, vadcop_final_vk)
+        v.verify_vadcop_final_u64(vadcop_proof, vadcop_final_vk)
     }
 }

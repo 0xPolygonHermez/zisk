@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "9125bf5647309396e79051910953780ee93a5c99254e3425cd4325d7b1511adf";
+pub const PILOUT_HASH: &str = "7345862427a49630e80074810890e2cd62f6435fa30b09357c930e98ceab0f8d";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -62,7 +62,7 @@ pub const KECCAKF_AIR_IDS: &[usize] = &[16];
 
 pub const SHA_256_F_AIR_IDS: &[usize] = &[17];
 
-pub const POSEIDON_2_AIR_IDS: &[usize] = &[18];
+pub const POSEIDON_AIR_IDS: &[usize] = &[18];
 
 pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[19];
 
@@ -334,16 +334,16 @@ trace_row!(Sha256fTraceRow<F> {
 
 pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 17>;
 
-trace_row!(Poseidon2FixedRow<F> {
+trace_row!(PoseidonFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Poseidon2Fixed<F> = GenericTrace<Poseidon2FixedRow<F>, 131072, 0, 18>;
+pub type PoseidonFixed<F> = GenericTrace<PoseidonFixedRow<F>, 131072, 0, 18>;
 
-trace_row!(Poseidon2TraceRow<F> {
- in_use:bit, in_use_clk_0:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
+trace_row!(PoseidonTraceRow<F> {
+ in_use:bit, in_use_clk_0:bit, sel_poseidon1:bit, chunks:[[u16; 4]; 16], step_addr:ubit(40), t_inv:[u64; 16],
 });
 
-pub type Poseidon2Trace<R> = GenericTrace<R, 131072, 0, 18>;
+pub type PoseidonTrace<R> = GenericTrace<R, 131072, 0, 18>;
 
 trace_row!(Blake2brFixedRow<F> {
  CLK_0: F, MSG_IDX: F, __L1__: F,
@@ -652,7 +652,7 @@ values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(Poseidon2AirGroupValues<F> {
+values!(PoseidonAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -804,8 +804,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 18, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 17,
-        unpack_info: &[1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 40],
+        num_packed_words: 33,
+        unpack_info: &[1, 1, 1, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 40, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
     }),
     (0, 19, PackedInfoConst {
         is_packed: true,
