@@ -18,11 +18,14 @@ use super::point::SyscallPoint256;
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// The caller must ensure that `p` is a valid point on the BN254 curve.
+/// The caller must ensure that `p` is a finite point on the BN254 curve.
+/// The point at infinity is not allowed.
 ///
-/// The caller must ensure that `p` coordinates are within the range of the BN254 base field.
+/// The coordinates of `p` are not required to be canonical representatives of
+/// elements in the BN254 base field.
 ///
-/// The resulting point will have both coordinates in the range of the BN254 base field.
+/// The resulting point will have both coordinates reduced to canonical representatives
+/// in the range of the BN254 base field.
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_curve_dbl")]
