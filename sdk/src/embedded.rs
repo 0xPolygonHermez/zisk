@@ -422,8 +422,7 @@ impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
                 self.proof_kind,
             )?,
         };
-        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor, proving_key }
-            .into())
+        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor, proving_key }.into())
     }
 }
 

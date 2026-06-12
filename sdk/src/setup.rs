@@ -168,9 +168,7 @@ impl<'a, C: ClientSync> SetupRequest<'a, C> {
             SetupTarget::Program(program) => {
                 self.client.run_setup_sync(program, self.with_hints, self.emulator_only, subs)
             }
-            SetupTarget::Recurser(agg) => {
-                self.client.run_setup_aggregation_program_sync(agg, subs)
-            }
+            SetupTarget::Recurser(agg) => self.client.run_setup_aggregation_program_sync(agg, subs),
         }
     }
 }

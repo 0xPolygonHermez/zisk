@@ -55,10 +55,10 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
 use zisk_cluster_common::{
-   AggregationProgramSpecDto, SetupAggregationProgramDto, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
-    JobExecutionMode, JobId, JobPhase, JobResultData, JobState, LaunchProofRequestDto,
-    LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, StatsCostPerType, WorkerId,
-    WorkerState,
+    AggregationProgramSpecDto, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto,
+    InputsModeDto, Job, JobExecutionMode, JobId, JobPhase, JobResultData, JobState,
+    LaunchProofRequestDto, LaunchProofResponseDto, PhaseTimings, ProofKind,
+    SetupAggregationProgramDto, SetupProgramDto, StatsCostPerType, WorkerId, WorkerState,
 };
 use zisk_common::{AirInstanceCount, SetupKey, ZiskExecutorTime, ZiskPaths};
 
