@@ -1811,7 +1811,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", i.imme as u64, false);
                 zib.op("copyb").unwrap();
-                zib.store("mem", CSR_ADDR as i64 + (i.csr + 8) as i64, false, false);
+                zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, 0x{:x} #rd = 0",
                     i.inst, i.rd, i.csr, i.imme
