@@ -1,0 +1,20 @@
+[package]
+name = "collatz-guest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ziskos = { workspace = true }
+collatz-common = { path = "../common" }
+
+[[bin]]
+name = "single-guest"
+path = "src/single.rs"
+
+[[bin]]
+name = "sequential-guest"
+path = "src/sequential.rs"
+
+[[bin]]
+name = "compressed-guest"
+path = "src/compressed.rs"

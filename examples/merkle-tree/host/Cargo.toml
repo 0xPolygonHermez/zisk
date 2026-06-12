@@ -1,0 +1,12 @@
+[package]
+name = "merkle-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+zisk-sdk = { workspace = true }
+examples-utils = { workspace = true }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }

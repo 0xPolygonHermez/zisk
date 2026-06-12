@@ -1,0 +1,8 @@
+[package]
+name = "hash-guest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ziskos = { workspace = true }
+hash-common = { path = "../common" }
