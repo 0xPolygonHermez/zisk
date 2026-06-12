@@ -4447,7 +4447,6 @@ dependencies = [
  "anyhow",
  "sha-hasher-common",
  "sha2",
- "time",
  "tokio",
  "zisk-sdk",
 ]
