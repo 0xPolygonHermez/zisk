@@ -1,36 +1,66 @@
 #!/bin/bash
 # Detect the host GPU compute capability and write CUDA_ARCH = sm_XXX to CudaArch.mk.
-# Used by Makefile when neither CUDA_GENCODE_FLAGS nor CUDA_ARCH are set externally.
+# Used by Makefile when neither CUDA_GENCODE_FLAGS, CUDA_ARCHS nor CUDA_ARCH are
+# set externally.
 #
-# Detection order:
-#   1. nvidia-smi --query-gpu=compute_cap (modern, no CUDA samples needed)
-#   2. Existing CudaArch.mk left in place (cached previous detection)
-#   3. Error out — user must set CUDA_ARCHS / CUDA_ARCH / CUDA_GENCODE_FLAGS
-#
-
+# On failure exits 1
 set -eu
 
 OUT_FILE="CudaArch.mk"
+rm -f "$OUT_FILE"
 
+CAP=""
 if command -v nvidia-smi >/dev/null 2>&1; then
     # compute_cap output is e.g. "8.0" / "12.0" — strip the dot to get sm_XXX.
-    CAP=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
+    SMI_CAP=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
         | head -n1 \
         | tr -d ' .')
-    if [ -n "$CAP" ]; then
-        echo "CUDA_ARCH = sm_${CAP}" > "$OUT_FILE"
-        echo "[detect_cuda_arch] Host GPU compute capability ${CAP} → CUDA_ARCH = sm_${CAP}"
-        exit 0
+    case "$SMI_CAP" in
+        ''|*[!0-9]*) ;; # empty or non-numeric (e.g. driver up but no GPU) — ignore
+        *) CAP=$SMI_CAP ;;
+    esac
+fi
+if [ -z "$CAP" ]; then
+    echo "[detect_cuda_arch] nvidia-smi probe failed — no GPU arch detected, falling back to major archs." >&2
+    exit 1
+fi
+
+# Locate nvcc the same way the Makefile/build.rs
+NVCC_BIN=""
+if command -v nvcc >/dev/null 2>&1; then
+    NVCC_BIN=nvcc
+elif [ -x /usr/local/cuda/bin/nvcc ]; then
+    NVCC_BIN=/usr/local/cuda/bin/nvcc
+elif [ -x /opt/cuda/bin/nvcc ]; then
+    NVCC_BIN=/opt/cuda/bin/nvcc
+fi
+
+# Cap to the highest arch the installed nvcc supports 
+SELECTED_CAP=$CAP
+if [ -n "$NVCC_BIN" ]; then
+    if "$NVCC_BIN" --list-gpu-code >/dev/null 2>&1; then
+        NVCC_ARCHS=$("$NVCC_BIN" --list-gpu-code | grep -oE "sm_[0-9]+" | sed 's/sm_//g' | sort -n -u)
+    else
+        # Fallback to parsing help text
+        NVCC_ARCHS=$("$NVCC_BIN" --help | grep -oE "sm_[0-9]+" | sed 's/sm_//g' | sort -n -u)
+    fi
+    if [ -n "$NVCC_ARCHS" ]; then
+        BEST=0
+        for arch in $NVCC_ARCHS; do
+            if [ "$arch" -le "$CAP" ]; then
+                BEST=$arch
+            fi
+        done
+        if [ "$BEST" -eq 0 ]; then
+            echo "[detect_cuda_arch] No nvcc-supported CUDA architecture <= capability $CAP!" >&2
+            exit 1
+        fi
+        SELECTED_CAP=$BEST
+        if [ "$SELECTED_CAP" -lt "$CAP" ]; then
+            echo "[detect_cuda_arch] Warning: capability $CAP detected, capping to highest nvcc-supported sm_$SELECTED_CAP."
+        fi
     fi
 fi
 
-# Fallback: keep an existing CudaArch.mk if present (previous successful detection)
-if [ -f "$OUT_FILE" ]; then
-    echo "[detect_cuda_arch] nvidia-smi unavailable; reusing cached $OUT_FILE"
-    exit 0
-fi
-
-echo "[detect_cuda_arch] ERROR: nvidia-smi not found and no cached CudaArch.mk." >&2
-echo "    Set CUDA_ARCHS (e.g. CUDA_ARCHS=\"major\" or CUDA_ARCHS=\"89\")," >&2
-echo "    CUDA_ARCH (e.g. CUDA_ARCH=sm_89), or CUDA_GENCODE_FLAGS explicitly." >&2
-exit 1
+echo "CUDA_ARCH = sm_$SELECTED_CAP" > "$OUT_FILE"
+echo "[detect_cuda_arch] Host GPU compute capability $CAP → CUDA_ARCH = sm_$SELECTED_CAP"
