@@ -3,10 +3,10 @@
 source "./utils.sh"
 
 # group_start: announce a test group with a wall-clock timestamp and reset the
-# per-section step counter so cmd_step numbers restart from 1 for each group.
+# per-group sub-step counter so cmd_step numbers restart from 1 for each group.
 group_start() {
-    step "${BOLD}${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] ${1} ${RESET}"
-    current_step=1
+    step "${BOLD}${GREEN}($(date '+%Y-%m-%d %H:%M:%S')) ${1} ${RESET}"
+    subgroup_step=1
 }
 
 # cmd_step: announce one command (counts as a single step). Prints the running
@@ -14,8 +14,8 @@ group_start() {
 #   $1 (icon_label) – short label shown after the ▶ icon (e.g. "Build")
 #   $2 (command)    – the full command line being run
 cmd_step() {
-    echo -e "   ${BOLD}${YELLOW}[${current_step}]${RESET} ${YELLOW}▶ ${1}:${RESET} ${2}"
-    current_step=$(( current_step + 1 ))
+    echo -e "   ${BOLD}${YELLOW}[${subgroup_step}]${RESET} ${YELLOW}▶ ${1}:${RESET} ${2}"
+    subgroup_step=$(( subgroup_step + 1 ))
 }
 
 # build_flag_combos: Populate the global FLAG_COMBOS array with every
@@ -295,9 +295,8 @@ main() {
     local has_gpu=0
     cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]" && has_gpu=1
 
-    # Step counter advances per command; the total isn't known up front (it
-    # depends on the active flag combinations), so step() shows a running count.
     current_step=1
+    subgroup_step=1
 
     if ! is_gha || [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
