@@ -2,11 +2,11 @@
 
 source "./utils.sh"
 
-# group_start: announce a test group with a wall-clock timestamp.
+# group_start: announce a test group with a wall-clock timestamp and reset the
+# per-section step counter so cmd_step numbers restart from 1 for each group.
 group_start() {
-    echo "
-${BOLD}${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] ${1} ${RESET}
-"
+    step "${BOLD}${GREEN}[$(date '+%Y-%m-%d %H:%M:%S')] ${1} ${RESET}"
+    current_step=1
 }
 
 # cmd_step: announce one command (counts as a single step). Prints the running
@@ -277,7 +277,7 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     current_dir=$(pwd)
-
+    total_steps=24
     # Parse arguments. --gpu-only restricts the run to GPU flag combinations
     # (errors out below if no GPU backend is available).
     local arg

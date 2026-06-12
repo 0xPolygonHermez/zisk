@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
     // `connect_timeout` bounds the initial connection; `request_timeout` bounds
     // each request, which must be generous enough to cover proof generation.
     let client = 
-        ProverClient::remote("https://prover.example.com")
+        ProverClient::remote("http://localhost:7000")
             .connect_timeout(std::time::Duration::from_secs(10))
             .request_timeout(std::time::Duration::from_secs(2000))
             .build()?;
