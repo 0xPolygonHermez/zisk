@@ -17,6 +17,6 @@ ziskos = { path = "../ziskos/entrypoint" }
 zisk-sdk = { path = "../sdk" }
 test-artifacts = { path = "../test-artifacts" }
 # Pin: time 0.3.48 triggers a rustc E0119 coherence false-positive when built
-# alongside rcgen 0.14.x. 0.3.47 is the newest version that satisfies
-# vergen-git2's `time ^0.3.45` and avoids the bug. Consumed by cli (workspace=true).
+# alongside rcgen 0.14.x. 0.3.47 is the newest version that avoids the bug.
+# Used via `workspace = true` in example hosts to constrain the workspace lockfile.
 time = "=0.3.47"
