@@ -10,10 +10,12 @@ use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::{
-    AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
+    AggProofs, AggProofsRegister, PlanningInfo, ProofMan, ProvePhase, ProvePhaseInputs,
+    SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{
-    initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
+    initialize_logger, DebugReport, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo,
+    VerboseMode,
 };
 use proofman_starks_lib_c::{get_unified_buffer_gpu_c, get_unified_buffer_gpu_size_c};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
@@ -209,9 +211,7 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let device_buffers_ptr = pctx.get_device_buffers_ptr();
-            let gpu_buf_ptr = get_unified_buffer_gpu_c(device_buffers_ptr) as usize;
-            let gpu_buf_size = get_unified_buffer_gpu_size_c(device_buffers_ptr);
+            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
         };
 
@@ -522,6 +522,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
+    fn get_planning_info(&self) -> Result<PlanningInfo> {
+        self.core_prover.backend.get_planning_info()
+    }
+
     fn verify_constraints(
         &self,
         program: &GuestProgram,
@@ -537,6 +541,23 @@ impl ProverEngine for AsmProver {
             ));
         }
         self.core_prover.backend.verify_constraints(stdin, debug_info)
+    }
+
+    fn get_debug_info(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<DebugReport> {
+        let with_hints = self.current_with_hints.load(Ordering::SeqCst);
+        self.register_program(&program.program_id, with_hints)?;
+        if self.current_emulator_only.load(Ordering::SeqCst) {
+            return Err(anyhow::anyhow!(
+                "Program '{}' was set up emulator_only — get_debug_info not supported. Re-run setup without --emulator-only.",
+                program.program_id.name
+            ));
+        }
+        self.core_prover.backend.get_debug_info(stdin, debug_info)
     }
 
     fn prove(

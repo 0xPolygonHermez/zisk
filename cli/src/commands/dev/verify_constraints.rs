@@ -91,6 +91,18 @@ impl VerifyConstraintsCmd {
             eprintln!("{}", "Warning: --input is deprecated, use --inputs instead".yellow().bold());
         }
 
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu && debug_config_enables_bus(&self.debug) {
+            eprintln!(
+                "{}",
+                "Warning: bus debug is not supported on GPU; running verify-constraints on CPU instead. \
+                 (Debug configs without a `bus` section still use GPU.)"
+                    .yellow()
+                    .bold()
+            );
+            self.gpu = false;
+        }
+
         if self.elf.is_none() {
             self.elf = match detect_current_project_elf()? {
                 Some(elf) => Some(elf),
@@ -233,5 +245,20 @@ impl VerifyConstraintsCmd {
             prover.register_hints_stream(hints_stream)?;
         }
         prover.verify_constraints(&guest_program, stdin, self.debug.clone())
+    }
+}
+
+#[cfg(not(feature = "cpu-only"))]
+fn debug_config_enables_bus(debug: &Option<Option<String>>) -> bool {
+    match debug {
+        None => false,
+        Some(None) => true,
+        Some(Some(path)) => match std::fs::read_to_string(path) {
+            Ok(contents) => serde_json::from_str::<serde_json::Value>(&contents)
+                .ok()
+                .and_then(|v| v.get("bus").cloned())
+                .is_some(),
+            Err(_) => false,
+        },
     }
 }

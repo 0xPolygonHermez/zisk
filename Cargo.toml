@@ -133,17 +133,15 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
- 
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/bus-refactor" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }

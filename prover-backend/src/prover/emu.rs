@@ -11,9 +11,12 @@ use asm_runner::HintsShmem;
 use executor::ZiskExecutor;
 use precompiles_hints::HintsProcessor;
 use proofman::{
-    AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
+    AggProofs, AggProofsRegister, PlanningInfo, ProofMan, ProvePhase, ProvePhaseInputs,
+    SnarkWrapper, WitnessInfo,
 };
-use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
+use proofman_common::{
+    initialize_logger, DebugReport, ProofOptions, ProofmanOptions, RankInfo, RowInfo,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -203,6 +206,10 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
+    fn get_planning_info(&self) -> Result<PlanningInfo> {
+        self.core_prover.backend.get_planning_info()
+    }
+
     fn verify_constraints(
         &self,
         program: &GuestProgram,
@@ -211,6 +218,16 @@ impl ProverEngine for EmuProver {
     ) -> Result<VerifyConstraintsOutput> {
         self.register_program(&program.program_id, false)?;
         self.core_prover.backend.verify_constraints(stdin, debug_info)
+    }
+
+    fn get_debug_info(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<DebugReport> {
+        self.register_program(&program.program_id, false)?;
+        self.core_prover.backend.get_debug_info(stdin, debug_info)
     }
 
     fn prove(

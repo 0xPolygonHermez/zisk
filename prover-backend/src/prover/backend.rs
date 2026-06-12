@@ -11,14 +11,14 @@ use fields::Goldilocks;
 use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
-    AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
-    SnarkProtocol, SnarkWrapper, WitnessInfo,
+    AggProofs, AggProofsRegister, PlanningInfo, ProofMan, ProvePhase, ProvePhaseInputs,
+    ProvePhaseResult, SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
-use proofman_common::{ProofCtx, ProofOptions, RowInfo};
+use proofman_common::{DebugReport, ProofCtx, ProofOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
@@ -32,6 +32,7 @@ pub(crate) struct ProverBackend {
     executor: Arc<ZiskExecutor<Goldilocks>>,
     proving_key_path: PathBuf,
     proving_key_snark_path: Option<PathBuf>,
+    planning_info: Mutex<Option<PlanningInfo>>,
 }
 
 impl ProverBackend {
@@ -42,7 +43,14 @@ impl ProverBackend {
         proving_key_path: PathBuf,
         proving_key_snark_path: Option<PathBuf>,
     ) -> Self {
-        Self { proofman, snark_wrapper, executor, proving_key_path, proving_key_snark_path }
+        Self {
+            proofman,
+            snark_wrapper,
+            executor,
+            proving_key_path,
+            proving_key_snark_path,
+            planning_info: Mutex::new(None),
+        }
     }
 
     fn asm_emulator(&self) -> Option<&EmulatorAsm> {
@@ -184,17 +192,29 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        self.proofman
+        let planning = self
+            .proofman
             .execute_from_lib(None)
             .map_err(|e| anyhow::anyhow!("Error generating execution: {}", e))?;
 
         let elapsed = start.elapsed();
+
+        *self.planning_info.lock().map_err(|_| anyhow::anyhow!("planning_info lock poisoned"))? =
+            Some(planning);
 
         let (result, _) = self.executor.get_execution_result();
 
         let publics = self.proofman.get_publics();
 
         Ok(ExecuteOutput::new(elapsed, result, &publics))
+    }
+
+    pub(crate) fn get_planning_info(&self) -> Result<PlanningInfo> {
+        self.planning_info
+            .lock()
+            .map_err(|_| anyhow::anyhow!("planning_info lock poisoned"))?
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("planning info not available; call execute first"))
     }
 
     pub(crate) fn stats(
@@ -204,7 +224,8 @@ impl ProverBackend {
         minimal_memory: bool,
         _mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)> {
-        let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
+        let debug_info =
+            create_debug_info(debug_info, self.proving_key_path.clone())?.unwrap_or_default();
 
         self.executor.set_stdin(stdin)?;
 
@@ -285,8 +306,8 @@ impl ProverBackend {
         self.executor.set_stdin(stdin)?;
 
         self.proofman
-            .verify_proof_constraints_from_lib(&debug_info)
-            .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
+            .verify_proof_constraints_from_lib(debug_info.as_ref())
+            .map_err(|e| anyhow::anyhow!("Error verifying constraints: {}", e))?;
         let elapsed = start.elapsed();
 
         let (result, _stats) = self.executor.get_execution_result();
@@ -299,6 +320,23 @@ impl ProverBackend {
         let publics = self.proofman.get_publics();
 
         Ok(VerifyConstraintsOutput::new(result, elapsed.as_millis() as u64, &publics))
+    }
+
+    /// Run the debug pass against the current witness library and return the
+    /// structured `DebugReport`. Mirrors `verify_constraints` but exposes the
+    /// in-memory report instead of just the execution summary.
+    pub(crate) fn get_debug_info(
+        &self,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<DebugReport> {
+        let debug_info = create_debug_info(debug_info, self.proving_key_path.clone())?;
+
+        self.executor.set_stdin(stdin)?;
+
+        self.proofman
+            .verify_proof_constraints_from_lib(debug_info.as_ref())
+            .map_err(|e| anyhow::anyhow!("Error generating debug report: {}", e))
     }
 
     pub(crate) fn prove(

@@ -912,9 +912,9 @@ dependencies = [
 
 [[package]]
 name = "block-buffer"
-version = "0.12.0"
+version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cdd35008169921d80bc60d3d0ab416eecb028c4cd653352907921d95084790be"
+checksum = "d2f6c7dbe95a6ed67ad9f18e57daf93a2f034c524b99fd2b76d18fdfeb6660aa"
 dependencies = [
  "hybrid-array",
 ]
@@ -1030,7 +1030,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "futures",
  "hex",
  "indicatif",
@@ -1656,9 +1656,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "num-bigint",
  "num-traits",
 ]
@@ -1755,9 +1755,6 @@ name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
-dependencies = [
- "powerfmt",
-]
 
 [[package]]
 name = "derivative"
@@ -1863,7 +1860,7 @@ version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
- "block-buffer 0.12.0",
+ "block-buffer 0.12.1",
  "crypto-common 0.2.2",
 ]
 
@@ -2085,7 +2082,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "mem-common",
  "named-sem",
  "paste",
@@ -2102,7 +2099,6 @@ dependencies = [
  "precompiles-hints",
  "proofman",
  "proofman-common",
- "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
  "sm-arith",
@@ -2172,7 +2168,18 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
+
+[[package]]
+name = "fields"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#fe3cfbb242df9cb1e0eda15cd39d96b24c0bbd47"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3350,7 +3357,7 @@ name = "mem-common"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -3372,9 +3379,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.8.1"
+version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
+checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
 name = "memmap2"
@@ -3958,10 +3965,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3978,11 +3985,11 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "anyhow",
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "indexmap",
  "mpi",
  "pilout",
@@ -4003,7 +4010,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4120,7 +4127,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "lazy_static",
  "lib-c",
  "num-bigint",
@@ -4149,7 +4156,7 @@ version = "1.0.0-beta"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -4174,7 +4181,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "lib-c",
  "pil-std-lib",
  "precompiles-common",
@@ -4192,7 +4199,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4209,7 +4216,7 @@ dependencies = [
 name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -4227,7 +4234,7 @@ name = "precomp-keccakf"
 version = "1.0.0-beta"
 dependencies = [
  "circuit",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -4247,7 +4254,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4264,7 +4271,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4281,7 +4288,7 @@ dependencies = [
 name = "precompiles-common"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -4414,7 +4421,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "bincode",
  "blake3",
@@ -4424,7 +4431,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4435,7 +4442,7 @@ dependencies = [
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "rayon",
  "serde",
  "serde_json",
@@ -4448,7 +4455,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "bincode",
  "borsh",
@@ -4457,7 +4464,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "lazy_static",
  "libc",
  "libloading",
@@ -4479,9 +4486,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4492,7 +4499,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4502,7 +4509,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4511,7 +4518,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "bincode",
  "colored",
@@ -4522,12 +4529,24 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "bincode",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "num-traits",
  "rayon",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#fe3cfbb242df9cb1e0eda15cd39d96b24c0bbd47"
+dependencies = [
+ "bincode",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta)",
+ "num-traits",
  "serde",
  "tracing",
 ]
@@ -5068,7 +5087,7 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "blake3",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -5748,7 +5767,7 @@ dependencies = [
 name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -5764,7 +5783,7 @@ dependencies = [
 name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -5781,7 +5800,7 @@ name = "sm-frequent-ops"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "proofman-common",
  "static_assertions",
  "zisk-core",
@@ -5791,7 +5810,7 @@ dependencies = [
 name = "sm-main"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -5809,7 +5828,7 @@ name = "sm-mem"
 version = "1.0.0-beta"
 dependencies = [
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -5826,7 +5845,7 @@ name = "sm-rom"
 version = "1.0.0-beta"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "mem-common",
  "proofman-common",
  "rayon",
@@ -5839,9 +5858,9 @@ dependencies = [
 
 [[package]]
 name = "smallvec"
-version = "1.15.1"
+version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 
 [[package]]
 name = "socket2"
@@ -5872,10 +5891,10 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "anyhow",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "indexmap",
  "num-bigint",
  "num-traits",
@@ -6158,12 +6177,11 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.47"
+version = "0.3.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
+checksum = "fc1aa89044e7786ffb2ec017acb22cb7de5b0be46d0f21aea2b224b8561e5db2"
 dependencies = [
  "deranged",
- "itoa",
  "libc",
  "num-conv",
  "num_threads",
@@ -6175,15 +6193,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
+checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
 
 [[package]]
 name = "time-macros"
-version = "0.2.27"
+version = "0.2.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
+checksum = "9d3bfe86347f0cc659f586f01e26303ccd32418f26f30c7b0309b3ca3a07d695"
 dependencies = [
  "num-conv",
  "time-core",
@@ -7587,10 +7605,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#0ad5e59b7e954490171c1c7993bda48f090fce5a"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#65eeb41e60dda649ecb63dfafde17be3d52707b5"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7825,12 +7843,12 @@ dependencies = [
  "bincode",
  "clap",
  "dirs",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "libc",
  "paste",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "serde",
  "serde_json",
  "sha2",
@@ -7941,7 +7959,7 @@ name = "zisk-core"
 version = "1.0.0-beta"
 dependencies = [
  "elf",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "lib-c",
  "lib-float",
  "paste",
@@ -7962,7 +7980,7 @@ version = "1.0.0-beta"
 name = "zisk-pil"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "proofman-common",
  "proofman-macros",
  "serde",
@@ -8005,13 +8023,12 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
- "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "rom-setup",
  "serde",
  "tracing",
@@ -8060,7 +8077,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.0.0-beta"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta)",
 ]
 
 [[package]]
@@ -8105,7 +8122,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "flate2",
  "mem-common",
  "memmap2",
@@ -8144,7 +8161,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -8177,7 +8194,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
