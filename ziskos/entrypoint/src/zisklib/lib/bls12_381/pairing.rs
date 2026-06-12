@@ -37,6 +37,10 @@ const PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP: u8 = 7;
 ///  pairingBLS12-381:
 ///          input: P ∈ G1 and Q ∈ G2
 ///          output: e(P,Q) ∈ GT
+///
+/// # Soundness
+/// Both points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn pairing_bls12_381(
     p: &[u64; 12],
     q: &[u64; 24],
@@ -69,7 +73,9 @@ pub fn pairing_bls12_381(
 /// and multiplies the results together:
 ///     e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT
 ///
-/// Assumes all points are non-infinity and already validated (on curve and in subgroup).
+/// # Soundness
+/// All points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn pairing_batch_bls12_381(
     g1_points: &[[u64; 12]],
     g2_points: &[[u64; 24]],
@@ -106,7 +112,7 @@ pub fn pairing_batch_bls12_381(
 }
 
 /// Pairing check with validation
-pub fn pairing_check_bls12_381(
+pub fn pairing_check_safe_bls12_381(
     g1_points: &[[u64; 12]],
     g2_points: &[[u64; 24]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -238,6 +244,8 @@ pub fn pairing_check_bls12_381(
     )))
 }
 
+// ==================== C FFI Functions ====================
+
 /// BLS12-381 pairing check for big-endian byte format.
 ///
 /// # Input format
@@ -259,7 +267,7 @@ pub fn pairing_check_bls12_381(
 /// - [PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP] = error (at least one G2 point not in subgroup)
 #[allow(dead_code)]
 #[inline]
-pub(crate) unsafe fn bls12_381_pairing_check_c(
+pub(crate) unsafe fn pairing_check_safe_bls12_381_c(
     pairs: *const u8,
     num_pairs: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -277,7 +285,7 @@ pub(crate) unsafe fn bls12_381_pairing_check_c(
         g2_points.push(g2_bytes_be_to_u64_le_bls12_381(g2_bytes));
     }
 
-    match pairing_check_bls12_381(
+    match pairing_check_safe_bls12_381(
         &g1_points,
         &g2_points,
         #[cfg(feature = "hints")]

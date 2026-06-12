@@ -162,7 +162,7 @@ pub fn decompress_twist_bls12_381(
     Ok((result, false))
 }
 
-/// Check if a non-zero point `p` is on the BLS12-381 twist
+/// Check if a point `p` is on the BLS12-381 twist
 pub fn is_on_curve_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -192,10 +192,13 @@ pub fn is_on_curve_twist_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&x_cubed_plus_b, &y_sq)
+    eq(&x_cubed_plus_b, &y_sq) || eq(p, &G2_IDENTITY)
 }
 
 /// Check if a non-zero point `p` is on the BLS12-381 twist subgroup
+///
+/// # Soundness
+/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
 pub fn is_on_subgroup_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -239,9 +242,13 @@ pub fn is_on_subgroup_twist_bls12_381(
         hints,
     );
 
-    eq(&lhs, &rhs)
+    eq(&lhs, &rhs) || eq(p, &G2_IDENTITY)
 }
 
+/// Compute the psi endomorphism on a point of the twist
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
 fn psi_twist_bls12_381(p: &[u64; 24], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 24] {
     let x: [u64; 12] = p[0..12].try_into().unwrap();
     let y: [u64; 12] = p[12..24].try_into().unwrap();
@@ -276,6 +283,10 @@ fn psi_twist_bls12_381(p: &[u64; 24], #[cfg(feature = "hints")] hints: &mut Vec<
     result
 }
 
+/// Compute the psi² endomorphism on a point of the twist
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
 fn psi2_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -301,8 +312,86 @@ fn psi2_twist_bls12_381(
     result
 }
 
+/// Compute the untwist-frobenius-twist (utf) endomorphism ψ := 𝜑⁻¹𝜋ₚ𝜑 of a non-zero point `p`, where:
+///     𝜑 : E'(Fp2) -> E(Fp12) defined by 𝜑(x,y) = (x/ω²,y/ω³) is the untwist map
+///     𝜋ₚ : E(Fp12) -> E(Fp12) defined by 𝜋ₚ(x,y) = (xᵖ,yᵖ) is the Frobenius map
+///     𝜑⁻¹ : E(Fp12) -> E'(Fp2) defined by 𝜑⁻¹(x,y) = (x·ω²,y·ω³) is the twist map
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
+pub fn utf_endomorphism_twist_bls12_381(
+    p: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    let mut x: [u64; 12] = p[0..12].try_into().unwrap();
+    let mut y: [u64; 12] = p[12..24].try_into().unwrap();
+
+    // 1] Compute 𝜑(x,y) = (x/ω²,y/ω³) = (x·(%W_INV_X + %W_INV_Y·u)·ω⁴,y·(%W_INV_X + %W_INV_Y·u)·ω³) ∈ E(Fp12)
+    x = mul_fp2_bls12_381(
+        &x,
+        &EXT_U_INV,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y = mul_fp2_bls12_381(
+        &y,
+        &EXT_U_INV,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    // 2] Compute 𝜋ₚ(a,b) = (aᵖ,bᵖ), i.e., apply the frobenius operator
+    //    Since the previous result has only one non-zero coefficient, we can apply a specialized frobenius directly
+    //    (a·ω⁴)ᵖ = a̅·γ14·ω⁴, (b·ω³)ᵖ = b̅·γ13·ω³
+    x = conjugate_fp2_bls12_381(
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    x = scalar_mul_fp2_bls12_381(
+        &x,
+        &FROBENIUS_GAMMA14,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y = conjugate_fp2_bls12_381(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y = mul_fp2_bls12_381(
+        &y,
+        &FROBENIUS_GAMMA13,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    // 3] Compute 𝜑⁻¹(a,b) = (a·ω²,b·ω³) ∈ E'(Fp2). In our particular case, we have:
+    //         𝜑⁻¹((a̅·γ14·ω⁴)·ω²,(b̅·γ13·ω³)·ω³) = (a̅·γ14·(1+u), b̅·γ13·(1+u))
+    x = mul_fp2_bls12_381(
+        &x,
+        &EXT_U,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y = mul_fp2_bls12_381(
+        &y,
+        &EXT_U,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&x);
+    result[12..24].copy_from_slice(&y);
+    result
+}
+
 /// Efficient cofactor clearing for G2 using endomorphisms
 /// Implements: h_eff * P where h_eff is the effective cofactor
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
 pub fn clear_cofactor_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -375,6 +464,10 @@ pub fn clear_cofactor_twist_bls12_381(
 }
 
 /// Addition of two non-zero points
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn add_twist_bls12_381(
     p1: &[u64; 24],
     p2: &[u64; 24],
@@ -468,8 +561,8 @@ pub fn add_twist_bls12_381(
     result
 }
 
-/// Addition of two points
-pub fn add_complete_twist_bls12_381(
+/// Complete and safe addition of two points `p1` and `p2` on the BLS12-381 curve
+pub fn add_complete_safe_twist_bls12_381(
     p1: &[u64; 24],
     p2: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -560,7 +653,32 @@ pub fn add_complete_twist_bls12_381(
     ))
 }
 
+/// Negation of a point on the BLS12-381 twist
+pub fn neg_twist_bls12_381(
+    p: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    let x: [u64; 12] = p[0..12].try_into().unwrap();
+    let y: [u64; 12] = p[12..24].try_into().unwrap();
+
+    // Compute the negation
+    let y_neg = neg_fp2_bls12_381(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    let mut result = [0u64; 24];
+    result[0..12].copy_from_slice(&x);
+    result[12..24].copy_from_slice(&y_neg);
+    result
+}
+
 /// Doubling of a non-zero point
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn dbl_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -642,6 +760,10 @@ pub fn dbl_twist_bls12_381(
 }
 
 /// Subtraction of two non-zero points `p1` and `p2` on the BLS12-381 curve
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn sub_twist_bls12_381(
     p1: &[u64; 24],
     p2: &[u64; 24],
@@ -670,6 +792,9 @@ pub fn sub_twist_bls12_381(
 }
 
 /// Subtraction of two points `p1` and `p2` on the BLS12-381 curve
+///
+/// # Soundness
+/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
 pub fn sub_complete_twist_bls12_381(
     p1: &[u64; 24],
     p2: &[u64; 24],
@@ -703,28 +828,11 @@ pub fn sub_complete_twist_bls12_381(
     )
 }
 
-/// Negation of a point
-pub fn neg_twist_bls12_381(
-    p: &[u64; 24],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 24] {
-    let x: [u64; 12] = p[0..12].try_into().unwrap();
-    let y: [u64; 12] = p[12..24].try_into().unwrap();
-
-    // Compute the negation
-    let y_neg = neg_fp2_bls12_381(
-        &y,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    let mut result = [0u64; 24];
-    result[0..12].copy_from_slice(&x);
-    result[12..24].copy_from_slice(&y_neg);
-    result
-}
-
 /// Multiplies a non-zero point `p` on the BLS12-381 curve by a scalar `k` on the BLS12-381 scalar field
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_twist_bls12_381(
     p: &[u64; 24],
     k: &[u64; 4],
@@ -823,6 +931,10 @@ pub fn scalar_mul_twist_bls12_381(
 }
 
 /// Scalar multiplication of a non-zero point `p` by a binary scalar `k`
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_bin_twist_bls12_381(
     p: &[u64; 24],
     k: &[u8],
@@ -848,6 +960,10 @@ pub fn scalar_mul_bin_twist_bls12_381(
 }
 
 /// Scalar multiplication of a non-zero point by x
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_by_abs_x_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -863,7 +979,7 @@ pub fn scalar_mul_by_abs_x_twist_bls12_381(
 /// Multi-Scalar Multiplication (MSM) for BLS12-381 G2 points
 /// It computes k1·P1 + k2·P2 + ... + kn·Pn
 // TODO: This is a naive implementation, one can improve it by using, e.g., a windowed strategies!
-pub fn msm_complete_twist_bls12_381(
+pub fn msm_complete_safe_twist_bls12_381(
     points: &[[u64; 24]],
     scalars: &[[u64; 4]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -947,192 +1063,7 @@ pub fn msm_complete_twist_bls12_381(
     Ok(acc)
 }
 
-/// Compute the untwist-frobenius-twist (utf) endomorphism ψ := 𝜑⁻¹𝜋ₚ𝜑 of a non-zero point `p`, where:
-///     𝜑 : E'(Fp2) -> E(Fp12) defined by 𝜑(x,y) = (x/ω²,y/ω³) is the untwist map
-///     𝜋ₚ : E(Fp12) -> E(Fp12) defined by 𝜋ₚ(x,y) = (xᵖ,yᵖ) is the Frobenius map
-///     𝜑⁻¹ : E(Fp12) -> E'(Fp2) defined by 𝜑⁻¹(x,y) = (x·ω²,y·ω³) is the twist map
-pub fn utf_endomorphism_twist_bls12_381(
-    p: &[u64; 24],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 24] {
-    let mut x: [u64; 12] = p[0..12].try_into().unwrap();
-    let mut y: [u64; 12] = p[12..24].try_into().unwrap();
-
-    // 1] Compute 𝜑(x,y) = (x/ω²,y/ω³) = (x·(%W_INV_X + %W_INV_Y·u)·ω⁴,y·(%W_INV_X + %W_INV_Y·u)·ω³) ∈ E(Fp12)
-    x = mul_fp2_bls12_381(
-        &x,
-        &EXT_U_INV,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    y = mul_fp2_bls12_381(
-        &y,
-        &EXT_U_INV,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    // 2] Compute 𝜋ₚ(a,b) = (aᵖ,bᵖ), i.e., apply the frobenius operator
-    //    Since the previous result has only one non-zero coefficient, we can apply a specialized frobenius directly
-    //    (a·ω⁴)ᵖ = a̅·γ14·ω⁴, (b·ω³)ᵖ = b̅·γ13·ω³
-    x = conjugate_fp2_bls12_381(
-        &x,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    x = scalar_mul_fp2_bls12_381(
-        &x,
-        &FROBENIUS_GAMMA14,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    y = conjugate_fp2_bls12_381(
-        &y,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    y = mul_fp2_bls12_381(
-        &y,
-        &FROBENIUS_GAMMA13,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    // 3] Compute 𝜑⁻¹(a,b) = (a·ω²,b·ω³) ∈ E'(Fp2). In our particular case, we have:
-    //         𝜑⁻¹((a̅·γ14·ω⁴)·ω²,(b̅·γ13·ω³)·ω³) = (a̅·γ14·(1+u), b̅·γ13·(1+u))
-    x = mul_fp2_bls12_381(
-        &x,
-        &EXT_U,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    y = mul_fp2_bls12_381(
-        &y,
-        &EXT_U,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    let mut result = [0u64; 24];
-    result[0..12].copy_from_slice(&x);
-    result[12..24].copy_from_slice(&y);
-    result
-}
-
 // ==================== C FFI Functions ====================
-
-/// G2 point addition for uncompressed 192-byte points (big-endian format)
-///
-/// Input format: 192 bytes per point = 96 bytes x-coordinate (Fp2) + 96 bytes y-coordinate (Fp2)
-/// Each Fp2 element: 48 bytes imaginary + 48 bytes real (big-endian)
-/// Output format: Same as input
-///
-/// ### Safety
-/// - `a` must point to a valid `[u8; 192]` for the first input point
-/// - `b` must point to a valid `[u8; 192]` for the second input point
-/// - `ret` must point to a valid `[u8; 192]` for the output
-///
-/// Returns:
-/// - [G2_ADD_SUCCESS] = success (regular point)
-/// - [G2_ADD_SUCCESS_INFINITY] = success (point at infinity)
-/// - [G2_ADD_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
-/// - [G2_ADD_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
-#[allow(dead_code)]
-#[inline]
-pub(crate) unsafe fn bls12_381_g2_add_c(
-    ret: *mut u8,
-    a: *const u8,
-    b: *const u8,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let a_bytes: &[u8; 192] = &*(a as *const [u8; 192]);
-    let b_bytes: &[u8; 192] = &*(b as *const [u8; 192]);
-    let ret_bytes: &mut [u8; 192] = &mut *(ret as *mut [u8; 192]);
-
-    // Parse points
-    let a_u64 = g2_bytes_be_to_u64_le_bls12_381(a_bytes);
-    let b_u64 = g2_bytes_be_to_u64_le_bls12_381(b_bytes);
-
-    // Perform addition
-    let result = match add_complete_twist_bls12_381(
-        &a_u64,
-        &b_u64,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        Ok(r) => r,
-        Err(code) => return code,
-    };
-
-    // Encode result
-    g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
-    if result == G2_IDENTITY {
-        G2_ADD_SUCCESS_INFINITY
-    } else {
-        G2_ADD_SUCCESS
-    }
-}
-
-/// G2 Multi-Scalar Multiplication (MSM) for uncompressed points (big-endian format)
-///
-/// Input format per pair: 224 bytes = 192 bytes G2 point + 32 bytes scalar (big-endian)
-/// Output format: 192 bytes G2 point
-///
-/// ### Safety
-/// - `pairs` must point to an array of `num_pairs * 224` bytes
-/// - `ret` must point to a valid `[u8; 192]` for the output
-///
-/// Returns:
-/// - [G2_MSM_SUCCESS] = success (regular point)
-/// - [G2_MSM_SUCCESS_INFINITY] = success (point at infinity)
-/// - [G2_MSM_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
-/// - [G2_MSM_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
-/// - [G2_MSM_ERR_NOT_IN_SUBGROUP] = error (at least one point not in subgroup)
-#[allow(dead_code)]
-#[inline]
-pub(crate) unsafe fn bls12_381_g2_msm_c(
-    ret: *mut u8,
-    pairs: *const u8,
-    num_pairs: usize,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let ret_bytes: &mut [u8; 192] = &mut *(ret as *mut [u8; 192]);
-
-    // Parse all pairs
-    let mut points = Vec::with_capacity(num_pairs);
-    let mut scalars = Vec::with_capacity(num_pairs);
-    for i in 0..num_pairs {
-        let pair_ptr = pairs.add(i * 224);
-        let point_bytes: &[u8; 192] = &*(pair_ptr as *const [u8; 192]);
-        let scalar_bytes: &[u8; 32] = &*(pair_ptr.add(192) as *const [u8; 32]);
-
-        // Parse point and scalar
-        let point_u64 = g2_bytes_be_to_u64_le_bls12_381(point_bytes);
-        let scalar_u64 = scalar_bytes_be_to_u64_le_bls12_381(scalar_bytes);
-
-        points.push(point_u64);
-        scalars.push(scalar_u64);
-    }
-
-    // Perform MSM with validation
-    let result = match msm_complete_twist_bls12_381(
-        &points,
-        &scalars,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        Ok(r) => r,
-        Err(code) => return code,
-    };
-
-    // Encode result
-    g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
-    if result == G2_IDENTITY {
-        G2_MSM_SUCCESS_INFINITY
-    } else {
-        G2_MSM_SUCCESS
-    }
-}
 
 /// Decompresses a compressed BLS12-381 G2 point (96 bytes) to affine coordinates.
 /// Returns 0 on success (result written to `result_ptr`), 1 if decompression fails.
@@ -1190,6 +1121,10 @@ pub unsafe extern "C" fn is_on_curve_twist_bls12_381_c(
 ///
 /// # Safety
 /// - `p_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_is_on_subgroup_twist_bls12_381_c")]
 pub unsafe extern "C" fn is_on_subgroup_twist_bls12_381_c(
@@ -1204,14 +1139,23 @@ pub unsafe extern "C" fn is_on_subgroup_twist_bls12_381_c(
     ) as u8
 }
 
-/// Addition of two BLS12-381 G2 points with validation and identity handling.
-/// Returns 0 on success (result written to `result_ptr`), 1 if result is the point at infinity,
-/// or an error code if either point is invalid.
+/// Addition of two BLS12-381 G2 points (raw, UNVALIDATED — caller pre-validates).
+/// Returns 0 on success (result written to `result_ptr`), or 1 if the result is the
+/// point at infinity.
+///
+/// Note: despite earlier wording, this entrypoint performs NO input validation and
+/// returns NO "invalid point" error code — it calls the unchecked `add_twist_bls12_381`
+/// core directly. For a validated addition use `bls12_381_g2_add_c`
+/// (→ `add_complete_twist_bls12_381`).
 ///
 /// # Safety
 /// - `p1_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
 /// - `p2_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
 /// - `result_ptr` must point to a writable `[u64; 24]` array
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_add_twist_bls12_381_c")]
 pub unsafe extern "C" fn add_twist_bls12_381_c(
@@ -1237,12 +1181,68 @@ pub unsafe extern "C" fn add_twist_bls12_381_c(
     }
 }
 
+/// G2 point addition for uncompressed 192-byte points (big-endian format)
+///
+/// Input format: 192 bytes per point = 96 bytes x-coordinate (Fp2) + 96 bytes y-coordinate (Fp2)
+/// Each Fp2 element: 48 bytes imaginary + 48 bytes real (big-endian)
+/// Output format: Same as input
+///
+/// ### Safety
+/// - `a` must point to a valid `[u8; 192]` for the first input point
+/// - `b` must point to a valid `[u8; 192]` for the second input point
+/// - `ret` must point to a valid `[u8; 192]` for the output
+///
+/// Returns:
+/// - [G2_ADD_SUCCESS] = success (regular point)
+/// - [G2_ADD_SUCCESS_INFINITY] = success (point at infinity)
+/// - [G2_ADD_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
+/// - [G2_ADD_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn add_safe_twist_bls12_381_c(
+    ret: *mut u8,
+    a: *const u8,
+    b: *const u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let a_bytes: &[u8; 192] = &*(a as *const [u8; 192]);
+    let b_bytes: &[u8; 192] = &*(b as *const [u8; 192]);
+    let ret_bytes: &mut [u8; 192] = &mut *(ret as *mut [u8; 192]);
+
+    // Parse points
+    let a_u64 = g2_bytes_be_to_u64_le_bls12_381(a_bytes);
+    let b_u64 = g2_bytes_be_to_u64_le_bls12_381(b_bytes);
+
+    // Perform addition
+    let result = match add_complete_safe_twist_bls12_381(
+        &a_u64,
+        &b_u64,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok(r) => r,
+        Err(code) => return code,
+    };
+
+    // Encode result
+    g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
+    if result == G2_IDENTITY {
+        G2_ADD_SUCCESS_INFINITY
+    } else {
+        G2_ADD_SUCCESS
+    }
+}
+
 /// Scalar multiplication of a non-zero BLS12-381 G2 point by a scalar.
 ///
 /// # Safety
 /// - `p_ptr` must point to a valid `[u64; 24]` array (affine coordinates x ‖ y in Fp2, little-endian limbs)
 /// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
 /// - `result_ptr` must point to a writable `[u64; 24]` array
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_twist_bls12_381_c")]
 pub unsafe extern "C" fn scalar_mul_twist_bls12_381_c(
@@ -1265,6 +1265,67 @@ pub unsafe extern "C" fn scalar_mul_twist_bls12_381_c(
         1
     } else {
         0
+    }
+}
+
+/// G2 Multi-Scalar Multiplication (MSM) for uncompressed points (big-endian format)
+///
+/// Input format per pair: 224 bytes = 192 bytes G2 point + 32 bytes scalar (big-endian)
+/// Output format: 192 bytes G2 point
+///
+/// ### Safety
+/// - `pairs` must point to an array of `num_pairs * 224` bytes
+/// - `ret` must point to a valid `[u8; 192]` for the output
+///
+/// Returns:
+/// - [G2_MSM_SUCCESS] = success (regular point)
+/// - [G2_MSM_SUCCESS_INFINITY] = success (point at infinity)
+/// - [G2_MSM_ERR_NOT_IN_FIELD] = error (at least one point coordinate not in field)
+/// - [G2_MSM_ERR_NOT_ON_CURVE] = error (at least one point not on curve)
+/// - [G2_MSM_ERR_NOT_IN_SUBGROUP] = error (at least one point not in subgroup)
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn msm_safe_twist_bls12_381_c(
+    ret: *mut u8,
+    pairs: *const u8,
+    num_pairs: usize,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let ret_bytes: &mut [u8; 192] = &mut *(ret as *mut [u8; 192]);
+
+    // Parse all pairs
+    let mut points = Vec::with_capacity(num_pairs);
+    let mut scalars = Vec::with_capacity(num_pairs);
+    for i in 0..num_pairs {
+        let pair_ptr = pairs.add(i * 224);
+        let point_bytes: &[u8; 192] = &*(pair_ptr as *const [u8; 192]);
+        let scalar_bytes: &[u8; 32] = &*(pair_ptr.add(192) as *const [u8; 32]);
+
+        // Parse point and scalar
+        let point_u64 = g2_bytes_be_to_u64_le_bls12_381(point_bytes);
+        let scalar_u64 = scalar_bytes_be_to_u64_le_bls12_381(scalar_bytes);
+
+        points.push(point_u64);
+        scalars.push(scalar_u64);
+    }
+
+    // Perform MSM with validation
+    let result = match msm_complete_safe_twist_bls12_381(
+        &points,
+        &scalars,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok(r) => r,
+        Err(code) => return code,
+    };
+
+    // Encode result
+    g2_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
+    if result == G2_IDENTITY {
+        G2_MSM_SUCCESS_INFINITY
+    } else {
+        G2_MSM_SUCCESS
     }
 }
 

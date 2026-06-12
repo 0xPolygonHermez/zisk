@@ -8,7 +8,7 @@ use crate::zisklib::lib::sha256::sha256;
 use super::{
     fp::{add_fp_bls12_381, mul_fp_bls12_381},
     map_to_curve::map_to_curve_g2_no_cofactor_bls12_381,
-    twist::{add_complete_twist_bls12_381, clear_cofactor_twist_bls12_381},
+    twist::{add_complete_safe_twist_bls12_381, clear_cofactor_twist_bls12_381},
 };
 
 /// Hash an arbitrary byte string to a point in the BLS12-381 G2 prime-order
@@ -42,7 +42,7 @@ pub fn hash_to_curve_g2_bls12_381(
     .expect("hash_to_field output is reduced mod p");
 
     // R = Q0 + Q1
-    let r = add_complete_twist_bls12_381(
+    let r = add_complete_safe_twist_bls12_381(
         &q0,
         &q1,
         #[cfg(feature = "hints")]

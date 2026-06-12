@@ -17,7 +17,7 @@ pub fn bls12_381_g1_add_hint(data: &[u64]) -> Result<Vec<u64>> {
     let mut hints = Vec::new();
     let result: &mut [u8; 96] = &mut [0u8; 96];
     unsafe {
-        zisklib::bls12_381_g1_add_c(result.as_mut_ptr(), a.as_ptr(), b.as_ptr(), &mut hints);
+        zisklib::add_safe_bls12_381_c(result.as_mut_ptr(), a.as_ptr(), b.as_ptr(), &mut hints);
     }
 
     Ok(hints)
@@ -48,7 +48,7 @@ pub fn bls12_381_g1_msm_hint(data: &[u64]) -> Result<Vec<u64>> {
     let mut hints = Vec::new();
     let result: &mut [u8; 96] = &mut [0u8; 96];
     unsafe {
-        zisklib::bls12_381_g1_msm_c(result.as_mut_ptr(), bytes.as_ptr(), num_pairs, &mut hints);
+        zisklib::msm_safe_bls12_381_c(result.as_mut_ptr(), bytes.as_ptr(), num_pairs, &mut hints);
     }
 
     Ok(hints)
@@ -69,7 +69,12 @@ pub fn bls12_381_g2_add_hint(data: &[u64]) -> Result<Vec<u64>> {
     let mut hints = Vec::new();
     let result: &mut [u8; 192] = &mut [0u8; 192];
     unsafe {
-        zisklib::bls12_381_g2_add_c(result.as_mut_ptr(), a.as_ptr(), b.as_ptr(), &mut hints);
+        zisklib::add_safe_twist_bls12_381_c(
+            result.as_mut_ptr(),
+            a.as_ptr(),
+            b.as_ptr(),
+            &mut hints,
+        );
     }
 
     Ok(hints)
@@ -79,7 +84,7 @@ pub fn bls12_381_g2_add_hint(data: &[u64]) -> Result<Vec<u64>> {
 #[inline]
 pub fn bls12_381_g2_msm_hint(data: &[u64]) -> Result<Vec<u64>> {
     if data.is_empty() {
-        anyhow::bail!("HINT_BLS12_381_G1_MSM: data is empty");
+        anyhow::bail!("HINT_BLS12_381_G2_MSM: data is empty");
     }
 
     let num_pairs = data[0] as usize;
@@ -91,7 +96,7 @@ pub fn bls12_381_g2_msm_hint(data: &[u64]) -> Result<Vec<u64>> {
 
     let expected_len = 1 + num_pairs * PAIR_SIZE;
 
-    validate_hint_length(data, expected_len, "HINT_BLS12_381_G1_MSM")?;
+    validate_hint_length(data, expected_len, "HINT_BLS12_381_G2_MSM")?;
 
     let bytes = unsafe {
         std::slice::from_raw_parts(data.as_ptr().add(1) as *const u8, num_pairs * PAIR_SIZE_BYTES)
@@ -100,7 +105,12 @@ pub fn bls12_381_g2_msm_hint(data: &[u64]) -> Result<Vec<u64>> {
     let mut hints = Vec::new();
     let result: &mut [u8; 192] = &mut [0u8; 192];
     unsafe {
-        zisklib::bls12_381_g2_msm_c(result.as_mut_ptr(), bytes.as_ptr(), num_pairs, &mut hints);
+        zisklib::msm_safe_twist_bls12_381_c(
+            result.as_mut_ptr(),
+            bytes.as_ptr(),
+            num_pairs,
+            &mut hints,
+        );
     }
 
     Ok(hints)
@@ -110,7 +120,7 @@ pub fn bls12_381_g2_msm_hint(data: &[u64]) -> Result<Vec<u64>> {
 #[inline]
 pub fn bls12_381_pairing_check_hint(data: &[u64]) -> Result<Vec<u64>> {
     if data.is_empty() {
-        anyhow::bail!("HINT_BLS12_381_G1_MSM: data is empty");
+        anyhow::bail!("HINT_BLS12_381_PAIRING_CHECK: data is empty");
     }
 
     let num_pairs = data[0] as usize;
@@ -130,7 +140,7 @@ pub fn bls12_381_pairing_check_hint(data: &[u64]) -> Result<Vec<u64>> {
 
     let mut hints = Vec::new();
     unsafe {
-        zisklib::bls12_381_pairing_check_c(pairs.as_ptr(), num_pairs, &mut hints);
+        zisklib::pairing_check_safe_bls12_381_c(pairs.as_ptr(), num_pairs, &mut hints);
     }
 
     Ok(hints)
