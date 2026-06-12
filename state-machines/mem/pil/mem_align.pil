@@ -106,16 +106,41 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
 
     // 1] Ensure the MemAlign follows the program
 
-    // Registers should be bytes and be shuch that:
+    // Registers should be bytes and be such that:
     //  - reg' == reg in transitions R -> V, R -> W, W -> V,
-    //  - 'reg == reg in transitions V <- W, W <- R,
-    // in any case, sel_up_to_down,sel_down_to_up are 0 in [V] steps.
+    //  - 'reg == reg in transitions V <- R, W <- R, V <- W,
+    // in any case, sel_up_to_down and sel_down_to_up must be 0 in [V] rows.
     for (int i = 0; i < CHUNK_NUM; i++) {
         range_check(reg[i], 0, 2**CHUNK_BITS-1);
 
         (reg[i]' - reg[i]) * sel[i] * sel_up_to_down === 0;
         ('reg[i] - reg[i]) * sel[i] * sel_down_to_up === 0;
     }
+
+
+    // The step is constant within a sub-program except on the two,
+    // aligned-write rows which sit one step above it:
+    //  - step == 'step     in transitions R -> V, V <- R,
+    //  - step == 'step + 1 in transitions R -> W, V <- W,
+    //  - step == 'step - 1 in transitions W -> V, W <- R,
+    //
+    //  | Program | Row | reset | wr | U2D | D2U |     constraint    |
+    //  |---------|-----|-------|----|-----|-----|-------------------|
+    //  |  RV     |  R  |   1   |  0 | 1   | 0   |    0 == 0         |
+    //  |  RV     |  V  |   0   |  0 | 0   | 0   | step == 'step     |
+    //  |  RWV    |  R  |   1   |  0 | 1   | 0   |    0 == 0         |
+    //  |  RWV    |  W  |   0   |  1 | 1   | 0   | step == 'step + 1 |
+    //  |  RWV    |  V  |   0   |  1 | 0   | 0   | step == 'step - 1 |
+    //  |  RVR    |  R  |   1   |  0 | 1   | 0   |    0 == 0         |
+    //  |  RVR    |  V  |   0   |  0 | 0   | 0   | step == 'step     |
+    //  |  RVR    |  R  |   0   |  0 | 0   | 1   | step == 'step     |
+    //  |  RWVWR  |  R  |   1   |  0 | 1   | 0   |    0 == 0         |
+    //  |  RWVWR  |  W  |   0   |  1 | 1   | 0   | step == 'step + 1 |
+    //  |  RWVWR  |  V  |   0   |  1 | 0   | 0   | step == 'step - 1 |
+    //  |  RWVWR  |  W  |   0   |  1 | 0   | 1   | step == 'step + 1 |
+    //  |  RWVWR  |  R  |   0   |  0 | 0   | 1   | step == 'step - 1 |
+    const expr aligned_wr = wr * (sel_up_to_down + sel_down_to_up);
+    (1 - reset) * ((step - aligned_wr) - ('step - 'aligned_wr)) === 0;
 
     col fixed L1 = [1,0...];
     L1 * pc === 0; // The program should start at the first line
@@ -148,7 +173,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     // Offset should be 0 in aligned memory accesses, but this is ensured by the rom
     // Width should be 8 in aligned memory accesses, but this is ensured by the rom
 
-    // On assume steps, we reconstruct the value from the registers directly
+    // On assume rows, we reconstruct the value from the registers directly
     expr assume_val[RC];
     for (int rc_index = 0; rc_index < RC; rc_index++) {
         assume_val[rc_index] = 0;
@@ -165,7 +190,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     sel_prove * (sel_prove - 1) === 0; // Binary selector
     sel_prove * sel_assume === 0; // Disjoint from the assume selector
 
-    // On prove steps, we reconstruct the value in the correct manner chosen by the selectors
+    // On prove rows, we reconstruct the value in the correct manner chosen by the selectors
     expr prove_val[RC];
     for (int rc_index = 0; rc_index < RC; rc_index++) {
         prove_val[rc_index] = 0;
