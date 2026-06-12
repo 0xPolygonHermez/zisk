@@ -10,6 +10,16 @@ ROOT_DIR := $(dir $(realpath $(firstword $(MAKEFILE_LIST))))
 # sm_100 has TMEM that sm_120 lacks.
 CUDA_MAJOR_ARCHS := 80 86 89 90 100 120
 
+# Arch resolution and the staleness stamp run at parse time (GPU probing,
+# stamp writes, stale-object wipes) — skip all of it when every requested
+# goal is `clean`, where no flags are needed.
+ifeq ($(MAKECMDGOALS),)
+    NEED_CUDA_ARCH := 1
+else ifneq ($(filter-out clean,$(MAKECMDGOALS)),)
+    NEED_CUDA_ARCH := 1
+endif
+
+ifdef NEED_CUDA_ARCH
 ifdef CUDA_GENCODE_FLAGS
     $(info CUDA_GENCODE_FLAGS defined externally: $(CUDA_GENCODE_FLAGS))
 else ifneq ($(strip $(CUDA_ARCHS)),)
@@ -56,6 +66,7 @@ ifneq ($(strip $(CUDA_ARCH_LIST)),)
                           $(foreach p,$(CUDA_PTX_ARCHS),-gencode arch=compute_$(p),code=compute_$(p))
     $(info CUDA archs $(CUDA_ARCH_LIST), gencode flags set)
 endif
+endif # NEED_CUDA_ARCH
 
 NVCCFLAGS := -O3 -std=c++20 $(CUDA_GENCODE_FLAGS) -Xcompiler -fPIC
 
@@ -65,6 +76,7 @@ OBJS   := $(addprefix $(OUT_DIR)/, $(SRCS:.cu=.o))
 
 # Staleness stamp: make doesn't track flag changes, so wipe the objects at
 # parse time when the resolved gencode flags differ from the stamped ones.
+ifdef NEED_CUDA_ARCH
 CUDA_ARCH_STAMP := $(OUT_DIR)/.cuda_arch_stamp
 LAST_CUDA_FLAGS := $(strip $(shell cat $(CUDA_ARCH_STAMP) 2>/dev/null))
 ifneq ($(LAST_CUDA_FLAGS),$(strip $(CUDA_GENCODE_FLAGS)))
@@ -74,6 +86,7 @@ ifneq ($(LAST_CUDA_FLAGS),$(strip $(CUDA_GENCODE_FLAGS)))
     endif
     CUDA_ARCH_WRITE := $(shell mkdir -p $(OUT_DIR) && echo '$(strip $(CUDA_GENCODE_FLAGS))' > $(CUDA_ARCH_STAMP))
 endif
+endif # NEED_CUDA_ARCH
 
 # Recompile when any header in this dir or the shared cpp/ header changes.
 HEADERS := $(wildcard *.cuh) $(wildcard ../cpp/*.hpp)

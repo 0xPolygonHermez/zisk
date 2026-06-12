@@ -24,5 +24,5 @@ if command -v nvidia-smi >/dev/null 2>&1; then
     esac
 fi
 
-echo "[detect_cuda_arch] nvidia-smi probe failed — no GPU arch detected." >&2
+echo "[detect_cuda_arch] nvidia-smi probe failed — no GPU arch detected, falling back to major archs." >&2
 exit 1
