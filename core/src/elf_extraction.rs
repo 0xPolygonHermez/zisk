@@ -165,6 +165,48 @@ pub fn merge_adjacent_data_sections(sections: &[DataSection]) -> Vec<DataSection
     merged
 }
 
+/// Merge read-only data sections and pad each to a multiple of `align` bytes.
+///
+/// Unlike `merge_adjacent_data_sections`, this also coalesces sections that the
+/// padding would otherwise make overlap (the inter-section gap is zero-filled),
+/// so no RO address gets two ROM-init entries — which `rom_data.pil` rejects on an
+/// honest run. `align` must be a multiple of 8; section addresses are 8-aligned.
+pub fn merge_ro_sections(sections: &[DataSection], align: u64) -> Result<Vec<DataSection>, String> {
+    if sections.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut sections = sections.to_vec();
+    sections.sort_by_key(|s| s.addr);
+
+    let mut merged: Vec<DataSection> = Vec::new();
+    let mut current = sections[0].clone();
+    for next in sections.into_iter().skip(1) {
+        let end = current.addr + current.data.len() as u64;
+        let padded_end = current.addr + (current.data.len() as u64).next_multiple_of(align);
+        if next.addr < end {
+            return Err(format!(
+                "overlapping read-only data sections at 0x{:x} and 0x{:x}",
+                current.addr, next.addr
+            ));
+        }
+        // Merge when adjacent, or close enough that padding would overlap `next`;
+        // resizing to `next`'s offset zero-fills any gap and keeps its address.
+        if next.addr == end || next.addr < padded_end {
+            current.data.resize((next.addr - current.addr) as usize, 0);
+            current.data.extend_from_slice(&next.data);
+        } else {
+            merged.push(current);
+            current = next;
+        }
+    }
+    merged.push(current);
+
+    for s in &mut merged {
+        s.data.resize((s.data.len() as u64).next_multiple_of(align) as usize, 0);
+    }
+    Ok(merged)
+}
+
 /// Get addresses for a list of symbols from an ELF file
 pub fn get_symbol_addresses(
     elf_path: &Path,
@@ -326,5 +368,99 @@ mod tests {
         assert_eq!(result[0].data, vec![1, 2, 3, 4]);
         assert_eq!(result[1].addr, 0x1003);
         assert_eq!(result[1].data, vec![5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn test_merge_ro_empty() {
+        let result = merge_ro_sections(&[], 32).unwrap();
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_merge_ro_padding_overlap_is_coalesced() {
+        // Two sections within 32 bytes (the real bug): padding the first would
+        // overlap the second, so they must coalesce into one with the gap zeroed.
+        let sections = vec![
+            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] }, // ends 0x1008
+            DataSection { addr: 0x1010, data: vec![9, 10, 11, 12, 13, 14, 15, 16] }, // gap of 8
+        ];
+        let result = merge_ro_sections(&sections, 32).unwrap();
+        assert_eq!(result.len(), 1, "near sections must be coalesced, not left to overlap");
+        assert_eq!(result[0].addr, 0x1000);
+        // [sec0][8-byte zero gap][sec1] then padded to a 32-byte multiple.
+        assert_eq!(
+            result[0].data,
+            vec![
+                1, 2, 3, 4, 5, 6, 7, 8, // sec0 @ 0x1000
+                0, 0, 0, 0, 0, 0, 0, 0, // gap @ 0x1008..0x1010
+                9, 10, 11, 12, 13, 14, 15, 16, // sec1 @ 0x1010 (real value preserved)
+                0, 0, 0, 0, 0, 0, 0, 0, // padding to 32
+            ]
+        );
+        // The overlapping word keeps sec1's value, NOT the padding zero.
+        assert_eq!(result[0].data[(0x1010 - 0x1000) as usize], 9);
+    }
+
+    #[test]
+    fn test_merge_ro_exact_adjacency_is_merged() {
+        // Exact adjacency must still merge (unchanged from the old behaviour).
+        let sections = vec![
+            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] },
+            DataSection { addr: 0x1008, data: vec![9, 10, 11, 12, 13, 14, 15, 16] },
+        ];
+        let result = merge_ro_sections(&sections, 32).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].addr, 0x1000);
+        assert_eq!(
+            result[0].data,
+            vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn test_merge_ro_adjacent_when_first_already_padded() {
+        // First section length is already a multiple of 32 (padded_end == end), and
+        // the next is exactly adjacent: the `== current_end` branch must still merge.
+        let mut first = vec![0u8; 32];
+        first[0] = 0xAA;
+        let sections = vec![
+            DataSection { addr: 0x1000, data: first },
+            DataSection { addr: 0x1020, data: vec![0xBB, 0, 0, 0, 0, 0, 0, 0] },
+        ];
+        let result = merge_ro_sections(&sections, 32).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].addr, 0x1000);
+        assert_eq!(result[0].data.len(), 64); // 32 + 8 padded to 32 = 64
+        assert_eq!(result[0].data[0], 0xAA);
+        assert_eq!(result[0].data[32], 0xBB);
+    }
+
+    #[test]
+    fn test_merge_ro_far_sections_not_merged() {
+        // Sections far enough apart (next starts at/after the padded end) are NOT
+        // merged; each is independently padded to a 32-byte multiple. Output is the
+        // same as the old merge+pad for non-overlapping ELFs.
+        let sections = vec![
+            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] },
+            DataSection { addr: 0x1020, data: vec![9, 10, 11, 12, 13, 14, 15, 16] },
+        ];
+        let result = merge_ro_sections(&sections, 32).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].addr, 0x1000);
+        assert_eq!(result[0].data.len(), 32);
+        assert_eq!(&result[0].data[0..8], &[1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(result[1].addr, 0x1020);
+        assert_eq!(result[1].data.len(), 32);
+        assert_eq!(&result[1].data[0..8], &[9, 10, 11, 12, 13, 14, 15, 16]);
+    }
+
+    #[test]
+    fn test_merge_ro_real_overlap_is_rejected() {
+        // Two distinct sections claiming the same byte must be rejected, not merged.
+        let sections = vec![
+            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4, 5, 6, 7, 8] }, // ends 0x1008
+            DataSection { addr: 0x1004, data: vec![9, 10, 11, 12] }, // overlaps real data
+        ];
+        assert!(merge_ro_sections(&sections, 32).is_err());
     }
 }
