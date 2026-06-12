@@ -1,5 +1,5 @@
 use super::EmbeddedClient;
-use crate::embedded::{EmbeddedProver, ERR_ASSEMBLY_NOT_ENABLED};
+use crate::embedded::{validate_embedded_request, EmbeddedProver, HintsKind, StdinKind};
 use crate::execute::ExecuteResult;
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
@@ -62,50 +62,35 @@ impl EmbeddedClient {
         program: &GuestProgram,
         prover: Arc<EmbeddedProver>,
     ) -> Result<ExecuteResult> {
+        let (prover_is_asm, was_setup_with_hints) = match prover.as_ref() {
+            EmbeddedProver::Asm(p) => (true, p.was_setup_with_hints()),
+            EmbeddedProver::Emu(_) => (false, false),
+        };
+        validate_embedded_request(
+            prover_is_asm,
+            executor,
+            hints.as_ref().map(HintsKind::of),
+            StdinKind::of(&stdin),
+            was_setup_with_hints,
+        )?;
+
+        // Inputs are validated above; the dispatch only routes valid requests.
         let output = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
-                if hints.is_some() {
-                    return Err(SdkError::UnsupportedExecutor(
-                        "Hints require Assembly executor".to_string(),
-                    ));
-                }
-                if matches!(stdin, InputSource::Stream(_)) {
-                    return Err(SdkError::UnsupportedExecutor("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor".to_string()));
-                }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
                 p.execute(program, s.into_inner()).map_err(SdkError::backend)?
             }
-            (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
-                return Err(SdkError::UnsupportedExecutor(ERR_ASSEMBLY_NOT_ENABLED.to_string()))
-            }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
-                if hints.is_some() {
-                    return Err(SdkError::UnsupportedExecutor(
-                        "Hints require Assembly executor".to_string(),
-                    ));
-                }
-                if matches!(stdin, InputSource::Stream(_)) {
-                    return Err(SdkError::UnsupportedExecutor("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor".to_string()));
-                }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
                 p.execute_emulator(program, s.into_inner()).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {
-                    if !p.was_setup_with_hints() {
-                        return Err(SdkError::InvalidConfig(
-                            "Program was set up without hints — call setup().with_hints() first"
-                                .to_string(),
-                        ));
-                    }
                     match hints {
                         HintsSource::Hints(h) => {
                             p.register_hints_stream(h.into_inner()).map_err(SdkError::backend)?;
                         }
                         HintsSource::Stream(stream) => {
-                            if stream.is_grpc() {
-                                return Err(SdkError::UnsupportedExecutor("gRPC streams are not supported with the embedded executor — use a remote client".to_string()));
-                            }
                             stream.start()?;
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
@@ -115,17 +100,8 @@ impl EmbeddedClient {
                     p.execute(program, zisk_common::io::ZiskStdin::new())
                         .map_err(SdkError::backend)?
                 } else {
-                    if p.was_setup_with_hints() {
-                        return Err(SdkError::InvalidConfig(
-                            "Program was set up with hints — call .hints() on the request"
-                                .to_string(),
-                        ));
-                    }
                     match stdin {
                         InputSource::Stream(stream) => {
-                            if stream.is_grpc() {
-                                return Err(SdkError::UnsupportedExecutor("gRPC streams are not supported with the embedded executor — use a remote client".to_string()));
-                            }
                             stream.start()?;
                             let uri = stream.uri().to_string();
                             let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
@@ -138,6 +114,9 @@ impl EmbeddedClient {
                         }
                     }
                 }
+            }
+            (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
+                unreachable!("rejected by validate_embedded_request")
             }
         };
         Ok(ExecuteResult::from(output))

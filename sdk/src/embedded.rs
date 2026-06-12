@@ -36,6 +36,122 @@ use crate::{
 
 const ERR_ASSEMBLY_NOT_ENABLED: &str =
     "Assembly executor not enabled — call .assembly() on the builder";
+const ERR_HINTS_REQUIRE_ASSEMBLY: &str = "Hints require Assembly executor";
+const ERR_STREAM_STDIN_ON_EMULATOR: &str =
+    "Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor";
+const ERR_GRPC_ON_EMBEDDED: &str =
+    "gRPC streams are not supported with the embedded executor — use a remote client";
+const ERR_SETUP_WITHOUT_HINTS: &str =
+    "Program was set up without hints — call setup().with_hints() first";
+const ERR_SETUP_WITH_HINTS: &str = "Program was set up with hints — call .hints() on the request";
+
+/// How a request's hints are delivered — the only distinction the
+/// embedded-executor compatibility policy cares about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum HintsKind {
+    /// Inline (memory/file) hints.
+    Inline,
+    /// Local (unix/quic) stream.
+    LocalStream,
+    /// gRPC stream — never serviceable by the embedded executor.
+    GrpcStream,
+}
+
+/// How a request's stdin is delivered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StdinKind {
+    /// Buffered (memory/file) input.
+    Buffered,
+    /// Local (unix/quic) stream.
+    LocalStream,
+    /// gRPC stream.
+    GrpcStream,
+}
+
+impl HintsKind {
+    fn of(hints: &HintsSource) -> Self {
+        match hints {
+            HintsSource::Hints(_) => HintsKind::Inline,
+            HintsSource::Stream(s) if s.is_grpc() => HintsKind::GrpcStream,
+            HintsSource::Stream(_) => HintsKind::LocalStream,
+        }
+    }
+}
+
+impl StdinKind {
+    fn of(stdin: &InputSource) -> Self {
+        match stdin {
+            InputSource::Stdin(_) => StdinKind::Buffered,
+            InputSource::Stream(s) if s.is_grpc() => StdinKind::GrpcStream,
+            InputSource::Stream(_) => StdinKind::LocalStream,
+        }
+    }
+}
+
+/// Validate that an embedded execute/prove request is serviceable by the
+/// configured executor, returning the same [`SdkError`] the dispatch would.
+///
+/// This is the single source of truth for the embedded compatibility policy,
+/// factored out of `do_execute_inner` / `do_prove_inner` (which are identical)
+/// so it can be exhaustively unit-tested without constructing a real prover.
+/// `verify_constraints` keeps its own (slightly different) checks.
+///
+/// Error precedence is preserved exactly: for the `Emulator` executor, hints
+/// are rejected before stream stdin; for `Assembly`, a missing/extra-hints
+/// configuration error is reported before a gRPC-transport error.
+pub(crate) fn validate_embedded_request(
+    prover_is_asm: bool,
+    executor: ExecutorKind,
+    hints: Option<HintsKind>,
+    stdin: StdinKind,
+    was_setup_with_hints: bool,
+) -> Result<()> {
+    match executor {
+        // The Emulator backend (whether the client was built `.emulator()` or
+        // is an Assembly prover asked to run in emulator mode) accepts neither
+        // hints nor a streamed stdin.
+        ExecutorKind::Emulator => {
+            if hints.is_some() {
+                return Err(SdkError::UnsupportedExecutor(ERR_HINTS_REQUIRE_ASSEMBLY.to_string()));
+            }
+            if stdin != StdinKind::Buffered {
+                return Err(SdkError::UnsupportedExecutor(
+                    ERR_STREAM_STDIN_ON_EMULATOR.to_string(),
+                ));
+            }
+            Ok(())
+        }
+        ExecutorKind::Assembly => {
+            if !prover_is_asm {
+                return Err(SdkError::UnsupportedExecutor(ERR_ASSEMBLY_NOT_ENABLED.to_string()));
+            }
+            match hints {
+                Some(hints) => {
+                    if !was_setup_with_hints {
+                        return Err(SdkError::InvalidConfig(ERR_SETUP_WITHOUT_HINTS.to_string()));
+                    }
+                    if hints == HintsKind::GrpcStream {
+                        return Err(SdkError::UnsupportedExecutor(
+                            ERR_GRPC_ON_EMBEDDED.to_string(),
+                        ));
+                    }
+                    Ok(())
+                }
+                None => {
+                    if was_setup_with_hints {
+                        return Err(SdkError::InvalidConfig(ERR_SETUP_WITH_HINTS.to_string()));
+                    }
+                    if stdin == StdinKind::GrpcStream {
+                        return Err(SdkError::UnsupportedExecutor(
+                            ERR_GRPC_ON_EMBEDDED.to_string(),
+                        ));
+                    }
+                    Ok(())
+                }
+            }
+        }
+    }
+}
 
 /// Builder for an embedded client.
 ///
@@ -473,5 +589,164 @@ impl EmbeddedClient {
         proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
         WrapRequest::new(self, proof, proof_kind)
+    }
+}
+
+#[cfg(test)]
+mod validate_tests {
+    use super::*;
+    use crate::ExecutorKind::{Assembly, Emulator};
+
+    // Convenience: assert a validation result is the expected error variant
+    // carrying the expected message.
+    fn assert_unsupported(res: Result<()>, msg: &str) {
+        match res {
+            Err(SdkError::UnsupportedExecutor(m)) => assert_eq!(m, msg),
+            other => panic!("expected UnsupportedExecutor({msg:?}), got {other:?}"),
+        }
+    }
+    fn assert_invalid(res: Result<()>, msg: &str) {
+        match res {
+            Err(SdkError::InvalidConfig(m)) => assert_eq!(m, msg),
+            other => panic!("expected InvalidConfig({msg:?}), got {other:?}"),
+        }
+    }
+
+    // ── Emulator executor (prover-agnostic: same policy for Emu and Asm) ──
+
+    #[test]
+    fn emulator_buffered_no_hints_ok() {
+        for is_asm in [false, true] {
+            assert!(validate_embedded_request(is_asm, Emulator, None, StdinKind::Buffered, false)
+                .is_ok());
+        }
+    }
+
+    #[test]
+    fn emulator_rejects_hints_before_stream_stdin() {
+        // Hints present + stream stdin → hints error wins (checked first).
+        for is_asm in [false, true] {
+            assert_unsupported(
+                validate_embedded_request(
+                    is_asm,
+                    Emulator,
+                    Some(HintsKind::Inline),
+                    StdinKind::LocalStream,
+                    false,
+                ),
+                ERR_HINTS_REQUIRE_ASSEMBLY,
+            );
+        }
+    }
+
+    #[test]
+    fn emulator_rejects_stream_stdin() {
+        for stdin in [StdinKind::LocalStream, StdinKind::GrpcStream] {
+            assert_unsupported(
+                validate_embedded_request(true, Emulator, None, stdin, false),
+                ERR_STREAM_STDIN_ON_EMULATOR,
+            );
+        }
+    }
+
+    // ── Assembly executor on a non-Assembly (Emu) prover ──
+
+    #[test]
+    fn assembly_on_emu_prover_rejected_regardless_of_inputs() {
+        for hints in [None, Some(HintsKind::Inline), Some(HintsKind::GrpcStream)] {
+            for stdin in [StdinKind::Buffered, StdinKind::LocalStream, StdinKind::GrpcStream] {
+                assert_unsupported(
+                    validate_embedded_request(false, Assembly, hints, stdin, true),
+                    ERR_ASSEMBLY_NOT_ENABLED,
+                );
+            }
+        }
+    }
+
+    // ── Assembly executor on an Assembly prover, WITH hints ──
+
+    #[test]
+    fn assembly_hints_setup_with_hints_ok() {
+        for h in [HintsKind::Inline, HintsKind::LocalStream] {
+            assert!(validate_embedded_request(true, Assembly, Some(h), StdinKind::Buffered, true)
+                .is_ok());
+        }
+    }
+
+    #[test]
+    fn assembly_hints_but_setup_without_hints_is_invalid_config() {
+        assert_invalid(
+            validate_embedded_request(
+                true,
+                Assembly,
+                Some(HintsKind::Inline),
+                StdinKind::Buffered,
+                false,
+            ),
+            ERR_SETUP_WITHOUT_HINTS,
+        );
+    }
+
+    #[test]
+    fn assembly_grpc_hints_rejected() {
+        assert_unsupported(
+            validate_embedded_request(
+                true,
+                Assembly,
+                Some(HintsKind::GrpcStream),
+                StdinKind::Buffered,
+                true,
+            ),
+            ERR_GRPC_ON_EMBEDDED,
+        );
+    }
+
+    #[test]
+    fn assembly_setup_error_takes_precedence_over_grpc() {
+        // gRPC hints + setup-without-hints → the config error wins.
+        assert_invalid(
+            validate_embedded_request(
+                true,
+                Assembly,
+                Some(HintsKind::GrpcStream),
+                StdinKind::Buffered,
+                false,
+            ),
+            ERR_SETUP_WITHOUT_HINTS,
+        );
+    }
+
+    // ── Assembly executor on an Assembly prover, WITHOUT hints ──
+
+    #[test]
+    fn assembly_no_hints_ok_for_buffered_and_local_stream() {
+        for stdin in [StdinKind::Buffered, StdinKind::LocalStream] {
+            assert!(validate_embedded_request(true, Assembly, None, stdin, false).is_ok());
+        }
+    }
+
+    #[test]
+    fn assembly_no_hints_but_setup_with_hints_is_invalid_config() {
+        assert_invalid(
+            validate_embedded_request(true, Assembly, None, StdinKind::Buffered, true),
+            ERR_SETUP_WITH_HINTS,
+        );
+    }
+
+    #[test]
+    fn assembly_no_hints_grpc_stdin_rejected() {
+        assert_unsupported(
+            validate_embedded_request(true, Assembly, None, StdinKind::GrpcStream, false),
+            ERR_GRPC_ON_EMBEDDED,
+        );
+    }
+
+    #[test]
+    fn assembly_no_hints_setup_error_takes_precedence_over_grpc_stdin() {
+        // gRPC stdin + setup-with-hints → the config error wins.
+        assert_invalid(
+            validate_embedded_request(true, Assembly, None, StdinKind::GrpcStream, true),
+            ERR_SETUP_WITH_HINTS,
+        );
     }
 }
