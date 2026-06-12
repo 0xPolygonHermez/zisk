@@ -88,13 +88,23 @@ impl<F: PrimeField64> PoseidonSM<F> {
         };
 
         for r in 0..CLOCKS {
-            let mut chunks = [[0u32; 2]; 16];
+            let mut chunks = [[0u16; 4]; 16];
+            let mut t_inv = [0u64; 16];
             for i in 0..16 {
                 let state = round_states[r][i];
-                chunks[i][0] = state as u32;
-                chunks[i][1] = (state >> 32) as u32;
+                chunks[i][0] = state as u16;
+                chunks[i][1] = (state >> 16) as u16;
+                chunks[i][2] = (state >> 32) as u16;
+                chunks[i][3] = (state >> 48) as u16;
+
+                let hi = (state >> 32) as u32;
+                let t = F::from_u64(0xFFFFFFFF) - F::from_u64(hi as u64);
+                if t != F::ZERO {
+                    t_inv[i] = F::inverse(&t).as_canonical_u64();
+                }
             }
             trace[r].set_all_chunks(&chunks);
+            trace[r].set_all_t_inv(&t_inv);
             trace[r].set_sel_poseidon1(sel_poseidon1);
         }
 

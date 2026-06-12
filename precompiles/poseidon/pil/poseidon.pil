@@ -1,4 +1,5 @@
 require "std_lookup.pil"
+require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
 require "poseidon2_constants.pil"
@@ -76,16 +77,19 @@ airtemplate Poseidon(const int N = 2**17) {
 
     // --> Constraints to assert the Poseidon permutation
 
-    // Poseidon state represented as a 1D array of elements of 64 bits, represented in two limbs of 32 bits each
-    col witness bits(32) chunks[n][2];
-   
+    // Poseidon state: n 64-bit elements, each as four 16-bit limbs, least-significant first:
+    //   value = chunks[i][0] + chunks[i][1]*P2_16 + chunks[i][2]*P2_32 + chunks[i][3]*P2_16*P2_32
+    // 16-bit limbs are range-checkable against the predefined U16 table (a 32-bit limb would
+    // need an infeasible 2**32-row table). Range + canonicity are enforced on the memory rows.
+    col witness bits(16) chunks[n][4];
+
     const expr prev_state[n];
     const expr state[n];
     const expr next_state[n];
     for (int i = 0; i < n; i++) {
-        prev_state[i] = 'chunks[i][1] * 2**32 + 'chunks[i][0];
-        state[i] = chunks[i][1] * 2**32 + chunks[i][0];
-        next_state[i] = chunks[i][1]' * 2**32 + chunks[i][0]';
+        prev_state[i] = 'chunks[i][3] * P2_16 * P2_32 + 'chunks[i][2] * P2_32 + 'chunks[i][1] * P2_16 + 'chunks[i][0];
+        state[i] = chunks[i][3] * P2_16 * P2_32 + chunks[i][2] * P2_32 + chunks[i][1] * P2_16 + chunks[i][0];
+        next_state[i] = chunks[i][3]' * P2_16 * P2_32 + chunks[i][2]' * P2_32 + chunks[i][1]' * P2_16 + chunks[i][0]';
     }
 
     // Poseidon2 family is selected when sel_poseidon1 == 0.
@@ -237,16 +241,16 @@ airtemplate Poseidon(const int N = 2**17) {
         mem_value[0] = 0;
         mem_value[1] = 0;
 
-        // Reads
+        // Reads (recombine the two 32-bit memory halves from the four 16-bit limbs)
         for(int j = 0; j < 4; j++) {
-            mem_value[0] += (j)'CLK_0 * (j)'chunks[MEM_OPS_PARALLEL*j + i][0];
-            mem_value[1] += (j)'CLK_0 * (j)'chunks[MEM_OPS_PARALLEL*j + i][1];
+            mem_value[0] += (j)'CLK_0 * ((j)'chunks[MEM_OPS_PARALLEL*j + i][0] + (j)'chunks[MEM_OPS_PARALLEL*j + i][1] * P2_16);
+            mem_value[1] += (j)'CLK_0 * ((j)'chunks[MEM_OPS_PARALLEL*j + i][2] + (j)'chunks[MEM_OPS_PARALLEL*j + i][3] * P2_16);
         }
 
         // Writes
         for(int j = 0; j < 4; j++) {
-            mem_value[0] += (CLOCKS - 4 + j)'CLK_0 * chunks[MEM_OPS_PARALLEL*j + i][0]'(3 - j);
-            mem_value[1] += (CLOCKS - 4 + j)'CLK_0 * chunks[MEM_OPS_PARALLEL*j + i][1]'(3 - j);
+            mem_value[0] += (CLOCKS - 4 + j)'CLK_0 * (chunks[MEM_OPS_PARALLEL*j + i][0]'(3 - j) + chunks[MEM_OPS_PARALLEL*j + i][1]'(3 - j) * P2_16);
+            mem_value[1] += (CLOCKS - 4 + j)'CLK_0 * (chunks[MEM_OPS_PARALLEL*j + i][2]'(3 - j) + chunks[MEM_OPS_PARALLEL*j + i][3]'(3 - j) * P2_16);
         }
 
         precompiled_mem_op(
@@ -258,6 +262,27 @@ airtemplate Poseidon(const int N = 2**17) {
         );
     }
 
+
+    // Constrain the state limbs on the memory rows (the limb split only matters where
+    // it is posted to the bus; gated by `mem_sel`).
+    //   (1) Each limb is a real 16-bit value (`bits(16)` alone enforces nothing).
+    //   (2) Canonicity: the 64-bit value is < Goldilocks p = 2**64 - 2**32 + 1, so the
+    //       digest has a unique byte encoding. The only non-canonical value with both
+    //       halves 32-bit is hi == MASK_32 (0xFFFFFFFF) & lo != 0, so we enforce
+    //       hi == MASK_32 => lo == 0 with an is-zero gadget on t = MASK_32 - hi
+    //       (t_inv = 1/t pins the "hi is maxed" indicator).
+    col witness bits(64) t_inv[n];
+    for (int i = 0; i < n; i++) {
+        for (int k = 0; k < 4; k++) {
+            range_check(expression: chunks[i][k], min: 0, max: MASK_16, sel: mem_sel);
+        }
+
+        const expr lo = chunks[i][0] + chunks[i][1] * P2_16;
+        const expr hi = chunks[i][2] + chunks[i][3] * P2_16;
+        const expr t  = MASK_32 - hi;
+        mem_sel * (t  * (1 - t * t_inv[i])) === 0; // forces t_inv[i] = 1/t when t != 0
+        mem_sel * (lo * (1 - t * t_inv[i])) === 0; // when t == 0 (hi maxed), lo must be 0
+    }
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
     // The op proven on the bus switches with the family selector:

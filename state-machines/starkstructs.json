@@ -28,6 +28,7 @@
     "hasCompressor": true
   },
   "Poseidon": {
+    "blowupFactor": 2,
     "hasCompressor": true
   },
   "DmaPrePost": {
