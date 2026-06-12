@@ -1,8 +1,32 @@
 {
-    "std_mode": {
-        "print_to_file": true,
-        "n_vals": 1000000,
-        "fast_mode": false
-    },
-    "store_row_info": true
+  "instances": {
+    "mode": "only_listed",
+    "list": [
+      {
+        "airgroup": "Zisk",
+        "airs": [
+          {
+            "air": "Arith"
+          }
+        ]
+      }
+    ]
+  },
+
+  "bus": {
+    "opids": [331],
+    "max_print": 50,
+    "fast_mode": false,
+    "store_row_info": true,
+    "group_by": [
+      {
+        "opid": 331,
+        "column": 0,
+        "by": "value"
+      }
+    ]
+  },
+  "constraints": {
+    "enabled": true
+  }
 }
