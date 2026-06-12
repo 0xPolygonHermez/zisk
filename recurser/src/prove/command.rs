@@ -57,7 +57,7 @@ where
     if !artifacts.is_active() {
         bail!(
             "Recurser setup '{}' is not ready at {:?}: setup has not completed for this id \
-             (missing: {}). Run `cargo-zisk setup-recurser-aggregator` first.",
+             (missing: {}). Run `cargo-zisk recurser setup` first.",
             recurser_id,
             artifacts.dir(),
             artifacts.missing_artifacts().join(", "),
