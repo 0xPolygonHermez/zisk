@@ -150,7 +150,7 @@ fn main() {
         .any(|v| env::var_os(v).is_some_and(|s| !s.is_empty()));
     if !arch_env_set && !nvidia_smi_sees_gpu() {
         println!(
-            "cargo:warning=[BUILD INFO] no GPU visible (nvidia-smi probe failed) — building for all major CUDA archs; set CUDA_ARCHS to silence"
+            "cargo:warning=[BUILD INFO] no GPU visible (nvidia-smi probe failed) — building for all major CUDA archs; set CUDA_ARCHS explicitly to suppress this warning"
         );
     }
 
