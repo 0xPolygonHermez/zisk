@@ -115,7 +115,8 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
 
 /// RAII guard for the unified GPU buffer reservation. Releasing on drop ensures
 /// the buffer is returned to proofman on every exit path (including an early `?`
-/// return) between acquire and release. Drop `release` to free explicitly.
+/// return) between acquire and release. Dropping the guard releases the
+/// reservation.
 #[must_use = "the GPU buffer is released when the guard is dropped"]
 pub struct GpuBufferGuard<'g, 'a, F: PrimeField64> {
     adapter: &'g ProofmanAdapter<'a, F>,

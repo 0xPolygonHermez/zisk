@@ -50,10 +50,10 @@ struct ChunkCounters {
 // ─── Sizing constants visible to callers and to class-array bounds ──
 //     to be revised...
 constexpr int      N_STREAMS             = 4;
-constexpr uint32_t MAX_INSTANCES         = 1024;
+constexpr uint32_t MAX_INSTANCES         = MEM_GPU_MAX_INSTANCES;
 constexpr uint32_t MASK_WORDS            = (MAX_INSTANCES + 31) / 32;
-// MAX_CHUNKS MUST stay <= the C++ consumer cap MAX_CHUNKS 
-constexpr uint32_t MAX_CHUNKS            = 1u << 13;          // 8192
+// MUST stay <= the C++ consumer cap MAX_CHUNKS (mem_config.hpp)
+constexpr uint32_t MAX_CHUNKS            = MEM_GPU_MAX_META_CHUNKS; // 8192
 constexpr uint32_t MAX_MEMOPS_PER_CHUNK  = 1u << 20;          // 1048576 (2 memops/step at CHUNK_SIZE=2^18 -> now 4/step; ~+0.9 GB GPU device mem vs 1<<19). Raising this forces ORIG_POS_BITS/RAM_KEY_END_BIT up (static_asserts in count_and_plan.cu)
 constexpr uint32_t POTENTIAL_FACTOR      = 8;                 
 constexpr uint32_t MAX_POT_PER_CHUNK     = MAX_MEMOPS_PER_CHUNK * POTENTIAL_FACTOR;

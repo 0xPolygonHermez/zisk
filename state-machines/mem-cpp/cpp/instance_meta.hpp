@@ -14,6 +14,13 @@
 #define MEM_OFFSETS_PAGE_SIZE 1024u
 #define MEM_OFFSETS_PAGE_ABSENT 0xFFFFFFFFu
 
+// Caps of the GPU `CountAndPlan` producer, shared with the host-side
+// consumer so injected metas can be validated against the real producer
+// limits. cu/count_and_plan.cuh derives its MAX_INSTANCES / MAX_CHUNKS
+// from these, so they cannot drift.
+constexpr uint32_t MEM_GPU_MAX_INSTANCES   = 1024;
+constexpr uint32_t MEM_GPU_MAX_META_CHUNKS = 1u << 13; // 8192
+
 // Paged-dense cumulative-offset table. POD; shared by the CUDA pipeline,
 // host C++, the on-disk loader, and (mirrored) the Rust FFI.
 //
