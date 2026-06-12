@@ -10,9 +10,10 @@ use backend::*;
 pub use emu::*;
 pub use emu_exec::*;
 use proofman::{
-    AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
+    AggProofs, AggProofsRegister, PlanningInfo, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
+    WitnessInfo,
 };
-use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
+use proofman_common::{DebugReport, ProofOptions, ProofmanOptions, RowInfo};
 use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
@@ -335,6 +336,8 @@ pub trait ProverEngine {
         offset: Option<usize>,
     ) -> Result<Vec<RowInfo>>;
 
+    fn get_planning_info(&self) -> Result<PlanningInfo>;
+
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput>;
 
     fn stats(
@@ -352,6 +355,16 @@ pub trait ProverEngine {
         stdin: ZiskStdin,
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput>;
+
+    /// Run the constraint debugger and return the structured `DebugReport`.
+    /// Mirrors `verify_constraints` but yields the in-memory report described
+    /// in pil2-proofman's `DEBUG_REPORT.md` instead of the execution summary.
+    fn get_debug_info(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<DebugReport>;
 
     fn prove(
         &self,
@@ -571,7 +584,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.get_instance_fixed(instance_id, first_row, num_rows, offset)
     }
 
-    /// Verify the constraints with the given standard input and debug information.
+    /// Get the planning info captured during the last `execute()` call.
+    pub fn get_planning_info(&self) -> Result<PlanningInfo> {
+        self.prover.get_planning_info()
+    }
+
     /// Verify the constraints with the given standard input and optional debug information.
     /// The program must have been setup previously using `.setup()`.
     pub fn verify_constraints(
@@ -581,6 +598,17 @@ impl<C: ZiskBackend> ZiskProver<C> {
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput> {
         self.prover.verify_constraints(program, stdin, debug_info)
+    }
+
+    /// Run the constraint debugger and return the structured `DebugReport`.
+    /// The program must have been setup previously using `.setup()`.
+    pub fn get_debug_info(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<DebugReport> {
+        self.prover.get_debug_info(program, stdin, debug_info)
     }
 
     /// Generate a proof with the given standard input.

@@ -42,14 +42,23 @@ pub fn check_paths_exist(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Maps the CLI `--debug` flag (CLI-native `Option<Option<String>>`) to an in-memory
+/// `Option<DebugInfo>`:
+/// - `None` (no `--debug`)        → `None`             — let the proofman library
+///   pick its own default (e.g. `verify_proof_constraints_from_lib` treats `None`
+///   as "just verify").
+/// - `Some(None)` (`--debug`)     → `Some(new_debug)`  — full debug-everything mode.
+/// - `Some(Some(path))`           → `Some(from_json)`  — load from a JSON file.
 pub fn create_debug_info(
     debug_info: Option<Option<String>>,
     proving_key: PathBuf,
-) -> ProofmanResult<DebugInfo> {
+) -> ProofmanResult<Option<DebugInfo>> {
     match &debug_info {
-        None => Ok(DebugInfo::default()),
-        Some(None) => Ok(DebugInfo::new_debug()),
-        Some(Some(debug_value)) => json_to_debug_instances_map(proving_key, debug_value.clone()),
+        None => Ok(None),
+        Some(None) => Ok(Some(DebugInfo::new_debug())),
+        Some(Some(debug_value)) => {
+            json_to_debug_instances_map(proving_key, debug_value.clone()).map(Some)
+        }
     }
 }
 
