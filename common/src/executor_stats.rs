@@ -165,21 +165,25 @@ impl StatsScope {
         Self { parent_id, id, name, index }
     }
 
+    /// Returns the parent ID of the stats scope.
     #[inline]
     pub fn parent_id(&self) -> u64 {
         self.parent_id
     }
 
+    /// Returns the ID of the stats scope.
     #[inline]
     pub fn id(&self) -> u64 {
         self.id
     }
 
+    /// Returns the name of the stats scope.
     #[inline]
     pub fn name(&self) -> &'static str {
         self.name
     }
 
+    /// Returns the index of the stats scope.
     #[inline]
     pub fn index(&self) -> usize {
         self.index
