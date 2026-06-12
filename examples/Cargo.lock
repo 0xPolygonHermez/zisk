@@ -1413,7 +1413,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1877,7 +1877,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3334,7 +3334,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "colored",
  "fields",
@@ -3707,7 +3707,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "bincode",
  "blake3",
@@ -3741,7 +3741,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "bincode",
  "borsh",
@@ -3772,7 +3772,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "fields",
  "itoa",
@@ -3785,7 +3785,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3795,7 +3795,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3804,7 +3804,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "bincode",
  "colored",
@@ -3815,7 +3815,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "bincode",
  "fields",
@@ -6444,7 +6444,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#a90c0cf8b4d1db09e60d96d2295b37ad171b31a4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#2967211d0a015a49dd7887517e4f1201a89e09db"
 dependencies = [
  "colored",
  "fields",
