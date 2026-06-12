@@ -240,18 +240,18 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_partition(total_compute_units, allocation, rank_id)
     }
 
-    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
-        self.core_prover.backend.register_aggregated_proofs(agg_proofs)
+    fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.core_prover.backend.register_worker_proofs(agg_proofs)
     }
 
-    fn aggregate_proofs(
+    fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {

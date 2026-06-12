@@ -211,8 +211,8 @@ impl RemoteClient {
         WrapRequest::new(self, proof, proof_kind)
     }
 
-    /// Submit a recurser prove request. Not yet supported on remote;
-    /// `run()` returns an error.
+    /// Submit a recurser prove request; dispatched to a worker as an
+    /// AggregateProofs job (upload + setup the recurser first).
     #[must_use]
     pub fn aggregate_proofs<'a>(
         &'a self,

@@ -62,6 +62,19 @@ fn read_setup_hash_mode(setup_dir: &str) -> Result<HashMode> {
     recurser::setup::read_proving_key_hash(setup_dir)?.parse::<HashMode>()
 }
 
+/// The body must declare `template <name>(...)` exactly once — the same check
+/// the TOML resolver applies at host-build time (`ziskbuild::aggregation`).
+fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
+    let needle = format!("template {template}(");
+    match circuit.source().matches(&needle).count() {
+        1 => Ok(()),
+        n => bail!(
+            "circuit '{}' must define `template {template}(...)` exactly once, found {n}",
+            circuit.name(),
+        ),
+    }
+}
+
 /// One `normalize_with(...)` entry: a normalization circuit attached to a
 /// subset of the registered guests, plus the number of free inputs that
 /// circuit consumes. Builder-side shape; resolved to indices as
@@ -80,18 +93,18 @@ struct NormalizeEntry<'a> {
 /// hand when the program set or circuits are only known at runtime.
 ///
 /// ```ignore
-/// let recurser = AggregationProgram::new(&[&PROG_A, &PROG_B], load_circuit!("aggregate.circom"))
+/// let recurser = AggregationProgramBuilder::new(&[&PROG_A, &PROG_B], load_circuit!("aggregate.circom"))
 ///     .normalize_with(&[&PROG_A, &PROG_B], load_circuit!("normalize.circom"), 1)
 ///     .build()?;
 /// client.setup(&recurser).run()?.await?;
 /// ```
-pub struct AggregationProgram<'a> {
+pub struct AggregationProgramBuilder<'a> {
     guests: Vec<&'a GuestProgram>,
     aggregate: CircomCircuit,
     normalize: Vec<NormalizeEntry<'a>>,
 }
 
-impl<'a> AggregationProgram<'a> {
+impl<'a> AggregationProgramBuilder<'a> {
     /// `guests` is the full leaf allowlist — order is significant, it fixes
     /// each program's `programVKs[]` index, so keep it stable across runs.
     /// `aggregate` is the `AggregatePublics` Circom body: the consistency
@@ -102,7 +115,7 @@ impl<'a> AggregationProgram<'a> {
     }
 
     /// Attach a `NormalizePublics` circuit to a subset of
-    /// the guests passed to [`AggregationProgram::new`]. Each guest's publics
+    /// the guests passed to [`AggregationProgramBuilder::new`]. Each guest's publics
     /// are run through its group's circuit the first time they enter the
     /// recursion; guests not referenced by any group get the identity.
     ///
@@ -133,6 +146,11 @@ impl<'a> AggregationProgram<'a> {
             bail!("at least one guest program is required");
         }
 
+        expect_template_decl(&self.aggregate, "AggregatePublics")?;
+        for group in &self.normalize {
+            expect_template_decl(&group.circuit, "NormalizePublics")?;
+        }
+
         // Validate normalize groups against the allowlist.
         for group in &self.normalize {
             if group.guests.is_empty() {
@@ -142,7 +160,7 @@ impl<'a> AggregationProgram<'a> {
                 if !self.guests.iter().any(|g| g.program_id() == guest.program_id()) {
                     bail!(
                         "normalize_with(...) references program '{}' which is not in the \
-                         allowlist passed to AggregationProgram::new(...)",
+                         allowlist passed to AggregationProgramBuilder::new(...)",
                         guest.name(),
                     );
                 }
@@ -251,16 +269,16 @@ impl<'a> AggregationProgram<'a> {
 /// A lazily-built [`Recurser`] for module-level declaration via
 /// [`load_aggregation_program!`]. Derefs to [`Recurser`], so a `static` of
 /// this type is used exactly like a `Recurser` reference.
-pub struct LazyAggregationProgram(std::sync::LazyLock<Recurser>);
+pub struct AggregationProgram(std::sync::LazyLock<Recurser>);
 
-impl LazyAggregationProgram {
+impl AggregationProgram {
     /// Used by [`load_aggregation_program!`]; `init` runs on first use.
     pub const fn new(init: fn() -> Recurser) -> Self {
         Self(std::sync::LazyLock::new(init))
     }
 }
 
-impl std::ops::Deref for LazyAggregationProgram {
+impl std::ops::Deref for AggregationProgram {
     type Target = Recurser;
     fn deref(&self) -> &Recurser {
         &self.0
@@ -272,18 +290,18 @@ impl std::ops::Deref for LazyAggregationProgram {
 ///
 /// The name is the file stem of `<programs>/aggregations/<name>.toml`, which
 /// `build_program` resolves at host-build time (guest ELFs pinned, circuit
-/// bodies embedded) into the [`AggregationProgram`] builder call this macro
+/// bodies embedded) into the [`AggregationProgramBuilder`] call this macro
 /// expands to.
 ///
 /// ```ignore
-/// static AGG: LazyAggregationProgram = load_aggregation_program!("chain");
+/// static AGG: AggregationProgram = load_aggregation_program!("chain");
 /// ```
 ///
 /// The build is lazy — it runs on first use, because it does runtime work
 /// (reads the local vadcop_final verkey, derives program VKs) that can't
 /// happen in a `const`. A build failure panics; for fallible handling,
-/// construct an [`AggregationProgram`] yourself and call
-/// [`AggregationProgram::build`].
+/// construct an [`AggregationProgramBuilder`] yourself and call
+/// [`AggregationProgramBuilder::build`].
 ///
 /// [`load_program!`]: crate::load_program
 #[macro_export]
@@ -291,7 +309,7 @@ macro_rules! load_aggregation_program {
     ($name:literal) => {{
         #[cfg(zisk_skip_guest_build)]
         {
-            $crate::LazyAggregationProgram::new(|| {
+            $crate::AggregationProgram::new(|| {
                 panic!(concat!(
                     "aggregation program `",
                     $name,
@@ -301,7 +319,7 @@ macro_rules! load_aggregation_program {
         }
         #[cfg(not(zisk_skip_guest_build))]
         {
-            $crate::LazyAggregationProgram::new(|| {
+            $crate::AggregationProgram::new(|| {
                 include!(env!(
                     concat!("ZISK_AGG_", $name),
                     concat!(
@@ -313,7 +331,9 @@ macro_rules! load_aggregation_program {
                         ".toml` (after creating the aggregations dir, trigger \
                          one rebuild, e.g. touch build.rs)"
                     )
-                )).build().expect(concat!(
+                ))
+                .build()
+                .expect(concat!(
                     "failed to build aggregation program `",
                     $name,
                     "`"

@@ -571,16 +571,13 @@ impl ProverBackend {
         Ok((witness_info, execution_result.executor_time))
     }
 
-    pub(crate) fn register_aggregated_proofs(
-        &self,
-        agg_proofs: Vec<AggProofsRegister>,
-    ) -> Result<()> {
+    pub(crate) fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
         self.proofman
             .register_aggregated_proofs(agg_proofs)
             .map_err(|e| anyhow::anyhow!("Error registering aggregate proof: {}", e))
     }
 
-    pub(crate) fn aggregate_proofs(
+    pub(crate) fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,

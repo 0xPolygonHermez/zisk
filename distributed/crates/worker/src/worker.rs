@@ -1188,7 +1188,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             })
             .collect();
 
-        if let Err(error) = prover.register_aggregated_proofs(agg_proofs_register) {
+        if let Err(error) = prover.register_worker_proofs(agg_proofs_register) {
             let job_guard = job.blocking_lock();
             let job_id = job_guard.job_id.clone();
             let executed_steps = job_guard.executed_steps;
@@ -1229,7 +1229,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 })
                 .collect();
 
-            let result = prover.aggregate_proofs(
+            let result = prover.join_worker_proofs(
                 agg_proofs,
                 agg_params.last_proof,
                 agg_params.final_proof,

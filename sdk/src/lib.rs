@@ -33,7 +33,7 @@ pub use input_stream::ZiskStream;
 pub use job_handle::JobHandle;
 pub use lifecycle::{SetupTarget, UploadTarget};
 pub use prove::{JobEvent, ProveRequest, ProveResult};
-pub use recurser::{AggregationProgram, LazyAggregationProgram, Recurser};
+pub use recurser::{AggregationProgram, AggregationProgramBuilder, Recurser};
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;

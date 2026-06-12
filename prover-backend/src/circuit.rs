@@ -24,6 +24,12 @@ impl CircomCircuit {
         Self { name: Cow::Borrowed(name), source: Cow::Borrowed(source) }
     }
 
+    /// Create from an in-memory source string — for circuit bodies generated
+    /// at runtime rather than read from disk.
+    pub fn from_source(name: impl Into<String>, source: impl Into<String>) -> Self {
+        Self { name: Cow::Owned(name.into()), source: Cow::Owned(source.into()) }
+    }
+
     /// Read a circuit body from a file at runtime.
     pub fn from_path(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();

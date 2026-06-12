@@ -366,9 +366,13 @@ pub trait ProverEngine {
         rank_id: usize,
     ) -> Result<()>;
 
-    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
+    /// Register partial proofs received from other workers of the same job,
+    /// ahead of this worker joining them in [`Self::join_worker_proofs`].
+    fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
 
-    fn aggregate_proofs(
+    /// Join the workers' partial proofs into the job's aggregated proof (the
+    /// in-job Aggregate phase). Unrelated to the recurser's `aggregate_proofs`.
+    fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
@@ -618,18 +622,18 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_partition(total_compute_units, allocation, rank_id)
     }
 
-    pub fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
-        self.prover.register_aggregated_proofs(agg_proofs)
+    pub fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.prover.register_worker_proofs(agg_proofs)
     }
 
-    pub fn aggregate_proofs(
+    pub fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.prover.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
+        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     /// Broadcast data to all MPI processes.

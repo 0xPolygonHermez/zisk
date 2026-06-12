@@ -508,9 +508,9 @@ With the definition above and `build_program` in build.rs, the whole thing
 is one identifier — the mirror of `load_program!` for guest programs:
 
 ```rust
-use zisk_sdk::{load_aggregation_program, LazyAggregationProgram, ProofExt};
+use zisk_sdk::{load_aggregation_program, AggregationProgram, ProofExt};
 
-static AGG: LazyAggregationProgram = load_aggregation_program!("chain");
+static AGG: AggregationProgram = load_aggregation_program!("chain");
 
 client.setup(&AGG).run()?.await?;
 

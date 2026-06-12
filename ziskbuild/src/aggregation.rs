@@ -270,7 +270,7 @@ fn codegen(
 
     let all_refs: Vec<String> =
         (0..resolved.programs.len()).map(|i| format!("&__ZISK_AGG_PROGRAMS[{i}]")).collect();
-    let _ = writeln!(out, "    ::zisk_sdk::AggregationProgram::new(");
+    let _ = writeln!(out, "    ::zisk_sdk::AggregationProgramBuilder::new(");
     let _ = writeln!(out, "        &[{}],", all_refs.join(", "));
     let _ = writeln!(
         out,
@@ -279,9 +279,7 @@ fn codegen(
         aggregate_path.display().to_string(),
     );
     let _ = writeln!(out, "    )");
-    for (g, (path, group)) in
-        normalize_paths.iter().zip(&resolved.normalize_groups).enumerate()
-    {
+    for (g, (path, group)) in normalize_paths.iter().zip(&resolved.normalize_groups).enumerate() {
         let member_refs: Vec<String> =
             group.member_indices.iter().map(|i| format!("&__ZISK_AGG_PROGRAMS[{i}]")).collect();
         let _ = writeln!(out, "    .normalize_with(");
