@@ -16,14 +16,23 @@ pub const LINUX_SERVICE_HOME: &str = "/opt/zisk";
 pub const MACOS_SERVICE_HOME: &str = "/Library/Application Support/ZisK";
 
 // ── Common folder/file names (relative, under `home`) ─────────────────────────────
+/// Subdirectory for binaries.
 pub const BIN_DIR: &str = "bin";
+/// Subdirectory for content-addressed ELF cache.
 pub const CACHE_DIR: &str = "cache";
+/// Subdirectory for proving keys.
 pub const PROVING_KEY_DIR: &str = "provingKey";
+/// Subdirectory for SNARK proving keys.
 pub const PROVING_KEY_SNARK_DIR: &str = "provingKeySnark";
+/// Subdirectory for Rust toolchains managed by ziskup.
 pub const TOOLCHAINS_DIR: &str = "toolchains";
+/// Subdirectory for verification keys.
 pub const VERIFY_KEY_DIR: &str = "verifyKey";
+/// Subdirectory for ZisK-specific files.
 pub const ZISK_DIR: &str = "zisk";
+/// Subdirectory for emulator assembly files.
 pub const EMULATOR_ASM_DIR: &str = "emulator-asm";
+/// Filename for the ZisK C library.
 pub const LIBZISKCLIB_FILE: &str = "libziskclib.a";
 
 /// Layout-independent view over the ZisK install directory tree.
@@ -62,19 +71,32 @@ pub const LIBZISKCLIB_FILE: &str = "libziskclib.a";
 ///   `bin/  cache/  provingKey/  [provingKeySnark/]  toolchains/  [verifyKey/]  zisk/`
 #[derive(Clone, Debug)]
 pub struct ZiskPaths {
+    /// The root directory for all ZisK-related files. In user mode, this defaults to `$HOME/.zisk`.
+    /// In service mode, this is set via the `ZISK_HOME` environment variable (e.g., `/opt/zisk`).
     pub home: PathBuf,
+    /// The directory for binaries.
     pub bin: PathBuf,
+    /// The directory for content-addressed ELF cache.
+    /// Defaults to `${home}/cache` but can be overridden by `ZISK_CACHE_DIR`.
     pub cache: PathBuf,
+    /// The directory for proving keys.
     pub proving_key: PathBuf,
+    /// The directory for SNARK proving keys.
     pub proving_key_snark: PathBuf,
+    /// The directory for Rust toolchains managed by ziskup.
     pub toolchains: PathBuf,
+    /// The directory for verification keys.
     pub verify_key: PathBuf,
+    /// The directory for ZisK-specific files.
     pub zisk: PathBuf,
+    /// The path to the ZisK C library.
     pub libziskclib: PathBuf,
+    /// The directory for emulator assembly files.
     pub emulator_asm: PathBuf,
 }
 
 impl ZiskPaths {
+    /// Constructs a `ZiskPaths` instance by reading environment variables and applying defaults.
     pub fn from_env() -> Self {
         let home = env::var_os("ZISK_HOME").map(PathBuf::from).unwrap_or_else(Self::default_home);
         let bin = home.join(BIN_DIR);
@@ -103,6 +125,7 @@ impl ZiskPaths {
         }
     }
 
+    /// Returns a reference to the global `ZiskPaths` instance, which is initialized on first access.
     pub fn global() -> &'static Self {
         static INSTANCE: OnceLock<ZiskPaths> = OnceLock::new();
         INSTANCE.get_or_init(Self::from_env)

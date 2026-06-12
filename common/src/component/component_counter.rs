@@ -39,6 +39,7 @@ pub trait Metrics: Send + Sync {
 pub struct Counter {
     /// The total number of counted instructions.
     pub inst_count: u64,
+    /// The total number of counted frequent operations (frops).
     pub frops_count: u64,
 }
 
@@ -51,6 +52,11 @@ impl Counter {
     pub fn update(&mut self, num: u64) {
         self.inst_count += num;
     }
+
+    /// Updates the frops counter by incrementing it with a given value.
+    ///
+    /// # Arguments
+    /// * `num` - The number of frops to add to the counter
     #[inline(always)]
     pub fn update_frops(&mut self, num: u64) {
         self.frops_count += num;
@@ -102,6 +108,7 @@ pub struct CounterStats {
 }
 
 impl CounterStats {
+    /// Creates a new `CounterStats` instance with the provided instruction count vector.
     pub fn new(inst_count: Arc<Vec<AtomicU64>>) -> Self {
         CounterStats { inst_count, end_pc: 0, steps: 0 }
     }

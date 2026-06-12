@@ -7823,12 +7823,10 @@ name = "zisk-common"
 version = "1.0.0-beta"
 dependencies = [
  "alloy-sol-types",
- "anyhow",
  "bincode",
  "clap",
  "dirs",
  "fields",
- "libc",
  "paste",
  "proofman",
  "proofman-common",

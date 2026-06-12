@@ -81,10 +81,15 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
     /// A reference to self as `&dyn Any`.
     fn as_any(&self) -> &dyn Any;
 
+    /// Retrieves the statistics type associated with the instance.
+    ///
+    /// # Returns
+    /// A `StatsType` indicating the type of statistics collected by the instance.
     fn stats_type(&self) -> StatsType {
         StatsType::Other
     }
 
+    /// Resets the state of the instance, if applicable.
     fn reset(&self) {}
 }
 

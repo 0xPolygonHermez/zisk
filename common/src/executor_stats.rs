@@ -12,6 +12,7 @@ use crate::Stats;
 /// Trait for types that can be converted to a stats ID.
 /// Implemented for `u64` (raw ID), `StatsScope`, and references `&T` where `T: IntoStatsId`.
 pub trait IntoStatsId {
+    /// Converts the implementing type into a `u64` stats ID.
     fn as_stats_id(&self) -> u64;
 }
 
@@ -67,6 +68,7 @@ macro_rules! stats_begin {
     };
 }
 
+/// This macro generates code related to starting a stats scope.
 #[cfg(not(feature = "stats"))]
 #[macro_export]
 macro_rules! stats_begin {
@@ -99,6 +101,7 @@ macro_rules! stats_end {
     };
 }
 
+/// This macro generates code related to ending a stats scope.
 #[cfg(not(feature = "stats"))]
 #[macro_export]
 macro_rules! stats_end {
@@ -127,6 +130,7 @@ macro_rules! stats_mark {
     };
 }
 
+/// This macro generates code related to recording a stats mark event.
 #[cfg(not(feature = "stats"))]
 #[macro_export]
 macro_rules! stats_mark {
@@ -188,31 +192,40 @@ pub struct StatsScope;
 
 #[cfg(not(feature = "stats"))]
 impl StatsScope {
+    /// Returns a zero ID for the parent scope when stats are disabled.
     #[inline]
     pub fn parent_id(&self) -> u64 {
         0
     }
 
+    /// Returns a zero ID for the current scope when stats are disabled.
     #[inline]
     pub fn id(&self) -> u64 {
         0
     }
 
+    /// Returns an empty name when stats are disabled.
     #[inline]
     pub fn name(&self) -> &'static str {
         ""
     }
 
+    /// Returns a zero index when stats are disabled.
     #[inline]
     pub fn index(&self) -> usize {
         0
     }
 }
 
+/// The `ExecutorStatsEvent` enum defines the types of events that can be recorded in the executor stats,
+/// including the beginning and end of a scope, as well as mark events for specific checkpoints.
 #[derive(Debug, Clone)]
 pub enum ExecutorStatsEvent {
+    /// Indicates the beginning of a stats scope.
     Begin,
+    /// Indicates the end of a stats scope.
     End,
+    /// Represents a mark event, which is a single point in time (not a scope) used for recording specific checkpoints or events.
     Mark,
 }
 
@@ -226,11 +239,14 @@ struct ExecutorStatsEntry {
     timestamp: Instant,
 }
 
+/// The `ExecutorStats` struct is responsible for collecting and managing statistics
+/// related to the execution of tasks or operations.
 #[derive(Debug, Clone)]
 pub struct ExecutorStats {
     start_time: Instant,
     last_id: u64,
     stats: Vec<ExecutorStatsEntry>,
+    /// A mapping of witness statistics, where the key is an airgroup ID and the value is a `Stats` struct containing relevant metrics.
     pub witness_stats: HashMap<usize, Stats>,
 }
 
@@ -241,6 +257,7 @@ impl Default for ExecutorStats {
 }
 
 impl ExecutorStats {
+    /// Creates a new `ExecutorStats` instance with default values.
     pub fn new() -> Self {
         Self {
             start_time: Instant::now(),
@@ -250,6 +267,7 @@ impl ExecutorStats {
         }
     }
 
+    /// Resets the executor stats by clearing all collected statistics and resetting the start time and last ID.
     pub fn reset(&mut self) {
         self.start_time = Instant::now();
         self.last_id = 0;
@@ -257,6 +275,7 @@ impl ExecutorStats {
         self.witness_stats.clear();
     }
 
+    /// Adds a new statistic entry to the executor stats.
     pub fn add_stat(
         &mut self,
         parent_id: u64,
@@ -270,10 +289,12 @@ impl ExecutorStats {
         self.stats.push(stat);
     }
 
+    /// Sets the start time for the executor stats, which is used as a reference point for calculating timestamps of events.
     pub fn set_start_time(&mut self, start_time: Instant) {
         self.start_time = start_time;
     }
 
+    /// Generates the next unique ID for a new stats entry.
     pub fn next_id(&mut self) -> u64 {
         self.last_id += 1;
         self.last_id
@@ -359,19 +380,24 @@ impl ExecutorStats {
     }
 }
 
+/// The `ExecutorStatsHandle` struct provides a thread-safe handle to manage and access `ExecutorStats` across different parts of the application.
 #[derive(Debug, Default, Clone)]
 pub struct ExecutorStatsHandle {
     inner: Arc<Mutex<ExecutorStats>>,
 }
 
 impl ExecutorStatsHandle {
+    /// Creates a new `ExecutorStatsHandle` instance.
     pub fn new() -> Self {
         Self::default()
     }
+
+    /// Resets the executor stats by clearing all collected statistics and resetting the start time and last ID.
     pub fn reset(&self) {
         self.inner.lock().unwrap().reset();
     }
 
+    /// Adds a new statistic entry to the executor stats.
     pub fn add_stat(
         &self,
         parent_id: u64,
@@ -383,30 +409,37 @@ impl ExecutorStatsHandle {
         self.inner.lock().unwrap().add_stat(parent_id, id, name, index, event);
     }
 
+    /// Sets the start time for the executor stats, which is used as a reference point for calculating timestamps of events.
     pub fn set_start_time(&self, start_time: Instant) {
         self.inner.lock().unwrap().set_start_time(start_time);
     }
 
+    /// Generates the next unique ID for a new stats entry.
     pub fn next_id(&self) -> u64 {
         self.inner.lock().unwrap().next_id()
     }
 
+    /// Stores stats in JSON and CSV file formats
     pub fn store_stats(&self) {
         self.inner.lock().unwrap().store_stats();
     }
 
+    /// Prints stats
     pub fn print_stats(&self) {
         self.inner.lock().unwrap().print_stats();
     }
 
+    /// Returns the inner `ExecutorStats` instance.
     pub fn get_inner(&self) -> Arc<Mutex<ExecutorStats>> {
         self.inner.clone()
     }
 
+    /// Inserts witness statistics for a specific airgroup ID.
     pub fn insert_witness_stats(&self, airgroup_id: usize, stats: Stats) {
         self.inner.lock().unwrap().witness_stats.insert(airgroup_id, stats);
     }
 
+    /// Sets the witness duration for a specific airgroup ID.
     pub fn set_witness_duration(&self, airgroup_id: usize, duration: u128) {
         if let Some(stats) = self.inner.lock().unwrap().witness_stats.get_mut(&airgroup_id) {
             stats.witness_duration = duration;
