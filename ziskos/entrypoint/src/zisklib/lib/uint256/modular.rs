@@ -1,10 +1,12 @@
-use crate::syscalls::{syscall_arith256_mod, SyscallArith256ModParams};
+use crate::syscalls::{
+    syscall_arith256, syscall_arith256_mod, SyscallArith256ModParams, SyscallArith256Params,
+};
 use crate::zisklib::fcall_bin_decomp;
-use crate::zisklib::fcall_uint256_inv_mod;
 use crate::zisklib::lib::{
     constants::{ONE_256 as ONE, ZERO_256 as ZERO},
-    utils::{be_bytes_to_u64_4, is_one, is_zero, lt, u64_4_to_be_bytes},
+    utils::{be_bytes_to_u64_4, gt, is_one, is_zero, lt, u64_4_to_be_bytes},
 };
+use crate::zisklib::{fcall_uint256_inv_mod, ModInvResult};
 
 /// Given 256-bit integers `a` and `modulus`, it computes `a (mod modulus)`.
 pub fn reduce_mod256(
@@ -138,6 +140,18 @@ pub fn pow_mod256(
 
     // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
+    assert!(len <= 256, "Exponent bit length out of range");
+    assert!(bits.len() == len, "Bit decomposition length mismatch");
+
+    // Recompose the exponent from the (untrusted) bit hint and bind it to exp
+    let mut rec_exp = [0u64; 4];
+    for (bit_idx, &bit) in bits.iter().enumerate() {
+        if bit == 1 {
+            let bit_pos = len - 1 - bit_idx;
+            rec_exp[bit_pos / 64] |= 1u64 << (bit_pos % 64);
+        }
+    }
+    assert_eq!(rec_exp, *exp, "Exponent decomposition mismatch");
 
     // Left-to-right square-and-multiply, starting from the second bit
     let mut result = reduce_mod256(
@@ -146,12 +160,11 @@ pub fn pow_mod256(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut rec_exp = [0u64; 4];
-    let bit_pos = len - 1;
-    rec_exp[bit_pos / 64] = 1u64 << (bit_pos % 64);
-    for (bit_idx, &bit) in bits.iter().enumerate().skip(1) {
+    for &bit in bits.iter().skip(1) {
         if is_zero(&result) {
-            return ZERO;
+            // result stays zero regardless of the remaining bits; the exponent
+            // is already bound above, so exiting early is sound.
+            break;
         }
 
         // Compute result = result² (mod modulus)
@@ -171,15 +184,8 @@ pub fn pow_mod256(
                 #[cfg(feature = "hints")]
                 hints,
             );
-
-            // Recompose the exponent
-            let bit_pos = len - 1 - bit_idx;
-            rec_exp[bit_pos / 64] |= 1u64 << (bit_pos % 64);
         }
     }
-
-    // Verify the hinted decomposition matches the original exponent
-    assert_eq!(rec_exp, *exp, "Exponent decomposition mismatch");
 
     result
 }
@@ -190,27 +196,62 @@ pub fn inv_mod256(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 4]> {
     // Hint the inverse
-    let inv = fcall_uint256_inv_mod(
+    match fcall_uint256_inv_mod(
         a,
         modulus,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ) {
+        ModInvResult::Inverse(inv) => {
+            // Check the inverse is canonical
+            assert!(lt(&inv, modulus), "Inverse must be less than modulus");
 
-    if let Some(inv) = inv {
-        // Verify: a * inv ≡ 1 (mod modulus)
-        let result = mul_mod256(
-            a,
-            &inv,
-            modulus,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        assert_eq!(result, ONE, "a * inv must equal 1 mod modulus");
+            // Verify: a * inv ≡ 1 (mod modulus)
+            let result = mul_mod256(
+                a,
+                &inv,
+                modulus,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            assert!(is_one(&result), "a * inv must equal 1 mod modulus");
 
-        Some(inv)
-    } else {
-        None
+            Some(inv)
+        }
+        ModInvResult::NoInverse { gcd: d, qa, qm } => {
+            // a is invertible mod modulus iff gcd(a, modulus) == 1, so it is
+            // sufficient to find an integer d such that:
+            //      d > 1, d | a, d | modulus
+
+            // d > 1
+            assert!(gt(&d, &ONE), "gcd witness must be greater than 1");
+
+            // d | a iff qa * d == a
+            let mut a_lo = ZERO;
+            let mut a_hi = ZERO;
+            let mut a_params =
+                SyscallArith256Params { a: &qa, b: &d, c: &ZERO, dl: &mut a_lo, dh: &mut a_hi };
+            syscall_arith256(
+                &mut a_params,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            assert!(is_zero(&a_hi) && a_lo == *a, "gcd must divide a");
+
+            // d | modulus iff qm * d == modulus
+            let mut m_lo = ZERO;
+            let mut m_hi = ZERO;
+            let mut m_params =
+                SyscallArith256Params { a: &qm, b: &d, c: &ZERO, dl: &mut m_lo, dh: &mut m_hi };
+            syscall_arith256(
+                &mut m_params,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            assert!(is_zero(&m_hi) && m_lo == *modulus, "gcd must divide modulus");
+
+            None
+        }
     }
 }
 

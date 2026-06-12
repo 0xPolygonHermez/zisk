@@ -17,7 +17,7 @@ pub fn bn254_g1_add_hint(data: &[u64]) -> Result<Vec<u64>> {
     let mut hints = Vec::new();
     let result: &mut [u8; 64] = &mut [0u8; 64];
     unsafe {
-        zisklib::bn254_g1_add_c(p1.as_ptr(), p2.as_ptr(), result.as_mut_ptr(), &mut hints);
+        zisklib::add_safe_bn254_c(p1.as_ptr(), p2.as_ptr(), result.as_mut_ptr(), &mut hints);
     }
 
     Ok(hints)
@@ -40,7 +40,12 @@ pub fn bn254_g1_mul_hint(data: &[u64]) -> Result<Vec<u64>> {
     let mut hints = Vec::new();
     let result: &mut [u8; 64] = &mut [0u8; 64];
     unsafe {
-        zisklib::bn254_g1_mul_c(point.as_ptr(), scalar.as_ptr(), result.as_mut_ptr(), &mut hints);
+        zisklib::scalar_mul_safe_bn254_c(
+            point.as_ptr(),
+            scalar.as_ptr(),
+            result.as_mut_ptr(),
+            &mut hints,
+        );
     }
 
     Ok(hints)
@@ -67,7 +72,11 @@ pub fn bn254_pairing_check_hint(data: &[u64]) -> Result<Vec<u64>> {
 
     let mut hints = Vec::new();
     unsafe {
-        zisklib::bn254_pairing_check_c(pairs_data.as_ptr() as *const u8, num_pairs, &mut hints);
+        zisklib::pairing_check_safe_bn254_c(
+            pairs_data.as_ptr() as *const u8,
+            num_pairs,
+            &mut hints,
+        );
     }
 
     Ok(hints)

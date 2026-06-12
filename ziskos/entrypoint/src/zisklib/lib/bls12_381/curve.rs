@@ -8,7 +8,7 @@ use crate::{
         syscall_bls12_381_curve_add, syscall_bls12_381_curve_dbl, SyscallBls12_381CurveAddParams,
         SyscallPoint384,
     },
-    zisklib::{eq, fcall_msb_pos_256, is_zero, lt},
+    zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt},
 };
 
 use super::{
@@ -135,7 +135,7 @@ pub fn decompress_bls12_381(
     Ok((result, false))
 }
 
-/// Check if a non-zero point `p` is on the BLS12-381 curve
+/// Check if a point `p` is on the BLS12-381 curve
 pub fn is_on_curve_bls12_381(
     p: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -143,7 +143,7 @@ pub fn is_on_curve_bls12_381(
     let x: [u64; 6] = p[0..6].try_into().unwrap();
     let y: [u64; 6] = p[6..12].try_into().unwrap();
 
-    // p in E iff y² == x³ + 4
+    // p in E iff y² == x³ + 4 or p == 𝒪
     let lhs = square_fp_bls12_381(
         &y,
         #[cfg(feature = "hints")]
@@ -166,10 +166,14 @@ pub fn is_on_curve_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&lhs, &rhs)
+
+    eq(&lhs, &rhs) || eq(p, &G1_IDENTITY)
 }
 
-/// Check if a non-zero point `p` is on the BLS12-381 subgroup
+/// Check if a point `p` is on the BLS12-381 subgroup
+///
+/// # Soundness
+/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
 pub fn is_on_subgroup_bls12_381(
     p: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -214,11 +218,37 @@ pub fn is_on_subgroup_bls12_381(
         hints,
     );
 
-    eq(&lhs, &rhs)
+    eq(&lhs, &rhs) && eq(p, &G1_IDENTITY)
+}
+
+/// Compute the sigma endomorphism σ of a non-zero point `p`, defined as:
+///              σ : E(Fp)  ->  E(Fp)
+///                  (x,y) |-> (ɣ·x,y)
+pub fn sigma_endomorphism_bls12_381(
+    p: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
+    let mut x: [u64; 6] = p[0..6].try_into().unwrap();
+    let y: [u64; 6] = p[6..12].try_into().unwrap();
+
+    x = mul_fp_bls12_381(
+        &x,
+        &GAMMA,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let mut result = [0u64; 12];
+    result[0..6].copy_from_slice(&x);
+    result[6..12].copy_from_slice(&y);
+    result
 }
 
 /// Adds two non-zero points `p1` and `p2` on the BLS12-381 curve
-pub fn add_bls12_381(
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+pub(crate) fn add_bls12_381(
     p1: &[u64; 12],
     p2: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -260,8 +290,8 @@ pub fn add_bls12_381(
     result
 }
 
-/// Adds two points `p1` and `p2` on the BLS12-381 curve
-pub fn add_complete_bls12_381(
+/// Complete and safe addition of two points `p1` and `p2` on the BLS12-381 curve
+pub fn add_complete_safe_bls12_381(
     p1: &[u64; 12],
     p2: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -344,7 +374,7 @@ pub fn add_complete_bls12_381(
     ))
 }
 
-/// Negation of a non-zero point `p` on the BLS12-381 curve
+/// Negation of a point `p` on the BLS12-381 curve
 pub fn neg_bls12_381(p: &[u64; 12], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 12] {
     let x: [u64; 6] = p[0..6].try_into().unwrap();
     let y: [u64; 6] = p[6..12].try_into().unwrap();
@@ -361,7 +391,14 @@ pub fn neg_bls12_381(p: &[u64; 12], #[cfg(feature = "hints")] hints: &mut Vec<u6
 }
 
 /// Doubling of a non-zero point `p` on the BLS12-381 curve
-pub fn dbl_bls12_381(p: &[u64; 12], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 12] {
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+pub(crate) fn dbl_bls12_381(
+    p: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
     let mut p = SyscallPoint384 { x: p[0..6].try_into().unwrap(), y: p[6..12].try_into().unwrap() };
     syscall_bls12_381_curve_dbl(
         &mut p,
@@ -376,6 +413,10 @@ pub fn dbl_bls12_381(p: &[u64; 12], #[cfg(feature = "hints")] hints: &mut Vec<u6
 }
 
 /// Subtraction of two non-zero points `p1` and `p2` on the BLS12-381 curve
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn sub_bls12_381(
     p1: &[u64; 12],
     p2: &[u64; 12],
@@ -404,6 +445,9 @@ pub fn sub_bls12_381(
 }
 
 /// Subtraction of two points `p1` and `p2` on the BLS12-381 curve
+///
+/// # Soundness
+/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
 pub fn sub_complete_bls12_381(
     p1: &[u64; 12],
     p2: &[u64; 12],
@@ -438,30 +482,36 @@ pub fn sub_complete_bls12_381(
 }
 
 /// Multiplies a non-zero point `p` on the BLS12-381 curve by a scalar `k` on the BLS12-381 scalar field
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_bls12_381(
     p: &[u64; 12],
     k: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 12] {
+    // Reduce the scalar
+    let k = reduce_fr_bls12_381(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Direct cases: k = 0, k = 1, k = 2
-    match k {
-        [0, 0, 0, 0] => {
-            // Return 𝒪
-            return G1_IDENTITY;
-        }
-        [1, 0, 0, 0] => {
-            // Return p
-            return *p;
-        }
-        [2, 0, 0, 0] => {
-            // Return 2p
-            return dbl_bls12_381(
-                p,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-        }
-        _ => {}
+    if is_zero(&k) {
+        // Return 𝒪
+        return G1_IDENTITY;
+    } else if is_one(&k) {
+        // Return p
+        return *p;
+    } else if is_two(&k) {
+        // Return 2p
+        return dbl_bls12_381(
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     // We can assume k > 2 from now on
@@ -469,10 +519,13 @@ pub fn scalar_mul_bls12_381(
     // We will verify the output by recomposing k
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
+
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
 
     // Perform the loop, based on the binary representation of k
 
@@ -481,7 +534,7 @@ pub fn scalar_mul_bls12_381(
     let max_bit = max_bit as usize;
 
     // The first received bit should be 1
-    assert_eq!((k[max_limb] >> max_bit) & 1, 1);
+    assert_eq!((k[max_limb] >> max_bit) & 1, 1, "The most significant bit of the scalar must be 1");
 
     // Start at P
     let x1: [u64; 6] = p[0..6].try_into().unwrap();
@@ -529,7 +582,7 @@ pub fn scalar_mul_bls12_381(
     }
 
     // Check that the reconstructed k is equal to the input k
-    assert_eq!(k_rec, *k);
+    assert!(eq(&k, &k_rec), "Reconstructed scalar does not match input scalar");
 
     // Convert the result back to a single array
     let mut result = [0u64; 12];
@@ -539,11 +592,19 @@ pub fn scalar_mul_bls12_381(
 }
 
 /// Scalar multiplication of a non-zero point `p` by a binary scalar `k`
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+/// The scalar is assumed to be in [0, r-1].
 pub fn scalar_mul_bin_bls12_381(
     p: &[u64; 12],
     k: &[u8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 12] {
+    debug_assert!(!k.is_empty(), "Scalar must not be empty");
+    debug_assert!(k.len() <= 256, "Scalar must be at most 256 bits");
+
     let x1: [u64; 6] = p[0..6].try_into().unwrap();
     let y1: [u64; 6] = p[6..12].try_into().unwrap();
     let p = SyscallPoint384 { x: x1, y: y1 };
@@ -572,6 +633,10 @@ pub fn scalar_mul_bin_bls12_381(
 }
 
 /// Scalar multiplication of a non-zero point by (x²-1)/3
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_by_x2div3_bls12_381(
     p: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -596,7 +661,7 @@ pub fn scalar_mul_by_x2div3_bls12_381(
 /// Multi-Scalar Multiplication (MSM) for BLS12-381 G1 points
 /// It computes k1·P1 + k2·P2 + ... + kn·Pn
 // TODO: This is a naive implementation, one can improve it by using, e.g., a windowed strategies!
-pub fn msm_complete_bls12_381(
+pub fn msm_complete_safe_bls12_381(
     points: &[[u64; 12]],
     scalars: &[[u64; 4]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -677,162 +742,7 @@ pub fn msm_complete_bls12_381(
     Ok(acc)
 }
 
-/// Compute the sigma endomorphism σ of a non-zero point `p`, defined as:
-///              σ : E(Fp)  ->  E(Fp)
-///                  (x,y) |-> (ɣ·x,y)
-pub fn sigma_endomorphism_bls12_381(
-    p: &[u64; 12],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 12] {
-    let mut x: [u64; 6] = p[0..6].try_into().unwrap();
-    let y: [u64; 6] = p[6..12].try_into().unwrap();
-
-    x = mul_fp_bls12_381(
-        &x,
-        &GAMMA,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    let mut result = [0u64; 12];
-    result[0..6].copy_from_slice(&x);
-    result[6..12].copy_from_slice(&y);
-    result
-}
-
 // ==================== C FFI Functions ====================
-
-/// G1 point addition for uncompressed 96-byte points
-///
-/// Input format: 96 bytes per point = 48 bytes x-coordinate + 48 bytes y-coordinate (big-endian)
-/// Output format: Same as input
-///
-/// ### Safety
-/// - `a` must point to a valid `[u8; 96]` for the first input point
-/// - `b` must point to a valid `[u8; 96]` for the second input point  
-/// - `ret` must point to a valid `[u8; 96]` for the output
-///
-/// Returns:
-/// - [G1_ADD_SUCCESS] = success (result is valid and not infinity)
-/// - [G1_ADD_SUCCESS_INFINITY] = success (result is infinity)
-/// - [G1_ADD_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
-/// - [G1_ADD_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
-#[allow(dead_code)]
-#[inline]
-pub(crate) unsafe fn bls12_381_g1_add_c(
-    ret: *mut u8,
-    a: *const u8,
-    b: *const u8,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let a_bytes: &[u8; 96] = &*(a as *const [u8; 96]);
-    let b_bytes: &[u8; 96] = &*(b as *const [u8; 96]);
-    let ret_bytes: &mut [u8; 96] = &mut *(ret as *mut [u8; 96]);
-
-    // Parse points
-    let a_u64 = g1_bytes_be_to_u64_le_bls12_381(a_bytes);
-    let b_u64 = g1_bytes_be_to_u64_le_bls12_381(b_bytes);
-
-    // Perform addition
-    let result = match add_complete_bls12_381(
-        &a_u64,
-        &b_u64,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        Ok(r) => r,
-        Err(code) => return code,
-    };
-
-    // Encode result
-    g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
-    if result == G1_IDENTITY {
-        G1_ADD_SUCCESS_INFINITY
-    } else {
-        G1_ADD_SUCCESS
-    }
-}
-
-/// G1 Multi-Scalar Multiplication (MSM) for uncompressed points
-///
-/// Input format per pair: 128 bytes = 96 bytes G1 point (x || y big-endian) + 32 bytes scalar (big-endian)
-/// Output format: 96 bytes G1 point (x || y big-endian)
-///
-/// ### Safety
-/// - `pairs` must point to an array of `num_pairs * 128` bytes
-/// - `ret` must point to a valid `[u8; 96]` for the output
-///
-/// Returns:
-/// - [G1_MSM_SUCCESS] = success (result is valid and not infinity)
-/// - [G1_MSM_SUCCESS_INFINITY] = success (result is infinity)
-/// - [G1_MSM_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
-/// - [G1_MSM_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
-/// - [G1_MSM_ERR_NOT_IN_SUBGROUP] = error (one of the input points is not in the subgroup)
-#[allow(dead_code)]
-#[inline]
-pub(crate) unsafe fn bls12_381_g1_msm_c(
-    ret: *mut u8,
-    pairs: *const u8,
-    num_pairs: usize,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let ret_bytes: &mut [u8; 96] = &mut *(ret as *mut [u8; 96]);
-
-    // Parse all pairs
-    let mut points = Vec::with_capacity(num_pairs);
-    let mut scalars = Vec::with_capacity(num_pairs);
-    for i in 0..num_pairs {
-        let pair_ptr = pairs.add(i * 128);
-        let point_bytes: &[u8; 96] = &*(pair_ptr as *const [u8; 96]);
-        let scalar_bytes: &[u8; 32] = &*(pair_ptr.add(96) as *const [u8; 32]);
-
-        // Parse point and scalar
-        let point_u64 = g1_bytes_be_to_u64_le_bls12_381(point_bytes);
-        let scalar_u64 = scalar_bytes_be_to_u64_le_bls12_381(scalar_bytes);
-
-        points.push(point_u64);
-        scalars.push(scalar_u64);
-    }
-
-    // Perform MSM with validation
-    let result = match msm_complete_bls12_381(
-        &points,
-        &scalars,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        Ok(r) => r,
-        Err(code) => return code,
-    };
-
-    // Encode result
-    g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
-    if result == G1_IDENTITY {
-        G1_MSM_SUCCESS_INFINITY
-    } else {
-        G1_MSM_SUCCESS
-    }
-}
-
-/// Convert 96-byte big-endian G1 point to [u64; 12] little-endian
-pub fn g1_bytes_be_to_u64_le_bls12_381(bytes: &[u8; 96]) -> [u64; 12] {
-    let mut result = [0u64; 12];
-
-    // x-coordinate (first 48 bytes)
-    for i in 0..6 {
-        for j in 0..8 {
-            result[5 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
-        }
-    }
-
-    // y-coordinate (next 48 bytes)
-    for i in 0..6 {
-        for j in 0..8 {
-            result[11 - i] |= (bytes[48 + i * 8 + j] as u64) << (8 * (7 - j));
-        }
-    }
-
-    result
-}
 
 /// Decompresses a compressed BLS12-381 G1 point (48 bytes) to affine coordinates.
 /// Returns 0 on success (result written to `result_ptr`), 1 if decompression fails.
@@ -890,6 +800,10 @@ pub unsafe extern "C" fn is_on_curve_bls12_381_c(
 ///
 /// # Safety
 /// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_is_on_subgroup_bls12_381_c")]
 pub unsafe extern "C" fn is_on_subgroup_bls12_381_c(
@@ -904,14 +818,18 @@ pub unsafe extern "C" fn is_on_subgroup_bls12_381_c(
     ) as u8
 }
 
-/// Addition of two BLS12-381 G1 points with validation and identity handling.
-/// Returns 0 on success (result written to `result_ptr`), 1 if result is the point at infinity,
-/// or an error code if either point is invalid.
+/// Addition of two BLS12-381 G1 points (raw, UNVALIDATED — caller pre-validates).
+/// Returns 0 on success (result written to `result_ptr`), or 1 if the result is the
+/// point at infinity.
 ///
 /// # Safety
 /// - `p1_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
 /// - `p2_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
 /// - `result_ptr` must point to a writable `[u64; 12]` array
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_add_bls12_381_c")]
 pub unsafe extern "C" fn add_bls12_381_c(
@@ -937,12 +855,67 @@ pub unsafe extern "C" fn add_bls12_381_c(
     }
 }
 
+/// G1 point addition for uncompressed 96-byte points
+///
+/// Input format: 96 bytes per point = 48 bytes x-coordinate + 48 bytes y-coordinate (big-endian)
+/// Output format: Same as input
+///
+/// ### Safety
+/// - `a` must point to a valid `[u8; 96]` for the first input point
+/// - `b` must point to a valid `[u8; 96]` for the second input point  
+/// - `ret` must point to a valid `[u8; 96]` for the output
+///
+/// Returns:
+/// - [G1_ADD_SUCCESS] = success (result is valid and not infinity)
+/// - [G1_ADD_SUCCESS_INFINITY] = success (result is infinity)
+/// - [G1_ADD_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
+/// - [G1_ADD_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn add_safe_bls12_381_c(
+    ret: *mut u8,
+    a: *const u8,
+    b: *const u8,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let a_bytes: &[u8; 96] = &*(a as *const [u8; 96]);
+    let b_bytes: &[u8; 96] = &*(b as *const [u8; 96]);
+    let ret_bytes: &mut [u8; 96] = &mut *(ret as *mut [u8; 96]);
+
+    // Parse points
+    let a_u64 = g1_bytes_be_to_u64_le_bls12_381(a_bytes);
+    let b_u64 = g1_bytes_be_to_u64_le_bls12_381(b_bytes);
+
+    // Perform addition
+    let result = match add_complete_safe_bls12_381(
+        &a_u64,
+        &b_u64,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok(r) => r,
+        Err(code) => return code,
+    };
+
+    // Encode result
+    g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
+    if result == G1_IDENTITY {
+        G1_ADD_SUCCESS_INFINITY
+    } else {
+        G1_ADD_SUCCESS
+    }
+}
+
 /// Scalar multiplication of a non-zero BLS12-381 G1 point by a scalar.
 ///
 /// # Safety
 /// - `p_ptr` must point to a valid `[u64; 12]` array (affine coordinates x ‖ y, little-endian limbs)
 /// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
 /// - `result_ptr` must point to a writable `[u64; 12]` array
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_bls12_381_c")]
 pub unsafe extern "C" fn scalar_mul_bls12_381_c(
@@ -966,6 +939,88 @@ pub unsafe extern "C" fn scalar_mul_bls12_381_c(
     } else {
         0
     }
+}
+
+/// G1 Multi-Scalar Multiplication (MSM) for uncompressed points
+///
+/// Input format per pair: 128 bytes = 96 bytes G1 point (x || y big-endian) + 32 bytes scalar (big-endian)
+/// Output format: 96 bytes G1 point (x || y big-endian)
+///
+/// ### Safety
+/// - `pairs` must point to an array of `num_pairs * 128` bytes
+/// - `ret` must point to a valid `[u8; 96]` for the output
+///
+/// Returns:
+/// - [G1_MSM_SUCCESS] = success (result is valid and not infinity)
+/// - [G1_MSM_SUCCESS_INFINITY] = success (result is infinity)
+/// - [G1_MSM_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
+/// - [G1_MSM_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
+/// - [G1_MSM_ERR_NOT_IN_SUBGROUP] = error (one of the input points is not in the subgroup)
+#[allow(dead_code)]
+#[inline]
+pub(crate) unsafe fn msm_safe_bls12_381_c(
+    ret: *mut u8,
+    pairs: *const u8,
+    num_pairs: usize,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let ret_bytes: &mut [u8; 96] = &mut *(ret as *mut [u8; 96]);
+
+    // Parse all pairs
+    let mut points = Vec::with_capacity(num_pairs);
+    let mut scalars = Vec::with_capacity(num_pairs);
+    for i in 0..num_pairs {
+        let pair_ptr = pairs.add(i * 128);
+        let point_bytes: &[u8; 96] = &*(pair_ptr as *const [u8; 96]);
+        let scalar_bytes: &[u8; 32] = &*(pair_ptr.add(96) as *const [u8; 32]);
+
+        // Parse point and scalar
+        let point_u64 = g1_bytes_be_to_u64_le_bls12_381(point_bytes);
+        let scalar_u64 = scalar_bytes_be_to_u64_le_bls12_381(scalar_bytes);
+
+        points.push(point_u64);
+        scalars.push(scalar_u64);
+    }
+
+    // Perform MSM with validation
+    let result = match msm_complete_safe_bls12_381(
+        &points,
+        &scalars,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        Ok(r) => r,
+        Err(code) => return code,
+    };
+
+    // Encode result
+    g1_u64_le_to_bytes_be_bls12_381(&result, ret_bytes);
+    if result == G1_IDENTITY {
+        G1_MSM_SUCCESS_INFINITY
+    } else {
+        G1_MSM_SUCCESS
+    }
+}
+
+/// Convert 96-byte big-endian G1 point to [u64; 12] little-endian
+pub fn g1_bytes_be_to_u64_le_bls12_381(bytes: &[u8; 96]) -> [u64; 12] {
+    let mut result = [0u64; 12];
+
+    // x-coordinate (first 48 bytes)
+    for i in 0..6 {
+        for j in 0..8 {
+            result[5 - i] |= (bytes[i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    // y-coordinate (next 48 bytes)
+    for i in 0..6 {
+        for j in 0..8 {
+            result[11 - i] |= (bytes[48 + i * 8 + j] as u64) << (8 * (7 - j));
+        }
+    }
+
+    result
 }
 
 /// Convert [u64; 12] little-endian G1 point to 96-byte big-endian

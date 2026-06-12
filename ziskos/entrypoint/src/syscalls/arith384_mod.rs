@@ -27,6 +27,10 @@ pub struct SyscallArith384ModParams<'a> {
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
 /// The caller must ensure that `module` is not zero.
+///
+/// The inputs `a`, `b`, and `c` are not required to be canonical modulo `module`.
+///
+/// The result `d` is always reduced modulo `module`
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_arith384_mod")]

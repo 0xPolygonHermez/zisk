@@ -17,6 +17,7 @@ pub const N: [u64; 4] =
 pub const N_MINUS_ONE: [u64; 4] = [N[0] - 1, N[1], N[2], N[3]];
 
 /// Secp256k1 group identity point
+pub const IDENTITY: [u64; 8] = [0; 8];
 pub const IDENTITY_X: [u64; 4] = [0; 4];
 pub const IDENTITY_Y: [u64; 4] = [0; 4];
 

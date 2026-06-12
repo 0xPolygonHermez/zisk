@@ -4,7 +4,7 @@
 use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::{
-    eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs,
+    eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs, is_zero,
 };
 
 use super::{
@@ -19,7 +19,9 @@ use super::{
 
 /// Computes the Miller loop of a non-zero point `p` in G1 and a non-zero point `q` in G2
 ///
-/// Note: It is not optimized for the case where either `p` or `q` is the point at infinity.
+/// # Soundness
+/// Both points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn miller_loop_bls12_381(
     p: &[u64; 12],
     q: &[u64; 24],
@@ -167,7 +169,12 @@ pub fn miller_loop_bls12_381(
     )
 }
 
-/// Computes the Miller loop for the BN254 curve for a batch of non-zero points `p_i` in G1 and non-zero points `q_i` in G2
+/// Computes the Miller loop for the BN254 curve for a batch of non-zero points `p_i` in G1
+/// and non-zero points `q_i` in G2
+///
+/// # Soundness
+/// All points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn miller_loop_batch_bls12_381(
     g1_points: &[[u64; 12]],
     g2_points: &[[u64; 24]],
@@ -347,6 +354,11 @@ fn is_line_twist_bls12_381(
     mu: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
+    // Chord (λ,μ) is uniquely determined only when the two points have distinct x
+    if eq(&q1[0..12], &q2[0..12]) {
+        return false;
+    }
+
     line_check_twist_bls12_381(
         q1,
         lambda,
@@ -370,6 +382,14 @@ fn is_tangent_twist_bls12_381(
     mu: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
+    let x: &[u64; 12] = q[0..12].try_into().unwrap();
+    let y: &[u64; 12] = q[12..24].try_into().unwrap();
+
+    // Tangent (λ,μ) is uniquely determined only when y != 0 (rejects (0,0)/2-torsion)
+    if is_zero(y) {
+        return false;
+    }
+
     // Check the line passes through q
     let curve_check = line_check_twist_bls12_381(
         q,
@@ -380,8 +400,6 @@ fn is_tangent_twist_bls12_381(
     );
 
     // Check the line is tangent at q by checking that 2𝜆y = 3x²
-    let x: &[u64; 12] = q[0..12].try_into().unwrap();
-    let y: &[u64; 12] = q[12..24].try_into().unwrap();
     let mut lhs = mul_fp2_bls12_381(
         lambda,
         y,
@@ -586,6 +604,10 @@ fn dbl_twist_with_hints_bls12_381(
 /// - `p_ptr` must point to a valid `[u64; 12]` array (G1 affine point x ‖ y, little-endian limbs)
 /// - `q_ptr` must point to a valid `[u64; 24]` array (G2 affine point x ‖ y in Fp2, little-endian limbs)
 /// - `result_ptr` must point to a writable `[u64; 72]` array (Fp12 element)
+///
+/// # Soundness
+/// Both points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_miller_loop_bls12_381_c")]
 pub unsafe extern "C" fn miller_loop_bls12_381_c(

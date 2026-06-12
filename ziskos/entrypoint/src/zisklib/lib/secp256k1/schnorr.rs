@@ -8,8 +8,8 @@ use crate::zisklib::{be_bytes_to_u64_4, eq, is_zero, lt, sha256, ZERO_256};
 
 use super::{
     constants::{G, N, P},
-    curve::{lift_x_secp256k1, multi_scalar_mul_secp256k1},
-    glv::{glv_double_scalar_mul_with_g_secp256k1, glv_multi_scalar_mul_secp256k1},
+    curve::{lift_x_secp256k1, msm_secp256k1},
+    glv::{glv_double_scalar_mul_with_g_secp256k1, glv_msm_secp256k1},
     scalar::{add_fn_secp256k1, mul_fn_secp256k1, neg_fn_secp256k1, reduce_fn_secp256k1},
 };
 
@@ -327,14 +327,14 @@ pub fn schnorr_batch_verify_secp256k1(
     // For very large batches the per-input GLV overhead (decompose + φ + sign-adjust) exceeds
     // the MSM saving, so the plain Pippenger over 256-bit scalars is cheaper.
     let result = if u <= SCHNORR_BATCH_GLV_THRESHOLD {
-        glv_multi_scalar_mul_secp256k1(
+        glv_msm_secp256k1(
             &msm_scalars,
             &msm_points,
             #[cfg(feature = "hints")]
             hints,
         )
     } else {
-        multi_scalar_mul_secp256k1(
+        msm_secp256k1(
             &msm_scalars,
             &msm_points,
             #[cfg(feature = "hints")]

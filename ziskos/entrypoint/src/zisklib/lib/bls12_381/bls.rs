@@ -11,10 +11,10 @@ use crate::zisklib::{lib::utils::eq, mul_fp12_bls12_381};
 use super::{
     constants::{G1_GENERATOR, G1_IDENTITY},
     curve::{
-        add_complete_bls12_381, decompress_bls12_381, is_on_subgroup_bls12_381, neg_bls12_381,
+        add_complete_safe_bls12_381, decompress_bls12_381, is_on_subgroup_bls12_381, neg_bls12_381,
     },
     hash_to_curve::hash_to_curve_g2_bls12_381,
-    pairing::{pairing_bls12_381, pairing_check_bls12_381},
+    pairing::{pairing_bls12_381, pairing_check_safe_bls12_381},
     twist::{decompress_twist_bls12_381, is_on_subgroup_twist_bls12_381},
 };
 
@@ -123,7 +123,11 @@ pub fn bls_core_aggregate_verify_bls12_381(
     // Aggregate the pks of the same message to l sets of pks
     // Compute the pairings and accumulate the result in c1
     let n = pks_compressed.len();
-    let mut c1: [u64; 72] = [0; 72];
+    let mut c1: [u64; 72] = {
+        let mut tmp = [0u64; 72];
+        tmp[0] = 1; // Identity element of Fp12
+        tmp
+    };
     for i in 0..n {
         // Find a non-seen message
         let mut seen_earlier = false;
@@ -156,7 +160,7 @@ pub fn bls_core_aggregate_verify_bls12_381(
                 )?;
 
                 // Aggregate the pk
-                aggregate = add_complete_bls12_381(
+                aggregate = add_complete_safe_bls12_381(
                     &aggregate,
                     &next,
                     #[cfg(feature = "hints")]

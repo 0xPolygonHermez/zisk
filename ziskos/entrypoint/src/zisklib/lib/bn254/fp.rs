@@ -2,7 +2,7 @@
 
 use crate::{
     syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
-    zisklib::{eq, fcall_bn254_fp_inv, lt},
+    zisklib::{eq, fcall_bn254_fp_inv, is_one, lt},
 };
 
 use super::constants::{P, P_MINUS_ONE};
@@ -94,6 +94,9 @@ pub fn inv_fp_bn254(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>
         hints,
     );
 
+    // Check that the inverse is canonical
+    assert!(lt(&inv, &P), "Inverse is not canonical");
+
     // x·y + 0
     let mut params = SyscallArith256ModParams {
         a: x,
@@ -107,7 +110,7 @@ pub fn inv_fp_bn254(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>
         #[cfg(feature = "hints")]
         hints,
     );
-    assert_eq!(*params.d, [1, 0, 0, 0]);
+    assert!(is_one(params.d), "Inverse verification failed");
 
     inv
 }

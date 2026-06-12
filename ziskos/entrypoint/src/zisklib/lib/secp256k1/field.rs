@@ -2,7 +2,7 @@
 
 use crate::{
     syscalls::{syscall_arith256_mod, SyscallArith256ModParams},
-    zisklib::{fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, is_zero, lt},
+    zisklib::{eq, fcall_secp256k1_fp_inv, fcall_secp256k1_fp_sqrt, is_one, is_zero, lt},
 };
 
 use super::constants::{NQR, P, P_MINUS_ONE};
@@ -135,7 +135,10 @@ pub fn sqrt_fp_secp256k1(
         hints,
     );
     let is_qr = hint[0] == 1;
-    let sqrt = hint[1..5].try_into().unwrap();
+    let sqrt: [u64; 4] = hint[1..5].try_into().unwrap();
+
+    // Check the sqrt is canonical
+    assert!(lt(&sqrt, &P), "Square root is not canonical");
 
     // Compute sqrt * sqrt
     let mut params = SyscallArith256ModParams {
@@ -153,7 +156,7 @@ pub fn sqrt_fp_secp256k1(
 
     if is_qr {
         // Check that sqrt * sqrt == x
-        assert_eq!(*params.d, *x);
+        assert!(eq(params.d, x), "Square root verification failed");
         (sqrt, true)
     } else {
         // Check that sqrt * sqrt == x * NQR
@@ -163,7 +166,7 @@ pub fn sqrt_fp_secp256k1(
             #[cfg(feature = "hints")]
             hints,
         );
-        assert_eq!(*params.d, nqr);
+        assert!(eq(params.d, &nqr), "Square root verification failed");
         (sqrt, false)
     }
 }
@@ -185,6 +188,9 @@ pub fn inv_fp_secp256k1(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<
         hints,
     );
 
+    // Check the inverse is canonical
+    assert!(lt(&inv, &P));
+
     // x·y + 0
     let mut params = SyscallArith256ModParams {
         a: x,
@@ -198,7 +204,7 @@ pub fn inv_fp_secp256k1(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<
         #[cfg(feature = "hints")]
         hints,
     );
-    assert_eq!(*params.d, [1, 0, 0, 0]);
+    assert!(is_one(params.d), "Inverse verification failed");
 
     inv
 }

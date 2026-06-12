@@ -6,7 +6,7 @@ use crate::constants::{G, G_NEG, IDENTITY, TWO_G};
 
 pub fn curve_tests() {
     // Curve membership.
-    assert_eq!(is_on_curve_secp256r1(&IDENTITY), false);
+    assert_eq!(is_on_curve_secp256r1(&IDENTITY), true);
     assert_eq!(is_on_curve_secp256r1(&G), true);
     assert_eq!(is_on_curve_secp256r1(&G_NEG), true);
     assert_eq!(is_on_curve_secp256r1(&TWO_G), true);

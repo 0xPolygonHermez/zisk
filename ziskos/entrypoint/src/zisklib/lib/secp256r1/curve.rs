@@ -3,52 +3,22 @@ use crate::{
         syscall_secp256r1_add, syscall_secp256r1_dbl, SyscallPoint256, SyscallSecp256r1AddParams,
     },
     zisklib::{
-        eq, fcall_msb_pos_256, fcall_msb_pos_256_2, is_one, is_zero, ONE_256, TWO_256, ZERO_256,
+        eq, fcall_msb_pos_256, fcall_msb_pos_256_2, is_one, is_two, is_zero, ONE_256, TWO_256,
+        ZERO_256,
     },
 };
 
 use super::{
-    constants::{E_A, E_B, G, G_NEG_Y, G_X, G_Y, IDENTITY_X, IDENTITY_Y},
+    constants::{E_A, E_B, G, G_NEG_Y, G_X, G_Y, IDENTITY, IDENTITY_X, IDENTITY_Y},
     field::{add_fp_secp256r1, mul_fp_secp256r1, square_fp_secp256r1},
-    scalar::{add_fn_secp256r1, sub_fn_secp256r1},
+    scalar::{add_fn_secp256r1, reduce_fn_secp256r1, sub_fn_secp256r1},
 };
 
 // Precomputed points
 const IDENTITY_POINT: SyscallPoint256 = SyscallPoint256 { x: IDENTITY_X, y: IDENTITY_Y };
 const G_POINT: SyscallPoint256 = SyscallPoint256 { x: G_X, y: G_Y };
 
-/// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
-/// It assumes that `p1` and `p2` are from the Secp256r1 curve, that `p1,p2 != 𝒪`
-/// Returns true if the result is the point at infinity.
-#[inline]
-fn add_non_infinity_points_secp256r1(
-    p1: &mut SyscallPoint256,
-    p2: &SyscallPoint256,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> bool {
-    if p1.x != p2.x {
-        let mut params = SyscallSecp256r1AddParams { p1, p2 };
-        syscall_secp256r1_add(
-            &mut params,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        false
-    } else if p1.y == p2.y {
-        syscall_secp256r1_dbl(
-            p1,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        false
-    } else {
-        // p1 + (-p1) = 𝒪
-        true
-    }
-}
-
 /// Checks whether the given point `p` is on the Secp256r1 curve.
-/// It assumes that `p` is not the point at infinity.
 pub fn is_on_curve_secp256r1(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
@@ -87,24 +57,64 @@ pub fn is_on_curve_secp256r1(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&lhs, &rhs)
+    eq(&lhs, &rhs) || eq(p, &IDENTITY)
+}
+
+/// Given points `p1` and `p2`, performs the point addition `p1 + p2` and assigns the result to `p1`.
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+#[inline]
+fn add_non_infinity_points_secp256r1(
+    p1: &mut SyscallPoint256,
+    p2: &SyscallPoint256,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> bool {
+    if p1.x != p2.x {
+        let mut params = SyscallSecp256r1AddParams { p1, p2 };
+        syscall_secp256r1_add(
+            &mut params,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        false
+    } else if p1.y == p2.y {
+        syscall_secp256r1_dbl(
+            p1,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        false
+    } else {
+        // p1 + (-p1) = 𝒪
+        true
+    }
 }
 
 /// Given a non-infinity point `p` and a scalar `k`, computes the scalar multiplication `k·p`
 ///
-/// Note: There are no (non-infinity) points of order 2 in Secp256r1.
-///       All (non-infinity) points are of prime order N.
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_secp256r1(
     k: &[u64; 4],
     p: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
+    // Reduce the scalar
+    let k = reduce_fn_secp256r1(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Trivial cases: k = 0, k = 1, k = 2.
-    if eq(k, &ZERO_256) {
+    if is_zero(&k) {
         return None;
-    } else if eq(k, &ONE_256) {
+    } else if is_one(&k) {
         return Some(*p);
-    } else if eq(k, &TWO_256) {
+    } else if is_two(&k) {
         let mut res = SyscallPoint256 { x: [p[0], p[1], p[2], p[3]], y: [p[4], p[5], p[6], p[7]] };
         syscall_secp256r1_dbl(
             &mut res,
@@ -125,14 +135,18 @@ pub fn scalar_mul_secp256r1(
     //    the loop reconstructs the scalar bit-by-bit and asserts the
     //    recomposition matches the input.
     let (max_limb, max_bit) = fcall_msb_pos_256(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let k_top = (k[max_limb] >> max_bit) & 1;
-    assert!(k_top == 1);
+    assert!(k_top == 1, "At least the top bit of the scalar must be set");
 
     // 3. Strauss-Shamir loop with bit-by-bit reconstruction of the scalar.
     let mut res = IDENTITY_POINT;
@@ -186,7 +200,7 @@ pub fn scalar_mul_secp256r1(
     }
 
     // Soundness: the reconstructed scalar must match the input.
-    assert!(eq(&k_rec, k));
+    assert!(eq(&k_rec, &k), "Reconstructed scalar does not match input scalar");
 
     if res_is_infinity {
         None
@@ -196,22 +210,37 @@ pub fn scalar_mul_secp256r1(
 }
 
 /// Given a point `p` and scalars `k1` and `k2`, computes the double scalar multiplication `k1·G + k2·p`
-/// It assumes that `k1,k2 ∈ [0, N-1]` and that `p != 𝒪`
+///
+/// # Soundness
+/// The points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn double_scalar_mul_with_g_secp256r1(
     k1: &[u64; 4],
     k2: &[u64; 4],
     p: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
+    // Reduce the scalars
+    let k1 = reduce_fn_secp256r1(
+        k1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let k2 = reduce_fn_secp256r1(
+        k2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Handle zero scalars:
     //  - If k1 = k2 = 0, then k1·G + k2·p = 𝒪.
     //  - If k1 = 0 and k2 > 0, then k1·G + k2·p = k2·p
     //  - If k2 = 0 and k1 > 0, then k1·G + k2·p = k1·G
-    match (is_zero(k1), is_zero(k2)) {
+    match (is_zero(&k1), is_zero(&k2)) {
         (true, true) => return None,
         (true, false) => {
             return scalar_mul_secp256r1(
-                k2,
+                &k2,
                 p,
                 #[cfg(feature = "hints")]
                 hints,
@@ -219,7 +248,7 @@ pub fn double_scalar_mul_with_g_secp256r1(
         }
         (false, true) => {
             return scalar_mul_secp256r1(
-                k1,
+                &k1,
                 &G,
                 #[cfg(feature = "hints")]
                 hints,
@@ -229,7 +258,7 @@ pub fn double_scalar_mul_with_g_secp256r1(
     }
 
     // If k1 = k2 => k1·G + k2·P = k1·(G + P)
-    if eq(k1, k2) {
+    if eq(&k1, &k2) {
         let mut gp = G_POINT;
         let gp_is_infinity = add_non_infinity_points_secp256r1(
             &mut gp,
@@ -241,7 +270,7 @@ pub fn double_scalar_mul_with_g_secp256r1(
             return None;
         }
         return scalar_mul_secp256r1(
-            k1,
+            &k1,
             &[gp.x[0], gp.x[1], gp.x[2], gp.x[3], gp.y[0], gp.y[1], gp.y[2], gp.y[3]],
             #[cfg(feature = "hints")]
             hints,
@@ -253,14 +282,14 @@ pub fn double_scalar_mul_with_g_secp256r1(
     if eq(&p[0..4], &G_X) {
         let k1k2 = match eq(&p[4..8], &G_NEG_Y) {
             true => sub_fn_secp256r1(
-                k1,
-                k2,
+                &k1,
+                &k2,
                 #[cfg(feature = "hints")]
                 hints,
             ),
             false => add_fn_secp256r1(
-                k1,
-                k2,
+                &k1,
+                &k2,
                 #[cfg(feature = "hints")]
                 hints,
             ),
@@ -290,16 +319,23 @@ pub fn double_scalar_mul_with_g_secp256r1(
     //    the loop reconstructs each scalar bit-by-bit and asserts the
     //    recomposition matches the input.
     let (max_limb, max_bit) = fcall_msb_pos_256_2(
-        k1,
-        k2,
+        &k1,
+        &k2,
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let k1_top = (k1[max_limb] >> max_bit) & 1;
     let k2_top = (k2[max_limb] >> max_bit) & 1;
-    assert!(k1_top == 1 || k2_top == 1);
+    assert!(
+        k1_top == 1 || k2_top == 1,
+        "At least one of the half-scalars must have its top bit set"
+    );
 
     // 3. Strauss-Shamir loop with bit-by-bit reconstruction of each scalar.
     let mut res = IDENTITY_POINT;
@@ -376,8 +412,8 @@ pub fn double_scalar_mul_with_g_secp256r1(
     }
 
     // Soundness: the reconstructed scalars must match the input.
-    assert!(eq(&k1_rec, k1));
-    assert!(eq(&k2_rec, k2));
+    assert!(eq(&k1_rec, &k1));
+    assert!(eq(&k2_rec, &k2));
 
     if res_is_infinity {
         None

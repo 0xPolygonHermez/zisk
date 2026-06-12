@@ -8,7 +8,7 @@ use crate::{
         syscall_bn254_curve_add, syscall_bn254_curve_dbl, SyscallBn254CurveAddParams,
         SyscallPoint256,
     },
-    zisklib::{eq, fcall_msb_pos_256, is_one, is_zero, lt},
+    zisklib::{eq, fcall_msb_pos_256, is_one, is_two, is_zero, lt},
 };
 
 use super::{
@@ -82,7 +82,7 @@ pub fn jacobian_to_affine_bn254(
     [x_res[0], x_res[1], x_res[2], x_res[3], y_res[0], y_res[1], y_res[2], y_res[3]]
 }
 
-/// Check if a non-zero point `p` is on the BN254 curve
+/// Check if a point `p` is on the BN254 curve
 pub fn is_on_curve_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> bool {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
     let y: [u64; 4] = p[4..8].try_into().unwrap();
@@ -110,10 +110,14 @@ pub fn is_on_curve_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&lhs, &rhs)
+    eq(&lhs, &rhs) || eq(p, &G1_IDENTITY)
 }
 
 /// Adds two non-zero points `p1` and `p2` on the BN254 curve
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn add_bn254(
     p1: &[u64; 8],
     p2: &[u64; 8],
@@ -161,7 +165,7 @@ pub fn add_bn254(
 }
 
 /// Addition of two points with validation and identity handling
-pub fn add_complete_bn254(
+pub fn add_complete_safe_bn254(
     p1: &[u64; 8],
     p2: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -244,17 +248,6 @@ pub fn add_complete_bn254(
     ))
 }
 
-/// Doubles a non-zero point `p` on the BN254 curve
-pub fn dbl_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 8] {
-    let mut p1 = SyscallPoint256 { x: p[0..4].try_into().unwrap(), y: p[4..8].try_into().unwrap() };
-    syscall_bn254_curve_dbl(
-        &mut p1,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    [p1.x[0], p1.x[1], p1.x[2], p1.x[3], p1.y[0], p1.y[1], p1.y[2], p1.y[3]]
-}
-
 /// Negation of a point
 pub fn neg_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 8] {
     let x: [u64; 4] = p[0..4].try_into().unwrap();
@@ -269,31 +262,52 @@ pub fn neg_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -
     [x[0], x[1], x[2], x[3], y_neg[0], y_neg[1], y_neg[2], y_neg[3]]
 }
 
+/// Doubles a non-zero point `p` on the BN254 curve
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+pub fn dbl_bn254(p: &[u64; 8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 8] {
+    let mut p1 = SyscallPoint256 { x: p[0..4].try_into().unwrap(), y: p[4..8].try_into().unwrap() };
+    syscall_bn254_curve_dbl(
+        &mut p1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    [p1.x[0], p1.x[1], p1.x[2], p1.x[3], p1.y[0], p1.y[1], p1.y[2], p1.y[3]]
+}
+
 /// Multiplies a non-zero point `p` on the BN254 curve by a scalar `k` on the BN254 scalar field
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_bn254(
     p: &[u64; 8],
     k: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 8] {
+    // Reduce the scalar
+    let k = reduce_fr_bn254(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Direct cases: k = 0, k = 1, k = 2
-    match k {
-        [0, 0, 0, 0] => {
-            // Return 𝒪
-            return G1_IDENTITY;
-        }
-        [1, 0, 0, 0] => {
-            // Return p
-            return *p;
-        }
-        [2, 0, 0, 0] => {
-            // Return 2p
-            return dbl_bn254(
-                p,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-        }
-        _ => {}
+    if is_zero(&k) {
+        // Return 𝒪
+        return G1_IDENTITY;
+    } else if is_one(&k) {
+        // Return p
+        return *p;
+    } else if is_two(&k) {
+        // Return 2p
+        return dbl_bn254(
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        );
     }
 
     // We can assume k > 2 from now on
@@ -301,10 +315,13 @@ pub fn scalar_mul_bn254(
     // We will verify the output by recomposing k
     // Moreover, we should check that the first received bit is 1
     let (max_limb, max_bit) = fcall_msb_pos_256(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
+
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
 
     // Perform the loop, based on the binary representation of k
 
@@ -313,7 +330,7 @@ pub fn scalar_mul_bn254(
     let max_bit = max_bit as usize;
 
     // The first received bit should be 1
-    assert_eq!((k[max_limb] >> max_bit) & 1, 1);
+    assert_eq!((k[max_limb] >> max_bit) & 1, 1, "The most significant bit of the scalar must be 1");
 
     // Start at P
     let x1: [u64; 4] = p[0..4].try_into().unwrap();
@@ -361,7 +378,7 @@ pub fn scalar_mul_bn254(
     }
 
     // Check that the reconstructed k is equal to the input k
-    assert_eq!(k_rec, *k);
+    assert!(eq(&k, &k_rec), "Reconstructed scalar does not match input scalar");
 
     // Convert the result back to a single array
     let x3 = q.x;
@@ -370,7 +387,7 @@ pub fn scalar_mul_bn254(
 }
 
 /// Scalar multiplication with validation and identity handling
-pub fn mul_complete_bn254(
+pub fn scalar_mul_complete_safe_bn254(
     p: &[u64; 8],
     k: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -414,6 +431,93 @@ pub fn mul_complete_bn254(
 
 // ==================== C FFI Functions ====================
 
+/// Jacobian to affine conversion for a BN254 G1 point.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 12]` array (Jacobian coordinates x ‖ y ‖ z, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_jacobian_to_affine_bn254_c")]
+pub unsafe extern "C" fn jacobian_to_affine_bn254_c(
+    p_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 12]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    match jacobian_to_affine_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        G1_IDENTITY => {
+            *result = G1_IDENTITY;
+            1
+        }
+        affine => {
+            *result = affine;
+            0
+        }
+    }
+}
+
+/// Curve membership check for a BN254 G1 point.
+/// Returns 1 if the point is on the curve, 0 otherwise.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_bn254_c")]
+pub unsafe extern "C" fn is_on_curve_bn254_c(
+    p_ptr: *const u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 8]);
+    is_on_curve_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    ) as u8
+}
+
+/// Addition of two non-zero BN254 G1 points.
+///
+/// # Safety
+/// - `p1_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `p2_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_add_bn254_c")]
+pub unsafe extern "C" fn add_bn254_c(
+    p1_ptr: *const u64,
+    p2_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p1 = &*(p1_ptr as *const [u64; 8]);
+    let p2 = &*(p2_ptr as *const [u64; 8]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    match add_bn254(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        G1_IDENTITY => {
+            *result = G1_IDENTITY;
+            1
+        }
+        sum => {
+            *result = sum;
+            0
+        }
+    }
+}
+
 /// BN254 G1 point addition with big-endian byte format
 ///
 /// # Safety
@@ -422,12 +526,13 @@ pub fn mul_complete_bn254(
 /// - `result` must point to a writable buffer of at least 64 bytes
 ///
 /// # Returns
-/// - 0 if the operation succeeded
-/// - 1 if p1 is invalid (not on curve or invalid field element)
-/// - 2 if p2 is invalid (not on curve or invalid field element)
+/// - [G1_ADD_SUCCESS] = success (result is valid and not infinity)
+/// - [G1_ADD_SUCCESS_INFINITY] = success (result is infinity)
+/// - [G1_ADD_ERR_NOT_IN_FIELD] = error (one of the input points has coordinates not in the field)
+/// - [G1_ADD_ERR_NOT_ON_CURVE] = error (one of the input points is not on the curve)
 #[allow(dead_code)]
 #[inline]
-pub(crate) unsafe fn bn254_g1_add_c(
+pub(crate) unsafe fn add_safe_bn254_c(
     p1: *const u8,
     p2: *const u8,
     ret: *mut u8,
@@ -442,7 +547,7 @@ pub(crate) unsafe fn bn254_g1_add_c(
     let p2_u64 = g1_bytes_be_to_u64_le_bn254(p2_bytes);
 
     // Perform addition with validation
-    let result = match add_complete_bn254(
+    let result = match add_complete_safe_bn254(
         &p1_u64,
         &p2_u64,
         #[cfg(feature = "hints")]
@@ -461,6 +566,44 @@ pub(crate) unsafe fn bn254_g1_add_c(
     }
 }
 
+/// Scalar multiplication of a non-zero BN254 G1 point by a scalar.
+///
+/// # Safety
+/// - `p_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
+/// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
+/// - `result_ptr` must point to a writable `[u64; 8]` array
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
+#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_bn254_c")]
+pub unsafe extern "C" fn scalar_mul_bn254_c(
+    p_ptr: *const u64,
+    k_ptr: *const u64,
+    result_ptr: *mut u64,
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> u8 {
+    let p = &*(p_ptr as *const [u64; 8]);
+    let k = &*(k_ptr as *const [u64; 4]);
+    let result = &mut *(result_ptr as *mut [u64; 8]);
+    match scalar_mul_bn254(
+        p,
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    ) {
+        G1_IDENTITY => {
+            *result = G1_IDENTITY;
+            1
+        }
+        product => {
+            *result = product;
+            0
+        }
+    }
+}
+
 /// BN254 G1 scalar multiplication with big-endian byte format
 ///
 /// # Safety
@@ -469,11 +612,13 @@ pub(crate) unsafe fn bn254_g1_add_c(
 /// - `result` must point to a writable buffer of at least 64 bytes
 ///
 /// # Returns
-/// - 0 if the operation succeeded
-/// - 1 if point is invalid (not on curve or invalid field element)
+/// - [G1_MUL_SUCCESS] = success (result is valid and not infinity)
+/// - [G1_MUL_SUCCESS_INFINITY] = success (result is infinity)
+/// - [G1_MUL_ERR_NOT_IN_FIELD] = error (point or scalar has coordinates not in the field)
+/// - [G1_MUL_ERR_NOT_ON_CURVE] = error (point is not on the curve)
 #[allow(dead_code)]
 #[inline]
-pub(crate) unsafe fn bn254_g1_mul_c(
+pub(crate) unsafe fn scalar_mul_safe_bn254_c(
     point: *const u8,
     scalar: *const u8,
     ret: *mut u8,
@@ -488,7 +633,7 @@ pub(crate) unsafe fn bn254_g1_mul_c(
     let scalar_u64 = scalar_bytes_be_to_u64_le_bn254(scalar_bytes);
 
     // Perform scalar multiplication with validation
-    let product = match mul_complete_bn254(
+    let product = match scalar_mul_complete_safe_bn254(
         &point_u64,
         &scalar_u64,
         #[cfg(feature = "hints")]
@@ -559,121 +704,4 @@ pub fn scalar_bytes_be_to_u64_le_bn254(bytes: &[u8; 32]) -> [u64; 4] {
     }
 
     result
-}
-
-/// Jacobian to affine conversion for a BN254 G1 point.
-///
-/// # Safety
-/// - `p_ptr` must point to a valid `[u64; 12]` array (Jacobian coordinates x ‖ y ‖ z, little-endian limbs)
-/// - `result_ptr` must point to a writable `[u64; 8]` array
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_jacobian_to_affine_bn254_c")]
-pub unsafe extern "C" fn jacobian_to_affine_bn254_c(
-    p_ptr: *const u64,
-    result_ptr: *mut u64,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let p = &*(p_ptr as *const [u64; 12]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
-    match jacobian_to_affine_bn254(
-        p,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        G1_IDENTITY => {
-            *result = G1_IDENTITY;
-            1
-        }
-        affine => {
-            *result = affine;
-            0
-        }
-    }
-}
-
-/// Curve membership check for a BN254 G1 point.
-/// Returns 1 if the point is on the curve, 0 otherwise.
-///
-/// # Safety
-/// - `p_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_is_on_curve_bn254_c")]
-pub unsafe extern "C" fn is_on_curve_bn254_c(
-    p_ptr: *const u64,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let p = &*(p_ptr as *const [u64; 8]);
-    is_on_curve_bn254(
-        p,
-        #[cfg(feature = "hints")]
-        hints,
-    ) as u8
-}
-
-/// Addition of two non-zero BN254 G1 points.
-///
-/// # Safety
-/// - `p1_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
-/// - `p2_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
-/// - `result_ptr` must point to a writable `[u64; 8]` array
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_add_bn254_c")]
-pub unsafe extern "C" fn add_bn254_c(
-    p1_ptr: *const u64,
-    p2_ptr: *const u64,
-    result_ptr: *mut u64,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let p1 = &*(p1_ptr as *const [u64; 8]);
-    let p2 = &*(p2_ptr as *const [u64; 8]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
-    match add_bn254(
-        p1,
-        p2,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        G1_IDENTITY => {
-            *result = G1_IDENTITY;
-            1
-        }
-        sum => {
-            *result = sum;
-            0
-        }
-    }
-}
-
-/// Scalar multiplication of a non-zero BN254 G1 point by a scalar.
-///
-/// # Safety
-/// - `p_ptr` must point to a valid `[u64; 8]` array (affine coordinates x ‖ y, little-endian limbs)
-/// - `k_ptr` must point to a valid `[u64; 4]` array (scalar, little-endian limbs)
-/// - `result_ptr` must point to a writable `[u64; 8]` array
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_scalar_mul_bn254_c")]
-pub unsafe extern "C" fn scalar_mul_bn254_c(
-    p_ptr: *const u64,
-    k_ptr: *const u64,
-    result_ptr: *mut u64,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let p = &*(p_ptr as *const [u64; 8]);
-    let k = &*(k_ptr as *const [u64; 4]);
-    let result = &mut *(result_ptr as *mut [u64; 8]);
-    match scalar_mul_bn254(
-        p,
-        k,
-        #[cfg(feature = "hints")]
-        hints,
-    ) {
-        G1_IDENTITY => {
-            *result = G1_IDENTITY;
-            1
-        }
-        product => {
-            *result = product;
-            0
-        }
-    }
 }
