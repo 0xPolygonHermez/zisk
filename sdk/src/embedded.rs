@@ -3,6 +3,7 @@
 pub(crate) mod execute;
 pub(crate) mod execute_only;
 pub(crate) mod prove;
+pub(crate) mod recurser;
 pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod verify_constraints;
@@ -21,6 +22,10 @@ use zisk_common::ProofKind;
 use zisk_common::{ProgramVK, Proof, PublicValues, ZiskPaths};
 use zisk_prover_backend::{Asm, AsmOptions, AsmProver, Emu, EmuProver, GuestProgram, ZiskProver};
 
+use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};
+use crate::lifecycle::{SetupTarget, UploadTarget};
+use crate::recurser::Recurser;
+use crate::upload::UploadResult;
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     hints::HintsSource,
@@ -283,6 +288,7 @@ impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
         }
         let pk = ZiskPaths::get_proving_key(backend_opts.get_proving_key());
         let pk_snark = ZiskPaths::get_proving_key_snark(backend_opts.get_proving_key_snark());
+        let proving_key = pk.clone();
         let prover = match self.executor {
             ExecutorKind::Emulator => EmbeddedClientBuilder::<Out>::build_emu(
                 pk,
@@ -297,7 +303,8 @@ impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
                 self.proof_kind,
             )?,
         };
-        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor }.into())
+        Ok(EmbeddedClient { prover: Arc::new(prover), executor: self.executor, proving_key }
+            .into())
     }
 }
 
@@ -306,14 +313,57 @@ enum EmbeddedProver {
     Asm(ZiskProver<Asm>),
 }
 
+impl EmbeddedProver {
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> anyhow::Result<()> {
+        match self {
+            EmbeddedProver::Emu(p) => p.register_recurser(output_dir, recurser_id),
+            EmbeddedProver::Asm(p) => p.register_recurser(output_dir, recurser_id),
+        }
+    }
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &proofman_verifier::VadcopFinalProof,
+        proof_b: &proofman_verifier::VadcopFinalProof,
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> anyhow::Result<proofman_verifier::VadcopFinalProof> {
+        match self {
+            EmbeddedProver::Emu(p) => p.prove_recurser(
+                recurser_id,
+                proof_a,
+                proof_b,
+                free_inputs_a,
+                free_inputs_b,
+                root_c_recurser_agg,
+            ),
+            EmbeddedProver::Asm(p) => p.prove_recurser(
+                recurser_id,
+                proof_a,
+                proof_b,
+                free_inputs_a,
+                free_inputs_b,
+                root_c_recurser_agg,
+            ),
+        }
+    }
+}
+
 pub struct EmbeddedClient {
     prover: Arc<EmbeddedProver>,
     executor: ExecutorKind,
+    pub(crate) proving_key: PathBuf,
 }
 
 impl Clone for EmbeddedClient {
     fn clone(&self) -> Self {
-        Self { prover: Arc::clone(&self.prover), executor: self.executor }
+        Self {
+            prover: Arc::clone(&self.prover),
+            executor: self.executor,
+            proving_key: self.proving_key.clone(),
+        }
     }
 }
 
@@ -369,6 +419,42 @@ impl Client for EmbeddedClient {
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_wrap(proof, proof_kind, override_publics, override_program_vk, timeout, subs)
     }
+
+    fn run_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
+        self.do_upload_aggregation_program(agg)
+    }
+
+    fn run_setup_aggregation_program(
+        &self,
+        agg: &Recurser,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<SetupResult>> {
+        self.do_setup_aggregation_program(agg, timeout, subs)
+    }
+
+    fn run_aggregate_proofs(
+        &self,
+        agg: &Recurser,
+        proof_a: &Proof,
+        proof_b: &Proof,
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<crate::prove::ProveResult>> {
+        self.do_aggregate_proofs(
+            agg,
+            proof_a,
+            proof_b,
+            free_inputs_a,
+            free_inputs_b,
+            root_c_recurser_agg,
+            timeout,
+            subs,
+        )
+    }
 }
 
 impl ClientSync for EmbeddedClient {
@@ -380,6 +466,14 @@ impl ClientSync for EmbeddedClient {
         subs: SubscriberList,
     ) -> Result<SetupResult> {
         self.do_setup_sync(program, with_hints, emulator_only, subs)
+    }
+
+    fn run_setup_aggregation_program_sync(
+        &self,
+        agg: &Recurser,
+        subs: SubscriberList,
+    ) -> Result<SetupResult> {
+        self.do_setup_aggregation_program_sync(agg, subs)
     }
 
     fn run_prove_sync(
@@ -449,16 +543,18 @@ impl EmbeddedClient {
         ExecuteRequest::new(self, program, stdin, self.executor)
     }
 
-    /// Submit a ROM setup request.
+    /// Submit a setup request. Accepts either a [`GuestProgram`] or a
+    /// [`Recurser`].
     #[must_use]
-    pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
-        SetupRequest::new(self, program)
+    pub fn setup<'a, T: Into<SetupTarget<'a>>>(&'a self, target: T) -> SetupRequest<'a, Self> {
+        SetupRequest::new(self, target.into())
     }
 
-    /// Submit an upload request (no-op for embedded — program is available locally).
+    /// Submit an upload request. Accepts either a [`GuestProgram`] or a
+    /// [`Recurser`]. Embedded uploads are no-ops.
     #[must_use]
-    pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
-        UploadRequest::new(self, program)
+    pub fn upload<'a, T: Into<UploadTarget<'a>>>(&'a self, target: T) -> UploadRequest<'a, Self> {
+        UploadRequest::new(self, target.into())
     }
 
     /// Submit a wrap/convert proof request.
@@ -469,5 +565,16 @@ impl EmbeddedClient {
         proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
         WrapRequest::new(self, proof, proof_kind)
+    }
+
+    /// Submit a recurser prove request — folds two Vadcop proofs into one.
+    #[must_use]
+    pub fn aggregate_proofs<'a>(
+        &'a self,
+        agg: &'a Recurser,
+        input_a: impl Into<AggregationInput<'a>>,
+        input_b: impl Into<AggregationInput<'a>>,
+    ) -> AggregateProofsRequest<'a, Self> {
+        AggregateProofsRequest::new(self, agg, input_a.into(), input_b.into())
     }
 }

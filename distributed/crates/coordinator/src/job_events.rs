@@ -20,6 +20,8 @@ pub enum CoordinatorJobResult {
     Prove { proof_bytes: Vec<u8>, stats: CoordinatorExecutionStats },
     Execute { stats: CoordinatorExecutionStats, public_outputs: Vec<u8> },
     Wrap { proof_bytes: Vec<u8> },
+    SetupAggregationProgram { vk: Vec<u8>, hash_mode: String },
+    AggregateProofs { proof_bytes: Vec<u8> },
 }
 
 /// Execution statistics forwarded to the coordinator on job completion.

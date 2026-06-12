@@ -13,6 +13,7 @@ use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
+use proofman_verifier::VadcopFinalProof;
 use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
@@ -383,9 +384,13 @@ pub trait ProverEngine {
         rank_id: usize,
     ) -> Result<()>;
 
-    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
+    /// Register partial proofs received from other workers of the same job,
+    /// ahead of this worker joining them in [`Self::join_worker_proofs`].
+    fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
 
-    fn aggregate_proofs(
+    /// Join the workers' partial proofs into the job's aggregated proof (the
+    /// in-job Aggregate phase). Unrelated to the recurser's `aggregate_proofs`.
+    fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
@@ -394,6 +399,18 @@ pub trait ProverEngine {
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
+
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()>;
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof>;
 
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     fn hash(&self) -> Result<String>;
@@ -633,18 +650,18 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_partition(total_compute_units, allocation, rank_id)
     }
 
-    pub fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
-        self.prover.register_aggregated_proofs(agg_proofs)
+    pub fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.prover.register_worker_proofs(agg_proofs)
     }
 
-    pub fn aggregate_proofs(
+    pub fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.prover.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
+        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     /// Broadcast data to all MPI processes.
@@ -665,6 +682,33 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     pub fn hash(&self) -> Result<String> {
         self.prover.hash()
+    }
+
+    /// Register a recurser setup so it can prove. One-time, like registering a
+    /// program; must precede [`prove_recurser`](Self::prove_recurser).
+    pub fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.prover.register_recurser(output_dir, recurser_id)
+    }
+
+    /// Fold two recurser proofs through an already-registered recurser, reusing
+    /// this prover's already-initialized proofman (one MPI init per process).
+    pub fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.prover.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            free_inputs_a,
+            free_inputs_b,
+            root_c_recurser_agg,
+        )
     }
 
     pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
@@ -880,7 +924,8 @@ impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
 
     /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let publics = self.override_publics.unwrap_or(&self.proof.publics);
+        let derived_publics = self.proof.publics();
+        let publics = self.override_publics.unwrap_or(&derived_publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof.program_vk);
         let proof = match &self.proof.body {
             ProofBody::Vadcop { proof, .. } => proof.as_slice(),

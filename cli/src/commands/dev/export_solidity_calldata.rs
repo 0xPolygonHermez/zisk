@@ -50,7 +50,7 @@ impl ExportSolidityCalldataCmd {
         })?;
 
         let (proof_bytes, vadcop_vk) = match &proof.body {
-            ProofBody::Plonk { proof_bytes, plonk_vk } => {
+            ProofBody::Plonk { proof_bytes, plonk_vk, .. } => {
                 (proof_bytes.as_slice(), plonk_vk.vadcop_vk.as_slice())
             }
             _ => {
@@ -76,7 +76,7 @@ impl ExportSolidityCalldataCmd {
 
         // Canonical Solidity layout: [programVK (32) || publicValues (ZISK_PUBLICS*4) || rootCVadcopFinal (32)].
         // This is the exact byte string the on-chain verifier hashes — anchor everything off it.
-        let canonical = proof.publics.bytes_solidity(&proof.program_vk, vadcop_vk);
+        let canonical = proof.publics().bytes_solidity(&proof.program_vk, vadcop_vk);
         let publics_data_len = ZISK_PUBLICS * 4;
         let expected_len = 32 + publics_data_len + 32;
         if canonical.len() != expected_len {

@@ -27,10 +27,11 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
-    DomainJobEventStarted, DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus,
-    DomainProof, DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    BackendService, DomainAggregationProgramSpec, DomainExecutionStats, DomainInputKind,
+    DomainJobEvent, DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed,
+    DomainJobEventProgress, DomainJobEventQueued, DomainJobEventStarted, DomainJobKind,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
+    InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
 use zisk_common::{HashMode, SetupKey};
@@ -336,6 +337,14 @@ impl BackendService for MockBackend {
         Ok(hash_id)
     }
 
+    async fn register_aggregation_program(
+        &self,
+        recurser_id: String,
+        _spec: DomainAggregationProgramSpec,
+    ) -> ApiResult<String> {
+        Ok(recurser_id) // echoes id back without storing
+    }
+
     async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
         // Validate program exists for kinds that reference a hash_id
         {
@@ -591,6 +600,23 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
             proof.proof_kind = req.proof_dest.clone();
             DomainJobKindResponse::Wrap(proof)
         }
+        DomainJobKind::SetupAggregationProgram(_) => {
+            DomainJobKindResponse::SetupAggregationProgram {
+                vk: vec![0u8; 32],
+                // Clients parse hash_mode into HashMode; an empty string fails.
+                hash_mode: HashMode::default().as_str().to_string(),
+            }
+        }
+        DomainJobKind::AggregateProofs(_) => DomainJobKindResponse::AggregateProofs(DomainProof {
+            proof_id: Uuid::new_v4(),
+            hash_id: String::new(),
+            verification_key: vec![0u8; 32],
+            proof_kind: DomainProofKind::Stark,
+            data: vec![],
+            public_inputs: vec![],
+            started_at: Some(Utc::now()),
+            completed_at: Some(Utc::now()),
+        }),
     }
 }
 
@@ -666,7 +692,9 @@ impl JobKindExt for DomainJobKind {
             DomainJobKind::Setup(r) => Some(&r.hash_id),
             DomainJobKind::Prove(r) => Some(&r.hash_id),
             DomainJobKind::Execute(r) => Some(&r.hash_id),
-            DomainJobKind::Wrap(_) => None,
+            DomainJobKind::Wrap(_)
+            | DomainJobKind::SetupAggregationProgram(_)
+            | DomainJobKind::AggregateProofs(_) => None,
         }
     }
 

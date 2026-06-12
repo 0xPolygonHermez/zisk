@@ -16,6 +16,7 @@ use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use proofman_verifier::VadcopFinalProof;
 use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -586,18 +587,18 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_partition(total_compute_units, allocation, rank_id)
     }
 
-    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
-        self.core_prover.backend.register_aggregated_proofs(agg_proofs)
+    fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.core_prover.backend.register_worker_proofs(agg_proofs)
     }
 
-    fn aggregate_proofs(
+    fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -614,6 +615,29 @@ impl ProverEngine for AsmProver {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
+    }
+
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.core_prover.backend.register_recurser(output_dir, recurser_id)
+    }
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.core_prover.backend.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            free_inputs_a,
+            free_inputs_b,
+            root_c_recurser_agg,
+        )
     }
 
     fn hash(&self) -> Result<String> {

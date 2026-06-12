@@ -52,11 +52,14 @@ use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 use zisk_prover_backend::GuestProgram;
 
 use crate::{
+    aggregate_proofs::{AggregateProofsRequest, AggregationInput},
     execute::{ExecuteRequest, ExecuteResult},
     hints::HintsSource,
     input_source::InputSource,
     job_handle::{JobHandle, SubscriberList},
+    lifecycle::{SetupTarget, UploadTarget},
     prove::{ProveRequest, ProveResult},
+    recurser::Recurser,
     setup::{SetupRequest, SetupResult},
     upload::{UploadRequest, UploadResult},
     wrap::WrapRequest,
@@ -171,6 +174,60 @@ impl Client for ZiskClient {
             }
         }
     }
+
+    fn run_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
+        match &self.inner {
+            Inner::Embedded(c) => c.run_upload_aggregation_program(agg),
+            Inner::Remote(c) => c.run_upload_aggregation_program(agg),
+        }
+    }
+
+    fn run_setup_aggregation_program(
+        &self,
+        agg: &Recurser,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<SetupResult>> {
+        match &self.inner {
+            Inner::Embedded(c) => c.run_setup_aggregation_program(agg, timeout, subs),
+            Inner::Remote(c) => c.run_setup_aggregation_program(agg, timeout, subs),
+        }
+    }
+
+    fn run_aggregate_proofs(
+        &self,
+        agg: &Recurser,
+        proof_a: &Proof,
+        proof_b: &Proof,
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<ProveResult>> {
+        match &self.inner {
+            Inner::Embedded(c) => c.run_aggregate_proofs(
+                agg,
+                proof_a,
+                proof_b,
+                free_inputs_a,
+                free_inputs_b,
+                root_c_recurser_agg,
+                timeout,
+                subs,
+            ),
+            Inner::Remote(c) => c.run_aggregate_proofs(
+                agg,
+                proof_a,
+                proof_b,
+                free_inputs_a,
+                free_inputs_b,
+                root_c_recurser_agg,
+                timeout,
+                subs,
+            ),
+        }
+    }
 }
 
 impl ZiskClient {
@@ -238,19 +295,21 @@ impl ZiskClient {
         ExecuteRequest::new(self, program, stdin, self.executor)
     }
 
-    /// Submit a ROM setup request.
+    /// Submit a setup request. Accepts either a [`GuestProgram`] or a
+    /// [`Recurser`].
     #[must_use]
-    pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
-        SetupRequest::new(self, program)
+    pub fn setup<'a, T: Into<SetupTarget<'a>>>(&'a self, target: T) -> SetupRequest<'a, Self> {
+        SetupRequest::new(self, target.into())
     }
 
-    /// Submit an upload request.
+    /// Submit an upload request. Accepts either a [`GuestProgram`] or a
+    /// [`Recurser`].
     ///
-    /// No-op for the embedded backend (the program is available locally); registers the
-    /// ELF with the coordinator for the remote backend.
+    /// No-op for the embedded backend (the artifacts are available locally); registers the
+    /// ELF or recurser spec with the coordinator for the remote backend.
     #[must_use]
-    pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
-        UploadRequest::new(self, program)
+    pub fn upload<'a, T: Into<UploadTarget<'a>>>(&'a self, target: T) -> UploadRequest<'a, Self> {
+        UploadRequest::new(self, target.into())
     }
 
     /// Submit a wrap/convert proof request.
@@ -261,5 +320,16 @@ impl ZiskClient {
         proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
         WrapRequest::new(self, proof, proof_kind)
+    }
+
+    /// Submit a recurser prove request — folds two Vadcop proofs into one.
+    #[must_use]
+    pub fn aggregate_proofs<'a>(
+        &'a self,
+        agg: &'a Recurser,
+        input_a: impl Into<AggregationInput<'a>>,
+        input_b: impl Into<AggregationInput<'a>>,
+    ) -> AggregateProofsRequest<'a, Self> {
+        AggregateProofsRequest::new(self, agg, input_a.into(), input_b.into())
     }
 }

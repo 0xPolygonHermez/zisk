@@ -1,0 +1,7 @@
+programs = ["chain_segment"]
+aggregate-publics = "circuits/aggregate_publics.circom"
+
+[[normalize]]
+template = "circuits/normalize.circom"
+free-inputs = 1
+programs = ["chain_segment"]

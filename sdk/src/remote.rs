@@ -2,6 +2,7 @@
 
 pub(crate) mod execute;
 pub(crate) mod prove;
+pub(crate) mod recurser;
 pub(crate) mod setup;
 pub(crate) mod upload;
 pub(crate) mod wrap;
@@ -14,6 +15,9 @@ use zisk_coordinator_api::dto::DomainInputKind;
 use zisk_coordinator_client::CoordinatorClient;
 use zisk_prover_backend::GuestProgram;
 
+use crate::aggregate_proofs::{AggregateProofsRequest, AggregationInput};
+use crate::lifecycle::{SetupTarget, UploadTarget};
+use crate::recurser::Recurser;
 use crate::{
     execute::{ExecuteRequest, ExecuteResult},
     hints::HintsSource,
@@ -142,6 +146,42 @@ impl Client for RemoteClient {
     ) -> Result<JobHandle<crate::prove::ProveResult>> {
         self.do_wrap(proof, proof_kind, timeout, subs)
     }
+
+    fn run_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
+        self.do_upload_aggregation_program(agg)
+    }
+
+    fn run_setup_aggregation_program(
+        &self,
+        agg: &Recurser,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<SetupResult>> {
+        self.do_setup_aggregation_program(agg, timeout, subs)
+    }
+
+    fn run_aggregate_proofs(
+        &self,
+        agg: &Recurser,
+        proof_a: &Proof,
+        proof_b: &Proof,
+        free_inputs_a: &[u64],
+        free_inputs_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<crate::prove::ProveResult>> {
+        self.do_aggregate_proofs(
+            agg,
+            proof_a,
+            proof_b,
+            free_inputs_a,
+            free_inputs_b,
+            root_c_recurser_agg,
+            timeout,
+            subs,
+        )
+    }
 }
 
 impl RemoteClient {
@@ -165,10 +205,12 @@ impl RemoteClient {
         ExecuteRequest::new(self, program, stdin, ExecutorKind::default())
     }
 
-    /// Submit a ROM setup request
+    /// Submit a setup request. Accepts either a [`GuestProgram`] or a
+    /// [`Recurser`]; the latter dispatches a recurser-setup job to a worker
+    /// (upload the spec first via [`RemoteClient::upload`]).
     #[must_use]
-    pub fn setup<'a>(&'a self, program: &'a GuestProgram) -> SetupRequest<'a, Self> {
-        SetupRequest::new(self, program)
+    pub fn setup<'a, T: Into<SetupTarget<'a>>>(&'a self, target: T) -> SetupRequest<'a, Self> {
+        SetupRequest::new(self, target.into())
     }
 
     /// Submit a ROM setup request for an already-uploaded program by `hash_id`.
@@ -176,15 +218,21 @@ impl RemoteClient {
     /// Skips upload — the coordinator must already hold the program's ELF (e.g. from
     /// a prior [`upload`](Self::upload)). Returns `ProgramNotFound` from the coordinator
     /// otherwise.
+    ///
+    /// Programs only: a `recurser_id` (as returned by uploading a [`Recurser`]) is not
+    /// a valid `hash_id` here and fails with `ProgramNotFound` — recursers are set up
+    /// via [`setup`](Self::setup) with the `Recurser` value, which is already id-keyed
+    /// on the wire.
     #[must_use]
     pub fn setup_by_id(&self, hash_id: impl Into<String>) -> SetupByIdRequest<'_> {
         SetupByIdRequest::new(self, hash_id.into())
     }
 
-    /// Upload/register the program ELF with the coordinator.
+    /// Upload/register a program or recurser with the coordinator. Recurser
+    /// uploads push the aggregation-program spec; re-uploads are idempotent.
     #[must_use]
-    pub fn upload<'a>(&'a self, program: &'a GuestProgram) -> UploadRequest<'a, Self> {
-        UploadRequest::new(self, program)
+    pub fn upload<'a, T: Into<UploadTarget<'a>>>(&'a self, target: T) -> UploadRequest<'a, Self> {
+        UploadRequest::new(self, target.into())
     }
 
     /// Submit a wrap/convert proof request.
@@ -195,6 +243,18 @@ impl RemoteClient {
         proof_kind: ProofKind,
     ) -> WrapRequest<'a, Self> {
         WrapRequest::new(self, proof, proof_kind)
+    }
+
+    /// Submit a recurser prove request; dispatched to a worker as an
+    /// AggregateProofs job (upload + setup the recurser first).
+    #[must_use]
+    pub fn aggregate_proofs<'a>(
+        &'a self,
+        agg: &'a Recurser,
+        input_a: impl Into<AggregationInput<'a>>,
+        input_b: impl Into<AggregationInput<'a>>,
+    ) -> AggregateProofsRequest<'a, Self> {
+        AggregateProofsRequest::new(self, agg, input_a.into(), input_b.into())
     }
 }
 

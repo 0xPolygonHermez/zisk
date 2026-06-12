@@ -110,7 +110,7 @@ async fn test_phase2_timeout_aborts_job() {
 
 #[tokio::test]
 async fn test_phase3_timeout_aborts_job() {
-    let s = setup_running_job(1, JobPhase::Aggregate, |c| {
+    let s = setup_running_job(1, JobPhase::Recurse, |c| {
         c.coordinator.phase3_timeout_seconds = 1;
     })
     .await;
@@ -119,7 +119,7 @@ async fn test_phase3_timeout_aborts_job() {
         let entry = s.coordinator.jobs().read().await.get(&s.job_id).cloned().unwrap();
         let mut job = entry.write().await;
         job.phase_timings.insert(
-            JobPhase::Aggregate,
+            JobPhase::Recurse,
             PhaseTimings { start_time: Utc::now() - chrono::Duration::seconds(2), end_time: None },
         );
     }

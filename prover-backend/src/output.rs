@@ -244,7 +244,31 @@ impl ProveOutput {
     }
 }
 
-impl_public_outputs!(ProveOutput, proof.publics);
+// ProveOutput's publics are derived from the proof body (the u32 view of a
+// Vadcop proof's full publics, or a Plonk proof's stored u32 publics), so
+// `get_publics` returns an owned value rather than a borrow.
+impl ProveOutput {
+    pub fn get_publics(&self) -> PublicValues {
+        self.proof.publics()
+    }
+
+    pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+    ) -> Result<T> {
+        self.proof.publics().read()
+    }
+
+    pub fn get_public_values_abi<T>(&self) -> Result<T>
+    where
+        T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
+    {
+        self.proof.publics().read_abi()
+    }
+
+    pub fn get_public_values_slice(&self, slice: &mut [u8]) {
+        self.proof.publics().read_slice(slice);
+    }
+}
 
 pub struct VerifyConstraintsOutput {
     summary: ExecutionSummary,

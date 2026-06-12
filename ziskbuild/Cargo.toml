@@ -13,6 +13,8 @@ cargo_metadata = "0.23.0"
 anyhow = { workspace = true }
 rom-setup = { workspace = true }
 blake3 = { workspace = true }
+serde = { workspace = true }
+toml = { workspace = true }
 
 [build-dependencies]
 vergen-git2.workspace = true

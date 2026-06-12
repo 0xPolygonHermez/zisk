@@ -118,6 +118,15 @@ pub enum ComputationResult {
         proof_type: ProofKind,
         instances: u64,
     },
+    /// Recurser setup or prove result. The blocking handler builds
+    /// the full ack (`SetupAggregationProgramAck` / `RunAggregateProofsAck`)
+    /// itself; the event loop just forwards it to the coordinator. Carried this
+    /// way so the heavy work runs off the message loop (heartbeats keep flowing)
+    /// without threading recurser-specific shaping through this shared enum.
+    RecurserAck {
+        job_id: JobId,
+        ack: zisk_cluster_api::WorkerMessage,
+    },
 }
 
 /// Events driving the worker event loop. Compute results and recovery
@@ -129,7 +138,7 @@ pub enum ComputationResult {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum LoopEvent {
-    Computation(ComputationResult),
+    Computation(Box<ComputationResult>),
     RecoveryComplete(zisk_cluster_api::WorkerRecoveryComplete),
 }
 
@@ -139,7 +148,7 @@ pub enum LoopEvent {
 pub struct LoopEventSender(mpsc::UnboundedSender<LoopEvent>);
 
 /// Zero-sized send error: callers discard the payload, so we don't carry the
-/// 600-byte `LoopEvent` around just to retrieve it.
+/// returned `LoopEvent` around just to retrieve it.
 #[derive(Debug)]
 pub struct LoopChannelClosed;
 
@@ -157,7 +166,7 @@ impl LoopEventSender {
     }
 
     pub fn send_computation(&self, result: ComputationResult) -> Result<(), LoopChannelClosed> {
-        self.0.send(LoopEvent::Computation(result)).map_err(|_| LoopChannelClosed)
+        self.0.send(LoopEvent::Computation(Box::new(result))).map_err(|_| LoopChannelClosed)
     }
 
     pub fn send_recovery_complete(
@@ -703,7 +712,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
-    pub fn handle_aggregate(
+    pub fn handle_aggregate_proofs(
         &self,
         job: Arc<Mutex<JobContext>>,
         agg_params: AggregationParams,
@@ -1212,7 +1221,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             })
             .collect();
 
-        if let Err(error) = prover.register_aggregated_proofs(agg_proofs_register) {
+        if let Err(error) = prover.register_worker_proofs(agg_proofs_register) {
             let job_guard = job.blocking_lock();
             let job_id = job_guard.job_id.clone();
             let executed_steps = job_guard.executed_steps;
@@ -1253,7 +1262,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 })
                 .collect();
 
-            let result = prover.aggregate_proofs(
+            let result = prover.join_worker_proofs(
                 agg_proofs,
                 agg_params.last_proof,
                 agg_params.final_proof,

@@ -59,10 +59,6 @@ pub struct CoordinatorConfig {
     pub config_file: Option<String>,
     /// Port on which the embedded coordinator listens for worker connections.
     pub port: u16,
-    /// When `Some(true)`, completed proofs are persisted to disk by the
-    /// coordinator. `None` leaves the embedded coordinator's own default in
-    /// place (no save).
-    pub save_proofs: Option<bool>,
 }
 
 impl Config {

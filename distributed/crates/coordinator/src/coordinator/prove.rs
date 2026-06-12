@@ -90,15 +90,13 @@ impl Coordinator {
         self.store_proof_response(&mut job, execute_task_response).await?;
 
         // Assign aggregator worker if not already assigned
-        let agg_worker_id = self.resolve_aggregator_assignment(&mut job, &worker_id).await?;
+        let agg_worker_id = self.resolve_recurser_assignment(&mut job, &worker_id).await?;
 
         let all_done = self.check_phase2_completion(&job, &worker_id).await?;
 
         if all_done {
-            job.phase_timings.insert(
-                JobPhase::Aggregate,
-                PhaseTimings { start_time: Utc::now(), end_time: None },
-            );
+            job.phase_timings
+                .insert(JobPhase::Recurse, PhaseTimings { start_time: Utc::now(), end_time: None });
         }
 
         let proofs = self.collect_worker_proofs(&job, &agg_worker_id, &worker_id)?;
@@ -110,7 +108,7 @@ impl Coordinator {
             // slot stuck `Some` forever and subsequent completions would queue
             // tasks that never get dispatched.
             drop(job);
-            self.send_aggregation_task(
+            self.send_recurser_task(
                 &job_id,
                 &agg_worker_id,
                 task.proofs.clone(),

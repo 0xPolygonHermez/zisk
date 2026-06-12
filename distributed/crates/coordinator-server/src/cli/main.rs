@@ -95,7 +95,7 @@ async fn main() -> Result<()> {
                 cfg.coordinator.config_file.clone(),
                 Some(cfg.coordinator.port),
                 None,
-                cfg.coordinator.save_proofs,
+                false,
                 None,
             )?;
             let coordinator = Arc::new(Coordinator::new(coord_config));
