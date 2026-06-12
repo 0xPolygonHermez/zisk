@@ -18,6 +18,7 @@ main() {
         cargo +zisk build --release -p diagnostic --target riscv64ima-zisk-zkvm-elf || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
+    DIAGNOSTIC_INPUTS_SINGLE="empty"
     test_elf "${ELF_FILE}" "${INPUTS_PATH}" "DIAGNOSTIC_INPUTS" "ELF Diagnostic" || return 1
 }
 
