@@ -1,8 +1,14 @@
+mod aggregation;
 mod build;
 mod command;
 mod utils;
 
 use build::build_program_internal;
+
+pub use aggregation::{
+    guest_elf_map, resolve_aggregation, ResolvedAggregation, ResolvedCircuitPaths,
+    ResolvedNormalizeGroup, ResolvedProgram,
+};
 // pub use build::{execute_build_program, generate_elf_paths};
 
 use clap::Parser;

@@ -10,10 +10,10 @@
 
 use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
-    execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
+    execute_task_response, AggParams, AggregationProgramSpec, Challenges, ComputeCapacity as GrpcComputeCapacity,
     ContributionParams, CoordinatorMessage, CostPerType, ExecuteTaskRequest, ExecuteTaskResponse,
-    Heartbeat, HeartbeatAck, InputStreamData, JobCancelled, ProofList, ProofStark, ProveParams,
-    ReconnectionAction, ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload,
+    Heartbeat, HeartbeatAck, InputStreamData, JobCancelled, ProofList, ProofStark, ProveParams, ProgramVk, NormalizeGroup,
+    ReconnectionAction, ReconnectionDirective, RunAggregateProofs, SetupAggregationProgram, SetupProgram, Shutdown, StreamData, StreamPayload,
     StreamType, TaskType, WorkerError, WorkerReconnectRequest, WorkerRegisterRequest,
     WorkerRegisterResponse,
 };
@@ -130,6 +130,80 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
             CoordinatorMessageDto::InputStreamData(dto) => {
                 CoordinatorMessage { payload: Some(Payload::InputStreamData(dto.into())) }
             }
+            CoordinatorMessageDto::SetupAggregationProgram(dto) => {
+                CoordinatorMessage { payload: Some(Payload::SetupAggregationProgram(dto.into())) }
+            }
+            CoordinatorMessageDto::RunAggregateProofs(dto) => {
+                CoordinatorMessage { payload: Some(Payload::RunAggregateProofs(dto.into())) }
+            }
+        }
+    }
+}
+
+impl From<AggregationProgramSpecDto> for AggregationProgramSpec {
+    fn from(dto: AggregationProgramSpecDto) -> Self {
+        AggregationProgramSpec {
+            program_vks: dto
+                .program_vks
+                .into_iter()
+                .map(|[l0, l1, l2, l3]| ProgramVk { l0, l1, l2, l3 })
+                .collect(),
+            normalize_groups: dto
+                .normalize_groups
+                .into_iter()
+                .map(|g| NormalizeGroup {
+                    member_indices: g.member_indices,
+                    body: g.body,
+                    n_free_inputs: g.n_free_inputs,
+                })
+                .collect(),
+            aggregate_publics_body: dto.aggregate_publics_body,
+        }
+    }
+}
+
+impl From<AggregationProgramSpec> for AggregationProgramSpecDto {
+    fn from(spec: AggregationProgramSpec) -> Self {
+        AggregationProgramSpecDto {
+            program_vks: spec
+                .program_vks
+                .into_iter()
+                .map(|vk| [vk.l0, vk.l1, vk.l2, vk.l3])
+                .collect(),
+            normalize_groups: spec
+                .normalize_groups
+                .into_iter()
+                .map(|g| NormalizeGroupDto {
+                    member_indices: g.member_indices,
+                    body: g.body,
+                    n_free_inputs: g.n_free_inputs,
+                })
+                .collect(),
+            aggregate_publics_body: spec.aggregate_publics_body,
+        }
+    }
+}
+
+impl From<SetupAggregationProgramDto> for SetupAggregationProgram {
+    fn from(dto: SetupAggregationProgramDto) -> Self {
+        SetupAggregationProgram {
+            job_id: dto.job_id,
+            recurser_id: dto.recurser_id,
+            spec: Some(dto.spec.into()),
+        }
+    }
+}
+
+impl From<RunAggregateProofsDto> for RunAggregateProofs {
+    fn from(dto: RunAggregateProofsDto) -> Self {
+        RunAggregateProofs {
+            job_id: dto.job_id,
+            recurser_id: dto.recurser_id,
+            proof_a: dto.proof_a,
+            proof_b: dto.proof_b,
+            free_inputs_a: dto.free_inputs_a,
+            free_inputs_b: dto.free_inputs_b,
+            root_c_recurser_agg: dto.root_c_recurser_agg.map(|l| l.to_vec()).unwrap_or_default(),
         }
     }
 }

@@ -1,0 +1,7 @@
+[package]
+name = "chain_segment"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true

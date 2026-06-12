@@ -91,6 +91,64 @@ pub enum CoordinatorMessageDto {
     StreamData(StreamDataDto),
     SetupProgram(SetupProgramDto),
     InputStreamData(InputStreamDataDto),
+    SetupAggregationProgram(SetupAggregationProgramDto),
+    RunAggregateProofs(RunAggregateProofsDto),
+}
+
+/// 4-limb Goldilocks verification key, decimal-encoded.
+pub type RecurserProgramVk = [String; 4];
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizeGroupDto {
+    pub member_indices: Vec<u64>,
+    pub body: String,
+    pub n_free_inputs: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AggregationProgramSpecDto {
+    pub program_vks: Vec<RecurserProgramVk>,
+    pub normalize_groups: Vec<NormalizeGroupDto>,
+    pub aggregate_publics_body: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupAggregationProgramDto {
+    pub job_id: String,
+    pub recurser_id: String,
+    pub spec: AggregationProgramSpecDto,
+}
+
+#[derive(Debug, Clone)]
+pub struct RunAggregateProofsDto {
+    pub job_id: String,
+    pub recurser_id: String,
+    /// bincode-serialized VadcopFinalProof.
+    pub proof_a: Vec<u8>,
+    pub proof_b: Vec<u8>,
+    pub free_inputs_a: Vec<u64>,
+    pub free_inputs_b: Vec<u64>,
+    pub root_c_recurser_agg: Option<[u64; 4]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupAggregationProgramAckDto {
+    pub job_id: String,
+    pub worker_id: WorkerId,
+    pub recurser_id: String,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub vk: Vec<u8>,
+    pub hash_mode: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RunAggregateProofsAckDto {
+    pub job_id: String,
+    pub worker_id: WorkerId,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub proof: Vec<u8>,
 }
 
 pub struct InputStreamDataDto {

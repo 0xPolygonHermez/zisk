@@ -22,6 +22,7 @@ zisk-pil = { workspace = true }
 zisk-cluster-common = { workspace = true }
 riscv2zisk = { workspace = true }
 executor = { workspace = true }
+recurser = { workspace = true }
 rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 precompiles-hints = { workspace = true }

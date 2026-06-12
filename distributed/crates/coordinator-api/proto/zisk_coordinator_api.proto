@@ -19,7 +19,12 @@ service ZiskCoordinatorApi {
   rpc RegisterGuestProgram(RegisterGuestProgramRequest)
       returns (RegisterGuestProgramResponse);
 
-  // Submit a new job (setup, prove, wrap, or execute).
+  // Register a recurser spec. Idempotent: the same spec always
+  // returns the same recurser_id (a content hash of the inputs).
+  rpc RegisterAggregationProgram(RegisterAggregationProgramRequest)
+      returns (RegisterAggregationProgramResponse);
+
+  // Submit a new job (setup, prove, wrap, execute, setup_aggregation_program, aggregate_proofs).
   rpc JobRequest(JobRequestMessage)
       returns (JobResponse);
 
@@ -104,7 +109,7 @@ enum JobPhase {
   JOB_PHASE_UNSPECIFIED   = 0;
   JOB_PHASE_CONTRIBUTIONS = 1; // witness generation and partial contributions
   JOB_PHASE_PROVE         = 2; // proof generation
-  JOB_PHASE_AGGREGATE     = 3; // proof aggregation
+  JOB_PHASE_RECURSE       = 3; // recurser prove phase
 }
 
 message InputChunk {
@@ -178,6 +183,42 @@ message RegisterGuestProgramResponse {
   string hash_id = 1; // blake3 content hash of zisk_elf
 }
 
+// 4-limb Goldilocks verification key, decimal-encoded.
+message ProgramVk {
+  string l0 = 1;
+  string l1 = 2;
+  string l2 = 3;
+  string l3 = 4;
+}
+
+// One normalization group: a NormalizePublics circom body applied to the
+// leaf proofs of the member programs (indices into program_vks).
+message NormalizeGroup {
+  repeated uint64 member_indices   = 1;
+  string          body             = 2;
+  uint64          n_free_inputs    = 3;
+}
+
+message AggregationProgramSpec {
+  repeated ProgramVk      program_vks            = 1;
+  repeated NormalizeGroup normalize_groups       = 2;
+  string                  aggregate_publics_body = 3;
+}
+
+message RegisterAggregationProgramRequest {
+  // SDK-computed content hash. The coordinator stores the spec under this
+  // id and echoes it back. Re-registering an already-known id is idempotent.
+  // Computed by both SDK and worker from the same `RecurserManifestInputs`,
+  // so a misaligned zisk_vk surfaces here as a "recurser_id not found" at
+  // dispatch time rather than a silent divergence.
+  string       recurser_id = 1;
+  AggregationProgramSpec spec        = 2;
+}
+
+message RegisterAggregationProgramResponse {
+  string recurser_id = 1; // echo of the request's recurser_id
+}
+
 // ============================================================================
 // Job submission
 // ============================================================================
@@ -192,11 +233,12 @@ message JobResponse {
 
 message JobKind {
   oneof kind {
-    SetupRequest   setup   = 1;
-    ProveRequest   prove   = 2;
-    WrapRequest    wrap    = 3;
-    // AggregateRequest aggregate = 4; // TODO: not yet defined
-    ExecuteRequest execute = 5;
+    SetupRequest           setup            = 1;
+    ProveRequest           prove            = 2;
+    WrapRequest            wrap             = 3;
+    AggregateProofsRequest aggregate_proofs = 4;
+    ExecuteRequest         execute          = 5;
+    SetupAggregationProgramRequest   setup_aggregation_program   = 6;
   }
 }
 
@@ -239,9 +281,27 @@ message WrapResponse {
   Proof proof = 1;
 }
 
-// TODO: AggregateRequest / AggregateResponse — to be defined
-// message AggregateRequest { … }
-// message AggregateResponse { … }
+message SetupAggregationProgramRequest {
+  string recurser_id = 1;
+}
+
+message SetupAggregationProgramResponse {
+  bytes vk = 1; // 32 bytes — 4 u64 little-endian limbs
+  string hash_mode = 2;
+}
+
+message AggregateProofsRequest {
+  string          recurser_id          = 1;
+  bytes           proof_a              = 2; // bincode-serialized VadcopFinalProof
+  bytes           proof_b              = 3;
+  repeated uint64 free_inputs_a        = 4; // proof_a's normalization side inputs
+  repeated uint64 free_inputs_b        = 5; // proof_b's normalization side inputs
+  repeated uint64 root_c_recurser_agg  = 6; // optional override; len 0 or 4
+}
+
+message AggregateProofsResponse {
+  Proof proof = 1;
+}
 
 message ExecuteRequest {
   string                    hash_id         = 1;
@@ -257,10 +317,12 @@ message ExecuteResponse {
 
 message JobKindResponse {
   oneof kind {
-    SetupResponse   setup   = 1;
-    ProveResponse   prove   = 2;
-    WrapResponse    wrap    = 3;
-    ExecuteResponse execute = 4;
+    SetupResponse         setup         = 1;
+    ProveResponse         prove         = 2;
+    WrapResponse          wrap          = 3;
+    AggregateProofsResponse aggregate_proofs = 4;
+    ExecuteResponse       execute       = 5;
+    SetupAggregationProgramResponse setup_aggregation_program = 6;
   }
 }
 

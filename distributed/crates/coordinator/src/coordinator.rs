@@ -47,7 +47,7 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs,
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
@@ -55,7 +55,7 @@ use std::{
 use tokio::sync::{broadcast, RwLock};
 use tracing::{debug, error, info, warn};
 use zisk_cluster_common::{
-    ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
+   AggregationProgramSpecDto, SetupAggregationProgramDto, ComputeCapacity, CoordinatorMessageDto, DataId, HintsModeDto, InputsModeDto, Job,
     JobExecutionMode, JobId, JobPhase, JobResultData, JobState, LaunchProofRequestDto,
     LaunchProofResponseDto, PhaseTimings, ProofKind, SetupProgramDto, StatsCostPerType, WorkerId,
     WorkerState,
@@ -77,6 +77,13 @@ pub(crate) struct ActiveSetup {
     pub program_name: String,
     pub vk: Vec<u8>,
     pub hash_mode: String,
+}
+
+/// Recurser analog of `SetupPendingState`: pending acks + accumulated VKs.
+struct RecurserSetupPendingState {
+    pending: HashSet<WorkerId>,
+    vks: Vec<(WorkerId, Vec<u8>, String)>,
+    recurser_id: String,
 }
 
 /// Per-job event channel: live broadcast sender plus a one-slot stash for the
@@ -152,6 +159,15 @@ pub struct Coordinator {
     /// program returns success immediately without re-broadcasting.
     pub(crate) active_setups: RwLock<HashMap<SetupKey, ActiveSetup>>,
 
+    /// Registered recurser specs, keyed by `recurser_id`. In-memory
+    /// only; coordinator restart loses the map and clients must re-register.
+    aggregation_program_specs: RwLock<HashMap<String, AggregationProgramSpecDto>>,
+    /// In-flight recurser setup jobs (analog of `setup_pending`).
+    recurser_setup_pending: RwLock<HashMap<JobId, RecurserSetupPendingState>>,
+    /// `recurser_id`s with a completed setup on at least one worker. Replayed
+    /// to (re)connecting workers so they can serve later recurser-prove jobs.
+    active_recurser_setups: RwLock<HashSet<String>>,
+
     /// Per-job channel senders for gRPC-pushed hints (uri = "grpc://...").
     /// Dropping or sending `None` signals EOF to the relay thread.
     #[allow(clippy::type_complexity)]
@@ -171,6 +187,16 @@ pub struct Coordinator {
 struct TerminationOutcome {
     worker_ids: Vec<WorkerId>,
     phase1_start: Option<DateTime<Utc>>,
+}
+
+/// Structural equality on `AggregationProgramSpecDto`. The DTO has no `PartialEq` derive.
+fn aggregation_program_spec_eq(
+    a: &AggregationProgramSpecDto,
+    b: &AggregationProgramSpecDto,
+) -> bool {
+    a.program_vks == b.program_vks
+        && a.normalize_groups == b.normalize_groups
+        && a.aggregate_publics_body == b.aggregate_publics_body
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -256,6 +282,9 @@ impl Coordinator {
             job_events: RwLock::new(HashMap::new()),
             setup_pending: RwLock::new(HashMap::new()),
             active_setups: RwLock::new(HashMap::new()),
+            aggregation_program_specs: RwLock::new(HashMap::new()),
+            recurser_setup_pending: RwLock::new(HashMap::new()),
+            active_recurser_setups: RwLock::new(HashSet::new()),
             grpc_hints_senders: Arc::new(RwLock::new(HashMap::new())),
             pending_recovery: RwLock::new(HashMap::new()),
         }
@@ -549,6 +578,212 @@ impl Coordinator {
         Ok(job_id)
     }
 
+    /// Stores `spec` under the SDK-supplied content-addressed `recurser_id`.
+    /// Idempotent for same-content re-registers; logs a warning on overwrite
+    /// with a divergent spec (client-side hash bug).
+    pub async fn register_aggregation_program(
+        &self,
+        recurser_id: String,
+        spec: AggregationProgramSpecDto,
+    ) -> CoordinatorResult<String> {
+        if recurser_id.is_empty() {
+            return Err(CoordinatorError::InvalidRequest("recurser_id must not be empty".into()));
+        }
+        let mut specs = self.aggregation_program_specs.write().await;
+        if let Some(prior) = specs.get(&recurser_id) {
+            if !aggregation_program_spec_eq(prior, &spec) {
+                warn!(
+                    "[Recurser] Overwriting spec for '{}' with divergent contents (client-side hash bug)",
+                    recurser_id
+                );
+            }
+        }
+        specs.insert(recurser_id.clone(), spec);
+        Ok(recurser_id)
+    }
+
+    /// Broadcasts `SetupAggregationProgram` to every connected worker. Mirrors
+    /// `setup_program`'s ack / liveness semantics.
+    pub async fn setup_aggregation_program(&self, recurser_id: &str) -> CoordinatorResult<JobId> {
+        let spec = self
+            .aggregation_program_specs
+            .read()
+            .await
+            .get(recurser_id)
+            .cloned()
+            .ok_or_else(|| {
+                CoordinatorError::InvalidRequest(format!(
+                    "recurser_id '{recurser_id}' is not registered; call register_aggregation_program first"
+                ))
+            })?;
+
+        let job_id = JobId::new();
+        let workers = self.workers_pool.connected_worker_ids().await;
+        if workers.is_empty() {
+            return Err(CoordinatorError::InsufficientCapacity);
+        }
+
+        // Allocate event channel before sending so subscribers can't miss events.
+        self.alloc_job_events(&job_id).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
+
+        let pending: HashSet<WorkerId> = workers.iter().cloned().collect();
+        self.recurser_setup_pending.write().await.insert(
+            job_id.clone(),
+            RecurserSetupPendingState {
+                pending,
+                vks: Vec::new(),
+                recurser_id: recurser_id.to_string(),
+            },
+        );
+
+        for worker_id in &workers {
+            let msg = CoordinatorMessageDto::SetupAggregationProgram(SetupAggregationProgramDto {
+                job_id: job_id.as_string(),
+                recurser_id: recurser_id.to_string(),
+                spec: spec.clone(),
+            });
+            if let Err(e) = self.workers_pool.send_message(worker_id, msg).await {
+                warn!(
+                    "[Recurser] Failed to send SetupAggregationProgram to worker {}: {}",
+                    worker_id, e
+                );
+                // Drop unreachable worker from pending set — don't block on it.
+                self.recurser_setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
+                    s.pending.remove(worker_id);
+                });
+            } else {
+                let _ = self
+                    .workers_pool
+                    .mark_worker_with_state(worker_id, WorkerState::SettingUp)
+                    .await;
+            }
+        }
+
+        // Edge case: every send failed — fail the job now so subscribers don't hang.
+        let should_complete = self
+            .recurser_setup_pending
+            .read()
+            .await
+            .get(&job_id)
+            .map(|s| s.pending.is_empty())
+            .unwrap_or(true);
+        if should_complete {
+            self.recurser_setup_pending.write().await.remove(&job_id);
+            self.fire_job_event(
+                &job_id,
+                CoordinatorJobEvent::Failed("all workers unreachable during recurser setup".into()),
+            )
+            .await;
+        }
+
+        Ok(job_id)
+    }
+
+    /// Sends a `RunAggregateProofs` task to a single idle worker. Mirrors
+    /// `launch_wrap`: the job lives in `self.jobs` so worker-disconnect machinery
+    /// fails it automatically if the worker dies mid-prove.
+    pub async fn launch_aggregate_proofs(
+        &self,
+        recurser_id: String,
+        proof_a: Vec<u8>,
+        proof_b: Vec<u8>,
+        free_inputs_a: Vec<u64>,
+        free_inputs_b: Vec<u64>,
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> CoordinatorResult<LaunchProofResponseDto> {
+        if !self.aggregation_program_specs.read().await.contains_key(&recurser_id) {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "recurser_id '{recurser_id}' is not registered; call register + setup first"
+            )));
+        }
+
+        // Atomically reserve a single Ready worker (marking it Computing under
+        // one write lock) so two concurrent recurser launches can't pick the
+        // same worker. Mirrors `launch_wrap`. Fail fast if none is free.
+        let job_id = JobId::new();
+        let worker_id =
+            self.workers_pool.try_reserve_single_ready_for(&job_id, JobPhase::Recurse).await?;
+
+        // Track in `self.jobs` so the disconnect handler can fail it. Reuse the Recurse phase.
+        let mut job = Job::new(
+            job_id.clone(),
+            DataId::new(),
+            String::new(),
+            InputsModeDto::InputsNone,
+            HintsModeDto::HintsNone,
+            ComputeCapacity::from(1),
+            ComputeCapacity::from(1),
+            vec![worker_id.clone()],
+            Vec::<Vec<u32>>::new(),
+            JobExecutionMode::Standard,
+            BTreeMap::new(),
+            false,
+            ProofKind::VadcopFinal,
+        );
+        job.change_state(JobState::Running(JobPhase::Recurse));
+
+        let job_arc = Arc::new(RwLock::new(job));
+        self.jobs.write().await.insert(job_id.clone(), job_arc);
+        self.alloc_job_events(&job_id).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Queued).await;
+        self.fire_job_event(&job_id, CoordinatorJobEvent::Started).await;
+
+        // The worker was already marked Computing by the atomic reservation above.
+        let msg =
+            CoordinatorMessageDto::RunAggregateProofs(zisk_cluster_common::RunAggregateProofsDto {
+                job_id: job_id.as_string(),
+                recurser_id,
+                proof_a,
+                proof_b,
+                free_inputs_a,
+                free_inputs_b,
+                root_c_recurser_agg,
+            });
+        if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+            // Roll back so subscribers don't hang on a stuck Computing worker.
+            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+            self.jobs.write().await.remove(&job_id);
+            self.fire_job_event(
+                &job_id,
+                CoordinatorJobEvent::Failed(format!(
+                    "failed to send RunAggregateProofs to worker {worker_id}: {e}"
+                )),
+            )
+            .await;
+            return Err(e);
+        }
+
+        info!("[Recurser] Job {} started on worker {}", job_id, worker_id);
+        Ok(LaunchProofResponseDto { job_id })
+    }
+
+    /// Recurser analog of `read_all_setup_dtos`. Each emitted DTO carries a
+    /// fresh `job_id`; resulting acks fall through the "unknown job" branch.
+    pub(crate) async fn read_all_recurser_setup_dtos(&self) -> Vec<SetupAggregationProgramDto> {
+        let active = self.active_recurser_setups.read().await.clone();
+        if active.is_empty() {
+            return Vec::new();
+        }
+        let specs = self.aggregation_program_specs.read().await;
+        let mut result = Vec::with_capacity(active.len());
+        for recurser_id in active {
+            if let Some(spec) = specs.get(&recurser_id) {
+                result.push(SetupAggregationProgramDto {
+                    job_id: JobId::new().as_string(),
+                    recurser_id,
+                    spec: spec.clone(),
+                });
+            } else {
+                warn!(
+                    "[Recurser] active_recurser_setups contains '{}' but no spec is registered; skipping resend",
+                    recurser_id
+                );
+            }
+        }
+        result
+    }
+
     /// Returns all active setups as `SetupProgramDto`s (reading ELF bytes from the on-disk cache).
     /// Used to re-send all programs to reconnecting workers.
     async fn read_all_setup_dtos(&self) -> Vec<SetupProgramDto> {
@@ -789,7 +1024,7 @@ impl Coordinator {
         let mut job = job_entry.write().await;
 
         // Save proof to disk
-        if state == JobState::Completed && self.config.server.save_proofs {
+        if state == JobState::Completed && !self.config.server.no_save_proofs {
             let zisk_proof = job.proof.as_ref().ok_or_else(|| {
                 CoordinatorError::Internal(
                     "Proof is missing during post-launch processing".to_string(),
@@ -1057,40 +1292,40 @@ impl Coordinator {
         Ok(())
     }
 
-    /// Determines aggregator assignment and manages worker state transitions for Phase 3.
+    /// Determines recurser assignment and manages worker state transitions for Phase 3.
     ///
     /// # Parameters
     ///
     /// * `job` - Mutable reference to job for state updates
-    /// * `candidate_worker_id` - Worker that just completed Phase 2 and could become aggregator
+    /// * `candidate_worker_id` - Worker that just completed Phase 2 and could become recurser
     ///
     /// # Returns
     ///
-    /// * The worker ID of the worker assigned as aggregator
+    /// * The worker ID of the worker assigned as recurser
     ///
-    /// # Aggregator Selection Strategy
+    /// # Recurser Selection Strategy
     ///
-    /// The system uses a "first-to-complete" aggregator selection approach, so the first worker
-    /// to complete Phase 2 becomes the aggregator
-    async fn resolve_aggregator_assignment(
+    /// The system uses a "first-to-complete" recurser selection approach, so the first worker
+    /// to complete Phase 2 becomes the recurser
+    async fn resolve_recurser_assignment(
         &self,
         job: &mut Job,
         candidate_worker_id: &WorkerId,
     ) -> CoordinatorResult<WorkerId> {
         match job.agg_worker_id.as_ref() {
-            Some(existing_aggregator_id) => {
-                // Aggregator already exists - mark the candidate as idle since it's not the aggregator
+            Some(existing_recurser_id) => {
+                // Recurser already exists - mark the candidate as idle since it's not the recurser
                 // This immediately frees up the worker's resources for other jobs
                 self.workers_pool
                     .mark_worker_with_state(candidate_worker_id, WorkerState::Ready)
                     .await?;
-                Ok(existing_aggregator_id.clone())
+                Ok(existing_recurser_id.clone())
             }
             None => {
-                // No aggregator yet - assign the candidate as aggregator
+                // No recurser yet - assign the candidate as recurser
                 // This represents the first worker to complete Phase 2, implementing "first-wins" selection
                 job.agg_worker_id = Some(candidate_worker_id.clone());
-                job.change_state(JobState::Running(JobPhase::Aggregate));
+                job.change_state(JobState::Running(JobPhase::Recurse));
 
                 let job_id = job.job_id.clone();
 
@@ -1098,15 +1333,15 @@ impl Coordinator {
                 self.workers_pool
                     .mark_worker_with_state(
                         candidate_worker_id,
-                        WorkerState::Computing((job_id.clone(), JobPhase::Aggregate)),
+                        WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
                     )
                     .await?;
 
-                self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Aggregate))
+                self.fire_job_event(&job_id, CoordinatorJobEvent::Progress(JobPhase::Recurse))
                     .await;
 
                 info!(
-                    "[Phase3] Assigned worker {} as aggregator for job {}",
+                    "[Phase3] Assigned worker {} as recurser for job {}",
                     candidate_worker_id, job_id
                 );
 
@@ -1290,7 +1525,7 @@ impl Coordinator {
             | JobPhase::ContributionsInputsStream
             | JobPhase::ContributionsHintsStream => self.config.coordinator.phase1_timeout_seconds,
             JobPhase::Prove => self.config.coordinator.phase2_timeout_seconds,
-            JobPhase::Aggregate => self.config.coordinator.phase3_timeout_seconds,
+            JobPhase::Recurse => self.config.coordinator.phase3_timeout_seconds,
         }
     }
 
@@ -1478,7 +1713,7 @@ mod tests {
     };
 
     fn test_config_with(overrides: impl FnOnce(&mut Config)) -> Config {
-        let mut config = Config::load(None, None, None, None, None)
+        let mut config = Config::load(None, None, None, true, None)
             .expect("Failed to create default test config");
         overrides(&mut config);
         config
@@ -2311,7 +2546,7 @@ mod tests {
         };
 
         let (coordinator, workers, job_id) =
-            setup_coordinator_with_job(1, JobPhase::Aggregate, |_| {}).await;
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0_id = workers[0].0.clone();
 
         coordinator.fail_job(&job_id, "racing fail").await.unwrap();
@@ -2344,7 +2579,7 @@ mod tests {
         );
     }
 
-    /// Regression: `handle_aggregation_completion`'s final-proof path
+    /// Regression: `handle_recurser_completion`'s final-proof path
     /// must not flip the aggregator `Ready` (overwriting `SettingUp`)
     /// when the job has been resolved concurrently. Previously the
     /// `is_resolved` check was on a separate read lock that was released
@@ -2358,7 +2593,7 @@ mod tests {
         };
 
         let (coordinator, workers, job_id) =
-            setup_coordinator_with_job(1, JobPhase::Aggregate, |_| {}).await;
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0_id = workers[0].0.clone();
 
         // The aggregator path requires `agg_worker_id` to be set on the
@@ -2389,7 +2624,7 @@ mod tests {
             worker_in_recovery: false,
         };
         // The handler must short-circuit on `is_resolved` and leave state alone.
-        let _ = coordinator.handle_aggregation_completion(response).await;
+        let _ = coordinator.handle_recurser_completion(response).await;
 
         assert_eq!(
             coordinator.workers_pool.worker_state(&w0_id).await,
@@ -2694,7 +2929,7 @@ mod tests {
         // The winner's reservation is reflected in the pool: worker is
         // Computing for the winner's job_id in the Aggregate phase.
         match coordinator.workers_pool.worker_state(&worker_id).await {
-            Some(WorkerState::Computing((reserved_for, JobPhase::Aggregate))) => {
+            Some(WorkerState::Computing((reserved_for, JobPhase::Recurse))) => {
                 assert_eq!(reserved_for, winning_job_id);
             }
             other => panic!("expected Computing(_, Aggregate), got {:?}", other),
@@ -2786,6 +3021,79 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_disconnect_mid_recurser_setup_finalizes_pending() {
+        use std::collections::HashSet;
+
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        let w0 = WorkerId::from("w0".to_string());
+        let w1 = WorkerId::from("w1".to_string());
+        let (s0, _m0) = MockMessageSender::new();
+        let (s1, _m1) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(w0.clone(), 1u32, Box::new(s0), WorkerState::SettingUp)
+            .await
+            .unwrap();
+        coordinator
+            .workers_pool
+            .register_worker(w1.clone(), 1u32, Box::new(s1), WorkerState::SettingUp)
+            .await
+            .unwrap();
+
+        // Seed an in-flight recurser setup waiting on both workers.
+        let setup_job = JobId::new();
+        let mut pending: HashSet<WorkerId> = HashSet::new();
+        pending.insert(w0.clone());
+        pending.insert(w1.clone());
+        coordinator.recurser_setup_pending.write().await.insert(
+            setup_job.clone(),
+            RecurserSetupPendingState { pending, vks: Vec::new(), recurser_id: "rid".into() },
+        );
+        coordinator.alloc_job_events(&setup_job).await;
+        let mut rx = coordinator.subscribe_job_events(&setup_job).await.unwrap();
+
+        // w0 acks successfully before its peer is lost.
+        coordinator
+            .handle_stream_setup_aggregation_program_ack(
+                zisk_cluster_common::SetupAggregationProgramAckDto {
+                    job_id: setup_job.as_string(),
+                    worker_id: w0.clone(),
+                    recurser_id: "rid".into(),
+                    success: true,
+                    error_message: None,
+                    vk: vec![1, 2, 3, 4],
+                    hash_mode: "Poseidon1".to_string(),
+                },
+            )
+            .await
+            .unwrap();
+
+        assert!(coordinator.recurser_setup_pending.read().await.contains_key(&setup_job));
+
+        // w1's stream dies — disconnect must drain it from recurser_setup_pending.
+        coordinator.disconnect_worker(&w1).await.unwrap();
+
+        assert!(
+            !coordinator.recurser_setup_pending.read().await.contains_key(&setup_job),
+            "recurser_setup_pending entry must be finalized when its last pending worker is lost"
+        );
+
+        // The recurser_id must have been marked active (so reconnecting workers re-receive it).
+        assert!(coordinator.active_recurser_setups.read().await.contains("rid"));
+
+        let event = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .expect("terminal event must fire within timeout")
+            .expect("event channel must deliver");
+        assert!(
+            matches!(event, CoordinatorJobEvent::Completed(_)),
+            "recurser setup must complete with w0's VK, got {event:?}"
+        );
+    }
+
     /// `unregister_worker` (stuck-recovery sweep) must also drain
     /// `setup_pending` — otherwise the evicted worker holds the entry
     /// hostage forever.
@@ -2829,7 +3137,7 @@ mod tests {
     }
 
     /// Regression: `fail_job(A)` must NOT park workers that were freed from
-    /// Job A (e.g. via `resolve_aggregator_assignment` after Phase 2) and
+    /// Job A (e.g. via `resolve_recurser_assignment` after Phase 2) and
     /// subsequently reassigned to a different live Job B. Under the previous
     /// `mark_computing_workers_settingup` that ignored job_id, terminating
     /// Job A would clobber `Computing(B, _)` → `SettingUp` and add the
@@ -2844,7 +3152,7 @@ mod tests {
         let w1 = workers[1].0.clone();
 
         // Simulate w1 having been freed from Job A's Phase 2 (the
-        // non-aggregator path in `resolve_aggregator_assignment` marks the
+        // non-aggregator path in `resolve_recurser_assignment` marks the
         // worker Ready) and then picked up by Job B's reservation.
         let job_b = JobId::new();
         coordinator
@@ -3082,7 +3390,7 @@ mod tests {
             let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
             let mut job = entry.write().await;
             job.phase_timings.insert(
-                JobPhase::Aggregate,
+                JobPhase::Recurse,
                 PhaseTimings {
                     start_time: Utc::now() - chrono::Duration::seconds(1),
                     end_time: None,
@@ -3173,6 +3481,382 @@ mod tests {
             coordinator.workers_pool.worker_state(&worker_id).await,
             Some(WorkerState::Idle)
         );
+    }
+
+    use zisk_cluster_common::{
+        AggregationProgramSpecDto, RunAggregateProofsAckDto, SetupAggregationProgramAckDto,
+    };
+
+    fn dummy_aggregation_program_spec() -> AggregationProgramSpecDto {
+        AggregationProgramSpecDto {
+            program_vks: vec![["1".into(), "2".into(), "3".into(), "4".into()]],
+            normalize_groups: vec![],
+            aggregate_publics_body: "// body".into(),
+        }
+    }
+
+    /// Coordinator with `n` Ready workers and no jobs.
+    #[allow(clippy::type_complexity)]
+    async fn coordinator_with_idle_workers(
+        n: usize,
+    ) -> (Coordinator, Vec<(WorkerId, std::sync::Arc<std::sync::Mutex<Vec<CoordinatorMessageDto>>>)>)
+    {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let mut workers = Vec::with_capacity(n);
+        for i in 0..n {
+            let wid = WorkerId::from(format!("agg-w{}", i));
+            let (sender, messages) = MockMessageSender::new();
+            coordinator
+                .workers_pool
+                .register_worker(wid.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+                .await
+                .unwrap();
+            workers.push((wid, messages));
+        }
+        (coordinator, workers)
+    }
+
+    #[tokio::test]
+    async fn test_register_aggregation_program_empty_id_errors() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        let err = coordinator
+            .register_aggregation_program(String::new(), dummy_aggregation_program_spec())
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::InvalidRequest(_)),
+            "expected InvalidRequest, got {:?}",
+            err
+        );
+    }
+
+    /// Spec lookup failure must surface as `InvalidRequest`, not `InsufficientCapacity`.
+    #[tokio::test]
+    async fn test_setup_aggregation_program_unregistered_id_errors() {
+        let (coordinator, _workers) = coordinator_with_idle_workers(1).await;
+        let err = coordinator.setup_aggregation_program("never-registered").await.unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::InvalidRequest(_)),
+            "expected InvalidRequest for unregistered id, got {:?}",
+            err
+        );
+    }
+
+    /// All sends failing must resolve the job as `Failed` immediately, not hang.
+    #[tokio::test]
+    async fn test_setup_aggregation_program_all_sends_fail() {
+        use crate::worker_handlers::MessageSender;
+
+        // Always-failing sender exercises the per-worker send-error branch.
+        struct FailingSender;
+        impl MessageSender for FailingSender {
+            fn send(&self, _msg: CoordinatorMessageDto) -> CoordinatorResult<()> {
+                Err(CoordinatorError::Internal("simulated transport failure".into()))
+            }
+        }
+
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        for i in 0..2 {
+            let wid = WorkerId::from(format!("agg-fail-{}", i));
+            coordinator
+                .workers_pool
+                .register_worker(wid, 1u32, Box::new(FailingSender), WorkerState::Ready)
+                .await
+                .unwrap();
+        }
+        coordinator
+            .register_aggregation_program("rid-fail".into(), dummy_aggregation_program_spec())
+            .await
+            .unwrap();
+
+        let job_id = coordinator.setup_aggregation_program("rid-fail").await.unwrap();
+
+        // Pending must be cleared and a terminal `Failed` event stashed.
+        assert!(
+            !coordinator.recurser_setup_pending.read().await.contains_key(&job_id),
+            "pending state must be cleared after all sends fail"
+        );
+        match coordinator.get_terminal_event(&job_id).await {
+            Some(CoordinatorJobEvent::Failed(reason)) => {
+                assert!(
+                    reason.contains("unreachable"),
+                    "expected 'unreachable' reason, got: {}",
+                    reason
+                );
+            }
+            other => panic!("expected stashed Failed event, got {:?}", other),
+        }
+    }
+
+    /// Late ack for an unknown job is an idempotent no-op (mirrors program-setup).
+    #[tokio::test]
+    async fn test_setup_aggregation_program_ack_after_terminal_is_noop() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        // No `recurser_setup_pending` entry for this job_id.
+        let ack = SetupAggregationProgramAckDto {
+            job_id: JobId::new().as_string(),
+            worker_id: w0.clone(),
+            recurser_id: "rid-x".into(),
+            success: true,
+            error_message: None,
+            vk: vec![1u8; 32],
+            hash_mode: "Poseidon1".to_string(),
+        };
+        coordinator.handle_stream_setup_aggregation_program_ack(ack).await.unwrap();
+
+        // Worker was Ready; nothing should flip it.
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+    }
+
+    /// Ack must not pre-empt the recovery handshake's flip back to Ready.
+    #[tokio::test]
+    async fn test_setup_aggregation_program_ack_respects_pending_recovery() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        // SettingUp + pending_recovery — the race the rule was added for.
+        coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::SettingUp).await.unwrap();
+        coordinator.pending_recovery.write().await.insert(w0.clone(), Utc::now());
+
+        let job_id = JobId::new();
+        coordinator.recurser_setup_pending.write().await.insert(
+            job_id.clone(),
+            RecurserSetupPendingState {
+                pending: [w0.clone()].into_iter().collect(),
+                vks: Vec::new(),
+                recurser_id: "rid-recover".into(),
+            },
+        );
+
+        let ack = SetupAggregationProgramAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            recurser_id: "rid-recover".into(),
+            success: true,
+            error_message: None,
+            vk: vec![1u8; 32],
+            hash_mode: "Poseidon1".to_string(),
+        };
+        coordinator.handle_stream_setup_aggregation_program_ack(ack).await.unwrap();
+
+        // Worker stays SettingUp; recovery owns the flip back to Ready.
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::SettingUp),);
+        assert!(coordinator.pending_recovery.read().await.contains_key(&w0));
+    }
+
+    /// Workers acking with different VKs must fire `Failed`, not `Completed`.
+    #[tokio::test]
+    async fn test_setup_aggregation_program_vk_mismatch_fails_job() {
+        let (coordinator, workers) = coordinator_with_idle_workers(2).await;
+        let (w0, w1) = (workers[0].0.clone(), workers[1].0.clone());
+
+        let job_id = JobId::new();
+        coordinator.alloc_job_events(&job_id).await;
+        coordinator.recurser_setup_pending.write().await.insert(
+            job_id.clone(),
+            RecurserSetupPendingState {
+                pending: [w0.clone(), w1.clone()].into_iter().collect(),
+                vks: Vec::new(),
+                recurser_id: "rid-mismatch".into(),
+            },
+        );
+
+        // Two workers, two different VKs.
+        let ack0 = SetupAggregationProgramAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            recurser_id: "rid-mismatch".into(),
+            success: true,
+            error_message: None,
+            vk: vec![0u8; 32],
+            hash_mode: "Poseidon1".to_string(),
+        };
+        let ack1 = SetupAggregationProgramAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w1.clone(),
+            recurser_id: "rid-mismatch".into(),
+            success: true,
+            error_message: None,
+            vk: vec![1u8; 32], // different
+            hash_mode: "Poseidon1".to_string(),
+        };
+        coordinator.handle_stream_setup_aggregation_program_ack(ack0).await.unwrap();
+        coordinator.handle_stream_setup_aggregation_program_ack(ack1).await.unwrap();
+
+        let terminal = coordinator.get_terminal_event(&job_id).await.expect("terminal stashed");
+        match terminal {
+            CoordinatorJobEvent::Failed(reason) => {
+                assert!(reason.contains("different VK"), "got: {}", reason);
+            }
+            other => panic!("expected Failed, got {:?}", other),
+        }
+        assert!(!coordinator.recurser_setup_pending.read().await.contains_key(&job_id));
+    }
+
+    /// Late ack on a Failed job must also park the worker Ready (mirror of
+    /// the Cancelled-terminal test).
+    #[tokio::test]
+    async fn test_run_aggregate_proofs_late_ack_on_failed_job_parks_ready() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        let mut job = create_test_job(std::slice::from_ref(&w0));
+        job.change_state(JobState::Failed);
+        let job_id = job.job_id.clone();
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.alloc_job_events(&job_id).await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0,
+                WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
+            )
+            .await
+            .unwrap();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: true,
+            error_message: None,
+            proof: vec![],
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    /// Late ack on a resolved job must park the worker Ready and not revive the job.
+    #[tokio::test]
+    async fn test_run_aggregate_proofs_late_ack_parks_worker_ready() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        // Already-resolved aggregate job.
+        let mut job = create_test_job(std::slice::from_ref(&w0));
+        job.change_state(JobState::Cancelled);
+        let job_id = job.job_id.clone();
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.alloc_job_events(&job_id).await;
+
+        // Worker still parked Computing as it would be mid-prove.
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0,
+                WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
+            )
+            .await
+            .unwrap();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: true,
+            error_message: None,
+            proof: vec![],
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Cancelled);
+    }
+
+    /// Resend emits one DTO per active spec with a fresh `job_id`.
+    #[tokio::test]
+    async fn test_read_all_recurser_setup_dtos_returns_active_specs() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+
+        // Register two specs, but only one is "active" (completed setup at least once).
+        coordinator
+            .register_aggregation_program("rid-active".into(), dummy_aggregation_program_spec())
+            .await
+            .unwrap();
+        coordinator
+            .register_aggregation_program(
+                "rid-registered-only".into(),
+                dummy_aggregation_program_spec(),
+            )
+            .await
+            .unwrap();
+        coordinator.active_recurser_setups.write().await.insert("rid-active".to_string());
+
+        let dtos = coordinator.read_all_recurser_setup_dtos().await;
+
+        assert_eq!(dtos.len(), 1, "only `active` setups should be re-sent");
+        assert_eq!(dtos[0].recurser_id, "rid-active");
+        // Fresh job_id — must not equal the empty string, must be a valid UUID-ish.
+        assert!(!dtos[0].job_id.is_empty(), "resend dto must carry a fresh job_id");
+    }
+
+    /// Pins the state-flip-before-pending-lookup ordering: a resend ack
+    /// (unknown job_id) must still flip SettingUp → Ready when recovery
+    /// isn't held, else the worker leaks.
+    #[tokio::test]
+    async fn test_resend_ack_flips_settingup_worker_ready_when_no_recovery() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        coordinator.workers_pool.mark_worker_with_state(&w0, WorkerState::SettingUp).await.unwrap();
+        assert!(!coordinator.pending_recovery.read().await.contains_key(&w0));
+
+        let ack = SetupAggregationProgramAckDto {
+            job_id: JobId::new().as_string(),
+            worker_id: w0.clone(),
+            recurser_id: "rid-resend".into(),
+            success: true,
+            error_message: None,
+            vk: vec![1u8; 32],
+            hash_mode: "Poseidon1".to_string(),
+        };
+        coordinator.handle_stream_setup_aggregation_program_ack(ack).await.unwrap();
+
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
+    }
+
+    /// Failure ack: job → Failed, worker → Ready, error message preserved verbatim.
+    #[tokio::test]
+    async fn test_run_aggregate_proofs_failure_ack_fails_job() {
+        let (coordinator, workers) = coordinator_with_idle_workers(1).await;
+        let w0 = workers[0].0.clone();
+
+        let mut job = create_test_job(std::slice::from_ref(&w0));
+        job.change_state(JobState::Running(JobPhase::Recurse));
+        let job_id = job.job_id.clone();
+        coordinator.jobs.write().await.insert(job_id.clone(), Arc::new(RwLock::new(job)));
+        coordinator.alloc_job_events(&job_id).await;
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &w0,
+                WorkerState::Computing((job_id.clone(), JobPhase::Recurse)),
+            )
+            .await
+            .unwrap();
+
+        let ack = RunAggregateProofsAckDto {
+            job_id: job_id.as_string(),
+            worker_id: w0.clone(),
+            success: false,
+            error_message: Some("blst overflow".into()),
+            proof: vec![],
+        };
+        coordinator.handle_stream_run_aggregate_proofs_ack(ack).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready),);
+        match coordinator.get_terminal_event(&job_id).await {
+            Some(CoordinatorJobEvent::Failed(reason)) => {
+                assert!(reason.contains("blst overflow"), "got: {}", reason);
+            }
+            other => panic!("expected Failed, got {:?}", other),
+        }
     }
 
     #[tokio::test]

@@ -34,6 +34,8 @@ message CoordinatorMessage {
     StreamData stream_data = 6;
     SetupProgram setup_program = 7;
     InputStreamData input_stream_data = 8;
+    SetupAggregationProgram setup_aggregation_program = 9;
+    RunAggregateProofs   run_aggregate_proofs   = 10;
   }
 }
 
@@ -48,6 +50,8 @@ message WorkerMessage {
     JobCancelledAck job_cancelled_ack = 6;
     SetupProgramAck setup_program_ack = 7;
     WorkerRecoveryComplete recovery_complete = 8;
+    SetupAggregationProgramAck setup_aggregation_program_ack = 9;
+    RunAggregateProofsAck   run_aggregate_proofs_ack   = 10;
   }
 }
 
@@ -72,6 +76,62 @@ message SetupProgramAck {
   string error_message = 5;
   bytes vk = 6;
   string hash_mode = 7;
+}
+
+// 4-limb Goldilocks verification key, decimal-encoded. Mirrors coordinator-api.
+message ProgramVk {
+  string l0 = 1;
+  string l1 = 2;
+  string l2 = 3;
+  string l3 = 4;
+}
+
+// One normalization group: a NormalizePublics circom body applied to the
+// leaf proofs of the member programs (indices into program_vks).
+message NormalizeGroup {
+  repeated uint64 member_indices   = 1;
+  string          body             = 2;
+  uint64          n_free_inputs    = 3;
+}
+
+message AggregationProgramSpec {
+  repeated ProgramVk      program_vks            = 1;
+  repeated NormalizeGroup normalize_groups       = 2;
+  string                  aggregate_publics_body = 3;
+}
+
+message SetupAggregationProgram {
+  string       job_id      = 1;
+  string       recurser_id = 2;
+  AggregationProgramSpec spec        = 3;
+}
+
+message SetupAggregationProgramAck {
+  string job_id        = 1;
+  string worker_id     = 2;
+  string recurser_id   = 3;
+  bool   success       = 4;
+  string error_message = 5;
+  bytes  vk            = 6; // 32 bytes = 4 u64 LE
+  string hash_mode     = 7;
+}
+
+message RunAggregateProofs {
+  string          job_id              = 1;
+  string          recurser_id         = 2;
+  bytes           proof_a             = 3; // bincode-serialized VadcopFinalProof
+  bytes           proof_b             = 4;
+  repeated uint64 free_inputs_a       = 5; // proof_a's normalization side inputs
+  repeated uint64 free_inputs_b       = 6; // proof_b's normalization side inputs
+  repeated uint64 root_c_recurser_agg = 7; // optional override; len 0 or 4
+}
+
+message RunAggregateProofsAck {
+  string job_id        = 1;
+  string worker_id     = 2;
+  bool   success       = 3;
+  string error_message = 4;
+  bytes  proof         = 5; // bincode-serialized SDK Proof
 }
 
 message JobCancelledAck {

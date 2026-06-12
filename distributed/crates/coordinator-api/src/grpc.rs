@@ -13,12 +13,12 @@ pub use proto::zisk_coordinator_api_client::ZiskCoordinatorApiClient;
 pub use proto::zisk_coordinator_api_server::{ZiskCoordinatorApi, ZiskCoordinatorApiServer};
 
 use crate::dto::{
-    DomainAirInstanceCount, DomainAsmExecution, DomainExecuteRequest, DomainExecutionStats,
-    DomainExecutorTime, DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
+    DomainAirInstanceCount, DomainAggregationProgramSpec, DomainAsmExecution, DomainExecuteRequest, DomainExecutionStats,
+    DomainExecutorTime, DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled, DomainNormalizeGroup, RegisterAggregationProgramResponseDto, DomainSetupAggregationProgramRequest,
+    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued, DomainAggregateProofsRequest,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
     DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    DomainProveRequest, DomainSetupRequest, DomainWrapRequest, RegisterGuestProgramRequestDto,
+    DomainProveRequest, DomainSetupRequest, DomainWrapRequest,  RegisterAggregationProgramRequestDto,RegisterGuestProgramRequestDto,
     RegisterGuestProgramResponseDto,
 };
 use anyhow::Result;
@@ -53,6 +53,81 @@ impl From<RegisterGuestProgramResponseDto> for RegisterGuestProgramResponse {
 impl From<RegisterGuestProgramResponse> for RegisterGuestProgramResponseDto {
     fn from(resp: RegisterGuestProgramResponse) -> Self {
         Self { hash_id: resp.hash_id }
+    }
+}
+
+impl From<DomainAggregationProgramSpec> for AggregationProgramSpec {
+    fn from(s: DomainAggregationProgramSpec) -> Self {
+        Self {
+            program_vks: s
+                .program_vks
+                .into_iter()
+                .map(|[l0, l1, l2, l3]| ProgramVk { l0, l1, l2, l3 })
+                .collect(),
+            normalize_groups: s
+                .normalize_groups
+                .into_iter()
+                .map(|g| NormalizeGroup {
+                    member_indices: g.member_indices,
+                    body: g.body,
+                    n_free_inputs: g.n_free_inputs,
+                })
+                .collect(),
+            aggregate_publics_body: s.aggregate_publics_body,
+        }
+    }
+}
+
+impl From<AggregationProgramSpec> for DomainAggregationProgramSpec {
+    fn from(s: AggregationProgramSpec) -> Self {
+        Self {
+            program_vks: s.program_vks.into_iter().map(|vk| [vk.l0, vk.l1, vk.l2, vk.l3]).collect(),
+            normalize_groups: s
+                .normalize_groups
+                .into_iter()
+                .map(|g| DomainNormalizeGroup {
+                    member_indices: g.member_indices,
+                    body: g.body,
+                    n_free_inputs: g.n_free_inputs,
+                })
+                .collect(),
+            aggregate_publics_body: s.aggregate_publics_body,
+        }
+    }
+}
+
+impl From<RegisterAggregationProgramRequestDto> for RegisterAggregationProgramRequest {
+    fn from(dto: RegisterAggregationProgramRequestDto) -> Self {
+        Self { recurser_id: dto.recurser_id, spec: Some(dto.spec.into()) }
+    }
+}
+
+impl tonic::IntoRequest<RegisterAggregationProgramRequest>
+    for RegisterAggregationProgramRequestDto
+{
+    fn into_request(self) -> tonic::Request<RegisterAggregationProgramRequest> {
+        tonic::Request::new(self.into())
+    }
+}
+
+impl TryFrom<RegisterAggregationProgramRequest> for RegisterAggregationProgramRequestDto {
+    type Error = String;
+
+    fn try_from(req: RegisterAggregationProgramRequest) -> std::result::Result<Self, Self::Error> {
+        let spec = req.spec.ok_or_else(|| "register_recurser.spec must be set".to_string())?;
+        Ok(Self { recurser_id: req.recurser_id, spec: spec.into() })
+    }
+}
+
+impl From<RegisterAggregationProgramResponseDto> for RegisterAggregationProgramResponse {
+    fn from(dto: RegisterAggregationProgramResponseDto) -> Self {
+        Self { recurser_id: dto.recurser_id }
+    }
+}
+
+impl From<RegisterAggregationProgramResponse> for RegisterAggregationProgramResponseDto {
+    fn from(resp: RegisterAggregationProgramResponse) -> Self {
+        Self { recurser_id: resp.recurser_id }
     }
 }
 
@@ -103,7 +178,7 @@ impl From<DomainJobPhase> for JobPhase {
         match phase {
             DomainJobPhase::Contributions => JobPhase::Contributions,
             DomainJobPhase::Prove => JobPhase::Prove,
-            DomainJobPhase::Aggregate => JobPhase::Aggregate,
+            DomainJobPhase::Recurse => JobPhase::Recurse,
         }
     }
 }
@@ -253,6 +328,36 @@ impl TryFrom<JobKind> for DomainJobKind {
                     execute_timeout,
                 }))
             }
+            job_kind::Kind::SetupAggregationProgram(r) => {
+                Ok(DomainJobKind::SetupAggregationProgram(DomainSetupAggregationProgramRequest {
+                    recurser_id: r.recurser_id,
+                }))
+            }
+            job_kind::Kind::AggregateProofs(r) => {
+                let root_c = if r.root_c_recurser_agg.is_empty() {
+                    None
+                } else if r.root_c_recurser_agg.len() == 4 {
+                    Some([
+                        r.root_c_recurser_agg[0],
+                        r.root_c_recurser_agg[1],
+                        r.root_c_recurser_agg[2],
+                        r.root_c_recurser_agg[3],
+                    ])
+                } else {
+                    return Err(format!(
+                        "aggregate_proofs.root_c_recurser_agg must be 0 or 4 limbs; got {}",
+                        r.root_c_recurser_agg.len()
+                    ));
+                };
+                Ok(DomainJobKind::AggregateProofs(DomainAggregateProofsRequest {
+                    recurser_id: r.recurser_id,
+                    proof_a: r.proof_a,
+                    proof_b: r.proof_b,
+                    free_inputs_a: r.free_inputs_a,
+                    free_inputs_b: r.free_inputs_b,
+                    root_c_recurser_agg: root_c,
+                }))
+            }
         }
     }
 }
@@ -284,6 +389,19 @@ impl From<DomainJobKind> for JobKind {
                 input: Some(InputKind::from(r.input)),
                 execute_timeout: r.execute_timeout.map(datetime_to_ts),
                 hints: r.hints.map(InputKind::from),
+            }),
+            DomainJobKind::SetupAggregationProgram(r) => {
+                Kind::SetupAggregationProgram(SetupAggregationProgramRequest {
+                    recurser_id: r.recurser_id,
+                })
+            }
+            DomainJobKind::AggregateProofs(r) => Kind::AggregateProofs(AggregateProofsRequest {
+                recurser_id: r.recurser_id,
+                proof_a: r.proof_a,
+                proof_b: r.proof_b,
+                free_inputs_a: r.free_inputs_a,
+                free_inputs_b: r.free_inputs_b,
+                root_c_recurser_agg: r.root_c_recurser_agg.map(|l| l.to_vec()).unwrap_or_default(),
             }),
         };
         JobKind { kind: Some(kind) }
@@ -338,6 +456,12 @@ impl From<DomainJobKindResponse> for JobKindResponse {
             }
             DomainJobKindResponse::Execute { stats, public_outputs } => {
                 Kind::Execute(ExecuteResponse { stats: Some(stats.into()), public_outputs })
+            }
+            DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode } => {
+                Kind::SetupAggregationProgram(SetupAggregationProgramResponse { vk, hash_mode })
+            }
+            DomainJobKindResponse::AggregateProofs(proof) => {
+                Kind::AggregateProofs(AggregateProofsResponse { proof: Some(proof.into()) })
             }
         };
         JobKindResponse { kind: Some(kind) }
@@ -488,7 +612,7 @@ impl TryFrom<i32> for DomainJobPhase {
         match JobPhase::try_from(value) {
             Ok(JobPhase::Contributions) => Ok(DomainJobPhase::Contributions),
             Ok(JobPhase::Prove) => Ok(DomainJobPhase::Prove),
-            Ok(JobPhase::Aggregate) => Ok(DomainJobPhase::Aggregate),
+            Ok(JobPhase::Recurse) => Ok(DomainJobPhase::Recurse),
             _ => Err(format!("invalid job phase: {value}")),
         }
     }
@@ -501,7 +625,7 @@ impl TryFrom<JobPhase> for DomainJobPhase {
         match phase {
             JobPhase::Contributions => Ok(DomainJobPhase::Contributions),
             JobPhase::Prove => Ok(DomainJobPhase::Prove),
-            JobPhase::Aggregate => Ok(DomainJobPhase::Aggregate),
+            JobPhase::Recurse => Ok(DomainJobPhase::Recurse),
             _ => Err(format!("invalid job phase: {:?}", phase)),
         }
     }
@@ -575,6 +699,19 @@ impl TryFrom<JobKindResponse> for DomainJobKindResponse {
             Kind::Execute(r) => {
                 let stats = r.stats.map(DomainExecutionStats::from).unwrap_or_default();
                 Ok(DomainJobKindResponse::Execute { stats, public_outputs: r.public_outputs })
+            }
+            Kind::SetupAggregationProgram(r) => {
+                Ok(DomainJobKindResponse::SetupAggregationProgram {
+                    vk: r.vk,
+                    hash_mode: r.hash_mode,
+                })
+            }
+            Kind::AggregateProofs(r) => {
+                let proof = r
+                    .proof
+                    .ok_or_else(|| "aggregate_proofs.proof must be set".to_string())?
+                    .try_into()?;
+                Ok(DomainJobKindResponse::AggregateProofs(proof))
             }
         }
     }

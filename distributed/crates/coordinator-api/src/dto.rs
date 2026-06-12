@@ -25,6 +25,35 @@ pub struct RegisterGuestProgramResponseDto {
     pub hash_id: String,
 }
 
+/// 4-limb Goldilocks verification key, decimal-encoded.
+pub type DomainProgramVk = [String; 4];
+
+/// One normalization group: a `NormalizePublics` circom body applied to the
+/// leaf proofs of the member programs (indices into `program_vks`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomainNormalizeGroup {
+    pub member_indices: Vec<u64>,
+    pub body: String,
+    pub n_free_inputs: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainAggregationProgramSpec {
+    pub program_vks: Vec<DomainProgramVk>,
+    pub normalize_groups: Vec<DomainNormalizeGroup>,
+    pub aggregate_publics_body: String,
+}
+
+pub struct RegisterAggregationProgramRequestDto {
+    /// SDK-computed content hash; the coordinator stores the spec under this key.
+    pub recurser_id: String,
+    pub spec: DomainAggregationProgramSpec,
+}
+
+pub struct RegisterAggregationProgramResponseDto {
+    pub recurser_id: String,
+}
+
 /// Result of [`submit_job`] — the coordinator-assigned job ID plus any
 /// stream URIs allocated by the coordinator for auto-negotiated transports.
 #[derive(Debug, Clone)]
@@ -53,7 +82,7 @@ impl From<zisk_common::ProofKind> for DomainProofKind {
 pub enum DomainJobPhase {
     Contributions,
     Prove,
-    Aggregate,
+    Recurse,
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +114,8 @@ pub enum DomainJobKind {
     Prove(DomainProveRequest),
     Wrap(DomainWrapRequest),
     Execute(DomainExecuteRequest),
+    SetupAggregationProgram(DomainSetupAggregationProgramRequest),
+    AggregateProofs(DomainAggregateProofsRequest),
 }
 
 /// Optional compute capacity hint attached to a job request.
@@ -125,6 +156,22 @@ pub struct DomainExecuteRequest {
     pub input: DomainInputKind,
     pub hints: Option<DomainInputKind>,
     pub execute_timeout: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainSetupAggregationProgramRequest {
+    pub recurser_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct DomainAggregateProofsRequest {
+    pub recurser_id: String,
+    /// bincode-serialized VadcopFinalProof.
+    pub proof_a: Vec<u8>,
+    pub proof_b: Vec<u8>,
+    pub free_inputs_a: Vec<u64>,
+    pub free_inputs_b: Vec<u64>,
+    pub root_c_recurser_agg: Option<[u64; 4]>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -172,6 +219,8 @@ pub enum DomainJobKindResponse {
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },
+    SetupAggregationProgram { vk: Vec<u8>, hash_mode: String },
+    AggregateProofs(DomainProof),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

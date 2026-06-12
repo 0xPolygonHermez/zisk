@@ -396,25 +396,31 @@ impl PublicValues {
 ///
 /// The Plonk vkey blob is boxed so the enum doesn't carry ~880 bytes of inline Plonk
 /// vkey strings on the Vadcop variant — Vadcop is the common case and most-cloned.
+/// Each body variant owns its public values in the only form it can represent,
+/// so there is a single source of truth and no possibility of desync:
+///
+/// - `Vadcop` carries the FULL-WIDTH (u64) publics `[program_vk(4)][user(ZISK_PUBLICS)]`.
+///   These are genuine Goldilocks field elements; a recurser's in-circuit hash
+///   digest exceeds 32 bits. The recursion/aggregation round-trip must feed the
+///   next fold the *exact* field elements the proof committed to, or the inner
+///   StarkVerifier's transcript diverges (vA.VerifyPoW fails). The u32
+///   `PublicValues` view (used by the guest API and Solidity encoding) is
+///   *derived* from these on demand via [`Proof::publics`].
+/// - `Plonk` wraps a proof for on-chain verification; its publics only ever
+///   exist in the u32 `PublicValues` form, so it stores exactly that.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProofBody {
-    /// Vadcop proof variant.
     Vadcop {
-        /// The proof data as a vector of u64 values.
         proof: Vec<u64>,
-        /// The Zisk verification key as a vector of u64 values.
         zisk_vk: Vec<u64>,
-        /// Indicates whether the proof is minimal.
         minimal: bool,
-        /// Proof hash.
         hash: String,
+        publics_full: Vec<u64>,
     },
-    /// Plonk proof variant.
     Plonk {
-        /// The proof data as a vector of bytes.
         proof_bytes: Vec<u8>,
-        /// The Plonk verification key.
         plonk_vk: Box<PlonkVkBlob>,
+        publics: PublicValues,
     },
 }
 
@@ -425,6 +431,7 @@ impl Default for ProofBody {
             zisk_vk: vec![0u64; PROGRAM_VK_LEN],
             minimal: false,
             hash: String::new(),
+            publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
         }
     }
 }
@@ -434,9 +441,6 @@ impl Default for ProofBody {
 pub struct Proof {
     /// The data of the proof.
     pub body: ProofBody,
-    /// The public values associated with the proof.
-    pub publics: PublicValues,
-    /// The program verification key associated with the proof.
     pub program_vk: ProgramVK,
 }
 
@@ -489,11 +493,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
     /// This method uses the overridden values if provided, otherwise falls back
     /// to the values stored in the proof.
     pub fn verify(self) -> Result<()> {
-        let publics = self.override_publics.unwrap_or(&self.proof_with_values.publics);
+        let derived_publics = self.proof_with_values.publics();
+        let publics = self.override_publics.unwrap_or(&derived_publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
 
         match &self.proof_with_values.body {
-            ProofBody::Plonk { proof_bytes, plonk_vk } => {
+            ProofBody::Plonk { proof_bytes, plonk_vk, .. } => {
                 let pubs = publics.bytes_solidity(program_vk, &plonk_vk.vadcop_vk);
                 let hash = Sha256::digest(&pubs).to_vec();
 
@@ -541,7 +546,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 })?;
                 Ok(())
             }
-            ProofBody::Vadcop { proof, zisk_vk, minimal, hash } => {
+            ProofBody::Vadcop { proof, zisk_vk, minimal, hash, .. } => {
                 let minimal = *minimal;
 
                 if program_vk.hash_mode.as_str() != hash {
@@ -588,9 +593,31 @@ impl<'a> ZiskVerifyBuilder<'a> {
 }
 
 impl Proof {
-    /// Creates a new `Proof` instance with the provided body, public values, and program verification key.
-    pub fn new(body: ProofBody, publics: PublicValues, program_vk: ProgramVK) -> Self {
-        Self { body, publics, program_vk }
+    pub fn new(body: ProofBody, program_vk: ProgramVK) -> Self {
+        Self { body, program_vk }
+    }
+
+    /// The u32 `PublicValues` view, derived from the body's native publics.
+    ///
+    /// For `Vadcop`, this truncates each full-width public to its low 32 bits
+    /// (the guest/Solidity ABI). For `Plonk`, the stored u32 publics are
+    /// returned as-is. This is the single derivation point, so the u32 view can
+    /// never disagree with the underlying source of truth.
+    pub fn publics(&self) -> PublicValues {
+        match &self.body {
+            ProofBody::Vadcop { publics_full, .. } => PublicValues::new_from_u64(publics_full),
+            ProofBody::Plonk { publics, .. } => publics.clone(),
+        }
+    }
+
+    /// The full-width (u64) publics `[program_vk(4)][user(ZISK_PUBLICS)]` for a
+    /// Vadcop proof — the untruncated field elements the proof committed to.
+    /// Used by the recursion round-trip; `None` for Plonk (no u64 form exists).
+    pub fn publics_full(&self) -> Option<&[u64]> {
+        match &self.body {
+            ProofBody::Vadcop { publics_full, .. } => Some(publics_full),
+            ProofBody::Plonk { .. } => None,
+        }
     }
 
     /// Derive the `ProofKind` from the body discriminant.
@@ -651,10 +678,17 @@ impl Proof {
     /// Extract a `VadcopFinalProof` from the proof body.
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.body {
-            ProofBody::Vadcop { proof, minimal, hash, .. } => {
-                let mut pubs_u64 = self.program_vk.vk.clone();
-                pubs_u64.extend(self.publics.public_u64());
-                Ok(VadcopFinalProof::new(proof.clone(), pubs_u64, *minimal, hash.clone()))
+            ProofBody::Vadcop { proof, minimal, hash, publics_full, .. } => {
+                // The full-width publics are the recursion source of truth: the
+                // next fold re-verifies against the exact field elements the
+                // proof committed to (the u32 view would drop high bits and
+                // break re-verification).
+                Ok(VadcopFinalProof::new(
+                    proof.clone(),
+                    publics_full.clone(),
+                    *minimal,
+                    hash.clone(),
+                ))
             }
             ProofBody::Plonk { .. } => {
                 Err(CommonError::InvalidProof("Proof is not a Vadcop final proof".to_string()))
@@ -681,7 +715,7 @@ impl Proof {
                     )));
                 }
 
-                let publics = self.publics.public_u64();
+                let publics = self.publics().public_u64();
                 let n_publics = self.program_vk.vk.len() + publics.len();
 
                 // Format: [minimal(1)][n_publics(1)][program_vk][publics][proof][zisk_vk]
@@ -711,9 +745,8 @@ impl Proof {
         Ok(bytes)
     }
 
-    /// Get a reference to the public values associated with this proof.
-    pub fn get_publics(&self) -> &PublicValues {
-        &self.publics
+    pub fn get_publics(&self) -> PublicValues {
+        self.publics()
     }
 
     /// Get a reference to the program verification key associated with this proof.
@@ -759,13 +792,20 @@ impl Proof {
                 CommonError::InvalidProof(format!("Failed to parse Vadcop proof: {}", e))
             })?;
 
+        let program_vk =
+            ProgramVK::new_from_publics_with_mode(&vadcop_proof.public_values, hash_mode);
+
         Ok(Self {
-            body: ProofBody::Vadcop { proof: vadcop_proof.proof, zisk_vk, minimal, hash },
-            publics: PublicValues::new_from_u64(&vadcop_proof.public_values),
-            program_vk: ProgramVK::new_from_publics_with_mode(
-                &vadcop_proof.public_values,
-                hash_mode,
-            ),
+            body: ProofBody::Vadcop {
+                proof: vadcop_proof.proof,
+                zisk_vk,
+                minimal,
+                hash,
+                // Full-width publics are the source of truth; the u32 view is
+                // derived on demand via `Proof::publics`.
+                publics_full: vadcop_proof.public_values,
+            },
+            program_vk,
         })
     }
 
@@ -832,8 +872,8 @@ mod tests {
                 zisk_vk: vec![0u64; PROGRAM_VK_LEN],
                 minimal: true,
                 hash: "Poseidon2".to_string(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
-            PublicValues::new_empty(),
             ProgramVK::new_empty(),
         )
         .verify();
@@ -849,8 +889,8 @@ mod tests {
                 zisk_vk: vec![0u64; PROGRAM_VK_LEN],
                 minimal: false,
                 hash: "Poseidon2".to_string(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
-            PublicValues::new_empty(),
             ProgramVK::new_empty(),
         )
         .verify();
@@ -867,8 +907,8 @@ mod tests {
                 zisk_vk: vec![10, 20, 30, 40],
                 minimal: true,
                 hash: "Poseidon2".to_string(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
-            PublicValues::new_empty(),
             ProgramVK::new_from_publics(&[7, 8, 9, 10]),
         );
 
@@ -878,7 +918,7 @@ mod tests {
 
         assert_eq!(loaded.kind(), ProofKind::VadcopFinalMinimal);
         match loaded.body {
-            ProofBody::Vadcop { proof, zisk_vk, minimal, hash } => {
+            ProofBody::Vadcop { proof, zisk_vk, minimal, hash, .. } => {
                 assert_eq!(proof, vec![1, 2, 3, 4]);
                 assert_eq!(zisk_vk, vec![10, 20, 30, 40]);
                 assert!(minimal);
@@ -897,8 +937,8 @@ mod tests {
                 zisk_vk: vec![],
                 minimal: false,
                 hash: "Poseidon2".to_string(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
-            PublicValues::new_empty(),
             ProgramVK::new_empty(),
         );
         assert_eq!(vadcop.kind(), ProofKind::VadcopFinal);
@@ -910,8 +950,8 @@ mod tests {
                 zisk_vk: vec![],
                 minimal: true,
                 hash: "Poseidon2".to_string(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
-            PublicValues::new_empty(),
             ProgramVK::new_empty(),
         );
         assert_eq!(minimal.kind(), ProofKind::VadcopFinalMinimal);
