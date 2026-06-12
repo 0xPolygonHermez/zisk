@@ -59,8 +59,7 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
     }
 
     /// Reserve proofman's unified GPU buffer for the MO count-and-plan window.
-    /// Returns a [`GpuBufferGuard`] that releases the reservation on drop
-
+    /// Returns a [`GpuBufferGuard`] that releases the reservation on drop.
     #[inline]
     pub fn acquire_gpu_buffer(&self) -> GpuBufferGuard<'_, 'a, F> {
         self.pctx.acquire_first_gpu_buffer();
