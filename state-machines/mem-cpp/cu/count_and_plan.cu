@@ -1513,8 +1513,9 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
         CUDA_CHECK(cudaEventRecord(e_after_preproc_, 0));
 
         // Pull per-chunk mem-align counters back to host (only the touched
-        // range; max 8192 * 20 B = 160 KB). Streams are already synced above,
-        // so a plain synchronous memcpy is fine.
+        // range; max MAX_CHUNKS * sizeof(ChunkCounters), well under 1 MB).
+        // Streams are already synced above, so a plain synchronous memcpy is
+        // fine.
         if (h_chunk_counters_per_chunk_ && d_chunk_counters_per_chunk_) {
             CUDA_CHECK(cudaMemcpy(
                 h_chunk_counters_per_chunk_,
