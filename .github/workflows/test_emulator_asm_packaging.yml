@@ -1,0 +1,44 @@
+name: Emulator-asm packaging
+
+# Checks that the release tarball stages everything an installed worker needs to
+# build emulator-asm at runtime (lib-c headers + prebuilt libziskc.a). Runs
+# release.yml's real staging step, then the worker's `make`. Linux only.
+# Triggers on PRs touching that chain; also dispatchable manually.
+
+on:
+  pull_request:
+    paths:
+      - 'lib-c/**'
+      - 'emulator-asm/Makefile'
+      - 'rom-setup/src/asm_setup.rs'
+      - '.github/workflows/release.yml'
+      - 'tools/test-env/test_emulator_asm_packaging.sh'
+      - '.github/workflows/test_emulator_asm_packaging.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: packaging (linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          cd tools/test-env
+          ./install_deps.sh
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Run emulator-asm packaging test
+        shell: bash
+        run: ./tools/test-env/test_emulator_asm_packaging.sh
