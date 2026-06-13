@@ -36,10 +36,11 @@ python3 -c 'import yaml' 2>/dev/null \
 # Build the artifacts the staged step copies and the test exercises: ziskclib +
 # lib-c (libziskclib.a / libziskc.a) and riscv2zisk (used to generate emu.asm).
 step "Building libziskclib.a + libziskc.a + riscv2zisk"
-cargo build --release -p ziskclib -p lib-c -p zisk-core --bin riscv2zisk --manifest-path "$REPO/Cargo.toml" \
+cargo build --release -p ziskclib -p lib-c -p zisk-core --bin riscv2zisk \
+  --manifest-path "$REPO/Cargo.toml" \
   || fail "cargo build of ziskclib/lib-c/riscv2zisk failed"
 [[ -f "$REPO/target/zisk-libs/libziskc.a" ]] \
-  || fail "libziskc.a not at target/zisk-libs — lib-c build.rs did not publish it"
+  || fail "libziskc.a not at target/zisk-libs (run: cargo clean --release -p lib-c, then retry)"
 
 step "Running release.yml's 'Copy binaries' step (the staging under test)"
 SCRIPT="$(python3 - "$RELEASE_YML" <<'PY'
@@ -53,13 +54,19 @@ sys.exit("could not find 'Copy binaries' step in release.yml")
 PY
 )" || fail "failed to extract 'Copy binaries' step from release.yml"
 
-# Run the step in a sandbox: stubs for the release binaries we don't build, real
-# symlinks for the trees whose staging we verify. TARGET="" collapses the step's
+# Run the step in a sandbox. TARGET="" collapses the step's
 # target/${TARGET}/release path onto the local target/release.
 SANDBOX="$WORK/repo"
 mkdir -p "$SANDBOX/target/release"
-for b in cargo-zisk cargo-zisk-dev zisk-worker ziskemu zisk-coordinator riscv2zisk libziskclib.a; do
-  cp "$REPO/target/release/$b" "$SANDBOX/target/release/" 2>/dev/null || : > "$SANDBOX/target/release/$b"
+
+cp "$REPO/target/release/riscv2zisk" "$SANDBOX/target/release/" \
+  || fail "riscv2zisk not built at target/release/riscv2zisk"
+ZCLIB="$REPO/target/release/libziskclib.a"
+[[ -f "$ZCLIB" ]] || ZCLIB="$(find "$REPO/target/release/deps" -maxdepth 1 -name 'libziskclib-*.a' -print -quit 2>/dev/null)"
+[[ -n "$ZCLIB" && -f "$ZCLIB" ]] || fail "libziskclib.a not built (cargo build -p ziskclib didn't produce it)"
+cp "$ZCLIB" "$SANDBOX/target/release/libziskclib.a"
+for b in cargo-zisk cargo-zisk-dev zisk-worker ziskemu zisk-coordinator; do
+  : > "$SANDBOX/target/release/$b"
 done
 ln -s "$REPO/target/zisk-libs" "$SANDBOX/target/zisk-libs"
 ln -s "$REPO/emulator-asm"     "$SANDBOX/emulator-asm"
