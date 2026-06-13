@@ -7,16 +7,28 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, AsmOptions, EmbeddedClientBuilder, GuestProgram, VerboseMode};
 
 use super::validate_setup_asm;
-use crate::common::{resolve_elf, ElfSelectorArgs};
+use crate::commands::user::recurser_common::resolve_recurser;
+use crate::common::{resolve_elf, ElfSelectorArgs, Profile};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
-/// Generate the proving setup for a guest program locally
+/// Generate the proving setup for a guest or aggregation program locally
 pub(crate) struct ZiskEmbeddedSetup {
-    /// Path to the guest ELF file. If omitted, the ELF is auto-detected from the current project
-    #[arg(short = 'e', long)]
+    /// Path to the guest ELF file. If omitted (and no `--aggregation`), the ELF
+    /// is auto-detected from the current project
+    #[arg(short = 'e', long, conflicts_with = "aggregation")]
     elf: Option<PathBuf>,
+
+    /// Aggregation definition (`<programs>/aggregations/<name>.toml`) to set up
+    /// as a recurser instead of a guest ELF. The referenced guest programs must
+    /// already be built (`cargo build` of the host crate). Artifacts go to the
+    /// SDK-managed `~/.zisk/recurser/<recurser-id>`.
+    #[arg(
+        long,
+        conflicts_with_all = ["bin", "asm", "hints", "proving_key_plonk", "unlock_mapped_memory"]
+    )]
+    aggregation: Option<PathBuf>,
 
     #[command(flatten)]
     selector: ElfSelectorArgs,
@@ -48,6 +60,30 @@ pub(crate) struct ZiskEmbeddedSetup {
 
 impl ZiskEmbeddedSetup {
     pub(crate) fn run(&mut self) -> Result<()> {
+        if let Some(aggregation) = self.aggregation.take() {
+            print_banner();
+            print_banner_command(format!("{} Setup", "EMBEDDED".bold()));
+            print_banner_field("Aggregation", aggregation.display());
+            println!();
+
+            setup_logger(VerboseMode::from(self.verbose));
+
+            let agg = resolve_recurser(&aggregation, self.selector.profile() == Profile::Release)?;
+            info!("Recurser ID: {}", agg.recurser_id());
+
+            let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);
+            if let Some(pk) = &self.proving_key {
+                builder = builder.proving_key(pk.clone());
+            }
+            let client = builder.build()?;
+
+            client.setup(&agg).run_sync()?;
+
+            info!("{}", "--- SETUP SUMMARY -------------".bright_green().bold());
+            info!("Setup completed for recurser ID: {}", agg.recurser_id());
+            return Ok(());
+        }
+
         let elf = resolve_elf(self.elf.take(), self.selector.profile(), self.selector.bin())?;
         validate_setup_asm(self.asm)?;
 
