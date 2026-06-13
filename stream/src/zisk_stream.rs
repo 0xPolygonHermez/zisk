@@ -8,6 +8,7 @@ use std::thread::{self, JoinHandle};
 
 use crate::{StreamRead, StreamSource};
 
+/// A trait for processing precompile hints from a stream source.
 pub trait StreamProcessor: Send + Sync + 'static {
     /// Process a batch of hint data.
     ///
@@ -15,6 +16,7 @@ pub trait StreamProcessor: Send + Sync + 'static {
     /// `true` if CTRL_END was encountered (signals end of stream), `false` otherwise.
     fn process_hints(&self, data: &[u64], first_batch: bool) -> Result<bool>;
 
+    /// Reset the processor state, if applicable.
     fn reset(&self) {}
 }
 
@@ -27,8 +29,10 @@ pub trait StreamProcessor: Send + Sync + 'static {
 /// * `Ok(())` - If hints were successfully submitted
 /// * `Err` - If submission fails
 pub trait StreamSink: Send + Sync + 'static {
+    /// Submit processed hints to the sink.
     fn submit(&self, processed: &[u64]) -> Result<()>;
 
+    /// Reset the sink state, if applicable.
     fn reset(&self) {}
 }
 
@@ -157,6 +161,7 @@ impl<P: StreamProcessor> ZiskStream<P> {
         Ok(())
     }
 
+    /// Reset the ZiskStream state, stopping any background thread and resetting the processor.
     pub fn reset(&mut self) {
         self.hints_processor.reset();
         self.initialized.store(false, Ordering::SeqCst);
@@ -193,10 +198,12 @@ impl<P: StreamProcessor> ZiskStream<P> {
         }
     }
 
+    /// Check if the ZiskStream has been initialized with a stream source.
     pub fn is_initialized(&self) -> bool {
         self.initialized.load(Ordering::SeqCst)
     }
 
+    /// Get a reference to the hints processor.
     pub fn get_processor(&self) -> Arc<P> {
         Arc::clone(&self.hints_processor)
     }

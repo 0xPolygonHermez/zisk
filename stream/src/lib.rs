@@ -15,6 +15,10 @@
 //! - **`quic`**: adds the QUIC transport (pulls in `quinn` + `tokio` + `rustls`).
 //!   Enabled by `zisk-common`; left off by `ziskos`.
 
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
+
 mod channel;
 mod error;
 mod file;

@@ -6,12 +6,18 @@ use crate::{
 
 use crate::error::{Result, StreamError};
 
+/// A multiplexer over multiple stream sources.
 pub enum StreamSource {
+    /// File-based stream source.
     File(FileStreamReader),
+    /// Unix socket-based stream source.
     UnixSocket(UnixSocketStreamReader),
+    /// QUIC-based stream source.
     #[cfg(feature = "quic")]
     Quic(QuicStreamReader),
+    /// Memory-based stream source.
     Memory(MemoryStreamReader),
+    /// Channel-based stream source.
     Channel(ChannelStreamReader),
 }
 

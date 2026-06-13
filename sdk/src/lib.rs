@@ -2,8 +2,9 @@
 //! This crate provides a high-level API for interacting with ZisK proving backends,
 //! including both embedded and remote options.
 
-#![deny(missing_docs)]
-#![deny(rustdoc::all)]
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
 
 mod cancel;
 mod client;

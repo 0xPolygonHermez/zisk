@@ -16,17 +16,22 @@ use crate::{StreamRead, StreamWrite};
 /// Errors specific to Unix socket operations
 const MAX_MESSAGE_SIZE: usize = 128 * 1024;
 
+/// A Unix domain socket implementation of StreamRead using SOCK_SEQPACKET.
 #[derive(Debug, thiserror::Error)]
 pub enum UnixSocketError {
+    /// No client has connected yet. The writer is listening but no reader has connected.
     #[error("No client connected yet")]
     NoClientConnected,
 
+    /// The socket is not connected. This can happen if the writer has not accepted a connection yet.
     #[error("Socket not connected")]
     NotConnected,
 
+    /// The message size exceeds the maximum allowed size for SOCK_SEQPACKET.
     #[error("Message size {0} exceeds SOCK_SEQPACKET limit of {MAX_MESSAGE_SIZE} bytes")]
     MessageTooLarge(usize),
 
+    /// Failed to create or bind the socket.
     #[error("Failed to write to socket: {0}")]
     WriteFailed(#[from] std::io::Error),
 }

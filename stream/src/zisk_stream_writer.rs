@@ -237,14 +237,17 @@ impl ZiskStreamWriter {
 
     // ── Accessors ──────────────────────────────────────────────────────────
 
+    /// Get the URI associated with this writer.
     pub fn uri(&self) -> &str {
         &self.inner.uri
     }
 
+    /// Get a flag indicating whether this writer is using an externally-managed transport.
     pub fn is_external(&self) -> bool {
         self.inner.tag == TransportTag::External
     }
 
+    /// Get a flag indicating whether this writer is using a push transport.
     pub fn is_push(&self) -> bool {
         self.inner.tag == TransportTag::Push
     }

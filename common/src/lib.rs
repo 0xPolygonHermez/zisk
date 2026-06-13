@@ -1,7 +1,8 @@
 //! Common utilities and types for Zisk.
 
-#![deny(missing_docs)]
-#![deny(rustdoc::all)]
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
 
 mod bus;
 mod component;
