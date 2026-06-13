@@ -132,8 +132,6 @@ jobs:
             mkdir -p zisk-dist/zisk/lib-c/c
             cp -r ./lib-c/c/src                                    zisk-dist/zisk/lib-c/c/
             cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm
-            mkdir -p zisk-dist/zisk/target/zisk-libs
-            cp ./target/zisk-libs/libziskc.a                       zisk-dist/zisk/target/zisk-libs/
             cp ./target/zisk-libs/libziskc.a                       zisk-dist/bin/
           fi
 

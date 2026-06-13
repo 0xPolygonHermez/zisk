@@ -81,8 +81,8 @@ ln -s "$REPO/ziskup"       "$SANDBOX/ziskup"
 ( cd "$SANDBOX" && export TARGET="" PLATFORM_NAME="linux" ARCH="amd64" && eval "$SCRIPT" ) \
   || fail "release.yml 'Copy binaries' step failed to execute"
 DIST="$SANDBOX/zisk-dist"
-[[ -f "$DIST/zisk/target/zisk-libs/libziskc.a" ]] \
-  || fail "release.yml did NOT stage libziskc.a into zisk/target/zisk-libs"
+[[ -f "$DIST/bin/libziskc.a" ]] \
+  || fail "release.yml did NOT stage libziskc.a into bin/ (the installed worker links it via -L../../bin)"
 
 # Use the riscv2zisk the step STAGED (zisk-dist/bin), matching the installed
 # worker and confirming release.yml ships a runnable one.

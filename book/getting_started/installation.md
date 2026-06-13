@@ -134,6 +134,7 @@ To install the PLONK proving key (provingKeySnark), run:
     ```bash
     mkdir -p $HOME/.zisk/bin
     cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/zisk-coordinator target/release/zisk-worker target/release/libziskclib.a $HOME/.zisk/bin
+    cp target/zisk-libs/libziskc.a $HOME/.zisk/bin
     ```
 
 4. Copy required files for assembly rom setup:
@@ -144,7 +145,8 @@ To install the PLONK proving key (provingKeySnark), run:
     mkdir -p $HOME/.zisk/zisk/emulator-asm
     cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
     cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
-    cp -r ./lib-c $HOME/.zisk/zisk
+    mkdir -p $HOME/.zisk/zisk/lib-c/c
+    cp -r ./lib-c/c/src $HOME/.zisk/zisk/lib-c/c
     ```
 
 5. Add `~/.zisk/bin` to your system PATH:
