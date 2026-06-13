@@ -10,12 +10,14 @@
 //! Where `<n>...` is the input as a space-separated list of u64 values.
 //! Defaults to `[5, 11, 18, 23, 45]` when no argument is provided.
 
-use primes_common::{is_prime, rkyv, InputZeroCopyDTO};
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use std::error::Error;
+
+use primes_common::{InputZeroCopyDTO, is_prime, rkyv};
+use zisk_sdk::{GuestProgram, ProverClient, ZiskStdin, load_program};
 
 static PROGRAM: GuestProgram = load_program!("slice-guest");
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Obtaining external input or setting the default one and parsing flags for prover configuration.
     let (values, asm, gpu): (Vec<u64>, _, _) = examples_utils::parse_args(vec![5, 11, 18, 23, 45]);
     let input = InputZeroCopyDTO { values };

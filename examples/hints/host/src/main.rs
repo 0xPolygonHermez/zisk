@@ -1,8 +1,8 @@
-use anyhow::Result;
+use std::error::Error;
 use zisk_sdk::{ExecutorKind, GuestProgram, ProverClient, ZiskHints, ZiskStdin};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");
 
     let elf_path = "hints/example/zec-reth.elf";

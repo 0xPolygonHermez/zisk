@@ -10,13 +10,15 @@
 //! Where `<n>...` is the input as a space-separated list of u64 values.
 //! Defaults to `[5, 11, 18, 23, 45]` when no argument is provided.
 
+use std::error::Error;
+
 use primes_common::is_prime;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStream};
+use zisk_sdk::{GuestProgram, ProverClient, ZiskStream, load_program};
 
 static PROGRAM: GuestProgram = load_program!("multiple-guest");
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     // Obtaining external input or setting the default one and parsing flags for prover configuration.
     let (input, _asm, gpu): (Vec<u64>, _, _) = examples_utils::parse_args(vec![5, 11, 18, 23, 45]);
 

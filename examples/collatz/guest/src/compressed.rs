@@ -10,7 +10,7 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use collatz_common::{collatz, hex, Digest, Hash, Sha256};
+use collatz_common::{Digest, Hash, Sha256, collatz, hex};
 
 fn main() {
     // Read the starting value from the guest's standard input stream.

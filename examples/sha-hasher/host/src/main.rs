@@ -1,9 +1,9 @@
-use anyhow::Result;
 use sha_hasher_host::ELF_SHA_HASHER;
+use std::error::Error;
 use zisk_sdk::{ExecutorKind, ProverClient, ZiskStream};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     let client = ProverClient::remote("http://127.0.0.1:7000").build()?;
 
     client.upload(&ELF_SHA_HASHER).run()?;
