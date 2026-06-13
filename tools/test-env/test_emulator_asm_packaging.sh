@@ -36,11 +36,15 @@ python3 -c 'import yaml' 2>/dev/null \
 # Build the artifacts the staged step copies and the test exercises: ziskclib +
 # lib-c (libziskclib.a / libziskc.a) and riscv2zisk (used to generate emu.asm).
 step "Building libziskclib.a + libziskc.a + riscv2zisk"
-cargo build --release -p ziskclib -p lib-c -p zisk-core --bin riscv2zisk \
-  --manifest-path "$REPO/Cargo.toml" \
-  || fail "cargo build of ziskclib/lib-c/riscv2zisk failed"
-[[ -f "$REPO/target/zisk-libs/libziskc.a" ]] \
-  || fail "libziskc.a not at target/zisk-libs (run: cargo clean --release -p lib-c, then retry)"
+cargo build --release -p ziskclib -p lib-c --manifest-path "$REPO/Cargo.toml" \
+  || fail "cargo build of ziskclib/lib-c failed"
+cargo build --release -p zisk-core --bin riscv2zisk --manifest-path "$REPO/Cargo.toml" \
+  || fail "cargo build of riscv2zisk failed"
+
+ZISKC="$REPO/target/zisk-libs/libziskc.a"
+[[ -f "$ZISKC" ]] || ZISKC="$(find "$REPO/target/release/build" -path '*lib-c-*/out/lib/libziskc.a' -print -quit 2>/dev/null)"
+[[ -n "$ZISKC" && -f "$ZISKC" ]] \
+  || fail "libziskc.a not built — lib-c build.rs did not produce it"
 
 step "Running release.yml's 'Copy binaries' step (the staging under test)"
 SCRIPT="$(python3 - "$RELEASE_YML" <<'PY'
@@ -68,10 +72,11 @@ cp "$ZCLIB" "$SANDBOX/target/release/libziskclib.a"
 for b in cargo-zisk cargo-zisk-dev zisk-worker ziskemu zisk-coordinator; do
   : > "$SANDBOX/target/release/$b"
 done
-ln -s "$REPO/target/zisk-libs" "$SANDBOX/target/zisk-libs"
-ln -s "$REPO/emulator-asm"     "$SANDBOX/emulator-asm"
-ln -s "$REPO/lib-c"            "$SANDBOX/lib-c"
-ln -s "$REPO/ziskup"           "$SANDBOX/ziskup"
+mkdir -p "$SANDBOX/target/zisk-libs"
+cp "$ZISKC" "$SANDBOX/target/zisk-libs/libziskc.a"
+ln -s "$REPO/emulator-asm" "$SANDBOX/emulator-asm"
+ln -s "$REPO/lib-c"        "$SANDBOX/lib-c"
+ln -s "$REPO/ziskup"       "$SANDBOX/ziskup"
 
 ( cd "$SANDBOX" && export TARGET="" PLATFORM_NAME="linux" ARCH="amd64" && eval "$SCRIPT" ) \
   || fail "release.yml 'Copy binaries' step failed to execute"
