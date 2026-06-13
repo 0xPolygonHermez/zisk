@@ -1,8 +1,8 @@
-use anyhow::Result;
 use sha_hasher_host::ELF_SHA_HASHER;
+use std::error::Error;
 use zisk_sdk::{ProfilingMode, ZiskStdin};
 
-fn main() -> Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     let n = 1000u32;
     let stdin = ZiskStdin::new();
     stdin.write(&n);

@@ -4,13 +4,16 @@ use serde::Serialize;
 use std::path::Path;
 
 use crate::input_stream::ZiskStream;
+use crate::{Result, SdkError};
 
 /// Source of hints for a guest program execution or proof.
 ///
 /// - `Hints(ZiskHints)` — inline hints data (memory or file)
 /// - `Stream(ZiskStream)` — hints delivered via a live gRPC stream
 pub enum HintsSource {
+    /// Inline hints data, either from memory or a file.
     Hints(Box<ZiskHints>),
+    /// Streamed hints.
     Stream(Box<ZiskStream>),
 }
 
@@ -56,12 +59,15 @@ impl ZiskHints {
     ///
     /// # Errors
     /// Returns an error if the file does not exist or is not accessible.
-    pub fn from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         if !path.exists() {
-            anyhow::bail!("Hints file not found: {}", path.display());
+            return Err(SdkError::InvalidConfig(format!(
+                "Hints file not found: {}",
+                path.display()
+            )));
         }
-        Ok(Self { source: StreamSource::from_file(path)? })
+        Ok(Self { source: StreamSource::from_file(path).map_err(SdkError::backend)? })
     }
 
     /// Creates hints from a URI string.
@@ -74,8 +80,8 @@ impl ZiskHints {
     ///
     /// # Errors
     /// Returns an error if the URI scheme is unknown or the resource is not accessible.
-    pub fn from_uri<S: Into<String>>(uri: S) -> anyhow::Result<Self> {
-        Ok(Self { source: StreamSource::from_uri(uri)? })
+    pub fn from_uri<S: Into<String>>(uri: S) -> Result<Self> {
+        Ok(Self { source: StreamSource::from_uri(uri).map_err(SdkError::backend)? })
     }
 
     pub(crate) fn into_inner(self) -> StreamSource {

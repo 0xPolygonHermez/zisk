@@ -56,6 +56,7 @@ pub struct EmuTrace {
 }
 
 impl EmuTrace {
+    /// Checks if this trace corresponds to the first execution step (step 0).
     pub fn is_first(&self) -> bool {
         self.start_state.step == 0
     }

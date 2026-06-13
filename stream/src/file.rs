@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::{StreamRead, StreamWrite};
 
-use anyhow::Result;
+use crate::error::{Result, StreamError};
 
 /// A file-based implementation of ZiskStdin that reads from a file.
 pub struct FileStreamReader {
@@ -58,7 +58,9 @@ impl StreamRead for FileStreamReader {
         self.open()?;
 
         let reader = self.reader.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("FileStreamReader: Reader is not initialized after opening the file")
+            StreamError::Transport(
+                "FileStreamReader: Reader is not initialized after opening the file".to_string(),
+            )
         })?;
 
         let mut buffer = Vec::new();
@@ -113,7 +115,9 @@ impl StreamWrite for FileStreamWriter {
         self.open()?;
 
         let writer = self.writer.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("FileStreamWriter: Writer is not initialized after opening the file")
+            StreamError::Transport(
+                "FileStreamWriter: Writer is not initialized after opening the file".to_string(),
+            )
         })?;
 
         writer.write_all(item)?;

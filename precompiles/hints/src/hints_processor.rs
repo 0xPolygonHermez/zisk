@@ -13,7 +13,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::time::Instant;
 use tracing::{debug, info};
 use zisk_cluster_common::{JobPhase, StreamMessage};
-use zisk_common::io::{StreamProcessor, StreamSink};
+use zisk_common::io::{StreamError, StreamProcessor, StreamSink};
 use zisk_common::{
     BuiltInHint, CtrlHint, HintCode, PartialPrecompileHint, PrecompileHint,
     PrecompileHintParseResult,
@@ -697,8 +697,8 @@ impl<S: StreamSink> Drop for HintsProcessor<S> {
 }
 
 impl<S: StreamSink> StreamProcessor for HintsProcessor<S> {
-    fn process_hints(&self, data: &[u64], first_batch: bool) -> Result<bool> {
-        self.process_hints(data, first_batch)
+    fn process_hints(&self, data: &[u64], first_batch: bool) -> Result<bool, StreamError> {
+        self.process_hints(data, first_batch).map_err(StreamError::other)
     }
 
     fn reset(&self) {
@@ -715,7 +715,7 @@ mod tests {
     struct NullHints;
 
     impl StreamSink for NullHints {
-        fn submit(&self, _processed: &[u64]) -> Result<()> {
+        fn submit(&self, _processed: &[u64]) -> Result<(), StreamError> {
             Ok(())
         }
     }
@@ -973,7 +973,7 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: &[u64]) -> Result<()> {
+            fn submit(&self, processed: &[u64]) -> Result<(), StreamError> {
                 self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
@@ -1015,9 +1015,9 @@ mod tests {
         }
 
         impl StreamSink for FailingSink {
-            fn submit(&self, _processed: &[u64]) -> Result<()> {
+            fn submit(&self, _processed: &[u64]) -> Result<(), StreamError> {
                 if self.should_fail.load(Ordering::Acquire) {
-                    Err(anyhow::anyhow!("Sink error"))
+                    Err(StreamError::other("Sink error"))
                 } else {
                     Ok(())
                 }
@@ -1230,7 +1230,7 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: &[u64]) -> Result<()> {
+            fn submit(&self, processed: &[u64]) -> Result<(), StreamError> {
                 self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }
@@ -1598,7 +1598,7 @@ mod tests {
         }
 
         impl StreamSink for RecordingSink {
-            fn submit(&self, processed: &[u64]) -> Result<()> {
+            fn submit(&self, processed: &[u64]) -> Result<(), StreamError> {
                 self.received.lock().unwrap().push(processed.to_vec());
                 Ok(())
             }

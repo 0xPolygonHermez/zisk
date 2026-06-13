@@ -5,8 +5,8 @@ use zisk_prover_backend::BackendProverOpts;
 /// Public prover configuration for the SDK.
 ///
 /// Controls key paths, memory, parallelism and MPI settings.
-/// GPU acceleration is configured separately via [`crate::ProverClientBuilder::gpu`].
-/// ASM-specific options are configured via [`crate::ProverClientBuilder::asm_options`].
+/// GPU acceleration is configured separately via [`crate::EmbeddedClientBuilder::gpu`].
+/// ASM-specific options are configured via [`crate::EmbeddedClientBuilder::asm_options`].
 #[derive(Default, Clone)]
 pub struct EmbeddedOpts {
     /// Reduce memory footprint during proving at the cost of speed.

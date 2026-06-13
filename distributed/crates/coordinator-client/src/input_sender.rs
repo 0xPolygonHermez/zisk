@@ -164,13 +164,15 @@ impl InputSenderPushAdapter {
 }
 
 impl zisk_common::io::BytesPushSender for InputSenderPushAdapter {
-    fn send_blocking(&self, data: Vec<u8>) -> anyhow::Result<()> {
+    fn send_blocking(&self, data: Vec<u8>) -> Result<(), zisk_common::io::StreamError> {
+        use zisk_common::io::StreamError;
         let bytes = Bytes::from(data);
         let send = async {
             let guard = self.sender.lock().await;
-            let sender =
-                guard.as_ref().ok_or_else(|| anyhow::anyhow!("InputSender already closed"))?;
-            sender.send(bytes).await
+            let sender = guard
+                .as_ref()
+                .ok_or_else(|| StreamError::Transport("InputSender already closed".to_string()))?;
+            sender.send(bytes).await.map_err(StreamError::other)
         };
         match tokio::runtime::Handle::try_current() {
             Ok(_) => tokio::task::block_in_place(|| self.rt.block_on(send)),
@@ -178,12 +180,13 @@ impl zisk_common::io::BytesPushSender for InputSenderPushAdapter {
         }
     }
 
-    fn close_blocking(self: Box<Self>) -> anyhow::Result<()> {
+    fn close_blocking(self: Box<Self>) -> Result<(), zisk_common::io::StreamError> {
+        use zisk_common::io::StreamError;
         let rt = self.rt.clone();
         let close = async move {
             let mut guard = self.sender.lock().await;
             if let Some(sender) = guard.take() {
-                sender.close().await
+                sender.close().await.map_err(StreamError::other)
             } else {
                 Ok(())
             }

@@ -10,12 +10,14 @@
 //! Where `<a>` and `<b>` are the two input u64 values. Defaults to `5 10` when
 //! no argument or wrong argument is provided.
 
+use std::error::Error;
+
 use gcd_common::gcd;
-use zisk_sdk::{load_program, EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{EmbeddedOpts, GuestProgram, ProverClient, ZiskStdin, load_program};
 
 static PROGRAM: GuestProgram = load_program!("gcd-guest");
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Obtaining external input or setting the default one and parsing flags for prover configuration.
     let (input, asm, gpu): ((u64, u64), _, _) = examples_utils::parse_args((5, 10));
 

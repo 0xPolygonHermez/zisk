@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::{Result, SdkError};
 use serde::Serialize;
 use zisk_common::io::ZiskStreamWriter;
 use zisk_coordinator_client::{InputSender, InputSenderPushAdapter};
@@ -38,7 +38,7 @@ impl ZiskStream {
     /// as soon as it launches.
     #[cfg(unix)]
     pub fn unix_at(path: &str) -> Result<Self> {
-        Ok(Self { writer: ZiskStreamWriter::unix_at(path)? })
+        Ok(Self { writer: ZiskStreamWriter::unix_at(path).map_err(SdkError::backend)? })
     }
 
     /// QUIC transport.
@@ -47,13 +47,13 @@ impl ZiskStream {
     /// resolved address is then used as the URI so the coordinator receives
     /// the correct port.
     pub fn quic(uri: &str) -> Result<Self> {
-        let addr_str = uri
-            .strip_prefix("quic://")
-            .ok_or_else(|| anyhow::anyhow!("QUIC URI must start with quic://"))?;
-        let addr: std::net::SocketAddr = addr_str
-            .parse()
-            .map_err(|e| anyhow::anyhow!("invalid QUIC address '{}': {}", addr_str, e))?;
-        Ok(Self { writer: ZiskStreamWriter::quic(addr)? })
+        let addr_str = uri.strip_prefix("quic://").ok_or_else(|| {
+            SdkError::InvalidConfig("QUIC URI must start with quic://".to_string())
+        })?;
+        let addr: std::net::SocketAddr = addr_str.parse().map_err(|e| {
+            SdkError::InvalidConfig(format!("invalid QUIC address '{}': {}", addr_str, e))
+        })?;
+        Ok(Self { writer: ZiskStreamWriter::quic(addr).map_err(SdkError::backend)? })
     }
 
     /// gRPC push transport (data pushed to coordinator via `PushJobInput`).
@@ -87,7 +87,7 @@ impl ZiskStream {
 
     /// Send all buffered bytes now. Blocks until the stream is live.
     pub fn flush(&self) -> Result<()> {
-        self.writer.flush()
+        self.writer.flush().map_err(SdkError::backend)
     }
 
     /// Discard all buffered (unsent) bytes.
@@ -123,7 +123,7 @@ impl ZiskStream {
     /// Safe to call multiple times (reuse across jobs): each call tears down
     /// the previous connection first.
     pub(crate) fn start(&self) -> Result<()> {
-        self.writer.start()
+        self.writer.start().map_err(SdkError::backend)
     }
 
     /// Inject the gRPC sender obtained after job submission. Marks the stream
@@ -143,16 +143,14 @@ impl ZiskStream {
     /// `start()` re-opens the transport — preventing accidental writes to a
     /// completed job.
     pub fn finish(&self) -> Result<()> {
-        self.writer.finish()
+        self.writer.finish().map_err(SdkError::backend)
     }
 
     /// Async version of [`finish`](Self::finish). Called automatically by
     /// `JobHandle` when it is awaited.
     pub(crate) async fn finish_async(&self) -> Result<()> {
         let writer = self.writer.clone();
-        tokio::task::spawn_blocking(move || writer.finish())
-            .await
-            .map_err(|e| anyhow::anyhow!("finish_async task panicked: {}", e))?
+        tokio::task::spawn_blocking(move || writer.finish()).await?.map_err(SdkError::backend)
     }
 }
 
@@ -188,7 +186,7 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use std::thread;
     use std::time::Duration;
-    use zisk_common::io::BytesPushSender;
+    use zisk_common::io::{BytesPushSender, StreamError};
 
     // ── Test helpers ────────────────────────────────────────────────────
 
@@ -221,10 +219,10 @@ mod tests {
     /// A no-op push sender used to mark a gRPC stream live without a real RPC.
     struct NoopPushSender;
     impl BytesPushSender for NoopPushSender {
-        fn send_blocking(&self, _data: Vec<u8>) -> Result<()> {
+        fn send_blocking(&self, _data: Vec<u8>) -> Result<(), StreamError> {
             Ok(())
         }
-        fn close_blocking(self: Box<Self>) -> Result<()> {
+        fn close_blocking(self: Box<Self>) -> Result<(), StreamError> {
             Ok(())
         }
     }
@@ -232,11 +230,11 @@ mod tests {
     /// A push sender that records every chunk it receives.
     struct RecordingSender(Arc<Mutex<Vec<Vec<u8>>>>);
     impl BytesPushSender for RecordingSender {
-        fn send_blocking(&self, data: Vec<u8>) -> Result<()> {
+        fn send_blocking(&self, data: Vec<u8>) -> Result<(), StreamError> {
             self.0.lock().unwrap().push(data);
             Ok(())
         }
-        fn close_blocking(self: Box<Self>) -> Result<()> {
+        fn close_blocking(self: Box<Self>) -> Result<(), StreamError> {
             Ok(())
         }
     }

@@ -1,9 +1,9 @@
-use anyhow::Result;
+use std::error::Error;
 use test_artifacts::ELF_FIB_MOD;
 use zisk_sdk::{EmbeddedOpts, ProverClient, ZiskStdin};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");
 
     // Prove the same parameterized fib_mod ELF twice, with different (n, module) inputs.

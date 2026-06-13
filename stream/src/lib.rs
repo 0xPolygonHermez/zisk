@@ -15,7 +15,12 @@
 //! - **`quic`**: adds the QUIC transport (pulls in `quinn` + `tokio` + `rustls`).
 //!   Enabled by `zisk-common`; left off by `ziskos`.
 
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
+
 mod channel;
+mod error;
 mod file;
 mod memory;
 mod stream_reader;
@@ -30,7 +35,10 @@ mod quic;
 #[cfg(unix)]
 mod unix_socket;
 
+// Named (not glob) so the `Result` alias isn't re-exported through
+// `zisk_common::io::*`, where it would shadow `std::result::Result`.
 pub use channel::ChannelStreamReader;
+pub use error::StreamError;
 pub use file::{FileStreamReader, FileStreamWriter};
 pub use memory::MemoryStreamReader;
 pub use stream_reader::*;
@@ -43,4 +51,4 @@ pub use zisk_stream_writer::{BytesPushSender, ZiskStreamWriter};
 pub use quic::{QuicStreamReader, QuicStreamWriter};
 
 #[cfg(unix)]
-pub use unix_socket::{UnixSocketStreamReader, UnixSocketStreamWriter};
+pub use unix_socket::{UnixSocketError, UnixSocketStreamReader, UnixSocketStreamWriter};

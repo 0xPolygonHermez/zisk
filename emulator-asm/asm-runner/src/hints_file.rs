@@ -6,7 +6,7 @@ use anyhow::Result;
 use std::fs::File;
 use std::io::Write;
 use std::sync::Mutex;
-use zisk_common::io::StreamSink;
+use zisk_common::io::{StreamError, StreamSink};
 
 /// HintsFile struct manages the writing of processed precompile hints to a file.
 pub struct HintsFile {
@@ -37,7 +37,7 @@ impl StreamSink for HintsFile {
     /// * `Ok(())` - If hints were successfully written to the file
     /// * `Err` - If writing to the file fails
     #[inline]
-    fn submit(&self, processed: &[u64]) -> anyhow::Result<()> {
+    fn submit(&self, processed: &[u64]) -> Result<(), StreamError> {
         let mut file = self.file.lock().unwrap();
 
         // Write each u64 as 8 bytes (little-endian)

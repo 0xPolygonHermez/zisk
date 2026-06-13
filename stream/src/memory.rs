@@ -25,12 +25,12 @@ impl MemoryStreamReader {
 }
 
 impl StreamRead for MemoryStreamReader {
-    fn open(&mut self) -> anyhow::Result<()> {
+    fn open(&mut self) -> crate::error::Result<()> {
         self.cursor.set_position(0);
         Ok(())
     }
 
-    fn next(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+    fn next(&mut self) -> crate::error::Result<Option<Vec<u8>>> {
         let mut buffer = Vec::new();
         let bytes_read = self.cursor.read_to_end(&mut buffer)?;
         if bytes_read == 0 {
@@ -40,7 +40,7 @@ impl StreamRead for MemoryStreamReader {
         }
     }
 
-    fn close(&mut self) -> anyhow::Result<()> {
+    fn close(&mut self) -> crate::error::Result<()> {
         Ok(())
     }
 

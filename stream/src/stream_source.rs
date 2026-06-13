@@ -4,14 +4,20 @@ use crate::{
     ChannelStreamReader, FileStreamReader, MemoryStreamReader, StreamRead, UnixSocketStreamReader,
 };
 
-use anyhow::Result;
+use crate::error::{Result, StreamError};
 
+/// A multiplexer over multiple stream sources.
 pub enum StreamSource {
+    /// File-based stream source.
     File(FileStreamReader),
+    /// Unix socket-based stream source.
     UnixSocket(UnixSocketStreamReader),
+    /// QUIC-based stream source.
     #[cfg(feature = "quic")]
     Quic(QuicStreamReader),
+    /// Memory-based stream source.
     Memory(MemoryStreamReader),
+    /// Channel-based stream source.
     Channel(ChannelStreamReader),
 }
 
@@ -73,9 +79,11 @@ impl StreamSource {
                 "file" => Self::from_file(path),
                 "unix" => Self::from_unix_socket(path),
                 #[cfg(feature = "quic")]
-                "quic" => Self::from_quic(path.parse()?),
+                "quic" => Self::from_quic(path.parse().map_err(|e| {
+                    StreamError::Invalid(format!("invalid QUIC socket address '{path}': {e}"))
+                })?),
                 // Unknown scheme - could error or fallback
-                _ => Err(anyhow::anyhow!("Unknown stream source scheme: {}", scheme)),
+                _ => Err(StreamError::UnknownScheme(scheme.to_string())),
             }
         } else {
             // No "://" found - fallback as a file path

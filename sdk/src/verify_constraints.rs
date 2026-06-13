@@ -1,23 +1,26 @@
 use std::ops::Deref;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
 use crate::hints::HintsSource;
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId, SubscriberList};
 use crate::{ExecutorKind, ZiskStdin};
 
+/// Result of a verify-constraints operation.
 pub struct VerifyConstraintsResult {
     job_id: Option<JobId>,
     output: VerifyConstraintsOutput,
 }
 
 impl VerifyConstraintsResult {
+    /// Create a new `VerifyConstraintsResult` with the given output and job ID.
     pub fn new(output: VerifyConstraintsOutput, job_id: Option<JobId>) -> Self {
         Self { output, job_id }
     }
 
+    /// Get the ID of the job that produced this result, if available.
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }
@@ -93,6 +96,7 @@ impl<'a, C> VerifyConstraintsRequest<'a, C> {
         self
     }
 
+    /// Set hints for this constraints verification.
     #[must_use]
     pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
         self.hints = Some(hints.into());
@@ -145,7 +149,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
 /// ```rust,ignore
 /// use zisk_sdk::{EmbeddedClientBuilder, load_program, ZiskStdin, VerifyConstraintsExtension};
 ///
-/// # async fn example() -> anyhow::Result<()> {
+/// # async fn example() -> zisk_sdk::Result<()> {
 /// let client = EmbeddedClientBuilder::default().build()?;
 /// let program = load_program!("program.elf");
 /// let stdin = ZiskStdin::new();
@@ -163,6 +167,7 @@ impl<'a, C: RunVerifyConstraints> VerifyConstraintsRequest<'a, C> {
 )]
 #[allow(private_bounds)]
 pub trait VerifyConstraintsExtension: RunVerifyConstraints + Sized {
+    /// Build a verify-constraints request for the given program and stdin.
     fn verify_constraints<'a>(
         &'a self,
         program: &'a GuestProgram,

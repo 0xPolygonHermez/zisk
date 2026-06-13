@@ -6,10 +6,12 @@ use std::time::Instant;
 pub struct ChunkId(pub usize);
 
 impl ChunkId {
+    /// Creates a new `ChunkId` with the given identifier.
     pub const fn new(id: usize) -> Self {
         ChunkId(id)
     }
 
+    /// Returns the underlying `usize` identifier of the `ChunkId`.
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -38,10 +40,12 @@ impl fmt::Display for ChunkId {
 pub struct SegmentId(pub usize);
 
 impl SegmentId {
+    /// Creates a new `SegmentId` with the given identifier.
     pub const fn new(id: usize) -> Self {
         SegmentId(id)
     }
 
+    /// Returns the underlying `usize` identifier of the `SegmentId`.
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -65,26 +69,41 @@ impl fmt::Display for SegmentId {
     }
 }
 
+/// Type representing different statistics categories.
 pub enum StatsType {
+    /// Main execution stats.
     Main,
+    /// Memory-related operations and their stats.
     Memory,
+    /// Opcode execution stats.
     Opcodes,
+    /// Precompiled function execution stats.
     Precompiled,
+    /// Table-related operations and their stats.
     Tables,
+    /// Other miscellaneous stats.
     Other,
 }
 
+/// Struct to hold cost breakdown by different types of operations.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCostPerType {
+    /// Cost associated with the main state machine.
     pub main_cost: u64,
+    /// Cost associated with the non-main state machines (neither main nor precompiled).
     pub opcode_cost: u64,
+    /// Cost associated with memory-related state machines.
     pub memory_cost: u64,
+    /// Cost associated with precompiled state machines.
     pub precompile_cost: u64,
+    /// Cost associated with table-related operations.
     pub tables_cost: u64,
+    /// Cost associated with other miscellaneous operations.
     pub other_cost: u64,
 }
 
 impl StatsCostPerType {
+    /// Calculates the total cost by summing all individual cost categories.
     pub fn total_cost(&self) -> u64 {
         self.main_cost
             + self.opcode_cost
@@ -94,6 +113,7 @@ impl StatsCostPerType {
             + self.other_cost
     }
 
+    /// Adds the given cost to the appropriate category based on the `StatsType`.
     pub fn add_cost(&mut self, stats_type: StatsType, cost: u64) {
         match stats_type {
             StatsType::Main => self.main_cost += cost,
@@ -139,6 +159,7 @@ impl fmt::Display for StatsCostPerType {
     }
 }
 
+/// Struct to hold timing information for different phases of the Zisk executor.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorTime {
     /// Total executor duration of the entire execution process.
@@ -158,21 +179,29 @@ pub struct ZiskExecutorTime {
 /// name is derived from the ids by the consumer.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AirInstanceCount {
+    /// AIR group ID.
     pub airgroup_id: usize,
+    /// AIR ID.
     pub air_id: usize,
+    /// Number of instances.
     pub count: u64,
 }
 
+/// Struct to hold a summary of the Zisk executor's performance and cost metrics.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorSummary {
+    /// Total number of steps executed by the Zisk executor.
     pub steps: u64,
+    /// Timing information for different phases of the Zisk executor.
     pub executor_time: ZiskExecutorTime,
+    /// Cost breakdown by different types of operations.
     pub cost_per_type: StatsCostPerType,
     /// Per-AIR instance plan. Empty unless produced by a planning executor run.
     pub plan: Vec<AirInstanceCount>,
 }
 
 impl ZiskExecutorSummary {
+    /// Creates a new `ZiskExecutorSummary` with the given metrics.
     pub fn new(
         executed_steps: u64,
         execution_time: ZiskExecutorTime,
@@ -187,9 +216,12 @@ impl ZiskExecutorSummary {
     }
 }
 
+/// Struct to hold detailed timing and chunk information for a specific AIR instance.
 #[derive(Debug, Clone)]
 pub struct Stats {
+    /// AIR group ID.
     pub airgroup_id: usize,
+    /// AIR ID.
     pub air_id: usize,
     /// Collect start time
     pub collect_start_time: Instant,
@@ -278,9 +310,12 @@ impl Stats {
     }
 }
 
+/// Struct to hold timing information for assembly execution, including total time and effective MHz.
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AsmExecutionInfo {
+    /// Total time taken for the assembly execution in seconds.
     pub time: f32,
+    /// Effective execution speed in MHz.
     pub mhz: f32,
 }
 

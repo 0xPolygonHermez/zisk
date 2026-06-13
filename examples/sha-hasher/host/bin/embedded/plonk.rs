@@ -1,9 +1,9 @@
-use anyhow::Result;
 use sha_hasher_host::ELF_SHA_HASHER;
+use std::error::Error;
 use zisk_sdk::{Proof, ProofKind, ProverClient, ZiskStdin};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client (SNARK mode)...");
 
     // Create an input stream and write '1000' to it.

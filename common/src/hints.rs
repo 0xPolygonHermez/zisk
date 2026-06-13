@@ -52,7 +52,7 @@
 
 use std::fmt::Display;
 
-use anyhow::Result;
+use crate::error::{CommonError, Result};
 
 // Hint code constants live in `zisk-definitions` (a dependency-free, `no_std` leaf
 // crate) so the guest-side `ziskos` crate can share them without pulling in this
@@ -87,7 +87,7 @@ impl Display for CtrlHint {
 }
 
 impl TryFrom<u32> for CtrlHint {
-    type Error = anyhow::Error;
+    type Error = CommonError;
 
     fn try_from(value: u32) -> Result<Self> {
         match value {
@@ -95,7 +95,7 @@ impl TryFrom<u32> for CtrlHint {
             CTRL_END => Ok(Self::End),
             CTRL_CANCEL => Ok(Self::Cancel),
             CTRL_ERROR => Ok(Self::Error),
-            _ => Err(anyhow::anyhow!("Invalid control code: {:#x}", value)),
+            _ => Err(CommonError::InvalidHint(format!("Invalid control code: {:#x}", value))),
         }
     }
 }
@@ -226,7 +226,7 @@ impl Display for BuiltInHint {
 }
 
 impl TryFrom<u32> for BuiltInHint {
-    type Error = anyhow::Error;
+    type Error = CommonError;
 
     fn try_from(value: u32) -> Result<Self> {
         match value {
@@ -267,7 +267,7 @@ impl TryFrom<u32> for BuiltInHint {
             HINT_BLAKE2B_COMPRESS => Ok(Self::Blake2bCompress),
             // RIPEMD-160 Hint
             HINT_RIPEMD160 => Ok(Self::Ripemd160),
-            _ => Err(anyhow::anyhow!("Invalid built-in hint code: {:#x}", value)),
+            _ => Err(CommonError::InvalidHint(format!("Invalid built-in hint code: {:#x}", value))),
         }
     }
 }
@@ -295,7 +295,7 @@ impl Display for HintCode {
 }
 
 impl TryFrom<u32> for HintCode {
-    type Error = anyhow::Error;
+    type Error = CommonError;
 
     fn try_from(value: u32) -> Result<Self> {
         // Try CtrlCode first
@@ -307,7 +307,7 @@ impl TryFrom<u32> for HintCode {
             return Ok(HintCode::BuiltIn(builtin));
         }
         // Unknown codes return error - custom codes handled separately
-        Err(anyhow::anyhow!("Unknown hint code: {:#x}", value))
+        Err(CommonError::InvalidHint(format!("Unknown hint code: {:#x}", value)))
     }
 }
 
@@ -398,7 +398,7 @@ pub enum PrecompileHintParseResult {
 /// Represents a single precompile hint parsed from a `u64` slice.
 ///
 /// A hint consists of a type identifier and associated data. The hint type
-/// determines how the data should be processed by the [`PrecompileHintsProcessor`].
+/// determines how the data should be processed by the precompile hints processor.
 pub struct PrecompileHint {
     /// The type of hint, determining how the data should be processed.
     pub hint_code: HintCode,
@@ -491,7 +491,7 @@ impl PrecompileHint {
 
         // No partial hint, parse from scratch
         if slice.len() <= idx {
-            return Err(anyhow::anyhow!("Slice too short or index out of bounds"));
+            return Err(CommonError::OutOfBounds);
         }
 
         let header = slice[idx];

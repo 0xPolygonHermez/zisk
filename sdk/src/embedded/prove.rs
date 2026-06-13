@@ -1,11 +1,10 @@
 use super::EmbeddedClient;
-use crate::embedded::{EmbeddedProver, ERR_ASSEMBLY_NOT_ENABLED};
+use crate::embedded::{validate_embedded_request, EmbeddedProver, HintsKind, StdinKind};
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
 use crate::job_handle::{fire_event, fire_result_event, JobHandle, SubscriberList};
 use crate::prove::ProveResult;
-use crate::{ExecutorKind, JobEvent};
-use anyhow::Result;
+use crate::{ExecutorKind, JobEvent, Result, SdkError};
 use std::sync::Arc;
 use std::time::Duration;
 use zisk_common::io::StreamSource;
@@ -81,75 +80,63 @@ impl EmbeddedClient {
                 }
             };
         }
+        let (prover_is_asm, was_setup_with_hints) = match prover.as_ref() {
+            EmbeddedProver::Asm(p) => (true, p.was_setup_with_hints()),
+            EmbeddedProver::Emu(_) => (false, false),
+        };
+        validate_embedded_request(
+            prover_is_asm,
+            executor,
+            hints.as_ref().map(HintsKind::of),
+            StdinKind::of(&stdin),
+            was_setup_with_hints,
+        )?;
+
+        // Inputs are validated above; the dispatch only routes valid requests.
         let result = match (prover.as_ref(), executor) {
             (EmbeddedProver::Emu(p), ExecutorKind::Emulator) => {
-                if hints.is_some() {
-                    anyhow::bail!("Hints require Assembly executor");
-                }
-                if matches!(stdin, InputSource::Stream(_)) {
-                    anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
-                }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                apply_mode!(p.prove(program, s.into_inner())).run()?
-            }
-            (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
-                anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED)
+                apply_mode!(p.prove(program, s.into_inner())).run().map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Emulator) => {
-                if hints.is_some() {
-                    anyhow::bail!("Hints require Assembly executor");
-                }
-                if matches!(stdin, InputSource::Stream(_)) {
-                    anyhow::bail!("Stream stdin (quic://, unix://) is not supported with the Emulator executor — use Assembly executor");
-                }
                 let InputSource::Stdin(s) = stdin else { unreachable!() };
-                p.prove_emulator(program, s.into_inner(), proof_kind)?
+                p.prove_emulator(program, s.into_inner(), proof_kind).map_err(SdkError::backend)?
             }
             (EmbeddedProver::Asm(p), ExecutorKind::Assembly) => {
                 if let Some(hints) = hints {
-                    if !p.was_setup_with_hints() {
-                        anyhow::bail!(
-                            "Program was set up without hints — call setup().with_hints() first"
-                        );
-                    }
                     match hints {
                         HintsSource::Hints(h) => {
-                            p.register_hints_stream(h.into_inner())?;
+                            p.register_hints_stream(h.into_inner()).map_err(SdkError::backend)?;
                         }
                         HintsSource::Stream(stream) => {
-                            if stream.is_grpc() {
-                                anyhow::bail!("gRPC streams are not supported with the embedded executor — use a remote client");
-                            }
                             stream.start()?;
                             let uri = stream.uri().to_string();
-                            let source = StreamSource::from_uri(&uri)?;
-                            p.register_hints_stream(source)?;
+                            let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
+                            p.register_hints_stream(source).map_err(SdkError::backend)?;
                         }
                     }
-                    apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new())).run()?
+                    apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new()))
+                        .run()
+                        .map_err(SdkError::backend)?
                 } else {
-                    if p.was_setup_with_hints() {
-                        anyhow::bail!(
-                            "Program was set up with hints — call .hints() on the request"
-                        );
-                    }
                     match stdin {
                         InputSource::Stream(stream) => {
-                            if stream.is_grpc() {
-                                anyhow::bail!("gRPC streams are not supported with the embedded executor — use a remote client");
-                            }
                             stream.start()?;
                             let uri = stream.uri().to_string();
-                            let source = StreamSource::from_uri(&uri)?;
-                            p.register_inputs_stream(source)?;
+                            let source = StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
+                            p.register_inputs_stream(source).map_err(SdkError::backend)?;
                             apply_mode!(p.prove(program, zisk_common::io::ZiskStdin::new()))
-                                .run()?
+                                .run()
+                                .map_err(SdkError::backend)?
                         }
-                        InputSource::Stdin(s) => {
-                            apply_mode!(p.prove(program, s.into_inner())).run()?
-                        }
+                        InputSource::Stdin(s) => apply_mode!(p.prove(program, s.into_inner()))
+                            .run()
+                            .map_err(SdkError::backend)?,
                     }
                 }
+            }
+            (EmbeddedProver::Emu(_), ExecutorKind::Assembly) => {
+                unreachable!("rejected by validate_embedded_request")
             }
         };
         Ok(ProveResult::from(result))

@@ -80,6 +80,7 @@ impl CollectSkipper {
         rows
     }
 
+    /// Determines whether the current instruction should be skipped, and if so, applies the skipping logic.
     #[inline(always)]
     pub fn should_skip_query(&mut self, apply: bool) -> bool {
         if !self.skipping {
@@ -266,9 +267,13 @@ impl CollectCounter {
     pub fn remaining_to_collect(&self) -> u32 {
         self.collect_count.saturating_sub(self.collected)
     }
+
+    /// Returns the total number of elements that have been collected so far.
     pub fn count(&self) -> u32 {
         self.collect_count
     }
+
+    /// Returns the total number of elements that should be skipped at the beginning of the collection process.
     pub fn skip(&self) -> u32 {
         self.initial_skip
     }
@@ -308,6 +313,7 @@ pub struct Plan {
     /// Additional metadata associated with the plan.
     pub meta: Option<Box<dyn Any>>,
 
+    /// The global instance ID associated with this plan.
     pub global_id: Option<usize>,
 }
 
@@ -336,6 +342,10 @@ impl Plan {
         Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
     }
 
+    /// Sets the global instance ID for the plan.
+    ///
+    /// # Arguments
+    /// * `global_id` - The global instance ID to be set.
     pub fn set_global_id(&mut self, global_id: usize) {
         self.global_id = Some(global_id);
     }

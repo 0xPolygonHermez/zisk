@@ -10,12 +10,14 @@
 //! Where `<n>` is the starting value as a u64. Defaults to `55` when no
 //! argument or wrong argument is provided.
 
+use std::error::Error;
+
 use collatz_common::collatz;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{GuestProgram, ProverClient, ZiskStdin, load_program};
 
 static PROGRAM: GuestProgram = load_program!("sequential-guest");
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Obtaining external input or setting the default one and parsing flags for prover configuration.
     let (input, asm, gpu) = examples_utils::parse_args(55u64);
 

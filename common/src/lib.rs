@@ -1,11 +1,20 @@
+//! Common utilities and types for Zisk.
+
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
+
 mod bus;
 mod component;
 mod emu_minimal_trace;
+mod error;
 mod executor_stats;
 mod hash_mode;
 mod hints;
 mod instance_context;
+/// I/O utilities and types.
 pub mod io;
+/// Path-related utilities and types.
 pub mod paths;
 mod planner_helpers;
 mod profiling;
@@ -20,6 +29,9 @@ mod zisk_precompile;
 pub use bus::*;
 pub use component::*;
 pub use emu_minimal_trace::*;
+// Named (not glob) so the `Result` alias isn't exported into `zisk_common::*`,
+// where it would shadow `std::result::Result` for downstream consumers.
+pub use error::CommonError;
 pub use executor_stats::*;
 pub use hash_mode::*;
 pub use hints::*;
