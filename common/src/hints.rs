@@ -398,7 +398,7 @@ pub enum PrecompileHintParseResult {
 /// Represents a single precompile hint parsed from a `u64` slice.
 ///
 /// A hint consists of a type identifier and associated data. The hint type
-/// determines how the data should be processed by the [`PrecompileHintsProcessor`].
+/// determines how the data should be processed by the precompile hints processor.
 pub struct PrecompileHint {
     /// The type of hint, determining how the data should be processed.
     pub hint_code: HintCode,
