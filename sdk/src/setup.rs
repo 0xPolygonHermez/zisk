@@ -116,8 +116,8 @@ impl<'a, C: ClientSync> SetupRequest<'a, C> {
     ///
     /// Unlike [`run`](Self::run), this drives the work on the calling thread and
     /// requires no async runtime — use it when embedding the SDK in a
-    /// synchronous program. Available only for clients that implement
-    /// [`ClientSync`] (the embedded client).
+    /// synchronous program. Available only for the embedded client
+    /// ([`EmbeddedClient`](crate::EmbeddedClient)).
     pub fn run_sync(self) -> Result<SetupResult> {
         let subs = new_subscriber_list();
         self.client.run_setup_sync(self.program, self.with_hints, self.emulator_only, subs)

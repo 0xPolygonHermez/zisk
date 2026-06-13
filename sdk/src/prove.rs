@@ -62,7 +62,9 @@ pub enum JobEvent {
 
 /// Builder for a prove request.
 ///
-/// Obtain via [`crate::ProverClient::prove`].
+/// Obtain via [`EmbeddedClient::prove`](crate::EmbeddedClient::prove),
+/// [`RemoteClient::prove`](crate::RemoteClient::prove), or
+/// [`ZiskClient::prove`](crate::ZiskClient::prove).
 /// Finalize with `.run()` which returns a [`JobHandle<ProveResult>`].
 pub struct ProveRequest<'a, C> {
     client: &'a C,
@@ -158,8 +160,8 @@ impl<'a, C: ClientSync> ProveRequest<'a, C> {
     /// Unlike [`run`](Self::run), this drives the work on the calling thread and
     /// requires no async runtime — use it when embedding the SDK in a
     /// synchronous program. Registered [`on`](Self::on) callbacks fire
-    /// synchronously during the call. Available only for clients that implement
-    /// [`ClientSync`] (the embedded client).
+    /// synchronously during the call. Available only for the embedded client
+    /// ([`EmbeddedClient`](crate::EmbeddedClient)).
     pub fn run_sync(self) -> Result<ProveResult> {
         let subs = subscriber_list_from(self.subscribers);
         self.client.run_prove_sync(
