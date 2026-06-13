@@ -30,10 +30,14 @@ step() { echo "==> $*"; }
 [[ -f "$ELF" ]]         || fail "test ELF not found: $ELF"
 [[ -f "$RELEASE_YML" ]] || fail "release.yml not found at $RELEASE_YML"
 command -v python3 >/dev/null || fail "python3 required to parse release.yml"
+python3 -c 'import yaml' 2>/dev/null \
+  || fail "Python PyYAML required to parse release.yml (pip install pyyaml / apt install python3-yaml)"
 
-step "Building libziskclib.a + libziskc.a"
-cargo build --release -p ziskclib -p lib-c --manifest-path "$REPO/Cargo.toml" \
-  || fail "cargo build of ziskclib/lib-c failed"
+# Build the artifacts the staged step copies and the test exercises: ziskclib +
+# lib-c (libziskclib.a / libziskc.a) and riscv2zisk (used to generate emu.asm).
+step "Building libziskclib.a + libziskc.a + riscv2zisk"
+cargo build --release -p ziskclib -p lib-c -p zisk-core --bin riscv2zisk --manifest-path "$REPO/Cargo.toml" \
+  || fail "cargo build of ziskclib/lib-c/riscv2zisk failed"
 [[ -f "$REPO/target/zisk-libs/libziskc.a" ]] \
   || fail "libziskc.a not at target/zisk-libs — lib-c build.rs did not publish it"
 
@@ -68,11 +72,13 @@ DIST="$SANDBOX/zisk-dist"
 [[ -f "$DIST/zisk/target/zisk-libs/libziskc.a" ]] \
   || fail "release.yml did NOT stage libziskc.a into zisk/target/zisk-libs"
 
-step "Generating emu.asm (riscv2zisk --gen=1)"
-RISCV2ZISK="$REPO/target/release/riscv2zisk"
-[[ -x "$RISCV2ZISK" ]] || fail "riscv2zisk not built (cargo build --release --bin riscv2zisk)"
+# Use the riscv2zisk the step STAGED (zisk-dist/bin), matching the installed
+# worker and confirming release.yml ships a runnable one.
+step "Generating emu.asm with staged riscv2zisk (--gen=1)"
+RISCV2ZISK="$DIST/bin/riscv2zisk"
+[[ -x "$RISCV2ZISK" ]] || fail "release.yml did NOT stage a runnable riscv2zisk into bin/"
 "$RISCV2ZISK" "$ELF" "$DIST/zisk/emulator-asm/src/emu.asm" --gen=1 >/dev/null \
-  || fail "riscv2zisk failed to generate emu.asm"
+  || fail "staged riscv2zisk failed to generate emu.asm"
 
 # The worker's exact step: `make` in the staged emulator-asm, no cargo. Links
 # -lziskc only if the staging above placed libziskc.a where the Makefile's -L looks.

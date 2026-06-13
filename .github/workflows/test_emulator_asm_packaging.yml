@@ -30,6 +30,8 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
+          # PyYAML: the test parses release.yml to run its real staging step.
+          python3 -m pip install --quiet pyyaml
           cd tools/test-env
           ./install_deps.sh
 
