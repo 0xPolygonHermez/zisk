@@ -410,7 +410,7 @@ Every check is in-circuit, so a passing proof is sound.
 
 The definition is authored once (a TOML next to the guest programs) and
 consumed twice: by `build_program` at host-build time (for the SDK path)
-and by the `cargo-zisk recurser setup` CLI at setup time.
+and by the `cargo-zisk setup --aggregation` CLI at setup time.
 
 ### Prerequisites
 
@@ -482,12 +482,12 @@ The CLI consumes the same TOML, resolving guest names against the built
 ELFs (so run the guests' `cargo build` first):
 
 ```text
-cargo-zisk recurser setup --aggregation programs/aggregations/chain.toml
+cargo-zisk setup --aggregation programs/aggregations/chain.toml
 ```
 
 The command runs the setup through the SDK: it reads the vadcop_final setup
 from `~/.zisk` and writes the recurser artifacts to
-`~/.zisk/recurser/<recurser-id>` (the SDK-managed location `recurser prove`
+`~/.zisk/recurser/<recurser-id>` (the SDK-managed location `aggregate`
 and the workers resolve against).
 
 | Flag | Required | Description |
