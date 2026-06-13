@@ -129,8 +129,12 @@ jobs:
           if [[ "${PLATFORM_NAME}" == "linux" ]]; then
             mkdir -p zisk-dist/zisk/emulator-asm/src
             cp -r ./emulator-asm/src                               zisk-dist/zisk/emulator-asm
-            cp -r ./lib-c/                                         zisk-dist/zisk
+            mkdir -p zisk-dist/zisk/lib-c/c
+            cp -r ./lib-c/c/src                                    zisk-dist/zisk/lib-c/c/
             cp ./emulator-asm/Makefile                             zisk-dist/zisk/emulator-asm
+            mkdir -p zisk-dist/zisk/target/zisk-libs
+            cp ./target/zisk-libs/libziskc.a                       zisk-dist/zisk/target/zisk-libs/
+            cp ./target/zisk-libs/libziskc.a                       zisk-dist/bin/
           fi
 
       - name: Build binaries (GPU)

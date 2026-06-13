@@ -66,7 +66,7 @@ ln -s "$REPO/ziskup"           "$SANDBOX/ziskup"
   || fail "release.yml 'Copy binaries' step failed to execute"
 DIST="$SANDBOX/zisk-dist"
 [[ -f "$DIST/zisk/target/zisk-libs/libziskc.a" ]] \
-  || fail "release.yml did NOT stage libziskc.a into zisk/target/zisk-libs (the bug this guards)"
+  || fail "release.yml did NOT stage libziskc.a into zisk/target/zisk-libs"
 
 step "Generating emu.asm (riscv2zisk --gen=1)"
 RISCV2ZISK="$REPO/target/release/riscv2zisk"
