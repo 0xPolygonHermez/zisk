@@ -5,8 +5,9 @@ pub use ruint::aliases::U256;
 
 /// Returns the zero-indexed *n*-th Fibonacci number as a [`U256`].
 pub fn fibonacci(n: u8) -> U256 {
-    
-    if n == 0 { return U256::ZERO; }
+    if n == 0 {
+        return U256::ZERO;
+    }
 
     let mut a = U256::ZERO;
     let mut b = U256::ONE;

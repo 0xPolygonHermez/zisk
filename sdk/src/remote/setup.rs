@@ -10,7 +10,7 @@ use zisk_coordinator_api::dto::{
 };
 use zisk_prover_backend::GuestProgram;
 
-use anyhow::Result;
+use crate::{Result, SdkError};
 use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
 
 impl RemoteClient {
@@ -53,7 +53,7 @@ impl RemoteClient {
             emulator_only,
         });
 
-        let remote_job = self.gw.submit_job(job_kind)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
 
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
@@ -138,11 +138,12 @@ impl<'a> SetupByIdRequest<'a> {
             if let TerminalStatus::Completed(DomainJobKindResponse::Setup { vk, hash_mode }) =
                 status
             {
-                let hash_mode = hash_mode.parse::<HashMode>()?;
-                let output_path = get_output_path(&output_dir)?;
+                let hash_mode = hash_mode.parse::<HashMode>().map_err(SdkError::backend)?;
+                let output_path = get_output_path(&output_dir).map_err(SdkError::backend)?;
                 let path =
-                    get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path, hash_mode)?;
-                std::fs::write(&path, vk)?;
+                    get_elf_bin_verkey_file_path_with_hash(&hash_id, &output_path, hash_mode)
+                        .map_err(SdkError::backend)?;
+                std::fs::write(&path, vk).map_err(SdkError::backend)?;
             }
             Ok(())
         });

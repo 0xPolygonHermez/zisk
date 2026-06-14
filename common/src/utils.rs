@@ -1,5 +1,8 @@
 use std::mem::MaybeUninit;
 
+use crate::error::{CommonError, Result};
+
+/// Creates a vector of the specified size, initialized to zero, and reinterpreted as `Vec<DT>`.
 pub fn create_atomic_vec<DT>(size: usize) -> Vec<DT> {
     let mut vec: Vec<MaybeUninit<DT>> = Vec::with_capacity(size);
 
@@ -12,44 +15,10 @@ pub fn create_atomic_vec<DT>(size: usize) -> Vec<DT> {
     }
 }
 
+/// Creates an uninitialized array of the specified size, intended for use with `create_atomic_vec`.
 #[inline(always)]
 pub fn uninit_array<const N: usize>() -> MaybeUninit<[u64; N]> {
     MaybeUninit::uninit()
-}
-
-#[macro_export]
-macro_rules! trace_file {
-    ($($arg:tt)*) => {
-        tracing::trace!(target: "screen_and_file", $($arg)*);
-    };
-}
-
-#[macro_export]
-macro_rules! debug_file {
-    ($($arg:tt)*) => {
-        tracing::debug!(target: "screen_and_file", $($arg)*);
-    };
-}
-
-#[macro_export]
-macro_rules! info_file {
-    ($($arg:tt)*) => {
-        tracing::info!(target: "screen_and_file", $($arg)*);
-    };
-}
-
-#[macro_export]
-macro_rules! warn_file {
-    ($($arg:tt)*) => {
-        tracing::warn!(target: "screen_and_file", $($arg)*);
-    };
-}
-
-#[macro_export]
-macro_rules! error_file {
-    ($($arg:tt)*) => {
-        tracing::error!(target: "screen_and_file", $($arg)*);
-    };
 }
 
 /// Reinterprets a `Vec<T>` as a `Vec<U>` by transmuting the underlying memory.
@@ -69,7 +38,7 @@ macro_rules! error_file {
 /// # Type Parameters
 /// * `T` - Source element type
 /// * `U` - Destination element type
-pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> anyhow::Result<Vec<U>> {
+pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
 
@@ -92,12 +61,12 @@ pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> anyhow::Result<V
 
     // Check that the pointer is properly aligned for U
     if v.as_ptr() as usize % std::mem::align_of::<U>() != 0 {
-        return Err(anyhow::anyhow!(
+        return Err(CommonError::Invalid(format!(
             "Vec<{}> is not properly aligned for Vec<{}> (requires {}-byte alignment)",
             std::any::type_name::<T>(),
             std::any::type_name::<U>(),
             std::mem::align_of::<U>()
-        ));
+        )));
     }
 
     let len = (v.len() * size_t) / size_u;

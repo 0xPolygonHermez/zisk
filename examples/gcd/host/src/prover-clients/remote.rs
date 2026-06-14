@@ -10,13 +10,15 @@
 //! Where `<a>` and `<b>` are the two input u64 values. Defaults to `5 10` when
 //! no argument or wrong argument is provided.
 
+use std::error::Error;
+
 use gcd_common::gcd;
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use zisk_sdk::{GuestProgram, ProverClient, ZiskStdin, load_program};
 
 static PROGRAM: GuestProgram = load_program!("gcd-guest");
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     // Obtaining external input or setting the default one. This binary proves
     // against a remote prover, so the `--asm`/`--gpu` flags do not apply here.
     let (input, _, _): ((u64, u64), _, _) = examples_utils::parse_args((5, 10));
@@ -24,11 +26,10 @@ async fn main() -> anyhow::Result<()> {
     // Build a client that offloads proving to a remote prover at the given URL.
     // `connect_timeout` bounds the initial connection; `request_timeout` bounds
     // each request, which must be generous enough to cover proof generation.
-    let client = 
-        ProverClient::remote("http://localhost:7000")
-            .connect_timeout(std::time::Duration::from_secs(10))
-            .request_timeout(std::time::Duration::from_secs(2000))
-            .build()?;
+    let client = ProverClient::remote("http://localhost:7000")
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .request_timeout(std::time::Duration::from_secs(2000))
+        .build()?;
 
     // Generating the input.
     let stdin = ZiskStdin::new();

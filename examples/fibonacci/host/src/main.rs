@@ -10,13 +10,15 @@
 //! Where `<n>` is the input as a u8. Defaults to `10` when no
 //! argument or wrong argumentis provided.
 
-use fibonacci_common::{fibonacci, U256};
-use zisk_sdk::{load_program, GuestProgram, ProofKind, ProverClient, ZiskStdin};
+use std::error::Error;
+
+use fibonacci_common::{U256, fibonacci};
+use zisk_sdk::{GuestProgram, ProofKind, ProverClient, ZiskStdin, load_program};
 
 /// Guest ELF binary, embedded into the host at build time.
 static PROGRAM: GuestProgram = load_program!("fibonacci-guest");
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Obtaining external input or setting the default one and parsing flags for prover configuration.
     let (input, asm, gpu) = examples_utils::parse_args(10u8);
 

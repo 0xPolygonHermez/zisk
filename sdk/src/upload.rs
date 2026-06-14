@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::Result;
 use zisk_prover_backend::GuestProgram;
 
 use crate::Client;

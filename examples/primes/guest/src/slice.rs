@@ -9,7 +9,7 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use primes_common::{is_prime, rkyv, InputZeroCopyDTO};
+use primes_common::{InputZeroCopyDTO, is_prime, rkyv};
 
 fn main() {
     // Read the input from the guest's standard input.

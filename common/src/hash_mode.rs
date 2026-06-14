@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::{CommonError, Result};
 use serde::{Deserialize, Serialize};
 
 /// Hashing mode used for the ROM merkle tree and the STARK.
@@ -10,8 +10,10 @@ use serde::{Deserialize, Serialize};
 /// verify time.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum HashMode {
+    /// Poseidon1 hashing.
     #[default]
     Poseidon1,
+    /// Poseidon2 hashing.
     Poseidon2,
 }
 
@@ -53,13 +55,13 @@ impl HashMode {
 }
 
 impl std::str::FromStr for HashMode {
-    type Err = anyhow::Error;
+    type Err = CommonError;
 
     fn from_str(s: &str) -> Result<Self> {
         match s.to_ascii_lowercase().as_str() {
             "poseidon1" => Ok(HashMode::Poseidon1),
             "poseidon2" => Ok(HashMode::Poseidon2),
-            other => Err(anyhow::anyhow!("unrecognized HashMode: {other:?}")),
+            other => Err(CommonError::Invalid(format!("unrecognized HashMode: {other:?}"))),
         }
     }
 }

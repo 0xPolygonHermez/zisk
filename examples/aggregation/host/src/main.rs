@@ -1,5 +1,5 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::error::Error;
 use test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
 use zisk_sdk::{EmbeddedOpts, ProfilingMode, ProverClient, ZiskStdin};
 
@@ -11,7 +11,7 @@ struct GuestPublics {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");
 
     let n: u32 = 2000;

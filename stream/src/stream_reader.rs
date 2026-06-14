@@ -1,4 +1,4 @@
-use anyhow::Result;
+use crate::error::Result;
 
 /// Core trait for stream reading operations
 pub trait StreamRead: Send + 'static {

@@ -9,9 +9,9 @@ use zisk_core::{InstContext, ZiskInst, ZiskOperationType};
 
 /// The unique bus ID for operation-related data communication.
 pub const OPERATION_BUS_ID: BusId = BusId(0);
-
 /// The size of the operation data payload.
 pub const OPERATION_BUS_DATA_SIZE: usize = 4; // op,op_type,a,b
+/// The size of the precompiled operation data payload, which includes an additional `step` parameter.
 pub const OPERATION_PRECOMPILED_BUS_DATA_SIZE: usize = 5; // op,op_type,a,b, step
 
 // worst case:
@@ -36,66 +36,91 @@ const COMPLEX_OVER_384_BITS_SIZE: usize = 2 * DATA_384_BITS_SIZE;
 
 // use OPERATION_BUS_DATA_SIZE because a = step, b = addr
 
+/// Keccakf operation data size.
 pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 25;
+/// Poseidon2 operation data size.
 pub const OPERATION_BUS_POSEIDON_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16;
+/// SHA256F operation data size.
 pub const OPERATION_BUS_SHA256F_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 3 * DATA_256_BITS_SIZE;
+/// Arithmetic operation data size for 256-bit operations.
 pub const OPERATION_BUS_ARITH_256_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 5 * INDIRECTION_SIZE + 3 * DATA_256_BITS_SIZE;
+/// Arithmetic operation data size for 256-bit modular operations.
 pub const OPERATION_BUS_ARITH_256_MOD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 5 * INDIRECTION_SIZE + 4 * DATA_256_BITS_SIZE;
+/// Secp256k1 addition operation data size.
 pub const OPERATION_BUS_SECP256K1_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
+/// Secp256k1 doubling operation data size.
 pub const OPERATION_BUS_SECP256K1_DBL_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
+/// BN254 curve addition, doubling, and complex operation data size.
 pub const OPERATION_BUS_BN254_CURVE_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
+/// BN254 curve doubling operation data size.
 pub const OPERATION_BUS_BN254_CURVE_DBL_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
+/// BN254 complex addition operation data size.
 pub const OPERATION_BUS_BN254_COMPLEX_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_256_BITS_SIZE;
+/// BN254 complex subtraction operation data size.
 pub const OPERATION_BUS_BN254_COMPLEX_SUB_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_256_BITS_SIZE;
+/// BN254 complex multiplication operation data size.
 pub const OPERATION_BUS_BN254_COMPLEX_MUL_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_256_BITS_SIZE;
+/// Arithmetic 384-bit modular operation data size.
 pub const OPERATION_BUS_ARITH_384_MOD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 5 * INDIRECTION_SIZE + 4 * DATA_384_BITS_SIZE;
+/// BLS12-381 curve addition, doubling, and complex operation data size.
 pub const OPERATION_BUS_BLS12_381_CURVE_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_384_BITS_SIZE;
+/// BLS12-381 curve doubling operation data size.
 pub const OPERATION_BUS_BLS12_381_CURVE_DBL_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + POINT_384_BITS_SIZE;
+/// BLS12-381 complex addition operation data size.
 pub const OPERATION_BUS_BLS12_381_COMPLEX_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_384_BITS_SIZE;
+/// BLS12-381 complex subtraction operation data size.
 pub const OPERATION_BUS_BLS12_381_COMPLEX_SUB_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_384_BITS_SIZE;
+/// BLS12-381 complex multiplication operation data size.    
 pub const OPERATION_BUS_BLS12_381_COMPLEX_MUL_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * COMPLEX_OVER_384_BITS_SIZE;
+/// Secp256r1 addition operation data size.
 pub const OPERATION_BUS_SECP256R1_ADD_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
+/// Secp256r1 doubling operation data size.
 pub const OPERATION_BUS_SECP256R1_DBL_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
+/// Blake2 operation data size.
 pub const OPERATION_BUS_BLAKE2_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 33 * DATA_64_BITS_SIZE;
-
-// bus_data_size + 4 params (&a, &b, cin, &c, a, b)
+/// Addition operation data size for 256-bit operations.
 pub const OPERATION_BUS_ADD_256_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE
     + 4 * PARAMS_SIZE
     + 2 * DATA_256_BITS_SIZE
     + SINGLE_RESULT_SIZE;
 
+/// DMA operation data size for memory copy operations.
 pub const DMA_ENCODED: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+/// DMA operation data size for memory comparison operations.
 pub const DMA_MEMCMP_COUNT_BUS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1;
-// 5 bus_precompiled_data + encoded
+/// 5 bus_precompiled_data + encoded
 pub const OPERATION_BUS_DMA_MEMCPY_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1;
+/// 5 bus_precompiled_data + encoded
 pub const OPERATION_BUS_DMA_XMEMCPY_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1;
-// 5 bus_precompiled_data + encoded + count_eq
+/// 5 bus_precompiled_data + encoded + count_eq
 pub const OPERATION_BUS_DMA_MEMCMP_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2;
+/// 5 bus_precompiled_data + encoded + count_eq
 pub const OPERATION_BUS_DMA_XMEMCMP_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2;
-// 5 bus_precompiled_data + encoded
+/// 5 bus_precompiled_data + encoded
 pub const OPERATION_BUS_DMA_INPUTCPY_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1;
-// 5 bus_precompiled_data + encoded (fill_byte encoded)
+/// 5 bus_precompiled_data + encoded (fill_byte encoded)
 pub const OPERATION_BUS_DMA_XMEMSET_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1;
 
+/// The maximum size of the operation data payload, which is determined by the largest precompiled operation data size.
 pub const MAX_OPERATION_DATA_SIZE: usize = OPERATION_BUS_BLAKE2_DATA_SIZE;
 
 /// Index of the operation value in the operation data payload.
@@ -116,65 +141,123 @@ pub const STEP: usize = 4;
 /// Type alias for operation data payload.
 pub type OperationData<D> = [D; OPERATION_BUS_DATA_SIZE];
 
-/// Type alias for precompiles operation data payload.
+// Type alias for precompiles operation data payload.
+/// Keccakf operation data type alias.
 pub type OperationKeccakData<D> = [D; OPERATION_BUS_KECCAKF_DATA_SIZE];
+/// SHA256F operation data type alias.
 pub type OperationSha256Data<D> = [D; OPERATION_BUS_SHA256F_DATA_SIZE];
+/// Poseidon2 operation data type alias.
 pub type OperationPoseidonData<D> = [D; OPERATION_BUS_POSEIDON_DATA_SIZE];
+/// 256-bit arithmetic operation data type alias.
 pub type OperationArith256Data<D> = [D; OPERATION_BUS_ARITH_256_DATA_SIZE];
+/// 256-bit modular arithmetic operation data type alias.
 pub type OperationArith256ModData<D> = [D; OPERATION_BUS_ARITH_256_MOD_DATA_SIZE];
+/// Secp256k1 addition operation data type alias.
 pub type OperationSecp256k1AddData<D> = [D; OPERATION_BUS_SECP256K1_ADD_DATA_SIZE];
+/// Secp256k1 doubling operation data type alias.
 pub type OperationSecp256k1DblData<D> = [D; OPERATION_BUS_SECP256K1_DBL_DATA_SIZE];
+/// BN254 curve addition operation data type alias.
 pub type OperationBn254CurveAddData<D> = [D; OPERATION_BUS_BN254_CURVE_ADD_DATA_SIZE];
+/// BN254 curve doubling operation data type alias.
 pub type OperationBn254CurveDblData<D> = [D; OPERATION_BUS_BN254_CURVE_DBL_DATA_SIZE];
+/// BN254 complex addition operation data type alias.
 pub type OperationBn254ComplexAddData<D> = [D; OPERATION_BUS_BN254_COMPLEX_ADD_DATA_SIZE];
+/// BN254 complex subtraction operation data type alias.
 pub type OperationBn254ComplexSubData<D> = [D; OPERATION_BUS_BN254_COMPLEX_SUB_DATA_SIZE];
+/// BN254 complex multiplication operation data type alias.
 pub type OperationBn254ComplexMulData<D> = [D; OPERATION_BUS_BN254_COMPLEX_MUL_DATA_SIZE];
+/// 384-bit modular arithmetic operation data type alias.
 pub type OperationArith384ModData<D> = [D; OPERATION_BUS_ARITH_384_MOD_DATA_SIZE];
+/// BLS12-381 curve addition operation data type alias.
 pub type OperationBls12_381CurveAddData<D> = [D; OPERATION_BUS_BLS12_381_CURVE_ADD_DATA_SIZE];
+/// BLS12-381 curve doubling operation data type alias.
 pub type OperationBls12_381CurveDblData<D> = [D; OPERATION_BUS_BLS12_381_CURVE_DBL_DATA_SIZE];
+/// BLS12-381 complex addition operation data type alias.   
 pub type OperationBls12_381ComplexAddData<D> = [D; OPERATION_BUS_BLS12_381_COMPLEX_ADD_DATA_SIZE];
+/// BLS12-381 complex subtraction operation data type alias.
 pub type OperationBls12_381ComplexSubData<D> = [D; OPERATION_BUS_BLS12_381_COMPLEX_SUB_DATA_SIZE];
+/// BLS12-381 complex multiplication operation data type alias.
 pub type OperationBls12_381ComplexMulData<D> = [D; OPERATION_BUS_BLS12_381_COMPLEX_MUL_DATA_SIZE];
+/// 256-bit addition operation data type alias.
 pub type OperationAdd256Data<D> = [D; OPERATION_BUS_ADD_256_DATA_SIZE];
+/// DMA memory copy operation data type alias.
 pub type OperationDmaMemCpyData<D> = [D; OPERATION_BUS_DMA_MEMCPY_DATA_SIZE];
+/// DMA memory compare operation data type alias.   
 pub type OperationDmaMemCmpData<D> = [D; OPERATION_BUS_DMA_MEMCMP_DATA_SIZE];
+/// DMA input copy operation data type alias.
 pub type OperationDmaInputCpyData<D> = [D; OPERATION_BUS_DMA_INPUTCPY_DATA_SIZE];
+/// DMA extended memory copy operation data type alias.
 pub type OperationDmaXMemCpyData<D> = [D; OPERATION_BUS_DMA_XMEMCPY_DATA_SIZE];
+/// DMA extended memory compare operation data type alias.
 pub type OperationDmaXMemCmpData<D> = [D; OPERATION_BUS_DMA_XMEMCMP_DATA_SIZE];
+/// DMA extended memory set operation data type alias.
 pub type OperationDmaXMemSetData<D> = [D; OPERATION_BUS_DMA_XMEMSET_DATA_SIZE];
+/// Secp256r1 addition operation data type alias.
 pub type OperationSecp256r1AddData<D> = [D; OPERATION_BUS_SECP256R1_ADD_DATA_SIZE];
+/// Secp256r1 doubling operation data type alias.
 pub type OperationSecp256r1DblData<D> = [D; OPERATION_BUS_SECP256R1_DBL_DATA_SIZE];
+/// Blake2 operation data type alias.
 pub type OperationBlake2Data<D> = [D; OPERATION_BUS_BLAKE2_DATA_SIZE];
 
+/// The `ExtOperationData` enum encapsulates the various types of operation data that can be transmitted over the operation bus.
 pub enum ExtOperationData<D> {
+    /// Generic operation data type for operations that do not fit into specific precompiled categories.
     OperationData(OperationData<D>),
+    /// Keccakf operation data.
     OperationKeccakData(OperationKeccakData<D>),
+    /// SHA-256 operation data.
     OperationSha256Data(OperationSha256Data<D>),
+    /// Poseidon2 operation data.
     OperationPoseidonData(OperationPoseidonData<D>),
+    /// 256-bit arithmetic operation data.
     OperationArith256Data(OperationArith256Data<D>),
+    /// 256-bit modular arithmetic operation data.
     OperationArith256ModData(OperationArith256ModData<D>),
+    /// Secp256k1 addition operation data.
     OperationSecp256k1AddData(OperationSecp256k1AddData<D>),
+    /// Secp256k1 doubling operation data.
     OperationSecp256k1DblData(OperationSecp256k1DblData<D>),
+    /// Bn254 curve addition operation data.
     OperationBn254CurveAddData(OperationBn254CurveAddData<D>),
+    /// Bn254 curve doubling operation data.
     OperationBn254CurveDblData(OperationBn254CurveDblData<D>),
+    /// Bn254 complex addition operation data.
     OperationBn254ComplexAddData(OperationBn254ComplexAddData<D>),
+    /// Bn254 complex subtraction operation data.
     OperationBn254ComplexSubData(OperationBn254ComplexSubData<D>),
+    /// Bn254 complex multiplication operation data.
     OperationBn254ComplexMulData(OperationBn254ComplexMulData<D>),
+    /// 384-bit modular arithmetic operation data.
     OperationArith384ModData(OperationArith384ModData<D>),
+    /// BLS12-381 curve addition operation data.
     OperationBls12_381CurveAddData(OperationBls12_381CurveAddData<D>),
+    /// BLS12-381 curve doubling operation data.
     OperationBls12_381CurveDblData(OperationBls12_381CurveDblData<D>),
+    /// BLS12-381 complex addition operation data.
     OperationBls12_381ComplexAddData(OperationBls12_381ComplexAddData<D>),
+    /// BLS12-381 complex subtraction operation data.
     OperationBls12_381ComplexSubData(OperationBls12_381ComplexSubData<D>),
+    /// BLS12-381 complex multiplication operation data.
     OperationBls12_381ComplexMulData(OperationBls12_381ComplexMulData<D>),
+    /// 256-bit addition operation data.
     OperationAdd256Data(OperationAdd256Data<D>),
+    /// DMA memory copy operation data.
     OperationDmaMemCpyData(OperationDmaMemCpyData<D>),
+    /// DMA memory compare operation data.
     OperationDmaMemCmpData(OperationDmaMemCmpData<D>),
+    /// DMA input copy operation data.
     OperationDmaInputCpyData(OperationDmaInputCpyData<D>),
+    /// DMA extended memory set operation data.
     OperationDmaXMemSetData(OperationDmaXMemSetData<D>),
+    /// DMA extended memory copy operation data.
     OperationDmaXMemCpyData(OperationDmaXMemCpyData<D>),
+    /// DMA extended memory compare operation data.
     OperationDmaXMemCmpData(OperationDmaXMemCmpData<D>),
+    /// Secp256r1 addition operation data.
     OperationSecp256r1AddData(OperationSecp256r1AddData<D>),
+    /// Secp256r1 doubling operation data.
     OperationSecp256r1DblData(OperationSecp256r1DblData<D>),
+    /// Blake2 operation data.
     OperationBlake2Data(OperationBlake2Data<D>),
 }
 
@@ -685,6 +768,7 @@ impl OperationBusData<u64> {
         }
     }
 
+    /// Writes the operation instruction payload into a provided buffer.
     #[inline(always)]
     pub fn write_instruction_payload<'a>(
         inst: &ZiskInst,

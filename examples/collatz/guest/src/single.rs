@@ -10,7 +10,7 @@
 #![no_main]
 ziskos::entrypoint!(main);
 
-use collatz_common::{collatz, OutputDTO};
+use collatz_common::{OutputDTO, collatz};
 
 fn main() {
     // Read the starting value from the guest's standard input stream.

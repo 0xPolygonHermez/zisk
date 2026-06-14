@@ -19,9 +19,12 @@ pub use data_bus_rom::*;
 
 use std::fmt::{Formatter, Result};
 
+/// The `DebugBusTime` struct is designed to track and report timing information for bus operations,
 #[derive(Debug, Clone, Default)]
 pub struct DebugBusTime {
+    /// An array of timing values (in nanoseconds) for each of the 12 streaming multiprocessors (SMs).
     pub sm_time: [u64; 12],
+    /// An array of operation counts for each of the 12 streaming multiprocessors (SMs).
     pub sm_count: [u64; 12],
 }
 

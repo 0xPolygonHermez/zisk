@@ -10,15 +10,17 @@
 //! Where `<n>` is the input as a String. Defaults to `Hello Zisk!` when no
 //! argument or wrong argumentis provided.
 
-use hash_common::{hex, Digest, Hash, Sha256};
-use zisk_sdk::{load_program, GuestProgram, ProverClient, ZiskStdin};
+use std::error::Error;
+
+use hash_common::{Digest, Hash, Sha256, hex};
+use zisk_sdk::{GuestProgram, ProverClient, ZiskStdin, load_program};
 
 const DEFAULT_INPUT: &str = "Hello Zisk!";
 
 // Embeds the compiled guest ELF at build time
 static PROGRAM: GuestProgram = load_program!("hash-guest");
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     // Obtaining external input or setting the default one and parsing flags for prover configuration.
     let (input, asm, gpu) = examples_utils::parse_args(DEFAULT_INPUT.to_string());
 

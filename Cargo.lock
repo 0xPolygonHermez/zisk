@@ -7823,12 +7823,10 @@ name = "zisk-common"
 version = "1.0.0-beta"
 dependencies = [
  "alloy-sol-types",
- "anyhow",
  "bincode",
  "clap",
  "dirs",
  "fields",
- "libc",
  "paste",
  "proofman",
  "proofman-common",
@@ -8028,12 +8026,12 @@ dependencies = [
 name = "zisk-sdk"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
  "bincode",
  "proofman-common",
  "rom-setup",
  "serde",
  "test-artifacts",
+ "thiserror 2.0.18",
  "tokio",
  "uuid",
  "zisk-build",
@@ -8047,7 +8045,6 @@ dependencies = [
 name = "zisk-stream"
 version = "1.0.0-beta"
 dependencies = [
- "anyhow",
  "libc",
  "quinn",
  "rcgen",
