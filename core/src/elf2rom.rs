@@ -57,22 +57,24 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     let mut rw_data: Vec<DataSection> = Vec::new();
 
     for (i, payload) in payloads.into_iter().enumerate() {
+        let ElfPayload { entry_point, exec, ro, rw } = payload;
+
         // Add executable code sections
-        for section in &payload.exec {
+        for section in &exec {
             add_zisk_code(&mut rom, section.addr, &section.data, dma_addrs);
         }
 
         // Add read-only data sections.  They will be stored in ROM, but there can be some RAM
         // regions marked as read-only as well, e.g. the output region
-        for section in &payload.ro {
+        for section in ro {
             if section.addr >= ROM_ADDR
                 && (section.addr + section.data.len() as u64) <= (ROM_ADDR + ROM_SIZE)
             {
-                ro_data.push(section.clone());
+                ro_data.push(section);
             } else if section.addr >= RAM_ADDR
                 && (section.addr + section.data.len() as u64) <= (RAM_ADDR + RAM_SIZE)
             {
-                rw_data.push(section.clone());
+                rw_data.push(section);
             } else {
                 return Err(format!(
                     "Data section at address 0x{:x} with size {} is out of ROM and RAM bounds",
@@ -84,21 +86,21 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         }
 
         // Add read-write data sections (will be stored in RAM)
-        rw_data.append(&mut payload.rw.clone());
+        rw_data.extend(rw);
 
         // Add entry and exit jump instructions, only for the guest ELF payload
         // (i.e. `payloads[elf_index]`)
         if i == elf_index {
-            add_entry_exit_jmp(&mut rom, payload.entry_point);
+            add_entry_exit_jmp(&mut rom, entry_point);
         }
     }
 
     // Merge adjacent read-write data sections for efficiency.
-    rw_data = merge_adjacent_data_sections(&rw_data);
+    rw_data = merge_adjacent_data_sections(rw_data);
 
     // Merge and pad RO sections to a 32-byte multiple, coalescing any sections
     // that the padding would otherwise make overlap (see merge_ro_sections).
-    ro_data = merge_ro_sections(&ro_data)?;
+    ro_data = merge_ro_sections(ro_data)?;
 
     // Delete trailing zeros in every data section of the RAM, and delete the section if needed
     rw_data = rw_data
@@ -251,8 +253,24 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // searching for the instruction corresponding to the program counter (PC) address
     rom.optimize_instruction_lookup()?;
 
-    //println! {"elf2rom() got rom.insts.len={}", rom.insts.len()};
-
+    /*
+    for section in &rom.ro_data_64 {
+        let len = section.data.len() as u64;
+        println!(
+            "SECTION RO: 0x{:08X} - 0x{:08X} size_64:{len}",
+            section.addr,
+            section.addr + (len - 1) * 8,
+        );
+    }
+    for section in &rom.rw_data_64 {
+        let len = section.data.len() as u64;
+        println!(
+            "SECTION RW: 0x{:08X} - 0x{:08X} size_64:{len}",
+            section.addr,
+            section.addr + (len - 1) * 8,
+        );
+    }
+    */
     Ok(rom)
 }
 
