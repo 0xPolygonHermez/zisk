@@ -93,6 +93,11 @@ pub fn execute_build_program(
 
     execute_command(cmd)?;
 
+    // The assembly-accelerated path is RISC-V only; wasm guests run on the emulator backend.
+    if args.machine == crate::GuestMachine::Wasm {
+        return Ok(target_elf_paths);
+    }
+
     // Generate assembly for all ELF files (only if not already generated)
     let asm = args.asm.unwrap_or(false);
     let hints = args.hints.unwrap_or(false);
@@ -233,12 +238,17 @@ pub fn generate_elf_paths(
                 }
             }
 
-            let elf_path = metadata
+            let wasm = args.map(|a| a.machine == crate::GuestMachine::Wasm).unwrap_or(false);
+            let target = if wasm { crate::ZISK_WASM_TARGET } else { ZISK_TARGET };
+            let mut elf_path = metadata
                 .target_directory
                 .join(HELPER_TARGET_SUBDIR)
-                .join(ZISK_TARGET)
+                .join(target)
                 .join(profile)
                 .join(&bin_target.name);
+            if wasm {
+                elf_path.set_extension("wasm");
+            }
 
             target_elf_paths.push((bin_target.name.to_owned(), elf_path));
         }

@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ProgramVK;
-use zisk_core::Riscv2zisk;
+use zisk_core::{is_wasm_file, Riscv2zisk};
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
 
@@ -150,11 +150,17 @@ impl GuestProgram {
         let _tmp_elf;
         if let Some(mode) = profiling {
             mode.apply(&mut options);
-            let tmp_path =
-                std::env::temp_dir().join(format!("zisk_elf_{}.elf", self.program_id.hash_id));
-            if std::fs::write(&tmp_path, self.elf()).is_ok() {
-                options.elf = Some(tmp_path.to_string_lossy().into_owned());
-                _tmp_elf = Some(tmp_path);
+            // Profiling symbol resolution reads ELF symbol tables, which wasm guests do not have;
+            // skip writing the temp ELF and leave `options.elf` unset for wasm.
+            if !is_wasm_file(self.elf()) {
+                let tmp_path =
+                    std::env::temp_dir().join(format!("zisk_elf_{}.elf", self.program_id.hash_id));
+                if std::fs::write(&tmp_path, self.elf()).is_ok() {
+                    options.elf = Some(tmp_path.to_string_lossy().into_owned());
+                    _tmp_elf = Some(tmp_path);
+                } else {
+                    _tmp_elf = None;
+                }
             } else {
                 _tmp_elf = None;
             }

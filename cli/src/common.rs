@@ -44,10 +44,20 @@ pub fn detect_current_project_elf() -> Result<Option<PathBuf>> {
 
     let debug_candidate = candidate.join("debug").join(&binary_name);
     if debug_candidate.exists() {
-        Ok(Some(debug_candidate))
-    } else {
-        Ok(None)
+        return Ok(Some(debug_candidate));
     }
+
+    // Also probe the wasm guest artifact (built with `cargo-zisk build --machine wasm`).
+    let wasm_dir =
+        current_dir.join("target").join("elf").join(zisk_build::ZISK_WASM_TARGET);
+    for profile in ["release", "debug"] {
+        let wasm_candidate = wasm_dir.join(profile).join(format!("{binary_name}.wasm"));
+        if wasm_candidate.exists() {
+            return Ok(Some(wasm_candidate));
+        }
+    }
+
+    Ok(None)
 }
 
 fn parse_package_name_from_cargo_toml(content: &str) -> Option<String> {

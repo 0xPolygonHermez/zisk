@@ -5,7 +5,7 @@ use std::{
     process::{Command, Stdio},
 };
 use zisk_common::ZiskPaths;
-use zisk_core::{is_elf_file, AsmGenerationMethod, Riscv2zisk};
+use zisk_core::{is_elf_file, is_wasm_file, AsmGenerationMethod, Riscv2zisk};
 
 use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;
@@ -212,6 +212,9 @@ pub fn generate_assembly(
 ) -> Result<(), anyhow::Error> {
     let elf_hash = get_elf_data_hash(elf);
 
+    if is_wasm_file(elf) {
+        anyhow::bail!("ASM-accelerated mode does not support wasm guests yet; use --emulator");
+    }
     if !is_elf_file(elf).context("Error reading ROM file")? {
         anyhow::bail!("ROM file is not a valid ELF file");
     }

@@ -7,6 +7,7 @@
 - [Installation](./getting_started/installation.md)
 - [Quickstart](./getting_started/quickstart.md)
 - [Writing Programs](./getting_started/writing_programs.md)
+- [WebAssembly Programs](./getting_started/wasm_programs.md)
 - [Precompiles](./getting_started/precompiles.md)
 - [Distributed Execution](./getting_started/distributed_execution.md)
 - [Hints Stream](./getting_started/hints_stream.md)

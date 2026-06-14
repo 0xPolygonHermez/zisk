@@ -15,6 +15,10 @@ path = "src/lib.rs"
 name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
+[[bin]]
+name = "wasmemu"
+path = "src/bin/wasmemu.rs"
+
 [dependencies]
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
@@ -45,6 +49,7 @@ vergen-git2 = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
+wat = { workspace = true }
 
 [[bench]]
 name = "benchmark"
