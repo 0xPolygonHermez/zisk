@@ -17,6 +17,7 @@ path = "src/bin/riscv2zisk.rs"
 [dependencies]
 zisk-core = { workspace = true }
 zisk-transpiler-common = { workspace = true }
+zisk-transpiler-wasm = { workspace = true }
 
 [build-dependencies]
 zisk-lib-float = { workspace = true, optional = true }
@@ -32,4 +33,4 @@ zbc_native = ["zisk-transpiler-common/zbc_native", "zisk-core/zbc_native"]
 zbkc_native = ["zisk-transpiler-common/zbkc_native", "zisk-core/zbkc_native"]
 zbkx_native = ["zisk-transpiler-common/zbkx_native", "zisk-core/zbkx_native"]
 zicond_native = ["zisk-transpiler-common/zicond_native", "zisk-core/zicond_native"]
-float = ["zisk-transpiler-common/float"]
+float = ["zisk-transpiler-common/float", "zisk-transpiler-wasm/float"]
