@@ -252,8 +252,8 @@ pub fn conjugate_fp2_bls12_381(
     a: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 12] {
-    let mut f1 = to_syscall_complex_x(a[0..6].try_into().unwrap());
-    let f2 = to_syscall_complex_y(a[6..12].try_into().unwrap());
+    let mut f1 = to_syscall_complex_x(&a[0..6].try_into().unwrap());
+    let f2 = to_syscall_complex_y(&a[6..12].try_into().unwrap());
 
     let mut params = SyscallBls12_381ComplexSubParams { f1: &mut f1, f2: &f2 };
     syscall_bls12_381_complex_sub(

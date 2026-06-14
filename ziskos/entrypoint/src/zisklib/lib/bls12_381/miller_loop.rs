@@ -169,7 +169,7 @@ pub fn miller_loop_bls12_381(
     )
 }
 
-/// Computes the Miller loop for the BN254 curve for a batch of non-zero points `p_i` in G1
+/// Computes the Miller loop for the BLS12-381 curve for a batch of non-zero points `p_i` in G1
 /// and non-zero points `q_i` in G2
 ///
 /// # Soundness

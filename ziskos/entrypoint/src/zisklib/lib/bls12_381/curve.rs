@@ -218,7 +218,7 @@ pub fn is_on_subgroup_bls12_381(
         hints,
     );
 
-    eq(&lhs, &rhs) && eq(p, &G1_IDENTITY)
+    eq(&lhs, &rhs) || eq(p, &G1_IDENTITY)
 }
 
 /// Compute the sigma endomorphism σ of a non-zero point `p`, defined as:
