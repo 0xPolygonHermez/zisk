@@ -112,7 +112,7 @@ fn get_dma_symbol_addresses(elf_data: &[u8]) -> (u64, u64, u64, u64) {
 ///     - When building traces for proof generation, we iterate through all instructions in address order
 ///     - When running the emulator, each iteration of emulator need to fetch an instruction based on the `pc`
 ///       Using an array vs a hashmap here will be faster due to instructions being next to each other and array cache locality.
-fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> {
+pub(crate) fn optimize_instruction_lookup(rom: &mut ZiskRom) -> Result<(), Box<dyn Error>> {
     // 1. Find the address ranges for each instruction category
     let mut max_rom_entry = 0;
     let mut min_rom_instructions = u64::MAX;

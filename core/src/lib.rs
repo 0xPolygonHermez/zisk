@@ -68,6 +68,7 @@ pub mod zisk_ops;
 pub mod zisk_ops_costs;
 pub mod zisk_registers;
 pub mod zisk_required_operation;
+pub mod wasm;
 pub mod zisk_rom;
 pub mod zisk_rom_2_asm;
 
