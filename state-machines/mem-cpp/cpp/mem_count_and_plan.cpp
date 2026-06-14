@@ -385,7 +385,84 @@ static void generate_mem_segments_into(MemSegments dest[MEM_TYPES], const std::v
 // `vector<InstanceMeta>` shape it expects; the pointers inside are untouched.
 bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_ptr, uint32_t n) {
     if (!mcp || (!gpu_metas_ptr && n != 0)) return false;
+    if (n > MEM_GPU_MAX_INSTANCES) {
+        fprintf(stderr,
+                "inject_gpu_metas_from_pointers: n=%u > MEM_GPU_MAX_INSTANCES=%u; reject\n",
+                n, MEM_GPU_MAX_INSTANCES);
+        return false;
+    }
     const InstanceMeta *gpu_metas = static_cast<const InstanceMeta *>(gpu_metas_ptr);
+
+    // Validate every meta before trusting it. The bounds below are the GPU
+    // producer's invariants (see cu/count_and_plan.cu wiring); 
+    for (uint32_t i = 0; i < n; ++i) {
+        const InstanceMeta &m = gpu_metas[i];
+        if (m.n_chunks > MEM_GPU_MAX_META_CHUNKS) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has n_chunks=%u > MEM_GPU_MAX_META_CHUNKS=%u; reject\n",
+                    i, m.n_chunks, MEM_GPU_MAX_META_CHUNKS);
+            return false;
+        }
+        if (m.n_chunks != 0 && m.count_per_chunk == nullptr) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has n_chunks=%u but count_per_chunk is null; reject\n",
+                    i, m.n_chunks);
+            return false;
+        }
+        if (m.kind >= MEM_TYPES) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has kind=%u >= MEM_TYPES=%u; reject\n",
+                    i, m.kind, (uint32_t)MEM_TYPES);
+            return false;
+        }
+        if (m.n_chunks != 0 &&
+            (m.first_addr_chunk >= m.n_chunks || m.last_addr_chunk >= m.n_chunks)) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has first_addr_chunk=%u/last_addr_chunk=%u out of n_chunks=%u; reject\n",
+                    i, m.first_addr_chunk, m.last_addr_chunk, m.n_chunks);
+            return false;
+        }
+        if (m.last_addr < m.first_addr) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has last_addr=0x%x < first_addr=0x%x; reject\n",
+                    i, m.last_addr, m.first_addr);
+            return false;
+        }
+        const PagedOffsets &o = m.offsets;
+        const uint32_t expected_slots = ((m.last_addr - m.first_addr) >> 3) + 1;
+        if (o.addr_range_slots != expected_slots) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has addr_range_slots=%u, expected %u from addr range; reject\n",
+                    i, o.addr_range_slots, expected_slots);
+            return false;
+        }
+        const uint32_t expected_pages =
+            (o.addr_range_slots + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE;
+        if (o.num_pages != expected_pages) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has num_pages=%u, expected %u from addr_range_slots=%u; reject\n",
+                    i, o.num_pages, expected_pages, o.addr_range_slots);
+            return false;
+        }
+        if (o.present_count > o.num_pages) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has present_count=%u > num_pages=%u; reject\n",
+                    i, o.present_count, o.num_pages);
+            return false;
+        }
+        if (o.num_pages != 0 && (o.page_starts == nullptr || o.page_single_value == nullptr)) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has num_pages=%u but null page_starts/page_single_value; reject\n",
+                    i, o.num_pages);
+            return false;
+        }
+        if (o.present_count != 0 && o.pages_dense == nullptr) {
+            fprintf(stderr,
+                    "inject_gpu_metas_from_pointers: meta %u has present_count=%u but pages_dense is null; reject\n",
+                    i, o.present_count);
+            return false;
+        }
+    }
     std::vector<InstanceMeta> metas(gpu_metas, gpu_metas + n);
     generate_mem_segments_into(mcp->segments, metas);
     return true;
@@ -393,19 +470,23 @@ bool inject_gpu_metas_from_pointers(MemCountAndPlan *mcp, const void *gpu_metas_
 
 uint32_t get_mem_segment_count(MemCountAndPlan *mcp, uint32_t mem_id)
 {
+    if (!mcp || mem_id >= MEM_TYPES) return 0;
     return mcp->segments[mem_id].size();
 }
 
 const MemCheckPoint *get_mem_segment_check_points(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id, uint32_t &count)
 {
+    if (!mcp || mem_id >= MEM_TYPES) { count = 0; return nullptr; }
     auto segment = mcp->segments[mem_id].get(segment_id);
-    count = segment ? segment->size() : 0;
+    if (!segment) { count = 0; return nullptr; }
+    count = segment->size();
     return segment->get_chunks();
 }
 
 PagedOffsets get_mem_segment_offset_pages(MemCountAndPlan *mcp, uint32_t mem_id, uint32_t segment_id,
                                           uint32_t &offsets_base_addr_out)
 {
+    if (!mcp || mem_id >= MEM_TYPES) { offsets_base_addr_out = 0; return PagedOffsets{nullptr, nullptr, nullptr, 0, 0, 0}; }
     auto segment = mcp->segments[mem_id].get(segment_id);
     if (segment) {
         offsets_base_addr_out = segment->offsets_base_addr;

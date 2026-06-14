@@ -1,0 +1,35 @@
+[package]
+name = "gcd-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+zisk-sdk = { workspace = true }
+gcd-common = { path = "../common" }
+examples-utils = { workspace = true }
+tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros"] }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
+
+
+[[bin]]
+name = "embedded-host"
+path = "src/prover-clients/embedded.rs"
+
+[[bin]]
+name = "remote-host"
+path = "src/prover-clients/remote.rs"
+
+[[bin]]
+name = "stark-host"
+path = "src/proof-formats/stark.rs"
+
+[[bin]]
+name = "minimal-host"
+path = "src/proof-formats/minimal.rs"
+
+[[bin]]
+name = "plonk-host"
+path = "src/proof-formats/plonk.rs"

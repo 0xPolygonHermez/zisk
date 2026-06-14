@@ -64,7 +64,6 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
         self.pctx.acquire_first_gpu_buffer();
     }
 
-    /// Release the buffer back to proofman once the MO runner has joined.
     #[inline]
     pub fn release_gpu_buffer(&self) {
         self.pctx.release_first_gpu_buffer();

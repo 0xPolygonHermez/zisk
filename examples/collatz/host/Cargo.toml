@@ -1,0 +1,25 @@
+[package]
+name = "collatz-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+zisk-sdk = { workspace = true }
+collatz-common = { path = "../common" }
+examples-utils = { workspace = true }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
+
+[[bin]]
+name = "single-host"
+path = "src/single.rs"
+
+[[bin]]
+name = "sequential-host"
+path = "src/sequential.rs"
+
+[[bin]]
+name = "compressed-host"
+path = "src/compressed.rs"

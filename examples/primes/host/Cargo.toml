@@ -1,0 +1,30 @@
+[package]
+name = "primes-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+zisk-sdk = { workspace = true }
+primes-common = { path = "../common" }
+examples-utils = { workspace = true }
+tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros"] }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
+
+[[bin]]
+name = "struct-host"
+path = "src/struct.rs"
+
+[[bin]]
+name = "multiple-host"
+path = "src/multiple.rs"
+
+[[bin]]
+name = "slice-host"
+path = "src/slice.rs"
+
+[[bin]]
+name = "streaming-host"
+path = "src/streaming.rs"

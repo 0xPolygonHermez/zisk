@@ -172,7 +172,6 @@ jobs:
             -v /home/gha/cache-setup:/home/ziskuser/output:rw \
             -e ZISK_GHA=1 \
             -e ZISK_REPO_DIR=/workspace/zisk \
-            -e ZISK_TESTVECTORS_BRANCH="${ZISK_TESTVECTORS_BRANCH}" \
             -e PROVE_FLAGS=-y \
             -e TERM=xterm \
             ziskvm/zisk-runner-gpu:latest \

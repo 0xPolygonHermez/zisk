@@ -82,8 +82,6 @@ impl ZiskEmbeddedSetup {
             setup = setup.with_hints();
         }
 
-        setup = setup.emulator_only();
-
         setup.run_sync()?;
 
         info!("{}", "--- SETUP SUMMARY -------------".bright_green().bold());
