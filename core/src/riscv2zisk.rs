@@ -3,8 +3,22 @@
 //! The input parameter is an ELF RISC-V file name, and the output parameter is a JSON Zisk ROM
 //! file.  Optionally, the Zisk ROM can also be saved in x84-64 NASM assembly format.
 
-use crate::{elf2rom, elf2romfile, ZiskRom};
+use crate::{elf2rom, elf2romfile, is_elf_file, is_wasm_file, wasm::wasm2rom, ZiskRom};
 use std::{error::Error, path::PathBuf};
+
+/// Transpiles a guest program (RISC-V ELF or WebAssembly) into a Zisk ROM, dispatching on the
+/// file's magic bytes.  This is the single seam through which both guest machines flow.
+pub fn program2rom(bytes: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    if is_wasm_file(bytes) {
+        wasm2rom(bytes)
+    } else if is_elf_file(bytes).unwrap_or(false) {
+        elf2rom(bytes)
+    } else {
+        Err("unrecognized guest format: expected a RISC-V ELF (\\x7fELF) or WebAssembly (\\0asm) \
+             binary"
+            .into())
+    }
+}
 
 /// ZisK Emulator can be executed in assembly to get the maximum performance
 /// in the first sequential emulation, and also is some subsequent parallel tasks.
@@ -86,8 +100,9 @@ impl<'a> Riscv2zisk<'a> {
             .map_err(|e| format!("Error converting elf to assembly: {e}").into())
     }
 
-    /// Executes the file conversion process by calling elf2rom()
+    /// Executes the file conversion process.  Despite the historical name, this accepts either a
+    /// RISC-V ELF or a WebAssembly guest and dispatches on the file's magic bytes.
     pub fn run(&self) -> Result<ZiskRom, Box<dyn Error>> {
-        elf2rom(self.elf)
+        program2rom(self.elf)
     }
 }
