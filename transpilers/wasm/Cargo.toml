@@ -1,0 +1,24 @@
+[package]
+name = "zisk-transpiler-wasm"
+description = "Transpiler from WebAssembly to the ZisK instruction set"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-riscv = { workspace = true }
+
+wasmparser = { workspace = true }
+
+[dev-dependencies]
+wat = { workspace = true }
+
+[features]
+default = []
+float = ["zisk-riscv/float", "zisk-core/float"]
