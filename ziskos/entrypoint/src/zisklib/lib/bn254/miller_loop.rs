@@ -3,6 +3,8 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::{new_scratch_vec, ScratchVec};
+
 use crate::zisklib::{eq, fcall_bn254_twist_add_line_coeffs, fcall_bn254_twist_dbl_line_coeffs};
 
 use super::{
@@ -259,8 +261,8 @@ pub fn miller_loop_batch_bn254(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 48] {
     // Before the loop starts, compute xp' = -xp/yp and yp' = 1/yp for each point p
-    let mut xp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
-    let mut yp_primes: Vec<[u64; 4]> = Vec::with_capacity(g1_points.len());
+    let mut xp_primes: ScratchVec<[u64; 4]> = new_scratch_vec(g1_points.len());
+    let mut yp_primes: ScratchVec<[u64; 4]> = new_scratch_vec(g1_points.len());
     for p in g1_points.iter() {
         let mut xp_prime: [u64; 4] = p[0..4].try_into().unwrap();
         let mut yp_prime: [u64; 4] = p[4..8].try_into().unwrap();
@@ -286,10 +288,13 @@ pub fn miller_loop_batch_bn254(
     }
 
     // Initialize the Miller loop with r_i = q_i and f = 1
-    let mut r: Vec<[u64; 16]> = g2_points.iter().map(|q| q[0..16].try_into().unwrap()).collect();
+    let n = g1_points.len();
+    let mut r: ScratchVec<[u64; 16]> = new_scratch_vec(n);
+    for q in g2_points.iter() {
+        r.push(q[0..16].try_into().unwrap());
+    }
     let mut f = [0u64; 48];
     f[0] = 1;
-    let n = g1_points.len();
     for &bit in LOOP_LENGTH.iter().skip(1) {
         // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bn254(

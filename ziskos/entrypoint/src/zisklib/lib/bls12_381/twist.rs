@@ -3,6 +3,8 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::{new_scratch_vec, ScratchVec};
+
 use crate::zisklib::{eq, fcall_msb_pos_256, is_zero, lt};
 
 use super::{
@@ -1096,8 +1098,8 @@ pub(crate) unsafe fn bls12_381_g2_msm_c(
     let ret_bytes: &mut [u8; 192] = &mut *(ret as *mut [u8; 192]);
 
     // Parse all pairs
-    let mut points = Vec::with_capacity(num_pairs);
-    let mut scalars = Vec::with_capacity(num_pairs);
+    let mut points: ScratchVec<[u64; 24]> = new_scratch_vec(num_pairs);
+    let mut scalars: ScratchVec<[u64; 4]> = new_scratch_vec(num_pairs);
     for i in 0..num_pairs {
         let pair_ptr = pairs.add(i * 224);
         let point_bytes: &[u8; 192] = &*(pair_ptr as *const [u8; 192]);

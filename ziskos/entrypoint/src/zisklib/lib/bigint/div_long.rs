@@ -1,9 +1,11 @@
 use core::cmp::Ordering;
 
 #[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+
+use crate::scratch_accelerators::{
+    new_scratch_vec_filled, new_scratch_vec_filled_z, scratch_vec_from_slice, ScratchVec,
+};
 
 use crate::zisklib::fcall_bigint_div;
 
@@ -25,7 +27,7 @@ pub fn div_long(
     a: &[U256],
     b: &[U256],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> (Vec<U256>, Vec<U256>) {
+) -> (ScratchVec<U256>, ScratchVec<U256>) {
     let len_a = a.len();
     let len_b = b.len();
     #[cfg(debug_assertions)]
@@ -41,9 +43,9 @@ pub fn div_long(
     // Check if a = b, a < b or a > b
     let comp = U256::compare_slices(a, b);
     if comp == Ordering::Less {
-        return (vec![U256::ZERO], a.to_vec());
+        return (new_scratch_vec_filled_z(1, U256::ZERO), scratch_vec_from_slice(a));
     } else if comp == Ordering::Equal {
-        return (vec![U256::ONE], vec![U256::ZERO]);
+        return (new_scratch_vec_filled(1, U256::ONE), new_scratch_vec_filled_z(1, U256::ZERO));
     }
     // We can assume a > b from here on
 
@@ -52,8 +54,8 @@ pub fn div_long(
     let b_flat = U256::slice_to_flat(b);
 
     // Hint the quotient and remainder
-    let mut quo_flat = vec![0u64; len_a * 4];
-    let mut rem_flat = vec![0u64; len_b * 4];
+    let mut quo_flat = new_scratch_vec_filled_z(len_a * 4, 0u64);
+    let mut rem_flat = new_scratch_vec_filled_z(len_b * 4, 0u64);
     let (limbs_quo, limbs_rem) = fcall_bigint_div(
         a_flat,
         b_flat,
@@ -82,7 +84,7 @@ pub fn div_long(
     assert!(!quo[len_quo - 1].is_zero(), "Quotient must not have leading zeros");
 
     // Multiply the quotient by b
-    let mut q_b = vec![U256::ZERO; len_a + 1]; // The +1 is because mul_long is a general purpose function
+    let mut q_b = new_scratch_vec_filled_z(len_a + 1, U256::ZERO); // The +1 is because mul_long is a general purpose function
     let q_b_len = mul_long(
         quo,
         b,
@@ -103,7 +105,7 @@ pub fn div_long(
 
         assert!(U256::lt_slices(rem, b), "Remainder must be less than divisor");
 
-        let mut q_b_r = vec![U256::ZERO; len_a + 1]; // The +1 is because add_agtb is a general purpose function
+        let mut q_b_r = new_scratch_vec_filled_z(len_a + 1, U256::ZERO); // The +1 is because add_agtb is a general purpose function
         let q_b_r_len = add_agtb(
             &q_b[..q_b_len],
             rem,
@@ -114,5 +116,5 @@ pub fn div_long(
         assert!(U256::eq_slices(a, &q_b_r[..q_b_r_len]), "a != q·b + r");
     }
 
-    (quo.to_vec(), rem.to_vec())
+    (scratch_vec_from_slice(quo), scratch_vec_from_slice(rem))
 }

@@ -3,6 +3,8 @@
 #[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
+use crate::scratch_accelerators::{new_scratch_vec, ScratchVec};
+
 use crate::zisklib::{
     eq, fcall_bls12_381_twist_add_line_coeffs, fcall_bls12_381_twist_dbl_line_coeffs,
 };
@@ -175,8 +177,8 @@ pub fn miller_loop_batch_bls12_381(
 ) -> [u64; 72] {
     // Before the loop starts, compute xp' = (-xp/yp)·1/(1+u) and yp' = (1/yp)·1/(1+u)
     let n = g1_points.len();
-    let mut xp_primes: Vec<[u64; 12]> = Vec::with_capacity(n);
-    let mut yp_primes: Vec<[u64; 12]> = Vec::with_capacity(n);
+    let mut xp_primes: ScratchVec<[u64; 12]> = new_scratch_vec(n);
+    let mut yp_primes: ScratchVec<[u64; 12]> = new_scratch_vec(n);
     for p in g1_points.iter() {
         let mut xp: [u64; 6] = p[0..6].try_into().unwrap();
         let mut yp: [u64; 6] = p[6..12].try_into().unwrap();
@@ -214,7 +216,10 @@ pub fn miller_loop_batch_bls12_381(
     }
 
     // Initialize the Miller loop with r_i = q_i and f = 1
-    let mut r: Vec<[u64; 24]> = g2_points.iter().map(|q| q[0..24].try_into().unwrap()).collect();
+    let mut r: ScratchVec<[u64; 24]> = new_scratch_vec(n);
+    for q in g2_points.iter() {
+        r.push(q[0..24].try_into().unwrap());
+    }
     let mut f = [0u64; 72];
     f[0] = 1;
     for &bit in X_ABS_BIN_BE.iter().skip(1) {

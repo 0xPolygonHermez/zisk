@@ -1,7 +1,7 @@
 #[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+
+use crate::scratch_accelerators::ScratchVec;
 
 use crate::syscalls::{
     syscall_add256, syscall_arith256, SyscallAdd256Params, SyscallArith256Params,
@@ -196,7 +196,7 @@ pub fn square_and_reduce_long(
     modulus: &[U256],
     scratch: &mut LongScratch,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> Vec<U256> {
+) -> ScratchVec<U256> {
     #[cfg(debug_assertions)]
     {
         let len_m = modulus.len();

@@ -1,7 +1,5 @@
-extern crate alloc;
-use alloc::vec::Vec;
-
 use crate::{
+    scratch_accelerators::{new_scratch_vec, ScratchVec},
     syscalls::{syscall_secp256k1_dbl, SyscallPoint256},
     zisklib::{eq, fcall_msb_pos_256_2, fcall_msb_pos_256_4, is_zero, ONE_256, TWO_256, ZERO_256},
 };
@@ -634,8 +632,8 @@ pub fn glv_multi_scalar_mul_secp256k1(
     }
 
     // Expand each (k, P) into ((k1, ±P), (k2, ±φ(P))).
-    let mut expanded_scalars: Vec<[u64; 4]> = Vec::with_capacity(2 * n);
-    let mut expanded_points: Vec<[u64; 8]> = Vec::with_capacity(2 * n);
+    let mut expanded_scalars: ScratchVec<[u64; 4]> = new_scratch_vec(2 * n);
+    let mut expanded_points: ScratchVec<[u64; 8]> = new_scratch_vec(2 * n);
     for i in 0..n {
         let (k1, k2, sigma_1, sigma_2) = glv_decompose_fn_secp256k1(
             &scalars[i],

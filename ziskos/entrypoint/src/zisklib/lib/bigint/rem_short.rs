@@ -1,7 +1,7 @@
 #[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+
+use crate::scratch_accelerators::{new_scratch_vec_filled, new_scratch_vec_filled_z};
 
 use crate::zisklib::fcall_bigint_div;
 
@@ -50,7 +50,7 @@ pub fn rem_short_init(
     let a_flat = U256::slice_to_flat(a);
 
     // Hint the quotient and remainder
-    let mut quo_flat = vec![0u64; len_a * 4];
+    let mut quo_flat = new_scratch_vec_filled_z(len_a * 4, 0u64);
     let mut rem_flat = [0u64; 4];
     let (limbs_quo, _) = fcall_bigint_div(
         a_flat,
@@ -64,8 +64,8 @@ pub fn rem_short_init(
     let rem = U256::from_u64s(&rem_flat);
 
     // Verify the division
-    let mut q_b = vec![U256::ZERO; len_a + 1]; // The +1 is because mul_long and add_agtb are a general purpose functions
-    let mut q_b_r = vec![U256::ZERO; len_a + 1];
+    let mut q_b = new_scratch_vec_filled_z(len_a + 1, U256::ZERO); // The +1 is because mul_long and add_agtb are a general purpose functions
+    let mut q_b_r = new_scratch_vec_filled_z(len_a + 1, U256::ZERO);
     verify_division(
         a,
         b,

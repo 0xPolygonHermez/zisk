@@ -162,6 +162,7 @@ pub unsafe extern "C" fn zkvm_modexp(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 super::modexp_bytes_c(base, base_len, exp, exp_len, modulus, mod_len, output);
                 return ZKVM_EOK;
             }
@@ -225,6 +226,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bn254_g1_add_c(
                     (*p1).data.as_ptr(),
                     (*p2).data.as_ptr(),
@@ -298,6 +300,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bn254_g1_mul_c(
                     (*point).data.as_ptr(),
                     (*scalar).data.as_ptr(),
@@ -365,6 +368,7 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bn254_pairing_check_c(pairs as *const u8, num_pairs);
                 return match ret {
                     bn254::PAIRING_CHECK_SUCCESS => {
@@ -507,6 +511,7 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 *verified = super::verify_kzg_proof_c(
                     (*z).data.as_ptr(),
                     (*y).data.as_ptr(),
@@ -574,6 +579,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bls12_381_g1_add_c(
                     (*result).data.as_mut_ptr(),
                     (*p1).data.as_ptr(),
@@ -643,6 +649,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bls12_381_g1_msm_c(
                     (*result).data.as_mut_ptr(),
                     pairs as *const u8,
@@ -719,6 +726,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bls12_381_g2_add_c(
                     (*result).data.as_mut_ptr(),
                     (*p1).data.as_ptr(),
@@ -788,6 +796,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bls12_381_g2_msm_c(
                     (*result).data.as_mut_ptr(),
                     pairs as *const u8,
@@ -858,6 +867,7 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bls12_381_pairing_check_c(pairs as *const u8, num_pairs);
                 return match ret {
                     bls12_381::PAIRING_CHECK_SUCCESS => {
@@ -929,6 +939,7 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bls12_381_fp_to_g1_c(
                     (*result).data.as_mut_ptr(),
                     (*field_element).data.as_ptr(),
@@ -992,6 +1003,7 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::bls12_381_fp2_to_g2_c(
                     (*result).data.as_mut_ptr(),
                     (*field_element).data.as_ptr(),
@@ -1058,6 +1070,7 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 *verified = super::secp256r1_ecdsa_verify_c(
                     (*msg).data.as_ptr(),
                     (*sig).data.as_ptr(),
@@ -1124,6 +1137,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 *verified = super::secp256k1_ecdsa_verify_bytes_c(
                     sig as *const u8,
                     msg as *const u8,
@@ -1197,6 +1211,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
 
             #[cfg(zisk_guest)]
             {
+                crate::scratch_accelerators::BumpScratch::reset();
                 let ret = super::secp256k1_ecdsa_recover_c(
                     sig as *const u8,
                     recid,

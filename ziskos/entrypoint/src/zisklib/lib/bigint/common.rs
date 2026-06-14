@@ -4,9 +4,19 @@ use core::{
 };
 
 #[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
+
+use crate::scratch_accelerators::{
+    new_scratch_vec_filled, new_scratch_vec_filled_z, IsZero, ScratchVec,
+};
+
+// SAFETY: U256 is [u64; 4]; all-zeros is a valid, fully-initialised value.
+unsafe impl IsZero for U256 {
+    #[inline(always)]
+    fn is_zero(&self) -> bool {
+        self.0[0] == 0 && self.0[1] == 0 && self.0[2] == 0 && self.0[3] == 0
+    }
+}
 
 /// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
 #[repr(transparent)]
@@ -196,10 +206,10 @@ impl Default for ShortScratch {
 
 /// Scratch space for the remainder step of long-divisor division verification.
 pub struct RemLongScratch {
-    pub quo: Vec<u64>,    // quotient
-    pub rem: Vec<u64>,    // remainder
-    pub q_b: Vec<U256>,   // q * b
-    pub q_b_r: Vec<U256>, // q * b + r
+    pub quo: ScratchVec<u64>,    // quotient
+    pub rem: ScratchVec<u64>,    // remainder
+    pub q_b: ScratchVec<U256>,   // q * b
+    pub q_b_r: ScratchVec<U256>, // q * b + r
 }
 
 impl RemLongScratch {
@@ -208,23 +218,23 @@ impl RemLongScratch {
         let max_rem = len_m * 4;
         let max_prod = 2 * len_m;
         Self {
-            quo: vec![0u64; max_quo],
-            rem: vec![0u64; max_rem],
-            q_b: vec![U256::ZERO; max_prod],
-            q_b_r: vec![U256::ZERO; max_prod],
+            quo: new_scratch_vec_filled_z(max_quo, 0u64),
+            rem: new_scratch_vec_filled_z(max_rem, 0u64),
+            q_b: new_scratch_vec_filled_z(max_prod, U256::ZERO),
+            q_b_r: new_scratch_vec_filled_z(max_prod, U256::ZERO),
         }
     }
 }
 
 /// Combined scratch space for long-divisor division and multiplication verification.
 pub struct LongScratch {
-    pub rem: RemLongScratch, // for rem_long verification
-    pub mul: Vec<U256>,      // result of mul_long or square_long
+    pub rem: RemLongScratch,   // for rem_long verification
+    pub mul: ScratchVec<U256>, // result of mul_long or square_long
 }
 
 impl LongScratch {
     pub fn new(len_m: usize) -> Self {
         let max_mul = 2 * len_m;
-        Self { rem: RemLongScratch::new(len_m), mul: vec![U256::ZERO; max_mul] }
+        Self { rem: RemLongScratch::new(len_m), mul: new_scratch_vec_filled_z(max_mul, U256::ZERO) }
     }
 }

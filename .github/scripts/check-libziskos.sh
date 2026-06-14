@@ -6,12 +6,16 @@ set -euo pipefail
 FAIL=0
 TARGET=riscv64ima-zisk-zkvm-elf
 
-cargo +zisk build -p ziskos-staticlib --release \
+# Release+LTO: fat LTO gives the compiler full optimisation visibility.
+# The resulting archive is the production artifact.
+cargo +zisk build -p ziskos-staticlib \
   --target "$TARGET" \
+  --release \
+  --config 'profile.release.debug=false' \
   --config 'profile.release.lto="fat"'
 
-LIBZISKOS=$(find target -name "libziskos_staticlib.a" -path "*$TARGET*" | head -1)
-if [ -z "$LIBZISKOS" ]; then
+LIBZISKOS="target/$TARGET/release/libziskos_staticlib.a"
+if [ ! -f "$LIBZISKOS" ]; then
   echo "FAIL: libziskos_staticlib.a not found"
   exit 1
 fi
@@ -25,8 +29,7 @@ else
   echo "OK: no std object files bundled"
 fi
 
-# Use llvm-nm from the zisk toolchain sysroot to avoid LLVM version mismatches
-# when reading bitcode objects produced by lto="fat".
+# Use llvm-nm from the zisk toolchain sysroot for consistent symbol output.
 rustup component add llvm-tools --toolchain zisk 2>/dev/null || true
 LLVM_NM=$(rustup run zisk sh -c 'find "$(rustc --print sysroot)" -name "llvm-nm" -type f | head -1')
 if [[ -z "$LLVM_NM" ]]; then
@@ -74,6 +77,78 @@ for SYM in "${REQUIRED_SYMBOLS[@]}"; do
     FAIL=1
   fi
 done
+
+# Symbols used in the link test: all of REQUIRED_SYMBOLS except _start
+# (_start is provided by the archive itself, not declared as extern in main.rs)
+LINK_SYMBOLS=()
+for SYM in "${REQUIRED_SYMBOLS[@]}"; do
+  [[ "$SYM" != "_start" ]] && LINK_SYMBOLS+=("$SYM")
+done
+
+# ── Link test: verify no global allocator call reaches the C consumer ──────────
+# Build a minimal no_std Cargo binary that provides main() and calls every
+# exported symbol.  The archive supplies _start (which calls main), the zisk
+# toolchain supplies the linker script and all platform symbols.
+#
+# If every exported function is allocation-free the binary links cleanly.
+# If any function transitively reaches __rust_alloc, ForbiddenAlloc's body
+# references __ziskos_forbidden_alloc — an intentionally undefined symbol —
+# and the linker fails with a clear "undefined symbol" error.
+LINK_TMPDIR=$(mktemp -d)
+mkdir -p "$LINK_TMPDIR/src"
+
+# Absolute path so the build.rs works regardless of working directory.
+LIBZISKOS_DIR=$(dirname "$(realpath "$LIBZISKOS")")
+
+cat > "$LINK_TMPDIR/Cargo.toml" << 'CARGO_EOF'
+[package]
+name = "ziskos_link_test"
+version = "0.1.0"
+edition = "2021"
+CARGO_EOF
+
+# build.rs: link against the pre-built release archive.
+cat > "$LINK_TMPDIR/build.rs" << BUILD_RS_EOF
+fn main() {
+    println!("cargo:rustc-link-search=${LIBZISKOS_DIR}");
+    println!("cargo:rustc-link-lib=static=ziskos_staticlib");
+}
+BUILD_RS_EOF
+
+# main.rs: no_std binary; main() is the user entry point, _start comes from
+# the archive.  Wrong argument types are fine — the linker only resolves names.
+{
+  printf '#![no_std]\n#![no_main]\n#![allow(improper_ctypes)]\n\nextern "C" {\n'
+  for SYM in "${LINK_SYMBOLS[@]}"; do
+    printf '    fn %s();\n' "$SYM"
+  done
+  printf '}\n\n#[no_mangle]\npub extern "C" fn main() -> i32 {\n    unsafe {\n'
+  for SYM in "${LINK_SYMBOLS[@]}"; do
+    printf '        %s();\n' "$SYM"
+  done
+  printf '    }\n    0\n}\n\n#[panic_handler]\nfn panic(_: &core::panic::PanicInfo) -> ! { loop {} }\n'
+} > "$LINK_TMPDIR/src/main.rs"
+
+cat "$LINK_TMPDIR/src/main.rs"
+
+LINK_TEST_OUTPUT=$(cargo +zisk build \
+  --manifest-path "$LINK_TMPDIR/Cargo.toml" \
+  --target "$TARGET" \
+  2>&1 || true)
+
+if echo "$LINK_TEST_OUTPUT" | grep -q "__ziskos_forbidden_alloc"; then
+  echo "FAIL: link test — global allocator reachable from exported symbols:"
+  echo "$LINK_TEST_OUTPUT" | grep "__ziskos_forbidden_alloc"
+  FAIL=1
+elif echo "$LINK_TEST_OUTPUT" | grep -qE "^error"; then
+  echo "FAIL: link test failed unexpectedly:"
+  echo "$LINK_TEST_OUTPUT"
+  FAIL=1
+else
+  echo "OK: link test passed — executable linked without errors"
+fi
+
+rm -rf "$LINK_TMPDIR"
 
 if [ "$FAIL" -eq 0 ]; then
   echo "OK: libziskos_staticlib.a passes all checks"

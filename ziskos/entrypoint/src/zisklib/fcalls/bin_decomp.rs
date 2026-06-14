@@ -1,9 +1,10 @@
-#[cfg(zisk_guest)]
-use crate::alloc_extern::vec;
-#[cfg(zisk_guest)]
-use crate::alloc_extern::vec::Vec;
-
 use cfg_if::cfg_if;
+
+use crate::scratch_accelerators::ScratchVec;
+#[cfg(zisk_guest)]
+use crate::scratch_accelerators::{
+    new_scratch_vec, new_scratch_vec_filled, new_scratch_vec_filled_z,
+};
 
 cfg_if! {
     if #[cfg(zisk_guest)] {
@@ -32,14 +33,14 @@ cfg_if! {
 #[allow(unused_variables)]
 pub fn fcall_bin_decomp(
     a: &[u64],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> (usize, Vec<u64>) {
+    #[cfg(feature = "hints")] hints: &mut ScratchVec<u64>,
+) -> (usize, ScratchVec<u64>) {
     #[cfg(not(zisk_guest))]
     {
         let len_a = a.len();
         let bits = bin_decomp(a, len_a);
         let len_bits = bits.len();
-        let bits_u64: Vec<u64> = bits.into_iter().map(|b| b as u64).collect();
+        let bits_u64: ScratchVec<u64> = bits.into_iter().map(|b| b as u64).collect();
         #[cfg(feature = "hints")]
         {
             hints.push(len_bits as u64 + 1);
@@ -62,7 +63,7 @@ pub fn fcall_bin_decomp(
         let len_bits = ziskos_fcall_get() as usize;
         #[cfg(not(feature = "inputcpy"))]
         {
-            let mut bits = vec![0u64; len_bits];
+            let mut bits = new_scratch_vec_filled_z(len_bits, 0u64);
             for i in 0..len_bits {
                 bits[i] = ziskos_fcall_get();
             }
@@ -71,7 +72,7 @@ pub fn fcall_bin_decomp(
         }
         #[cfg(feature = "inputcpy")]
         {
-            let mut bits: Vec<u64> = Vec::with_capacity(len_bits);
+            let mut bits: ScratchVec<u64> = new_scratch_vec(len_bits);
             ziskos_inputcpy!(bits, len_bits * 8);
             unsafe {
                 bits.set_len(len_bits);
