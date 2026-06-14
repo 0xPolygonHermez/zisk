@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use std::process::{Command, Stdio};
-use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
+use zisk_build::{GuestMachine, HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE, ZISK_WASM_TARGET};
 
 // Structure representing the 'build' subcommand of cargo.
 #[derive(clap::Args)]
@@ -38,23 +38,34 @@ pub struct ZiskBuild {
     /// Toolchain name to use
     #[arg(long, hide = true)]
     toolchain_name: Option<String>,
+
+    /// Guest machine to build for: `riscv` (default) or `wasm` (wasm32-wasip1)
+    #[arg(long, value_enum, default_value_t = GuestMachine::Riscv)]
+    machine: GuestMachine,
 }
 
 impl ZiskBuild {
     pub fn run(&self) -> Result<()> {
-        // Construct the cargo run command
-        let toolchain_name = if let Some(name) = self.toolchain_name.as_deref() {
-            println!("Using toolchain_name: {name}");
-            name
-        } else {
-            "zisk"
-        };
-        let mut command = Command::new("cargo");
-        command.args([&format!("+{toolchain_name}"), "build"]);
+        let wasm = self.machine == GuestMachine::Wasm;
 
-        // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
-        let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
-        command.env("RUSTFLAGS", flags.trim());
+        // Construct the cargo build command.  RISC-V uses the custom `zisk` toolchain; wasm uses the
+        // stock `wasm32-wasip1` target (no special toolchain).
+        let mut command = Command::new("cargo");
+        if wasm {
+            command.arg("build");
+        } else {
+            let toolchain_name = if let Some(name) = self.toolchain_name.as_deref() {
+                println!("Using toolchain_name: {name}");
+                name
+            } else {
+                "zisk"
+            };
+            command.args([&format!("+{toolchain_name}"), "build"]);
+
+            // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
+            let flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+            command.env("RUSTFLAGS", flags.trim());
+        }
 
         command.args(["--target-dir", &format!("target/{}", HELPER_TARGET_SUBDIR)]);
 
@@ -81,7 +92,7 @@ impl ZiskBuild {
             command.args(["--bin", bin]);
         }
 
-        command.args(["--target", ZISK_TARGET]);
+        command.args(["--target", if wasm { ZISK_WASM_TARGET } else { ZISK_TARGET }]);
 
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());

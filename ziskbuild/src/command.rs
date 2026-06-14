@@ -1,4 +1,4 @@
-use crate::{BuildArgs, HELPER_TARGET_SUBDIR, ZISK_TARGET};
+use crate::{BuildArgs, GuestMachine, HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_WASM_TARGET};
 use anyhow::{Context, Result};
 use cargo_metadata::camino::Utf8PathBuf;
 use std::{path::PathBuf, process::Command};
@@ -9,9 +9,16 @@ pub(crate) fn create_command(
     program_dir: &Utf8PathBuf,
     program_metadata: &cargo_metadata::Metadata,
 ) -> Result<Command> {
-    // Construct the cargo run command
+    let wasm = args.machine == GuestMachine::Wasm;
+
+    // Construct the cargo build command.  The RISC-V machine uses the custom `zisk` toolchain; the
+    // wasm machine uses the stock `wasm32-wasip1` target, so no special toolchain is needed.
     let mut command = Command::new("cargo");
-    command.args(["+zisk", "build"]);
+    if wasm {
+        command.arg("build");
+    } else {
+        command.args(["+zisk", "build"]);
+    }
     // Add the feature selection flags
     if let Some(features) = &args.features {
         command.arg("--features").arg(features);
@@ -34,7 +41,19 @@ pub(crate) fn create_command(
         command.args(["--bin", bin]);
     }
 
-    command.args(["--target", ZISK_TARGET]);
+    command.args(["--target", if wasm { ZISK_WASM_TARGET } else { ZISK_TARGET }]);
+
+    if wasm {
+        // Stock toolchain build: a friendly hint if the target is missing.
+        let canonicalized_program_dir =
+            program_dir.canonicalize().context("Failed to canonicalize program directory")?;
+        command.current_dir(canonicalized_program_dir);
+        command.env(
+            "CARGO_TARGET_DIR",
+            program_metadata.target_directory.join(HELPER_TARGET_SUBDIR),
+        );
+        return Ok(command);
+    }
 
     // Set up the command to inherit the parent's stdout and stderr
     // command.stdout(Stdio::inherit());

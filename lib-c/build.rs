@@ -2,7 +2,12 @@ use std::path::Path;
 use std::process::Command;
 
 fn main() {
-    if std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default() != "linux" {
+    // The C/asm library only supports linux on x86_64 (it relies on x86_64 NASM field
+    // arithmetic). On any other host the Rust bindings compile the FFI calls out to no-ops via
+    // the `run_on_linux!` macro in `src/lib_c.rs`, so there is nothing to build or link here.
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+    if target_os != "linux" || target_arch != "x86_64" {
         return;
     }
 

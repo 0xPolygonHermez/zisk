@@ -1,0 +1,16 @@
+# Standalone crate: it targets stock wasm32-wasip1, not the Zisk RISC-V toolchain, so it is kept
+# out of the examples workspace.
+[workspace]
+
+[package]
+name = "wasm-sum"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "wasm-sum"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+panic = "abort"
