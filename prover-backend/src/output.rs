@@ -52,7 +52,7 @@ macro_rules! impl_public_outputs {
             pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
                 &self,
             ) -> Result<T> {
-                self.$field$(.$rest)*.read()
+                Ok(self.$field$(.$rest)*.read()?)
             }
 
             pub fn get_public_values_abi<T>(&self) -> Result<T>
@@ -60,7 +60,7 @@ macro_rules! impl_public_outputs {
                 T: alloy_sol_types::SolValue
                     + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
             {
-                self.$field$(.$rest)*.read_abi()
+                Ok(self.$field$(.$rest)*.read_abi()?)
             }
 
             pub fn get_public_values_slice(&self, slice: &mut [u8]) {
@@ -216,11 +216,11 @@ impl ProveOutput {
     }
 
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
-        self.proof.get_proof_u64()
+        Ok(self.proof.get_proof_u64()?)
     }
 
     pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
-        self.proof.get_proof_bytes()
+        Ok(self.proof.get_proof_bytes()?)
     }
 
     pub fn get_program_vk(&self) -> &ProgramVK {
@@ -228,11 +228,11 @@ impl ProveOutput {
     }
 
     pub fn save_proof(&self, path: impl AsRef<Path>) -> Result<()> {
-        self.proof.save(path)
+        Ok(self.proof.save(path)?)
     }
 
     pub fn verify(&self) -> Result<()> {
-        self.proof.verify()
+        Ok(self.proof.verify()?)
     }
 
     pub fn with_publics<'a>(&'a self, publics: &'a PublicValues) -> ZiskVerifyBuilder<'a> {

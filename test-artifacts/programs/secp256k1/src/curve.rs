@@ -9,7 +9,7 @@ pub fn curve_tests() {
     // Is on curve
     let p = IDENTITY;
     let res = is_on_curve_secp256k1(&p);
-    assert_eq!(res, false);
+    assert_eq!(res, true);
 
     let p = G;
     let res = is_on_curve_secp256k1(&p);

@@ -26,11 +26,17 @@ pub struct SyscallSecp256r1AddParams<'a> {
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// The caller must ensure that the points `p1` and `p2` are valid points on the Secp256r1 curve.
+/// The caller must ensure that both `p1` and `p2` are finite points on the Secp256r1 curve.
+/// The point at infinity is not allowed.
 ///
-/// The caller must ensure that both `p1` and `p2` coordinates are within the range of the Secp256r1 base field.
+/// The caller must ensure that `p1` is neither equal to `p2` nor the negation of `p2`
+/// (i.e. `p1 ≠ p2` and `p1 ≠ -p2`).
 ///
-/// The resulting point will have both coordinates in the range of the Secp256r1 base field.
+/// The caller must ensure that the coordinates of `p1` and `p2` are canonical representatives
+/// of elements in the Secp256r1 base field.
+///
+/// The resulting point will have both coordinates reduced to canonical representatives
+/// in the range of the Secp256r1 base field.
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_secp256r1_add")]

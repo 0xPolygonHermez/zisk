@@ -24,10 +24,10 @@ use super::{
 pub(crate) const PAIRING_CHECK_SUCCESS: u8 = 0;
 #[allow(dead_code)]
 pub(crate) const PAIRING_CHECK_FAILED: u8 = 1;
-const PAIRING_CHECK_ERR_G1_NOT_IN_FIELD: u8 = 2;
+const PAIRING_CHECK_ERR_G1_NOT_CANONICAL: u8 = 2;
 const PAIRING_CHECK_ERR_G1_NOT_ON_CURVE: u8 = 3;
 const PAIRING_CHECK_ERR_G1_NOT_IN_SUBGROUP: u8 = 4;
-const PAIRING_CHECK_ERR_G2_NOT_IN_FIELD: u8 = 5;
+const PAIRING_CHECK_ERR_G2_NOT_CANONICAL: u8 = 5;
 const PAIRING_CHECK_ERR_G2_NOT_ON_CURVE: u8 = 6;
 const PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP: u8 = 7;
 
@@ -37,6 +37,10 @@ const PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP: u8 = 7;
 ///  pairingBLS12-381:
 ///          input: P ∈ G1 and Q ∈ G2
 ///          output: e(P,Q) ∈ GT
+///
+/// # Soundness
+/// Both points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn pairing_bls12_381(
     p: &[u64; 12],
     q: &[u64; 24],
@@ -69,7 +73,9 @@ pub fn pairing_bls12_381(
 /// and multiplies the results together:
 ///     e(P₁, Q₁) · e(P₂, Q₂) · ... · e(Pₙ, Qₙ) ∈ GT
 ///
-/// Assumes all points are non-infinity and already validated (on curve and in subgroup).
+/// # Soundness
+/// All points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn pairing_batch_bls12_381(
     g1_points: &[[u64; 12]],
     g2_points: &[[u64; 24]],
@@ -106,7 +112,7 @@ pub fn pairing_batch_bls12_381(
 }
 
 /// Pairing check with validation
-pub fn pairing_check_bls12_381(
+pub fn pairing_check_safe_bls12_381(
     g1_points: &[[u64; 12]],
     g2_points: &[[u64; 24]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -131,7 +137,7 @@ pub fn pairing_check_bls12_381(
             let x1: [u64; 6] = g1[0..6].try_into().unwrap();
             let y1: [u64; 6] = g1[6..12].try_into().unwrap();
             if !lt(&x1, &P) || !lt(&y1, &P) {
-                return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
+                return Err(PAIRING_CHECK_ERR_G1_NOT_CANONICAL);
             }
             if !is_on_curve_bls12_381(
                 g1,
@@ -158,7 +164,7 @@ pub fn pairing_check_bls12_381(
             let y2_0: [u64; 6] = g2[12..18].try_into().unwrap();
             let y2_1: [u64; 6] = g2[18..24].try_into().unwrap();
             if !lt(&x2_0, &P) || !lt(&x2_1, &P) || !lt(&y2_0, &P) || !lt(&y2_1, &P) {
-                return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
+                return Err(PAIRING_CHECK_ERR_G2_NOT_CANONICAL);
             }
             if !is_on_curve_twist_bls12_381(
                 g2,
@@ -181,7 +187,7 @@ pub fn pairing_check_bls12_381(
         let x1: [u64; 6] = g1[0..6].try_into().unwrap();
         let y1: [u64; 6] = g1[6..12].try_into().unwrap();
         if !lt(&x1, &P) || !lt(&y1, &P) {
-            return Err(PAIRING_CHECK_ERR_G1_NOT_IN_FIELD);
+            return Err(PAIRING_CHECK_ERR_G1_NOT_CANONICAL);
         }
         if !is_on_curve_bls12_381(
             g1,
@@ -203,7 +209,7 @@ pub fn pairing_check_bls12_381(
         let y2_0: [u64; 6] = g2[12..18].try_into().unwrap();
         let y2_1: [u64; 6] = g2[18..24].try_into().unwrap();
         if !lt(&x2_0, &P) || !lt(&x2_1, &P) || !lt(&y2_0, &P) || !lt(&y2_1, &P) {
-            return Err(PAIRING_CHECK_ERR_G2_NOT_IN_FIELD);
+            return Err(PAIRING_CHECK_ERR_G2_NOT_CANONICAL);
         }
         if !is_on_curve_twist_bls12_381(
             g2,
@@ -238,6 +244,8 @@ pub fn pairing_check_bls12_381(
     )))
 }
 
+// ==================== C FFI Functions ====================
+
 /// BLS12-381 pairing check for big-endian byte format.
 ///
 /// # Input format
@@ -251,15 +259,15 @@ pub fn pairing_check_bls12_381(
 /// # Returns
 /// - [PAIRING_CHECK_SUCCESS] = pairing check passed
 /// - [PAIRING_CHECK_FAILED] = pairing check failed
-/// - [PAIRING_CHECK_ERR_G1_NOT_IN_FIELD] = error (at least one G1 point coordinate not in field)
+/// - [PAIRING_CHECK_ERR_G1_NOT_CANONICAL] = error (at least one G1 point coordinate not in field)
 /// - [PAIRING_CHECK_ERR_G1_NOT_ON_CURVE] = error (at least one G1 point not on curve)
 /// - [PAIRING_CHECK_ERR_G1_NOT_IN_SUBGROUP] = error (at least one G1 point not in subgroup)
-/// - [PAIRING_CHECK_ERR_G2_NOT_IN_FIELD] = error (at least one G2 point coordinate not in field)
+/// - [PAIRING_CHECK_ERR_G2_NOT_CANONICAL] = error (at least one G2 point coordinate not in field)
 /// - [PAIRING_CHECK_ERR_G2_NOT_ON_CURVE] = error (at least one G2 point not on curve)
 /// - [PAIRING_CHECK_ERR_G2_NOT_IN_SUBGROUP] = error (at least one G2 point not in subgroup)
 #[allow(dead_code)]
 #[inline]
-pub(crate) unsafe fn bls12_381_pairing_check_c(
+pub(crate) unsafe fn pairing_check_safe_bls12_381_c(
     pairs: *const u8,
     num_pairs: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -277,7 +285,7 @@ pub(crate) unsafe fn bls12_381_pairing_check_c(
         g2_points.push(g2_bytes_be_to_u64_le_bls12_381(g2_bytes));
     }
 
-    match pairing_check_bls12_381(
+    match pairing_check_safe_bls12_381(
         &g1_points,
         &g2_points,
         #[cfg(feature = "hints")]

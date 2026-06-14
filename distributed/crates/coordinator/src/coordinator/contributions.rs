@@ -351,7 +351,7 @@ impl Coordinator {
                     Err(e) => {
                         let now = std::time::Instant::now();
                         if now >= deadline {
-                            return Err(e.context(format!(
+                            return Err(anyhow::Error::from(e).context(format!(
                                 "timed out waiting for input stream socket to become available: {}",
                                 inputs_uri
                             )));
@@ -393,7 +393,7 @@ impl Coordinator {
                     return Ok(());
                 }
                 Err(e) => {
-                    return Err(e);
+                    return Err(e.into());
                 }
             }
         }

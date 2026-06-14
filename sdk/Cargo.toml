@@ -17,7 +17,7 @@ zisk-common = { workspace = true }
 zisk-build = { workspace = true }
 
 # Utilities
-anyhow = { workspace = true }
+thiserror = { workspace = true }
 serde = { workspace = true }
 bincode = { workspace = true }
 tokio = { workspace = true }

@@ -10,9 +10,9 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
     SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
     SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
-    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
-    SYSCALL_SHA256F_ID,
+    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID,
+    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID,
+    SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
 };
 
 use crate::{
@@ -26,7 +26,7 @@ use crate::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 27] = [
+const CSR_PRECOMPILED: [&str; 28] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -54,6 +54,7 @@ const CSR_PRECOMPILED: [&str; 27] = [
     "secp256r1_dbl",
     "blake2",
     "profile",
+    "poseidon1",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1506,6 +1507,7 @@ impl Riscv2ZiskContext<'_> {
                 | SYSCALL_BLS12_381_COMPLEX_SUB_ID
                 | SYSCALL_BLS12_381_COMPLEX_MUL_ID
                 | SYSCALL_POSEIDON2_ID
+                | SYSCALL_POSEIDON1_ID
                 | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_SECP256R1_DBL_ID
                 | SYSCALL_BLAKE2B_ROUND_ID => {
@@ -1809,7 +1811,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", i.imme as u64, false);
                 zib.op("copyb").unwrap();
-                zib.store("mem", CSR_ADDR as i64 + (i.csr + 8) as i64, false, false);
+                zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, 0x{:x} #rd = 0",
                     i.inst, i.rd, i.csr, i.imme

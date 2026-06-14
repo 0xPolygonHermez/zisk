@@ -7,6 +7,8 @@ use fields::Goldilocks;
 use proofman_common::{init_gpu_setup, MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
+use rom_setup::HashMode;
+use std::str::FromStr;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 use zisk_prover_backend::GuestProgram;
@@ -97,7 +99,19 @@ impl ProgramSetupCmd {
 
         tracing::info!("Computing merkle root");
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
-        rom_merkle_setup::<Goldilocks>(&pctx, guest_program.elf(), &self.output_dir, true)?;
+        let hash_mode = HashMode::from_str(&pctx.global_info.hash).map_err(|e| {
+            anyhow::anyhow!(
+                "proving key global_info.hash {:?} is not a recognized HashMode: {e}",
+                pctx.global_info.hash
+            )
+        })?;
+        rom_merkle_setup::<Goldilocks>(
+            &pctx,
+            guest_program.elf(),
+            &self.output_dir,
+            true,
+            hash_mode,
+        )?;
 
         gen_assembly(self.elf.as_ref().unwrap(), &self.output_dir, self.hints, self.verbose > 0)?;
 

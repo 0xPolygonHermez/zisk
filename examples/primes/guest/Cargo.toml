@@ -1,0 +1,21 @@
+[package]
+name = "primes-guest"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ziskos = { workspace = true }
+primes-common = { path = "../common" }
+
+[[bin]]
+name = "struct-guest"
+path = "src/struct.rs"
+
+[[bin]]
+name = "multiple-guest"
+path = "src/multiple.rs"
+
+[[bin]]
+name = "slice-guest"
+path = "src/slice.rs"
+

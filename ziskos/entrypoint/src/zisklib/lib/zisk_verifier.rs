@@ -1,9 +1,12 @@
+/// Hash family the recursion was proven with.
+const HASH: &str = "Poseidon1";
+
 pub fn verify_zisk_proof(zisk_proof: &[u64]) -> bool {
     if zisk_proof.len() < zisk_verifier::VADCOP_VK_LEN_WORDS {
         return false;
     }
     let (proof, vk) = zisk_proof.split_at(zisk_proof.len() - zisk_verifier::VADCOP_VK_LEN_WORDS);
-    zisk_verifier::verify_vadcop_final_proof(proof, vk)
+    zisk_verifier::verify_vadcop_final_proof(proof, vk, HASH)
 }
 
 /// C-ABI wrapper around [verify_zisk_proof] for C/C++ call sites.

@@ -5,7 +5,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use crate::error::{Result, StreamError};
 use quinn::{Connection, Endpoint, ServerConfig};
 use tokio::runtime::{Handle, Runtime};
 
@@ -62,10 +62,11 @@ impl QuicStreamReader {
             // Builder::build() only spawns threads — it does not call block_on,
             // so it's safe to call even from within another tokio runtime.
             self.runtime = Some(
-                tokio::runtime::Builder::new_multi_thread()
-                    .enable_all()
-                    .build()
-                    .context("Failed to create tokio runtime for QUIC reader")?,
+                tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| {
+                    StreamError::Config(format!(
+                        "Failed to create tokio runtime for QUIC reader: {e}"
+                    ))
+                })?,
             );
         }
         Ok(self.runtime.as_ref().unwrap())
@@ -89,8 +90,9 @@ impl StreamRead for QuicStreamReader {
                 .with_no_client_auth();
 
             let mut client_config = quinn::ClientConfig::new(Arc::new(
-                quinn::crypto::rustls::QuicClientConfig::try_from(rustls_config)
-                    .map_err(|e| anyhow::anyhow!("Failed to create QUIC client config: {}", e))?,
+                quinn::crypto::rustls::QuicClientConfig::try_from(rustls_config).map_err(|e| {
+                    StreamError::Config(format!("Failed to create QUIC client config: {}", e))
+                })?,
             ));
 
             let mut transport_config = quinn::TransportConfig::default();
@@ -100,11 +102,12 @@ impl StreamRead for QuicStreamReader {
             endpoint.set_default_client_config(client_config);
 
             let connection = endpoint
-                .connect(server_addr, "localhost")?
+                .connect(server_addr, "localhost")
+                .map_err(|e| StreamError::Io(format!("Failed to start QUIC connection: {e}")))?
                 .await
-                .context("Failed to connect to server")?;
+                .map_err(|e| StreamError::Io(format!("Failed to connect to server: {e}")))?;
 
-            Ok::<_, anyhow::Error>((endpoint, connection))
+            Ok::<_, StreamError>((endpoint, connection))
         })?;
 
         self.endpoint = Some(endpoint);
@@ -120,7 +123,9 @@ impl StreamRead for QuicStreamReader {
         let connection = self
             .connection
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("QuicStreamReader: Connection not established"))?
+            .ok_or_else(|| {
+                StreamError::Transport("QuicStreamReader: Connection not established".to_string())
+            })?
             .clone();
 
         let rt = self.ensure_runtime()?;
@@ -136,11 +141,13 @@ impl StreamRead for QuicStreamReader {
                 Err(quinn::ConnectionError::TimedOut) => {
                     return Ok(None);
                 }
-                Err(e) => return Err(anyhow::anyhow!("Failed to accept stream: {}", e)),
+                Err(e) => return Err(StreamError::Io(format!("Failed to accept stream: {}", e))),
             };
 
-            let data =
-                recv.read_to_end(10 * 1024 * 1024).await.context("Failed to read from stream")?;
+            let data = recv
+                .read_to_end(10 * 1024 * 1024)
+                .await
+                .map_err(|e| StreamError::Io(format!("Failed to read from stream: {e}")))?;
 
             Ok(Some(data))
         })
@@ -210,16 +217,16 @@ impl QuicStreamWriter {
     pub fn new(bind_addr: SocketAddr) -> Result<Self> {
         ensure_crypto_provider();
         let server_config = Self::configure_server()?;
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .context("Failed to create tokio runtime for QUIC writer")?;
+        let runtime =
+            tokio::runtime::Builder::new_multi_thread().enable_all().build().map_err(|e| {
+                StreamError::Config(format!("Failed to create tokio runtime for QUIC writer: {e}"))
+            })?;
         // Enter the dedicated runtime's context so the endpoint registers its UDP
         // socket with this runtime's IO reactor (keeps IO alive as long as the
         // runtime lives).  `enter()` is non-blocking — safe to call from async.
         let _guard = runtime.enter();
         let endpoint = Endpoint::server(server_config, bind_addr)
-            .context("Failed to bind QUIC server endpoint")?;
+            .map_err(|e| StreamError::Io(format!("Failed to bind QUIC server endpoint: {e}")))?;
         drop(_guard);
         Ok(QuicStreamWriter {
             connection: None,
@@ -234,19 +241,21 @@ impl QuicStreamWriter {
     /// Useful when the endpoint was created with port `0` — the OS assigns a
     /// free port and this method returns the resolved address.
     pub fn local_addr(&self) -> Result<SocketAddr> {
-        self.endpoint.local_addr().map_err(|e| anyhow::anyhow!("failed to get local addr: {e}"))
+        self.endpoint
+            .local_addr()
+            .map_err(|e| StreamError::Io(format!("failed to get local addr: {e}")))
     }
 
     /// Configure server with self-signed certificate
     fn configure_server() -> Result<ServerConfig> {
         let cert = rcgen::generate_simple_self_signed(vec!["localhost".into()])
-            .context("Failed to generate certificate")?;
+            .map_err(|e| StreamError::Config(format!("Failed to generate certificate: {e}")))?;
 
         let key = rustls::pki_types::PrivateKeyDer::Pkcs8(cert.signing_key.serialize_der().into());
         let cert_der = rustls::pki_types::CertificateDer::from(cert.cert);
 
         let mut server_config = ServerConfig::with_single_cert(vec![cert_der], key)
-            .context("Failed to create server config")?;
+            .map_err(|e| StreamError::Config(format!("Failed to create server config: {e}")))?;
 
         // Configure transport for better performance
         let mut transport_config = quinn::TransportConfig::default();
@@ -270,8 +279,12 @@ impl QuicStreamWriter {
         let (tx, rx) = std::sync::mpsc::channel();
         rt.spawn(async move {
             let result: Result<Connection> = async {
-                let incoming = endpoint.accept().await.context("Endpoint closed before accept")?;
-                let conn = incoming.await.context("Failed to establish QUIC connection")?;
+                let incoming = endpoint.accept().await.ok_or_else(|| {
+                    StreamError::Transport("Endpoint closed before accept".to_string())
+                })?;
+                let conn = incoming.await.map_err(|e| {
+                    StreamError::Io(format!("Failed to establish QUIC connection: {e}"))
+                })?;
                 Ok(conn)
             }
             .await;
@@ -313,13 +326,15 @@ impl QuicStreamWriter {
         }
         self.ensure_accept_task();
 
-        let rx =
-            self.connection_rx.take().ok_or_else(|| anyhow::anyhow!("QUIC accept task missing"))?;
+        let rx = self
+            .connection_rx
+            .take()
+            .ok_or_else(|| StreamError::Transport("QUIC accept task missing".to_string()))?;
         let result = rx.recv_timeout(crate::CONNECT_DEADLINE).map_err(|_| {
-            anyhow::anyhow!(
+            StreamError::Transport(format!(
                 "Timed out waiting for QUIC client connection ({}s)",
                 crate::CONNECT_DEADLINE.as_secs()
-            )
+            ))
         })?;
         let connection = result?;
         self.connection = Some(connection);
@@ -358,7 +373,9 @@ impl StreamWrite for QuicStreamWriter {
         let connection = self
             .connection
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("QuicStreamWriter: Connection not established"))?
+            .ok_or_else(|| {
+                StreamError::Transport("QuicStreamWriter: Connection not established".to_string())
+            })?
             .clone();
 
         let len = item.len();
@@ -367,13 +384,18 @@ impl StreamWrite for QuicStreamWriter {
         let rt = self.runtime.as_ref().expect("runtime dropped");
         block_on_dedicated(rt, async move {
             // Open a new unidirectional stream for this message
-            let mut send = connection.open_uni().await.context("Failed to open stream")?;
+            let mut send = connection
+                .open_uni()
+                .await
+                .map_err(|e| StreamError::Io(format!("Failed to open stream: {e}")))?;
 
             // Write all data
-            send.write_all(&data).await.context("Failed to write to stream")?;
+            send.write_all(&data)
+                .await
+                .map_err(|e| StreamError::Io(format!("Failed to write to stream: {e}")))?;
 
             // Finish the stream (signals end of message)
-            send.finish().context("Failed to finish stream")?;
+            send.finish().map_err(|e| StreamError::Io(format!("Failed to finish stream: {e}")))?;
 
             Ok(len)
         })

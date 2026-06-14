@@ -9,7 +9,7 @@ pub fn twist_tests() {
     // Is on curve
     let p = IDENTITY_G2;
     let res = is_on_curve_twist_bn254(&p);
-    assert_eq!(res, false);
+    assert_eq!(res, true);
 
     let p = [
         0xB0C8A4659E12811F,

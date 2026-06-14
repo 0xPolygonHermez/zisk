@@ -34,6 +34,7 @@ pub const ELF_LIVENESS: GuestProgram = load_program!("liveness");
 pub const ELF_MISSING_ENTRYPOINT: GuestProgram = load_program!("missing_entrypoint");
 pub const ELF_BIGINT: GuestProgram = load_program!("bigint");
 pub const ELF_PANIC_MODES: GuestProgram = load_program!("panic_modes");
+pub const ELF_POSEIDON1: GuestProgram = load_program!("poseidon1");
 pub const ELF_POSEIDON2: GuestProgram = load_program!("poseidon2");
 pub const ELF_SECP256K1: GuestProgram = load_program!("secp256k1");
 pub const ELF_SECP256K1_ADD: GuestProgram = load_program!("secp256k1_add");

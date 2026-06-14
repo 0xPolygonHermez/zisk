@@ -146,8 +146,13 @@ where
 /// the helper waits for the worker to clear `SettingUp` before submitting.
 async fn run_valid_execute(client: &RemoteClient, after_recovery: bool) -> Result<()> {
     let input = ZiskStream::unix();
-    let submit =
-        || client.execute(&ELF_LIVENESS, input.clone()).executor(ExecutorKind::Assembly).run();
+    let submit = || {
+        client
+            .execute(&ELF_LIVENESS, input.clone())
+            .executor(ExecutorKind::Assembly)
+            .run()
+            .map_err(Into::into)
+    };
     let handle =
         if after_recovery { submit_after_recovery("execute", submit).await? } else { submit()? };
     input.write(&0u64); // mode = short

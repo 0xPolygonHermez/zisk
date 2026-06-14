@@ -1,6 +1,9 @@
 use crate::syscalls::{syscall_arith256, SyscallArith256Params};
 use crate::zisklib::fcall_uint256_inv;
-use crate::zisklib::lib::constants::{MAX_256 as MAX, ONE_256 as ONE, ZERO_256 as ZERO};
+use crate::zisklib::lib::{
+    constants::{MAX_256 as MAX, ONE_256 as ONE, ZERO_256 as ZERO},
+    utils::is_one,
+};
 
 /// Given 256-bit integers `a,b`, it computes `a * b (mod 2^256)`.
 /// Returns `None` if overflow occurs.
@@ -138,25 +141,29 @@ pub fn wrapping_square256(
 /// Returns `None` if `a` is not invertible.
 pub fn inv256(a: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> Option<[u64; 4]> {
     // Hint the inverse
-    let inv = fcall_uint256_inv(
+    match fcall_uint256_inv(
         a,
         #[cfg(feature = "hints")]
         hints,
-    );
+    ) {
+        Some(inv) => {
+            // Verify: a * inv ≡ 1 (mod 2^256)
+            let result = wrapping_mul256(
+                a,
+                &inv,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+            assert!(is_one(&result), "Hinted inverse is incorrect");
 
-    if let Some(inv) = inv {
-        // Verify: a * inv ≡ 1 (mod 2^256)
-        let result = wrapping_mul256(
-            a,
-            &inv,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        assert_eq!(result, ONE, "a * inv must equal 1 mod 2^256");
-
-        Some(inv)
-    } else {
-        None
+            Some(inv)
+        }
+        None => {
+            // Modulo 2^256, an element is invertible iff it is odd
+            // Therefore a non-invertible element must be even
+            assert!(a[0] & 1 == 0, "a must be even if it is not invertible");
+            None
+        }
     }
 }
 

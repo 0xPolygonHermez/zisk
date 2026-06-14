@@ -1,5 +1,6 @@
 use zisk_common::io::ZiskStdin as ZiskStdinInner;
 
+use crate::{Result, SdkError};
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::Path;
 /// Standard input for a guest program execution or proof.
@@ -12,6 +13,7 @@ impl ZiskStdin {
         Self(ZiskStdinInner::new())
     }
 
+    /// Creates stdin from a byte vector.
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         let stdin = Self(ZiskStdinInner::new());
         stdin.write_slice(&bytes);
@@ -23,8 +25,8 @@ impl ZiskStdin {
     /// # Errors
     /// Returns an error if the file does not exist, is not accessible, or the path contains
     /// invalid UTF-8.
-    pub fn from_file(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        Ok(Self(ZiskStdinInner::from_file(path)?))
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
+        Ok(Self(ZiskStdinInner::from_file(path).map_err(SdkError::backend)?))
     }
 
     /// Creates stdin from a URI string.
@@ -33,8 +35,8 @@ impl ZiskStdin {
     /// - `file://path` → read from file
     /// - `inline://[[1,2],[3]]` → inline input, a JSON array of u64 arrays
     /// - No scheme → treated as a file path
-    pub fn from_uri<S: Into<String>>(uri: Option<S>) -> anyhow::Result<Self> {
-        Ok(Self(ZiskStdinInner::from_uri(uri)?))
+    pub fn from_uri<S: Into<String>>(uri: Option<S>) -> Result<Self> {
+        Ok(Self(ZiskStdinInner::from_uri(uri).map_err(SdkError::backend)?))
     }
 
     /// Reads all data from the stdin buffer.
@@ -43,10 +45,11 @@ impl ZiskStdin {
     }
 
     /// Reads and deserializes the next value from the stdin buffer.
-    pub fn read<T: DeserializeOwned>(&self) -> anyhow::Result<T> {
-        self.0.read()
+    pub fn read<T: DeserializeOwned>(&self) -> Result<T> {
+        self.0.read().map_err(SdkError::backend)
     }
 
+    /// Reads the next `n` bytes from the stdin buffer.
     pub fn read_bytes(&self) -> Vec<u8> {
         self.0.read_bytes()
     }
@@ -62,8 +65,8 @@ impl ZiskStdin {
     }
 
     /// Saves the stdin buffer contents to a file.
-    pub fn save(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
-        self.0.save(path.as_ref())
+    pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
+        self.0.save(path.as_ref()).map_err(SdkError::backend)
     }
 
     /// Reset internal read position so the next read starts from the beginning.

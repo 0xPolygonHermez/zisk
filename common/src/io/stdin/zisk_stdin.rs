@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use crate::error::{CommonError, Result};
 use serde::{de::DeserializeOwned, Serialize};
 use std::io::{Cursor, Read};
 use std::path::Path;
@@ -9,6 +9,7 @@ struct Inner {
     cursor: Mutex<Cursor<Vec<u8>>>,
 }
 
+/// The `ZiskStdin` struct provides an abstraction for handling standard input data in a flexible manner.
 #[derive(Clone)]
 pub struct ZiskStdin {
     inner: Arc<Inner>,
@@ -21,6 +22,7 @@ impl Default for ZiskStdin {
 }
 
 impl ZiskStdin {
+    /// Creates a new, empty `ZiskStdin` instance.
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Inner {
@@ -30,14 +32,17 @@ impl ZiskStdin {
         }
     }
 
+    /// Creates a `ZiskStdin` instance from a vector of bytes.
     pub fn from_vec(data: Vec<u8>) -> Self {
         let cursor = Cursor::new(data.clone());
         Self { inner: Arc::new(Inner { data: Mutex::new(data), cursor: Mutex::new(cursor) }) }
     }
 
+    /// Creates a `ZiskStdin` instance by reading data from a file at the specified path.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let data = std::fs::read(path.as_ref())
-            .map_err(|e| anyhow::anyhow!("Failed to read input file {:?}: {}", path.as_ref(), e))?;
+        let data = std::fs::read(path.as_ref()).map_err(|e| {
+            CommonError::Io(format!("Failed to read input file {:?}: {}", path.as_ref(), e))
+        })?;
         Ok(Self::from_vec(data))
     }
 
@@ -55,7 +60,7 @@ impl ZiskStdin {
             match scheme {
                 "file" => ZiskStdin::from_file(path),
                 "inline" => ZiskStdin::from_inline(path),
-                _ => Err(anyhow::anyhow!("Unknown stdin scheme: {}", scheme)),
+                _ => Err(CommonError::UnknownScheme(scheme.to_string())),
             }
         } else {
             ZiskStdin::from_file(uri.as_str())
@@ -70,10 +75,10 @@ impl ZiskStdin {
     ///
     /// Example: `"[[1,2],[3],[4,5,6]]"` produces three frames.
     pub fn from_inline(json: &str) -> Result<ZiskStdin> {
-        let frames: Vec<Vec<u64>> = serde_json::from_str(json).with_context(|| {
-            format!(
-                "inline input must be a JSON array of u64 arrays, e.g. [[1,2],[3]]; got: {json}"
-            )
+        let frames: Vec<Vec<u64>> = serde_json::from_str(json).map_err(|e| {
+            CommonError::Invalid(format!(
+                "inline input must be a JSON array of u64 arrays, e.g. [[1,2],[3]]; got: {json}: {e}"
+            ))
         })?;
         let stdin = ZiskStdin::new();
         for frame in frames {
@@ -86,28 +91,34 @@ impl ZiskStdin {
         Ok(stdin)
     }
 
+    /// Read the raw byte data from the `ZiskStdin` buffer.
     pub fn read_data(&self) -> Vec<u8> {
         self.inner.data.lock().unwrap().clone()
     }
 
+    /// Read the next frame of data from the `ZiskStdin` buffer as a vector of bytes.
     pub fn read_bytes(&self) -> Vec<u8> {
         self.read_raw().expect("Failed to read from stdin buffer")
     }
 
+    /// Read the next frame of data from the `ZiskStdin` buffer and deserialize it into a value of type `T`.
     pub fn read<T: DeserializeOwned>(&self) -> Result<T> {
-        let data =
-            self.read_raw().map_err(|e| anyhow::anyhow!("Failed to read from stdin: {}", e))?;
+        let data = self
+            .read_raw()
+            .map_err(|e| CommonError::Io(format!("Failed to read from stdin: {}", e)))?;
         bincode::serde::decode_from_slice(&data, bincode::config::standard())
             .map(|(v, _)| v)
-            .map_err(|e| anyhow::anyhow!("Failed to deserialize: {}", e))
+            .map_err(|e| CommonError::Deserialization(e.to_string()))
     }
 
+    /// Write a serializable value of type `T` to the `ZiskStdin` buffer as a new frame.
     pub fn write<T: Serialize>(&self, data: &T) {
         let bytes = bincode::serde::encode_to_vec(data, bincode::config::standard())
             .expect("Failed to serialize");
         self.write_slice(&bytes);
     }
 
+    /// Write a raw slice of bytes to the `ZiskStdin` buffer as a new frame, prefixed with its length and padded to an 8-byte boundary.
     pub fn write_slice(&self, data: &[u8]) {
         let data_len = data.len();
         let total_len = 8 + data_len;
@@ -129,14 +140,19 @@ impl ZiskStdin {
         }
     }
 
+    /// Save the `ZiskStdin` buffer to a file at the specified path.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create parent directory {}", parent.display())
+            std::fs::create_dir_all(parent).map_err(|e| {
+                CommonError::Io(format!(
+                    "failed to create parent directory {}: {e}",
+                    parent.display()
+                ))
             })?;
         }
-        std::fs::write(path, self.inner.data.lock().unwrap().as_slice())
-            .with_context(|| format!("failed to write stdin to {}", path.display()))?;
+        std::fs::write(path, self.inner.data.lock().unwrap().as_slice()).map_err(|e| {
+            CommonError::Io(format!("failed to write stdin to {}: {e}", path.display()))
+        })?;
         Ok(())
     }
 
@@ -150,6 +166,7 @@ impl ZiskStdin {
         self.rewind();
     }
 
+    /// Clear the `ZiskStdin` buffer and reset the cursor.
     pub fn clear(&self) {
         self.inner.data.lock().unwrap().clear();
         let mut cursor = self.inner.cursor.lock().unwrap();

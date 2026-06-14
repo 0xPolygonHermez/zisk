@@ -64,7 +64,7 @@ This will run the Docker container and open the ZisK test menu inside the contai
    The distributed services are automatically uninstalled when the test finishes.
 
 10. **Test ELF diagnostic**
-    Clones the `zisk-testvectors` repository and runs the diagnostic ELF (`diagnostic.elf`) through the full proving pipeline using `test_elf` (verify-constraints, prove, verify) with no input file.
+    Runs the diagnostic ELF built from the zisk repo's `test-artifacts` crate (`test-artifacts/programs/target/elf/riscv64ima-zisk-zkvm-elf/release/diagnostic`) through the full proving pipeline using `test_elf` (verify-constraints, prove, verify) with no input file.
 
 11. **Install setup from public packages**
     Downloads and installs the proving key files from the public packages corresponding to the `ZISK_SETUP_FILE` environment variable (falling back to a name derived from the installed `cargo-zisk-dev` version when unset).

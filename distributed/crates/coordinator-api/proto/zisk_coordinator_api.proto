@@ -213,6 +213,7 @@ message SetupRequest {
 
 message SetupResponse {
   bytes vk = 1;
+  string hash_mode = 2;
 }
 
 message ProveRequest {

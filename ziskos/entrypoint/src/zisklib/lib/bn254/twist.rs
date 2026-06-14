@@ -65,7 +65,7 @@ pub fn jacobian_to_affine_twist_bn254(
     ]
 }
 
-/// Check if a non-zero point `p` is on the BN254 twist
+/// Check if a point `p` is on the BN254 twist
 pub fn is_on_curve_twist_bn254(
     p: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -95,10 +95,13 @@ pub fn is_on_curve_twist_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&x_cubed_plus_b, &y_sq)
+    eq(&x_cubed_plus_b, &y_sq) || eq(p, &G2_IDENTITY)
 }
 
-/// Check if a non-zero point `p` is on the BN254 twist subgroup
+/// Check if a point `p` is on the BN254 twist subgroup
+///
+/// # Soundness
+/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
 pub fn is_on_subgroup_twist_bn254(
     p: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -161,10 +164,54 @@ pub fn is_on_subgroup_twist_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&lhs, &rhs)
+    eq(&lhs, &rhs) || eq(p, &G2_IDENTITY)
+}
+
+/// Compute the untwist-frobenius-twist (utf) endomorphism 𝜓: (x,y) = (𝛾₁₂·x̄,𝛾₁₃·ȳ)
+pub fn utf_endomorphism_twist_bn254(
+    p: &[u64; 16],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 16] {
+    let mut x: [u64; 8] = p[0..8].try_into().unwrap();
+    let mut y: [u64; 8] = p[8..16].try_into().unwrap();
+
+    // Compute the conjugate of x and y
+    x = conjugate_fp2_bn254(
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    y = conjugate_fp2_bn254(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    // Compute the multiplication
+    let qx = mul_fp2_bn254(
+        &FROBENIUS_GAMMA12,
+        &x,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let qy = mul_fp2_bn254(
+        &FROBENIUS_GAMMA13,
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    [
+        qx[0], qx[1], qx[2], qx[3], qx[4], qx[5], qx[6], qx[7], qy[0], qy[1], qy[2], qy[3], qy[4],
+        qy[5], qy[6], qy[7],
+    ]
 }
 
 /// Addition of two non-zero points
+///
+/// # Soundness
+/// Both points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn add_twist_bn254(
     p1: &[u64; 16],
     p2: &[u64; 16],
@@ -258,7 +305,28 @@ pub fn add_twist_bn254(
     ]
 }
 
+/// Negation of a point
+pub fn neg_twist_bn254(p: &[u64; 16], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 16] {
+    let x: [u64; 8] = p[0..8].try_into().unwrap();
+    let y: [u64; 8] = p[8..16].try_into().unwrap();
+
+    // Compute the negation
+    let y_neg = neg_fp2_bn254(
+        &y,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    [
+        x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], y_neg[0], y_neg[1], y_neg[2], y_neg[3],
+        y_neg[4], y_neg[5], y_neg[6], y_neg[7],
+    ]
+}
+
 /// Doubling of a non-zero point
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn dbl_twist_bn254(p: &[u64; 16], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 16] {
     let x: [u64; 8] = p[0..8].try_into().unwrap();
     let y: [u64; 8] = p[8..16].try_into().unwrap();
@@ -336,24 +404,11 @@ pub fn dbl_twist_bn254(p: &[u64; 16], #[cfg(feature = "hints")] hints: &mut Vec<
     ]
 }
 
-/// Negation of a point
-pub fn neg_twist_bn254(p: &[u64; 16], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 16] {
-    let x: [u64; 8] = p[0..8].try_into().unwrap();
-    let y: [u64; 8] = p[8..16].try_into().unwrap();
-
-    // Compute the negation
-    let y_neg = neg_fp2_bn254(
-        &y,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    [
-        x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7], y_neg[0], y_neg[1], y_neg[2], y_neg[3],
-        y_neg[4], y_neg[5], y_neg[6], y_neg[7],
-    ]
-}
-
 /// Scalar multiplication of a non-zero point by x
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn scalar_mul_by_x_twist_bn254(
     p: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -382,46 +437,6 @@ pub fn scalar_mul_by_x_twist_bn254(
         }
     }
     q
-}
-
-/// Compute the untwist-frobenius-twist (utf) endomorphism 𝜓: (x,y) = (𝛾₁₂·x̄,𝛾₁₃·ȳ)
-pub fn utf_endomorphism_twist_bn254(
-    p: &[u64; 16],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 16] {
-    let mut x: [u64; 8] = p[0..8].try_into().unwrap();
-    let mut y: [u64; 8] = p[8..16].try_into().unwrap();
-
-    // Compute the conjugate of x and y
-    x = conjugate_fp2_bn254(
-        &x,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    y = conjugate_fp2_bn254(
-        &y,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    // Compute the multiplication
-    let qx = mul_fp2_bn254(
-        &FROBENIUS_GAMMA12,
-        &x,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    let qy = mul_fp2_bn254(
-        &FROBENIUS_GAMMA13,
-        &y,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    [
-        qx[0], qx[1], qx[2], qx[3], qx[4], qx[5], qx[6], qx[7], qy[0], qy[1], qy[2], qy[3], qy[4],
-        qy[5], qy[6], qy[7],
-    ]
 }
 
 // ==================== C FFI Functions ====================
@@ -471,6 +486,10 @@ pub unsafe extern "C" fn is_on_curve_twist_bn254_c(
 ///
 /// # Safety
 /// - `p_ptr` must point to a valid `[u64; 16]` array (affine coordinates x ‖ y, little-endian limbs)
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_is_on_subgroup_twist_bn254_c")]
 pub unsafe extern "C" fn is_on_subgroup_twist_bn254_c(

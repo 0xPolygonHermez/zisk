@@ -71,6 +71,7 @@ message SetupProgramAck {
   bool success = 4;
   string error_message = 5;
   bytes vk = 6;
+  string hash_mode = 7;
 }
 
 message JobCancelledAck {

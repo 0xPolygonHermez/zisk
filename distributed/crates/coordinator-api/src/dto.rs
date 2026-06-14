@@ -168,7 +168,7 @@ pub struct DomainAsmExecution {
 
 #[derive(Debug, Clone)]
 pub enum DomainJobKindResponse {
-    Setup { vk: Vec<u8> },
+    Setup { vk: Vec<u8>, hash_mode: String },
     Prove { proof: DomainProof, stats: DomainExecutionStats },
     Wrap(DomainProof),
     Execute { stats: DomainExecutionStats, public_outputs: Vec<u8> },

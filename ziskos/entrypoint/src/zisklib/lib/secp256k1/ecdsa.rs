@@ -1,22 +1,24 @@
 use crate::zisklib::{
-    be_bytes_to_u64_4, eq, glv_double_scalar_mul_with_g_secp256k1, gt, u64_4_to_be_bytes, ZERO_256,
+    be_bytes_to_u64_4, eq, glv_double_scalar_mul_with_g_secp256k1, gt, is_zero, u64_4_to_be_bytes,
+    ZERO_256,
 };
 
 use super::{
-    constants::N_MINUS_ONE,
+    constants::{IDENTITY, N_MINUS_ONE, P_MINUS_ONE},
     curve::{is_on_curve_secp256k1, lift_x_secp256k1},
     scalar::{inv_fn_secp256k1, mul_fn_secp256k1, neg_fn_secp256k1, reduce_fn_secp256k1},
 };
 
-/// ECDSA recover result codes
+/// ECDSA result codes
 pub const ECDSA_RECOVER_SUCCESS: u8 = 0;
-pub const ECDSA_RECOVER_ERR_INVALID_R: u8 = 1;
-pub const ECDSA_RECOVER_ERR_INVALID_S: u8 = 2;
-pub const ECDSA_RECOVER_ERR_INVALID_RECID: u8 = 3;
-pub const ECDSA_RECOVER_ERR_POINT_NOT_ON_CURVE: u8 = 4;
-pub const ECDSA_RECOVER_ERR_RECOVERY_FAILED: u8 = 5;
+pub const ECDSA_ERR_INVALID_R: u8 = 1;
+pub const ECDSA_ERR_INVALID_S: u8 = 2;
+pub const ECDSA_ERR_INVALID_RECID: u8 = 3;
+pub const ECDSA_ERR_POINT_NOT_ON_CURVE: u8 = 4;
+pub const ECDSA_ERR_RECOVERY_FAILED: u8 = 5;
 
 /// Verifies the signature (r, s) over the message hash z using the public key pk
+/// Returns true if the signature is valid, false otherwise.
 pub fn ecdsa_verify_secp256k1(
     pk: &[u64; 8],
     z: &[u64; 4],
@@ -24,7 +26,27 @@ pub fn ecdsa_verify_secp256k1(
     s: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
-    // pk must be on the curve
+    // Validate r
+    if is_zero(r) || gt(r, &N_MINUS_ONE) {
+        return false;
+    }
+
+    // Validate s
+    if is_zero(s) || gt(s, &N_MINUS_ONE) {
+        return false;
+    }
+
+    // PK must not be the point at infinity
+    if eq(pk, &IDENTITY) {
+        return false;
+    }
+
+    // pk must be a valid curve point with both coordinates in [0, p−1]
+    let pk_x = [pk[0], pk[1], pk[2], pk[3]];
+    let pk_y = [pk[4], pk[5], pk[6], pk[7]];
+    if gt(&pk_x, &P_MINUS_ONE) || gt(&pk_y, &P_MINUS_ONE) {
+        return false;
+    }
     if !is_on_curve_secp256k1(
         pk,
         #[cfg(feature = "hints")]
@@ -80,12 +102,8 @@ pub fn ecdsa_verify_secp256k1(
 /// Recover the public key point from an ECDSA signature (r, s) over the message hash z and recovery id recid
 ///
 /// # Returns
-/// - 0 = success
-/// - 1 = invalid r (not in [1, N))
-/// - 2 = invalid s (not in [1, N))
-/// - 3 = invalid recid (not 0 or 1)
-/// - 4 = point not on curve
-/// - 5 = recovery failed
+/// - `Ok([u64; 8])` - Recovered public key (x || y, little-endian limbs) if recovery is successful
+/// - `Err(u8)` - Error code
 pub fn ecdsa_recover_secp256k1(
     r: &[u64; 4],
     s: &[u64; 4],
@@ -95,17 +113,17 @@ pub fn ecdsa_recover_secp256k1(
 ) -> Result<[u64; 8], u8> {
     // Validate r
     if *r == ZERO_256 || gt(r, &N_MINUS_ONE) {
-        return Err(ECDSA_RECOVER_ERR_INVALID_R);
+        return Err(ECDSA_ERR_INVALID_R);
     }
 
     // Validate s
     if *s == ZERO_256 || gt(s, &N_MINUS_ONE) {
-        return Err(ECDSA_RECOVER_ERR_INVALID_S);
+        return Err(ECDSA_ERR_INVALID_S);
     }
 
     // Validate recid
     if recid > 1 {
-        return Err(ECDSA_RECOVER_ERR_INVALID_RECID);
+        return Err(ECDSA_ERR_INVALID_RECID);
     }
 
     // Lift R from its x-coordinate (= r) and the parity bit (= recid & 1).
@@ -116,7 +134,7 @@ pub fn ecdsa_recover_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     )
-    .map_err(|_| ECDSA_RECOVER_ERR_POINT_NOT_ON_CURVE)?;
+    .map_err(|_| ECDSA_ERR_POINT_NOT_ON_CURVE)?;
 
     // Compute u1, u2 such that u1 = -z·r⁻¹ (mod n), u2 = s·r⁻¹ (mod n).
     let r_inv = inv_fn_secp256k1(
@@ -151,42 +169,11 @@ pub fn ecdsa_recover_secp256k1(
         hints,
     ) {
         Some(pk) => Ok(pk),
-        None => Err(ECDSA_RECOVER_ERR_RECOVERY_FAILED), // Recovered point is identity
+        None => Err(ECDSA_ERR_RECOVERY_FAILED),
     }
 }
 
 // ==================== C FFI Functions ====================
-
-/// ECDSA signature verification with little-endian u64 limb inputs.
-/// Returns 1 if the signature is valid, 0 otherwise.
-///
-/// # Safety
-/// - `pk_ptr` must point to a valid `[u64; 8]` array (public key x ‖ y, little-endian limbs)
-/// - `z_ptr` must point to a valid `[u64; 4]` array (message hash, little-endian limbs)
-/// - `r_ptr` must point to a valid `[u64; 4]` array (signature r, little-endian limbs)
-/// - `s_ptr` must point to a valid `[u64; 4]` array (signature s, little-endian limbs)
-#[cfg_attr(not(feature = "hints"), no_mangle)]
-#[cfg_attr(feature = "hints", export_name = "hints_secp256k1_ecdsa_verify_c")]
-pub unsafe extern "C" fn ecdsa_verify_secp256k1_c(
-    pk_ptr: *const u64,
-    z_ptr: *const u64,
-    r_ptr: *const u64,
-    s_ptr: *const u64,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> u8 {
-    let pk = &*(pk_ptr as *const [u64; 8]);
-    let z = &*(z_ptr as *const [u64; 4]);
-    let r = &*(r_ptr as *const [u64; 4]);
-    let s = &*(s_ptr as *const [u64; 4]);
-    ecdsa_verify_secp256k1(
-        pk,
-        z,
-        r,
-        s,
-        #[cfg(feature = "hints")]
-        hints,
-    ) as u8
-}
 
 /// ECDSA signature verification with big-endian byte inputs.
 ///
@@ -196,7 +183,7 @@ pub unsafe extern "C" fn ecdsa_verify_secp256k1_c(
 /// - `pk` must point to at least 64 bytes (x || y, big-endian)
 #[allow(dead_code)]
 #[inline]
-pub(crate) unsafe fn secp256k1_ecdsa_verify_bytes_c(
+pub(crate) unsafe fn secp256k1_ecdsa_verify_c(
     sig: *const u8,
     msg: *const u8,
     pk: *const u8,

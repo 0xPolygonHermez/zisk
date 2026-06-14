@@ -54,6 +54,6 @@ impl VerifyCmd {
         tracing::info!("      time: {} milliseconds", elapsed.as_millis());
         tracing::info!("{}", "----------------------------".bright_green().bold());
 
-        result
+        result.map_err(Into::into)
     }
 }

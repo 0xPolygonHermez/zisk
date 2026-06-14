@@ -1,10 +1,10 @@
-use anyhow::Result;
+use std::error::Error;
 use std::path::PathBuf;
 use test_artifacts::ELF_BIG_INPUT;
 use zisk_sdk::{ProverClient, ZiskStdin};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...");
 
     // Read the input size that was configured during build

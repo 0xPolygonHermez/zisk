@@ -98,6 +98,7 @@ CACHE_ENTRY=""
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
+HASH="${HASH:-Poseidon1}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 
@@ -115,6 +116,7 @@ while [ $# -gt 0 ]; do
     --cache-dir)         CACHE_DIR="$2";          shift 2 ;;
     --recursive-jobs)    RECURSIVE_JOBS_ARG="$2"; shift 2 ;;
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
+    --hash)              HASH="$2";               shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
@@ -316,11 +318,12 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   [ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
 
   rm -rf "$BUILD_DIR/provingKey"
-  cargo run --release --bin cargo-zisk -- proofman-setup setup \
+  cargo run --release --bin cargo-zisk-dev -- proofman-setup setup \
     --airout pil/zisk.pilout \
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
     --stark-structs state-machines/starkstructs.json \
+    --hash "$HASH" \
     ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
     ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}
 
