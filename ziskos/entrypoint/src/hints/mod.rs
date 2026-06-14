@@ -235,7 +235,7 @@ impl UnixSocketWriter {
     }
 
     pub fn open(&mut self) -> Result<()> {
-        self.inner.open()
+        Ok(self.inner.open()?)
     }
 
     pub fn wait_for_client(&mut self, timeout: Duration) -> Result<()> {
@@ -251,7 +251,7 @@ impl UnixSocketWriter {
     }
 
     pub fn close(&mut self) -> Result<()> {
-        self.inner.close()
+        Ok(self.inner.close()?)
     }
 }
 
