@@ -191,7 +191,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bn254_g1_add_c(
+        let ret = super::add_safe_bn254_c(
             (*p1).data.as_ptr(),
             (*p2).data.as_ptr(),
             (*result).data.as_mut_ptr(),
@@ -225,7 +225,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bn254_g1_add_c(
+                let ret = super::add_safe_bn254_c(
                     (*p1).data.as_ptr(),
                     (*p2).data.as_ptr(),
                     (*result).data.as_mut_ptr(),
@@ -264,7 +264,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bn254_g1_mul_c(
+        let ret = super::scalar_mul_safe_bn254_c(
             (*point).data.as_ptr(),
             (*scalar).data.as_ptr(),
             (*result).data.as_mut_ptr(),
@@ -298,7 +298,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bn254_g1_mul_c(
+                let ret = super::scalar_mul_safe_bn254_c(
                     (*point).data.as_ptr(),
                     (*scalar).data.as_ptr(),
                     (*result).data.as_mut_ptr(),
@@ -337,7 +337,7 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bn254_pairing_check_c(pairs as *const u8, num_pairs, hints);
+        let ret = super::pairing_check_safe_bn254_c(pairs as *const u8, num_pairs, hints);
         match ret {
             bn254::PAIRING_CHECK_SUCCESS => {
                 *verified = true;
@@ -365,7 +365,7 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bn254_pairing_check_c(pairs as *const u8, num_pairs);
+                let ret = super::pairing_check_safe_bn254_c(pairs as *const u8, num_pairs);
                 return match ret {
                     bn254::PAIRING_CHECK_SUCCESS => {
                         *verified = true;
@@ -540,7 +540,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bls12_381_g1_add_c(
+        let ret = super::add_safe_bls12_381_c(
             (*result).data.as_mut_ptr(),
             (*p1).data.as_ptr(),
             (*p2).data.as_ptr(),
@@ -574,7 +574,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bls12_381_g1_add_c(
+                let ret = super::add_safe_bls12_381_c(
                     (*result).data.as_mut_ptr(),
                     (*p1).data.as_ptr(),
                     (*p2).data.as_ptr(),
@@ -616,7 +616,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bls12_381_g1_msm_c(
+        let ret = super::msm_safe_bls12_381_c(
             (*result).data.as_mut_ptr(),
             pairs as *const u8,
             num_pairs,
@@ -643,7 +643,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bls12_381_g1_msm_c(
+                let ret = super::msm_safe_bls12_381_c(
                     (*result).data.as_mut_ptr(),
                     pairs as *const u8,
                     num_pairs,
@@ -685,7 +685,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bls12_381_g2_add_c(
+        let ret = super::add_safe_twist_bls12_381_c(
             (*result).data.as_mut_ptr(),
             (*p1).data.as_ptr(),
             (*p2).data.as_ptr(),
@@ -719,7 +719,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bls12_381_g2_add_c(
+                let ret = super::add_safe_twist_bls12_381_c(
                     (*result).data.as_mut_ptr(),
                     (*p1).data.as_ptr(),
                     (*p2).data.as_ptr(),
@@ -761,7 +761,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bls12_381_g2_msm_c(
+        let ret = super::msm_safe_twist_bls12_381_c(
             (*result).data.as_mut_ptr(),
             pairs as *const u8,
             num_pairs,
@@ -788,7 +788,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bls12_381_g2_msm_c(
+                let ret = super::msm_safe_twist_bls12_381_c(
                     (*result).data.as_mut_ptr(),
                     pairs as *const u8,
                     num_pairs,
@@ -830,7 +830,7 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        let ret = super::bls12_381_pairing_check_c(pairs as *const u8, num_pairs, hints);
+        let ret = super::pairing_check_safe_bls12_381_c(pairs as *const u8, num_pairs, hints);
         match ret {
             bls12_381::PAIRING_CHECK_SUCCESS => {
                 *verified = true;
@@ -858,7 +858,7 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
 
             #[cfg(zisk_guest)]
             {
-                let ret = super::bls12_381_pairing_check_c(pairs as *const u8, num_pairs);
+                let ret = super::pairing_check_safe_bls12_381_c(pairs as *const u8, num_pairs);
                 return match ret {
                     bls12_381::PAIRING_CHECK_SUCCESS => {
                         *verified = true;
@@ -1092,7 +1092,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
 ) -> zkvm_status {
     #[cfg(feature = "hints")]
     {
-        *verified = super::secp256k1_ecdsa_verify_bytes_c(
+        *verified = super::secp256k1_ecdsa_verify_c(
             sig as *const u8,
             msg as *const u8,
             pubkey as *const u8,
@@ -1124,7 +1124,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
 
             #[cfg(zisk_guest)]
             {
-                *verified = super::secp256k1_ecdsa_verify_bytes_c(
+                *verified = super::secp256k1_ecdsa_verify_c(
                     sig as *const u8,
                     msg as *const u8,
                     pubkey as *const u8,

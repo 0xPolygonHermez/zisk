@@ -3,16 +3,18 @@ use alloc::vec::Vec;
 
 use crate::{
     syscalls::{syscall_secp256k1_dbl, SyscallPoint256},
-    zisklib::{eq, fcall_msb_pos_256_2, fcall_msb_pos_256_4, is_zero, ONE_256, TWO_256, ZERO_256},
+    zisklib::{
+        eq, fcall_msb_pos_256_2, fcall_msb_pos_256_4, is_one, is_two, is_zero, ONE_256, TWO_256,
+        ZERO_256,
+    },
 };
 
 use super::{
     constants::{G, G_NEG_Y, G_PHI_X, G_PHI_Y, G_X, G_Y, IDENTITY_X, IDENTITY_Y},
     curve::{
-        add_non_infinity_points_secp256k1, multi_scalar_mul_secp256k1_max_bits, neg_secp256k1,
-        phi_secp256k1,
+        add_non_infinity_points_secp256k1, msm_secp256k1_max_bits, neg_secp256k1, phi_secp256k1,
     },
-    scalar::{add_fn_secp256k1, glv_decompose_fn_secp256k1, sub_fn_secp256k1},
+    scalar::{add_fn_secp256k1, glv_decompose_fn_secp256k1, reduce_fn_secp256k1, sub_fn_secp256k1},
 };
 
 // Precomputed points
@@ -26,6 +28,10 @@ const G_PHI_NEG_POINT: SyscallPoint256 = SyscallPoint256 { x: G_PHI_X, y: G_NEG_
 
 /// Given a non-infinity point `p` and a scalar `k ∈ [0, N-1]`, computes `k·p`
 /// using the GLV endomorphism.
+///
+/// # Soundness
+/// The point must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn glv_scalar_mul_secp256k1(
     k: &[u64; 4],
     p: &[u64; 8],
@@ -36,12 +42,19 @@ pub fn glv_scalar_mul_secp256k1(
     //      [a1]·P + [a2]·φ(P)
     // where a1, a2 are approximately half the bit-length of k.
 
+    // Reduce the scalar
+    let k = reduce_fn_secp256k1(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Trivial cases: k = 0, k = 1, k = 2.
-    if eq(k, &ZERO_256) {
+    if is_zero(&k) {
         return None;
-    } else if eq(k, &ONE_256) {
+    } else if is_one(&k) {
         return Some(*p);
-    } else if eq(k, &TWO_256) {
+    } else if is_two(&k) {
         let mut res = SyscallPoint256 { x: [p[0], p[1], p[2], p[3]], y: [p[4], p[5], p[6], p[7]] };
         syscall_secp256k1_dbl(
             &mut res,
@@ -56,7 +69,7 @@ pub fn glv_scalar_mul_secp256k1(
 
     // 1. GLV-decompose k.
     let (k1, k2, sigma_1, sigma_2) = glv_decompose_fn_secp256k1(
-        k,
+        &k,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -107,11 +120,18 @@ pub fn glv_scalar_mul_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let k1_top = (k1[max_limb] >> max_bit) & 1;
     let k2_top = (k2[max_limb] >> max_bit) & 1;
-    assert!(k1_top == 1 || k2_top == 1);
+    assert!(
+        k1_top == 1 || k2_top == 1,
+        "At least one of the half-scalars must have its top bit set"
+    );
 
     // 5. Strauss-Shamir loop with bit-by-bit reconstruction of each half-scalar.
     let mut res = IDENTITY_POINT;
@@ -202,6 +222,10 @@ pub fn glv_scalar_mul_secp256k1(
 
 /// Given a non-infinity point `p` and scalars `k1, k2 ∈ [0, N-1]`, computes the double scalar
 /// multiplication `k1·G + k2·p` using the GLV endomorphism.
+///
+/// # Soundness
+/// The points must be on-curve, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn glv_double_scalar_mul_with_g_secp256k1(
     k1: &[u64; 4],
     k2: &[u64; 4],
@@ -213,15 +237,27 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
     //      [a1]·G + [a2]·φ(G) + [b1]·P + [b2]·φ(P)
     // where a1, a2, b1, b2 are approximately half the bit-length of k1 and k2.
 
+    // Reduce the scalars
+    let k1 = reduce_fn_secp256k1(
+        k1,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+    let k2 = reduce_fn_secp256k1(
+        k2,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
     // Handle zero scalars:
     //  - If k1 = k2 = 0, then k1·G + k2·p = 𝒪.
     //  - If k1 = 0 and k2 > 0, then k1·G + k2·p = k2·p
     //  - If k2 = 0 and k1 > 0, then k1·G + k2·p = k1·G
-    match (is_zero(k1), is_zero(k2)) {
+    match (is_zero(&k1), is_zero(&k2)) {
         (true, true) => return None,
         (true, false) => {
             return glv_scalar_mul_secp256k1(
-                k2,
+                &k2,
                 p,
                 #[cfg(feature = "hints")]
                 hints,
@@ -229,7 +265,7 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
         }
         (false, true) => {
             return glv_scalar_mul_secp256k1(
-                k1,
+                &k1,
                 &G,
                 #[cfg(feature = "hints")]
                 hints,
@@ -239,7 +275,7 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
     }
 
     // If k1 = k2 => k1·G + k2·P = k1·(G + P)
-    if eq(k1, k2) {
+    if eq(&k1, &k2) {
         let mut gp = G_POINT;
         let gp_is_infinity = add_non_infinity_points_secp256k1(
             &mut gp,
@@ -251,7 +287,7 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
             return None;
         }
         return glv_scalar_mul_secp256k1(
-            k1,
+            &k1,
             &[gp.x[0], gp.x[1], gp.x[2], gp.x[3], gp.y[0], gp.y[1], gp.y[2], gp.y[3]],
             #[cfg(feature = "hints")]
             hints,
@@ -263,14 +299,14 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
     if eq(&p[0..4], &G_X) {
         let k1k2 = match eq(&p[4..8], &G_NEG_Y) {
             true => sub_fn_secp256k1(
-                k1,
-                k2,
+                &k1,
+                &k2,
                 #[cfg(feature = "hints")]
                 hints,
             ),
             false => add_fn_secp256k1(
-                k1,
-                k2,
+                &k1,
+                &k2,
                 #[cfg(feature = "hints")]
                 hints,
             ),
@@ -287,12 +323,12 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
 
     // 1. GLV-decompose k1 and k2.
     let (a1, a2, sigma_a1, sigma_a2) = glv_decompose_fn_secp256k1(
-        k1,
+        &k1,
         #[cfg(feature = "hints")]
         hints,
     );
     let (b1, b2, sigma_b1, sigma_b2) = glv_decompose_fn_secp256k1(
-        k2,
+        &k2,
         #[cfg(feature = "hints")]
         hints,
     );
@@ -443,13 +479,20 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
         #[cfg(feature = "hints")]
         hints,
     );
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
     let max_limb = max_limb as usize;
     let max_bit = max_bit as usize;
+
     let a1_top = (a1[max_limb] >> max_bit) & 1;
     let a2_top = (a2[max_limb] >> max_bit) & 1;
     let b1_top = (b1[max_limb] >> max_bit) & 1;
     let b2_top = (b2[max_limb] >> max_bit) & 1;
-    assert!(a1_top == 1 || a2_top == 1 || b1_top == 1 || b2_top == 1);
+    assert!(
+        a1_top == 1 || a2_top == 1 || b1_top == 1 || b2_top == 1,
+        "At least one of the half-scalars must have its top bit set"
+    );
 
     // 5. Strauss-Shamir loop with bit-by-bit reconstruction of each half-scalar.
     let mut res = IDENTITY_POINT;
@@ -618,7 +661,10 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
 ///
 /// Returns `None` if the result is the point at infinity. Assumes all input points are
 /// non-infinity and on the curve, and scalars are in `[0, N-1]`.
-pub fn glv_multi_scalar_mul_secp256k1(
+///
+/// # Soundness
+/// All points must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
+pub(crate) fn glv_msm_secp256k1(
     scalars: &[[u64; 4]],
     points: &[[u64; 8]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -637,8 +683,15 @@ pub fn glv_multi_scalar_mul_secp256k1(
     let mut expanded_scalars: Vec<[u64; 4]> = Vec::with_capacity(2 * n);
     let mut expanded_points: Vec<[u64; 8]> = Vec::with_capacity(2 * n);
     for i in 0..n {
-        let (k1, k2, sigma_1, sigma_2) = glv_decompose_fn_secp256k1(
+        // Reduce the scalar first
+        let k = reduce_fn_secp256k1(
             &scalars[i],
+            #[cfg(feature = "hints")]
+            hints,
+        );
+
+        let (k1, k2, sigma_1, sigma_2) = glv_decompose_fn_secp256k1(
+            &k,
             #[cfg(feature = "hints")]
             hints,
         );
@@ -697,7 +750,7 @@ pub fn glv_multi_scalar_mul_secp256k1(
     }
 
     // Pippenger over the bottom 128 bits.
-    multi_scalar_mul_secp256k1_max_bits(
+    msm_secp256k1_max_bits(
         &expanded_scalars,
         &expanded_points,
         128,

@@ -18,11 +18,14 @@ use super::point::SyscallPoint256;
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// The caller must ensure that the point `p` is a valid point on the Secp256r1 curve.
+/// The caller must ensure that `p` is a finite point on the Secp256r1 curve.
+/// The point at infinity is not allowed.
 ///
-/// The caller must ensure that `p` coordinates are within the range of the Secp256r1 base field.
+/// The caller must ensure that the coordinates of `p` are canonical representatives
+/// of elements in the Secp256r1 base field.
 ///
-/// The resulting point will have both coordinates in the range of the Secp256r1 base field.
+/// The resulting point will have both coordinates reduced to canonical representatives
+/// in the range of the Secp256r1 base field.
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_secp256r1_dbl")]

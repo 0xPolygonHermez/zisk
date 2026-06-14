@@ -1,10 +1,10 @@
-use ziskos::zisklib::{exp_fp12_bn254, neg_bn254, pairing_bn254, pairing_check_bn254};
+use ziskos::zisklib::{exp_fp12_bn254, neg_bn254, pairing_bn254, pairing_check_safe_bn254};
 
 use crate::constants::{IDENTITY_G1, IDENTITY_G2, P};
 
 pub fn pairing_check_tests() {
     // Test 1: Empty pairing (should return true)
-    let result = pairing_check_bn254(&[], &[]).expect("Empty pairing should succeed");
+    let result = pairing_check_safe_bn254(&[], &[]).expect("Empty pairing should succeed");
     assert!(result, "Empty pairing should return true");
 
     // Test 2: Identity points (e(0,Q) = 1, should return true after filtering)
@@ -27,7 +27,7 @@ pub fn pairing_check_tests() {
         0x51704116523CBD21,
         0x1FA69C987C6371FF,
     ];
-    let result = pairing_check_bn254(&[p], &[q]).expect("Identity G1 should succeed");
+    let result = pairing_check_safe_bn254(&[p], &[q]).expect("Identity G1 should succeed");
     assert!(result, "e(0,Q) = 1");
 
     // Test 3: e(P,0) = 1
@@ -42,13 +42,13 @@ pub fn pairing_check_tests() {
         0x15ED738C0E0A7C92,
     ];
     let q = IDENTITY_G2;
-    let result = pairing_check_bn254(&[p], &[q]).expect("Identity G2 should succeed");
+    let result = pairing_check_safe_bn254(&[p], &[q]).expect("Identity G2 should succeed");
     assert!(result, "e(P,0) = 1");
 
     // e(0,0) = 1
     let p = IDENTITY_G1;
     let q = IDENTITY_G2;
-    let result = pairing_check_bn254(&[p], &[q]).expect("Identity G1 and G2 should succeed");
+    let result = pairing_check_safe_bn254(&[p], &[q]).expect("Identity G1 and G2 should succeed");
     assert!(result, "e(0,0) = 1");
 
     // Test 4: Successful pairing check - e(P,Q) * e(-P,Q) = 1
@@ -82,11 +82,12 @@ pub fn pairing_check_tests() {
         0x090689D0585FF075,
     ];
     let result =
-        pairing_check_bn254(&[p, neg_p], &[q, q]).expect("Bilinearity test should succeed");
+        pairing_check_safe_bn254(&[p, neg_p], &[q, q]).expect("Bilinearity test should succeed");
     assert!(result, "e(P,Q) * e(-P,Q) should equal 1");
 
     // Test 5: Failed pairing check - e(P,Q) * e(P,Q) != 1
-    let result = pairing_check_bn254(&[p, p], &[q, q]).expect("Should compute but return false");
+    let result =
+        pairing_check_safe_bn254(&[p, p], &[q, q]).expect("Should compute but return false");
     assert!(!result, "e(P,Q) * e(P,Q) should not equal 1");
 
     // Test 6: G1 point not on curve (0, 1)
@@ -100,7 +101,7 @@ pub fn pairing_check_tests() {
         0x0000000000000000,
         0x0000000000000000,
     ];
-    let result = pairing_check_bn254(&[bad_p], &[q]);
+    let result = pairing_check_safe_bn254(&[bad_p], &[q]);
     assert!(result.is_err(), "G1 point (0,1) not on curve should fail");
     assert_eq!(result.unwrap_err(), 3, "Should return G1_NOT_ON_CURVE error");
 
@@ -115,7 +116,7 @@ pub fn pairing_check_tests() {
         0x0000000000000000,
         0x0000000000000000,
     ];
-    let result = pairing_check_bn254(&[bad_p], &[q]);
+    let result = pairing_check_safe_bn254(&[bad_p], &[q]);
     assert!(result.is_err(), "G1.x >= P should fail");
     assert_eq!(result.unwrap_err(), 2, "Should return G1_INVALID error");
 
@@ -130,7 +131,7 @@ pub fn pairing_check_tests() {
         P[2],
         P[3],
     ];
-    let result = pairing_check_bn254(&[bad_p], &[q]);
+    let result = pairing_check_safe_bn254(&[bad_p], &[q]);
     assert!(result.is_err(), "G1.y >= P should fail");
     assert_eq!(result.unwrap_err(), 2, "Should return G1_INVALID error");
 
@@ -153,7 +154,7 @@ pub fn pairing_check_tests() {
         0x0000000000000000,
         0x0000000000000000,
     ];
-    let result = pairing_check_bn254(&[p], &[bad_q]);
+    let result = pairing_check_safe_bn254(&[p], &[bad_q]);
     assert!(result.is_err(), "G2 point not on curve should fail");
     assert_eq!(result.unwrap_err(), 5, "Should return G2_NOT_ON_CURVE error");
 
@@ -176,7 +177,7 @@ pub fn pairing_check_tests() {
         0x0000000000000000,
         0x0000000000000000,
     ];
-    let result = pairing_check_bn254(&[p], &[bad_q]);
+    let result = pairing_check_safe_bn254(&[p], &[bad_q]);
     assert!(result.is_err(), "G2.x1 >= P should fail");
     assert_eq!(result.unwrap_err(), 4, "Should return G2_INVALID error");
 
@@ -199,7 +200,7 @@ pub fn pairing_check_tests() {
         0x0000000000000000,
         0x0000000000000000,
     ];
-    let result = pairing_check_bn254(&[p], &[bad_q]);
+    let result = pairing_check_safe_bn254(&[p], &[bad_q]);
     assert!(result.is_err(), "G2.x2 >= P should fail");
     assert_eq!(result.unwrap_err(), 4, "Should return G2_INVALID error");
 
@@ -222,7 +223,7 @@ pub fn pairing_check_tests() {
         0x0000000000000000,
         0x0000000000000000,
     ];
-    let result = pairing_check_bn254(&[p], &[bad_q]);
+    let result = pairing_check_safe_bn254(&[p], &[bad_q]);
     assert!(result.is_err(), "G2.y1 >= P should fail");
     assert_eq!(result.unwrap_err(), 4, "Should return G2_INVALID error");
 
@@ -245,7 +246,7 @@ pub fn pairing_check_tests() {
         P[2],
         P[3],
     ];
-    let result = pairing_check_bn254(&[p], &[bad_q]);
+    let result = pairing_check_safe_bn254(&[p], &[bad_q]);
     assert!(result.is_err(), "G2.y2 >= P should fail");
     assert_eq!(result.unwrap_err(), 4, "Should return G2_INVALID error");
 
@@ -268,7 +269,7 @@ pub fn pairing_check_tests() {
         0x28D70CD532462E40,
         0x07D105D0066EC703,
     ];
-    let result = pairing_check_bn254(&[p], &[bad_q]);
+    let result = pairing_check_safe_bn254(&[p], &[bad_q]);
     assert!(result.is_err(), "G2 not in subgroup should fail");
     assert_eq!(result.unwrap_err(), 6, "Should return G2_NOT_IN_SUBGROUP error");
 
@@ -279,7 +280,7 @@ pub fn pairing_check_tests() {
     let q1 = q;
     let q2 = q;
     let q3 = q;
-    let result = pairing_check_bn254(&[p1, p2, p3], &[q1, q2, q3])
+    let result = pairing_check_safe_bn254(&[p1, p2, p3], &[q1, q2, q3])
         .expect("Mixed valid/identity should succeed");
     assert!(result, "e(P,Q) * e(0,Q) * e(-P,Q) = 1");
 }

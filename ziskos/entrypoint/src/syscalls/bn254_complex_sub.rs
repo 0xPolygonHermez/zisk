@@ -27,9 +27,11 @@ pub struct SyscallBn254ComplexSubParams<'a> {
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// The caller must ensure that both `f1` and `f2` coordinates are within the range of the BN254 base field.
+/// The `f1` and `f2` coordinates are not required to be canonical representatives of elements
+/// in the BN254 base field.
 ///
-/// The resulting field element will have both coordinates in the range of the BN254 base field.
+/// The resulting field element will have both coordinates reduced to canonical representatives
+/// in the range of the BN254 base field.
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_complex_sub")]
