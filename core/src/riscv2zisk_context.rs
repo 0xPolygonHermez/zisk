@@ -75,6 +75,7 @@ const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs +
 /// Mask to apply to the target address of JALR instructions, to ensure the least significant bit is 0
 const JALR_MASK: u64 = 0xfffffffffffffffe;
 
+#[cfg(not(feature = "float"))]
 const NO_FLOAT_ECALL_ADDR: u64 = ROM_EXIT + 0x58;
 
 /// Context to store the list of converted ZisK instructions, including their program address and a
