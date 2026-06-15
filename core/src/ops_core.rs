@@ -492,3 +492,84 @@ pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
         (b as i32 as i64 as u64, false)
     }
 }
+
+/// Sets c to the value of b, switching endianess of each byte, and flag to false
+#[inline(always)]
+pub const fn op_rev8(_a: u64, b: u64) -> (u64, bool) {
+    (b.swap_bytes(), false)
+}
+
+/// Sets c to the value of b, reversing the bits of each byte, and flag to false
+#[inline(always)]
+pub const fn op_brev8(_a: u64, b: u64) -> (u64, bool) {
+    let mut bytes: [u8; 8] = b.to_ne_bytes();
+    bytes[0] = bytes[0].reverse_bits();
+    bytes[1] = bytes[1].reverse_bits();
+    bytes[2] = bytes[2].reverse_bits();
+    bytes[3] = bytes[3].reverse_bits();
+    bytes[4] = bytes[4].reverse_bits();
+    bytes[5] = bytes[5].reverse_bits();
+    bytes[6] = bytes[6].reverse_bits();
+    bytes[7] = bytes[7].reverse_bits();
+    (u64::from_ne_bytes(bytes), false)
+}
+
+/// Sets c to the value a and not(b), and flag to false
+#[inline(always)]
+pub const fn op_andn(a: u64, b: u64) -> (u64, bool) {
+    (a & !b, false)
+}
+
+/// Sets c to the value a or not(b), and flag to false
+#[inline(always)]
+pub const fn op_orn(a: u64, b: u64) -> (u64, bool) {
+    (a | !b, false)
+}
+
+/// Sets c to the value a xnor b, and flag to false
+#[inline(always)]
+pub const fn op_xnor(a: u64, b: u64) -> (u64, bool) {
+    (!(a ^ b), false)
+}
+
+/// Sets c to the value low32(a) | (low32(b) << 32), and flag to false
+#[inline(always)]
+pub const fn op_pack(a: u64, b: u64) -> (u64, bool) {
+    (a & 0xFFFFFFFF | (b & 0xFFFFFFFF) << 32, false)
+}
+
+/// Sets c to the value low8(a) | (low8(b) << 8), sign extended, and flag to false
+#[inline(always)]
+pub const fn op_pack_h(a: u64, b: u64) -> (u64, bool) {
+    ((a & 0xFF | (b & 0xFF) << 8) as i16 as u64, false)
+}
+
+/// Sets c to the value low16(a) | (low16(b) << 16), sign extended, and flag to false
+#[inline(always)]
+pub const fn op_pack_w(a: u64, b: u64) -> (u64, bool) {
+    ((a & 0xFFFF | (b & 0xFFFF) << 16) as i32 as u64, false)
+}
+
+/// Sets c to the value a rotated left b bits (modulo 64), and flag to false
+#[inline(always)]
+pub const fn op_rol(a: u64, b: u64) -> (u64, bool) {
+    (a.rotate_left((b & 0x3F) as u32), false)
+}
+
+/// Sets c to the value low16(a) rotated left b bits (modulo 32), and flag to false
+#[inline(always)]
+pub const fn op_rol_w(a: u64, b: u64) -> (u64, bool) {
+    ((a & 0xFFFF).rotate_left((b & 0x1F) as u32) as i32 as u64, false)
+}
+
+/// Sets c to the value a rotated right b bits (modulo 64), and flag to false
+#[inline(always)]
+pub const fn op_ror(a: u64, b: u64) -> (u64, bool) {
+    (a.rotate_right((b & 0x3F) as u32), false)
+}
+
+/// Sets c to the value low16(a) rotated right b bits (modulo 32), and flag to false
+#[inline(always)]
+pub const fn op_ror_w(a: u64, b: u64) -> (u64, bool) {
+    ((a & 0xFFFF).rotate_right((b & 0x1F) as u32) as i32 as u64, false)
+}

@@ -508,6 +508,22 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "float")]
             "fmv.x.d" => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
 
+            // Zbkb: Bit Manipulation for Cryptography Instructions
+            "rev8" => self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1),
+            "brev8" => self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1),
+            "andn" => self.create_register_op(riscv_instruction, "andn", 4),
+            "orn" => self.create_register_op(riscv_instruction, "orn", 4),
+            "xnor" => self.create_register_op(riscv_instruction, "xnor", 4),
+            "pack" => self.create_register_op(riscv_instruction, "pack", 4),
+            "packh" => self.create_register_op(riscv_instruction, "pack_h", 4),
+            "packw" => self.create_register_op(riscv_instruction, "pack_w", 4),
+            "rol" => self.create_register_op(riscv_instruction, "rol", 4),
+            "rolw" => self.create_register_op(riscv_instruction, "rol_w", 4),
+            "ror" => self.create_register_op(riscv_instruction, "ror", 4),
+            "rorw" => self.create_register_op(riscv_instruction, "ror_w", 4),
+            "rori" => self.create_register_op(riscv_instruction, "ror", 4),
+            "roriw" => self.create_register_op(riscv_instruction, "ror_w", 4),
+
             // Special ZisK instructions
             ////////////////////////////
 
@@ -2256,6 +2272,25 @@ impl Riscv2ZiskContext<'_> {
         let rs1 = i.rs1;
         let rs2 = next_instructions[0].imm as u32;
         self.create_extended_precompiles_op(i, "profile", rs1, rs2 as u64, 0, 0, true, 8);
+    }
+
+    pub fn create_single_source_register_op(
+        &mut self,
+        i: &RiscvInstruction,
+        op: &str,
+        inst_size: u64,
+        rs: u64,
+    ) {
+        assert!(inst_size == 2 || inst_size == 4);
+        assert!(rs == 1 || rs == 2);
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
+        zib.op(op).unwrap();
+        zib.verbose(&format!("{} r{}, r{}", i.inst, i.rd, if rs == 1 { i.rs1 } else { i.rs2 }));
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(inst_size as i64, inst_size as i64);
+        zib.build(self.rom);
     }
 } // impl Riscv2ZiskContext
 

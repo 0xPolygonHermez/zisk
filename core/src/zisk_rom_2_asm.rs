@@ -7711,6 +7711,18 @@ impl ZiskRom2Asm {
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
+            ZiskOp::Rev8 => todo!(),
+            ZiskOp::Brev8 => todo!(),
+            ZiskOp::Andn => todo!(),
+            ZiskOp::Orn => todo!(),
+            ZiskOp::Xnor => todo!(),
+            ZiskOp::Pack => todo!(),
+            ZiskOp::PackH => todo!(),
+            ZiskOp::PackW => todo!(),
+            ZiskOp::Rol => todo!(),
+            ZiskOp::RolW => todo!(),
+            ZiskOp::Ror => todo!(),
+            ZiskOp::RorW => todo!(),
         }
     }
 

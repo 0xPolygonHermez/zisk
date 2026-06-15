@@ -316,3 +316,75 @@ pub fn opc_maxu_w(ctx: &mut InstContext) {
 pub fn opc_max_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_max_w(ctx.a, ctx.b);
 }
+
+/// InstContext-based wrapper over op_rev8()
+#[inline(always)]
+pub fn opc_rev8(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rev8(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_rev8()
+#[inline(always)]
+pub fn opc_brev8(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_brev8(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_andn()
+#[inline(always)]
+pub fn opc_andn(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_andn(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_orn()
+#[inline(always)]
+pub fn opc_orn(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_orn(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_xnor()
+#[inline(always)]
+pub fn opc_xnor(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_xnor(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_pack()
+#[inline(always)]
+pub fn opc_pack(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_pack(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_pack_h()
+#[inline(always)]
+pub fn opc_pack_h(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_pack_h(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_pack_w()
+#[inline(always)]
+pub fn opc_pack_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_pack_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_rol()
+#[inline(always)]
+pub fn opc_rol(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rol(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_rol_w()
+#[inline(always)]
+pub fn opc_rol_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rol_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ror()
+#[inline(always)]
+pub fn opc_ror(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ror(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ror_w()
+#[inline(always)]
+pub fn opc_ror_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ror_w(ctx.a, ctx.b);
+}
