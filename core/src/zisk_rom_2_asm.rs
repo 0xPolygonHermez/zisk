@@ -7907,8 +7907,11 @@ impl ZiskRom2Asm {
             high_address,
             ctx.comment_str("is pc a low address?")
         );
-        *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
-        *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
+        #[cfg(feature = "float")]
+        {
+            *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
+            *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
+        }
         *code +=
             &format!("\tsub {}, {} {}\n", REG_PC, REG_ADDRESS, ctx.comment_str("pc -= ROM_ADDR"));
         *code += &format!(
@@ -7925,21 +7928,24 @@ impl ZiskRom2Asm {
             ctx.comment_str("address = map[pc]")
         );
         *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
-        *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
-        *code += &format!("\tsub {}, 0x1000 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ENTRY"));
-        *code += &format!(
-            "\tlea {}, [map_pc_1000] {}\n",
-            REG_ADDRESS,
-            ctx.comment_str("address = map[ROM_ENTRY]")
-        );
-        *code += &format!(
-            "\tmov {}, [{} + {}*2] {}\n",
-            REG_ADDRESS,
-            REG_ADDRESS,
-            REG_PC,
-            ctx.comment_str("address = map[pc]")
-        );
-        *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+        #[cfg(feature = "float")]
+        {
+            *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
+            *code += &format!("\tsub {}, 0x1000 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ENTRY"));
+            *code += &format!(
+                "\tlea {}, [map_pc_1000] {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address = map[ROM_ENTRY]")
+            );
+            *code += &format!(
+                "\tmov {}, [{} + {}*2] {}\n",
+                REG_ADDRESS,
+                REG_ADDRESS,
+                REG_PC,
+                ctx.comment_str("address = map[pc]")
+            );
+            *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+        }
     }
 
     /*************/
