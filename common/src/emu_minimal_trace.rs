@@ -40,6 +40,12 @@ pub struct EmuTrace {
     pub steps: u64,
     /// Memory reads (Cow allows zero-copy from shared memory)
     pub mem_reads: Cow<'static, [u64]>,
+    /// Plaintext public output produced by the guest via the `FCALL_PUBLIC_OUTPUT_ID` fcall, in
+    /// execution order. Concatenating this across chunks (in global chunk order) yields the full
+    /// public output — the preimage of the SHA-256 digest committed at OUTPUT_ADDR (host-side
+    /// bookkeeping; unconstrained). The interpreted emulator fills this per chunk; the native ASM
+    /// runner captures the whole output globally and attaches it to the first chunk.
+    pub public_output: Vec<u8>,
 
     /// If the `end` flag is true, the program executed completely.
     /// This does not mean that the program ended successfully; it could have found an error condition
@@ -60,6 +66,18 @@ impl EmuTrace {
     pub fn is_first(&self) -> bool {
         self.start_state.step == 0
     }
+}
+
+/// Concatenate the per-chunk `public_output` of `traces` (which must be in global chunk order)
+/// into the full plaintext public output. `sha256` of the result equals the digest committed at
+/// `OUTPUT_ADDR`. Used to attach the plaintext to a proof so the verifier can rehash-bind it.
+pub fn concat_public_output(traces: &[EmuTrace]) -> Vec<u8> {
+    let total = traces.iter().map(|t| t.public_output.len()).sum();
+    let mut out = Vec::with_capacity(total);
+    for t in traces {
+        out.extend_from_slice(&t.public_output);
+    }
+    out
 }
 impl Debug for EmuTrace {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

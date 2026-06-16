@@ -77,6 +77,15 @@ pub(crate) fn shmem_output_name(
     }
 }
 
+/// Shared memory name for the captured standard public output (MT service only).
+///
+/// Mirrors the C `_MT_public_output` segment created by the MinimalTrace service; the parent
+/// opens it read-only after a run to recover the plaintext that `write_output` streamed to the
+/// host alongside the committed digest.
+pub(crate) fn shmem_public_output_name(prefix: &str, asm_service: AsmService) -> String {
+    build_service_shmem_name(prefix, asm_service, "public_output")
+}
+
 /// Semaphore name for chunk completion (per service).
 pub(crate) fn sem_chunk_done_name(prefix: &str, asm_service: AsmService) -> String {
     build_sem_name(prefix, asm_service, "chunk_done")
@@ -115,6 +124,8 @@ mod tests {
         assert_eq!(shmem_control_output_name(p, AsmService::MO), "ZISK_42_0_MO_control_output");
         assert_eq!(shmem_output_name(p, AsmService::MT, None), "ZISK_42_0_MT_output");
         assert_eq!(shmem_output_name(p, AsmService::MT, Some(3)), "ZISK_42_0_MT_output_3");
+        // Must match the C `{prefix}_MT_public_output` built in configuration.c.
+        assert_eq!(shmem_public_output_name(p, AsmService::MT), "ZISK_42_0_MT_public_output");
     }
 
     #[test]

@@ -213,6 +213,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         (self.state.get_execution_result(), self.state.get_stats())
     }
 
+    /// Plaintext public output captured from the last execution: the concatenation, in chunk
+    /// order, of the bytes the guest streamed via `FCALL_PUBLIC_OUTPUT_ID`. `sha256` of this
+    /// equals the digest committed at OUTPUT_ADDR. Empty if the guest used no standard output
+    /// (or for executions whose min-traces were already cleared).
+    pub fn public_output(&self) -> Vec<u8> {
+        use std::sync::PoisonError;
+        let guard = self.state.min_traces.read().unwrap_or_else(PoisonError::into_inner);
+        guard.as_ref().map(|traces| zisk_common::concat_public_output(traces)).unwrap_or_default()
+    }
+
     /// Stores statistics to persistent storage.
     pub fn store_stats(&self) {
         self.state.stats.store_stats();

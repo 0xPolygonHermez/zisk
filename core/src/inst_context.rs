@@ -128,6 +128,13 @@ pub struct InstContext {
 
     /// Input data length, stored in the context to be used by the FCALL_INPUT_READY_ID fcall
     pub input_len: u64,
+
+    /// Per-step staging buffer for plaintext public output. `FCALL_PUBLIC_OUTPUT_ID` appends a
+    /// chunk's bytes here during a step; the emulator then drains it after the step — into the
+    /// owning chunk's `EmuTrace.public_output` for recorded blocks, or discards it for blocks
+    /// recorded by another thread. Host-side bookkeeping (unconstrained); the preimage of the
+    /// SHA-256 digest committed at OUTPUT_ADDR.
+    pub public_output: Vec<u8>,
 }
 
 /// RisK instruction context implementation
@@ -153,6 +160,7 @@ impl InstContext {
             extended_arg: 0,
             stats_hint: 0,
             input_len: 0,
+            public_output: Vec::new(),
         }
     }
 

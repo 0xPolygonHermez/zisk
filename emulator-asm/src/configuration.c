@@ -717,6 +717,8 @@ void configure (void)
             }
             strcpy(shmem_output_name, shm_prefix);
             strcat(shmem_output_name, "_MT_output");
+            strcpy(shmem_public_output_name, shm_prefix);
+            strcat(shmem_public_output_name, "_MT_public_output");
             strcpy(shmem_rom_name, shm_prefix);
             strcat(shmem_rom_name, "_MT_rom");
             strcpy(shmem_ram_name, shm_prefix);

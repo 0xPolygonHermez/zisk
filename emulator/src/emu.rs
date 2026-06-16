@@ -1923,6 +1923,7 @@ impl<'a> Emu<'a> {
                         steps: 0,
                         mem_reads: Cow::Owned(Vec::with_capacity(par_options.num_steps)),
                         end: false,
+                        public_output: Vec::new(),
                     });
                 }
 
@@ -1977,6 +1978,7 @@ impl<'a> Emu<'a> {
                     steps: 0,
                     mem_reads: Cow::Owned(Vec::with_capacity(par_options.num_steps)),
                     end: false,
+                    public_output: Vec::new(),
                 });
             }
 
@@ -2185,6 +2187,12 @@ impl<'a> Emu<'a> {
         emu_full_trace_vec.last_c = self.ctx.inst_ctx.c;
         emu_full_trace_vec.end = self.ctx.inst_ctx.end;
 
+        // Record any public output the step produced (FCALL_PUBLIC_OUTPUT_ID stages it on the
+        // context); attribute it to this recorded chunk, in execution order.
+        if !self.ctx.inst_ctx.public_output.is_empty() {
+            emu_full_trace_vec.public_output.append(&mut self.ctx.inst_ctx.public_output);
+        }
+
         // Increment step counter
         self.ctx.inst_ctx.step += 1;
         emu_full_trace_vec.steps += 1;
@@ -2223,6 +2231,10 @@ impl<'a> Emu<'a> {
 
         // If this is the last instruction, stop executing
         self.ctx.inst_ctx.end = instruction.end;
+
+        // This block is recorded by another thread; discard any public output staged this step
+        // so it is attributed once, by the owning thread's `par_step_my_block`.
+        self.ctx.inst_ctx.public_output.clear();
 
         // Increment step counter
         self.ctx.inst_ctx.step += 1;

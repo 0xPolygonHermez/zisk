@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 #include "emu.hpp"
 #include "log.hpp"
 #include "../../lib-c/c/src/bigint/add256.hpp"
@@ -21,8 +22,43 @@
 #include "../../lib-c/c/src/poseidon1/poseidon1_goldilocks.hpp"
 #include "../../lib-c/c/src/blake2/blake2.hpp"
 #include "../../lib-c/c/src/chfast/zisk_keccak.h"
+#include "globals.hpp"
+#include "constants.hpp"
 
 extern void zisk_sha256(uint64_t state[4], uint64_t input[8]);
+
+// Standard public-output capture (MinimalTrace service only).
+//
+// write_output streams its plaintext to the host via FCALL_PUBLIC_OUTPUT (params[0]=guest
+// pointer, params[1]=byte length). Guest memory is mapped 1:1, so the pointer is dereferenced
+// directly. The bytes are appended to the public-output shmem ([uint64_t used_size][data...]);
+// the parent reads them after the run so the proof carries the full output alongside the digest.
+// This is unconstrained transport — soundness rests on the SHA-256 digest in the public values,
+// not on this copy — so an overflow of the (generous, sparse) cap is reported and truncated
+// rather than aborting the proof.
+static void public_output_capture(uint64_t guest_ptr, uint64_t len)
+{
+    if ((shmem_public_output_address == NULL) || (len == 0))
+    {
+        return;
+    }
+
+    uint64_t used = *(uint64_t *)shmem_public_output_address;
+    uint64_t capacity = PUBLIC_OUTPUT_SIZE - PUBLIC_OUTPUT_HEADER_SIZE;
+    if (used + len > capacity)
+    {
+        asm_printf("ERROR: public_output_capture() overflow: used=%lu len=%lu cap=%lu; output truncated\n", used, len, capacity);
+        len = (used < capacity) ? (capacity - used) : 0;
+        if (len == 0)
+        {
+            return;
+        }
+    }
+
+    uint8_t * dst = shmem_public_output_address + PUBLIC_OUTPUT_HEADER_SIZE + used;
+    memcpy(dst, (const void *)guest_ptr, len);
+    *(uint64_t *)shmem_public_output_address = used + len;
+}
 
 #ifdef DEBUG
 bool emu_verbose = false;
@@ -1246,6 +1282,20 @@ extern int _opcode_fcall(struct FcallContext * ctx)
         asm_raw_printf("\n");
     }
 #endif
+    // Standard public output: capture the streamed plaintext (MinimalTrace service only) and
+    // return immediately. This fcall produces no result for the guest; the digest committed by
+    // write_output is what binds correctness. Capture is a no-op on services whose
+    // shmem_public_output_address is NULL.
+    if (ctx->function_id == FCALL_PUBLIC_OUTPUT_ID)
+    {
+        if (ctx->params_size >= 2)
+        {
+            public_output_capture(ctx->params[0], ctx->params[1]);
+        }
+        ctx->result_size = 0;
+        return 0;
+    }
+
     int iresult;
 
 #ifdef ASM_PRECOMPILE_CACHE

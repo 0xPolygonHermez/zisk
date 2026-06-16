@@ -51,6 +51,7 @@ char shmem_mt_name[128] = {0};
 char shmem_precompile_name[128] = {0};
 char shmem_rom_name[128] = {0};
 char shmem_ram_name[128] = {0};
+char shmem_public_output_name[128] = {0};
 
 // Semaphore names
 char sem_prec_avail_name[128] = {0};
@@ -127,6 +128,10 @@ uint64_t * shmem_control_output_address = NULL;
 volatile uint64_t * precompile_read_address = NULL;
 volatile uint64_t * waiting_for_precompile_address = NULL;
 volatile uint64_t * waiting_for_input_address = NULL;
+
+// Public output shared memory (MinimalTrace service only)
+int shmem_public_output_fd = -1;
+uint8_t * shmem_public_output_address = NULL;
 
 /**************/
 /* TRACE SIZE */

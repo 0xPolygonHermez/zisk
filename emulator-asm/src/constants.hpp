@@ -53,6 +53,16 @@
 #define CONTROL_RETRY_DELAY_US 1000 // 1ms
 #define CONTROL_NUMBER_OF_RETRIES 1000 // 1s max total
 
+// Standard public-output transport channel (MT service only).
+//
+// The guest's write_output streams its plaintext to the host via FCALL_PUBLIC_OUTPUT; the
+// MinimalTrace service captures it into this shared-memory segment so the proof can carry the
+// full output alongside the SHA-256 digest committed in the public values. Layout is
+// [uint64_t used_size][output bytes...]; the segment is created sparse and only the written
+// pages are ever touched, so the 256 MB cap costs nothing for small outputs.
+#define PUBLIC_OUTPUT_SIZE (uint64_t)0x10000000 // 256 MB (sparse)
+#define PUBLIC_OUTPUT_HEADER_SIZE (uint64_t)8   // bytes of [used_size] header before the data
+
 // Maximum number of steps to execute, used by the client to limit the execution steps of the
 // assembly code.  This limit is set by the ZisK PIL constraints.
 #define MAX_STEPS (1ULL << 36)

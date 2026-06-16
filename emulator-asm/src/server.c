@@ -724,6 +724,82 @@ void server_setup (void)
         asm_printf("mmap(control_output) mapped %lu B and returned address %p in %lu us\n", CONTROL_OUTPUT_SIZE, shmem_control_output_address, duration);
     }
 
+    /*****************/
+    /* PUBLIC OUTPUT */
+    /*****************/
+
+    // The MinimalTrace service captures the guest's standard public output (streamed via
+    // FCALL_PUBLIC_OUTPUT from write_output) into this segment so the proof can carry the full
+    // plaintext alongside the SHA-256 digest committed in the public values. Like control_output,
+    // the segment is created by the "just create" setup process (create_output_shm == true) and
+    // opened by the worker that actually runs the emulation (create_output_shm == false); both map
+    // it. No other service produces it, and the parent (Rust) reads it once after the run.
+    if (gen_method == MinimalTrace)
+    {
+        if (verbose) gettimeofday(&start_time, NULL);
+
+        if (create_output_shm)
+        {
+            shm_unlink(shmem_public_output_name);
+            shmem_public_output_fd = shm_open(shmem_public_output_name, O_RDWR | O_CREAT, 0666);
+            if (shmem_public_output_fd < 0)
+            {
+                asm_printf("ERROR: Failed creating public output shm_open(%s) errno=%d=%s\n", shmem_public_output_name, errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Size it. The segment is sparse, so only the pages actually written by the guest's
+            // output are ever allocated; the large cap costs nothing for small outputs.
+            result = ftruncate(shmem_public_output_fd, PUBLIC_OUTPUT_SIZE);
+            if (result != 0)
+            {
+                asm_printf("ERROR: Failed calling ftruncate(%s) errno=%d=%s\n", shmem_public_output_name, errno, strerror(errno));
+                exit(-1);
+            }
+            fsync(shmem_public_output_fd);
+        }
+        else
+        {
+            shmem_public_output_fd = shm_open(shmem_public_output_name, O_RDWR, 0666);
+            if (shmem_public_output_fd < 0)
+            {
+                asm_printf("ERROR: Failed opening public output shm_open(%s) as read-write errno=%d=%s\n", shmem_public_output_name, errno, strerror(errno));
+                exit(-1);
+            }
+        }
+
+        // Map read-write at a kernel-chosen address (only C dereferences this pointer) and without
+        // MAP_LOCKED (locking would force-allocate the whole sparse cap).
+        void * pPublicOutput = mmap(NULL, PUBLIC_OUTPUT_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shmem_public_output_fd, 0);
+        if (pPublicOutput == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(public_output) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_public_output_address = (uint8_t *)pPublicOutput;
+
+        // The creator initializes the [used_size] header to 0; the worker relies on
+        // server_reset_trace() to reset it before each emulation.
+        if (create_output_shm)
+        {
+            *(uint64_t *)shmem_public_output_address = 0;
+        }
+
+        if (close(shmem_public_output_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_public_output_name, errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_public_output_fd = -1;
+
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("%s public output shmem %s with size %lu B in %lu us\n", create_output_shm ? "Created" : "Opened", shmem_public_output_name, PUBLIC_OUTPUT_SIZE, duration);
+        }
+    }
+
     /*******/
     /* RAM */
     /*******/
@@ -1038,6 +1114,12 @@ void server_reset_trace (void)
         
         // Reset trace used size
         trace_used_size = 0;
+    }
+
+    // Reset the captured public output for the next emulation (MinimalTrace service only).
+    if (shmem_public_output_address != NULL)
+    {
+        *(uint64_t *)shmem_public_output_address = 0;
     }
 
     // Reset flags

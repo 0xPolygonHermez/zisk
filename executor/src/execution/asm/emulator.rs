@@ -220,15 +220,20 @@ impl EmulatorAsm {
             )
             .map_err(ExecutorError::asm_backend)?;
 
-            Ok(result)
+            // Recover the standard public output the guest streamed to the host during this run
+            // (MinimalTrace service only). Read while the reader lock is still held, before the
+            // scope ends.
+            let public_output = mt_shmem.read_public_output();
+
+            Ok((result, public_output))
         });
 
-        let (emu_traces, asm_execution_info) = scope_result?;
+        let ((emu_traces, asm_execution_info), public_output) = scope_result?;
 
         self.asm_execution_info.lock_or_poison("asm_execution_info")?.replace(asm_execution_info);
 
         // Unwrap the Arc pointers now that all rayon tasks have completed.
-        let emu_traces = emu_traces
+        let mut emu_traces = emu_traces
             .into_iter()
             .map(|arc| {
                 Arc::try_unwrap(arc).map_err(|_| ExecutorError::ArcStillReferenced {
@@ -236,6 +241,16 @@ impl EmulatorAsm {
                 })
             })
             .collect::<ExecutorResult<Vec<_>>>()?;
+
+        // Attach the captured plaintext to the first chunk. The ASM channel collects the whole
+        // output globally rather than per-chunk, but the executor concatenates `public_output`
+        // across chunks in order, so a single carrier chunk reconstructs the full output. The
+        // SHA-256 digest in the public values is what binds it to the proof.
+        if !public_output.is_empty() {
+            if let Some(first) = emu_traces.first_mut() {
+                first.public_output = public_output;
+            }
+        }
 
         let (counters, pub_outs) = processor.finalize()?;
 
