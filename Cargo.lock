@@ -1657,7 +1657,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph)",
  "num-bigint",
@@ -2172,7 +2172,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2493,9 +2493,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.14"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171fefbc92fe4a4de27e0698d6a5b392d6a0e333506bc49133760b3bcf948733"
+checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -3969,7 +3969,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph)",
@@ -3989,7 +3989,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "anyhow",
  "clap",
@@ -4015,7 +4015,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4426,7 +4426,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "bincode",
  "blake3",
@@ -4460,7 +4460,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "bincode",
  "borsh",
@@ -4491,7 +4491,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph)",
  "itoa",
@@ -4504,7 +4504,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4514,7 +4514,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4523,7 +4523,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "bincode",
  "colored",
@@ -4534,7 +4534,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "bincode",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph)",
@@ -5896,7 +5896,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "anyhow",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph)",
@@ -7612,7 +7612,7 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#c229f6d2f6067e615300b8f9fcdc09d86fb8bb49"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph#baa6eae80e58633262a2fe2a34a35774cebf3eba"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fdeactivate-cuda-graph)",
