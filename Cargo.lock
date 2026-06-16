@@ -1030,7 +1030,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "futures",
  "hex",
  "indicatif",
@@ -1657,9 +1657,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "num-bigint",
  "num-traits",
 ]
@@ -2086,7 +2086,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "mem-common",
  "named-sem",
  "paste",
@@ -2167,6 +2167,17 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "fields"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
 ]
 
 [[package]]
@@ -2482,9 +2493,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.14"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171fefbc92fe4a4de27e0698d6a5b392d6a0e333506bc49133760b3bcf948733"
+checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -3350,7 +3361,7 @@ name = "mem-common"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -3958,10 +3969,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3978,11 +3989,11 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "anyhow",
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "indexmap",
  "mpi",
  "pilout",
@@ -4004,7 +4015,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4121,7 +4132,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "lazy_static",
  "lib-c",
  "num-bigint",
@@ -4150,7 +4161,7 @@ version = "1.0.0-beta"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -4175,7 +4186,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "lib-c",
  "pil-std-lib",
  "precompiles-common",
@@ -4193,7 +4204,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4210,7 +4221,7 @@ dependencies = [
 name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -4228,7 +4239,7 @@ name = "precomp-keccakf"
 version = "1.0.0-beta"
 dependencies = [
  "circuit",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -4248,7 +4259,7 @@ dependencies = [
 name = "precomp-poseidon"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4265,7 +4276,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4282,7 +4293,7 @@ dependencies = [
 name = "precompiles-common"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -4415,7 +4426,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "bincode",
  "blake3",
@@ -4425,7 +4436,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4436,7 +4447,7 @@ dependencies = [
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "rayon",
  "serde",
  "serde_json",
@@ -4449,7 +4460,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "bincode",
  "borsh",
@@ -4458,7 +4469,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "lazy_static",
  "libc",
  "libloading",
@@ -4480,9 +4491,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4493,7 +4504,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4503,7 +4514,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4512,7 +4523,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "bincode",
  "colored",
@@ -4523,12 +4534,24 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
+dependencies = [
+ "bincode",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
+ "num-traits",
+ "rayon",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.0.0-beta"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
 dependencies = [
  "bincode",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta)",
  "num-traits",
- "rayon",
  "serde",
  "tracing",
 ]
@@ -5069,7 +5092,7 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "blake3",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -5749,7 +5772,7 @@ dependencies = [
 name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -5765,7 +5788,7 @@ dependencies = [
 name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -5782,7 +5805,7 @@ name = "sm-frequent-ops"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "proofman-common",
  "static_assertions",
  "zisk-core",
@@ -5792,7 +5815,7 @@ dependencies = [
 name = "sm-main"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -5810,7 +5833,7 @@ name = "sm-mem"
 version = "1.0.0-beta"
 dependencies = [
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -5827,7 +5850,7 @@ name = "sm-rom"
 version = "1.0.0-beta"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "mem-common",
  "proofman-common",
  "rayon",
@@ -5873,10 +5896,10 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "anyhow",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "indexmap",
  "num-bigint",
  "num-traits",
@@ -7589,10 +7612,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#bb0a8610f4482044c9d271b825291948f134e1a2"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants#b953dd22c0f0704caedfd4a7bd080ba31d0e8259"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7826,11 +7849,11 @@ dependencies = [
  "bincode",
  "clap",
  "dirs",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "paste",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "serde",
  "serde_json",
  "sha2",
@@ -7941,7 +7964,7 @@ name = "zisk-core"
 version = "1.0.0-beta"
 dependencies = [
  "elf",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "lib-c",
  "lib-float",
  "paste",
@@ -7962,7 +7985,7 @@ version = "1.0.0-beta"
 name = "zisk-pil"
 version = "1.0.0-beta"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "proofman-common",
  "proofman-macros",
  "serde",
@@ -8005,12 +8028,12 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "rom-setup",
  "serde",
  "tracing",
@@ -8058,7 +8081,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.0.0-beta"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta)",
 ]
 
 [[package]]
@@ -8104,7 +8127,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "flate2",
  "mem-common",
  "memmap2",
@@ -8144,7 +8167,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -8177,7 +8200,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Freuse-constants)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
