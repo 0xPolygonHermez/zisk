@@ -221,15 +221,15 @@ jobs:
               ./build_zisk.sh
             '
 
-      - name: Check libziskos.a does not bundle std and contains required symbols
+      - name: Build libziskos.a with an isolated allocator and check required symbols
         run: |
-          docker cp .github/scripts/check-libziskos.sh "${TEST_CONTAINER}:/home/ziskuser/check-libziskos.sh"
-          docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/check-libziskos.sh
+          docker cp .github/scripts/build-libziskos-isolated.sh "${TEST_CONTAINER}:/home/ziskuser/build-libziskos-isolated.sh"
+          docker exec "${TEST_CONTAINER}" chmod +x /home/ziskuser/build-libziskos-isolated.sh
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -- bash -lc '
               cd /workspace/zisk
-              /home/ziskuser/check-libziskos.sh
+              /home/ziskuser/build-libziskos-isolated.sh
             '
 
       - name: Build setup
