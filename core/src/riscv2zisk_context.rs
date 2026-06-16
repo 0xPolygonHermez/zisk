@@ -521,8 +521,8 @@ impl Riscv2ZiskContext<'_> {
             "rolw" => self.create_register_op(riscv_instruction, "rol_w", 4),
             "ror" => self.create_register_op(riscv_instruction, "ror", 4),
             "rorw" => self.create_register_op(riscv_instruction, "ror_w", 4),
-            "rori" => self.create_register_op(riscv_instruction, "ror", 4),
-            "roriw" => self.create_register_op(riscv_instruction, "ror_w", 4),
+            "rori" => self.immediate_op(riscv_instruction, "ror", 4),
+            "roriw" => self.immediate_op(riscv_instruction, "ror_w", 4),
 
             // Special ZisK instructions
             ////////////////////////////

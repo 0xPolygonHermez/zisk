@@ -547,7 +547,7 @@ pub const fn op_pack_h(a: u64, b: u64) -> (u64, bool) {
 /// Sets c to the value low16(a) | (low16(b) << 16), sign extended, and flag to false
 #[inline(always)]
 pub const fn op_pack_w(a: u64, b: u64) -> (u64, bool) {
-    ((a & 0xFFFF | (b & 0xFFFF) << 16) as i32 as u64, false)
+    (((a & 0xFFFF) | ((b & 0xFFFF) << 16)) as i32 as u64, false)
 }
 
 /// Sets c to the value a rotated left b bits (modulo 64), and flag to false
@@ -559,7 +559,7 @@ pub const fn op_rol(a: u64, b: u64) -> (u64, bool) {
 /// Sets c to the value low16(a) rotated left b bits (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_rol_w(a: u64, b: u64) -> (u64, bool) {
-    ((a & 0xFFFF).rotate_left((b & 0x1F) as u32) as i32 as u64, false)
+    (((a & 0xFFFFFFFF) as u32).rotate_left((b & 0x1F) as u32) as i32 as u64, false)
 }
 
 /// Sets c to the value a rotated right b bits (modulo 64), and flag to false
@@ -571,5 +571,5 @@ pub const fn op_ror(a: u64, b: u64) -> (u64, bool) {
 /// Sets c to the value low16(a) rotated right b bits (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_ror_w(a: u64, b: u64) -> (u64, bool) {
-    ((a & 0xFFFF).rotate_right((b & 0x1F) as u32) as i32 as u64, false)
+    (((a & 0xFFFFFFFF) as u32).rotate_right((b & 0x1F) as u32) as i32 as u64, false)
 }
