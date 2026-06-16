@@ -541,7 +541,7 @@ pub const fn op_pack(a: u64, b: u64) -> (u64, bool) {
 /// Sets c to the value low8(a) | (low8(b) << 8), sign extended, and flag to false
 #[inline(always)]
 pub const fn op_pack_h(a: u64, b: u64) -> (u64, bool) {
-    ((a & 0xFF | (b & 0xFF) << 8) as i16 as u64, false)
+    ((a & 0xFF | (b & 0xFF) << 8) as u64, false)
 }
 
 /// Sets c to the value low16(a) | (low16(b) << 16), sign extended, and flag to false
