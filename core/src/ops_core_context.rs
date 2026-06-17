@@ -388,3 +388,45 @@ pub fn opc_ror(ctx: &mut InstContext) {
 pub fn opc_ror_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_ror_w(ctx.a, ctx.b);
 }
+
+/// InstContext-based wrapper over op_clz()
+#[inline(always)]
+pub fn opc_clz(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clz(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clz_w()
+#[inline(always)]
+pub fn opc_clz_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clz_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ctz()
+#[inline(always)]
+pub fn opc_ctz(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ctz(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ctz_w()
+#[inline(always)]
+pub fn opc_ctz_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ctz_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_cpop()
+#[inline(always)]
+pub fn opc_cpop(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_cpop(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_cpop_w()
+#[inline(always)]
+pub fn opc_cpop_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_cpop_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_orc_b()
+#[inline(always)]
+pub fn opc_orc_b(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_orc_b(ctx.a, ctx.b);
+}

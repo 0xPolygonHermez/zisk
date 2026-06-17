@@ -7723,6 +7723,13 @@ impl ZiskRom2Asm {
             ZiskOp::RolW => todo!(),
             ZiskOp::Ror => todo!(),
             ZiskOp::RorW => todo!(),
+            ZiskOp::Clz => todo!(),
+            ZiskOp::ClzW => todo!(),
+            ZiskOp::Ctz => todo!(),
+            ZiskOp::CtzW => todo!(),
+            ZiskOp::Cpop => todo!(),
+            ZiskOp::CpopW => todo!(),
+            ZiskOp::OrcB => todo!(),
         }
     }
 

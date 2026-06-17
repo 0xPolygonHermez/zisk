@@ -573,3 +573,74 @@ pub const fn op_ror(a: u64, b: u64) -> (u64, bool) {
 pub const fn op_ror_w(a: u64, b: u64) -> (u64, bool) {
     (((a & 0xFFFFFFFF) as u32).rotate_right((b & 0x1F) as u32) as i32 as u64, false)
 }
+
+/// Sets c to the number of zero bits before the first one bit in a, starting with the most
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_clz(a: u64, _b: u64) -> (u64, bool) {
+    (a.leading_zeros() as u64, false)
+}
+
+/// Sets c to the number of zero bits before the first one bit in a, as u32, starting with the most
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_clz_w(a: u64, _b: u64) -> (u64, bool) {
+    ((a as u32).leading_zeros() as u64, false)
+}
+
+/// Sets c to the number of zero bits before the first one bit in a, starting with the least
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_ctz(a: u64, _b: u64) -> (u64, bool) {
+    (a.trailing_zeros() as u64, false)
+}
+
+/// Sets c to the number of zero bits before the first one bit in a, as u32, starting with the least
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_ctz_w(a: u64, _b: u64) -> (u64, bool) {
+    ((a as u32).trailing_zeros() as u64, false)
+}
+
+/// Sets c to the number of one bits in a, and flag to false
+#[inline(always)]
+pub const fn op_cpop(a: u64, _b: u64) -> (u64, bool) {
+    (a.count_ones() as u64, false)
+}
+
+/// Sets c to the number of one bits in a, as u32, and flag to false
+#[inline(always)]
+pub const fn op_cpop_w(a: u64, _b: u64) -> (u64, bool) {
+    ((a as u32).count_ones() as u64, false)
+}
+
+/// Sets c bytes to 0x0 if the corresponding a byte is zero, 0xFF otherwise, and flag to false
+#[inline(always)]
+pub const fn op_orc_b(a: u64, _b: u64) -> (u64, bool) {
+    let mut result = 0;
+    if (a & 0xFF) != 0 {
+        result |= 0xFF;
+    }
+    if (a & 0xFF00) != 0 {
+        result |= 0xFF00;
+    }
+    if (a & 0xFF0000) != 0 {
+        result |= 0xFF0000;
+    }
+    if (a & 0xFF000000) != 0 {
+        result |= 0xFF000000;
+    }
+    if (a & 0xFF00000000) != 0 {
+        result |= 0xFF00000000;
+    }
+    if (a & 0xFF0000000000) != 0 {
+        result |= 0xFF0000000000;
+    }
+    if (a & 0xFF000000000000) != 0 {
+        result |= 0xFF000000000000;
+    }
+    if (a & 0xFF00000000000000) != 0 {
+        result |= 0xFF00000000000000;
+    }
+    (result, false)
+}

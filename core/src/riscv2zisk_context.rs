@@ -508,21 +508,78 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "float")]
             "fmv.x.d" => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
 
-            // Zbkb: Bit Manipulation for Cryptography Instructions
+            // Bit Manipulation Instructions
+            // (RISC-V Bitmanip Ext. Zbkb, Zbkc, Zbkx, Zbs, Zbp, Zbr, Zbt)
+
+            // Byte and bit reverse operations
+            #[cfg(feature = "bit_manipulation_extensions")]
             "rev8" => self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "brev8" => self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1),
+
+            // Negate logical operations
+            #[cfg(feature = "bit_manipulation_extensions")]
             "andn" => self.create_register_op(riscv_instruction, "andn", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "orn" => self.create_register_op(riscv_instruction, "orn", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "xnor" => self.create_register_op(riscv_instruction, "xnor", 4),
+
+            // Pack operations
+            #[cfg(feature = "bit_manipulation_extensions")]
             "pack" => self.create_register_op(riscv_instruction, "pack", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "packh" => self.create_register_op(riscv_instruction, "pack_h", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "packw" => self.create_register_op(riscv_instruction, "pack_w", 4),
+
+            // Rotate operations
+            #[cfg(feature = "bit_manipulation_extensions")]
             "rol" => self.create_register_op(riscv_instruction, "rol", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "rolw" => self.create_register_op(riscv_instruction, "rol_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "ror" => self.create_register_op(riscv_instruction, "ror", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "rorw" => self.create_register_op(riscv_instruction, "ror_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "rori" => self.immediate_op(riscv_instruction, "ror", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
             "roriw" => self.immediate_op(riscv_instruction, "ror_w", 4),
+
+            // Min and max operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "min" => self.create_register_op(riscv_instruction, "min", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "minu" => self.create_register_op(riscv_instruction, "minu", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "max" => self.create_register_op(riscv_instruction, "max", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "maxu" => self.create_register_op(riscv_instruction, "maxu", 4),
+
+            // Sign-extend operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sext.b" => self.load_op(riscv_instruction, "signextend_b", 1, 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sext.h" => self.load_op(riscv_instruction, "signextend_h", 2, 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "zext.h" => self.load_op(riscv_instruction, "copyb", 2, 4),
+
+            // Bit count operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clz" => self.create_single_source_register_op(riscv_instruction, "clz", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clzw" => self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "ctz" => self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "ctzw" => self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "cpop" => self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "cpopw" => self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "orc.b" => self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1),
 
             // Special ZisK instructions
             ////////////////////////////
