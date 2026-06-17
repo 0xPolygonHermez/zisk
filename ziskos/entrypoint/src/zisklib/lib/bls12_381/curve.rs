@@ -676,15 +676,8 @@ pub fn msm_complete_safe_bls12_381(
             continue;
         }
 
-        // Reduce the scalar modulo the group order, and skip if the result is zero
-        let scalar = reduce_fr_bls12_381(
-            scalar,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        if is_zero(&scalar) {
-            continue;
-        }
+        // NOTE: Validation must precede the scalar-zero skip below, since we should reject an
+        // invalid input point regardless of its scalar.
 
         // Verify point coordinates are in the field
         let x: [u64; 6] = point[0..6].try_into().unwrap();
@@ -709,6 +702,16 @@ pub fn msm_complete_safe_bls12_381(
             hints,
         ) {
             return Err(G1_MSM_ERR_NOT_IN_SUBGROUP);
+        }
+
+        // Reduce the scalar modulo the group order, and skip if the result is zero
+        let scalar = reduce_fr_bls12_381(
+            scalar,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        if is_zero(&scalar) {
+            continue;
         }
 
         // Compute P * k
