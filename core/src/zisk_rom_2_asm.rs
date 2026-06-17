@@ -243,12 +243,78 @@ impl ZiskAsmContext {
                 | ZiskOp::Secp256r1Add
                 | ZiskOp::Secp256r1Dbl
                 | ZiskOp::Blake2
+                | ZiskOp::Arith256Be
+                | ZiskOp::Arith256ModBe
+                | ZiskOp::Secp256k1AddBe
+                | ZiskOp::Secp256k1DblBe
+                | ZiskOp::Bn254CurveAddBe
+                | ZiskOp::Bn254CurveDblBe
+                | ZiskOp::Bn254ComplexAddBe
+                | ZiskOp::Bn254ComplexSubBe
+                | ZiskOp::Bn254ComplexMulBe
+                | ZiskOp::Arith384ModBe
+                | ZiskOp::Bls12_381CurveAddBe
+                | ZiskOp::Bls12_381CurveDblBe
+                | ZiskOp::Bls12_381ComplexAddBe
+                | ZiskOp::Bls12_381ComplexSubBe
+                | ZiskOp::Bls12_381ComplexMulBe
+                | ZiskOp::Add256Be
+                | ZiskOp::Secp256r1AddBe
+                | ZiskOp::Secp256r1DblBe
         )
     }
 
+    #[inline(always)]
+    pub fn op_precompile_results(&self, zisk_op: &ZiskOp) -> bool {
+        match zisk_op {
+            ZiskOp::Arith256
+            | ZiskOp::Arith256Mod
+            | ZiskOp::Secp256k1Add
+            | ZiskOp::Secp256k1Dbl
+            | ZiskOp::Bn254CurveAdd
+            | ZiskOp::Bn254CurveDbl
+            | ZiskOp::Bn254ComplexAdd
+            | ZiskOp::Bn254ComplexSub
+            | ZiskOp::Bn254ComplexMul
+            | ZiskOp::Arith384Mod
+            | ZiskOp::Bls12_381CurveAdd
+            | ZiskOp::Bls12_381CurveDbl
+            | ZiskOp::Bls12_381ComplexAdd
+            | ZiskOp::Bls12_381ComplexSub
+            | ZiskOp::Bls12_381ComplexMul
+            | ZiskOp::Add256
+            | ZiskOp::Secp256r1Add
+            | ZiskOp::Secp256r1Dbl
+            | ZiskOp::Arith256Be
+            | ZiskOp::Arith256ModBe
+            | ZiskOp::Secp256k1AddBe
+            | ZiskOp::Secp256k1DblBe
+            | ZiskOp::Bn254CurveAddBe
+            | ZiskOp::Bn254CurveDblBe
+            | ZiskOp::Bn254ComplexAddBe
+            | ZiskOp::Bn254ComplexSubBe
+            | ZiskOp::Bn254ComplexMulBe
+            | ZiskOp::Arith384ModBe
+            | ZiskOp::Bls12_381CurveAddBe
+            | ZiskOp::Bls12_381CurveDblBe
+            | ZiskOp::Bls12_381ComplexAddBe
+            | ZiskOp::Bls12_381ComplexSubBe
+            | ZiskOp::Bls12_381ComplexMulBe
+            | ZiskOp::Add256Be
+            | ZiskOp::Secp256r1AddBe
+            | ZiskOp::Secp256r1DblBe => self.precompile_results(),
+            _ => false,
+        }
+    }
+
+    #[inline(always)]
     pub fn precompile_results(&self) -> bool {
         self.precompile_results
     }
+    pub fn precompile_results_fcall(&self) -> bool {
+        self.precompile_results()
+    }
+    /*
     pub fn precompile_results_keccak(&self) -> bool {
         //self.precompile_results()
         false
@@ -318,6 +384,7 @@ impl ZiskAsmContext {
         //self.precompile_results()
         false
     }
+    */
     pub fn call_wait_for_prec_avail(&self) -> bool {
         self.precompile_results()
     }
@@ -5352,7 +5419,7 @@ impl ZiskRom2Asm {
                     }
 
                     // Get result from precompile results data
-                    if ctx.precompile_results_keccak() {
+                    if ctx.op_precompile_results(&ZiskOp::Keccak) {
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 25);
                     } else {
                         // Call the keccak function
@@ -5431,7 +5498,7 @@ impl ZiskRom2Asm {
                     }
 
                     // Get result from precompile results data
-                    if ctx.precompile_results_sha256() {
+                    if ctx.op_precompile_results(&ZiskOp::Sha256) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
                     } else {
@@ -5519,7 +5586,7 @@ impl ZiskRom2Asm {
                     }
 
                     // Get result from precompile results data
-                    if ctx.precompile_results_blake2() {
+                    if ctx.op_precompile_results(&ZiskOp::Blake2) {
                         *code += "\tmov rdi, [rdi+8]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 16);
                     } else {
@@ -5738,7 +5805,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_arith256() {
+                    if ctx.op_precompile_results(&ZiskOp::Arith256) {
                         *code += &format!("\tmov {REG_FLAG}, [rdi+3*8]\n");
                         Self::precompile_results_array(ctx, code, unusual_code, REG_FLAG, 4);
                         *code += &format!("\tmov {REG_FLAG}, [rdi+4*8]\n");
@@ -5799,7 +5866,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_arith256mod() {
+                    if ctx.op_precompile_results(&ZiskOp::Arith256Mod) {
                         *code += "\tmov rdi, [rdi + 4*8]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
                     } else {
@@ -5880,7 +5947,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_secp256k1add() {
+                    if ctx.op_precompile_results(&ZiskOp::Secp256k1Add) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
@@ -5986,7 +6053,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_secp256k1dbl() {
+                    if ctx.op_precompile_results(&ZiskOp::Secp256k1Dbl) {
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
                         // Call the secp256k1_dbl function
@@ -6066,7 +6133,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_secp256r1add() {
+                    if ctx.op_precompile_results(&ZiskOp::Secp256r1Add) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
@@ -6172,7 +6239,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_secp256r1dbl() {
+                    if ctx.op_precompile_results(&ZiskOp::Secp256r1Dbl) {
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
                         // Call the secp256r1_dbl function
@@ -6473,7 +6540,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bn254curveadd() {
+                    if ctx.op_precompile_results(&ZiskOp::Bn254CurveAdd) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
@@ -6580,7 +6647,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bn254curvedbl() {
+                    if ctx.op_precompile_results(&ZiskOp::Bn254CurveDbl) {
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
                         // Call the bn254_curve_dbl function
@@ -6661,7 +6728,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bn254complexadd() {
+                    if ctx.op_precompile_results(&ZiskOp::Bn254ComplexAdd) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
@@ -6743,7 +6810,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bn254complexsub() {
+                    if ctx.op_precompile_results(&ZiskOp::Bn254ComplexSub) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
@@ -6825,7 +6892,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bn254complexmul() {
+                    if ctx.op_precompile_results(&ZiskOp::Bn254ComplexMul) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
                     } else {
@@ -6915,7 +6982,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_arith384mod() {
+                    if ctx.op_precompile_results(&ZiskOp::Arith384Mod) {
                         *code += "\tmov rdi, [rdi + 4*8]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 6);
                     } else {
@@ -6997,7 +7064,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bls12_381curveadd() {
+                    if ctx.op_precompile_results(&ZiskOp::Bls12_381CurveAdd) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                     } else {
@@ -7104,7 +7171,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bls12_381curvedbl() {
+                    if ctx.op_precompile_results(&ZiskOp::Bls12_381CurveDbl) {
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                     } else {
                         // Call the bls12_381_curve_dbl function
@@ -7189,7 +7256,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bls12_381complexadd() {
+                    if ctx.op_precompile_results(&ZiskOp::Bls12_381ComplexAdd) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                     } else {
@@ -7275,7 +7342,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bls12_381complexsub() {
+                    if ctx.op_precompile_results(&ZiskOp::Bls12_381ComplexSub) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                     } else {
@@ -7361,7 +7428,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_bls12_381complexmul() {
+                    if ctx.op_precompile_results(&ZiskOp::Bls12_381ComplexMul) {
                         *code += "\tmov rdi, [rdi]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 12);
                     } else {
@@ -7465,7 +7532,7 @@ impl ZiskRom2Asm {
                 if !ctx.chunk_player_mt_collect_mem() && !ctx.chunk_player_mem_reads_collect_main()
                 {
                     // Get result from precompile results data
-                    if ctx.precompile_results_add256() {
+                    if ctx.op_precompile_results(&ZiskOp::Add256) {
                         *code += "\tmov rdi, [rdi+3*8]\n";
                         Self::precompile_results_array(ctx, code, unusual_code, "rdi", 4);
                         Self::precompile_results_register(ctx, code, unusual_code, REG_C);
@@ -7710,6 +7777,60 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
+            }
+            ZiskOp::Arith384ModBe => {
+                unimplemented!("Internal opcode Arith384ModBe");
+            }
+            ZiskOp::Bn254CurveAddBe => {
+                unimplemented!("Internal opcode Bn254CurveAddBe");
+            }
+            ZiskOp::Bn254CurveDblBe => {
+                unimplemented!("Internal opcode Bn254CurveDblBe");
+            }
+            ZiskOp::Bn254ComplexAddBe => {
+                unimplemented!("Internal opcode Bn254ComplexAddBe");
+            }
+            ZiskOp::Bn254ComplexSubBe => {
+                unimplemented!("Internal opcode Bn254ComplexSubBe");
+            }
+            ZiskOp::Bn254ComplexMulBe => {
+                unimplemented!("Internal opcode Bn254ComplexMulBe");
+            }
+            ZiskOp::Bls12_381CurveAddBe => {
+                unimplemented!("Internal opcode Bls12_381CurveAddBe");
+            }
+            ZiskOp::Bls12_381CurveDblBe => {
+                unimplemented!("Internal opcode Bls12_381CurveDblBe");
+            }
+            ZiskOp::Bls12_381ComplexAddBe => {
+                unimplemented!("Internal opcode Bls12_381ComplexAddBe");
+            }
+            ZiskOp::Bls12_381ComplexSubBe => {
+                unimplemented!("Internal opcode Bls12_381ComplexSubBe");
+            }
+            ZiskOp::Bls12_381ComplexMulBe => {
+                unimplemented!("Internal opcode Bls12_381ComplexMulBe");
+            }
+            ZiskOp::Add256Be => {
+                unimplemented!("Internal opcode Add256Be");
+            }
+            ZiskOp::Arith256Be => {
+                unimplemented!("Internal opcode Arith256Be");
+            }
+            ZiskOp::Arith256ModBe => {
+                unimplemented!("Internal opcode Arith256ModBe");
+            }
+            ZiskOp::Secp256k1AddBe => {
+                unimplemented!("Internal opcode Secp256k1AddBe");
+            }
+            ZiskOp::Secp256k1DblBe => {
+                unimplemented!("Internal opcode Secp256k1DblBe");
+            }
+            ZiskOp::Secp256r1AddBe => {
+                unimplemented!("Internal opcode Secp256r1AddBe");
+            }
+            ZiskOp::Secp256r1DblBe => {
+                unimplemented!("Internal opcode Secp256r1DblBe");
             }
         }
     }

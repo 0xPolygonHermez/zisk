@@ -4,14 +4,21 @@
 
 use riscv::{riscv_interpreter, RiscvInstruction};
 use zisk_definitions::{
-    SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
-    SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
-    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
-    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
-    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
-    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID,
-    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID,
+    SYSCALL_ADD256_BE_ID, SYSCALL_ADD256_ID, SYSCALL_ARITH256_BE_ID, SYSCALL_ARITH256_ID,
+    SYSCALL_ARITH256_MOD_BE_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_BE_ID,
+    SYSCALL_ARITH384_MOD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_BE_ID,
+    SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_BE_ID,
+    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_BE_ID,
+    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_BE_ID,
+    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_BE_ID,
+    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_BE_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
+    SYSCALL_BN254_COMPLEX_MUL_BE_ID, SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_BE_ID,
+    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_BE_ID, SYSCALL_BN254_CURVE_ADD_ID,
+    SYSCALL_BN254_CURVE_DBL_BE_ID, SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID,
+    SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_KECCAKF_ID,
+    SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_BE_ID,
+    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_BE_ID, SYSCALL_SECP256K1_DBL_ID,
+    SYSCALL_SECP256R1_ADD_BE_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_BE_ID,
     SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
 };
 
@@ -26,7 +33,7 @@ use crate::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 28] = [
+const CSR_PRECOMPILED: [&str; 46] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -55,6 +62,24 @@ const CSR_PRECOMPILED: [&str; 28] = [
     "blake2",
     "profile",
     "poseidon1",
+    "arith256_be",
+    "arith256_mod_be",
+    "arith384_mod_be",
+    "bls12_381_curve_add_be",
+    "bls12_381_curve_dbl_be",
+    "bls12_381_complex_add_be",
+    "bls12_381_complex_sub_be",
+    "bls12_381_complex_mul_be",
+    "bn254_curve_add_be",
+    "bn254_curve_dbl_be",
+    "bn254_complex_add_be",
+    "bn254_complex_sub_be",
+    "bn254_complex_mul_be",
+    "secp256k1_add_be",
+    "secp256k1_dbl_be",
+    "secp256r1_add_be",
+    "secp256r1_dbl_be",
+    "add256_be",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -1510,7 +1535,24 @@ impl Riscv2ZiskContext<'_> {
                 | SYSCALL_POSEIDON1_ID
                 | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_SECP256R1_DBL_ID
-                | SYSCALL_BLAKE2B_ROUND_ID => {
+                | SYSCALL_BLAKE2B_ROUND_ID
+                | SYSCALL_ARITH256_BE_ID
+                | SYSCALL_ARITH256_MOD_BE_ID
+                | SYSCALL_ARITH384_MOD_BE_ID
+                | SYSCALL_BLS12_381_CURVE_ADD_BE_ID
+                | SYSCALL_BLS12_381_CURVE_DBL_BE_ID
+                | SYSCALL_BLS12_381_COMPLEX_ADD_BE_ID
+                | SYSCALL_BLS12_381_COMPLEX_SUB_BE_ID
+                | SYSCALL_BLS12_381_COMPLEX_MUL_BE_ID
+                | SYSCALL_BN254_CURVE_ADD_BE_ID
+                | SYSCALL_BN254_CURVE_DBL_BE_ID
+                | SYSCALL_BN254_COMPLEX_ADD_BE_ID
+                | SYSCALL_BN254_COMPLEX_SUB_BE_ID
+                | SYSCALL_BN254_COMPLEX_MUL_BE_ID
+                | SYSCALL_SECP256K1_ADD_BE_ID
+                | SYSCALL_SECP256K1_DBL_BE_ID
+                | SYSCALL_SECP256R1_ADD_BE_ID
+                | SYSCALL_SECP256R1_DBL_BE_ID => {
                     let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
                     zib.src_b("reg", i.rs1 as u64, false);
                     let precompiled =
@@ -1575,6 +1617,15 @@ impl Riscv2ZiskContext<'_> {
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("add256").unwrap();
             zib.verbose("add256");
+            zib.store("reg", i.rd as i64, false, false);
+            zib.j(0, 4);
+            zib.build(self.rom);
+        } else if i.csr == SYSCALL_ADD256_BE_ID as u32 {
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", i.rs1 as u64, false);
+            zib.op("add256_be").unwrap();
+            zib.verbose("add256_be");
             zib.store("reg", i.rd as i64, false, false);
             zib.j(0, 4);
             zib.build(self.rom);

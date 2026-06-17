@@ -18,7 +18,8 @@ use crate::{
     ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST, DMA_64_ALIGNED_COST,
     DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST,
     DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
-    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, SHA256_COST, SYS_ADDR,
+    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, REVERSE_256_COST,
+    REVERSE_384_COST, SHA256_COST, SYS_ADDR,
 };
 use fields::{
     poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
@@ -398,12 +399,12 @@ define_ops! {
     (Lt, "lt", Binary, BINARY_COST, 0x07, 0, 0, opc_lt, op_lt, ops_none),
     // Opcode 0x08 is reserved for binary
     (Eq, "eq", Binary, BINARY_COST, 0x09, 0, 0, opc_eq, op_eq, ops_none),
-    (Add, "add", Binary, BINARY_ADD_COST, 0x0a, 0, 0, opc_add, op_add, ops_none),
-    (Sub, "sub", Binary, BINARY_COST, 0x0b, 0, 0, opc_sub, op_sub, ops_none),
-    (Leu, "leu", Binary, BINARY_COST, 0x0c, 0, 0, opc_leu, op_leu, ops_none),
-    (Le, "le", Binary, BINARY_COST, 0x0d, 0, 0, opc_le, op_le, ops_none),
-    (And, "and", Binary, BINARY_COST, 0x0e, 0, 0, opc_and, op_and, ops_none),
-    (Or, "or", Binary, BINARY_COST, 0x0f, 0, 0, opc_or, op_or, ops_none),
+    (Add, "add", Binary, BINARY_ADD_COST, 0x0A, 0, 0, opc_add, op_add, ops_none),
+    (Sub, "sub", Binary, BINARY_COST, 0x0B, 0, 0, opc_sub, op_sub, ops_none),
+    (Leu, "leu", Binary, BINARY_COST, 0x0C, 0, 0, opc_leu, op_leu, ops_none),
+    (Le, "le", Binary, BINARY_COST, 0x0D, 0, 0, opc_le, op_le, ops_none),
+    (And, "and", Binary, BINARY_COST, 0x0E, 0, 0, opc_and, op_and, ops_none),
+    (Or, "or", Binary, BINARY_COST, 0x0F, 0, 0, opc_or, op_or, ops_none),
     (Xor, "xor", Binary, BINARY_COST, 0x10, 0, 0, opc_xor, op_xor, ops_none),
     // Opcode 0x11 is available
     (MinuW, "minu_w", Binary, BINARY_COST, 0x12, 0, 0, opc_minu_w, op_minu_w, ops_none),
@@ -414,10 +415,10 @@ define_ops! {
     (LtW, "lt_w", Binary, BINARY_COST, 0x17, 0, 0, opc_lt_w, op_lt_w, ops_none),
     // Opcode 0x18 is reserved for binary
     (EqW, "eq_w", Binary, BINARY_COST, 0x19, 0, 0, opc_eq_w, op_eq_w, ops_none),
-    (AddW, "add_w", Binary, BINARY_COST, 0x1a, 0, 0, opc_add_w, op_add_w, ops_none),
-    (SubW, "sub_w", Binary, BINARY_COST, 0x1b, 0, 0, opc_sub_w, op_sub_w, ops_none),
-    (LeuW, "leu_w", Binary, BINARY_COST, 0x1c, 0, 0, opc_leu_w, op_leu_w, ops_none),
-    (LeW, "le_w", Binary, BINARY_COST, 0x1d, 0, 0, opc_le_w, op_le_w, ops_none),
+    (AddW, "add_w", Binary, BINARY_COST, 0x1A, 0, 0, opc_add_w, op_add_w, ops_none),
+    (SubW, "sub_w", Binary, BINARY_COST, 0x1B, 0, 0, opc_sub_w, op_sub_w, ops_none),
+    (LeuW, "leu_w", Binary, BINARY_COST, 0x1C, 0, 0, opc_leu_w, op_leu_w, ops_none),
+    (LeW, "le_w", Binary, BINARY_COST, 0x1D, 0, 0, opc_le_w, op_le_w, ops_none),
     // Opcodes 0x1e,0x1f,0x20 are reserved for binary
     (Sll, "sll", BinaryE, BINARY_E_COST, 0x21, 0, 0, opc_sll, op_sll, ops_none),
     (Srl, "srl", BinaryE, BINARY_E_COST, 0x22, 0, 0, opc_srl, op_srl, ops_none),
@@ -429,62 +430,140 @@ define_ops! {
     (SignExtendH, "signextend_h", BinaryE, BINARY_E_COST, 0x28, 0, 0, opc_signextend_h, op_signextend_h, ops_none),
     (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x29, 0, 0, opc_signextend_w, op_signextend_w, ops_none),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, 0, opc_pubout, op_pubout, ops_none),
+
+    (Arith384ModBe, "arith384_mod_be", ArithEq384, ARITH_EQ_384_COST + REVERSE_384_COST * 5, 0x93, 232, 48, opc_arith384_mod_be, op_arith384_mod_be, ops_arith384_mod),
+    (Bls12_381CurveAddBe, "bls12_381_curve_add_be", ArithEq384, ARITH_EQ_384_COST + REVERSE_384_COST * 6, 0x94, 208, 96, opc_bls12_381_curve_add_be, op_bls12_381_curve_add_be, ops_bls12_381_curve_add),
+    (Bls12_381CurveDblBe, "bls12_381_curve_dbl_be", ArithEq384, ARITH_EQ_384_COST + REVERSE_384_COST * 4, 0x95, 96, 96, opc_bls12_381_curve_dbl_be, op_bls12_381_curve_dbl_be, ops_bls12_381_curve_dbl),
+    (Bls12_381ComplexAddBe, "bls12_381_complex_add_be", ArithEq384, ARITH_EQ_384_COST + REVERSE_384_COST * 6, 0x96, 208, 96, opc_bls12_381_complex_add_be, op_bls12_381_complex_add_be, ops_bls12_381_complex_add),
+    (Bls12_381ComplexSubBe, "bls12_381_complex_sub_be", ArithEq384, ARITH_EQ_384_COST + REVERSE_384_COST * 6, 0x97, 208, 96, opc_bls12_381_complex_sub_be, op_bls12_381_complex_sub_be, ops_bls12_381_complex_sub),
+    (Bls12_381ComplexMulBe, "bls12_381_complex_mul_be", ArithEq384, ARITH_EQ_384_COST + REVERSE_384_COST * 6, 0x98, 208, 96, opc_bls12_381_complex_mul_be, op_bls12_381_complex_mul_be, ops_bls12_381_complex_mul),
+    (Secp256r1AddBe, "secp256r1_add_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 3, 0x99, 144, 64, opc_secp256r1_add_be, op_secp256r1_add_be, ops_secp256r1_add),
+    (Secp256r1DblBe, "secp256r1_dbl_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 2, 0x9a, 64, 64, opc_secp256r1_dbl_be, op_secp256r1_dbl_be, ops_secp256r1_dbl),
+    (Add256Be, "add256_be", BigInt, ADD256_COST + REVERSE_256_COST * 3, 0xA1, 104, 32, opc_add256_be, op_add256_be, ops_add256),
+    (Arith256Be, "arith256_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 5, 0xA3, 136, 64, opc_arith256_be, op_arith256_be, ops_arith256),
+    (Arith256ModBe, "arith256_mod_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 5, 0xA4, 168, 32, opc_arith256_mod_be, op_arith256_mod_be, ops_arith256_mod),
+    (Secp256k1AddBe, "secp256k1_add_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 6, 0xA5, 144, 64, opc_secp256k1_add_be, op_secp256k1_add_be, ops_secp256k1_add),
+    (Secp256k1DblBe, "secp256k1_dbl_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 4, 0xA6, 64, 64, opc_secp256k1_dbl_be, op_secp256k1_dbl_be, ops_secp256k1_dbl),
+    (Bn254CurveAddBe, "bn254_curve_add_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 6, 0xAB, 144, 64, opc_bn254_curve_add_be, op_bn254_curve_add_be, ops_bn254_curve_add),
+    (Bn254CurveDblBe, "bn254_curve_dbl_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 4, 0xAC, 64, 64, opc_bn254_curve_dbl_be, op_bn254_curve_dbl_be, ops_bn254_curve_dbl),
+    (Bn254ComplexAddBe, "bn254_complex_add_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 6, 0xAD, 144, 64, opc_bn254_complex_add_be, op_bn254_complex_add_be, ops_bn254_complex_add),
+    (Bn254ComplexSubBe, "bn254_complex_sub_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 6, 0xAE, 144, 64, opc_bn254_complex_sub_be, op_bn254_complex_sub_be, ops_bn254_complex_sub),
+    (Bn254ComplexMulBe, "bn254_complex_mul_be", ArithEq, ARITH_EQ_COST + REVERSE_256_COST * 6, 0xAF, 144, 64, opc_bn254_complex_mul_be, op_bn254_complex_mul_be, ops_bn254_complex_mul),
+
     // Opcodes 0x50,0x51,0x60,0x61 are reserved for binary
-    (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),
-    (Muluh, "muluh", ArithAm32, ARITHAM32_COST, 0xb1, 0, 0, opc_muluh, op_muluh, ops_none),
-    (Mulsuh, "mulsuh", ArithAm32, ARITHAM32_COST, 0xb3, 0, 0, opc_mulsuh, op_mulsuh, ops_none),
-    (Mul, "mul", ArithAm32, ARITHAM32_COST, 0xb4, 0, 0, opc_mul, op_mul, ops_none),
-    (Mulh, "mulh", ArithAm32, ARITHAM32_COST, 0xb5, 0, 0, opc_mulh, op_mulh, ops_none),
-    (MulW, "mul_w", ArithAm32, ARITHAM32_COST, 0xb6, 0, 0, opc_mul_w, op_mul_w, ops_none),
-    (Divu, "divu", ArithAm32, ARITHAM32_COST, 0xb8, 0, 0, opc_divu, op_divu, ops_none),
-    (Remu, "remu", ArithAm32, ARITHAM32_COST, 0xb9, 0, 0, opc_remu, op_remu, ops_none),
-    (Div, "div", ArithAm32, ARITHAM32_COST, 0xba, 0, 0, opc_div, op_div, ops_none),
-    (Rem, "rem", ArithAm32, ARITHAM32_COST, 0xbb, 0, 0, opc_rem, op_rem, ops_none),
-    (DivuW, "divu_w", ArithA32, ARITHA32_COST, 0xbc, 0, 0, opc_divu_w, op_divu_w, ops_none),
-    (RemuW, "remu_w", ArithA32, ARITHA32_COST, 0xbd, 0, 0, opc_remu_w, op_remu_w, ops_none),
-    (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, 0, opc_div_w, op_div_w, ops_none),
-    (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, 0, opc_rem_w, op_rem_w, ops_none),
+    (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xB0, 0, 0, opc_mulu, op_mulu, ops_none),
+    (Muluh, "muluh", ArithAm32, ARITHAM32_COST, 0xB1, 0, 0, opc_muluh, op_muluh, ops_none),
+    (Mulsuh, "mulsuh", ArithAm32, ARITHAM32_COST, 0xB3, 0, 0, opc_mulsuh, op_mulsuh, ops_none),
+    (Mul, "mul", ArithAm32, ARITHAM32_COST, 0xB4, 0, 0, opc_mul, op_mul, ops_none),
+    (Mulh, "mulh", ArithAm32, ARITHAM32_COST, 0xB5, 0, 0, opc_mulh, op_mulh, ops_none),
+    (MulW, "mul_w", ArithAm32, ARITHAM32_COST, 0xB6, 0, 0, opc_mul_w, op_mul_w, ops_none),
+    (Divu, "divu", ArithAm32, ARITHAM32_COST, 0xB8, 0, 0, opc_divu, op_divu, ops_none),
+    (Remu, "remu", ArithAm32, ARITHAM32_COST, 0xB9, 0, 0, opc_remu, op_remu, ops_none),
+    (Div, "div", ArithAm32, ARITHAM32_COST, 0xBA, 0, 0, opc_div, op_div, ops_none),
+    (Rem, "rem", ArithAm32, ARITHAM32_COST, 0xBB, 0, 0, opc_rem, op_rem, ops_none),
+    (DivuW, "divu_w", ArithA32, ARITHA32_COST, 0xBC, 0, 0, opc_divu_w, op_divu_w, ops_none),
+    (RemuW, "remu_w", ArithA32, ARITHA32_COST, 0xBD, 0, 0, opc_remu_w, op_remu_w, ops_none),
+    (DivW, "div_w", ArithA32, ARITHA32_COST, 0xBE, 0, 0, opc_div_w, op_div_w, ops_none),
+    (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xBF, 0, 0, opc_rem_w, op_rem_w, ops_none),
     // opcpdes 0xc0-0xcf are available
-    (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
-    (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
-    (DmaInputCpy, "dma_inputcpy", Dma, DMA_INPUTCPY_COST, 0xd2, 8, 0, opc_dma_inputcpy, op_dma_inputcpy, ops_dma_inputcpy),
-    (DmaXMemCpy, "dma_xmemcpy", Dma, DMA_MEMCPY_COST, 0xd6, 8, 0, opc_dma_xmemcpy, op_dma_xmemcpy, ops_dma_xmemcpy),
-    (DmaXMemCmp, "dma_xmemcmp", Dma, DMA_MEMCMP_COST, 0xd7, 16, 0, opc_dma_xmemcmp, op_dma_xmemcmp, ops_dma_xmemcmp),
-    (DmaXMemSet, "dma_xmemset", Dma, DMA_MEMSET_COST, 0xd9, 8, 0, opc_dma_xmemset, op_dma_xmemset, ops_dma_xmemset),
+    (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xD0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
+    (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xD1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
+    (DmaInputCpy, "dma_inputcpy", Dma, DMA_INPUTCPY_COST, 0xD2, 8, 0, opc_dma_inputcpy, op_dma_inputcpy, ops_dma_inputcpy),
+    (DmaXMemCpy, "dma_xmemcpy", Dma, DMA_MEMCPY_COST, 0xD6, 8, 0, opc_dma_xmemcpy, op_dma_xmemcpy, ops_dma_xmemcpy),
+    (DmaXMemCmp, "dma_xmemcmp", Dma, DMA_MEMCMP_COST, 0xD7, 16, 0, opc_dma_xmemcmp, op_dma_xmemcmp, ops_dma_xmemcmp),
+    (DmaXMemSet, "dma_xmemset", Dma, DMA_MEMSET_COST, 0xD9, 8, 0, opc_dma_xmemset, op_dma_xmemset, ops_dma_xmemset),
     // opcodes 0xd2-0xd9 future reserved for dma operations (memset, memcpy256, memcmp256)
     // opcodes 0xda-0xdf reserved for dma extra operations (costs)
     // opcodes 0xe0 is available
-    (Profile, "profile", Profile, 0, 0xe0, 0, 0, opc_profile, op_profile, ops_profile),
-    (Poseidon2, "poseidon2", Poseidon, POSEIDON_COST, 0xeb, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
-    (Poseidon1, "poseidon1", Poseidon, POSEIDON_COST, 0xec, 128, 128, opc_poseidon1, op_poseidon1, ops_poseidon1),
-    (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
-    (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
-    (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
-    (Bls12_381ComplexAdd, "bls12_381_complex_add", ArithEq384, ARITH_EQ_384_COST, 0xe5, 208, 96, opc_bls12_381_complex_add, op_bls12_381_complex_add, ops_bls12_381_complex_add),
-    (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, 96, opc_bls12_381_complex_sub, op_bls12_381_complex_sub, ops_bls12_381_complex_sub),
-    (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, 96, opc_bls12_381_complex_mul, op_bls12_381_complex_mul, ops_bls12_381_complex_mul),
-    (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
-    (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_none),
-    (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
-    (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
-    (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xf4, 144, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
-    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xf5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
-    (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
-    (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
-    (Blake2, "blake2", Blake2, BLAKE2_COST, 0xea, 280 , 128, opc_blake2, op_blake2, ops_blake2),
-    (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
-    (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
-    (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
-    (Sha256, "sha256", Sha256, SHA256_COST, 0xf9, 112, 112, opc_sha256, op_sha256, ops_sha256),
-    (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xfa, 144, 64, opc_bn254_curve_add, op_bn254_curve_add, ops_bn254_curve_add),
-    (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xfb, 64, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl, ops_bn254_curve_dbl),
-    (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xfc, 144, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
-    (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xfd, 144, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
-    (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xfe, 144, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
-    (Halt, "halt", Internal, INTERNAL_COST, 0xff, 144, 0, opc_halt, op_halt, ops_none),
+    (Profile, "profile", Profile, 0, 0xE0, 0, 0, opc_profile, op_profile, ops_profile),
+    (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xE2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
+    (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xE3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
+    (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xE4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
+    (Bls12_381ComplexAdd, "bls12_381_complex_add", ArithEq384, ARITH_EQ_384_COST, 0xE5, 208, 96, opc_bls12_381_complex_add, op_bls12_381_complex_add, ops_bls12_381_complex_add),
+    (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xE6, 208, 96, opc_bls12_381_complex_sub, op_bls12_381_complex_sub, ops_bls12_381_complex_sub),
+    (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xE7, 208, 96, opc_bls12_381_complex_mul, op_bls12_381_complex_mul, ops_bls12_381_complex_mul),
+    (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xE8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
+    (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xE9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
+    (Blake2, "blake2", Blake2, BLAKE2_COST, 0xEA, 280 , 128, opc_blake2, op_blake2, ops_blake2),
+    (Poseidon2, "poseidon2", Poseidon, POSEIDON_COST, 0xEB, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
+    (Poseidon1, "poseidon1", Poseidon, POSEIDON_COST, 0xEC, 128, 128, opc_poseidon1, op_poseidon1, ops_poseidon1),
+    (Add256, "add256", BigInt, ADD256_COST, 0xF0, 104, 32, opc_add256, op_add256, ops_add256),
+    (Keccak, "keccak", Keccak, KECCAK_COST, 0xF1, 200, 200, opc_keccak, op_keccak, ops_none),
+    (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xF2, 136, 64, opc_arith256, op_arith256, ops_arith256),
+    (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xF3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
+    (Secp256k1Add, "secp256k1_add", ArithEq, ARITH_EQ_COST, 0xF4, 144, 64, opc_secp256k1_add, op_secp256k1_add, ops_secp256k1_add),
+    (Secp256k1Dbl, "secp256k1_dbl", ArithEq, ARITH_EQ_COST, 0xF5, 64, 64, opc_secp256k1_dbl, op_secp256k1_dbl, ops_secp256k1_dbl),
+    (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xF6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
+    (Fcall, "fcall", Fcall, FCALL_COST, 0xF7, 0, 0, opc_fcall, op_fcall, ops_none),
+    (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xF8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
+    (Sha256, "sha256", Sha256, SHA256_COST, 0xF9, 112, 112, opc_sha256, op_sha256, ops_sha256),
+    (Bn254CurveAdd, "bn254_curve_add", ArithEq, ARITH_EQ_COST, 0xFA, 144, 64, opc_bn254_curve_add, op_bn254_curve_add, ops_bn254_curve_add),
+    (Bn254CurveDbl, "bn254_curve_dbl", ArithEq, ARITH_EQ_COST, 0xFB, 64, 64, opc_bn254_curve_dbl, op_bn254_curve_dbl, ops_bn254_curve_dbl),
+    (Bn254ComplexAdd, "bn254_complex_add", ArithEq, ARITH_EQ_COST, 0xFC, 144, 64, opc_bn254_complex_add, op_bn254_complex_add, ops_bn254_complex_add),
+    (Bn254ComplexSub, "bn254_complex_sub", ArithEq, ARITH_EQ_COST, 0xFD, 144, 64, opc_bn254_complex_sub, op_bn254_complex_sub, ops_bn254_complex_sub),
+    (Bn254ComplexMul, "bn254_complex_mul", ArithEq, ARITH_EQ_COST, 0xFE, 144, 64, opc_bn254_complex_mul, op_bn254_complex_mul, ops_bn254_complex_mul),
+    (Halt, "halt", Internal, INTERNAL_COST, 0xFF, 144, 0, opc_halt, op_halt, ops_none),
 }
 
 /* PRECOMPILED operations */
+
+/// Generates stub `op_*` functions for precompiles. Precompiles can only be executed through
+/// the system-call context (`InstContext`), so the plain `a`/`b` variant is unreachable and
+/// declared as `unimplemented!()`.
+macro_rules! unimplemented_precompile_ops {
+    ( $( $name:ident ),* $(,)? ) => {
+        $(
+            #[inline(always)]
+            pub fn $name(_a: u64, _b: u64) -> (u64, bool) {
+                unimplemented!(concat!(stringify!($name), "() is not implemented"));
+            }
+        )*
+    };
+}
+
+unimplemented_precompile_ops!(
+    op_keccak,
+    op_sha256,
+    op_poseidon1,
+    op_poseidon2,
+    op_blake2,
+    op_add256,
+    op_arith256,
+    op_arith256_mod,
+    op_secp256k1_add,
+    op_secp256k1_dbl,
+    op_secp256r1_add,
+    op_secp256r1_dbl,
+    op_bn254_curve_add,
+    op_bn254_curve_dbl,
+    op_bn254_complex_add,
+    op_bn254_complex_sub,
+    op_bn254_complex_mul,
+    op_arith384_mod,
+    op_bls12_381_curve_add,
+    op_bls12_381_curve_dbl,
+    op_bls12_381_complex_add,
+    op_bls12_381_complex_sub,
+    op_bls12_381_complex_mul,
+    op_add256_be,
+    op_arith256_be,
+    op_arith256_mod_be,
+    op_secp256k1_add_be,
+    op_secp256k1_dbl_be,
+    op_secp256r1_add_be,
+    op_secp256r1_dbl_be,
+    op_bn254_curve_add_be,
+    op_bn254_curve_dbl_be,
+    op_bn254_complex_add_be,
+    op_bn254_complex_sub_be,
+    op_bn254_complex_mul_be,
+    op_arith384_mod_be,
+    op_bls12_381_curve_add_be,
+    op_bls12_381_curve_dbl_be,
+    op_bls12_381_complex_add_be,
+    op_bls12_381_complex_sub_be,
+    op_bls12_381_complex_mul_be,
+);
 
 /// Performs a Keccak-f hash over a 1600-bits input state stored in memory at the address
 /// specified by register A0, and stores the output state in the same memory address
@@ -558,13 +637,6 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Keccak can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_keccak(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_keccak() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_keccak(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 25, 25);
@@ -597,13 +669,6 @@ pub fn opc_sha256(ctx: &mut InstContext) {
 
     ctx.c = 0;
     ctx.flag = false;
-}
-
-/// Unimplemented.  Sha256 can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_sha256(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_sha256() is not implemented");
 }
 
 #[inline(always)]
@@ -691,13 +756,6 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Poseidon2 can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_poseidon2(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_poseidon2() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 16, 16);
@@ -783,13 +841,6 @@ pub fn opc_poseidon1(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Poseidon1 can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_poseidon1(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_poseidon1() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_poseidon1(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 16, 16);
@@ -824,13 +875,6 @@ pub fn opc_blake2(ctx: &mut InstContext) {
 
     ctx.c = 0;
     ctx.flag = false;
-}
-
-/// Unimplemented.  Blake2 can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_blake2(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_blake2() is not implemented");
 }
 
 #[inline(always)]
@@ -1031,7 +1075,32 @@ pub fn precompiled_stats_direct_data(
     stats.mem_align_write(param_addr, outputs);
 }
 
+/// Converts a sequence of multi-limb integers in `data` between big-endian memory
+/// layout and the native little-endian layout expected by the
+/// `precompiles_helpers` routines. Each integer occupies `chunk_size` u64 limbs;
+/// the conversion reverses the limb order and byte-swaps every limb, and is its
+/// own inverse (used in both directions). `data.len()` must be a multiple of
+/// `chunk_size`; trailing limbs that don't fit a full chunk are silently ignored
+/// (`chunks_exact_mut`).
+#[inline(always)]
+fn swap_chunks_inplace(data: &mut [u64], chunk_size: usize) {
+    for chunk in data.chunks_exact_mut(chunk_size) {
+        chunk.reverse();
+        for v in chunk.iter_mut() {
+            *v = v.swap_bytes();
+        }
+    }
+}
+
 pub fn opc_add256(ctx: &mut InstContext) {
+    opc_add256_inner(ctx, false);
+}
+
+pub fn opc_add256_be(ctx: &mut InstContext) {
+    opc_add256_inner(ctx, true);
+}
+
+pub fn opc_add256_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 4 + 1 + 2 * 4;
     let mut data = [0u64; WORDS];
 
@@ -1048,11 +1117,20 @@ pub fn opc_add256(ctx: &mut InstContext) {
         let (a, rest) = rest.split_at(4);
         let (b, _) = rest.split_at(4);
 
-        let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
-        let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
         let mut c = [0u64; 4];
-        let cout = precompiles_helpers::add256(a, b, cin, &mut c);
-
+        let cout = if be {
+            let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
+            let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
+            let a = [a[3].swap_bytes(), a[2].swap_bytes(), a[1].swap_bytes(), a[0].swap_bytes()];
+            let b = [b[3].swap_bytes(), b[2].swap_bytes(), b[1].swap_bytes(), b[0].swap_bytes()];
+            let cout = precompiles_helpers::add256(&a, &b, cin, &mut c);
+            c = [c[3].swap_bytes(), c[2].swap_bytes(), c[1].swap_bytes(), c[0].swap_bytes()];
+            cout
+        } else {
+            let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
+            let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
+            precompiles_helpers::add256(a, b, cin, &mut c)
+        };
         let c_addr = params[3];
         for (i, c_item) in c.iter().enumerate() {
             ctx.mem.write(c_addr + (8 * i as u64), *c_item, 8);
@@ -1069,20 +1147,21 @@ pub fn opc_add256(ctx: &mut InstContext) {
     }
 }
 
-/// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_add256(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_add256() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_add256(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[4, 4, 0], &[4], 0);
 }
 
-#[inline(always)]
 pub fn opc_arith256(ctx: &mut InstContext) {
+    opc_arith256_inner(ctx, false);
+}
+
+pub fn opc_arith256_be(ctx: &mut InstContext) {
+    opc_arith256_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_arith256_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 5 + 3 * 4;
     let mut data = [0u64; WORDS];
 
@@ -1101,7 +1180,19 @@ pub fn opc_arith256(ctx: &mut InstContext) {
         let mut dl = [0u64; 4];
         let mut dh = [0u64; 4];
 
-        precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+        if be {
+            let mut a_arr = *a;
+            let mut b_arr = *b;
+            let mut c_arr = *c;
+            swap_chunks_inplace(&mut a_arr, 4);
+            swap_chunks_inplace(&mut b_arr, 4);
+            swap_chunks_inplace(&mut c_arr, 4);
+            precompiles_helpers::arith256(&a_arr, &b_arr, &c_arr, &mut dl, &mut dh);
+            swap_chunks_inplace(&mut dl, 4);
+            swap_chunks_inplace(&mut dh, 4);
+        } else {
+            precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+        }
 
         // [a,b,c,3:dl,4:dh]
         for (i, dl_item) in dl.iter().enumerate() {
@@ -1116,20 +1207,21 @@ pub fn opc_arith256(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Arith256 can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_arith256(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_arith256() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_arith256(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[4, 4, 4], &[4, 4], 0);
 }
 
-#[inline(always)]
 pub fn opc_arith256_mod(ctx: &mut InstContext) {
+    opc_arith256_mod_inner(ctx, false);
+}
+
+pub fn opc_arith256_mod_be(ctx: &mut InstContext) {
+    opc_arith256_mod_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_arith256_mod_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 5 + 4 * 4;
     let mut data = [0u64; WORDS];
 
@@ -1141,7 +1233,6 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
         let (a, rest) = rest.split_at(4);
         let (b, rest) = rest.split_at(4);
         let (c, module) = rest.split_at(4);
-        let mut d = [0u64; 4];
 
         let a: &[u64; 4] = a.try_into().expect("opc_arith256_mod: a.len != 4");
         let b: &[u64; 4] = b.try_into().expect("opc_arith256_mod: b.len != 4");
@@ -1150,7 +1241,20 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
 
         let mut d = [0u64; 4];
 
-        precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+        if be {
+            let mut a_arr = *a;
+            let mut b_arr = *b;
+            let mut c_arr = *c;
+            let mut module_arr = *module;
+            swap_chunks_inplace(&mut a_arr, 4);
+            swap_chunks_inplace(&mut b_arr, 4);
+            swap_chunks_inplace(&mut c_arr, 4);
+            swap_chunks_inplace(&mut module_arr, 4);
+            precompiles_helpers::arith256_mod(&a_arr, &b_arr, &c_arr, &module_arr, &mut d);
+            swap_chunks_inplace(&mut d, 4);
+        } else {
+            precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+        }
 
         // [a,b,c,module,4:d]
         for (i, d) in d.iter().enumerate() {
@@ -1162,20 +1266,21 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Arith256Mod can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_arith256_mod(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_arith256_mod() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_arith256_mod(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[4, 4, 4, 4], &[4], 0);
 }
 
-#[inline(always)]
 pub fn opc_secp256k1_add(ctx: &mut InstContext) {
+    opc_secp256k1_add_inner(ctx, false);
+}
+
+pub fn opc_secp256k1_add_be(ctx: &mut InstContext) {
+    opc_secp256k1_add_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_secp256k1_add_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
@@ -1190,7 +1295,16 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
+        if be {
+            let mut p1_arr = *p1;
+            let mut p2_arr = *p2;
+            swap_chunks_inplace(&mut p1_arr, 4);
+            swap_chunks_inplace(&mut p2_arr, 4);
+            precompiles_helpers::secp256k1_add(&p1_arr, &p2_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 4);
+        } else {
+            precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
+        }
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1201,30 +1315,38 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Secp256k1Add can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_secp256k1_add(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_secp256k1_add() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_secp256k1_add(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
+    opc_secp256k1_dbl_inner(ctx, false);
+}
+
+pub fn opc_secp256k1_dbl_be(ctx: &mut InstContext) {
+    opc_secp256k1_dbl_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_secp256k1_dbl_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256k1_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
-        let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256k1_dbl(p1, &mut p3);
+        if be {
+            let mut p1_arr = data;
+            swap_chunks_inplace(&mut p1_arr, 4);
+            precompiles_helpers::secp256k1_dbl(&p1_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 4);
+        } else {
+            let p1: &[u64; 8] = &data;
+            precompiles_helpers::secp256k1_dbl(p1, &mut p3);
+        }
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1235,20 +1357,21 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Secp256k1Dbl can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_secp256k1_dbl(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_secp256k1_dbl() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_secp256k1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 
-#[inline(always)]
 pub fn opc_secp256r1_add(ctx: &mut InstContext) {
+    opc_secp256r1_add_inner(ctx, false);
+}
+
+pub fn opc_secp256r1_add_be(ctx: &mut InstContext) {
+    opc_secp256r1_add_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_secp256r1_add_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
@@ -1263,7 +1386,16 @@ pub fn opc_secp256r1_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_secp256r1_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256r1_add(p1, p2, &mut p3);
+        if be {
+            let mut p1_arr = *p1;
+            let mut p2_arr = *p2;
+            swap_chunks_inplace(&mut p1_arr, 4);
+            swap_chunks_inplace(&mut p2_arr, 4);
+            precompiles_helpers::secp256r1_add(&p1_arr, &p2_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 4);
+        } else {
+            precompiles_helpers::secp256r1_add(p1, p2, &mut p3);
+        }
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1274,30 +1406,38 @@ pub fn opc_secp256r1_add(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Secp256r1Add can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_secp256r1_add(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_secp256r1_add() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_secp256r1_add(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
+    opc_secp256r1_dbl_inner(ctx, false);
+}
+
+pub fn opc_secp256r1_dbl_be(ctx: &mut InstContext) {
+    opc_secp256r1_dbl_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_secp256r1_dbl_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "secp256r1_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
-        let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256r1_dbl(p1, &mut p3);
+        if be {
+            let mut p1_arr = data;
+            swap_chunks_inplace(&mut p1_arr, 4);
+            precompiles_helpers::secp256r1_dbl(&p1_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 4);
+        } else {
+            let p1: &[u64; 8] = &data;
+            precompiles_helpers::secp256r1_dbl(p1, &mut p3);
+        }
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1308,20 +1448,21 @@ pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Secp256r1Dbl can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_secp256r1_dbl(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_secp256r1_dbl() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_secp256r1_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 
-#[inline(always)]
 pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
+    opc_bn254_curve_add_inner(ctx, false);
+}
+
+pub fn opc_bn254_curve_add_be(ctx: &mut InstContext) {
+    opc_bn254_curve_add_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bn254_curve_add_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
@@ -1336,7 +1477,16 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
+        if be {
+            let mut p1_arr = *p1;
+            let mut p2_arr = *p2;
+            swap_chunks_inplace(&mut p1_arr, 4);
+            swap_chunks_inplace(&mut p2_arr, 4);
+            precompiles_helpers::bn254_curve_add(&p1_arr, &p2_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 4);
+        } else {
+            precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
+        }
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1348,30 +1498,38 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bn254CurveAdd can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bn254_curve_add(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bn254_curve_add() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bn254_curve_add(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
+    opc_bn254_curve_dbl_inner(ctx, false);
+}
+
+pub fn opc_bn254_curve_dbl_be(ctx: &mut InstContext) {
+    opc_bn254_curve_dbl_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bn254_curve_dbl_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 8, 0, None, &mut data, "bn254_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
-        let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
+        if be {
+            let mut p1_arr = data;
+            swap_chunks_inplace(&mut p1_arr, 4);
+            precompiles_helpers::bn254_curve_dbl(&p1_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 4);
+        } else {
+            let p1: &[u64; 8] = &data;
+            precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
+        }
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1382,20 +1540,21 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bn254CurveDbl can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bn254_curve_dbl(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bn254_curve_dbl() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bn254_curve_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 8, 8);
 }
 
-#[inline(always)]
 pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
+    opc_bn254_complex_add_inner(ctx, false);
+}
+
+pub fn opc_bn254_complex_add_be(ctx: &mut InstContext) {
+    opc_bn254_complex_add_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bn254_complex_add_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
@@ -1410,7 +1569,16 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
+        if be {
+            let mut f1_arr = *f1;
+            let mut f2_arr = *f2;
+            swap_chunks_inplace(&mut f1_arr, 4);
+            swap_chunks_inplace(&mut f2_arr, 4);
+            precompiles_helpers::bn254_complex_add(&f1_arr, &f2_arr, &mut f3);
+            swap_chunks_inplace(&mut f3, 4);
+        } else {
+            precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
+        }
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1422,20 +1590,21 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bn254ComplexAdd can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bn254_complex_add(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bn254_complex_add() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bn254_complex_add(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
+    opc_bn254_complex_sub_inner(ctx, false);
+}
+
+pub fn opc_bn254_complex_sub_be(ctx: &mut InstContext) {
+    opc_bn254_complex_sub_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bn254_complex_sub_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
@@ -1450,7 +1619,16 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
+        if be {
+            let mut f1_arr = *f1;
+            let mut f2_arr = *f2;
+            swap_chunks_inplace(&mut f1_arr, 4);
+            swap_chunks_inplace(&mut f2_arr, 4);
+            precompiles_helpers::bn254_complex_sub(&f1_arr, &f2_arr, &mut f3);
+            swap_chunks_inplace(&mut f3, 4);
+        } else {
+            precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
+        }
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1462,20 +1640,21 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bn254ComplexSub can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bn254_complex_sub(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bn254_complex_sub() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bn254_complex_sub(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
+    opc_bn254_complex_mul_inner(ctx, false);
+}
+
+pub fn opc_bn254_complex_mul_be(ctx: &mut InstContext) {
+    opc_bn254_complex_mul_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bn254_complex_mul_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 8;
     let mut data = [0u64; WORDS];
 
@@ -1490,7 +1669,16 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
+        if be {
+            let mut f1_arr = *f1;
+            let mut f2_arr = *f2;
+            swap_chunks_inplace(&mut f1_arr, 4);
+            swap_chunks_inplace(&mut f2_arr, 4);
+            precompiles_helpers::bn254_complex_mul(&f1_arr, &f2_arr, &mut f3);
+            swap_chunks_inplace(&mut f3, 4);
+        } else {
+            precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
+        }
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1502,20 +1690,21 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bn254ComplexMul can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bn254_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bn254_complex_mul() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bn254_complex_mul(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_arith384_mod(ctx: &mut InstContext) {
+    opc_arith384_mod_inner(ctx, false);
+}
+
+pub fn opc_arith384_mod_be(ctx: &mut InstContext) {
+    opc_arith384_mod_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_arith384_mod_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 5 + 4 * 6;
     let mut data = [0u64; WORDS];
 
@@ -1527,7 +1716,6 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
         let (a, rest) = rest.split_at(6);
         let (b, rest) = rest.split_at(6);
         let (c, module) = rest.split_at(6);
-        let mut d = [0u64; 6];
 
         let a: &[u64; 6] = a.try_into().expect("opc_arith384_mod: a.len != 6");
         let b: &[u64; 6] = b.try_into().expect("opc_arith384_mod: b.len != 6");
@@ -1536,7 +1724,20 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
 
         let mut d = [0u64; 6];
 
-        precompiles_helpers::arith384_mod(a, b, c, module, &mut d);
+        if be {
+            let mut a_arr = *a;
+            let mut b_arr = *b;
+            let mut c_arr = *c;
+            let mut module_arr = *module;
+            swap_chunks_inplace(&mut a_arr, 6);
+            swap_chunks_inplace(&mut b_arr, 6);
+            swap_chunks_inplace(&mut c_arr, 6);
+            swap_chunks_inplace(&mut module_arr, 6);
+            precompiles_helpers::arith384_mod(&a_arr, &b_arr, &c_arr, &module_arr, &mut d);
+            swap_chunks_inplace(&mut d, 6);
+        } else {
+            precompiles_helpers::arith384_mod(a, b, c, module, &mut d);
+        }
 
         // [a,b,c,module,4:d]
         for (i, d) in d.iter().enumerate() {
@@ -1548,20 +1749,21 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Arith384Mod can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_arith384_mod(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_arith384_mod() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_arith384_mod(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[6, 6, 6, 6], &[6], 0);
 }
 
-#[inline(always)]
 pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
+    opc_bls12_381_curve_add_inner(ctx, false);
+}
+
+pub fn opc_bls12_381_curve_add_be(ctx: &mut InstContext) {
+    opc_bls12_381_curve_add_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_curve_add_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
@@ -1576,7 +1778,16 @@ pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
         let p2: &[u64; 12] = p2.try_into().expect("opc_bls12_381_curve_add: p2.len != 12");
         let mut p3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_curve_add(p1, p2, &mut p3);
+        if be {
+            let mut p1_arr = *p1;
+            let mut p2_arr = *p2;
+            swap_chunks_inplace(&mut p1_arr, 6);
+            swap_chunks_inplace(&mut p2_arr, 6);
+            precompiles_helpers::bls12_381_curve_add(&p1_arr, &p2_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 6);
+        } else {
+            precompiles_helpers::bls12_381_curve_add(p1, p2, &mut p3);
+        }
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1588,30 +1799,38 @@ pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bls12_381CurveAdd can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bls12_381_curve_add(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bls12_381_curve_add() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bls12_381_curve_add(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
+    opc_bls12_381_curve_dbl_inner(ctx, false);
+}
+
+pub fn opc_bls12_381_curve_dbl_be(ctx: &mut InstContext) {
+    opc_bls12_381_curve_dbl_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_curve_dbl_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 12;
     let mut data = [0u64; WORDS];
 
     precompiled_load_data(ctx, 0, 1, 12, 0, None, &mut data, "bls12_381_curve_dbl");
 
     if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
-        let p1: &[u64; 12] = &data;
         let mut p3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_curve_dbl(p1, &mut p3);
+        if be {
+            let mut p1_arr = data;
+            swap_chunks_inplace(&mut p1_arr, 6);
+            precompiles_helpers::bls12_381_curve_dbl(&p1_arr, &mut p3);
+            swap_chunks_inplace(&mut p3, 6);
+        } else {
+            let p1: &[u64; 12] = &data;
+            precompiles_helpers::bls12_381_curve_dbl(p1, &mut p3);
+        }
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1622,20 +1841,21 @@ pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bls12_381CurveDbl can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bls12_381_curve_dbl(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bls12_381_curve_dbl() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bls12_381_curve_dbl(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 12, 12);
 }
 
-#[inline(always)]
 pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
+    opc_bls12_381_complex_add_inner(ctx, false);
+}
+
+pub fn opc_bls12_381_complex_add_be(ctx: &mut InstContext) {
+    opc_bls12_381_complex_add_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_add_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
@@ -1650,7 +1870,16 @@ pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_add: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_add(f1, f2, &mut f3);
+        if be {
+            let mut f1_arr = *f1;
+            let mut f2_arr = *f2;
+            swap_chunks_inplace(&mut f1_arr, 6);
+            swap_chunks_inplace(&mut f2_arr, 6);
+            precompiles_helpers::bls12_381_complex_add(&f1_arr, &f2_arr, &mut f3);
+            swap_chunks_inplace(&mut f3, 6);
+        } else {
+            precompiles_helpers::bls12_381_complex_add(f1, f2, &mut f3);
+        }
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1662,20 +1891,21 @@ pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bls12_381ComplexAdd can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bls12_381_complex_add(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bls12_381_complex_add() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bls12_381_complex_add(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
+    opc_bls12_381_complex_sub_inner(ctx, false);
+}
+
+pub fn opc_bls12_381_complex_sub_be(ctx: &mut InstContext) {
+    opc_bls12_381_complex_sub_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_sub_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
@@ -1690,7 +1920,16 @@ pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_sub: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
+        if be {
+            let mut f1_arr = *f1;
+            let mut f2_arr = *f2;
+            swap_chunks_inplace(&mut f1_arr, 6);
+            swap_chunks_inplace(&mut f2_arr, 6);
+            precompiles_helpers::bls12_381_complex_sub(&f1_arr, &f2_arr, &mut f3);
+            swap_chunks_inplace(&mut f3, 6);
+        } else {
+            precompiles_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
+        }
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1702,20 +1941,21 @@ pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bls12_381ComplexSub can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
-#[inline(always)]
-pub fn op_bls12_381_complex_sub(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bls12_381_complex_sub() is not implemented");
-}
-
 #[inline(always)]
 pub fn ops_bls12_381_complex_sub(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
 }
 
-#[inline(always)]
 pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
+    opc_bls12_381_complex_mul_inner(ctx, false);
+}
+
+pub fn opc_bls12_381_complex_mul_be(ctx: &mut InstContext) {
+    opc_bls12_381_complex_mul_inner(ctx, true);
+}
+
+#[inline(always)]
+pub fn opc_bls12_381_complex_mul_inner(ctx: &mut InstContext, be: bool) {
     const WORDS: usize = 2 + 2 * 12;
     let mut data = [0u64; WORDS];
 
@@ -1730,7 +1970,16 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_mul: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
+        if be {
+            let mut f1_arr = *f1;
+            let mut f2_arr = *f2;
+            swap_chunks_inplace(&mut f1_arr, 6);
+            swap_chunks_inplace(&mut f2_arr, 6);
+            precompiles_helpers::bls12_381_complex_mul(&f1_arr, &f2_arr, &mut f3);
+            swap_chunks_inplace(&mut f3, 6);
+        } else {
+            precompiles_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
+        }
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1742,13 +1991,7 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
     ctx.flag = false;
 }
 
-/// Unimplemented.  Bls12_381ComplexMul can only be called from the system call context via InstContext.
-/// This is provided just for completeness.
 #[inline(always)]
-pub fn op_bls12_381_complex_mul(_a: u64, _b: u64) -> (u64, bool) {
-    unimplemented!("op_bls12_381_complex_mul() is not implemented");
-}
-
 pub fn ops_bls12_381_complex_mul(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[12, 12], &[], 1);
 }
