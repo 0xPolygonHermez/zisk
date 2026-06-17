@@ -676,8 +676,8 @@ pub fn msm_complete_safe_bls12_381(
             continue;
         }
 
-        // NOTE: Validation must precede the scalar-zero skip below, since EIP-2537 mandates
-        // rejecting an invalid input point regardless of its scalar.
+        // NOTE: Validation must precede the scalar-zero skip below, since we should reject an
+        // invalid input point regardless of its scalar.
 
         // Verify point coordinates are in the field
         let x: [u64; 6] = point[0..6].try_into().unwrap();
