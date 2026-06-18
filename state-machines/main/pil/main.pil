@@ -309,6 +309,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     const expr store_value[2];
 
     store_value[0] = store_pc*(pc + jmp_offset2 - c[0]) + c[0];
+    // BUG(rv64-auipc): when store_pc=1 (AUIPC), store_value[1] is forced to 0, dropping the
+    // carry out of bit 31 of (pc + jmp_offset2).  For pc + jmp_offset2 >= 2^32 — valid in RV64I,
+    // e.g. auipc rd, 0x7ffff at PC >= 0x80001000 — store_value[0] exceeds the bits(32) constraint
+    // in mem.pil and VerifyGlobalConstraints fails.  store_value[1] should carry the high bit.
+    // Reproducer: elf-regressions/auipc_rv64_overflow/
     store_value[1] = (1 - store_pc) * c[1];
 
     // Memory function to prove that previous register store_offset access.
