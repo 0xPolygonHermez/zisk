@@ -3,6 +3,7 @@
 
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
+use zisk_common::RangeChecker;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
@@ -14,10 +15,10 @@ pub struct SecondaryWitnessHandler;
 impl SecondaryWitnessHandler {
     /// Compute the witness for `global_id` (assumed to be a non-ROM `InstanceType::Instance`).
     #[allow(clippy::too_many_arguments)]
-    pub fn dispatch<F: PrimeField64>(
+    pub fn dispatch<F: PrimeField64, RC: RangeChecker>(
         generator: &WitnessGenerator,
-        collector: &ChunkDataCollector<F>,
-        state: &ExecutionState<F>,
+        collector: &ChunkDataCollector<F, RC>,
+        state: &ExecutionState<F, RC>,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
         global_id: usize,

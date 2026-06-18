@@ -14,6 +14,7 @@ use riscv2zisk::Riscv2zisk;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::NoopRangeChecker;
 use zisk_core::ZiskRom;
 
 use crate::execute_client::ExecuteClient;
@@ -26,14 +27,15 @@ struct EmuSetupState {
 
 /// Execute-only client (Rust emulator).
 pub struct EmuExecClient {
-    executor: Arc<ZiskExecutor<Goldilocks>>,
+    executor: Arc<ZiskExecutor<Goldilocks, NoopRangeChecker>>,
     program: Mutex<Option<EmuSetupState>>,
 }
 
 impl EmuExecClient {
     /// Construct an execute-only client. Loads no proving keys.
     pub fn new(verbose: VerboseMode) -> Result<Self> {
-        let executor = ZiskExecutor::<Goldilocks>::new_standalone(verbose, false)?;
+        let executor =
+            ZiskExecutor::<Goldilocks, NoopRangeChecker>::new_standalone(verbose, false)?;
         Ok(Self { executor, program: Mutex::new(None) })
     }
 

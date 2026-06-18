@@ -1,5 +1,4 @@
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use zisk_common::RangeChecker;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {
@@ -49,7 +48,7 @@ impl MemAlignRomSM {
         (first_row_idx, op_size)
     }
 
-    pub fn get_rows<F: PrimeField64>(std: &Std<F>, table_id: usize, pc: u64, op_size: u64) {
+    pub fn get_rows<RC: RangeChecker>(std: &RC, table_id: usize, pc: u64, op_size: u64) {
         // Check whether the row index is within the bounds
         debug_assert!(pc + op_size <= Self::TABLE_SIZE as u64);
 

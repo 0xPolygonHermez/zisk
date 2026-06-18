@@ -3,12 +3,12 @@ use fields::{
 };
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
-use zisk_common::{OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
+use zisk_common::{RangeChecker, OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::zisk_ops::ZiskOp;
 
 use crate::PoseidonSM;
 
-impl<F: PrimeField64> PrecompileMemInputs for PoseidonSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> PrecompileMemInputs for PoseidonSM<F, RC> {
     fn generate<P: MemProcessor>(
         addr_main: u32,
         step_main: u64,

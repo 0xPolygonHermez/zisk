@@ -26,6 +26,7 @@ rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 precompiles-hints = { workspace = true }
 fields = { workspace = true }
+pil-std-lib = { workspace = true }
 borsh = { workspace = true }
 
 # Optional dependencies

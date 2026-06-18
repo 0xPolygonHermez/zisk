@@ -12,10 +12,11 @@ use mem_common::MemHelpers;
 use crate::{MemInput, MemModule, MemPreviousSegment};
 use mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
+use std::marker::PhantomData;
+
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
-use zisk_common::SegmentId;
+use zisk_common::{RangeChecker, SegmentId};
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{
     InputDataAirValues, InputDataTrace, InputDataTraceRow, InputDataTraceRowOps,
@@ -41,27 +42,30 @@ const _: () = {
     );
 };
 
-pub struct InputDataSM<F: PrimeField64> {
+pub struct InputDataSM<F: PrimeField64, RC: RangeChecker> {
     /// PIL2 standard library
-    std: Arc<Std<F>>,
+    std: Arc<RC>,
 
     /// Range check ID
     range_id: usize,
 
     /// Range check ID for the 16-bit chunks of the input values
     range_16bits_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64> InputDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         let range_id = std
             .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
             .expect("Failed to get range ID");
         let range_16bits_id =
             std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { range_16bits_id, std: std.clone(), range_id })
+        Arc::new(Self { range_16bits_id, std: std.clone(), range_id, _marker: PhantomData })
     }
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
@@ -577,7 +581,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
 }
 
-impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> MemModule<F> for InputDataSM<F, RC> {
     fn get_addr_range(&self) -> (u32, u32) {
         (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
     }

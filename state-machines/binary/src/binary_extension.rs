@@ -3,14 +3,15 @@
 //! This state machine handles binary extension-related operations, computes traces, and manages
 //! range checks and multiplicities for table rows based on the operations provided.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
+use zisk_common::RangeChecker;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionAirValues, BinaryExtensionTrace, BinaryExtensionTraceRowOps};
 
@@ -32,18 +33,21 @@ const LS_6_BITS: u64 = 0x3F;
 ///
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
 /// tables for the operations. It also manages range checks through the PIL2 standard library.
-pub struct BinaryExtensionSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+pub struct BinaryExtensionSM<F: PrimeField64, RC: RangeChecker> {
+    /// Range-check / virtual-table sink (the real `Std` in production).
+    std: Arc<RC>,
 
     /// The range check ID
     range_id: usize,
 
     /// The table ID for the Binary Basic State Machine
     table_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> BinaryExtensionSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> BinaryExtensionSM<F, RC> {
     /// Creates a new instance of the `BinaryExtensionSM`.
     ///
     /// # Arguments
@@ -51,7 +55,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Get the range check ID
         let range_id = std.get_range_id(0, 0xFFFFFF, None).expect("Failed to get range ID");
 
@@ -60,7 +64,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             .get_virtual_table_id(BinaryExtensionTableSM::TABLE_ID)
             .expect("Failed to get table ID");
 
-        Arc::new(Self { std, range_id, table_id })
+        Arc::new(Self { std, range_id, table_id, _marker: PhantomData })
     }
 
     /// Determines if the given opcode represents a shift operation.

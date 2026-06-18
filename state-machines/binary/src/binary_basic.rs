@@ -2,14 +2,15 @@
 //!
 //! This state machine processes binary-related operations.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
+use zisk_common::RangeChecker;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryAirValues, BinaryTrace, BinaryTraceRowOps};
 
@@ -17,28 +18,31 @@ const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 const SIGN_BYTE: u8 = 0x80;
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
-pub struct BinaryBasicSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+pub struct BinaryBasicSM<F: PrimeField64, RC: RangeChecker> {
+    /// Range-check / virtual-table sink (the real `Std` in production).
+    std: Arc<RC>,
 
     /// The table ID for the Binary Basic State Machine
     table_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> BinaryBasicSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> BinaryBasicSM<F, RC> {
     /// Creates a new Binary Basic State Machine instance.
     ///
     /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `std` - An `Arc`-wrapped reference to the range-check sink.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicSM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID).expect("Failed to get range ID");
 
-        Arc::new(Self { std, table_id })
+        Arc::new(Self { std, table_id, _marker: PhantomData })
     }
 
     /// Determines if an opcode corresponds to a 32-bit operation.

@@ -1,11 +1,11 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::SegmentId;
+use zisk_common::{RangeChecker, SegmentId};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
     Dma64AlignedInputCpyAirValues, Dma64AlignedInputCpyTrace, Dma64AlignedInputCpyTraceRow,
@@ -19,23 +19,25 @@ use crate::{
 use precompiles_helpers::DmaInfo;
 
 /// The `Dma64AlignedInputCpySM` struct encapsulates the logic of the Dma64Aligned State Machine.
-pub struct Dma64AlignedInputCpySM<F: PrimeField64> {
+pub struct Dma64AlignedInputCpySM<F: PrimeField64, RC: RangeChecker> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     /// Range checks ID's
     range_16_bits_id: usize,
     range_24_bits_id: usize,
     dual_range_byte_id: usize,
     op_x_rows: usize,
+
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
+impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedInputCpySM<F, RC> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `Dma64AlignedInputCpySM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             range_16_bits_id: std
@@ -48,6 +50,7 @@ impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
                 .get_virtual_table_id(DUAL_RANGE_BYTE_ID)
                 .expect("Failed to get tabl eDUAL_RANGE_BYTE ID ID"),
             op_x_rows: DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
+            _marker: PhantomData,
         })
     }
 
@@ -258,7 +261,7 @@ impl<F: PrimeField64> Dma64AlignedInputCpySM<F> {
         Ok(AirInstance::new_from_trace(from_trace))
     }
 }
-impl<F: PrimeField64> Dma64AlignedModule<F> for Dma64AlignedInputCpySM<F> {
+impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedModule<F> for Dma64AlignedInputCpySM<F, RC> {
     fn get_name(&self) -> &'static str {
         "dma_64_aligned_inputcpy"
     }

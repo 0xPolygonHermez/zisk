@@ -13,7 +13,7 @@ use std::sync::{
     Arc, Mutex, PoisonError, RwLock,
 };
 use zisk_common::{
-    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, Stats,
+    io::ZiskStdin, BusDevice, EmuTrace, ExecutorStatsHandle, InstanceType, RangeChecker, Stats,
     ZiskExecutorSummary,
 };
 use zisk_core::ZiskRom;
@@ -31,7 +31,7 @@ pub type ChunkCollector = (usize, Box<dyn BusDevice<u64>>);
 /// instead of `state.main_instances`) but the names document the
 /// lifecycle: `InstanceSet` is *write-once* in [`crate::PlanPhase`],
 /// `ChunkCollectorStore` is *lock-contested* during witness collection.
-pub struct ExecutionState<F: PrimeField64> {
+pub struct ExecutionState<F: PrimeField64, RC: RangeChecker> {
     /// ZisK ROM (ELF), can be changed between executions.
     pub zisk_rom: RwLock<Option<Arc<ZiskRom>>>,
 
@@ -44,7 +44,7 @@ pub struct ExecutionState<F: PrimeField64> {
     pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
 
     /// Main + secondary instance maps populated by `PlanPhase`.
-    pub instance_set: Arc<InstanceSet<F>>,
+    pub instance_set: Arc<InstanceSet<F, RC>>,
 
     /// Per-instance chunk collectors. Lock-contested during the
     /// witness phase.
@@ -60,7 +60,7 @@ pub struct ExecutionState<F: PrimeField64> {
     pub use_hints: AtomicBool,
 }
 
-impl<F: PrimeField64> ExecutionState<F> {
+impl<F: PrimeField64, RC: RangeChecker> ExecutionState<F, RC> {
     /// Creates a new `ExecutionState` with default values.
     pub fn new() -> Self {
         Self {
@@ -195,7 +195,7 @@ impl<F: PrimeField64> ExecutionState<F> {
     }
 }
 
-impl<F: PrimeField64> Default for ExecutionState<F> {
+impl<F: PrimeField64, RC: RangeChecker> Default for ExecutionState<F, RC> {
     fn default() -> Self {
         Self::new()
     }

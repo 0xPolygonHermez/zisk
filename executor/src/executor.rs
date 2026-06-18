@@ -30,7 +30,7 @@ use std::{
 use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId,
-    ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
+    ExecutorStatsHandle, Plan, RangeChecker, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 
@@ -58,42 +58,43 @@ pub(crate) const MAX_NUM_STEPS: u64 = 1 << 36;
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
-pub struct ZiskExecutor<F: PrimeField64> {
+pub struct ZiskExecutor<F: PrimeField64, RC: RangeChecker> {
     /// Shared execution state.
-    state: ExecutionState<F>,
+    state: ExecutionState<F, RC>,
     /// Phase-1 Execution. Runs the chosen emulator and produces an `ExecutionOutput`.
     execution: ExecutionPhase,
     /// Phase-2 Plan (pure planning, no bundle).
     plan: PlanPhase<F>,
     /// Phase-3 Witness computation. `None` on the standalone path
     /// (executor constructed without `WitnessManager` / `Std`).
-    witness: Option<WitnessPhase<F>>,
+    witness: Option<WitnessPhase<F, RC>>,
 }
 
-impl<F: PrimeField64> ZiskExecutor<F> {
-    /// Creates a new instance of the `ZiskExecutor` with default state machines.
+impl<F: PrimeField64, RC: RangeChecker> ZiskExecutor<F, RC> {
+    /// Creates a new instance of the `ZiskExecutor` around the supplied
+    /// range-checker `std`.
     ///
-    /// This function initializes the executor with a default set of state machines.
+    /// The caller owns the choice of range-checker: it builds the `Arc<RC>`
+    /// (and, for the real `Std`, registers it on the witness manager via
+    /// `proofman::register_std`) before calling this. The executor stays
+    /// range-checker-agnostic.
     ///
     /// # Arguments
     ///
     /// * `wcm` - Witness manager for managing witness data.
+    /// * `std` - The range-checker shared across built-in SMs and precompiles.
     /// * `verbose_mode` - Verbose mode for logging.
-    /// * `shared_tables` - Whether to use shared tables for execution.
     /// * `with_asm_emulator` - Whether the executor supports the ASM backend at runtime.
     /// * `packed` - Whether to use packed representation for witness computation.
     pub fn new(
         wcm: &WitnessManager<F>,
+        std: Arc<RC>,
         verbose_mode: proofman_common::VerboseMode,
-        shared_tables: bool,
         with_asm_emulator: bool,
         packed: bool,
     ) -> ExecutorResult<Arc<Self>> {
         let rank_info = wcm.get_rank_info();
         proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
-
-        let std = pil_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
-        proofman::register_std(wcm, &std);
 
         let precompiles = crate::Precompiles::all(std.clone());
         let sm_bundle = Arc::new(StaticSMBundle::new(std, precompiles));
@@ -112,10 +113,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(executor)
     }
 
-    /// Constructs a standalone executor — no `WitnessManager`, no `Std`,
-    /// no `StaticSMBundle`, no `WitnessPhase`. Only the emulate + plan
+    /// Constructs a standalone executor — no `WitnessManager`, no range-checker
+    /// instance, no `StaticSMBundle`, no `WitnessPhase`. Only the emulate + plan
     /// path is wired up; calls to witness-mode-only public methods (e.g.
-    /// `calculate_witness`) will panic.
+    /// `calculate_witness`) will panic. `RC` is never instantiated here, so
+    /// callers typically pick the no-op `NoopRangeChecker`.
     pub fn new_standalone(
         verbose_mode: proofman_common::VerboseMode,
         with_asm_emulator: bool,
@@ -128,7 +130,9 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             witness: None,
         }))
     }
+}
 
+impl<F: PrimeField64, RC: RangeChecker> ZiskExecutor<F, RC> {
     /// Standalone execution entry point: emulate + count + plan. Returns
     /// the executor summary, the program's captured `(index, value)`
     /// public-output pairs, and a per-AIR plan summary. `cost_per_type`
@@ -387,7 +391,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         Ok(())
     }
 
-    fn witness_or_panic(&self) -> &WitnessPhase<F> {
+    fn witness_or_panic(&self) -> &WitnessPhase<F, RC> {
         self.witness.as_ref().expect("witness phase missing on a witness-mode entry point")
     }
 
@@ -462,7 +466,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     }
 }
 
-impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
+impl<F: PrimeField64, RC: RangeChecker> WitnessComponent<F> for ZiskExecutor<F, RC> {
     /// Executes the ZisK ROM program and calculate the plans for main and secondary state machines.
     fn execute(
         &self,

@@ -1,9 +1,10 @@
 use fields::PrimeField64;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::RangeChecker;
 use zisk_pil::{ArithEqTrace, ArithEqTraceRowOps};
 
 use crate::{
@@ -17,12 +18,12 @@ use crate::{
 use rayon::prelude::*;
 
 /// The `ArithEqSM` struct encapsulates the logic of the ArithEq State Machine.
-pub struct ArithEqSM<F: PrimeField64> {
+pub struct ArithEqSM<F: PrimeField64, RC: RangeChecker> {
     /// Number of available arith256s in the trace.
     pub num_available_ops: usize,
 
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     /// The table ID for the Keccakf Table State Machine
     table_id: usize,
@@ -30,6 +31,9 @@ pub struct ArithEqSM<F: PrimeField64> {
     pub q_hsc_range_id: usize,
     pub chunk_range_id: usize,
     pub carry_range_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 #[derive(Debug, Default)]
 struct ArithEqStepAddr {
@@ -44,12 +48,12 @@ struct ArithEqStepAddr {
     addr_ind: [u32; 5],
 }
 
-impl<F: PrimeField64> ArithEqSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> ArithEqSM<F, RC> {
     /// Creates a new ArithEq State Machine instance.
     ///
     /// # Returns
     /// A new `ArithEqSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Compute some useful values
         let num_available_ops = ArithEqTrace::<()>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
         let p2_22 = 1 << 22;
@@ -69,6 +73,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
             chunk_range_id,
             carry_range_id,
             table_id,
+            _marker: PhantomData,
         })
     }
     fn get_lt_flags(input: &ArithEqInput) -> u8 {

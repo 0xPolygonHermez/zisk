@@ -4,18 +4,15 @@
 
 use crate::{BinaryExtensionFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, VirtualTableSink, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
 use std::sync::Arc;
 
 use zisk_core::ZiskOperationType;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
-pub struct BinaryExtensionCollector<F: PrimeField64> {
+pub struct BinaryExtensionCollector<S: VirtualTableSink> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
@@ -28,27 +25,25 @@ pub struct BinaryExtensionCollector<F: PrimeField64> {
     /// The table ID for the Binary Extension FROPS
     frops_table_id: usize,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    /// Sink for virtual-table multiplicities (the real `Std` in production).
+    witness: Arc<S>,
 }
 
-impl<F: PrimeField64> BinaryExtensionCollector<F> {
+impl<S: VirtualTableSink> BinaryExtensionCollector<S> {
     pub fn new(
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
-        std: Arc<Std<F>>,
+        witness: Arc<S>,
     ) -> Self {
-        let frops_table_id = std
-            .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
-            .expect("Failed to get FROPS table ID");
+        let frops_table_id = witness.virtual_table_id(BinaryExtensionFrops::TABLE_ID);
         Self {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
             force_execute_to_end,
             frops_table_id,
-            std,
+            witness,
         }
     }
 
@@ -65,29 +60,28 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
+        // Dispatched only for the `BinaryE` op-type arm of the router, so the
+        // fixed operation header can be read directly (no `ExtOperationData`).
+        debug_assert_eq!(data[OP_TYPE] as u32, ZiskOperationType::BinaryE as u32);
+
         let instance_complete = self.inputs.len() == self.num_operations;
 
         if instance_complete && !self.force_execute_to_end {
             return false;
         }
 
-        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
+        let op = data[OP] as u8;
+        let a = data[A];
+        let b = data[B];
 
-        let op_data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&op_data);
-
-        if op_type as u32 != ZiskOperationType::BinaryE as u32 {
-            return true;
-        }
+        let frops_row = BinaryExtensionFrops::get_row(op, a, b);
 
         if self.collect_skipper.should_skip_query(frops_row == BinaryExtensionFrops::NO_FROPS) {
             return true;
         }
 
         if frops_row != BinaryExtensionFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+            self.witness.inc_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -96,13 +90,13 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
             return true;
         }
 
-        self.inputs.push(BinaryInput::from(&op_data));
+        self.inputs.push(BinaryInput::new(op, a, b));
 
         self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 }
 
-impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
+impl<S: VirtualTableSink> BusDevice<u64> for BinaryExtensionCollector<S> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

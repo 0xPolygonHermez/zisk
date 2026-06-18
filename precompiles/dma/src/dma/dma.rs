@@ -1,11 +1,12 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::RangeChecker;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
     DmaTrace, DmaTraceRow, DmaTraceRowOps, DmaTraceRowPacked, DMA_ROM_ID, DUAL_RANGE_7_BITS_ID,
@@ -15,23 +16,25 @@ use crate::{dma::dma_rom::DmaRom, dma_trace, DmaInput, DmaModule, DMA_ROM_WITH_M
 use precompiles_helpers::DmaInfo;
 
 /// The `DmaSM` struct encapsulates the logic of the Dma State Machine.
-pub struct DmaSM<F: PrimeField64> {
+pub struct DmaSM<F: PrimeField64, RC: RangeChecker> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     pub rom_table_id: usize,
     pub dual_range_7_bits_id: usize,
     pub range_22_bits_id: usize,
     pub range_24_bits_id: usize,
     pub range_16_bits_id: usize,
+
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> DmaSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> DmaSM<F, RC> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `DmaSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             rom_table_id: std.get_virtual_table_id(DMA_ROM_ID).expect("Failed to get dma rom ID"),
@@ -47,6 +50,7 @@ impl<F: PrimeField64> DmaSM<F> {
             range_16_bits_id: std
                 .get_range_id(0, 0xFFFF, None)
                 .expect("Failed to get 16b table ID"),
+            _marker: PhantomData,
         })
     }
 
@@ -335,7 +339,7 @@ impl<F: PrimeField64> DmaSM<F> {
         Ok(AirInstance::new_from_trace(from_trace))
     }
 }
-impl<F: PrimeField64> DmaModule<F> for DmaSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> DmaModule<F> for DmaSM<F, RC> {
     fn get_name(&self) -> &'static str {
         "dma"
     }

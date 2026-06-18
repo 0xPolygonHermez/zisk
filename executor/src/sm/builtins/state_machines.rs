@@ -3,7 +3,6 @@
 //! dispatch (`planner_for_position`).
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use precomp_dma::DmaManager;
 use proofman_common::ProofCtx;
 use sm_arith::ArithSM;
@@ -13,7 +12,10 @@ use sm_rom::RomSM;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
+use zisk_common::{
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, NoopRangeChecker, Plan, Planner,
+    RangeChecker,
+};
 use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
     DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS,
@@ -75,22 +77,29 @@ pub const DMA_POSITION: usize = 4;
 pub const BUILTIN_COUNT: usize = 5;
 
 /// Built-in state machines.
-pub enum BuiltinSMs<F: PrimeField64> {
+///
+/// `RC` is the range-checker the witness-bearing SMs are built with (the
+/// real `Std` in production, a no-op stand-in such as `NoopRangeChecker`
+/// for tests / standalone). `RomSM` carries no `RC`.
+///
+/// Note: `planner_for_position` is plan-time and range-checker-independent,
+/// so it uses [`NoopRangeChecker`] purely as a type token — no `RC` instance involved.
+pub enum BuiltinSMs<F: PrimeField64, RC: RangeChecker> {
     /// Rom state machine
     RomSM(Arc<RomSM>),
     /// Memory-related state machines.
-    MemSM(Arc<Mem<F>>),
+    MemSM(Arc<Mem<F, RC>>),
     /// Binary operation state machines.
-    BinarySM(Arc<BinarySM<F>>),
+    BinarySM(Arc<BinarySM<F, RC>>),
     /// Arithmetic operation state machines.
-    ArithSM(Arc<ArithSM<F>>),
+    ArithSM(Arc<ArithSM<F, RC>>),
     /// DMA-related state machines.
-    DmaManager(Arc<DmaManager<F>>),
+    DmaManager(Arc<DmaManager<F, RC>>),
 }
 
-impl<F: PrimeField64> BuiltinSMs<F> {
+impl<F: PrimeField64, RC: RangeChecker> BuiltinSMs<F, RC> {
     /// Constructs every built-in SM paired with its AIR-id coverage.
-    pub(crate) fn all(std: Arc<Std<F>>) -> Vec<(SMAirType, Self)> {
+    pub(crate) fn all(std: Arc<RC>) -> Vec<(SMAirType, Self)> {
         vec![
             (Cow::Borrowed(ROM_AIR_IDS_MAP), Self::RomSM(RomSM::new::<F>())),
             (Cow::Borrowed(MEM_AIR_IDS_MAP), Self::MemSM(Mem::new(std.clone()))),
@@ -106,10 +115,18 @@ impl<F: PrimeField64> BuiltinSMs<F> {
             ROM_POSITION => unreachable!(
                 "ROM planning goes through RomPlanner::plan_for_chunks, not the Planner trait"
             ),
-            MEM_POSITION => <Mem<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
-            BINARY_POSITION => <BinarySM<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
-            ARITH_POSITION => <ArithSM<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
-            DMA_POSITION => <DmaManager<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            MEM_POSITION => {
+                <Mem<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+            }
+            BINARY_POSITION => {
+                <BinarySM<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+            }
+            ARITH_POSITION => {
+                <ArithSM<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+            }
+            DMA_POSITION => <DmaManager<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(
+                is_asm_emulator,
+            ),
             _ => panic!("planner_for_position: invalid builtin position {position}"),
         }
     }

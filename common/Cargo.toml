@@ -16,6 +16,7 @@ zisk-stream = { workspace = true, features = ["quic"] }
 proofman-common = { workspace = true }
 proofman-verifier = { workspace = true, features = ["parallel"] }
 proofman = { workspace = true }
+pil-std-lib = { workspace = true }
 fields = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }

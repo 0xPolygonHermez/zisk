@@ -1846,7 +1846,6 @@ dependencies = [
  "mem-common",
  "named-sem",
  "paste",
- "pil-std-lib",
  "precomp-arith-eq",
  "precomp-arith-eq-384",
  "precomp-big-int",
@@ -3449,7 +3448,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "path-clean",
- "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3475,7 +3473,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "path-clean",
- "pil-std-lib",
  "precomp-arith-eq",
  "precompiles-common",
  "precompiles-helpers",
@@ -3495,7 +3492,6 @@ version = "1.0.0-beta"
 dependencies = [
  "fields",
  "lib-c",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -3511,7 +3507,6 @@ name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -3527,7 +3522,6 @@ name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3546,7 +3540,6 @@ dependencies = [
  "circuit",
  "fields",
  "path-clean",
- "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3564,7 +3557,6 @@ name = "precomp-poseidon"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -3580,7 +3572,6 @@ name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -4195,6 +4186,19 @@ dependencies = [
 [[package]]
 name = "riscv"
 version = "1.0.0-beta"
+dependencies = [
+ "zisk-core",
+ "zisk-definitions",
+]
+
+[[package]]
+name = "riscv2zisk"
+version = "1.0.0-beta"
+dependencies = [
+ "transpilers-common",
+ "zisk-core",
+ "zisk-definitions",
+]
 
 [[package]]
 name = "rlp"
@@ -4214,6 +4218,7 @@ dependencies = [
  "blake3",
  "fields",
  "proofman-common",
+ "riscv2zisk",
  "sm-rom",
  "tracing",
  "zisk-common",
@@ -4773,7 +4778,6 @@ name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "proofman-common",
  "rayon",
  "sm-binary",
@@ -4789,7 +4793,6 @@ name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "proofman-common",
  "rayon",
  "sm-frequent-ops",
@@ -4817,7 +4820,6 @@ version = "1.0.0-beta"
 dependencies = [
  "fields",
  "mem-common",
- "pil-std-lib",
  "proofman-common",
  "rayon",
  "thiserror 2.0.18",
@@ -4835,7 +4837,6 @@ dependencies = [
  "env",
  "fields",
  "mem-common",
- "pil-std-lib",
  "proofman-common",
  "proofman-util",
  "rayon",
@@ -4854,6 +4855,7 @@ dependencies = [
  "mem-common",
  "proofman-common",
  "rayon",
+ "riscv2zisk",
  "thiserror 2.0.18",
  "tracing",
  "zisk-common",
@@ -5486,6 +5488,16 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "transpilers-common"
+version = "1.0.0-beta"
+dependencies = [
+ "elf",
+ "riscv",
+ "zisk-core",
+ "zisk-definitions",
 ]
 
 [[package]]
@@ -6601,6 +6613,7 @@ dependencies = [
  "dirs",
  "fields",
  "paste",
+ "pil-std-lib",
  "proofman",
  "proofman-common",
  "proofman-verifier",
@@ -6655,7 +6668,6 @@ dependencies = [
  "paste",
  "precompiles-helpers",
  "rayon",
- "riscv",
  "sha2",
  "tiny-keccak",
  "zisk-definitions",
@@ -6700,11 +6712,13 @@ dependencies = [
  "colored",
  "executor",
  "fields",
+ "pil-std-lib",
  "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",
  "proofman-verifier",
+ "riscv2zisk",
  "rom-setup",
  "serde",
  "tracing",
@@ -6769,12 +6783,14 @@ dependencies = [
  "rayon",
  "regex",
  "riscv",
+ "riscv2zisk",
  "serde_json",
  "sm-arith",
  "sm-binary",
  "symbolic-demangle",
  "sysinfo 0.38.4",
  "time",
+ "transpilers-common",
  "vergen-git2",
  "zisk-common",
  "zisk-core",

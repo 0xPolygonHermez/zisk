@@ -24,7 +24,7 @@ use std::{
 };
 use tracing::error;
 use zisk_common::{
-    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
+    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, RangeChecker, Stats,
 };
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
@@ -37,15 +37,19 @@ use asm_runner::AsmRunnerRH;
 /// [`crate::ChunkCollectorStore::inner`].
 type CollectorSlots = Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>;
 
+/// One per-chunk collector data bus, taken exactly once by the worker
+/// that processes that chunk (hence `Mutex<Option<_>>`).
+type ChunkBusSlot<F, RC> = Mutex<Option<StaticDataBusCollect<PayloadType, F, RC>>>;
+
 /// Borrowed context handed to each rayon worker. Bundles the 14
 /// references the chunk-processing loop needs so signatures stay
 /// readable. Constructed once per `collect()` call.
-struct WorkerCtx<'a, F: PrimeField64> {
+struct WorkerCtx<'a, F: PrimeField64, RC: RangeChecker> {
     // ── Work feed ──
     next_chunk: &'a AtomicUsize,
     ordered_chunks: &'a [usize],
     chunks_to_execute: &'a [Vec<usize>],
-    data_buses: &'a [Mutex<Option<StaticDataBusCollect<PayloadType, F>>>],
+    data_buses: &'a [ChunkBusSlot<F, RC>],
 
     // ── Inputs ──
     zisk_rom: &'a ZiskRom,
@@ -76,17 +80,17 @@ fn push_error(errors: &Mutex<Vec<String>>, message: String) {
     }
 }
 
-pub struct ChunkDataCollector<F: PrimeField64> {
+pub struct ChunkDataCollector<F: PrimeField64, RC: RangeChecker> {
     /// State machine bundle for building data buses.
-    sm_bundle: Arc<StaticSMBundle<F>>,
+    sm_bundle: Arc<StaticSMBundle<F, RC>>,
 }
 
-impl<F: PrimeField64> ChunkDataCollector<F> {
+impl<F: PrimeField64, RC: RangeChecker> ChunkDataCollector<F, RC> {
     /// Creates a new `ChunkDataCollector`.
     ///
     /// # Arguments
     /// * `sm_bundle` - State machine bundle.
-    pub fn new(sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
+    pub fn new(sm_bundle: Arc<StaticSMBundle<F, RC>>) -> Self {
         Self { sm_bundle }
     }
 
@@ -206,7 +210,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     pub fn collect_single(
         &self,
         pctx: &ProofCtx<F>,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         global_id: usize,
         instance: &dyn Instance<F>,
     ) -> ExecutorResult<()> {
@@ -228,7 +232,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     pub fn collect(
         &self,
         pctx: &ProofCtx<F>,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> ExecutorResult<()> {
         let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
@@ -359,7 +363,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// counter; takes each chunk's data bus exactly once (subsequent
     /// stealers see `None` and skip); processes via
     /// [`Self::process_one_chunk`].
-    fn worker_loop(ctx: &WorkerCtx<'_, F>) {
+    fn worker_loop(ctx: &WorkerCtx<'_, F, RC>) {
         loop {
             let next_chunk_id = ctx.next_chunk.fetch_add(1, Ordering::Relaxed);
             if next_chunk_id >= ctx.ordered_chunks.len() {
@@ -394,8 +398,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// records witness stats via [`Self::record_completion_stats`].
     fn process_one_chunk(
         chunk_id: usize,
-        mut data_bus: StaticDataBusCollect<PayloadType, F>,
-        ctx: &WorkerCtx<'_, F>,
+        mut data_bus: StaticDataBusCollect<PayloadType, F, RC>,
+        ctx: &WorkerCtx<'_, F, RC>,
     ) {
         // Mark collection start time for each affected instance, and
         // remember which globals this chunk feeds so we can advance
@@ -483,7 +487,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// reads the recorded start time, computes elapsed duration, and
     /// publishes per-witness stats. Each error path delegates to
     /// [`push_error`] so a failure here cannot abort other workers.
-    fn record_completion_stats(global_id: usize, global_id_idx: usize, ctx: &WorkerCtx<'_, F>) {
+    fn record_completion_stats(global_id: usize, global_id_idx: usize, ctx: &WorkerCtx<'_, F, RC>) {
         let Some(collect_start_time) = ctx.collect_start_times[global_id_idx].load() else {
             push_error(ctx.errors, format!("collect_start_time not set for global_id {global_id}"));
             return;

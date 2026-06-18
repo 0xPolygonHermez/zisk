@@ -3,22 +3,25 @@
 //! This state machine processes binary-related operations.
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
+use std::marker::PhantomData;
 use std::sync::Arc;
+use zisk_common::RangeChecker;
 use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRowOps};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
-pub struct BinaryAddSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+pub struct BinaryAddSM<F: PrimeField64, RC: RangeChecker> {
+    /// Range-check / virtual-table sink (the real `Std` in production).
+    std: Arc<RC>,
     range_id: usize,
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> BinaryAddSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> BinaryAddSM<F, RC> {
     /// Creates a new BinaryAdd State Machine instance.
     ///
     /// # Arguments/// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
@@ -26,11 +29,11 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// A new `BinaryAddSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         let range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
 
         // Create the BinaryAdd state machine
-        Arc::new(Self { std, range_id })
+        Arc::new(Self { std, range_id, _marker: PhantomData })
     }
 
     /// Processes a slice of operation data, generating a trace row and updating multiplicities.

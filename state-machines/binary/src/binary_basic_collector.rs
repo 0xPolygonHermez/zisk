@@ -4,17 +4,14 @@
 
 use crate::{BinaryBasicFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, VirtualTableSink, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
 use std::sync::Arc;
 
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector<F: PrimeField64> {
+pub struct BinaryBasicCollector<S: VirtualTableSink> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
@@ -31,11 +28,11 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
     /// The table ID for the Binary FROPS
     frops_table_id: usize,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    /// Sink for virtual-table multiplicities (the real `Std` in production).
+    witness: Arc<S>,
 }
 
-impl<F: PrimeField64> BinaryBasicCollector<F> {
+impl<S: VirtualTableSink> BinaryBasicCollector<S> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
@@ -49,11 +46,9 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
         collect_skipper: CollectSkipper,
         with_adds: bool,
         force_execute_to_end: bool,
-        std: Arc<Std<F>>,
+        witness: Arc<S>,
     ) -> Self {
-        let frops_table_id = std
-            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
-            .expect("Failed to get FROPS table ID");
+        let frops_table_id = witness.virtual_table_id(BinaryBasicFrops::TABLE_ID);
 
         Self {
             inputs: Vec::with_capacity(num_operations),
@@ -62,7 +57,7 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             with_adds,
             force_execute_to_end,
             frops_table_id,
-            std,
+            witness,
         }
     }
 
@@ -79,33 +74,33 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
+        // The router (`route_data`) dispatches this collector only for the
+        // `Binary` op-type arm, so the fixed operation header `[op, op_type, a, b]`
+        // can be read directly instead of round-tripping through `ExtOperationData`.
+        debug_assert_eq!(data[OP_TYPE] as u32, ZiskOperationType::Binary as u32);
+
         let instance_complete = self.inputs.len() == self.num_operations;
 
         if instance_complete && !self.force_execute_to_end {
             return false;
         }
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
+        let op = data[OP] as u8;
+        let a = data[A];
+        let b = data[B];
 
-        let op_data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op_type = OperationBusData::get_op_type(&op_data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
+        if !self.with_adds && op == ZiskOp::Add.code() {
             return true;
         }
 
-        if !self.with_adds && OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
-            return true;
-        }
+        let frops_row = BinaryBasicFrops::get_row(op, a, b);
 
         if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
             return true;
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+            self.witness.inc_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -113,13 +108,13 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             // instance complete => no FROPS operation => discard, inputs complete
             return true;
         }
-        self.inputs.push(BinaryInput::from(&op_data));
+        self.inputs.push(BinaryInput::new(op, a, b));
 
         self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 }
 
-impl<F: PrimeField64> BusDevice<u64> for BinaryBasicCollector<F> {
+impl<S: VirtualTableSink> BusDevice<u64> for BinaryBasicCollector<S> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

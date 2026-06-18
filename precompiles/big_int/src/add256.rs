@@ -1,13 +1,15 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-use zisk_common::{OperationAdd256Data, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
+use zisk_common::{
+    OperationAdd256Data, RangeChecker, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP,
+};
 use zisk_pil::{Add256Trace, Add256TraceRowOps};
 
 use super::add256_constants::{PARAM_CHUNKS, START_READ_PARAMS};
@@ -43,29 +45,32 @@ impl Add256Input {
 }
 
 /// The `Add256SM` struct encapsulates the logic of the Add256 State Machine.
-pub struct Add256SM<F: PrimeField64> {
+pub struct Add256SM<F: PrimeField64, RC: RangeChecker> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     /// Number of available add256s in the trace.
     pub num_availables: usize,
 
     /// Range checks ID's
     range_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> Add256SM<F> {
+impl<F: PrimeField64, RC: RangeChecker> Add256SM<F, RC> {
     /// Creates a new Add256 State Machine instance.
     ///
     /// # Returns
     /// A new `Add256SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Compute some useful values
         let num_availables = Add256Trace::<()>::NUM_ROWS;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).unwrap();
 
-        Arc::new(Self { std, num_availables, range_id })
+        Arc::new(Self { std, num_availables, range_id, _marker: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace.

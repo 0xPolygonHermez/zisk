@@ -9,10 +9,9 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use zisk_common::{
     BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo,
-    Planner,
+    Planner, RangeChecker,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -21,27 +20,27 @@ use crate::{ArithCounterInputGen, ArithFullInstance, ArithFullSM, ArithPlanner};
 
 /// The `ArithSM` struct represents the Arithmetic State Machine, which
 /// is a proxy machine to manage state machines involved in arithmetic operations.
-pub struct ArithSM<F: PrimeField64> {
+pub struct ArithSM<F: PrimeField64, RC: RangeChecker> {
     /// Arith Full state machine
-    arith_full_sm: Arc<ArithFullSM<F>>,
+    arith_full_sm: Arc<ArithFullSM<F, RC>>,
 
     /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    std: Arc<RC>,
 }
 
-impl<F: PrimeField64> ArithSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> ArithSM<F, RC> {
     /// Creates a new instance of the `ArithSM` state machine.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithSM` containing initialized sub-state machines.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         let arith_full_sm = ArithFullSM::new(std.clone());
 
         Arc::new(Self { arith_full_sm, std })
     }
 }
 
-impl<F: PrimeField64> ComponentPlanBuilder<F> for ArithSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> ComponentPlanBuilder<F> for ArithSM<F, RC> {
     type Counter = ArithCounterInputGen;
 
     fn counter(_is_asm_emulator: bool) -> Self::Counter {
@@ -58,7 +57,7 @@ impl<F: PrimeField64> ComponentPlanBuilder<F> for ArithSM<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> ComponentBuilder<F> for ArithSM<F, RC> {
     /// Builds an instance of the Arithmetic state machine.
     ///
     /// # Arguments

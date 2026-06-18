@@ -2,12 +2,12 @@ use fields::PrimeField64;
 use lib_c::add256;
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
-use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_common::{RangeChecker, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 
 use crate::add256_constants::*;
 use crate::Add256SM;
 
-impl<F: PrimeField64> PrecompileMemInputs for Add256SM<F> {
+impl<F: PrimeField64, RC: RangeChecker> PrecompileMemInputs for Add256SM<F, RC> {
     fn generate<P: MemProcessor>(
         addr_main: u32,
         step_main: u64,

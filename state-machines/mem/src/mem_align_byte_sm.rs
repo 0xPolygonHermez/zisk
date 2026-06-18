@@ -1,8 +1,9 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use rayon::prelude::*;
+use zisk_common::RangeChecker;
 
 use crate::MemAlignInput;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -298,19 +299,22 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
 const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 
-pub struct MemAlignByteSM<F: PrimeField64> {
+pub struct MemAlignByteSM<F: PrimeField64, RC: RangeChecker> {
     /// PIL2 standard library
-    std: Arc<Std<F>>,
+    std: Arc<RC>,
 
     /// The table ID for the Mem Align ROM State Machine
     table_dual_byte_id: usize,
 
     table_16b_id: usize,
     table_8b_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> MemAlignByteSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<F: PrimeField64, RC: RangeChecker> MemAlignByteSM<F, RC> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Get the table ID
         Arc::new(Self {
             std: std.clone(),
@@ -319,6 +323,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
                 .expect("Failed to get dual byte table ID"),
             table_16b_id: std.get_range_id(0, 0xFFFF, None).expect("Failed to get 16b table ID"),
             table_8b_id: std.get_range_id(0, 0xFF, None).expect("Failed to get 8b table ID"),
+            _marker: PhantomData,
         })
     }
 

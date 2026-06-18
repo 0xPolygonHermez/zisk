@@ -6,14 +6,13 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use fields::Goldilocks;
 use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
 
-use crate::{ArithFrops, ArithFullSM};
+use crate::{generate_inputs, ArithFrops};
 
 /// The `ArithCounter` struct represents a counter that monitors and measures
 /// arithmetic-related operations on the data bus.
@@ -96,7 +95,7 @@ impl ArithCounterInputGen {
             self.measure(data);
         }
 
-        ArithFullSM::<Goldilocks>::generate_inputs(data, pending);
+        generate_inputs(data, pending);
 
         true
     }

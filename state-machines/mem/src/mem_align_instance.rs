@@ -6,22 +6,22 @@ use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, RangeChecker,
 };
 use zisk_pil::{MemAlignTraceRow, MemAlignTraceRowPacked};
 
-pub struct MemAlignInstance<F: PrimeField64> {
+pub struct MemAlignInstance<F: PrimeField64, RC: RangeChecker> {
     /// Instance context
     ictx: InstanceCtx,
 
     /// Checkpoint data for this memory align instance.
     checkpoint: HashMap<ChunkId, MemAlignCheckPoint>,
 
-    mem_align_sm: Arc<MemAlignSM<F>>,
+    mem_align_sm: Arc<MemAlignSM<F, RC>>,
 }
 
-impl<F: PrimeField64> MemAlignInstance<F> {
-    pub fn new(mem_align_sm: Arc<MemAlignSM<F>>, mut ictx: InstanceCtx) -> Self {
+impl<F: PrimeField64, RC: RangeChecker> MemAlignInstance<F, RC> {
+    pub fn new(mem_align_sm: Arc<MemAlignSM<F, RC>>, mut ictx: InstanceCtx) -> Self {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let checkpoint = *meta
@@ -36,7 +36,7 @@ impl<F: PrimeField64> MemAlignInstance<F> {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
+impl<F: PrimeField64, RC: RangeChecker> Instance<F> for MemAlignInstance<F, RC> {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
+use zisk_common::NoopRangeChecker;
 use zisk_core::ZiskRom;
 
 use crate::execute_client::ExecuteClient;
@@ -27,7 +28,7 @@ struct AsmSetupState {
 }
 
 pub struct AsmExecClient {
-    executor: Arc<ZiskExecutor<Goldilocks>>,
+    executor: Arc<ZiskExecutor<Goldilocks, NoopRangeChecker>>,
     asm_cache_dir: PathBuf,
     verbose: VerboseMode,
     gpu: bool,
@@ -37,7 +38,7 @@ pub struct AsmExecClient {
 impl AsmExecClient {
     pub fn new(verbose: VerboseMode, asm_cache_dir: Option<PathBuf>, gpu: bool) -> Result<Self> {
         let asm_cache_dir = rom_setup::get_output_path(&asm_cache_dir)?;
-        let executor = ZiskExecutor::<Goldilocks>::new_standalone(verbose, true)?;
+        let executor = ZiskExecutor::<Goldilocks, NoopRangeChecker>::new_standalone(verbose, true)?;
         Ok(Self { executor, asm_cache_dir, verbose, gpu, program: Mutex::new(None) })
     }
 

@@ -6,13 +6,12 @@
 
 use crate::{BinaryExtensionCollector, BinaryExtensionSM};
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    PayloadType, RangeChecker,
 };
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked};
 
@@ -21,9 +20,9 @@ use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTra
 ///
 /// It encapsulates the `BinaryExtensionSM` and its associated context, and it processes input data
 /// to compute witnesses for binary extension operations.
-pub struct BinaryExtensionInstance<F: PrimeField64> {
+pub struct BinaryExtensionInstance<F: PrimeField64, RC: RangeChecker> {
     /// Binary Extension state machine.
-    binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+    binary_extension_sm: Arc<BinaryExtensionSM<F, RC>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
@@ -31,11 +30,11 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
     /// Instance context.
     ictx: InstanceCtx,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    /// Range-check / virtual-table sink (the real `Std` in production).
+    std: Arc<RC>,
 }
 
-impl<F: PrimeField64> BinaryExtensionInstance<F> {
+impl<F: PrimeField64, RC: RangeChecker> BinaryExtensionInstance<F, RC> {
     /// Creates a new `BinaryExtensionInstance`.
     ///
     /// # Arguments
@@ -47,9 +46,9 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     /// A new `BinaryExtensionInstance` instance initialized with the provided state machine and
     /// context.
     pub fn new(
-        binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+        binary_extension_sm: Arc<BinaryExtensionSM<F, RC>>,
         mut ictx: InstanceCtx,
-        std: Arc<Std<F>>,
+        std: Arc<RC>,
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
@@ -70,7 +69,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     pub fn build_binary_extension_collector(
         &self,
         chunk_id: ChunkId,
-    ) -> BinaryExtensionCollector<F> {
+    ) -> BinaryExtensionCollector<RC> {
         assert_eq!(
             self.ictx.plan.air_id,
             BinaryExtensionTrace::<()>::AIR_ID,
@@ -88,7 +87,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
+impl<F: PrimeField64, RC: RangeChecker> Instance<F> for BinaryExtensionInstance<F, RC> {
     /// Computes the witness for the binary extension execution plan.
     ///
     /// This method leverages the `BinaryExtensionSM` to generate an `AirInstance` using the
@@ -113,7 +112,7 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             .into_iter()
             .map(|(_, collector)| {
                 let _collector =
-                    collector.as_any().downcast::<BinaryExtensionCollector<F>>().unwrap();
+                    collector.as_any().downcast::<BinaryExtensionCollector<RC>>().unwrap();
                 _collector.inputs
             })
             .collect();

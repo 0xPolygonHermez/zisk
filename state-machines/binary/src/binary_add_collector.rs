@@ -2,17 +2,14 @@
 
 use crate::BinaryBasicFrops;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, VirtualTableSink, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
-use zisk_core::zisk_ops::ZiskOp;
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
 use std::sync::Arc;
 
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.
-pub struct BinaryAddCollector<F: PrimeField64> {
+pub struct BinaryAddCollector<S: VirtualTableSink> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<[u64; 2]>,
 
@@ -25,11 +22,11 @@ pub struct BinaryAddCollector<F: PrimeField64> {
     /// The table ID for the Binary Add FROPS
     frops_table_id: usize,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    /// Sink for virtual-table multiplicities (the real `Std` in production).
+    witness: Arc<S>,
 }
 
-impl<F: PrimeField64> BinaryAddCollector<F> {
+impl<S: VirtualTableSink> BinaryAddCollector<S> {
     /// Creates a new `BinaryAddCollector`.
     ///
     /// # Arguments
@@ -42,18 +39,16 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
-        std: Arc<Std<F>>,
+        witness: Arc<S>,
     ) -> Self {
-        let frops_table_id = std
-            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
-            .expect("Failed to get FROPS table ID");
+        let frops_table_id = witness.virtual_table_id(BinaryBasicFrops::TABLE_ID);
         Self {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
             force_execute_to_end,
             frops_table_id,
-            std,
+            witness,
         }
     }
 
@@ -70,29 +65,32 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
+        // Dispatched only for the `Binary` op-type arm of the router, so the
+        // fixed operation header can be read directly (no `ExtOperationData`).
+        debug_assert_eq!(data[OP_TYPE] as u32, ZiskOperationType::Binary as u32);
+
         let instance_complete = self.inputs.len() == self.num_operations;
 
         if instance_complete && !self.force_execute_to_end {
             return false;
         }
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
-
-        let op_data: ExtOperationData<u64> =
-            data.try_into().expect("Regular Metrics: Failed to convert data");
-
-        let op = OperationBusData::get_op(&op_data);
+        let op = data[OP] as u8;
+        let a = data[A];
+        let b = data[B];
 
         if op != ZiskOp::Add.code() {
             return true;
         }
+
+        let frops_row = BinaryBasicFrops::get_row(op, a, b);
 
         if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
             return true;
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+            self.witness.inc_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -101,13 +99,13 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
             return true;
         }
 
-        self.inputs.push([OperationBusData::get_a(&op_data), OperationBusData::get_b(&op_data)]);
+        self.inputs.push([a, b]);
 
         self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 }
 
-impl<F: PrimeField64> BusDevice<u64> for BinaryAddCollector<F> {
+impl<S: VirtualTableSink> BusDevice<u64> for BinaryAddCollector<S> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

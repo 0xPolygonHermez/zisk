@@ -1,11 +1,12 @@
 use fields::PrimeField64;
 use rayon::prelude::*;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqLtTableSM;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::RangeChecker;
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRowOps};
 
 use crate::{
@@ -15,14 +16,14 @@ use crate::{
 };
 
 /// The `ArithEq384SM` struct encapsulates the logic of the ArithEq384 State Machine.
-pub struct ArithEq384SM<F: PrimeField64> {
+pub struct ArithEq384SM<F: PrimeField64, RC: RangeChecker> {
     /// Number of available arith384s in the trace.
     pub num_available_ops: usize,
 
     num_non_usable_rows: usize,
 
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     /// The table ID for the Keccakf Table State Machine
     table_id: usize,
@@ -30,6 +31,9 @@ pub struct ArithEq384SM<F: PrimeField64> {
     pub q_hsc_range_id: usize,
     pub chunk_range_id: usize,
     pub carry_range_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 #[derive(Debug, Default)]
 struct ArithEq384StepAddr {
@@ -44,12 +48,12 @@ struct ArithEq384StepAddr {
     addr_ind: [u32; 5],
 }
 
-impl<F: PrimeField64> ArithEq384SM<F> {
+impl<F: PrimeField64, RC: RangeChecker> ArithEq384SM<F, RC> {
     /// Creates a new ArithEq384 State Machine instance.
     ///
     /// # Returns
     /// A new `ArithEq384SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Compute some useful values
         let num_available_ops = ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
         let num_non_usable_rows = ArithEq384Trace::<()>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
@@ -74,6 +78,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             chunk_range_id,
             carry_range_id,
             table_id,
+            _marker: PhantomData,
         })
     }
     // Returns the LT flags for x3 and y3. The flags are determined solely by the operation type.

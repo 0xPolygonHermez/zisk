@@ -24,6 +24,7 @@ mod regular_counters;
 mod regular_planner;
 mod types;
 mod utils;
+mod witness_table;
 mod zisk_precompile;
 
 pub use bus::*;
@@ -45,4 +46,5 @@ pub use regular_counters::*;
 pub use regular_planner::*;
 pub use types::*;
 pub use utils::*;
+pub use witness_table::*;
 pub use zisk_precompile::*;

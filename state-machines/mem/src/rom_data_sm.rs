@@ -3,13 +3,13 @@ use std::sync::Arc;
 use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS};
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use std::marker::PhantomData;
 use std::{
     fs::File,
     io::{BufWriter, Write},
 };
-use zisk_common::SegmentId;
+use zisk_common::{RangeChecker, SegmentId};
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{
     RomDataAirValues, RomDataTrace, RomDataTraceRow, RomDataTraceRowOps, RomDataTraceRowPacked,
@@ -26,22 +26,25 @@ const _: () = {
     );
 };
 
-pub struct RomDataSM<F: PrimeField64> {
+pub struct RomDataSM<F: PrimeField64, RC: RangeChecker> {
     /// PIL2 standard library
-    std: Arc<Std<F>>,
+    std: Arc<RC>,
 
     range_24bits_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
 const OFFSET_USE_FLAG: u32 = 0x8000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64> RomDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<F: PrimeField64, RC: RangeChecker> RomDataSM<F, RC> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         let range_24bits_id =
             std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
-        Arc::new(Self { range_24bits_id, std: std.clone() })
+        Arc::new(Self { range_24bits_id, std: std.clone(), _marker: PhantomData })
     }
     pub fn get_from_addr() -> u32 {
         ROM_DATA_W_ADDR_INIT
@@ -424,7 +427,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     }
 }
 
-impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> MemModule<F> for RomDataSM<F, RC> {
     fn get_addr_range(&self) -> (u32, u32) {
         (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
     }

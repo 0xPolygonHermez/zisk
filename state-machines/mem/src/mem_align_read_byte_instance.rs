@@ -6,22 +6,22 @@ use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, RangeChecker,
 };
 use zisk_pil::{MemAlignReadByteTrace, MemAlignReadByteTraceRow, MemAlignReadByteTraceRowPacked};
 
-pub struct MemAlignReadByteInstance<F: PrimeField64> {
+pub struct MemAlignReadByteInstance<F: PrimeField64, RC: RangeChecker> {
     /// Instance context
     ictx: InstanceCtx,
 
     /// Checkpoint data for this memory align instance.
     checkpoint: HashMap<ChunkId, MemAlignCheckPoint>,
 
-    mem_align_byte_sm: Arc<MemAlignByteSM<F>>,
+    mem_align_byte_sm: Arc<MemAlignByteSM<F, RC>>,
 }
 
-impl<F: PrimeField64> MemAlignReadByteInstance<F> {
-    pub fn new(mem_align_sm: Arc<MemAlignByteSM<F>>, mut ictx: InstanceCtx) -> Self {
+impl<F: PrimeField64, RC: RangeChecker> MemAlignReadByteInstance<F, RC> {
+    pub fn new(mem_align_sm: Arc<MemAlignByteSM<F, RC>>, mut ictx: InstanceCtx) -> Self {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let checkpoint = *meta
@@ -36,7 +36,7 @@ impl<F: PrimeField64> MemAlignReadByteInstance<F> {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
+impl<F: PrimeField64, RC: RangeChecker> Instance<F> for MemAlignReadByteInstance<F, RC> {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

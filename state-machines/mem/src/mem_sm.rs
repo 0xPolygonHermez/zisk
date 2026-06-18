@@ -1,5 +1,6 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
-use zisk_common::SegmentId;
+use zisk_common::{RangeChecker, SegmentId};
 use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
 
 #[cfg(feature = "debug_mem")]
@@ -15,19 +16,21 @@ use crate::mem_module::save_offsets_to_file;
 use crate::{MemInput, MemModule};
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 
 const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
 const OFFSET_USE_FLAG: u32 = 0x4000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x3FFF_FFFF;
-pub struct MemSM<F: PrimeField64> {
+pub struct MemSM<F: PrimeField64, RC: RangeChecker> {
     /// PIL2 standard library
-    std: Arc<Std<F>>,
+    std: Arc<RC>,
 
     range_22bits_id: usize,
     range_16bits_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 #[derive(Debug, Default)]
 pub struct MemPreviousSegment {
@@ -37,14 +40,14 @@ pub struct MemPreviousSegment {
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64> MemSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         let range_22bits_id =
             std.get_range_id(0, (1 << 22) - 1, None).expect("Failed to get 22 bits range ID");
         let range_16bits_id =
             std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get 16 bits range ID");
 
-        Arc::new(Self { range_22bits_id, range_16bits_id, std: std.clone() })
+        Arc::new(Self { range_22bits_id, range_16bits_id, std: std.clone(), _marker: PhantomData })
     }
 
     pub fn get_to_addr() -> u32 {
@@ -901,7 +904,7 @@ impl<F: PrimeField64> MemSM<F> {
     }
 }
 
-impl<F: PrimeField64> MemModule<F> for MemSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> MemModule<F> for MemSM<F, RC> {
     fn get_addr_range(&self) -> (u32, u32) {
         (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
     }

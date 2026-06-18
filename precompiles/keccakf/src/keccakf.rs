@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
@@ -9,7 +8,8 @@ use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use precompiles_helpers::{
     keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
 };
-use zisk_common::OperationKeccakData;
+use std::marker::PhantomData;
+use zisk_common::{OperationKeccakData, RangeChecker};
 use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
 
 use super::{keccakf_constants::*, KeccakfTableSM};
@@ -35,18 +35,21 @@ impl KeccakfInput {
 }
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
-pub struct KeccakfSM<F: PrimeField64> {
+pub struct KeccakfSM<F: PrimeField64, RC: RangeChecker> {
     /// Number of available keccakfs in the trace.
     pub num_available_keccakfs: usize,
 
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+    /// Range-check / virtual-table sink (the real `Std` in production).
+    std: Arc<RC>,
 
     /// The table ID for the Keccakf Table State Machine
     table_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> KeccakfSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> KeccakfSM<F, RC> {
     /// Creates a new Keccakf State Machine instance.
     ///
     /// # Arguments
@@ -54,7 +57,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Compute some useful values
         let num_non_usable_rows = KeccakfTrace::<()>::NUM_ROWS % CLOCKS;
         let num_available_keccakfs = if num_non_usable_rows == 0 {
@@ -69,7 +72,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
             .get_virtual_table_id(KeccakfTableSM::TABLE_ID)
             .expect("Failed to get Keccakf table ID");
 
-        Arc::new(Self { num_available_keccakfs, std, table_id })
+        Arc::new(Self { num_available_keccakfs, std, table_id, _marker: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.

@@ -1,13 +1,13 @@
 use core::panic;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::OperationBlake2Data;
+use zisk_common::{OperationBlake2Data, RangeChecker};
 use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
 
 use super::blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA};
@@ -39,9 +39,9 @@ impl Blake2Input {
 }
 
 /// The `Blake2SM` struct encapsulates the logic of the Blake2 State Machine.
-pub struct Blake2SM<F: PrimeField64> {
+pub struct Blake2SM<F: PrimeField64, RC: RangeChecker> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     /// Number of available blake2s in the trace.
     pub num_available_blake2s: usize,
@@ -49,14 +49,17 @@ pub struct Blake2SM<F: PrimeField64> {
     num_non_usable_rows: usize,
 
     range_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> Blake2SM<F> {
+impl<F: PrimeField64, RC: RangeChecker> Blake2SM<F, RC> {
     /// Creates a new Blake2 State Machine instance.
     ///
     /// # Returns
     /// A new `Blake2SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Compute some useful values
         let num_non_usable_rows = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS % CLOCKS;
         let num_available_blake2s = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS / CLOCKS
@@ -64,7 +67,13 @@ impl<F: PrimeField64> Blake2SM<F> {
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { std, num_available_blake2s, num_non_usable_rows, range_id })
+        Arc::new(Self {
+            std,
+            num_available_blake2s,
+            num_non_usable_rows,
+            range_id,
+            _marker: PhantomData,
+        })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.

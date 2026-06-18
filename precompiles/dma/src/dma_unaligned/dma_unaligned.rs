@@ -1,13 +1,13 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
 
 use crate::{dma_trace, DmaUnalignedInput};
-use pil_std_lib::Std;
 use precompiles_helpers::DmaInfo;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::SegmentId;
+use zisk_common::{RangeChecker, SegmentId};
 use zisk_pil::{
     DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps, DUAL_RANGE_BYTE_ID,
 };
@@ -23,21 +23,23 @@ pub struct DmaUnalignedPrevSegment {
 }
 
 /// The `DmaUnalignedSM` struct encapsulates the logic of the DmaUnaligned State Machine.
-pub struct DmaUnalignedSM<F: PrimeField64> {
+pub struct DmaUnalignedSM<F: PrimeField64, RC: RangeChecker> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     /// Range checks ID's
     range_16_bits_id: usize,
     dual_range_byte_id: usize,
+
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> DmaUnalignedSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> DmaUnalignedSM<F, RC> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `DmaUnalignedSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             dual_range_byte_id: std
@@ -46,6 +48,7 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
             range_16_bits_id: std
                 .get_range_id(0, 0xFFFF, None)
                 .expect("Failed to get 16b table ID"),
+            _marker: PhantomData,
         })
     }
 

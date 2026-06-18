@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::{
@@ -6,10 +7,9 @@ use fields::{
 };
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::{OperationPoseidonData, OP};
+use zisk_common::{OperationPoseidonData, RangeChecker, OP};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowOps};
 
@@ -41,27 +41,30 @@ impl PoseidonInput {
 
 /// The `PoseidonSM` struct encapsulates the logic of the Poseidon State Machine,
 /// serving both the Poseidon1 and Poseidon2 hash families.
-pub struct PoseidonSM<F: PrimeField64> {
+pub struct PoseidonSM<F: PrimeField64, RC: RangeChecker> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
 
     /// Number of available poseidon permutations in the trace.
     pub num_available_poseidons: usize,
 
     range_id: usize,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
 pub const CLOCKS: usize = 14;
 
-impl<F: PrimeField64> PoseidonSM<F> {
+impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
     /// Creates a new Poseidon State Machine instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<RC>) -> Arc<Self> {
         // Compute some useful values
         let num_available_poseidons = PoseidonTrace::<PoseidonTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { std, num_available_poseidons, range_id })
+        Arc::new(Self { std, num_available_poseidons, range_id, _marker: PhantomData })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.

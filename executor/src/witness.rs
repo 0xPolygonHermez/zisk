@@ -23,7 +23,7 @@ use asm_runner::AsmRunnerRH;
 use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use sm_main::MainInstance;
-use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
+use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, RangeChecker, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
 
@@ -38,7 +38,7 @@ use crate::state::ExecutionState;
 /// ([`crate::ports::Dctx`]); `pctx` itself is still kept because the
 /// downstream `WitnessGenerator` and `ChunkDataCollector` call sites
 /// take `&ProofCtx<F>` directly (cross-crate, library-coupled).
-pub struct WitnessContext<'a, F: PrimeField64> {
+pub struct WitnessContext<'a, F: PrimeField64, RC: RangeChecker> {
     /// Proof context (used by witness_generator / collector).
     pub pctx: &'a ProofCtx<F>,
 
@@ -46,7 +46,7 @@ pub struct WitnessContext<'a, F: PrimeField64> {
     pub sctx: &'a SetupCtx<F>,
 
     /// Execution state.
-    pub state: &'a ExecutionState<F>,
+    pub state: &'a ExecutionState<F, RC>,
 
     /// Buffer pool for trace data.
     pub buffer_pool: &'a dyn BufferPool<F>,
@@ -62,13 +62,13 @@ pub struct WitnessContext<'a, F: PrimeField64> {
     pub is_asm_emulator: bool,
 }
 
-impl<'a, F: PrimeField64> WitnessContext<'a, F> {
+impl<'a, F: PrimeField64, RC: RangeChecker> WitnessContext<'a, F, RC> {
     /// Creates a new witness context.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pctx: &'a ProofCtx<F>,
         sctx: &'a SetupCtx<F>,
-        state: &'a ExecutionState<F>,
+        state: &'a ExecutionState<F, RC>,
         buffer_pool: &'a dyn BufferPool<F>,
         stats_scope: &'a StatsScope,
         registry: &'a dyn Dctx,
@@ -88,14 +88,14 @@ impl<'a, F: PrimeField64> WitnessContext<'a, F> {
 /// Phase-4 actor — classifies each global id and dispatches to one
 /// of five [`handlers`] modules. Also owns the witness-time
 /// materialization of instances (formerly `InstancePopulator`).
-pub struct WitnessPhase<F: PrimeField64> {
+pub struct WitnessPhase<F: PrimeField64, RC: RangeChecker> {
     /// Constructed SM bundle. Held directly so the populator-style
     /// methods can dispatch `build_instance` / `configure_instances`
     /// / `get_std` without going through `collector`.
-    sm_bundle: Arc<StaticSMBundle<F>>,
+    sm_bundle: Arc<StaticSMBundle<F, RC>>,
 
     /// Chunk data collector for secondary instances.
-    collector: ChunkDataCollector<F>,
+    collector: ChunkDataCollector<F, RC>,
 
     /// Witness computer for all instance types.
     witness_generator: WitnessGenerator,
@@ -104,8 +104,8 @@ pub struct WitnessPhase<F: PrimeField64> {
     trace_buffer_rom: Mutex<Vec<F>>,
 }
 
-impl<F: PrimeField64> WitnessPhase<F> {
-    pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
+impl<F: PrimeField64, RC: RangeChecker> WitnessPhase<F, RC> {
+    pub fn new(chunk_size: u64, sm_bundle: Arc<StaticSMBundle<F, RC>>) -> Self {
         let collector = ChunkDataCollector::new(sm_bundle.clone());
         let witness_generator = WitnessGenerator::new(chunk_size);
         let trace_buffer_rom = Mutex::new(vec![F::ZERO; RomTrace::<F>::NUM_ROWS]);
@@ -135,7 +135,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     pub fn populate_main_instances(
         &self,
         registry: &dyn ProofRegistry,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         assignments: Vec<(usize, Plan)>,
     ) -> ExecutorResult<()> {
         let mut main_instances =
@@ -165,7 +165,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     /// Materialise secondary instances into `state`. Plans must carry stamped `global_id`s.
     pub fn populate_secn_instances(
         &self,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         plans: Vec<Plan>,
     ) -> ExecutorResult<()> {
         let mut secn_instances =
@@ -185,7 +185,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     pub fn configure_checkpoints(
         &self,
         registry: &dyn ProofRegistry,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         global_ids: &[usize],
     ) -> ExecutorResult<()> {
         let secn_instances = state.instance_set.secn_instances.read_or_poison("secn_instances")?;
@@ -224,7 +224,11 @@ impl<F: PrimeField64> WitnessPhase<F> {
     ///      * `Instance` + `is_rom(air_id)` → `self.rom_handler`
     ///        (the strategy baked at construction)
     ///      * `Instance` (non-ROM) → [`SecondaryWitnessHandler`]
-    pub fn dispatch(&self, ctx: &WitnessContext<'_, F>, global_id: usize) -> ExecutorResult<()> {
+    pub fn dispatch(
+        &self,
+        ctx: &WitnessContext<'_, F, RC>,
+        global_id: usize,
+    ) -> ExecutorResult<()> {
         let (airgroup_id, air_id) = ctx.get_instance_info(global_id)?;
         let stats_scope_id = ctx.stats_scope.id();
 
@@ -284,7 +288,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     /// taken when collection is needed differs.
     fn rom_dispatch(
         &self,
-        ctx: &WitnessContext<'_, F>,
+        ctx: &WitnessContext<'_, F, RC>,
         global_id: usize,
         airgroup_id: usize,
         air_id: usize,
@@ -341,7 +345,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
         &self,
         pctx: &ProofCtx<F>,
         registry: &dyn Dctx,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         global_ids: &[usize],
         is_asm_emulator: bool,
     ) -> ExecutorResult<()> {
@@ -394,7 +398,7 @@ impl<F: PrimeField64> WitnessPhase<F> {
     fn handle_secondary_pre_calculate<'a>(
         &self,
         registry: &dyn Dctx,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
         global_id: usize,

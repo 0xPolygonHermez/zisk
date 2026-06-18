@@ -19,23 +19,22 @@ use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{Instance, InstanceCtx, Plan};
+use zisk_common::{Instance, InstanceCtx, NoopRangeChecker, Plan, RangeChecker};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 use asm_runner::AsmRunnerRH;
 
 use zisk_core::ZiskRom;
 
-pub type SMType<F> = (SMAirType, StateMachines<F>);
+pub type SMType<F, RC> = (SMAirType, StateMachines<F, RC>);
 
-pub enum StateMachines<F: PrimeField64> {
-    Builtin(BuiltinSMs<F>),
-    Precompile(Precompiles<F>),
+pub enum StateMachines<F: PrimeField64, RC: RangeChecker> {
+    Builtin(BuiltinSMs<F, RC>),
+    Precompile(Precompiles<F, RC>),
 }
 
-impl<F: PrimeField64> StateMachines<F> {
+impl<F: PrimeField64, RC: RangeChecker> StateMachines<F, RC> {
     fn configure_instances(&self, pctx: &ProofCtx<F>, plans: &[Plan]) {
         match self {
             Self::Builtin(b) => b.configure_instances(pctx, plans),
@@ -51,19 +50,21 @@ impl<F: PrimeField64> StateMachines<F> {
     }
 }
 
-pub struct StaticSMBundle<F: PrimeField64> {
+pub struct StaticSMBundle<F: PrimeField64, RC: RangeChecker> {
     /// Every built-in and precompile SM registered in this bundle.
-    sm: Vec<SMType<F>>,
+    sm: Vec<SMType<F, RC>>,
 
-    /// The standard library instance to be shared across built-in SMs and precompiles.
-    std: Arc<Std<F>>,
+    /// The range-checker (`Std` in production, a no-op stand-in such as
+    /// `NoopRangeChecker` for tests / standalone) shared
+    /// across built-in SMs and precompiles.
+    std: Arc<RC>,
 }
 
-impl<F: PrimeField64> StaticSMBundle<F> {
+impl<F: PrimeField64, RC: RangeChecker> StaticSMBundle<F, RC> {
     /// Construct the bundle with the built-in SMs (Rom, Mem, Binary,
     /// Arith, Dma) created internally + the caller-supplied precompiles.
-    pub fn new(std: Arc<Std<F>>, precompiles: Vec<(usize, Precompiles<F>)>) -> Self {
-        let sm: Vec<SMType<F>> = BuiltinSMs::all(std.clone())
+    pub fn new(std: Arc<RC>, precompiles: Vec<(usize, Precompiles<F, RC>)>) -> Self {
+        let sm: Vec<SMType<F, RC>> = BuiltinSMs::all(std.clone())
             .into_iter()
             .map(|(ids, b)| (ids, StateMachines::Builtin(b)))
             .chain(precompiles.into_iter().map(|(air_id, p)| {
@@ -98,8 +99,8 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         Ok(())
     }
 
-    /// Getter for the shared `Std` instance in the bundle, used by built-in SMs and precompiles.
-    pub fn get_std(&self) -> Arc<Std<F>> {
+    /// Getter for the shared range-checker in the bundle, used by built-in SMs and precompiles.
+    pub fn get_std(&self) -> Arc<RC> {
         self.std.clone()
     }
 
@@ -148,7 +149,10 @@ pub fn plan_sec<F: PrimeField64>(
 
     for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION] {
         if let Some(counters) = vec_counters.remove(&pos) {
-            let planner = BuiltinSMs::<F>::planner_for_position(pos, is_asm_emulator);
+            // The planner produced is range-checker-independent, so the `RC`
+            // selector here is irrelevant — use the no-op `NoopRangeChecker` token.
+            let planner =
+                BuiltinSMs::<F, NoopRangeChecker>::planner_for_position(pos, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));
         }
     }
@@ -156,7 +160,8 @@ pub fn plan_sec<F: PrimeField64>(
     for (i, &air_id) in PRECOMPILE_AIR_IDS.iter().enumerate() {
         let pos = BUILTIN_COUNT + i;
         if let Some(counters) = vec_counters.remove(&pos) {
-            let planner = Precompiles::<F>::planner_for_air_id(air_id, is_asm_emulator);
+            let planner =
+                Precompiles::<F, NoopRangeChecker>::planner_for_air_id(air_id, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));
         }
     }

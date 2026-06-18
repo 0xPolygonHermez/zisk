@@ -7,7 +7,7 @@ use proofman_common::{ProofCtx, SetupCtx};
 use sm_main::MainInstance;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
+use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, RangeChecker, Stats};
 use zisk_pil::{MainTraceRow, MainTraceRowPacked};
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
@@ -43,11 +43,11 @@ impl WitnessGenerator {
     /// * `main_instance` - The main instance to compute witness for.
     /// * `trace_buffer` - Buffer for trace data.
     /// * `caller_stats_id` - Parent stats scope ID.
-    pub fn compute_main_witness<F: PrimeField64>(
+    pub fn compute_main_witness<F: PrimeField64, RC: RangeChecker>(
         &self,
         pctx: &ProofCtx<F>,
-        state: &ExecutionState<F>,
-        main_instance: &MainInstance<F>,
+        state: &ExecutionState<F, RC>,
+        main_instance: &MainInstance<F, RC>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
     ) -> ExecutorResult<()> {
@@ -101,11 +101,11 @@ impl WitnessGenerator {
     /// * `trace_buffer` - Buffer for trace data.
     /// * `_caller_stats_id` - Parent stats scope ID.
     #[allow(clippy::too_many_arguments)]
-    pub fn compute_secn_witness<F: PrimeField64>(
+    pub fn compute_secn_witness<F: PrimeField64, RC: RangeChecker>(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, RC>,
         global_id: usize,
         secn_instance: &dyn Instance<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<u64>>)>,

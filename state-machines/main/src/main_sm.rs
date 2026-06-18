@@ -7,15 +7,15 @@
 //!   segment.
 //! - Methods for computing the witness and setting up trace rows.
 
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::MainSmError;
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
-use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
+use zisk_common::{EmuTrace, InstanceCtx, Plan, RangeChecker, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
@@ -24,15 +24,18 @@ use zisk_pil::{MainTrace, MainTraceRowOps};
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
-pub struct MainInstance<F: PrimeField64> {
+pub struct MainInstance<F: PrimeField64, RC: RangeChecker> {
     /// Instance Context
     pub ictx: InstanceCtx,
 
     /// Standard library for the main instance, used for range checks operations.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<RC>,
+
+    /// `F` is used by the witness-generation methods, not by a stored field.
+    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64> MainInstance<F> {
+impl<F: PrimeField64, RC: RangeChecker> MainInstance<F, RC> {
     /// Maximum segment ID allowed, derived from `DEFAULT_MAX_STEPS` and `MainTrace::NUM_ROWS`.
     const MAX_SEGMENT_ID: usize =
         (((DEFAULT_MAX_STEPS + 1) / MainTrace::<()>::NUM_ROWS as u64) - 1) as usize;
@@ -44,8 +47,8 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// A new `MainInstance`.
-    pub fn new(ictx: InstanceCtx, std: Arc<Std<F>>) -> Self {
-        Self { ictx, std }
+    pub fn new(ictx: InstanceCtx, std: Arc<RC>) -> Self {
+        Self { ictx, std, _marker: PhantomData }
     }
 
     /// Computes the main witness trace for a given segment based on the provided proof context,
@@ -442,11 +445,12 @@ mod tests {
     use super::*;
     use fields::Goldilocks;
     use std::any::Any;
+    use zisk_common::NoopRangeChecker;
     use zisk_common::{CheckPoint, ChunkId, InstanceType};
 
     // `mem_steps_for_segment` doesn't use `F`, but it's now an associated fn on
     // `MainInstance<F>`, so the call site has to pick some concrete `F`.
-    type MI = MainInstance<Goldilocks>;
+    type MI = MainInstance<Goldilocks, NoopRangeChecker>;
 
     fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any>>) -> Plan {
         Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)

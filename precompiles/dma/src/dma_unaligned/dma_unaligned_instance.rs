@@ -13,6 +13,7 @@ use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Arc;
 use zisk_common::ChunkId;
+use zisk_common::RangeChecker;
 use zisk_common::StatsType;
 use zisk_common::{BusDevice, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType};
 use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPacked};
@@ -21,9 +22,9 @@ use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPack
 ///
 /// It encapsulates the `DmaUnalignedSM` and its associated context, and it processes input data
 /// to compute witnesses for the DmaUnaligned State Machine.
-pub struct DmaUnalignedInstance<F: PrimeField64> {
+pub struct DmaUnalignedInstance<F: PrimeField64, RC: RangeChecker> {
     /// Dma state machine.
-    dma_unaligned_sm: Arc<DmaUnalignedSM<F>>,
+    dma_unaligned_sm: Arc<DmaUnalignedSM<F, RC>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -32,7 +33,7 @@ pub struct DmaUnalignedInstance<F: PrimeField64> {
     is_last_segment: bool,
 }
 
-impl<F: PrimeField64> DmaUnalignedInstance<F> {
+impl<F: PrimeField64, RC: RangeChecker> DmaUnalignedInstance<F, RC> {
     /// Creates a new `DmaUnalignedInstance`.
     ///
     /// # Arguments
@@ -43,7 +44,7 @@ impl<F: PrimeField64> DmaUnalignedInstance<F> {
     /// # Returns
     /// A new `DmaUnalignedInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(dma_unaligned_sm: Arc<DmaUnalignedSM<F>>, ictx: InstanceCtx) -> Self {
+    pub fn new(dma_unaligned_sm: Arc<DmaUnalignedSM<F, RC>>, ictx: InstanceCtx) -> Self {
         let is_last_segment = {
             let meta = ictx.plan.meta.as_ref().unwrap();
             let checkpoint = meta.downcast_ref::<DmaCheckPoint>().unwrap();
@@ -72,7 +73,7 @@ impl<F: PrimeField64> DmaUnalignedInstance<F> {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for DmaUnalignedInstance<F> {
+impl<F: PrimeField64, RC: RangeChecker> Instance<F> for DmaUnalignedInstance<F, RC> {
     /// Computes the witness for the Dma execution plan.
     ///
     /// This method leverages the `DmaUnalignedSM` to generate an `AirInstance` using the collected
