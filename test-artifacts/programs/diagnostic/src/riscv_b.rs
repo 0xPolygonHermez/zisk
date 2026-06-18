@@ -1,6 +1,6 @@
 //use std::arch::asm;
 
-pub fn diagnostic_riscv_zbkb() {
+pub fn diagnostic_riscv_b() {
     rev8(0x0102030405060708, 0x0807060504030201);
     rev8(0xF0F0F0F0F0F0F0F0, 0xF0F0F0F0F0F0F0F0);
     rev8(0x0000000000000000, 0x0000000000000000);
@@ -71,6 +71,45 @@ pub fn diagnostic_riscv_zbkb() {
     rori();
 
     roriw();
+
+    min(0x0000000000000001, 0x0000000000000002, 0x0000000000000001);
+    min(0x0000000000000002, 0x0000000000000001, 0x0000000000000001);
+    min(0xFFFFFFFFFFFFFFFF, 0x0000000000000000, 0xFFFFFFFFFFFFFFFF);
+    min(0x0000000000000000, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+    min(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+
+    minu(0x0000000000000001, 0x0000000000000002, 0x0000000000000001);
+    minu(0x0000000000000002, 0x0000000000000001, 0x0000000000000001);
+    minu(0xFFFFFFFFFFFFFFFF, 0x0000000000000000, 0x0000000000000000);
+    minu(0x0000000000000000, 0xFFFFFFFFFFFFFFFF, 0x0000000000000000);
+    minu(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+
+    max(0x0000000000000001, 0x0000000000000002, 0x0000000000000002);
+    max(0x0000000000000002, 0x0000000000000001, 0x0000000000000002);
+    max(0xFFFFFFFFFFFFFFFF, 0x0000000000000000, 0x0000000000000000);
+    max(0x0000000000000000, 0xFFFFFFFFFFFFFFFF, 0x0000000000000000);
+    max(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+
+    maxu(0x0000000000000001, 0x0000000000000002, 0x0000000000000002);
+    maxu(0x0000000000000002, 0x0000000000000001, 0x0000000000000002);
+    maxu(0xFFFFFFFFFFFFFFFF, 0x0000000000000000, 0xFFFFFFFFFFFFFFFF);
+    maxu(0x0000000000000000, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+    maxu(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+
+    sext_b(0x00000000000000FF, 0xFFFFFFFFFFFFFFFF);
+    sext_b(0x000000000000007F, 0x000000000000007F);
+    sext_b(0x0000000000000080, 0xFFFFFFFFFFFFFF80);
+    sext_b(0x0000000000000000, 0x0000000000000000);
+
+    sext_h(0x000000000000FFFF, 0xFFFFFFFFFFFFFFFF);
+    sext_h(0x0000000000007FFF, 0x0000000000007FFF);
+    sext_h(0x0000000000008000, 0xFFFFFFFFFFFF8000);
+    sext_h(0x0000000000000000, 0x0000000000000000);
+
+    zext_h(0x000000000000FFFF, 0x000000000000FFFF);
+    zext_h(0x0000000000007FFF, 0x0000000000007FFF);
+    zext_h(0x0000000000008000, 0x0000000000008000);
+    zext_h(0x0000000000000000, 0x0000000000000000);
 
     println!("All RISC-V Zbkb extension diagnostics passed!");
 }
@@ -329,4 +368,230 @@ fn roriw() {
 
     // Check result is as expected
     assert_eq!(c, expected_c);
+}
+
+fn min(input_a: u64, input_b: u64, expected_c: u64) {
+    let a: u64 = input_a;
+    let b: u64 = input_b;
+    let c: u64;
+
+    // Use RISCV inline assembly to ensure ZisK instruction is called
+    unsafe {
+        std::arch::asm!(
+            "min {result}, {input1}, {input2}",
+            result = out(reg) c,
+            input1 = in(reg) a,
+            input2 = in(reg) b,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(c, expected_c);
+}
+
+fn minu(input_a: u64, input_b: u64, expected_c: u64) {
+    let a: u64 = input_a;
+    let b: u64 = input_b;
+    let c: u64;
+
+    // Use RISCV inline assembly to ensure ZisK instruction is called
+    unsafe {
+        std::arch::asm!(
+            "minu {result}, {input1}, {input2}",
+            result = out(reg) c,
+            input1 = in(reg) a,
+            input2 = in(reg) b,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(c, expected_c);
+}
+
+fn max(input_a: u64, input_b: u64, expected_c: u64) {
+    let a: u64 = input_a;
+    let b: u64 = input_b;
+    let c: u64;
+
+    // Use RISCV inline assembly to ensure ZisK instruction is called
+    unsafe {
+        std::arch::asm!(
+            "max {result}, {input1}, {input2}",
+            result = out(reg) c,
+            input1 = in(reg) a,
+            input2 = in(reg) b,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(c, expected_c);
+}
+
+fn maxu(input_a: u64, input_b: u64, expected_c: u64) {
+    let a: u64 = input_a;
+    let b: u64 = input_b;
+    let c: u64;
+
+    // Use RISCV inline assembly to ensure ZisK instruction is called
+    unsafe {
+        std::arch::asm!(
+            "maxu {result}, {input1}, {input2}",
+            result = out(reg) c,
+            input1 = in(reg) a,
+            input2 = in(reg) b,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(c, expected_c);
+}
+
+fn sext_b(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "sext.b {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn sext_h(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "sext.h {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn zext_h(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "zext.h {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn clz(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "clz {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn clz_w(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "clzw {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn ctz(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "ctz {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn ctz_w(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "ctzw {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn cpop(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "cpop {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn cpop_w(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "cpopw {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
+}
+
+fn orc_b(input_a: u64, expected_c: u64) {
+    let mut a: u64 = input_a;
+
+    // Use RISCV inline assembly to ensure RISC-V instruction is called
+    unsafe {
+        std::arch::asm!(
+            "orc.b {input1}, {input1}",
+            input1 = inout(reg) a,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(a, expected_c);
 }
