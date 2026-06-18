@@ -502,3 +502,33 @@ pub fn opc_sh3add_u_w(ctx: &mut InstContext) {
 pub fn opc_sll_u_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_sll_u_w(ctx.a, ctx.b);
 }
+
+/// InstContext-based wrapper over op_clmul()
+#[inline(always)]
+pub fn opc_clmul(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clmul(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clmul_h()
+#[inline(always)]
+pub fn opc_clmul_h(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clmul_h(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clmul_r()
+#[inline(always)]
+pub fn opc_clmul_r(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clmul_r(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_xperm4()
+#[inline(always)]
+pub fn opc_xperm4(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_xperm4(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_xperm8()
+#[inline(always)]
+pub fn opc_xperm8(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_xperm8(ctx.a, ctx.b);
+}

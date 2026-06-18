@@ -7742,6 +7742,11 @@ impl ZiskRom2Asm {
             ZiskOp::Sh3add => todo!(),
             ZiskOp::Sh3addUW => todo!(),
             ZiskOp::SllUW => todo!(),
+            ZiskOp::Clmul => todo!(),
+            ZiskOp::ClmulH => todo!(),
+            ZiskOp::ClmulR => todo!(),
+            ZiskOp::Xperm4 => todo!(),
+            ZiskOp::Xperm8 => todo!(),
         }
     }
 

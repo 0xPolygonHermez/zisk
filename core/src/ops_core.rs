@@ -716,3 +716,125 @@ pub const fn op_sh3add_u_w(a: u64, b: u64) -> (u64, bool) {
 pub const fn op_sll_u_w(a: u64, b: u64) -> (u64, bool) {
     ((a & 0xFFFFFFFF) << (b & 0x3F), false)
 }
+
+/// Sets c to carry-less multiplication of a and b (low part), and flag to false
+#[inline(always)]
+pub const fn op_clmul(a: u64, b: u64) -> (u64, bool) {
+    let mut output: u64 = 0;
+    let mut i = 0;
+    while i < 64 {
+        if (b >> i) & 1 == 1 {
+            output ^= a << i;
+        }
+        i += 1;
+    }
+    (output, false)
+}
+
+/// Sets c to carry-less multiplication of a and b (high part), and flag to false
+#[inline(always)]
+pub const fn op_clmul_h(a: u64, b: u64) -> (u64, bool) {
+    let mut output: u64 = 0;
+    let mut i = 0;
+    while i < 64 {
+        if (b >> i) & 1 == 1 {
+            output ^= a >> (64 - i);
+        }
+        i += 1;
+    }
+    (output, false)
+}
+
+/// Sets c to carry-less multiplication of a and b (reversed), and flag to false
+#[inline(always)]
+pub const fn op_clmul_r(a: u64, b: u64) -> (u64, bool) {
+    let mut output: u64 = 0;
+    let mut i = 0;
+    while i < 64 {
+        if (b >> i) & 1 == 1 {
+            output ^= a >> (63 - i);
+        }
+        i += 1;
+    }
+    (output, false)
+}
+
+/// Sets c to nibble-wise lookup of indices (b) into a vector (a), and flag to false
+#[inline(always)]
+pub const fn op_xperm4(a: u64, b: u64) -> (u64, bool) {
+    // Extract nibbles from a
+    let mut values: [u8; 16] = [0; 16];
+    let mut i = 0;
+    while i < 16 {
+        values[i] = ((a >> (i * 4)) & 0xF) as u8;
+        i += 1;
+    }
+
+    // Extract indices from b
+    let mut indexes: [u8; 16] = [0; 16];
+    i = 0;
+    while i < 16 {
+        indexes[i] = ((b >> (i * 4)) & 0xF) as u8;
+        i += 1;
+    }
+
+    // Perform the lookup
+    let mut output: [u8; 16] = [0; 16];
+    i = 0;
+    while i < 16 {
+        if indexes[i] < 16 {
+            output[i] = values[indexes[i] as usize];
+        }
+        i += 1;
+    }
+
+    // Combine the output nibbles back into a u64
+    let mut result: u64 = 0;
+    i = 0;
+    while i < 16 {
+        result |= (output[i] as u64) << (i * 4);
+        i += 1;
+    }
+
+    (result, false)
+}
+
+/// Sets c to byte-wise lookup of indices (b) into a vector (a), and flag to false
+#[inline(always)]
+pub const fn op_xperm8(a: u64, b: u64) -> (u64, bool) {
+    // Extract bytes from a
+    let mut values: [u8; 8] = [0; 8];
+    let mut i = 0;
+    while i < 8 {
+        values[i] = ((a >> (i * 8)) & 0xFF) as u8;
+        i += 1;
+    }
+
+    // Extract indices from b
+    let mut indexes: [u8; 8] = [0; 8];
+    i = 0;
+    while i < 8 {
+        indexes[i] = ((b >> (i * 8)) & 0xFF) as u8;
+        i += 1;
+    }
+
+    // Perform the lookup
+    let mut output: [u8; 8] = [0; 8];
+    i = 0;
+    while i < 8 {
+        if indexes[i] < 8 {
+            output[i] = values[indexes[i] as usize];
+        }
+        i += 1;
+    }
+
+    // Combine the output bytes back into a u64
+    let mut result: u64 = 0;
+    i = 0;
+    while i < 8 {
+        result |= (output[i] as u64) << (i * 8);
+        i += 1;
+    }
+
+    (result, false)
+}

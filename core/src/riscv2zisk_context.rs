@@ -626,6 +626,20 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "bit_manipulation_extensions")]
             "slli.uw" => self.immediate_op(riscv_instruction, "sll_u_w", 4),
 
+            // Carry-less multiplication operations (Zbc)
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clmul" => self.create_register_op(riscv_instruction, "clmul", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clmulh" => self.create_register_op(riscv_instruction, "clmul_h", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clmulr" => self.create_register_op(riscv_instruction, "clmul_r", 4),
+
+            // Crossbar permutations operations (Zbkx)
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "xperm4" => self.create_register_op(riscv_instruction, "xperm4", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "xperm8" => self.create_register_op(riscv_instruction, "xperm8", 4),
+
             // Special ZisK instructions
             ////////////////////////////
 
