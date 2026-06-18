@@ -7,7 +7,7 @@ pub const ARITHA32_COST: u64 = 95;
 pub const ARITHAM32_COST: u64 = 95;
 pub const KECCAK_COST: u64 = 25 * 3023;
 pub const SHA256_COST: u64 = 72 * 122;
-pub const POSEIDON_COST: u64 = 14 * 75;
+pub const POSEIDON_COST: u64 = 14 * 392;
 pub const ARITH_EQ_COST: u64 = 89 * 16;
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 79 * 24;
@@ -20,14 +20,14 @@ pub const BLAKE2_COST: u64 = 24 * 209;
     +------------+------------------------+-----------------+--------------+----------+----------+
     | Hash       | Full-op cost           | Msg bytes/block | Cost / byte  | Relative |    BF    |
     +------------+------------------------+-----------------+--------------+----------+----------+
-    | Poseidon2  | 14 x 75 = 1.050        |  96 (nominal)   |     10,9     |   1,0x   |    2     |
-    | SHA2-256   | 72 x 122 = 8.784       |  64             |    137,3     |  12,5x   |    1     |
-    | Blake2b    | 12 x 24 x 209 = 60.192 | 128             |    470,3     |  43,0x   |    1     |
-    | Keccak-256 | 25 x 3023 = 75.575     | 136             |    555,7     |  50,8x   |    1     |
+    | Poseidon   | 14 x 392 = 5.488       |  96 (nominal)   |     57,2     |   1,0x   |    1     |
+    | SHA2-256   | 72 x 122 = 8.784       |  64             |    137,3     |   2,4x   |    1     |
+    | Blake2b    | 12 x 24 x 209 = 60.192 | 128             |    470,3     |   8,2x   |    1     |
+    | Keccak-256 | 25 x 3023 = 75.575     | 136             |    555,7     |   9,7x   |    1     |
     +------------+------------------------+-----------------+--------------+----------+----------+
 
     Notes:
-    - Poseidon2 bytes are nominal (12 Goldilocks elements x 8 bytes); a Goldilocks element
+    - Poseidon bytes are nominal (12 Goldilocks elements x 8 bytes); a Goldilocks element
     holds ~63.99 bits, so the truly absorbable payload is slightly under 96 bytes.
     - Blake2b's BLAKE2_COST is the cost of a single round; a full compression is 12 rounds,
     which is the full-op cost used in the table above.
