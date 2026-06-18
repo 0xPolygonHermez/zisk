@@ -493,7 +493,6 @@ EOF
   # Install the proving/verify key setup. Strip any leading 'v' — ZISK_VERSION
   # carries the tag form (e.g. "v0.17.0") but key tarballs are named with the
   # bare semver ("zisk-provingkey-0.17.0.tar.gz").
-  IFS='.' read -r major minor patch <<< "${ZISK_VERSION#v}"
   SETUP_VERSION="${ZISK_VERSION#v}"
   case "${SETUP_KEY}" in
     proving)
@@ -1102,7 +1101,6 @@ setup_snark_command() {
   ZISK_VERSION=$("${CARGO_ZISK}" --version | awk '{print $2}')
 
   # Parse version to get setup version
-  IFS='.' read -r major minor patch <<< "${ZISK_VERSION#v}"
   SETUP_VERSION="${ZISK_VERSION#v}"
 
   step "Installing SNARK proving key for ZisK version ${ZISK_VERSION}..."
