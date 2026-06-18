@@ -538,7 +538,7 @@ pub const fn op_pack(a: u64, b: u64) -> (u64, bool) {
     (a & 0xFFFFFFFF | (b & 0xFFFFFFFF) << 32, false)
 }
 
-/// Sets c to the value low8(a) | (low8(b) << 8), sign extended, and flag to false
+/// Sets c to the value low8(a) | (low8(b) << 8), and flag to false
 #[inline(always)]
 pub const fn op_pack_h(a: u64, b: u64) -> (u64, bool) {
     ((a & 0xFF | (b & 0xFF) << 8) as u64, false)
@@ -669,43 +669,43 @@ pub const fn op_bset(a: u64, b: u64) -> (u64, bool) {
     (a | (1 << (b & 0x3F)), false)
 }
 
-/// Sets c to a plus b (modulo 32), and flag to false
+/// Sets c to b plus a (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_add_u_w(a: u64, b: u64) -> (u64, bool) {
     (b + (a & 0xFFFFFFFF), false)
 }
 
-/// Sets c to a plus b << 1, and flag to false
+/// Sets c to b plus a << 1, and flag to false
 #[inline(always)]
 pub const fn op_sh1add(a: u64, b: u64) -> (u64, bool) {
     (b + (a << 1), false)
 }
 
-/// Sets c to a plus b (modulo 32) << 1, and flag to false
+/// Sets c to b plus a (modulo 32) << 1, and flag to false
 #[inline(always)]
 pub const fn op_sh1add_u_w(a: u64, b: u64) -> (u64, bool) {
     (b + ((a & 0xFFFFFFFF) << 1), false)
 }
 
-/// Sets c to a plus b << 2, and flag to false
+/// Sets c to b plus a << 2, and flag to false
 #[inline(always)]
 pub const fn op_sh2add(a: u64, b: u64) -> (u64, bool) {
     (b + (a << 2), false)
 }
 
-/// Sets c to a plus b (modulo 32) << 2, and flag to false
+/// Sets c to b plus a (modulo 32) << 2, and flag to false
 #[inline(always)]
 pub const fn op_sh2add_u_w(a: u64, b: u64) -> (u64, bool) {
     (b + ((a & 0xFFFFFFFF) << 2), false)
 }
 
-/// Sets c to a plus b << 3, and flag to false
+/// Sets c to b plus a << 3, and flag to false
 #[inline(always)]
 pub const fn op_sh3add(a: u64, b: u64) -> (u64, bool) {
     (b + (a << 3), false)
 }
 
-/// Sets c to a plus b (modulo 32) << 3, and flag to false
+/// Sets c to b plus a (modulo 32) << 3, and flag to false
 #[inline(always)]
 pub const fn op_sh3add_u_w(a: u64, b: u64) -> (u64, bool) {
     (b + ((a & 0xFFFFFFFF) << 3), false)
