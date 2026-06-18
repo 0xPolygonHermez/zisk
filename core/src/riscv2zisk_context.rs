@@ -557,13 +557,22 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "bit_manipulation_extensions")]
             "maxu" => self.create_register_op(riscv_instruction, "maxu", 4),
 
-            // Sign-extend operations
+            // Sign-extend / zero-extend operations.
+            // These are register-to-register (Zbb) ops, NOT memory loads: they
+            // extend the low byte/half of rs1, so they use the single-source
+            // register path (signature is (op, inst_size, rs), rs=1 -> rs1).
+            // Using load_op here would (wrongly) read memory at rs1 + imm.
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sext.b" => self.load_op(riscv_instruction, "signextend_b", 1, 4),
+            "sext.b" => {
+                self.create_single_source_register_op(riscv_instruction, "signextend_b", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sext.h" => self.load_op(riscv_instruction, "signextend_h", 2, 4),
+            "sext.h" => {
+                self.create_single_source_register_op(riscv_instruction, "signextend_h", 4, 1)
+            }
+            // zext.h zero-extends the low 16 bits of rs1: rd = rs1 & 0xFFFF.
             #[cfg(feature = "bit_manipulation_extensions")]
-            "zext.h" => self.load_op(riscv_instruction, "copyb", 2, 4),
+            "zext.h" => self.zero_extend_h(riscv_instruction, 4),
 
             // Bit count operations
             #[cfg(feature = "bit_manipulation_extensions")]
@@ -862,7 +871,7 @@ impl Riscv2ZiskContext<'_> {
     ) {
         // inst_size == 8 used for special cases where take arguments of precompiled of
         // next instruction but no need to read again
-        assert!(inst_size == 2 || inst_size == 4 || inst_size == 8);
+        assert!(inst_size == 2 || inst_size == 4 || inst_size == 8 || inst_size == 12);
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
         zib.src_a("reg", rs1 as u64, false);
         if is_rs2_an_imm {
@@ -1034,6 +1043,20 @@ impl Riscv2ZiskContext<'_> {
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
+        zib.build(self.rom);
+    }
+
+    /// Creates a Zisk operation implementing `zext.h rd, rs1` (Zbb): zero-extends
+    /// the low 16 bits of rs1 into rd, i.e. `and(rs1, 0xFFFF) -> rd`.
+    pub fn zero_extend_h(&mut self, i: &RiscvInstruction, inst_size: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        zib.src_a("reg", i.rs1 as u64, false);
+        zib.src_b("imm", 0xFFFF, false);
+        zib.op("and").unwrap();
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(inst_size as i64, inst_size as i64);
+        zib.verbose(&format!("{} r{}, r{}", i.inst, i.rd, i.rs1));
         zib.build(self.rom);
     }
 
