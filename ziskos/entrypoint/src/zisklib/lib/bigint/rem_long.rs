@@ -63,6 +63,9 @@ pub fn rem_long_init(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(0 < limbs_quo && limbs_quo <= len_a * 4, "Quotient must fit in the allocated buffer");
+    assert!(0 < limbs_rem && limbs_rem <= len_b * 4, "Remainder must fit in the allocated buffer");
+
     let quo = U256::flat_to_slice(&quo_flat[..limbs_quo]);
     let rem = U256::flat_to_slice(&rem_flat[..limbs_rem]);
 
@@ -101,10 +104,10 @@ pub fn rem_long(
     scratch: &mut RemLongScratch,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Vec<U256> {
+    let len_a = a.len();
+    let len_b = b.len();
     #[cfg(debug_assertions)]
     {
-        let len_a = a.len();
-        let len_b = b.len();
         assert_ne!(len_a, 0, "Input 'a' must have at least one limb");
         assert_ne!(len_b, 0, "Input 'b' must have at least one limb");
         assert!(!b[len_b - 1].is_zero(), "Input 'b' must not have leading zeros");
@@ -135,6 +138,15 @@ pub fn rem_long(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(
+        0 < limbs_quo && limbs_quo <= scratch.quo.len(),
+        "Quotient must fit in the allocated buffer"
+    );
+    assert!(
+        0 < limbs_rem && limbs_rem <= scratch.rem.len(),
+        "Remainder must fit in the allocated buffer"
+    );
+
     let quo = U256::flat_to_slice(&scratch.quo[..limbs_quo]);
     let rem = U256::flat_to_slice(&scratch.rem[..limbs_rem]);
 

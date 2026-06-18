@@ -48,7 +48,7 @@ pub fn div_short(
     // Hint the quotient and remainder
     let mut quo_flat = vec![0u64; len_a * 4];
     let mut rem_flat = [0u64; 4];
-    let (limbs_quo, _) = fcall_bigint_div(
+    let (limbs_quo, limbs_rem) = fcall_bigint_div(
         a_flat,
         b.as_limbs(),
         &mut quo_flat,
@@ -56,6 +56,9 @@ pub fn div_short(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(0 < limbs_quo && limbs_quo <= len_a * 4, "Quotient must fit in the allocated buffer");
+    assert!(0 < limbs_rem && limbs_rem <= 4, "Remainder must fit in a single U256");
+
     let quo = U256::flat_to_slice(&quo_flat[..limbs_quo]);
     let rem = U256::from_u64s(&rem_flat);
 
