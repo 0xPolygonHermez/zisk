@@ -672,43 +672,43 @@ pub const fn op_bset(a: u64, b: u64) -> (u64, bool) {
 /// Sets c to a plus b (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (a + (b & 0xFFFFFFFF), false)
+    (b + (a & 0xFFFFFFFF), false)
 }
 
 /// Sets c to a plus b << 1, and flag to false
 #[inline(always)]
 pub const fn op_sh1add(a: u64, b: u64) -> (u64, bool) {
-    (a + (b << 1), false)
+    (b + (a << 1), false)
 }
 
 /// Sets c to a plus b (modulo 32) << 1, and flag to false
 #[inline(always)]
 pub const fn op_sh1add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (a + ((b & 0xFFFFFFFF) << 1), false)
+    (b + ((a & 0xFFFFFFFF) << 1), false)
 }
 
 /// Sets c to a plus b << 2, and flag to false
 #[inline(always)]
 pub const fn op_sh2add(a: u64, b: u64) -> (u64, bool) {
-    (a + (b << 2), false)
+    (b + (a << 2), false)
 }
 
 /// Sets c to a plus b (modulo 32) << 2, and flag to false
 #[inline(always)]
 pub const fn op_sh2add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (a + ((b & 0xFFFFFFFF) << 2), false)
+    (b + ((a & 0xFFFFFFFF) << 2), false)
 }
 
 /// Sets c to a plus b << 3, and flag to false
 #[inline(always)]
 pub const fn op_sh3add(a: u64, b: u64) -> (u64, bool) {
-    (a + (b << 3), false)
+    (b + (a << 3), false)
 }
 
 /// Sets c to a plus b (modulo 32) << 3, and flag to false
 #[inline(always)]
 pub const fn op_sh3add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (a + ((b & 0xFFFFFFFF) << 3), false)
+    (b + ((a & 0xFFFFFFFF) << 3), false)
 }
 
 /// Sets c to a (modulo 32) << b, and flag to false

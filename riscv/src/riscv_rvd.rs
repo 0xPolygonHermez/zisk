@@ -97,9 +97,12 @@ impl Rvd {
                             0b011000000010 => return ("I", "cpopw", 2),
                             _ => {}
                         }
+                        match (inst >> 26) & 0x3F {
+                            2 => return ("I", "slli.uw", 2),
+                            _ => {}
+                        }
                         match (inst >> 25) & 0x7F {
                             0 => ("I", "slliw", 2),
-                            2 => ("I", "slli.uw", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 27 funct3=1 inst=0x{inst:x}"),
                         }
                     }
@@ -225,7 +228,7 @@ impl Rvd {
                             1 => ("R", "divu", 2),
                             5 => ("R", "minu", 2),
                             32 => ("R", "sra", 2),
-                            36 => ("R", "bset", 2),
+                            36 => ("R", "bext", 2),
                             48 => ("R", "ror", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=5 inst=0x{inst:x}"),
                         }

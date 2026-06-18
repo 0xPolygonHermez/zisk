@@ -624,7 +624,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "bit_manipulation_extensions")]
             "sh3add.uw" => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "slli.uw" => self.immediate_op(riscv_instruction, "slli_u_w", 4),
+            "slli.uw" => self.immediate_op(riscv_instruction, "sll_u_w", 4),
 
             // Special ZisK instructions
             ////////////////////////////
