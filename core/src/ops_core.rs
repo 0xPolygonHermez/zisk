@@ -644,3 +644,27 @@ pub const fn op_orc_b(_a: u64, b: u64) -> (u64, bool) {
     }
     (result, false)
 }
+
+/// Sets c to a, with bit b clear, and flag to false
+#[inline(always)]
+pub const fn op_bclr(a: u64, b: u64) -> (u64, bool) {
+    (a & !(1 << (b & 0x3F)), false)
+}
+
+/// Sets c to bit b of a, and flag to false
+#[inline(always)]
+pub const fn op_bext(a: u64, b: u64) -> (u64, bool) {
+    ((a >> (b & 0x3F)) & 1, false)
+}
+
+/// Sets c to a, with bit b inverted, and flag to false
+#[inline(always)]
+pub const fn op_binv(a: u64, b: u64) -> (u64, bool) {
+    (a ^ (1 << (b & 0x3F)), false)
+}
+
+/// Sets c to a, with bit b set, and flag to false
+#[inline(always)]
+pub const fn op_bset(a: u64, b: u64) -> (u64, bool) {
+    (a | (1 << (b & 0x3F)), false)
+}

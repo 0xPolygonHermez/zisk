@@ -53,6 +53,9 @@ impl Rvd {
                         }
                         match (inst >> 26) & 0x3F {
                             0 => ("I", "slli", 2),
+                            10 => ("I", "bseti", 2),
+                            18 => ("I", "bclri", 2),
+                            26 => ("I", "binvi", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 19 funct3=1 inst=0x{inst:x}"),
                         }
                     }
@@ -69,6 +72,7 @@ impl Rvd {
                         match (inst >> 26) & 0x3F {
                             0 => ("I", "srli", 2),
                             16 => ("I", "srai", 2),
+                            18 => ("I", "bexti", 2),
                             24 => ("I", "rori", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 19 funct3=5 inst=0x{inst:x}"),
                         }
@@ -181,7 +185,10 @@ impl Rvd {
                         match (inst >> 25) & 0x7F {
                             0 => ("R", "sll", 2),
                             1 => ("R", "mulh", 2),
+                            20 => ("R", "bset", 2),
+                            36 => ("R", "bclr", 2),
                             48 => ("R", "rol", 2),
+                            52 => ("R", "binv", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=1 inst=0x{inst:x}"),
                         }
                     }
@@ -215,6 +222,7 @@ impl Rvd {
                             1 => ("R", "divu", 2),
                             5 => ("R", "minu", 2),
                             32 => ("R", "sra", 2),
+                            36 => ("R", "bset", 2),
                             48 => ("R", "ror", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=5 inst=0x{inst:x}"),
                         }

@@ -450,6 +450,10 @@ define_ops! {
     (Cpop, "cpop", BinaryE, BINARY_E_COST, 0x41, 0, 0, opc_cpop, op_cpop, ops_none),
     (CpopW, "cpop_w", BinaryE, BINARY_E_COST, 0x42, 0, 0, opc_cpop_w, op_cpop_w, ops_none),
     (OrcB, "orc_b", BinaryE, BINARY_E_COST, 0x43, 0, 0, opc_orc_b, op_orc_b, ops_none),
+    (Bclr, "bclr", BinaryE, BINARY_E_COST, 0x44, 0, 0, opc_bclr, op_bclr, ops_none),
+    (Bext, "bext", BinaryE, BINARY_E_COST, 0x45, 0, 0, opc_bext, op_bext, ops_none),
+    (Binv, "binv", BinaryE, BINARY_E_COST, 0x46, 0, 0, opc_binv, op_binv, ops_none),
+    (Bset, "bset", BinaryE, BINARY_E_COST, 0x47, 0, 0, opc_bset, op_bset, ops_none),
 
     // Opcodes 0x50,0x51,0x60,0x61 are reserved for binary
     (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),

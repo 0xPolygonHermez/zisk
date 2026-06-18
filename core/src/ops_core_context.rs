@@ -430,3 +430,27 @@ pub fn opc_cpop_w(ctx: &mut InstContext) {
 pub fn opc_orc_b(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_orc_b(ctx.a, ctx.b);
 }
+
+/// InstContext-based wrapper over op_bclr()
+#[inline(always)]
+pub fn opc_bclr(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_bclr(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_bext()
+#[inline(always)]
+pub fn opc_bext(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_bext(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_binv()
+#[inline(always)]
+pub fn opc_binv(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_binv(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_bset()
+#[inline(always)]
+pub fn opc_bset(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_bset(ctx.a, ctx.b);
+}

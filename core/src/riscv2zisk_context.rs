@@ -590,6 +590,24 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "bit_manipulation_extensions")]
             "orc.b" => self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1),
 
+            // Single bit operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bclr" => self.create_register_op(riscv_instruction, "bclr", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bclri" => self.immediate_op(riscv_instruction, "bclr", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bext" => self.create_register_op(riscv_instruction, "bext", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bexti" => self.immediate_op(riscv_instruction, "bext", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "binv" => self.create_register_op(riscv_instruction, "binv", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "binvi" => self.immediate_op(riscv_instruction, "binv", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bset" => self.create_register_op(riscv_instruction, "bset", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bseti" => self.immediate_op(riscv_instruction, "bset", 4),
+
             // Special ZisK instructions
             ////////////////////////////
 
