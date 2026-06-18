@@ -590,7 +590,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "bit_manipulation_extensions")]
             "orc.b" => self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1),
 
-            // Single bit operations
+            // Single bit operations (Zbs)
             #[cfg(feature = "bit_manipulation_extensions")]
             "bclr" => self.create_register_op(riscv_instruction, "bclr", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
@@ -607,6 +607,24 @@ impl Riscv2ZiskContext<'_> {
             "bset" => self.create_register_op(riscv_instruction, "bset", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
             "bseti" => self.immediate_op(riscv_instruction, "bset", 4),
+
+            // Address generation operations (Zba)
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "add.uw" => self.create_register_op(riscv_instruction, "add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh1add" => self.create_register_op(riscv_instruction, "sh1add", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh1add.uw" => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh2add" => self.create_register_op(riscv_instruction, "sh2add", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh2add.uw" => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh3add" => self.create_register_op(riscv_instruction, "sh3add", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh3add.uw" => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "slli.uw" => self.immediate_op(riscv_instruction, "slli_u_w", 4),
 
             // Special ZisK instructions
             ////////////////////////////

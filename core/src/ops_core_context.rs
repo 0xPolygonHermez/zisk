@@ -454,3 +454,51 @@ pub fn opc_binv(ctx: &mut InstContext) {
 pub fn opc_bset(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_bset(ctx.a, ctx.b);
 }
+
+/// InstContext-based wrapper over op_add_u_w()
+#[inline(always)]
+pub fn opc_add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh1add()
+#[inline(always)]
+pub fn opc_sh1add(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh1add(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh1add_u_w()
+#[inline(always)]
+pub fn opc_sh1add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh1add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh2add()
+#[inline(always)]
+pub fn opc_sh2add(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh2add(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh2add_u_w()
+#[inline(always)]
+pub fn opc_sh2add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh2add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh3add()
+#[inline(always)]
+pub fn opc_sh3add(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh3add(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh3add_u_w()
+#[inline(always)]
+pub fn opc_sh3add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh3add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sll_u_w()
+#[inline(always)]
+pub fn opc_sll_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sll_u_w(ctx.a, ctx.b);
+}

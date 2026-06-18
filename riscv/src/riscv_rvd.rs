@@ -99,6 +99,7 @@ impl Rvd {
                         }
                         match (inst >> 25) & 0x7F {
                             0 => ("I", "slliw", 2),
+                            2 => ("I", "slli.uw", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 27 funct3=1 inst=0x{inst:x}"),
                         }
                     }
@@ -196,6 +197,7 @@ impl Rvd {
                         match (inst >> 25) & 0x7F {
                             0 => ("R", "slt", 2),
                             1 => ("R", "mulhsu", 2),
+                            16 => ("R", "sh1add", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=2 inst=0x{inst:x}"),
                         }
                     }
@@ -212,6 +214,7 @@ impl Rvd {
                             1 => ("R", "div", 2),
                             4 => ("R", "pack", 2),
                             5 => ("R", "min", 2),
+                            16 => ("R", "sh2add", 2),
                             32 => ("R", "xnor", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=4 inst=0x{inst:x}"),
                         }
@@ -232,6 +235,7 @@ impl Rvd {
                             0 => ("R", "or", 2),
                             1 => ("R", "rem", 2),
                             5 => ("R", "max", 2),
+                            16 => ("R", "sh3add", 2),
                             32 => ("R", "orn", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 51 funct3=6 inst=0x{inst:x}"),
                         }
@@ -260,6 +264,7 @@ impl Rvd {
                         match (inst >> 25) & 0x7F {
                             0 => ("R", "addw", 2),
                             1 => ("R", "mulw", 2),
+                            4 => ("R", "add.uw", 2),
                             32 => ("R", "subw", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=0 inst=0x{inst:x}"),
                         }
@@ -271,6 +276,12 @@ impl Rvd {
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=1 inst=0x{inst:x}"),
                         }
                     }
+                    2 => {
+                        match (inst >> 25) & 0x7F {
+                            16 => ("R", "sh1add.uw", 2),
+                            _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=1 inst=0x{inst:x}"),
+                        }
+                    }
                     4 => {
                         match (inst >> 20) & 0xFFF {
                             0b000010000000 => return ("R", "zext.h", 2),
@@ -279,6 +290,7 @@ impl Rvd {
                         match (inst >> 25) & 0x7F {
                             1 => ("R", "divw", 2),
                             4 => ("R", "packw", 2),
+                            16 => ("R", "sh2add.uw", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=4 inst=0x{inst:x}"),
                         }
                     }
@@ -294,6 +306,7 @@ impl Rvd {
                     6 => {
                         match (inst >> 25) & 0x7F {
                             1 => ("R", "remw", 2),
+                            16 => ("R", "sh3add.uw", 2),
                             _ => ("INVALID", "reserved", 2), //panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 59 funct3=6 inst=0x{inst:x}"),
                         }
                     }
