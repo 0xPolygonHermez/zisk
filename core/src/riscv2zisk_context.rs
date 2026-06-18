@@ -5,14 +5,14 @@
 use riscv::{riscv_interpreter, RiscvInstruction};
 use zisk_definitions::{
     SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
-    SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
-    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
-    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
-    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
-    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
-    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
-    SYSCALL_SHA256F_ID,
+    SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
+    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
+    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
+    SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
+    SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON2_ID,
+    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
+    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
 };
 
 use crate::{
@@ -1369,6 +1369,18 @@ impl Riscv2ZiskContext<'_> {
                     zib.src_a("imm", 0, false);
                     zib.op(precompiled).unwrap();
                     zib.verbose(precompiled);
+                    // NOTE: if precompiles don't use extended static parameter (jmp_offset1), must be set to 0
+                    // to match with that precompiles proves
+                    zib.j(0, 4);
+                    zib.build();
+                    self.insts.insert(rom_address, zib);
+                }
+                SYSCALL_BABYJUBJUB_ADD_ID => {
+                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    zib.src_b("reg", i.rs1 as u64, false);
+                    zib.src_a("imm", 0, false);
+                    zib.op("babyjubjub_add").unwrap();
+                    zib.verbose("babyjubjub_add");
                     // NOTE: if precompiles don't use extended static parameter (jmp_offset1), must be set to 0
                     // to match with that precompiles proves
                     zib.j(0, 4);

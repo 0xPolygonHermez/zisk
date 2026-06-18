@@ -1,0 +1,73 @@
+//! BabyJubJub (twisted-Edwards) elliptic-curve point-addition precompile for the ZisK zkVM.
+//!
+//! Proves a single operation — complete BabyJubJub point addition — in a dedicated, isolated
+//! AIR. It is circom/circomlib compatible: the curve `a*x^2 + y^2 = 1 + d*x^2*y^2` (with
+//! `a = 168700`, `d = 168696`) is defined over the BN254 *scalar* field `Fr`
+//! (`p = 0x30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F0000001`), so all field
+//! arithmetic uses `ark_bn254::Fr` (never `Fq`). Points are affine `(x, y)`, each a 256-bit
+//! field element laid out as `[u64; 4]`; a point is `[u64; 8]` (`x || y`), no compression.
+//!
+//! The addition law is complete (the same formula doubles, with no exceptional cases for valid
+//! points):
+//!
+//! ```text
+//! tau = x1*x2*y1*y2
+//! x3  = (x1*y2 + y1*x2) / (1 + d*tau)
+//! y3  = (y1*y2 - a*x1*x2) / (1 - d*tau)
+//! ```
+//!
+//! # Why a dedicated AIR
+//!
+//! The shared `arith_eq` AIR is hard-capped at `MAX_CEQS = 3` / `QS = 3` concurrent equations.
+//! BabyJubJub's complete addition decomposes into 7 flat degree-<=2 polynomial identities (with
+//! five scratch values `A, B, Nx, T, DT`), so it needs its own AIR rather than widening
+//! `arith_eq` — which would raise proving cost for every existing `arith_eq` op (secp256k1,
+//! bn254, arith256). The constraint model (16x16-bit chunks, 22-bit quotient/carry sizing,
+//! carry-chain closure forcing the integer LHS to zero, and a per-chunk LT-table lookup pinning
+//! the outputs `< p` alias-free) mirrors `arith_eq` exactly.
+//!
+//! # Module layout
+//!
+//! # Soundness of the multiply-through output equations
+//!
+//! `x3`/`y3` are constrained in multiply-through form (`x3*(1+DT) = Nx`, `y3*(1-DT) = B - a*A`),
+//! not via an explicit inverse gate like circomlib's `BabyAdd`. This is sound *because of these
+//! curve parameters*: an output coordinate could only become free if a denominator `1 +- d*tau`
+//! were zero while the corresponding numerator is also zero, and that configuration forces a
+//! square root of `1/d` (for `x3`) or `1/(a*d)` (for `y3`). Both `d` and `a*d` are quadratic
+//! non-residues mod `Fr`, so no such inputs exist over all of `Fr` (on- or off-curve), and the
+//! outputs are uniquely pinned. See the soundness note in `pil/babyjubjub.pil` for the full
+//! argument. This reasoning is parameter-specific — reusing the AIR for a curve where `d` or
+//! `a*d` is a square would require adding an explicit denominator-nonzero gate.
+//!
+//! # Module layout
+//!
+//! Mirrors the standard precompile structure (see the `keccakf` reference): `babyjubjub` is the
+//! state-machine core that fills the trace; `babyjubjub_bus_device` is the counter / input
+//! generator; `babyjubjub_planner` / `babyjubjub_manager` / `babyjubjub_instance` handle
+//! planning and witness orchestration; `babyjubjub_lt_table` is the alias-free output check;
+//! `executors` computes the field values and quotients; `equations` holds the generated
+//! per-equation chunk polynomials; and `generator` regenerates those equation files.
+mod babyjubjub;
+mod babyjubjub_bus_device;
+mod babyjubjub_constants;
+mod babyjubjub_input;
+mod babyjubjub_instance;
+mod babyjubjub_lt_table;
+mod babyjubjub_manager;
+mod babyjubjub_planner;
+mod equations;
+mod executors;
+pub mod generator;
+mod mem_inputs;
+
+pub use babyjubjub::*;
+pub use babyjubjub_bus_device::*;
+pub use babyjubjub_constants::*;
+pub use babyjubjub_input::*;
+pub use babyjubjub_instance::*;
+pub use babyjubjub_lt_table::*;
+pub use babyjubjub_manager::*;
+pub use babyjubjub_planner::*;
+pub use executors::*;
+pub use mem_inputs::*;

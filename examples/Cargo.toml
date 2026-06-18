@@ -13,6 +13,7 @@ members = [
     "panic/guest",
     "liveness/host",
     "liveness/guest",
+    "babyjubjub/guest",
 ]
 
 resolver = "2"

@@ -45,6 +45,7 @@ members = [
     "precompiles/sha256f",
     "precompiles/blake2",
     "precompiles/big_int",
+    "precompiles/babyjubjub",
     "precompiles/dma",
     "precompiles/poseidon2",
     "lib-c",
@@ -97,6 +98,7 @@ precomp-sha256f = { path = "precompiles/sha256f" }
 precomp-blake2 = { path = "precompiles/blake2" }
 precomp-poseidon2 = { path = "precompiles/poseidon2" }
 precomp-big-int = { path = "precompiles/big_int" }
+precomp-babyjubjub = { path = "precompiles/babyjubjub" }
 precomp-dma = { path = "precompiles/dma" }
 riscv = { path = "riscv" }
 rom-setup = { path = "rom-setup" }

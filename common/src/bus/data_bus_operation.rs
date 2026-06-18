@@ -76,6 +76,8 @@ pub const OPERATION_BUS_SECP256R1_DBL_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + POINT_256_BITS_SIZE;
 pub const OPERATION_BUS_BLAKE2_DATA_SIZE: usize =
     OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 33 * DATA_64_BITS_SIZE;
+pub const OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE: usize =
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 * INDIRECTION_SIZE + 2 * POINT_256_BITS_SIZE;
 
 // bus_data_size + 4 params (&a, &b, cin, &c, a, b)
 pub const OPERATION_BUS_ADD_256_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE
@@ -145,6 +147,7 @@ pub type OperationDmaXMemSetData<D> = [D; OPERATION_BUS_DMA_XMEMSET_DATA_SIZE];
 pub type OperationSecp256r1AddData<D> = [D; OPERATION_BUS_SECP256R1_ADD_DATA_SIZE];
 pub type OperationSecp256r1DblData<D> = [D; OPERATION_BUS_SECP256R1_DBL_DATA_SIZE];
 pub type OperationBlake2Data<D> = [D; OPERATION_BUS_BLAKE2_DATA_SIZE];
+pub type OperationBabyJubJubAddData<D> = [D; OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE];
 
 pub enum ExtOperationData<D> {
     OperationData(OperationData<D>),
@@ -176,6 +179,7 @@ pub enum ExtOperationData<D> {
     OperationSecp256r1AddData(OperationSecp256r1AddData<D>),
     OperationSecp256r1DblData(OperationSecp256r1DblData<D>),
     OperationBlake2Data(OperationBlake2Data<D>),
+    OperationBabyJubJubAddData(OperationBabyJubJubAddData<D>),
 }
 
 // impl<D: Copy + Into<u8>> TryFrom<&[D]> for ExtOperationData<D> {
@@ -327,6 +331,11 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                 let array: OperationSecp256r1DblData<D> =
                     data.try_into().map_err(|_| "Invalid OperationSecp256r1DblData size")?;
                 Ok(ExtOperationData::OperationSecp256r1DblData(array))
+            }
+            ZiskOp::BABYJUBJUB_ADD => {
+                let array: OperationBabyJubJubAddData<D> =
+                    data.try_into().map_err(|_| "Invalid OperationBabyJubJubAddData size")?;
+                Ok(ExtOperationData::OperationBabyJubJubAddData(array))
             }
             _ => {
                 let array: OperationData<D> =
@@ -613,6 +622,20 @@ impl OperationBusData<u64> {
                     data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
                         .copy_from_slice(&ctx.precompiled.input_data);
                     ExtOperationData::OperationAdd256Data(data)
+                }
+                _ => ExtOperationData::OperationData([op, op_type, a, b]),
+            },
+
+            ZiskOperationType::BabyJubJub => match inst.op {
+                ZiskOp::BABYJUBJUB_ADD => {
+                    let mut data = unsafe {
+                        uninit_array::<OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE>().assume_init()
+                    };
+                    data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                        .copy_from_slice(&[op, op_type, a, b, step]);
+                    data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
+                        .copy_from_slice(&ctx.precompiled.input_data);
+                    ExtOperationData::OperationBabyJubJubAddData(data)
                 }
                 _ => ExtOperationData::OperationData([op, op_type, a, b]),
             },
@@ -917,6 +940,22 @@ impl OperationBusData<u64> {
                 }
             },
 
+            ZiskOperationType::BabyJubJub => match inst.op {
+                ZiskOp::BABYJUBJUB_ADD => {
+                    let len =
+                        OPERATION_PRECOMPILED_BUS_DATA_SIZE + ctx.precompiled.input_data.len();
+                    buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                        .copy_from_slice(&[op, op_type, a, b, step]);
+                    buffer[OPERATION_PRECOMPILED_BUS_DATA_SIZE..len]
+                        .copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                _ => {
+                    buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
+                    &buffer[..OPERATION_BUS_DATA_SIZE]
+                }
+            },
+
             ZiskOperationType::Dma => match inst.op {
                 ZiskOp::DMA_MEMCPY
                 | ZiskOp::DMA_MEMCMP
@@ -984,6 +1023,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationSecp256r1AddData(d) => d[OP] as u8,
             ExtOperationData::OperationSecp256r1DblData(d) => d[OP] as u8,
             ExtOperationData::OperationBlake2Data(d) => d[OP] as u8,
+            ExtOperationData::OperationBabyJubJubAddData(d) => d[OP] as u8,
         }
     }
 
@@ -1026,6 +1066,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationSecp256r1AddData(d) => d[OP_TYPE],
             ExtOperationData::OperationSecp256r1DblData(d) => d[OP_TYPE],
             ExtOperationData::OperationBlake2Data(d) => d[OP_TYPE],
+            ExtOperationData::OperationBabyJubJubAddData(d) => d[OP_TYPE],
         }
     }
 
@@ -1068,6 +1109,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationSecp256r1AddData(d) => d[A],
             ExtOperationData::OperationSecp256r1DblData(d) => d[A],
             ExtOperationData::OperationBlake2Data(d) => d[A],
+            ExtOperationData::OperationBabyJubJubAddData(d) => d[A],
         }
     }
 
@@ -1110,6 +1152,7 @@ impl OperationBusData<u64> {
             ExtOperationData::OperationSecp256r1AddData(d) => d[B],
             ExtOperationData::OperationSecp256r1DblData(d) => d[B],
             ExtOperationData::OperationBlake2Data(d) => d[B],
+            ExtOperationData::OperationBabyJubJubAddData(d) => d[B],
         }
     }
 }

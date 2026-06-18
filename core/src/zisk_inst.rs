@@ -83,8 +83,9 @@ pub enum ZiskOperationType {
     PubOut,
     ArithEq,
     ArithEq384,
-    BigInt, // Note: Add new core operations here
-    Dma,    // Note: To add extra params to precompiles calls
+    BigInt,     // Note: Add new core operations here
+    Dma,        // Note: To add extra params to precompiles calls
+    BabyJubJub, // BabyJubJub (twisted Edwards) point add (must stay within the precompiled range, i.e. before FcallParam)
     // ZisK Free Input Operations
     FcallParam,
     Fcall,
@@ -108,6 +109,7 @@ pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
 pub const BLAKE2_OP_TYPE_ID: u32 = ZiskOperationType::Blake2 as u32;
+pub const BABYJUBJUB_OP_TYPE_ID: u32 = ZiskOperationType::BabyJubJub as u32;
 
 /// ZisK instruction definition
 ///

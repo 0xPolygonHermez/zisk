@@ -10,6 +10,8 @@ use precomp_arith_eq::ArithEqCollector;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_arith_eq_384::ArithEq384Collector;
 use precomp_arith_eq_384::ArithEq384CounterInputGen;
+use precomp_babyjubjub::BabyJubJubCollector;
+use precomp_babyjubjub::BabyJubJubCounterInputGen;
 use precomp_big_int::Add256Collector;
 use precomp_big_int::Add256CounterInputGen;
 use precomp_blake2::Blake2Collector;
@@ -81,6 +83,10 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
     pub add256_collector: Vec<(usize, Add256Collector)>,
     pub add256_inputs_generator: Add256CounterInputGen,
 
+    /// BabyJubJub collectors
+    pub babyjubjub_collector: Vec<(usize, BabyJubJubCollector)>,
+    pub babyjubjub_inputs_generator: BabyJubJubCounterInputGen,
+
     /// Dma collectors
     pub dma_collector: Vec<(usize, DmaCollector)>,
     pub dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
@@ -105,6 +111,7 @@ const BLAKE2_TYPE: u64 = ZiskOperationType::Blake2 as u64;
 const ARITH_EQ_TYPE: u64 = ZiskOperationType::ArithEq as u64;
 const ARITH_EQ_384_TYPE: u64 = ZiskOperationType::ArithEq384 as u64;
 const BIG_INT_OP_TYPE_ID: u64 = ZiskOperationType::BigInt as u64;
+const BABYJUBJUB_OP_TYPE_ID: u64 = ZiskOperationType::BabyJubJub as u64;
 const DMA_OP_TYPE_ID: u64 = ZiskOperationType::Dma as u64;
 
 impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
@@ -124,6 +131,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         arith_eq_collector: Vec<(usize, ArithEqCollector)>,
         arith_eq_384_collector: Vec<(usize, ArithEq384Collector)>,
         add256_collector: Vec<(usize, Add256Collector)>,
+        babyjubjub_collector: Vec<(usize, BabyJubJubCollector)>,
         dma_collector: Vec<(usize, DmaCollector)>,
         dma_pre_post_collector: Vec<(usize, DmaPrePostCollector)>,
         dma_64_aligned_collector: Vec<(usize, Dma64AlignedCollector)>,
@@ -137,6 +145,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
         blake2_inputs_generator: Blake2CounterInputGen,
         arith_inputs_generator: ArithCounterInputGen,
         add256_inputs_generator: Add256CounterInputGen,
+        babyjubjub_inputs_generator: BabyJubJubCounterInputGen,
         dma_inputs_generator: DmaCounterInputGen,
     ) -> Self {
         Self {
@@ -153,6 +162,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             arith_eq_collector,
             arith_eq_384_collector,
             add256_collector,
+            babyjubjub_collector,
             dma_collector,
             dma_pre_post_collector,
             dma_64_aligned_collector,
@@ -166,6 +176,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             blake2_inputs_generator,
             arith_inputs_generator,
             add256_inputs_generator,
+            babyjubjub_inputs_generator,
             dma_inputs_generator,
             pending_transfers: VecDeque::with_capacity(64),
         }
@@ -314,6 +325,20 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                         ),
                     );
                 }
+                BABYJUBJUB_OP_TYPE_ID => {
+                    for (_, babyjubjub_collector) in &mut self.babyjubjub_collector {
+                        babyjubjub_collector.process_data(&bus_id, data);
+                    }
+
+                    self.babyjubjub_inputs_generator.process_data(
+                        &bus_id,
+                        data,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
+                    );
+                }
                 DMA_OP_TYPE_ID => {
                     for (_, dma_collector) in &mut self.dma_collector {
                         dma_collector.process_data(&bus_id, data, data_ext);
@@ -430,6 +455,10 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
         }
 
         for (id, collector) in self.add256_collector {
+            result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
+        }
+
+        for (id, collector) in self.babyjubjub_collector {
             result.push((Some(id), Some(Box::new(collector) as Box<dyn BusDevice<PayloadType>>)));
         }
 

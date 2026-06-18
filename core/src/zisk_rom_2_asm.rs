@@ -7378,6 +7378,13 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::BabyJubJubAdd => {
+                // The babyjubjub_add precompile is only supported by the Rust emulator.
+                // Prove with `--emulator` (`-l`); the ASM emulator path is intentionally unsupported.
+                panic!(
+                    "babyjubjub_add precompile is not supported by the ASM emulator; prove with --emulator"
+                );
+            }
             ZiskOp::DmaMemCpy | ZiskOp::DmaXMemCpy => {
                 // Use the memory address as the first and unique parameter
                 *code += &ctx.full_line_comment("DmaMemCpy".to_string());

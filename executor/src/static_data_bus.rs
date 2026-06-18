@@ -9,6 +9,7 @@ use data_bus::DataBusTrait;
 use mem_common::MemCounters;
 use precomp_arith_eq::ArithEqCounterInputGen;
 use precomp_arith_eq_384::ArithEq384CounterInputGen;
+use precomp_babyjubjub::BabyJubJubCounterInputGen;
 use precomp_big_int::Add256CounterInputGen;
 use precomp_blake2::Blake2CounterInputGen;
 use precomp_dma::DmaCounterInputGen;
@@ -21,9 +22,9 @@ use sm_binary::BinaryCounter;
 use sm_main::MainCounter;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID};
 use zisk_core::{
-    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,
-    BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, BLAKE2_OP_TYPE_ID, DMA_OP_TYPE_ID, KECCAK_OP_TYPE_ID,
-    POSEIDON2_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, ARITH_OP_TYPE_ID, BABYJUBJUB_OP_TYPE_ID,
+    BIG_INT_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, BLAKE2_OP_TYPE_ID, DMA_OP_TYPE_ID,
+    KECCAK_OP_TYPE_ID, POSEIDON2_OP_TYPE_ID, PUB_OUT_OP_TYPE_ID, SHA256_OP_TYPE_ID,
 };
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
@@ -51,6 +52,7 @@ pub struct StaticDataBus<D> {
     pub arith_eq_counter: (usize, ArithEqCounterInputGen),
     pub arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
     pub add_256_counter: (usize, Add256CounterInputGen),
+    pub babyjubjub_counter: (usize, BabyJubJubCounterInputGen),
     pub dma_counter: (usize, DmaCounterInputGen),
     pub rom_counter_id: Option<usize>,
     /// Queue of pending data transfers to be processed.
@@ -72,6 +74,7 @@ impl StaticDataBus<PayloadType> {
         arith_eq_counter: (usize, ArithEqCounterInputGen),
         arith_eq_384_counter: (usize, ArithEq384CounterInputGen),
         add_256_counter: (usize, Add256CounterInputGen),
+        babyjubjub_counter: (usize, BabyJubJubCounterInputGen),
         dma_counter: (usize, DmaCounterInputGen),
         rom_counter_id: Option<usize>,
     ) -> Self {
@@ -88,6 +91,7 @@ impl StaticDataBus<PayloadType> {
             arith_eq_counter,
             arith_eq_384_counter,
             add_256_counter,
+            babyjubjub_counter,
             dma_counter,
             rom_counter_id,
             pending_transfers: VecDeque::new(),
@@ -165,6 +169,11 @@ impl StaticDataBus<PayloadType> {
                     data,
                     &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
                 ),
+                BABYJUBJUB_OP_TYPE_ID => self.babyjubjub_counter.1.process_data(
+                    &bus_id,
+                    data,
+                    &mut MemCounterProcessor::new(self.mem_counter.1.as_mut()),
+                ),
                 DMA_OP_TYPE_ID => self.dma_counter.1.process_data(
                     &bus_id,
                     data,
@@ -222,6 +231,7 @@ impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<Payl
             (Some(self.arith_eq_counter.0), Some(Box::new(self.arith_eq_counter.1))),
             (Some(self.arith_eq_384_counter.0), Some(Box::new(self.arith_eq_384_counter.1))),
             (Some(self.add_256_counter.0), Some(Box::new(self.add_256_counter.1))),
+            (Some(self.babyjubjub_counter.0), Some(Box::new(self.babyjubjub_counter.1))),
             (Some(self.dma_counter.0), Some(Box::new(self.dma_counter.1))),
         ];
 

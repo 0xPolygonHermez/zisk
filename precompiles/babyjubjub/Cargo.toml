@@ -1,0 +1,45 @@
+[package]
+name = "precomp-babyjubjub"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "babyjubjub_generator"
+path = "src/babyjubjub_generator.rs"
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-pil = { workspace = true }
+precompiles-common = { workspace = true }
+precompiles-helpers = { workspace = true }
+zisk-common = { workspace = true }
+
+proofman-common = { workspace = true }
+proofman-macros = { workspace = true }
+proofman-util = { workspace = true }
+witness = { workspace = true }
+pil-std-lib = { workspace = true }
+
+sm-mem = { workspace = true }
+mem-common = { workspace = true }
+fields = { workspace = true }
+tracing = { workspace = true }
+rayon = { workspace = true }
+ark-ff = { workspace = true }
+ark-std = { workspace = true }
+ark-bn254 = { workspace = true }
+num-bigint = { workspace = true }
+num-traits = { workspace = true }
+
+lazy_static = "1.4"
+regex = "1.11.1"
+rustfmt-wrapper = "0.2.1"
+path-clean = "1.0"
+
+[features]
+default = []
+test_data = []

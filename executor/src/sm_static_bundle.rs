@@ -8,6 +8,7 @@ use pil_std_lib::Std;
 use precomp_arith_eq::{ArithEqInstance, ArithEqManager};
 use precomp_arith_eq_384::ArithEq384Instance;
 use precomp_arith_eq_384::ArithEq384Manager;
+use precomp_babyjubjub::{BabyJubJubInstance, BabyJubJubManager};
 use precomp_big_int::{Add256Instance, Add256Manager};
 use precomp_blake2::{Blake2Instance, Blake2Manager};
 use precomp_dma::Dma64AlignedInstance;
@@ -29,6 +30,7 @@ use sm_rom::{RomInstance, RomSM};
 use std::collections::{BTreeMap, HashMap};
 use zisk_common::{BusDeviceMetrics, ChunkId, ComponentBuilder, Instance, InstanceCtx, Plan};
 use zisk_pil::ADD_256_AIR_IDS;
+use zisk_pil::BABY_JUB_JUB_AIR_IDS;
 use zisk_pil::DMA_64_ALIGNED_AIR_IDS;
 use zisk_pil::DMA_64_ALIGNED_INPUT_CPY_AIR_IDS;
 use zisk_pil::DMA_64_ALIGNED_MEM_AIR_IDS;
@@ -69,6 +71,7 @@ pub enum StateMachines<F: PrimeField64> {
     ArithEqManager(Arc<ArithEqManager<F>>),
     ArithEq384Manager(Arc<ArithEq384Manager<F>>),
     Add256Manager(Arc<Add256Manager<F>>),
+    BabyJubJubManager(Arc<BabyJubJubManager<F>>),
     DmaManager(Arc<DmaManager<F>>),
 }
 
@@ -87,6 +90,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEq384Manager(_) => 9,
             StateMachines::Add256Manager(_) => 10,
             StateMachines::DmaManager(_) => 11,
+            StateMachines::BabyJubJubManager(_) => 12,
         }
     }
 
@@ -109,6 +113,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEqManager(sm) => (**sm).build_planner(),
             StateMachines::ArithEq384Manager(sm) => (**sm).build_planner(),
             StateMachines::Add256Manager(sm) => (**sm).build_planner(),
+            StateMachines::BabyJubJubManager(sm) => (**sm).build_planner(),
             StateMachines::DmaManager(sm) => (**sm).build_planner(),
         }
     }
@@ -128,6 +133,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEqManager(sm) => (**sm).configure_instances(pctx, plans),
             StateMachines::ArithEq384Manager(sm) => (**sm).configure_instances(pctx, plans),
             StateMachines::Add256Manager(sm) => (**sm).configure_instances(pctx, plans),
+            StateMachines::BabyJubJubManager(sm) => (**sm).configure_instances(pctx, plans),
             StateMachines::DmaManager(sm) => (**sm).configure_instances(pctx, plans),
         }
     }
@@ -145,6 +151,7 @@ impl<F: PrimeField64> StateMachines<F> {
             StateMachines::ArithEqManager(sm) => (**sm).build_instance(ictx),
             StateMachines::ArithEq384Manager(sm) => (**sm).build_instance(ictx),
             StateMachines::Add256Manager(sm) => (**sm).build_instance(ictx),
+            StateMachines::BabyJubJubManager(sm) => (**sm).build_instance(ictx),
             StateMachines::DmaManager(sm) => (**sm).build_instance(ictx),
         }
     }
@@ -255,6 +262,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         let mut arith_eq_counter = None;
         let mut arith_eq_384_counter = None;
         let mut add256_counter = None;
+        let mut babyjubjub_counter = None;
         let mut dma_counter = None;
 
         for (_, sm) in self.sm.values() {
@@ -302,6 +310,12 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     add256_counter =
                         Some((sm.type_id(), add256_sm.build_add256_counter(is_asm_emulator)));
                 }
+                StateMachines::BabyJubJubManager(babyjubjub_sm) => {
+                    babyjubjub_counter = Some((
+                        sm.type_id(),
+                        babyjubjub_sm.build_babyjubjub_counter(is_asm_emulator),
+                    ));
+                }
                 StateMachines::DmaManager(dma_sm) => {
                     dma_counter = Some((sm.type_id(), dma_sm.build_dma_counter(is_asm_emulator)));
                 }
@@ -323,6 +337,8 @@ impl<F: PrimeField64> StaticSMBundle<F> {
             arith_eq_384_counter
                 .ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "ArithEq384"))?,
             add256_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Add256"))?,
+            babyjubjub_counter
+                .ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "BabyJubJub"))?,
             dma_counter.ok_or_else(|| anyhow::anyhow!("Counter not found: {}", "Dma"))?,
             Some(0),
         ))
@@ -356,6 +372,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 let mut arith_eq_collectors = Vec::new();
                 let mut arith_eq_384_collectors = Vec::new();
                 let mut add256_collectors = Vec::new();
+                let mut babyjubjub_collectors = Vec::new();
                 let mut rom_collectors = Vec::new();
                 let mut dma_collectors = Vec::new();
                 let mut dma_pre_post_collectors = Vec::new();
@@ -598,6 +615,20 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                                 add256_instance.build_add256_collector(ChunkId(chunk_id));
                             add256_collectors.push((*global_idx, add256_collector));
                         }
+                        air_id if air_id == BABY_JUB_JUB_AIR_IDS[0] => {
+                            let babyjubjub_instance = secn_instance
+                                .as_any()
+                                .downcast_ref::<BabyJubJubInstance<F>>()
+                                .ok_or_else(|| {
+                                    anyhow::anyhow!(
+                                        "Downcast failed: expected {}",
+                                        "BabyJubJubInstance"
+                                    )
+                                })?;
+                            let babyjubjub_collector =
+                                babyjubjub_instance.build_babyjubjub_collector(ChunkId(chunk_id));
+                            babyjubjub_collectors.push((*global_idx, babyjubjub_collector));
+                        }
                         // DMA AIRS
                         air_id
                             if air_id == DMA_AIR_IDS[0]
@@ -694,6 +725,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                 let mut blake2_inputs_generator = None;
                 let mut arith_inputs_generator = None;
                 let mut add256_inputs_generator = None;
+                let mut babyjubjub_inputs_generator = None;
                 let mut dma_inputs_generator = None;
                 for (_, sm) in self.sm.values() {
                     match sm {
@@ -728,6 +760,10 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                             add256_inputs_generator =
                                 Some(add256_sm.build_add256_input_generator());
                         }
+                        StateMachines::BabyJubJubManager(babyjubjub_sm) => {
+                            babyjubjub_inputs_generator =
+                                Some(babyjubjub_sm.build_babyjubjub_input_generator());
+                        }
                         StateMachines::DmaManager(dma_sm) => {
                             dma_inputs_generator = Some(dma_sm.build_dma_input_generator());
                         }
@@ -749,6 +785,7 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     arith_eq_collectors,
                     arith_eq_384_collectors,
                     add256_collectors,
+                    babyjubjub_collectors,
                     dma_collectors,
                     dma_pre_post_collectors,
                     dma_64_aligned_collectors,
@@ -777,6 +814,9 @@ impl<F: PrimeField64> StaticSMBundle<F> {
                     })?,
                     add256_inputs_generator.ok_or_else(|| {
                         anyhow::anyhow!("Counter not found: {}", "Add256 input generator")
+                    })?,
+                    babyjubjub_inputs_generator.ok_or_else(|| {
+                        anyhow::anyhow!("Counter not found: {}", "BabyJubJub input generator")
                     })?,
                     dma_inputs_generator.ok_or_else(|| {
                         anyhow::anyhow!("Counter not found: {}", "Dma input generator")
