@@ -43,14 +43,14 @@ pub fn read_slice() -> Box<[u8]> {
 }
 
 #[cfg(zisk_guest)]
-#[deprecated(since = "1.0.0-beta", note = "renamed to `read_slice`")]
+#[deprecated(since = "1.0.0-alfa", note = "renamed to `read_slice`")]
 pub fn read_input_slice<'a>() -> &'a [u8] {
     read_slice()
 }
 
 #[allow(unused)]
 #[cfg(not(zisk_guest))]
-#[deprecated(since = "1.0.0-beta", note = "renamed to `read_slice`")]
+#[deprecated(since = "1.0.0-alfa", note = "renamed to `read_slice`")]
 pub fn read_input_slice() -> Box<[u8]> {
     read_slice()
 }
