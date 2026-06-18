@@ -494,7 +494,7 @@ EOF
   # carries the tag form (e.g. "v0.17.0") but key tarballs are named with the
   # bare semver ("zisk-provingkey-0.17.0.tar.gz").
   IFS='.' read -r major minor patch <<< "${ZISK_VERSION#v}"
-  SETUP_VERSION="${major}.${minor}.0"
+  SETUP_VERSION="${ZISK_VERSION#v}"
   case "${SETUP_KEY}" in
     proving)
       install_setup "proving" 1
@@ -1102,8 +1102,8 @@ setup_snark_command() {
   ZISK_VERSION=$("${CARGO_ZISK}" --version | awk '{print $2}')
 
   # Parse version to get setup version
-  IFS='.' read -r major minor patch <<< "${ZISK_VERSION}"
-  SETUP_VERSION="${major}.${minor}.0"
+  IFS='.' read -r major minor patch <<< "${ZISK_VERSION#v}"
+  SETUP_VERSION="${ZISK_VERSION#v}"
 
   step "Installing SNARK proving key for ZisK version ${ZISK_VERSION}..."
 

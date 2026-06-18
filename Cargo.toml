@@ -132,15 +132,15 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-alfa" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alfa" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
