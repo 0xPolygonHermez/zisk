@@ -666,7 +666,7 @@ pub fn msm_complete_safe_bls12_381(
     scalars: &[[u64; 4]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 12], u8> {
-    assert_eq!(points.len(), scalars.len());
+    assert_eq!(points.len(), scalars.len(), "Points and scalars must have the same length");
 
     let mut acc = G1_IDENTITY;
     let mut acc_is_inf = true;
