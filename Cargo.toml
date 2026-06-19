@@ -132,26 +132,26 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = 
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.0.0-beta" }
 
 # Proofman
-# proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
-# pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", version = "1.0.0-alpha" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
 
 # Proofman Local development
-proofman = { path = "../pil2-proofman/proofman", version = "1.0.0-beta" }
-proofman-common = { path = "../pil2-proofman/common", version = "1.0.0-beta" }
-proofman-macros = { path = "../pil2-proofman/macros", version = "1.0.0-beta" }
-proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.0.0-beta" }
-proofman-util = { path = "../pil2-proofman/util", version = "1.0.0-beta" }
-pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs", version = "1.0.0-beta" }
-proofman-witness = { path = "../pil2-proofman/witness", version = "1.0.0-beta" }
-proofman-fields = { path = "../pil2-proofman/fields", version = "1.0.0-beta" }
-pil2-stark-setup = { path = "../pil2-proofman/setup/pil2-stark", version = "1.0.0-beta" }
+# proofman = { path = "../pil2-proofman/proofman", version = "1.0.0-beta" }
+# proofman-common = { path = "../pil2-proofman/common", version = "1.0.0-beta" }
+# proofman-macros = { path = "../pil2-proofman/macros", version = "1.0.0-beta" }
+# proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.0.0-beta" }
+# proofman-util = { path = "../pil2-proofman/util", version = "1.0.0-beta" }
+# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs", version = "1.0.0-beta" }
+# proofman-witness = { path = "../pil2-proofman/witness", version = "1.0.0-beta" }
+# proofman-fields = { path = "../pil2-proofman/fields", version = "1.0.0-beta" }
+# pil2-stark-setup = { path = "../pil2-proofman/setup/pil2-stark", version = "1.0.0-beta" }
 
 # External dependencies
 arc-swap = "1"
