@@ -25,7 +25,7 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 anyhow = { workspace = true }
 
-libc = "0.2"
+libc = { workspace = true }
 thiserror = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]

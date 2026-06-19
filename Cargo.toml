@@ -159,7 +159,6 @@ rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"
-itertools = "0.14"
 colored = "3"
 ark-ff = "0.5.0"
 ark-std = "0.5.0"
@@ -207,13 +206,11 @@ paste = "1.0"
 tonic = "0.14"
 tonic-health = "0.14"
 tonic-prost = "0.14"
-tonic-build = "0.14"
 tonic-prost-build = "0.14"
 # Protocol Buffers support - match tonic's prost version
 prost = "0.14"
 prost-types = "0.14"
 config = "0.15"
-toml = "0.9.8"
 serial_test = "3.4"
 borsh = { version = "1.5", features = ["derive"] }
 reqwest = { version = "0.12", features = [
@@ -227,3 +224,19 @@ env = "1.0.1"
 # alongside rcgen 0.14.x. 0.3.47 is the newest version that satisfies
 # vergen-git2's `time ^0.3.45` and avoids the bug. Consumed by cli (workspace=true).
 time = "=0.3.47"
+
+alloy-sol-types = "1.5.7"
+async-stream = "0.3"
+cfg-if = "1.0"
+getrandom = { version = "0.2", features = ["custom"] }
+lazy_static = "1.5.0"
+libc = "0.2"
+metrics = "0.24"
+path-clean = "1.0"
+regex = "1.11.1"
+rustfmt-wrapper = "0.2.1"
+rustls = { version = "0.23", features = ["ring"] }
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+signal-hook = "0.4"
+signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
+criterion = { version = "0.8", features = ["html_reports"] }

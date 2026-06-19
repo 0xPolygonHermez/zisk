@@ -31,8 +31,8 @@ proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 
-path-clean = "1.0"
-tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+path-clean = { workspace = true }
+tiny-keccak = { workspace = true }
 
 [dev-dependencies]
 test-artifacts = { workspace = true }

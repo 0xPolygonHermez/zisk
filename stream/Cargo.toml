@@ -18,12 +18,12 @@ tracing = { workspace = true }
 
 # Enabled by the `quic` feature.
 quinn = { version = "0.11", optional = true }
-rustls = { version = "0.23", features = ["ring"], optional = true }
+rustls = { workspace = true, optional = true }
 rcgen = { version = "0.14", optional = true }
 tokio = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
-libc = "0.2"
+libc = { workspace = true }
 
 [features]
 default = []

@@ -21,7 +21,6 @@ required-features = ["test_data"]
 name = "arith_eq_384_test_generator"
 path = "src/arith_eq_384_test_generator.rs"
 
-
 [dependencies]
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
@@ -42,9 +41,9 @@ ark-bls12-381 = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
 
-rustfmt-wrapper = "0.2.1"
-lazy_static = "1.4"
-path-clean = "1.0"
+rustfmt-wrapper = { workspace = true }
+lazy_static = { workspace = true }
+path-clean = { workspace = true }
 
 [dev-dependencies]
 test-artifacts = { workspace = true }

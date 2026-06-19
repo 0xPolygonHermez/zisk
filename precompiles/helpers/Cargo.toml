@@ -20,7 +20,7 @@ ark-bls12-381 = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
 
-cfg-if = "1.0"
+cfg-if = { workspace = true }
 crunchy = "0.2"
 
 [features]

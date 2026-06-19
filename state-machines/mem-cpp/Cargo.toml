@@ -1,13 +1,12 @@
 [package]
 name = "mem-planner-cpp"
 description = "C++-backed memory access planner for the ZisK zkVM"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-keywords.workspace = true
-repository.workspace = true
-categories.workspace = true
-
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 build = "build.rs"
 
 [dependencies]

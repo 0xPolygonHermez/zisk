@@ -1,12 +1,12 @@
 [package]
 name = "zisk-cluster-common"
 description = "Shared types and utilities for the ZisK distributed proving cluster"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-keywords.workspace = true
-repository.workspace = true
-categories.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 proofman = { workspace = true }
@@ -17,7 +17,7 @@ tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 borsh = { workspace = true }
 
-serde = { version = "1.0", features = ["derive"] }
-uuid = { version = "1.0", features = ["v4"] }
-anyhow = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
+serde = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+anyhow = { workspace = true }
+chrono = { workspace = true }

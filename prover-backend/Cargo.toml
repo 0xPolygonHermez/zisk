@@ -37,7 +37,7 @@ colored = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 blake3 = { workspace = true }
-alloy-sol-types = { version = "1.5.7" }
+alloy-sol-types = { workspace = true }
 
 [features]
 default = []

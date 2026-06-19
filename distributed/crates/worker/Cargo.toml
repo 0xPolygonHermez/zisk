@@ -1,19 +1,19 @@
 [package]
 name = "zisk-worker"
 description = "Worker node for the ZisK distributed proving network"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-keywords.workspace = true
-repository.workspace = true
-categories.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
 
 [[bin]]
 name = "zisk-worker"
 path = "src/cli/main.rs"
 
 [build-dependencies]
-vergen-git2.workspace = true
+vergen-git2 = { workspace = true }
 
 [dependencies]
 zisk-cluster-common = { workspace = true }
@@ -25,7 +25,7 @@ zisk-prover-backend = { workspace = true }
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 bincode = { workspace = true }
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true }
 
 tonic = { workspace = true }
 tokio = { workspace = true }

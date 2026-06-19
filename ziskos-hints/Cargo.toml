@@ -27,13 +27,13 @@ precompiles-helpers = { workspace = true }
 
 rand = { workspace = true }
 
-lazy_static = "1.5.0"
-getrandom = { version = "0.2", features = ["custom"] }
-cfg-if = "1.0"
-tiny-keccak = { version = "2.0.0", features = ["keccak"] }
+lazy_static = { workspace = true }
+getrandom = { workspace = true }
+cfg-if = { workspace = true }
+tiny-keccak = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 bincode = { workspace = true }
-paste = "1.0"
+paste = { workspace = true }
 sha2 = { workspace = true }
 proofman-fields = { workspace = true }
 ripemd = { workspace = true }

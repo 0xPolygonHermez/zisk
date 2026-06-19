@@ -26,12 +26,12 @@ anyhow = { workspace = true }
 rayon = { workspace = true }
 tracing = { workspace = true }
 zisk-common = { workspace = true }
-rustls = { version = "0.23", features = ["ring"] }
+rustls = { workspace = true }
 borsh = { workspace = true }
 zisk-cluster-common = { workspace = true }
 
 [dev-dependencies]
-criterion = "0.8"
+criterion = { workspace = true }
 
 [[bench]]
 name = "hints_benchmarks"

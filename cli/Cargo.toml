@@ -17,7 +17,7 @@ name = "cargo-zisk-dev"
 path = "src/bin/cargo-zisk-dev.rs"
 
 [build-dependencies]
-vergen-git2.workspace = true
+vergen-git2 = { workspace = true }
 
 [dependencies]
 zisk-common = { workspace = true }
@@ -47,7 +47,7 @@ time = { workspace = true }
 clap = { workspace = true }
 target-lexicon = "0.13"
 reqwest = { workspace = true }
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true }
 indicatif = "0.17.8"
 futures = { workspace = true }
 yansi = "1.0.1"
