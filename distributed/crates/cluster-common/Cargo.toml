@@ -1,7 +1,12 @@
 [package]
 name = "zisk-cluster-common"
-version = "0.1.0"
-edition = "2021"
+description = "Shared types and utilities for the ZisK distributed proving cluster"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+repository.workspace = true
+categories.workspace = true
 
 [dependencies]
 proofman = { workspace = true }

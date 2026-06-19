@@ -1,5 +1,6 @@
 [package]
 name = "mem-common"
+description = "Shared memory-handling types for ZisK state machines"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

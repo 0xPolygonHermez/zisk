@@ -1,5 +1,6 @@
 [package]
 name = "zisk-common"
+description = "Common utilities and shared types for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

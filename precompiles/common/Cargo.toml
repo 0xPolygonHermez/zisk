@@ -1,5 +1,6 @@
 [package]
 name = "precompiles-common"
+description = "Common utilities and helpers for ZisK precompiles"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

@@ -1,5 +1,6 @@
 [package]
 name = "precompiles-helpers"
+description = "Helper routines shared across ZisK precompiles"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

@@ -1,5 +1,6 @@
 [package]
 name = "data-bus"
+description = "Publish/subscribe data bus for routing execution data between ZisK components"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

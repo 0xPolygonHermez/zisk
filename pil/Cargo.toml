@@ -1,5 +1,6 @@
 [package]
 name = "zisk-pil"
+description = "PIL2 definitions for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

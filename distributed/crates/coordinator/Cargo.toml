@@ -1,10 +1,12 @@
 [package]
 name = "zisk-coordinator"
-description = "Core types and functionality for Distributed Network"
+description = "Coordinator node for the ZisK distributed proving network"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+keywords.workspace = true
 repository.workspace = true
+categories.workspace = true
 
 [dependencies]
 zisk-cluster-api = { workspace = true }

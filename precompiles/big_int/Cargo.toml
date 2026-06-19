@@ -1,5 +1,6 @@
 [package]
 name = "precomp-big-int"
+description = "Big-integer arithmetic precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

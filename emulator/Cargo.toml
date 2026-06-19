@@ -1,5 +1,6 @@
 [package]
 name = "ziskemu"
+description = "RISC-V emulator that executes ZisK program ROMs and generates execution traces"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

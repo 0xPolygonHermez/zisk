@@ -4,7 +4,9 @@ description = "CLI client for submitting jobs to the ZisK coordinator"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+keywords.workspace = true
 repository.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "zisk-prove-client"

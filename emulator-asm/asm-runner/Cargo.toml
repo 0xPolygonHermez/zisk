@@ -1,5 +1,6 @@
 [package]
 name = "asm-runner"
+description = "Runtime for managing the ZisK assembly emulator process and its shared-memory I/O"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

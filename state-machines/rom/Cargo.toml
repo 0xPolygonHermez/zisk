@@ -1,5 +1,6 @@
 [package]
 name = "sm-rom"
+description = "ROM state machine for the ZisK proving pipeline"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

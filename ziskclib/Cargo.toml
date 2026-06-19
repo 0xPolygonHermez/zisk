@@ -1,5 +1,6 @@
 [package]
 name = "ziskclib"
+description = "C library routines for ZisK guest programs"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

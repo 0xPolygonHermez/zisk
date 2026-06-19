@@ -1,5 +1,6 @@
 [package]
 name = "zisk-definitions"
+description = "Shared low-level definitions (syscalls, hints, labels) for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

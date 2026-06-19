@@ -1,9 +1,12 @@
 [package]
 name = "zisk-program-macros"
+description = "Procedural macro to embed a ZisK guest ELF as a GuestProgram"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+keywords = { workspace = true }
 repository = { workspace = true }
+categories = { workspace = true }
 
 [lib]
 proc-macro = true

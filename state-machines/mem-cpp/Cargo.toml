@@ -1,5 +1,6 @@
 [package]
 name = "mem-planner-cpp"
+description = "C++-backed memory access planner for the ZisK zkVM"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

@@ -1,5 +1,6 @@
 [package]
 name = "precomp-sha256f"
+description = "SHA-256 compression precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

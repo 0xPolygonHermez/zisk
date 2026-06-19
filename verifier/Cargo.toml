@@ -1,5 +1,6 @@
 [package]
 name = "zisk-verifier"
+description = "Proof verifier for the ZisK zkVM proofs"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

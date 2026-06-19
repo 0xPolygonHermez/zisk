@@ -1,5 +1,6 @@
 [package]
 name = "integration-tests"
+description = "End-to-end integration tests for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

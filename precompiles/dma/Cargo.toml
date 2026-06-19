@@ -1,5 +1,6 @@
 [package]
 name = "precomp-dma"
+description = "Direct-memory-access precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

@@ -1,5 +1,6 @@
 [package]
 name = "zisk-core"
+description = "Core types and proving primitives for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

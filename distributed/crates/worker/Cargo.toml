@@ -1,10 +1,12 @@
 [package]
 name = "zisk-worker"
-description = "Distributed Network Client"
+description = "Worker node for the ZisK distributed proving network"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+keywords.workspace = true
 repository.workspace = true
+categories.workspace = true
 
 [[bin]]
 name = "zisk-worker"

@@ -1,5 +1,6 @@
 [package]
 name = "sm-binary"
+description = "Binary operations state machine for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

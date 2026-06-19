@@ -1,5 +1,6 @@
 [package]
 name = "zisk-stream"
+description = "Stream I/O layer (traits and transports) for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

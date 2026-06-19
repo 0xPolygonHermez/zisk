@@ -1,5 +1,6 @@
 [package]
 name = "cargo-zisk"
+description = "The command-line tool to build, prove, and verify programs for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

@@ -1,5 +1,6 @@
 [package]
 name = "zisk-build"
+description = "Build tooling for compiling guest programs to RISC-V ELF for the ZisK zkVM"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

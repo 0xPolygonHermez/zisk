@@ -7,6 +7,7 @@
 
 [package]
 name = "ziskos-hints"
+description = "Guest runtime and entrypoint for programs targeting the ZisK zkVM with the hints feature enabled"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
