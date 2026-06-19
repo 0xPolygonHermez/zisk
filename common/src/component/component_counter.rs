@@ -9,8 +9,6 @@ use std::{
     sync::{atomic::AtomicU64, Arc},
 };
 
-use zisk_core::{ROM_ADDR, ROM_ENTRY};
-
 /// The `Metrics` trait provides an interface for tracking and managing metrics in a
 /// flexible and extensible manner.
 ///
@@ -41,6 +39,7 @@ pub trait Metrics: Send + Sync {
 pub struct Counter {
     /// The total number of counted instructions.
     pub inst_count: u64,
+    /// The total number of counted frequent operations (frops).
     pub frops_count: u64,
 }
 
@@ -53,6 +52,11 @@ impl Counter {
     pub fn update(&mut self, num: u64) {
         self.inst_count += num;
     }
+
+    /// Updates the frops counter by incrementing it with a given value.
+    ///
+    /// # Arguments
+    /// * `num` - The number of frops to add to the counter
     #[inline(always)]
     pub fn update_frops(&mut self, num: u64) {
         self.frops_count += num;
@@ -93,11 +97,8 @@ impl AddAssign<&Counter> for Counter {
 /// tracking counts by program counter (PC) and execution steps.
 #[derive(Debug)]
 pub struct CounterStats {
-    /// Shared biod instruction counter for monitoring ROM operations.
-    pub bios_inst_count: Arc<Vec<AtomicU64>>,
-
     /// Shared program instruction counter for monitoring ROM operations.
-    pub prog_inst_count: Arc<Vec<AtomicU64>>,
+    pub inst_count: Arc<Vec<AtomicU64>>,
 
     /// The PC of the last executed instruction.
     pub end_pc: u64,
@@ -107,13 +108,9 @@ pub struct CounterStats {
 }
 
 impl CounterStats {
-    pub fn new(entry_inst_count: Arc<Vec<AtomicU64>>, inst_count: Arc<Vec<AtomicU64>>) -> Self {
-        CounterStats {
-            bios_inst_count: entry_inst_count,
-            prog_inst_count: inst_count,
-            end_pc: 0,
-            steps: 0,
-        }
+    /// Creates a new `CounterStats` instance with the provided instruction count vector.
+    pub fn new(inst_count: Arc<Vec<AtomicU64>>) -> Self {
+        CounterStats { inst_count, end_pc: 0, steps: 0 }
     }
 
     /// Updates the counter statistics with information about the current instruction execution.
@@ -124,14 +121,8 @@ impl CounterStats {
     /// * `num` - The number of instructions executed at the given PC.
     /// * `end` - A flag indicating if this is the final instruction in the execution.
     #[inline(always)]
-    pub fn update(&mut self, pc: u64, step: u64, num: u64, end: bool) {
-        if pc < ROM_ADDR {
-            let addr = ((pc - ROM_ENTRY) as usize) >> 2;
-            self.bios_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
-        } else {
-            let addr = (pc - ROM_ADDR) as usize;
-            self.prog_inst_count[addr].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
-        }
+    pub fn update(&mut self, pc: u64, index: u64, step: u64, num: u64, end: bool) {
+        self.inst_count[index as usize].fetch_add(num, std::sync::atomic::Ordering::Relaxed);
 
         if end {
             self.end_pc = pc;

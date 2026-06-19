@@ -7,7 +7,9 @@ use crate::stdin::ZiskStdin;
 /// `Stream` carries a [`ZiskStream`] backed by a live transport
 /// (QUIC, Unix socket, gRPC) that supports write-after-run.
 pub enum InputSource {
+    /// Buffered input, either from memory or a file.
     Stdin(ZiskStdin),
+    /// Streamed input.
     Stream(ZiskStream),
 }
 
@@ -17,8 +19,20 @@ impl From<ZiskStdin> for InputSource {
     }
 }
 
+impl From<&ZiskStdin> for InputSource {
+    fn from(s: &ZiskStdin) -> Self {
+        InputSource::Stdin(s.clone())
+    }
+}
+
 impl From<ZiskStream> for InputSource {
     fn from(s: ZiskStream) -> Self {
         InputSource::Stream(s)
+    }
+}
+
+impl From<&ZiskStream> for InputSource {
+    fn from(s: &ZiskStream) -> Self {
+        InputSource::Stream(s.clone())
     }
 }

@@ -19,7 +19,7 @@ pub struct ServerConfig {
     pub host: String,
     pub port: u16,
     pub proofs_dir: PathBuf,
-    pub no_save_proofs: bool,
+    pub save_proofs: bool,
     pub shutdown_timeout_seconds: u64,
 }
 
@@ -88,6 +88,9 @@ pub struct CoordinatorConfig {
     /// Seconds a worker can remain in `Disconnected` state before being removed from
     /// the pool entirely. Default: 300s.
     pub stale_disconnected_threshold_seconds: u64,
+    /// Seconds before unregistering a worker stuck in `pending_recovery`.
+    /// `0` disables the sweep. Default: 600s.
+    pub stuck_recovery_threshold_seconds: u64,
     /// Seconds a job in a terminal state (`Completed`, `Failed`, `Cancelled`) is kept
     /// in memory before being evicted by the monitor sweep. Default: 3600s (60 min).
     /// `0` evicts terminal jobs on the next monitor tick.
@@ -117,7 +120,7 @@ impl Config {
         config_file: Option<String>,
         port: Option<u16>,
         proofs_dir: Option<PathBuf>,
-        no_save_proofs: bool,
+        save_proofs: Option<bool>,
         webhook_url: Option<String>,
     ) -> Result<Self> {
         // Create proofs directory if it doesn't exist
@@ -136,7 +139,7 @@ impl Config {
             .set_default("server.host", Self::DEFAULT_BIND_HOST)?
             .set_default("server.port", Self::DEFAULT_PORT)?
             .set_default("server.proofs_dir", Self::DEFAULT_PROOFS_DIR)?
-            .set_default("server.no_save_proofs", false)?
+            .set_default("server.save_proofs", false)?
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
@@ -150,6 +153,7 @@ impl Config {
             .set_default("coordinator.heartbeat_max_missed", 3)?
             .set_default("coordinator.job_monitor_interval_seconds", 10)?
             .set_default("coordinator.stale_disconnected_threshold_seconds", 300)?
+            .set_default("coordinator.stuck_recovery_threshold_seconds", 600)?
             .set_default("coordinator.job_ttl_seconds", 3600)?
             .set_default("coordinator.default_compute_units", 0)?
             .set_default("coordinator.min_compute_units", 1)?
@@ -173,7 +177,10 @@ impl Config {
                 .set_override("server.proofs_dir", proofs_dir.to_string_lossy().to_string())?;
         }
 
-        builder = builder.set_override("server.no_save_proofs", no_save_proofs)?;
+        // Only override when set.
+        if let Some(save_proofs) = save_proofs {
+            builder = builder.set_override("server.save_proofs", save_proofs)?;
+        }
 
         // Override webhook_url if provided via function argument
         if let Some(url) = webhook_url {

@@ -1,26 +1,34 @@
 use std::ops::Deref;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
-use crate::{Client, ExecutorKind};
+use crate::{Client, ClientSync, ExecutorKind};
 
+/// Result of an execute operation.
 pub struct ExecuteResult {
     job_id: Option<JobId>,
     output: ExecuteOutput,
 }
 
 impl ExecuteResult {
+    /// Create a new `ExecuteResult` with the given output and job ID.
     pub fn new(output: ExecuteOutput, job_id: Option<JobId>) -> Self {
         Self { output, job_id }
     }
 
+    /// Get the ID of the job that produced this result, if available.
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
+    }
+
+    /// Get the output of the execution.
+    pub fn output(&self) -> &ExecuteOutput {
+        &self.output
     }
 }
 
@@ -45,7 +53,7 @@ pub struct ExecuteRequest<'a, C> {
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
-    executor: Option<ExecutorKind>,
+    executor: ExecutorKind,
     timeout: Option<Duration>,
 }
 
@@ -55,8 +63,9 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
         client: &'a C,
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
+        executor: ExecutorKind,
     ) -> Self {
-        Self { client, program, stdin: stdin.into(), hints: None, executor: None, timeout: None }
+        Self { client, program, stdin: stdin.into(), hints: None, executor, timeout: None }
     }
 
     /// Attach a hints stream to this execute request.
@@ -73,7 +82,7 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
     /// Override the executor for this execute call.
     #[must_use]
     pub fn executor(mut self, executor: ExecutorKind) -> Self {
-        self.executor = Some(executor);
+        self.executor = executor;
         self
     }
 
@@ -86,8 +95,28 @@ impl<'a, C: Client> ExecuteRequest<'a, C> {
 
     /// Submit the execution, returning a [`JobHandle<ExecuteOutput>`].
     pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
-        let executor = self.executor.unwrap_or_else(|| self.client.default_executor());
         let subs = new_subscriber_list();
-        self.client.run_execute(self.program, self.stdin, self.hints, executor, self.timeout, subs)
+        self.client.run_execute(
+            self.program,
+            self.stdin,
+            self.hints,
+            self.executor,
+            self.timeout,
+            subs,
+        )
+    }
+}
+
+#[allow(private_bounds)]
+impl<'a, C: ClientSync> ExecuteRequest<'a, C> {
+    /// Run the execution synchronously, returning the result directly.
+    ///
+    /// Unlike [`run`](Self::run), this drives the work on the calling thread and
+    /// requires no async runtime — use it when embedding the SDK in a
+    /// synchronous program. Available only for the embedded client
+    /// ([`EmbeddedClient`](crate::EmbeddedClient)).
+    pub fn run_sync(self) -> Result<ExecuteResult> {
+        let subs = new_subscriber_list();
+        self.client.run_execute_sync(self.program, self.stdin, self.hints, self.executor, subs)
     }
 }

@@ -20,5 +20,5 @@ pub trait DataBusTrait<D, T> {
 
     fn on_close(&mut self);
 
-    fn into_devices(self, execute_on_close: bool) -> Vec<(Option<usize>, Option<T>)>;
+    fn into_devices(self, execute_on_close: bool) -> Vec<(usize, T)>;
 }

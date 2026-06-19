@@ -12,13 +12,11 @@ zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
 asm-runner = { workspace = true }
+mem-common = { workspace = true }
 
-fields = { workspace=true }
+fields = { workspace = true }
 proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
-proofman-util = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }
-itertools = { workspace = true }
-anyhow = { workspace = true }
+thiserror = { workspace = true }

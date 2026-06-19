@@ -1,0 +1,223 @@
+use std::{path::PathBuf, process::Command};
+
+use super::support::{get_target, CommandExecutor};
+use anyhow::{Context, Result};
+use zisk_build::{RUSTUP_TOOLCHAIN_NAME, ZISK_VERSION_MESSAGE};
+
+#[derive(clap::Args)]
+#[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
+/// Build the cargo-zisk toolchain
+pub(crate) struct ZiskBuildToolchain {
+    /// Name for the toolchain in rustup
+    #[arg(short = 'n', long)]
+    name: Option<String>,
+
+    /// Git branch to checkout (default: zisk)
+    #[arg(short = 'b', long)]
+    branch: Option<String>,
+
+    /// Git tag to checkout (takes precedence over branch)
+    #[arg(short = 't', long)]
+    tag: Option<String>,
+}
+
+impl ZiskBuildToolchain {
+    pub(crate) fn run(&self) -> Result<()> {
+        println!("Building toolchain...");
+        // Get environment variables.
+        let build_dir = std::env::var("ZISK_BUILD_DIR");
+        let rust_dir = match build_dir {
+            Ok(build_dir) => {
+                println!("Detected ZISK_BUILD_DIR, skipping cloning rust.");
+                PathBuf::from(build_dir).join("rust")
+            }
+            Err(_) => {
+                let temp_dir = std::env::temp_dir();
+                let dir = temp_dir.join("zisk-rust");
+                if dir.exists() {
+                    std::fs::remove_dir_all(&dir)?;
+                }
+
+                println!("No ZISK_BUILD_DIR detected, cloning rust.");
+                let repo_url = "https://github.com/0xPolygonHermez/rust";
+
+                // Determine the ref to checkout: tag takes precedence over branch
+                let git_ref = Self::resolve_git_ref(self.tag.as_deref(), self.branch.as_deref());
+
+                Command::new("git")
+                    .args([
+                        "clone",
+                        repo_url,
+                        "--depth=1",
+                        "--single-branch",
+                        &format!("--branch={}", git_ref),
+                        "zisk-rust",
+                    ])
+                    .current_dir(&temp_dir)
+                    .run()?;
+                Command::new("git").args(["reset", "--hard"]).current_dir(&dir).run()?;
+
+                #[cfg(feature = "custom_rust_llvm")]
+                // Initialize submodules EXCEPT llvm-project
+                // llvm-project will be initialized by the bootstrap system which will also
+                // apply patches from src/llvm-patches/ automatically
+                let submodules_to_init = [
+                    "library/backtrace",
+                    "library/stdarch",
+                    "src/doc/book",
+                    "src/doc/edition-guide",
+                    "src/doc/embedded-book",
+                    "src/doc/nomicon",
+                    "src/doc/reference",
+                    "src/doc/rust-by-example",
+                    "src/gcc",
+                    "src/tools/cargo",
+                    "src/tools/enzyme",
+                    "src/tools/rustc-perf",
+                ];
+
+                #[cfg(feature = "custom_rust_llvm")]
+                for submodule in &submodules_to_init {
+                    println!("Initializing submodule: {}", submodule);
+                    Command::new("git")
+                        .args([
+                            "submodule",
+                            "update",
+                            "--init",
+                            "--recursive",
+                            "--progress",
+                            "--",
+                            submodule,
+                        ])
+                        .current_dir(&dir)
+                        .run()
+                        .ok(); // Ignore errors for optional submodules
+                }
+                #[cfg(not(feature = "custom_rust_llvm"))]
+                Command::new("git")
+                    .args(["submodule", "update", "--init", "--recursive", "--progress"])
+                    .current_dir(&dir)
+                    .run()?;
+                dir
+            }
+        };
+        // Install our config.toml.
+        let bootstrap_toml = include_str!("bootstrap.toml");
+        let bootstrap_file = rust_dir.join("bootstrap.toml");
+        std::fs::write(&bootstrap_file, bootstrap_toml)
+            .with_context(|| format!("while writing configuration to {bootstrap_file:?}"))?;
+
+        // Work around target sanity check added in
+        // rust-lang/rust@09c076810cb7649e5817f316215010d49e78e8d7.
+        let temp_dir = std::env::temp_dir().join("rustc-targets");
+        if !temp_dir.exists() {
+            std::fs::create_dir_all(&temp_dir)
+                .with_context(|| format!("while creating directory {temp_dir:?}"))?;
+        }
+
+        std::fs::File::create(temp_dir.join("riscv64ima-zisk-zkvm-elf.json")).with_context(
+            || format!("while creating file {temp_dir:?}/riscv64ima-zisk-zkvm-elf.json"),
+        )?;
+
+        // Note: LLVM patches are applied automatically by the bootstrap system
+        // (see src/bootstrap/src/core/build_steps/llvm.rs::apply_llvm_patches)
+        // The patches are located in src/llvm-patches/*.patch
+
+        // Build the toolchain.
+        Command::new("python3")
+            .env("RUST_TARGET_PATH", &temp_dir)
+            .env("CARGO_TARGET_RISCV64IMA_ZISK_ZKVM_ELF_RUSTFLAGS", "-Cpasses=lower-atomic")
+            .args([
+                "x.py",
+                "build",
+                "--stage",
+                "2",
+                "compiler/rustc",
+                "library",
+                "--target",
+                &format!("riscv64ima-zisk-zkvm-elf,{}", get_target(),),
+            ])
+            .current_dir(&rust_dir)
+            .run()
+            .with_context(|| "while building the Rust toolchain")?;
+
+        let rustup_toolchain_name = self.name.as_deref().unwrap_or(RUSTUP_TOOLCHAIN_NAME);
+        // Remove the existing toolchain from rustup, if it exists.
+        match Command::new("rustup").args(["toolchain", "remove", rustup_toolchain_name]).run() {
+            Ok(_) => println!("Successfully removed existing toolchain."),
+            Err(_) => println!("No existing toolchain to remove."),
+        }
+
+        // Find the toolchain directory.
+        let mut toolchain_dir = None;
+        for wentry in std::fs::read_dir(rust_dir.join("build"))? {
+            let entry = wentry?;
+            let toolchain_dir_candidate = entry.path().join("stage2");
+            if toolchain_dir_candidate.is_dir() {
+                toolchain_dir = Some(toolchain_dir_candidate);
+                break;
+            }
+        }
+        let toolchain_dir = toolchain_dir.unwrap();
+        println!(
+            "Found built toolchain directory at {}.",
+            toolchain_dir.as_path().to_str().unwrap()
+        );
+
+        // Link the toolchain to rustup.
+        Command::new("rustup")
+            .args(["toolchain", "link", rustup_toolchain_name])
+            .arg(&toolchain_dir)
+            .run()
+            .with_context(|| "while linking the toolchain to rustup")?;
+        println!("Successfully linked the toolchain to rustup.");
+
+        // Compressing toolchain directory to tar.gz.
+        let target = get_target();
+        let tar_gz_path = format!("rust-toolchain-{target}.tar.gz");
+        Command::new("tar")
+            .args([
+                "--exclude",
+                "lib/rustlib/src",
+                "--exclude",
+                "lib/rustlib/rustc-src",
+                "-hczvf",
+                &tar_gz_path,
+                "-C",
+                toolchain_dir.to_str().unwrap(),
+                ".",
+            ])
+            .run()
+            .with_context(|| format!("while compressing the toolchain to {tar_gz_path}"))?;
+        println!("Successfully compressed the toolchain to {tar_gz_path}.");
+
+        Ok(())
+    }
+
+    /// Git ref to check out when cloning rust: an explicit `--tag` takes
+    /// precedence over `--branch`, falling back to the `zisk` branch. Pure, so
+    /// the precedence is unit-tested without invoking git.
+    fn resolve_git_ref<'a>(tag: Option<&'a str>, branch: Option<&'a str>) -> &'a str {
+        tag.or(branch).unwrap_or("zisk")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ZiskBuildToolchain;
+
+    #[test]
+    fn git_ref_defaults_to_zisk() {
+        assert_eq!(ZiskBuildToolchain::resolve_git_ref(None, None), "zisk");
+    }
+
+    #[test]
+    fn git_ref_uses_branch_when_no_tag() {
+        assert_eq!(ZiskBuildToolchain::resolve_git_ref(None, Some("dev")), "dev");
+    }
+
+    #[test]
+    fn git_ref_tag_takes_precedence_over_branch() {
+        assert_eq!(ZiskBuildToolchain::resolve_git_ref(Some("v1.0"), Some("dev")), "v1.0");
+    }
+}

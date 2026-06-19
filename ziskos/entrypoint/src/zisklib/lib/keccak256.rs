@@ -5,12 +5,12 @@ use crate::syscalls::syscall_keccak_f;
 #[cfg(zisk_hints_debug)]
 use core::ffi::c_char;
 
-#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints))]
+#[cfg(all(not(zisk_guest), zisk_hints))]
 extern "C" {
     fn hint_keccak256(input_ptr: *const u8, input_len: usize);
 }
 
-#[cfg(all(not(all(target_os = "zkvm", target_vendor = "zisk")), zisk_hints_debug))]
+#[cfg(all(not(zisk_guest), zisk_hints_debug))]
 extern "C" {
     fn hint_log_c(msg: *const c_char);
 }
@@ -18,7 +18,7 @@ extern "C" {
 #[cfg(zisk_hints_debug)]
 pub fn hint_log<S: AsRef<str>>(msg: S) {
     // On native we call external C function to log hints, since it controls if hints are paused or not
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         extern crate alloc;
         use alloc::ffi::CString;
@@ -28,7 +28,7 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
         }
     }
     // On zkvm/zisk, we can just print directly
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         println!("{}", msg.as_ref());
     }
@@ -142,7 +142,7 @@ pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: 
         hint_log(format!("hint_keccak256 (bytes: {:?}, len: {})", input_bytes, len));
     }
 
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         keccak256_c(
             bytes,
@@ -153,7 +153,7 @@ pub unsafe extern "C" fn native_keccak256(bytes: *const u8, len: usize, output: 
         );
     }
 
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         use tiny_keccak::{Hasher, Keccak};
         const OUT_LEN: usize = 32;

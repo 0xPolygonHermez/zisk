@@ -24,7 +24,9 @@ use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
-use zisk_common::{PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
+use zisk_common::{
+    HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+};
 
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,
@@ -50,7 +52,11 @@ impl ProverBackend {
     }
 
     pub(crate) fn set_asm_resources(&self, resources: Arc<AsmResources>) -> Result<()> {
-        self.executor.set_asm_resources(resources)
+        self.executor.set_asm_resources(resources).map_err(Into::into)
+    }
+
+    pub(crate) fn clear_asm_resources(&self) -> Result<()> {
+        self.executor.clear_asm_resources().map_err(Into::into)
     }
 
     pub(crate) fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
@@ -81,6 +87,7 @@ impl ProverBackend {
                 anyhow::anyhow!("ASM resources not initialized, cannot append input data")
             })?
             .append_raw_input(reinterpreted_data)
+            .map_err(Into::into)
     }
 
     pub(crate) fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
@@ -89,6 +96,7 @@ impl ProverBackend {
                 anyhow::anyhow!("ASM resources not initialized, cannot append raw input")
             })?
             .append_raw_input(bytes)
+            .map_err(Into::into)
     }
 
     pub(crate) fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
@@ -111,16 +119,16 @@ impl ProverBackend {
 
     pub(crate) fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         match self.asm_emulator() {
-            Some(a) => a.get_hints_processor(),
+            Some(a) => a.get_hints_processor().map_err(Into::into),
             None => {
                 Err(anyhow::anyhow!("ASM resources not initialized, cannot get hints processor"))
             }
         }
     }
 
-    pub(crate) fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
+    pub(crate) fn set_active_services(&self, is_first_process: bool) -> Result<()> {
         if let Some(asm) = self.asm_emulator() {
-            asm.set_active_services(is_first_partition)?;
+            asm.set_active_services(is_first_process)?;
         }
         Ok(())
     }
@@ -151,6 +159,20 @@ impl ProverBackend {
         Ok(self.proofman.get_wcm().get_pctx())
     }
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    pub fn hash(&self) -> Result<String> {
+        Ok(self.get_pctx()?.global_info.hash.clone())
+    }
+
+    /// Loaded proving key's hash family as a [`HashMode`]. Errors if the key's
+    /// recorded hash is not a recognized mode.
+    pub fn hash_mode(&self) -> Result<HashMode> {
+        let hash = self.hash()?;
+        hash.parse::<HashMode>().map_err(|e| {
+            anyhow::anyhow!("proving key hash {hash:?} is not a recognized HashMode: {e}")
+        })
+    }
+
     pub fn register_program(
         &self,
         zisk_rom: Arc<zisk_core::ZiskRom>,
@@ -166,7 +188,7 @@ impl ProverBackend {
     }
 
     pub fn set_stdin(&self, stdin: ZiskStdin) -> Result<()> {
-        self.executor.set_stdin(stdin)
+        self.executor.set_stdin(stdin).map_err(Into::into)
     }
 
     pub fn execution_result(&self) -> Result<(ZiskExecutorSummary, ExecutorStatsHandle)> {
@@ -358,7 +380,10 @@ impl ProverBackend {
                     .generate_final_snark_proof(&vadcop_proof)?;
 
                 let publics = PublicValues::new_from_u64(&vadcop_proof.public_values);
-                let program_vk = ProgramVK::new_from_publics(&vadcop_proof.public_values);
+                let program_vk = ProgramVK::new_from_publics_with_mode(
+                    &vadcop_proof.public_values,
+                    self.hash_mode()?,
+                );
                 if snark_proof.protocol_id == SnarkProtocol::Plonk.protocol_id() {
                     let proving_key_snark =
                         self.proving_key_snark_path.as_ref().ok_or_else(|| {
@@ -397,9 +422,17 @@ impl ProverBackend {
                 execution_result,
                 start.elapsed(),
                 Proof {
-                    body: ProofBody::Vadcop { proof: p.proof, zisk_vk: vadcop_vk_u64, minimal },
+                    body: ProofBody::Vadcop {
+                        proof: p.proof,
+                        zisk_vk: vadcop_vk_u64,
+                        minimal,
+                        hash: self.hash()?,
+                    },
                     publics: PublicValues::new_from_u64(&p.public_values),
-                    program_vk: ProgramVK::new_from_publics(&p.public_values),
+                    program_vk: ProgramVK::new_from_publics_with_mode(
+                        &p.public_values,
+                        self.hash_mode()?,
+                    ),
                 },
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
@@ -414,9 +447,11 @@ impl ProverBackend {
     ) -> Result<ProveOutput> {
         let start = std::time::Instant::now();
 
+        let hash = self.hash()?;
         let mut pubs_u64 = program_vk.vk.clone();
         pubs_u64.extend(publics.public_u64());
-        let vadcop_final_proof = VadcopFinalProof::new(proof.to_vec(), pubs_u64, false);
+        let vadcop_final_proof =
+            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, hash.clone());
 
         let minimal_proof = self
             .proofman
@@ -430,9 +465,13 @@ impl ProverBackend {
                 proof: minimal_proof.proof.clone(),
                 zisk_vk: self.get_vadcop_vk(true)?,
                 minimal: true,
+                hash,
             },
             publics: PublicValues::new_from_u64(&minimal_proof.public_values),
-            program_vk: ProgramVK::new_from_publics(&minimal_proof.public_values),
+            program_vk: ProgramVK::new_from_publics_with_mode(
+                &minimal_proof.public_values,
+                self.hash_mode()?,
+            ),
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -454,7 +493,8 @@ impl ProverBackend {
 
         let mut pubs_u64 = program_vk.vk.clone();
         pubs_u64.extend(publics.public_u64());
-        let vadcop_final_proof = VadcopFinalProof::new(proof.to_vec(), pubs_u64, false);
+        let vadcop_final_proof =
+            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, self.hash()?);
 
         let snark_proof =
             self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(&vadcop_final_proof)?;
@@ -481,7 +521,10 @@ impl ProverBackend {
                 }),
             },
             publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
-            program_vk: ProgramVK::new_from_publics(&vadcop_final_proof.public_values),
+            program_vk: ProgramVK::new_from_publics_with_mode(
+                &vadcop_final_proof.public_values,
+                self.hash_mode()?,
+            ),
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))

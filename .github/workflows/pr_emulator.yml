@@ -5,7 +5,7 @@ on:
     branches:
       - develop
       - main
-      - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
     paths:
       - "emulator/**"
       - "emulator-asm/**"
@@ -18,6 +18,9 @@ on:
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   riscof-elf-tests-rust:

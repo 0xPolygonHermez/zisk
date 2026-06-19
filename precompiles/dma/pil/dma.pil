@@ -317,7 +317,7 @@ airtemplate Dma(int N = 2**21,
         }
 
         range_check(expression: h_src64, min: 0, max: 2**22-1, sel: sel);
-        lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel);
+        lookup_assumes(DUAL_RANGE_7_BITS_ID, expressions: [l_src64, l_dst64], sel: sel, sel_is_binary: 1);
     } else {    
         const expr air.src = 0;
         const expr air.src64 = 0;
@@ -414,7 +414,7 @@ airtemplate Dma(int N = 2**21,
                        result_nz * DMA_ROM_NEQ_F +
                        use_src * DMA_ROM_USE_SRC_F;
 
-    lookup_assumes(DMA_ROM_ID, expressions: [dst_offset, src_offset, l_count, flags, pre_count, src_offset_after_pre, l_count64], sel: sel);
+    lookup_assumes(DMA_ROM_ID, expressions: [dst_offset, src_offset, l_count, flags, pre_count, src_offset_after_pre, l_count64], sel: sel, sel_is_binary: 1);
 
     // OP_DMA_MEMSET isn't implemented because usually memset used with static value known
     // in compilation time, and for this case we could use OP_DMA_XMEMSET. For a OP_DMA_MEMSET
@@ -491,7 +491,7 @@ airtemplate Dma(int N = 2**21,
                                      fill_byte,
                                      pre_result_nz,
                                      ...bus_pre_result
-                                    ], sel: use_pre);
+                                    ], sel: use_pre, sel_is_binary: 1);
 
     // DMA ===> DMA_PRE_POST (POST)
     // --------------------------------------------------------------------------------
@@ -512,7 +512,7 @@ airtemplate Dma(int N = 2**21,
                                      main_step,
                                      fill_byte, 
                                      post_result_nz,
-                                     ...bus_post_result], sel: use_post);
+                                     ...bus_post_result], sel: use_post, sel_is_binary: 1);
 
     // BUS: DMA ===> MAIN (Definitions)
 

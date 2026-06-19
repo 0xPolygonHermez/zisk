@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
@@ -11,8 +11,12 @@ fn main() {
     if !c_path.exists() {
         panic!("Missing c_path = {}", c_path.display());
     }
-    let library_folder = c_path.join("lib");
-    let build_folder = c_path.join("build");
+
+    // Build artifacts go under Cargo's OUT_DIR so `cargo clean` removes them
+    // (previously they lived in c/build and c/lib, in-source, and survived clean).
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR not set by Cargo"));
+    let build_folder = out_dir.join("build");
+    let library_folder = out_dir.join("lib");
     let library_name = "ziskc";
     let lib_file = library_folder.join(format!("lib{library_name}.a"));
 
@@ -22,8 +26,11 @@ fn main() {
     std::fs::create_dir_all(&library_folder)
         .unwrap_or_else(|e| panic!("Failed to create lib directory: {e}"));
 
-    // Run make (incremental build - only recompiles changed files)
+    // Run make (incremental build - only recompiles changed files), pointing its
+    // BUILD_DIR / LIB_DIR at OUT_DIR so nothing is written into the source tree.
     let status = Command::new("make")
+        .arg(format!("BUILD_DIR={}", build_folder.display()))
+        .arg(format!("LIB_DIR={}", library_folder.display()))
         .current_dir(&c_path)
         .status()
         .unwrap_or_else(|e| panic!("Failed to execute `make`: {e}"));
@@ -43,6 +50,27 @@ fn main() {
     // Link the static library
     println!("cargo:rustc-link-search=native={}", abs_lib_path.display());
     println!("cargo:rustc-link-lib=static={library_name}");
+
+    // Publish a copy under <target>/zisk-libs/ for tools that link libziskc
+    // outside cargo (emulator-asm `-L`, rom-setup, build_zisk.sh). Those tools
+    // all build lib-c natively from the workspace, where OUT_DIR is
+    // <workspace>/target/<profile>/build/lib-c-<hash>/out, so locating the
+    // `target` ancestor lands the copy at <workspace>/target/zisk-libs/ as they
+    // expect. This is a best-effort side-channel: if OUT_DIR has no ancestor
+    // named `target` (e.g. CARGO_TARGET_DIR set to a differently-named dir),
+    // skip rather than fail — every build that lacks one is also one that never
+    // reads zisk-libs (the guest/ELF build links the installed lib instead).
+    if let Some(target_dir) =
+        out_dir.ancestors().find(|a| a.file_name().and_then(|n| n.to_str()) == Some("target"))
+    {
+        let runtime_dir = target_dir.join("zisk-libs");
+        std::fs::create_dir_all(&runtime_dir)
+            .unwrap_or_else(|e| panic!("Failed to create runtime lib dir: {e}"));
+        let runtime_lib = runtime_dir.join(format!("lib{library_name}.a"));
+        std::fs::copy(&lib_file, &runtime_lib).unwrap_or_else(|e| {
+            panic!("Failed to copy {} to {}: {e}", lib_file.display(), runtime_lib.display())
+        });
+    }
 
     // Track C source files for recompilation
     track_sources(&c_path);

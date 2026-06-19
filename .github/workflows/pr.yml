@@ -5,7 +5,7 @@ on:
     branches:
       - develop
       - main
-      - "pre-develop-[0-9]+.[0-9]+.[0-9]+"
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
     paths-ignore:
       - 'book/**'
   workflow_dispatch:
@@ -14,12 +14,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   cargo-tests:
     name: Cargo tests
-    runs-on: ubuntu-latest
+    runs-on: rocket
+    container:
+      image: ubuntu:22.04
     env:
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
@@ -27,26 +33,98 @@ jobs:
       - name: Install dependencies
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          sudo ./install_deps.sh
+          ./install_deps.sh
+
+      - name: Add Cargo to PATH
+        # install_deps.sh already installs Rust via rustup into ~/.cargo/bin;
+        # just expose it to subsequent steps.
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Show versions
+        run: |
+          rustc --version
+          cargo --version
+
+      - name: Build cargo-zisk
+        run: cargo build --bin cargo-zisk
+
+      - name: Install ZisK rust toolchain
+        run: ./target/debug/cargo-zisk toolchain install
 
       - name: Run cargo check
-        uses: actions-rs/cargo@v1
-        with:
-          command: check
-          args: --all-targets # --all-features
+        run: cargo check --all-targets
 
       - name: Run cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace --release
+        run: cargo test --workspace --release
         env:
           RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0 -C target-cpu=native
           RUST_BACKTRACE: 1
 
+  zisk-contracts:
+    name: Hardhat tests (zisk-contracts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          sudo ./install_deps.sh
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build cargo-zisk-dev
+        run: cargo build --release -p cargo-zisk --bin cargo-zisk-dev
+
+      - name: Generate Solidity calldata fixture
+        working-directory: zisk-contracts
+        run: ../target/release/cargo-zisk-dev export-solidity-calldata -p test/plonk_proof.bin -o fixtures/fixture.json
+
+      - name: Install JS dependencies
+        working-directory: zisk-contracts
+        run: npm install --no-audit --no-fund
+
+      - name: Run Hardhat test
+        working-directory: zisk-contracts
+        env:
+          ZISK_SOLIDITY_FIXTURE: fixtures/fixture.json
+        run: npx hardhat test
+
+  build-riscv64im:
+    name: Build ziskos-staticlib (riscv64im-unknown-none-elf)
+    runs-on: ubuntu-latest
+    env:
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install Rust nightly with rust-src
+        # riscv64im-unknown-none-elf is a Tier 3 target — no pre-built std is available.
+        # rust-src is required so that -Z build-std can compile core/alloc from source.
+        # No cross-compiler is needed; Rust uses its bundled rust-lld linker.
+        run: rustup toolchain install nightly --component rust-src --no-self-update
+
+      - name: Build ziskos-staticlib for riscv64im-unknown-none-elf
+        run: cargo +nightly build -p ziskos-staticlib --release --target riscv64im-unknown-none-elf -Z build-std=core,alloc --config 'profile.release.lto="fat"' --features panic-handler
+        env:
+          RUSTFLAGS: "-D warnings"
+
   test-x86_64:
     name: Test on Ubuntu x86_64
-    runs-on: gpu-hosted
+    runs-on:
+      group: zisk-gpu
     timeout-minutes: 180
     # NOTE: We intentionally use 'docker exec' in individual steps rather than
     # defining a job-level container. The test scripts deploy systemd services
@@ -73,6 +151,12 @@ jobs:
           sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
           sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
 
+      - name: Prepare cache-setup directory
+        run: |
+          sudo mkdir -p /home/gha/cache-setup
+          sudo chown -R 1000:1000 /home/gha/cache-setup
+          sudo chmod -R u+rwX /home/gha/cache-setup
+
       - name: Start test container with systemd
         run: |
           docker rm -f "${TEST_CONTAINER}" || true
@@ -88,7 +172,6 @@ jobs:
             -v /home/gha/cache-setup:/home/ziskuser/output:rw \
             -e ZISK_GHA=1 \
             -e ZISK_REPO_DIR=/workspace/zisk \
-            -e ZISK_TESTVECTORS_BRANCH="${ZISK_TESTVECTORS_BRANCH}" \
             -e PROVE_FLAGS=-y \
             -e TERM=xterm \
             ziskvm/zisk-runner-gpu:latest \
@@ -109,6 +192,24 @@ jobs:
             ps -p 1 -o pid,comm,args
             systemctl is-system-running || true
           '
+
+          # Wait for the in-container Docker daemon (started by systemd) to be
+          # ready. lib-float/build.rs invokes `docker` early in the build, so it
+          # must be up before the "Build ZisK" step runs.
+          echo "Waiting for in-container Docker daemon..."
+          for i in $(seq 1 30); do
+            if docker exec -u ziskuser "${TEST_CONTAINER}" docker info >/dev/null 2>&1; then
+              echo "Docker daemon is ready."
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Docker daemon did not become ready in time"
+              docker exec "${TEST_CONTAINER}" systemctl status docker.service --no-pager || true
+              docker exec "${TEST_CONTAINER}" journalctl -u docker.service --no-pager -n 50 || true
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Build ZisK
         run: |
@@ -168,12 +269,20 @@ jobs:
               ./test_diagnostic.sh
             '
 
+      - name: Build zec-reth ELF file
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zec_reth.sh
+            '
+
       - name: Prove Ethereum block
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
-            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_eth_block.sh
@@ -184,8 +293,6 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
-            -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
-            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
@@ -195,8 +302,6 @@ jobs:
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
-            -e ZISK_ETHPROOFS_BRANCH="${ZISK_ETHPROOFS_BRANCH}" \
-            -e ZISK_ETH_CLIENT_BRANCH="${ZISK_ETH_CLIENT_BRANCH}" \
             -e ENABLE_HINTS="1" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
@@ -213,7 +318,7 @@ jobs:
   test-macos:
     name: Test on macOS
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -237,6 +342,11 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
+
+      - name: Build zec-reth ELF file
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zec_reth.sh
 
       - name: Test sha_hasher
         run: |
@@ -282,6 +392,15 @@ jobs:
           args: --all -- --check
         env:
           CARGO_INCREMENTAL: 1
+
+      - name: Build cargo-zisk
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --bin cargo-zisk
+
+      - name: Install ZisK rust toolchain
+        run: ./target/debug/cargo-zisk toolchain install
 
       - name: Run cargo clippy
         uses: actions-rs/cargo@v1

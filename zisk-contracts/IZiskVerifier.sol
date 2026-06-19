@@ -6,12 +6,12 @@ pragma solidity ^0.8.20;
 /// @notice This contract is the interface for the Zisk Verifier.
 interface IZiskVerifier {
     /// @notice Verifies a proof with given public values and vkey.
-     /// @param programVK The verification key for the RISC-V program.
+    /// @param programVK The verification key for the RISC-V program.
     /// @param publicValues The public values encoded as bytes.
     /// @param proofBytes The proof of the program execution the Zisk zkVM encoded as bytes.
     function verifySnarkProof(
-        bytes32 calldata programVK, 
-        bytes32 calldata rootCVadcopFinal,
+        bytes32 programVK,
+        bytes32 rootCVadcopFinal,
         bytes calldata publicValues,
         bytes calldata proofBytes
     ) external view;

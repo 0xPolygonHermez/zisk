@@ -20,9 +20,6 @@ zisk-common = { workspace = true }
 # gRPC
 tonic = { workspace = true }
 tonic-health = { workspace = true }
-tonic-prost = { workspace = true }
-prost = { workspace = true }
-prost-types = { workspace = true }
 
 # Async
 tokio = { workspace = true }
@@ -34,7 +31,6 @@ async-stream = "0.3"
 
 # Types / serialization
 serde = { workspace = true }
-serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 blake3 = { workspace = true }
@@ -50,8 +46,6 @@ anyhow = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tracing-appender = { workspace = true }
 
 # Metrics
 metrics = "0.24"

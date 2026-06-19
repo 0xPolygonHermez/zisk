@@ -6,10 +6,14 @@ use super::BusDevice;
 
 use crate::Metrics;
 
+/// Represents the operational mode of a bus device.
 #[derive(Debug, PartialEq, Clone)]
 pub enum BusDeviceMode {
+    /// The device is operating in counter mode.
     Counter,
+    /// The device is operating in counter mode with assembly emulation.
     CounterAsm,
+    /// The device is operating in input generator mode.
     InputGenerator,
 }
 

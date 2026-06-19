@@ -5,7 +5,7 @@ use std::time::Duration;
 use zisk_common::{Proof, ProofKind};
 use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProof, DomainWrapRequest};
 
-use anyhow::Result;
+use crate::{Result, SdkError};
 
 impl RemoteClient {
     pub(crate) fn do_wrap(
@@ -16,7 +16,7 @@ impl RemoteClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveResult>> {
         let data = bincode::serde::encode_to_vec(proof, bincode::config::standard())
-            .map_err(|e| anyhow::anyhow!("failed to serialize proof: {e}"))?;
+            .map_err(|e| SdkError::Serialization(format!("failed to serialize proof: {e}")))?;
 
         // Derive a deterministic UUID from the serialized proof bytes so that retrying
         // the same wrap request produces the same ID (idempotent on the coordinator side).
@@ -37,7 +37,7 @@ impl RemoteClient {
 
         let job_kind = DomainJobKind::Wrap(DomainWrapRequest { proof, proof_dest, wrap_timeout });
 
-        let remote_job = self.gw.submit_job(job_kind)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
 
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }

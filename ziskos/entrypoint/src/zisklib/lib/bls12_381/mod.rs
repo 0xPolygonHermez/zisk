@@ -17,10 +17,13 @@
 //! - [`cyclotomic`] — Cyclotomic subgroup arithmetic.
 //! - [`pairing`] — Optimal Ate pairing and batch pairing check.
 //!
-//! ## KZG and hash-to-curve
+//! ## KZG, BLS and hash-to-curve
 //! - [`kzg`] — KZG polynomial commitment proof verification.
-//! - [`map_to_curve`] — Hash-to-curve for G1 and G2.
+//! - [`bls`] — BLS signature verification.
+//! - [`map_to_curve`] — Map-to-curve for G1 and G2.
+//! - [`hash_to_curve`] — Hash-to-curve for G2.
 
+mod bls;
 mod constants;
 mod curve;
 mod cyclotomic;
@@ -30,12 +33,14 @@ mod fp12;
 mod fp2;
 mod fp6;
 mod fr;
+mod hash_to_curve;
 mod kzg;
 mod map_to_curve;
 mod miller_loop;
 mod pairing;
 mod twist;
 
+pub use bls::*;
 pub use curve::*;
 pub use cyclotomic::*;
 pub use final_exp::*;
@@ -44,6 +49,7 @@ pub use fp12::*;
 pub use fp2::*;
 pub use fp6::*;
 pub use fr::*;
+pub use hash_to_curve::*;
 pub use kzg::*;
 pub use map_to_curve::*;
 pub use pairing::*;

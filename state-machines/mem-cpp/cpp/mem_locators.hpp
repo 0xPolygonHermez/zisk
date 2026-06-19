@@ -30,7 +30,7 @@ public:
     std::atomic<bool> completed{false};
     MemLocator locators[MAX_LOCATORS];
     MemLocators();
-    void push_locator(uint32_t thread_index, uint32_t offset, uint32_t cpos, uint32_t skip);
+    void push_locator(uint32_t thread_index, uint32_t offset, uint32_t cpos, uint32_t skip, uint32_t previous_addr);
     MemLocator *get_locator(uint32_t &segment_id);
     inline void set_completed();
     inline bool is_completed();

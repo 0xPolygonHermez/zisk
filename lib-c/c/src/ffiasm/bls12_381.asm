@@ -37,11 +37,14 @@
         global BLS12_381_rawSub
         global BLS12_381_rawNeg
         global BLS12_381_rawMMul
+        global BLS12_381_rawMMul1
         global BLS12_381_rawMSquare
         global BLS12_381_rawToMontgomery
         global BLS12_381_rawFromMontgomery
         global BLS12_381_rawIsEq
         global BLS12_381_rawIsZero
+        global BLS12_381_rawShr
+        global BLS12_381_rawShl
         global BLS12_381_rawq
         global BLS12_381_rawR3
 
@@ -6542,6 +6545,7 @@ tmp_107:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+BLS12_381_rawShr:
 rawShr:
         cmp rdx, 0
         je BLS12_381_rawCopy
@@ -6742,6 +6746,7 @@ rawShr_endif3_3:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+BLS12_381_rawShl:
 rawShl:
         cmp rdx, 0
         je BLS12_381_rawCopy
@@ -8792,6 +8797,3 @@ R3      dq      0xc62c1807439b73af,0x1b3e0d188cf06990,0x73d13c71c7b5f418,0x6e2a5
 lboMask dq      0x7fffffffffffffff
 np      dq      0xfffffffeffffffff
 
-
-; Mark stack as non-executable
-section .note.GNU-stack noalloc noexec nowrite progbits

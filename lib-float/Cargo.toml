@@ -14,3 +14,7 @@ build = "build.rs"
 test = false
 
 [dependencies]
+
+[features]
+default = []
+float = []

@@ -1,17 +1,27 @@
 mod add256;
-mod add256_bus_device;
 mod add256_constants;
-mod add256_gen_mem_inputs;
-mod add256_input;
-mod add256_instance;
-mod add256_manager;
-mod add256_planner;
+mod add256_mem_inputs;
 
 pub use add256::*;
-pub use add256_bus_device::*;
 pub use add256_constants::*;
-pub use add256_gen_mem_inputs::*;
-pub use add256_input::*;
-pub use add256_instance::*;
-pub use add256_manager::*;
-pub use add256_planner::*;
+
+zisk_common::zisk_precompile! {
+    name = Add256,
+    op_type = BigInt,
+    trace = Add256Trace,
+    num_available = ::zisk_pil::Add256Trace::<()>::NUM_ROWS,
+    ops = [
+        (OperationAdd256Data, Add256Input),
+    ],
+}
+
+#[cfg(test)]
+mod add256_tests {
+    use test_artifacts::ELF_ADD256;
+    use zisk_common::io::ZiskStdin;
+
+    #[test]
+    fn add256_tests() {
+        ELF_ADD256.run_emulation(ZiskStdin::new(), None).expect("add256 guest emulation failed");
+    }
+}

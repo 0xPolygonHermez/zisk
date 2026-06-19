@@ -1,10 +1,10 @@
 use std::fmt::Debug;
 
-use crate::{AsmSharedMemory, AsmShmemHeader};
+use crate::{AsmShmem, AsmShmemHeader};
 
 #[repr(C)]
 #[derive(Debug, Default)]
-pub struct AsmRHHeader {
+pub(crate) struct AsmRHHeader {
     pub version: u64,
     pub exit_code: u64,
     pub shmem_allocated_size: u64,
@@ -17,47 +17,58 @@ impl AsmShmemHeader for AsmRHHeader {
     }
 }
 
+/// This struct represents the ROM histogram data collected from the assembly code execution.
 #[repr(C)]
 #[derive(Debug, Default)]
 pub struct AsmRHData {
+    /// The number of steps executed.
     pub steps: u64,
-    pub bios_inst_count: Vec<u64>,
-    pub prog_inst_count: Vec<u64>,
+    /// A vector containing the instruction count for each ROM.
+    pub inst_count: Vec<u64>,
 }
 
 impl AsmRHData {
-    pub fn new(steps: u64, bios_inst_count: Vec<u64>, prog_inst_count: Vec<u64>) -> Self {
-        AsmRHData { steps, bios_inst_count, prog_inst_count }
+    /// Creates a new `AsmRHData` with the given number of steps and instruction count vector.  
+    pub fn new(steps: u64, inst_count: Vec<u64>) -> Self {
+        AsmRHData { steps, inst_count }
     }
 }
 
 impl AsmRHData {
-    /// Create an `OutputChunk` from a pointer.
+    /// Build an [`AsmRHData`] by reading the ROM histogram out of shared memory.
     ///
-    /// # Safety
-    /// This function is unsafe because it reads from a raw pointer in shared memory.
-    pub fn from_shared_memory(asm_shared_memory: &AsmSharedMemory<AsmRHHeader>) -> AsmRHData {
+    /// # Invariant (load-bearing)
+    /// `inst_count` is constructed with [`Vec::from_raw_parts`] pointing DIRECTLY
+    /// into the shared-memory mapping — it is NOT allocated by Rust's global
+    /// allocator. Dropping that `Vec` the normal way would make the allocator
+    /// free pages it never owned (undefined behavior / heap corruption).
+    ///
+    /// The returned `AsmRHData` must therefore never be dropped normally:
+    /// `AsmRunnerRH::drop` (in `asm_rh_runner.rs`) `mem::forget`s it before the
+    /// mapping is torn down. These two sites are a matched pair — do not change
+    /// the `from_raw_parts` construction here without updating that `Drop`, and
+    /// vice versa.
+    pub(crate) fn from_shared_memory(asm_shared_memory: &AsmShmem<AsmRHHeader>) -> AsmRHData {
+        // SAFETY: `data_ptr` points into the live, read-only shared mapping owned by
+        // `asm_shared_memory`, which the caller keeps alive across this read. The
+        // header read and `Vec::from_raw_parts` stay in bounds — the `assert!` below
+        // rejects any `len` that would run past the mapped region. The returned `Vec`
+        // aliases the mapping and must never be freed by Rust's allocator; see the
+        // `# Invariant` above and `AsmRunnerRH::drop`.
         unsafe {
             let data_ptr = asm_shared_memory.data_ptr() as *mut u64;
-            // BIOS chunk data
-            let bios_data_ptr = data_ptr;
-            let bios_len = std::ptr::read(bios_data_ptr) as usize;
-            let bios_data_ptr = bios_data_ptr.add(1);
-            let bios_inst_count = Vec::from_raw_parts(bios_data_ptr, bios_len, bios_len);
+            // chunk data
+            let len = std::ptr::read(data_ptr) as usize;
+            assert!(
+                (len + 1) * 8
+                    <= (asm_shared_memory.mapped_size() - std::mem::size_of::<AsmRHHeader>()),
+                "Data length {} exceeds allocated shared memory size",
+                len
+            );
+            let data_ptr = data_ptr.add(1);
+            let inst_count = Vec::from_raw_parts(data_ptr, len, len);
 
-            // Advance pointer after BIOS
-            let prog_data_ptr = bios_data_ptr.add(bios_len);
-
-            // Program chunk data
-            let prog_len = std::ptr::read(prog_data_ptr) as usize;
-            let prog_data_ptr = prog_data_ptr.add(1);
-            let prog_inst_count = Vec::from_raw_parts(prog_data_ptr, prog_len, prog_len);
-
-            AsmRHData {
-                steps: asm_shared_memory.map_header().steps,
-                bios_inst_count,
-                prog_inst_count,
-            }
+            AsmRHData { steps: asm_shared_memory.map_header().steps, inst_count }
         }
     }
 }

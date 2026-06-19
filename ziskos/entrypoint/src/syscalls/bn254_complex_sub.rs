@@ -1,9 +1,9 @@
 //! syscall_bn254_complex_sub system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
 use super::complex::SyscallComplex256;
@@ -27,9 +27,11 @@ pub struct SyscallBn254ComplexSubParams<'a> {
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// The caller must ensure that both `f1` and `f2` coordinates are within the range of the BN254 base field.
+/// The `f1` and `f2` coordinates are not required to be canonical representatives of elements
+/// in the BN254 base field.
 ///
-/// The resulting field element will have both coordinates in the range of the BN254 base field.
+/// The resulting field element will have both coordinates reduced to canonical representatives
+/// in the range of the BN254 base field.
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bn254_complex_sub")]
@@ -37,9 +39,9 @@ pub extern "C" fn syscall_bn254_complex_sub(
     params: &mut SyscallBn254ComplexSubParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_BN254_COMPLEX_SUB_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let f1 = [params.f1.x, params.f1.y].concat().try_into().unwrap();
         let f2 = [params.f2.x, params.f2.y].concat().try_into().unwrap();

@@ -33,7 +33,7 @@ use super::{
     DomainProof, DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
-use zisk_common::SetupKey;
+use zisk_common::{HashMode, SetupKey};
 
 // ── Internal state ────────────────────────────────────────────────────────────
 
@@ -349,11 +349,10 @@ impl BackendService for MockBackend {
 
         // Track setup jobs so list_active_setups can return them.
         if let DomainJobKind::Setup(ref r) = kind {
-            self.state
-                .lock()
-                .await
-                .setups
-                .insert(SetupKey::new(r.hash_id.clone(), r.with_hints), r.program_name.clone());
+            self.state.lock().await.setups.insert(
+                SetupKey::new(r.hash_id.clone(), r.with_hints, r.emulator_only),
+                r.program_name.clone(),
+            );
         }
 
         let input_kind = kind.input_kind().cloned();
@@ -561,7 +560,14 @@ fn blake3_hex(data: &[u8]) -> String {
 
 fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
     match kind {
-        DomainJobKind::Setup(_) => DomainJobKindResponse::Setup { vk: vec![] },
+        DomainJobKind::Setup(_) => {
+            // Clients parse hash_mode into HashMode; an empty string fails
+            // HashMode::from_str, so emit a valid default rather than "".
+            DomainJobKindResponse::Setup {
+                vk: vec![],
+                hash_mode: HashMode::default().as_str().to_string(),
+            }
+        }
         DomainJobKind::Execute(_) => DomainJobKindResponse::Execute {
             stats: DomainExecutionStats::default(),
             public_outputs: vec![],
@@ -700,6 +706,7 @@ mod tests {
                 hash_id: hash_id.clone(),
                 program_name: hash_id,
                 with_hints: false,
+                emulator_only: false,
             }))
             .await
             .unwrap()
@@ -764,6 +771,7 @@ mod tests {
                 hash_id: "nonexistent".into(),
                 program_name: "nonexistent".into(),
                 with_hints: false,
+                emulator_only: false,
             }))
             .await
             .unwrap_err();

@@ -26,6 +26,7 @@
 #include "mem_locators.hpp"
 #include "mem_locator.hpp"
 #include "mem_segments.hpp"
+#include "mem_offsets.hpp"
 
 #ifdef MEM_PLANNER_STATS
 struct SegmentStats {
@@ -92,6 +93,8 @@ public:
     uint32_t get_max_offset(const std::vector<MemCounter *> &workers, uint32_t page);
     bool add_chunk(uint32_t chunk_id, uint32_t addr, uint32_t count, uint32_t skip = 0);
     void current_segment_add(uint32_t chunk_id, uint32_t addr, uint32_t count);
+    void precompute_locator_requirements(const std::vector<MemCounter *> &workers, const MemLocator *locator,
+                                         uint32_t &first_addr, uint32_t &last_addr, uint32_t &num_addrs);
     void stats();
     inline uint64_t *get_locators_times(uint32_t &count);
 };
@@ -106,4 +109,5 @@ uint64_t *MemPlanner::get_locators_times(uint32_t &count) {
     return nullptr;
     #endif
 }
+
 #endif

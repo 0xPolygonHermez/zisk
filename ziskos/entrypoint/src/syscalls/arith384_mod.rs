@@ -1,9 +1,9 @@
 //! Arith384Mod system call interception
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use core::arch::asm;
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::ziskos_syscall;
 
 #[derive(Debug)]
@@ -27,6 +27,10 @@ pub struct SyscallArith384ModParams<'a> {
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
 /// The caller must ensure that `module` is not zero.
+///
+/// The inputs `a`, `b`, and `c` are not required to be canonical modulo `module`.
+///
+/// The result `d` is always reduced modulo `module`
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_arith384_mod")]
@@ -34,9 +38,9 @@ pub extern "C" fn syscall_arith384_mod(
     params: &mut SyscallArith384ModParams,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) {
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     ziskos_syscall!(zisk_definitions::SYSCALL_ARITH384_MOD_ID, params);
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         precompiles_helpers::arith384_mod(params.a, params.b, params.c, params.module, params.d);
         #[cfg(feature = "hints")]

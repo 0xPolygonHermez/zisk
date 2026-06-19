@@ -3,7 +3,9 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, Plan, Planner};
+use zisk_common::{
+    BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner,
+};
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
     Dma64AlignedMemTrace, Dma64AlignedTrace, DmaInputCpyTrace, DmaMemCpyTrace,
@@ -71,29 +73,22 @@ impl<F: PrimeField64> DmaManager<F> {
             dma_unaligned_sm,
         })
     }
+}
 
-    pub fn build_dma_counter(&self, asm_execution: bool) -> DmaCounterInputGen {
-        match asm_execution {
-            true => DmaCounterInputGen::new(BusDeviceMode::CounterAsm),
-            false => DmaCounterInputGen::new(BusDeviceMode::Counter),
-        }
+impl<F: PrimeField64> ComponentPlanBuilder<F> for DmaManager<F> {
+    type Counter = DmaCounterInputGen;
+
+    fn counter(is_asm_emulator: bool) -> Self::Counter {
+        let mode = if is_asm_emulator { BusDeviceMode::CounterAsm } else { BusDeviceMode::Counter };
+        DmaCounterInputGen::new(mode)
     }
 
-    pub fn build_dma_input_generator(&self) -> DmaCounterInputGen {
-        DmaCounterInputGen::new(BusDeviceMode::InputGenerator)
+    fn planner(_is_asm_emulator: bool) -> Box<dyn Planner> {
+        Box::new(DmaPlanner::<F>::new())
     }
 }
 
 impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
-    /// Builds a planner to plan Dma-related instances.
-    ///
-    /// # Returns
-    /// A boxed implementation of `RegularPlanner`.
-    fn build_planner(&self) -> Box<dyn Planner> {
-        // Get the number of Dmas that a single Dma instance can handle
-        Box::new(DmaPlanner::<F>::new())
-    }
-
     /// Builds an inputs data collector for Dma operations.
     ///
     /// # Arguments

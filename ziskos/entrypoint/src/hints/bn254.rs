@@ -1,5 +1,5 @@
 use crate::hints::macros::{define_hint, define_hint_pairs};
-use zisk_common::{HINT_BN254_G1_ADD, HINT_BN254_G1_MUL, HINT_BN254_PAIRING_CHECK};
+use zisk_definitions::{HINT_BN254_G1_ADD, HINT_BN254_G1_MUL, HINT_BN254_PAIRING_CHECK};
 
 define_hint! {
     bn254_g1_add => {

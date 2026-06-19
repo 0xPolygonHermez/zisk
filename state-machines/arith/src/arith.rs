@@ -10,7 +10,10 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
-use zisk_common::{BusDeviceMode, ComponentBuilder, Instance, InstanceCtx, InstanceInfo, Planner};
+use zisk_common::{
+    BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo,
+    Planner,
+};
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
 
@@ -36,22 +39,16 @@ impl<F: PrimeField64> ArithSM<F> {
 
         Arc::new(Self { arith_full_sm, std })
     }
+}
 
-    pub fn build_arith_counter(&self) -> ArithCounterInputGen {
+impl<F: PrimeField64> ComponentPlanBuilder<F> for ArithSM<F> {
+    type Counter = ArithCounterInputGen;
+
+    fn counter(_is_asm_emulator: bool) -> Self::Counter {
         ArithCounterInputGen::new(BusDeviceMode::Counter)
     }
 
-    pub fn build_arith_input_generator(&self) -> ArithCounterInputGen {
-        ArithCounterInputGen::new(BusDeviceMode::InputGenerator)
-    }
-}
-
-impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
-    /// Builds a planner to plan arithmetic-related instances.
-    ///
-    /// # Returns
-    /// A boxed implementation of `ArithPlanner`.
-    fn build_planner(&self) -> Box<dyn Planner> {
+    fn planner(_is_asm_emulator: bool) -> Box<dyn Planner> {
         Box::new(ArithPlanner::new().add_instance(InstanceInfo::new(
             ArithTrace::<()>::AIRGROUP_ID,
             ArithTrace::<()>::AIR_ID,
@@ -59,7 +56,9 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
             ZiskOperationType::Arith,
         )))
     }
+}
 
+impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
     /// Builds an instance of the Arithmetic state machine.
     ///
     /// # Arguments

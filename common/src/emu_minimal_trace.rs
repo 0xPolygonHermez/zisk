@@ -55,6 +55,12 @@ pub struct EmuTrace {
     pub end: bool,
 }
 
+impl EmuTrace {
+    /// Checks if this trace corresponds to the first execution step (step 0).
+    pub fn is_first(&self) -> bool {
+        self.start_state.step == 0
+    }
+}
 impl Debug for EmuTrace {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OutputChunk")

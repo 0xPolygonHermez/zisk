@@ -11,7 +11,10 @@ use zisk_cluster_common::{ContributionsMessage, ProveMessage};
 use zisk_cluster_common::{HintsSourceDto, StreamDataDto, StreamMessageKind};
 use zisk_cluster_common::{JobId, PartitionInfo};
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_common::{ProgramVK, Proof, ProofKind, SetupKey, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{
+    AirInstanceCount, ProgramVK, Proof, ProofKind, SetupKey, StatsCostPerType, ZiskExecutorTime,
+    ZiskPaths,
+};
 use zisk_prover_backend::GuestProgram;
 use zisk_prover_backend::{
     Asm, AsmOptions, BackendProverOpts, Emu, ProverClientBuilder, ProverEngine, ZiskBackend,
@@ -36,6 +39,7 @@ struct SetupMessage {
     program_name: String,
     elf_bytes: Vec<u8>,
     with_hints: bool,
+    emulator_only: bool,
 }
 
 /// Tag byte used as the first byte of every MPI broadcast message.
@@ -82,14 +86,23 @@ pub enum ComputationResult {
     Execution {
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, u64, u64)>, // (witness_info, exec_time, instances, executed_steps)
+        #[allow(clippy::type_complexity)]
+        result: Result<(
+            WitnessInfo,
+            ZiskExecutorTime,
+            u64,
+            u64,
+            StatsCostPerType,
+            Vec<AirInstanceCount>,
+        )>, // (witness_info, exec_time, instances, executed_steps, cost_per_type, plan)
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     /// Partial contribution with challenges
     Contribution {
         job_id: JobId,
         success: bool,
-        result: Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64)>,
+        result:
+            Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64, StatsCostPerType)>,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     Proofs {
@@ -109,7 +122,12 @@ pub enum ComputationResult {
 
 /// Events driving the worker event loop. Compute results and recovery
 /// completions share one channel — same lifetime, single source of truth.
+///
+/// `Computation` is intentionally large (it carries the full witness payload);
+/// boxing it would add a heap allocation per event through the hot loop channel
+/// for no benefit, so the size disparity with `RecoveryComplete` is accepted.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum LoopEvent {
     Computation(ComputationResult),
     RecoveryComplete(zisk_cluster_api::WorkerRecoveryComplete),
@@ -402,13 +420,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         hash_id: &str,
         elf_bytes: &[u8],
         with_hints: bool,
+        emulator_only: bool,
         new_guest_program: Arc<GuestProgram>,
     ) -> Result<ProgramVK> {
-        // Skip if already set up for this (hash_id, with_hints) combination.
-        if let Some(vk) = self.program_vks.get(&SetupKey::new(hash_id, with_hints)) {
+        // Skip if already set up for this (hash_id, with_hints, emulator_only) combination.
+        if let Some(vk) = self.program_vks.get(&SetupKey::new(hash_id, with_hints, emulator_only)) {
             info!(
-                "Received same guest program for setup (hash_id={}, with_hints={}). Skipping setup",
-                hash_id, with_hints
+                "Received same guest program for setup (hash_id={}, with_hints={}, emulator_only={}). Skipping setup",
+                hash_id, with_hints, emulator_only
             );
             return Ok(vk.clone());
         }
@@ -419,14 +438,16 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             program_name: new_guest_program.name().to_string(),
             elf_bytes: elf_bytes.to_vec(),
             with_hints,
+            emulator_only,
         };
         let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
         self.prover.mpi_broadcast(&mut serialized)?;
 
-        let vk = self.prover.prover.setup_internal(&new_guest_program, with_hints)?;
+        let vk =
+            self.prover.prover.setup_internal(&new_guest_program, with_hints, emulator_only)?;
         self.guest_programs.insert(hash_id.to_string(), new_guest_program);
-        self.program_vks.insert(SetupKey::new(hash_id, with_hints), vk.clone());
+        self.program_vks.insert(SetupKey::new(hash_id, with_hints, emulator_only), vk.clone());
         Ok(vk)
     }
 
@@ -474,6 +495,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.get_vadcop_vk(minimal)
     }
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    pub fn hash(&self) -> Result<String> {
+        self.prover.hash()
+    }
+
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
         self.prover.clone()
     }
@@ -516,7 +542,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         &self,
         hash_id: &str,
         with_hints: bool,
-        is_first_partition: bool,
+        is_first_process: bool,
     ) -> Result<()> {
         let program_id = self
             .guest_programs
@@ -527,7 +553,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         self.prover.register_program(&program_id, with_hints)?;
         self.prover.reset()?;
-        self.prover.set_active_services(is_first_partition)?;
+        self.prover.set_active_services(is_first_process)?;
         Ok(())
     }
 
@@ -733,6 +759,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         .unwrap_or_else(|_| (WitnessInfo::default(), ZiskExecutorTime::default()));
 
                     let instances = witness_info.total_instances as u64;
+                    let cost_per_type = prover.execution_cost_per_type();
 
                     let mut guard = job.blocking_lock();
                     guard.instances = instances;
@@ -743,7 +770,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         Ok(data) => ComputationResult::Contribution {
                             job_id: job_id.clone(),
                             success: true,
-                            result: Ok((witness_info, zisk_execution_time, data, instances)),
+                            result: Ok((
+                                witness_info,
+                                zisk_execution_time,
+                                data,
+                                instances,
+                                cost_per_type,
+                            )),
                             task_received_time,
                         },
                         Err(error) => {
@@ -831,6 +864,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         Ok((num_instances, publics)) => {
                             let instances = num_instances as u64;
                             let executed_steps = prover.executed_steps();
+                            let cost_per_type = prover.execution_cost_per_type();
+                            let plan = prover.execution_plan();
                             job.blocking_lock().instances = instances;
 
                             // witness_info.publics is empty in execution-only mode (no witness
@@ -841,7 +876,14 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                             ComputationResult::Execution {
                                 job_id: job_id.clone(),
                                 success: true,
-                                result: Ok((wi, zisk_execution_time, instances, executed_steps)),
+                                result: Ok((
+                                    wi,
+                                    zisk_execution_time,
+                                    instances,
+                                    executed_steps,
+                                    cost_per_type,
+                                    plan,
+                                )),
                                 task_received_time,
                             }
                         }
@@ -1325,8 +1367,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     Arc::new(GuestProgram::from_bytes(message.program_name, message.elf_bytes));
                 let gp_clone = guest_program.clone();
                 let with_hints = message.with_hints;
+                let emulator_only = message.emulator_only;
                 tokio::task::spawn_blocking(move || {
-                    prover.prover.setup_internal(&gp_clone, with_hints)
+                    prover.prover.setup_internal(&gp_clone, with_hints, emulator_only)
                 })
                 .await
                 .map_err(|e| anyhow::anyhow!("Setup spawn_blocking panicked: {}", e))??;
@@ -1345,8 +1388,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     })?;
 
                 let with_hints = !matches!(message.hints_source, HintsSourceDto::HintsNull);
-                let is_first_partition = message.partition_info.allocation.contains(&0);
-                self.prepare_for_new_job(&message.hash_id, with_hints, is_first_partition)?;
+                let is_first_process =
+                    message.partition_info.allocation.contains(&0) && self.world_rank() == 0;
+                self.prepare_for_new_job(&message.hash_id, with_hints, is_first_process)?;
 
                 let guest_programs = self.guest_programs.clone();
                 let is_execution = matches!(tag, WorkerMpiTag::Execution);

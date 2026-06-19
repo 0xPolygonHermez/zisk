@@ -8,49 +8,55 @@ use std::sync::atomic::{fence, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiSharedMemory,
-    AsmRunError, AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE,
-    TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
+    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
+    AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
+    TRACE_MAX_SIZE,
 };
 
 use anyhow::{Context, Result};
 
-pub struct MTShMemReader {
-    pub output_shmem: AsmMultiSharedMemory<AsmMTHeader>,
+/// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
+pub struct MTShmemReader {
+    pub(crate) output_shmem: AsmMultiShmem<AsmMTHeader>,
 }
 
-impl MTShMemReader {
+impl MTShmemReader {
+    /// Creates a new `MTShmemReader` by opening and mapping the shared memory for the MT trace output.
     pub fn new(shm_prefix: &str, unlock_mapped_memory: bool) -> Result<Self> {
         let output_name = shmem_output_name(shm_prefix, AsmService::MT, None);
 
-        let output_shmem = AsmMultiSharedMemory::<AsmMTHeader>::open_and_map(
+        let output_shmem = AsmMultiShmem::<AsmMTHeader>::open_and_map(
             &output_name,
             TRACE_INITIAL_SIZE,
             TRACE_DELTA_SIZE,
             TRACE_MAX_SIZE,
             unlock_mapped_memory,
+            false,
         )?;
 
         Ok(Self { output_shmem })
     }
 }
 
-// This struct is used to run the assembly code in a separate process and generate minimal traces.
+/// This struct is used to run the assembly code in a separate process and generate minimal traces.
 pub struct AsmRunnerMT {
+    /// The generated trace chunks from the MT trace.
     pub vec_chunks: Vec<EmuTrace>,
 }
 
 impl AsmRunnerMT {
+    /// Creates a new `AsmRunnerMT` with the given trace chunks.
     pub fn new(vec_chunks: Vec<EmuTrace>) -> Self {
         Self { vec_chunks }
     }
 
+    /// Runs the assembly code in a separate process, collects the MT trace chunks, and generates execution info.
     #[allow(clippy::too_many_arguments)]
     pub fn run_and_count<F, R>(
-        preloaded: &mut MTShMemReader,
+        preloaded: &mut MTShmemReader,
         max_steps: u64,
         chunk_size: u64,
         mut on_chunk: F,
@@ -68,6 +74,13 @@ impl AsmRunnerMT {
 
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
+
+        let stale = crate::drain_chunk_done(&mut sem_chunk_done);
+        if stale > 0 {
+            warn!(
+                "MT semaphore '{sem_chunk_done_name}' had {stale} stale chunk_done post(s) at run start; a prior run skipped its end-side cleanup"
+            );
+        }
 
         // Capture parent id for thread
         let _parent_id = _runner_scope.id();
@@ -115,7 +128,16 @@ impl AsmRunnerMT {
         // Pre-allocate reasonable initial capacity to avoid early reallocations
         let mut emu_traces: Vec<Arc<EmuTrace>> = Vec::with_capacity(1024);
 
-        let exit_code = loop {
+        let mut on_runner_failure = Some(on_runner_failure);
+        let mut signal_runner_failure = || {
+            if let Some(on_failure) = on_runner_failure.take() {
+                if let Err(reset_err) = on_failure() {
+                    error!("MT on_runner_failure failed: {reset_err:#}");
+                }
+            }
+        };
+
+        let loop_result: Result<u64> = loop {
             match sem_chunk_done.timed_wait(SEM_CHUNK_DONE_WAIT_DURATION) {
                 Ok(()) => {
                     stats_mark!(_stats, &_runner_scope, "MT_CHUNK_DONE", 0);
@@ -123,25 +145,26 @@ impl AsmRunnerMT {
                     // Synchronize with memory changes from the C++ side
                     fence(Ordering::Acquire);
 
-                    // Check if we need to remap the shared memory
-                    // preloaded
-                    //     .output_shmem
-                    //     .check_size_changed(&mut data_ptr)
-                    //     .context("Failed to check and remap shared memory for MT trace")?;
-
                     // Check if we need to map additional shared memory files.
-                    if data_ptr >= threshold
-                        && preloaded.output_shmem.check_size_changed().context(
-                            "Failed to check and map new shared memory files for MT trace",
-                        )?
-                    {
-                        // Update threshold based on new total mapped size
-                        threshold =
-                            unsafe {
-                                preloaded.output_shmem.mapped_ptr().add(
-                                    preloaded.output_shmem.total_mapped_size() - threshold_bytes,
-                                ) as *const AsmMTChunk
-                            };
+                    if data_ptr >= threshold {
+                        match preloaded.output_shmem.check_size_changed() {
+                            Ok(true) => {
+                                // Update threshold based on new total mapped size
+                                threshold = unsafe {
+                                    preloaded.output_shmem.mapped_ptr().add(
+                                        preloaded.output_shmem.total_mapped_size()
+                                            - threshold_bytes,
+                                    ) as *const AsmMTChunk
+                                };
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                signal_runner_failure();
+                                break Err(e).context(
+                                    "Failed to check and map new shared memory files for MT trace",
+                                );
+                            }
+                        }
                     }
 
                     let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
@@ -151,7 +174,7 @@ impl AsmRunnerMT {
                     emu_traces.push(emu_trace);
 
                     if should_exit {
-                        break 0;
+                        break Ok(0);
                     }
                     chunk_id.0 += 1;
                 }
@@ -163,28 +186,23 @@ impl AsmRunnerMT {
                 Err(e) => {
                     error!("Semaphore '{}' error: {:?}", sem_chunk_done_name, e);
 
-                    // Flip ResetFlag + post wait sems so the C child unwinds
-                    // `emulator_start` and the stdio request below can return.
-                    // Then sweep any post that races our exit (end chunk).
-                    if let Err(reset_err) = on_runner_failure() {
-                        error!("MT on_runner_failure failed: {reset_err:#}");
-                    }
-                    while sem_chunk_done.try_wait().is_ok() {}
+                    signal_runner_failure();
 
                     if chunk_id.0 == 0 {
-                        break 1;
+                        break Ok(1);
                     }
 
-                    break preloaded.output_shmem.map_header().exit_code;
+                    break Ok(preloaded.output_shmem.map_header().exit_code);
                 }
             }
         };
 
-        // Always join the stdio thread before evaluating the exit code: on
-        // the error path `on_runner_failure` woke the C child, so this no
-        // longer deadlocks, and joining keeps the spawned thread from
-        // outliving us into the next job.
-        let (handle, elapsed) = handle.join().map_err(|_| AsmRunError::JoinPanic)?;
+        let join_outcome = handle.join();
+
+        crate::drain_chunk_done(&mut sem_chunk_done);
+
+        let (handle, elapsed) = join_outcome.map_err(|_| AsmRunError::JoinPanic)?;
+        let exit_code = loop_result?;
 
         if exit_code != 0 {
             return Err(AsmRunError::ExitCode(exit_code as u32))

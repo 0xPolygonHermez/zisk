@@ -1,12 +1,25 @@
 use anyhow::Result;
+use executor::{AirClassifier, PlanSummaryEntry};
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
     ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
-    ZiskVerifyBuilder,
+    ZiskVerifyBuilder, ZISK_PUBLICS,
 };
 
 pub use zisk_common::Proof;
+
+fn pairs_to_publics(pairs: &[(u64, u32)]) -> PublicValues {
+    let mut buf = vec![0u8; 32 + ZISK_PUBLICS * 8];
+    for &(index, value) in pairs {
+        let idx = index as usize;
+        if idx < ZISK_PUBLICS {
+            let off = 32 + idx * 8;
+            buf[off..off + 4].copy_from_slice(&value.to_le_bytes());
+        }
+    }
+    PublicValues::new(&buf)
+}
 
 /// Shared execution statistics captured after any run (execute, prove, verify_constraints).
 pub(crate) struct ExecutionSummary {
@@ -39,7 +52,7 @@ macro_rules! impl_public_outputs {
             pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
                 &self,
             ) -> Result<T> {
-                self.$field$(.$rest)*.read()
+                Ok(self.$field$(.$rest)*.read()?)
             }
 
             pub fn get_public_values_abi<T>(&self) -> Result<T>
@@ -47,7 +60,7 @@ macro_rules! impl_public_outputs {
                 T: alloy_sol_types::SolValue
                     + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
             {
-                self.$field$(.$rest)*.read_abi()
+                Ok(self.$field$(.$rest)*.read_abi()?)
             }
 
             pub fn get_public_values_slice(&self, slice: &mut [u8]) {
@@ -58,8 +71,12 @@ macro_rules! impl_public_outputs {
 }
 
 pub struct ExecuteOutput {
-    summary: ExecutionSummary,
+    steps: u64,
+    time: u64,
+    cost: Option<u64>,
+    executor_time: ZiskExecutorTime,
     publics: PublicValues,
+    plan: Option<Vec<PlanSummaryEntry>>,
 }
 
 impl ExecuteOutput {
@@ -69,33 +86,89 @@ impl ExecuteOutput {
         publics: &[u8],
     ) -> Self {
         Self {
-            summary: ExecutionSummary::new(execution_time, &executor_summary),
+            steps: executor_summary.steps,
+            time: execution_time.as_millis() as u64,
+            cost: Some(executor_summary.cost_per_type.total_cost()),
+            executor_time: executor_summary.executor_time,
             publics: PublicValues::new(publics),
+            plan: None,
+        }
+    }
+
+    /// Constructor for the standalone path. No `SetupCtx` → no cost
+    /// breakdown; carries the executor-produced plan summary and the
+    /// raw `(index, value)` public-output pairs.
+    pub fn new_standalone(
+        execution_time: Duration,
+        executor_summary: ZiskExecutorSummary,
+        pub_outs: &[(u64, u32)],
+        plan: Vec<PlanSummaryEntry>,
+    ) -> Self {
+        Self {
+            steps: executor_summary.steps,
+            time: execution_time.as_millis() as u64,
+            cost: None,
+            executor_time: executor_summary.executor_time,
+            publics: pairs_to_publics(pub_outs),
+            plan: Some(plan),
         }
     }
 
     pub fn get_execution_steps(&self) -> u64 {
-        self.summary.steps
+        self.steps
     }
 
-    pub fn get_execution_cost(&self) -> u64 {
-        self.summary.cost
+    /// Returns the total execution cost when available. `None` in
+    /// standalone mode (no `SetupCtx` means no cost weights).
+    pub fn get_execution_cost(&self) -> Option<u64> {
+        self.cost
     }
 
     pub fn get_execution_time(&self) -> u64 {
-        self.summary.time
+        self.time
+    }
+
+    /// Per-phase executor timing breakdown.
+    pub fn get_executor_time(&self) -> &ZiskExecutorTime {
+        &self.executor_time
+    }
+
+    /// Per-AIR plan summary. `Some` only in standalone mode; the full
+    /// proofman path emits its own plan via tracing.
+    pub fn get_plan(&self) -> Option<&[PlanSummaryEntry]> {
+        self.plan.as_deref()
     }
 
     /// Construct a result from a remote coordinator response.
+    ///
+    /// `plan` carries raw `(airgroup_id, air_id, count)` triples from the wire; the
+    /// AIR display name is resolved here via [`AirClassifier`] so remote output matches
+    /// the embedded plan.
+    #[allow(clippy::too_many_arguments)]
     pub fn from_remote(
         steps: u64,
         execution_time: Duration,
         cost_per_type: StatsCostPerType,
+        executor_time: ZiskExecutorTime,
+        plan: &[(usize, usize, u64)],
         publics: &[u8],
     ) -> Self {
+        let plan: Vec<PlanSummaryEntry> = plan
+            .iter()
+            .map(|&(airgroup_id, air_id, count)| PlanSummaryEntry {
+                airgroup_id,
+                air_id,
+                name: AirClassifier::name(airgroup_id, air_id),
+                count: count as usize,
+            })
+            .collect();
         Self {
-            summary: ExecutionSummary::from_remote(execution_time, steps, &cost_per_type),
+            steps,
+            time: execution_time.as_millis() as u64,
+            cost: Some(cost_per_type.total_cost()),
+            executor_time,
             publics: PublicValues::new(publics),
+            plan: (!plan.is_empty()).then_some(plan),
         }
     }
 }
@@ -143,11 +216,11 @@ impl ProveOutput {
     }
 
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
-        self.proof.get_proof_u64()
+        Ok(self.proof.get_proof_u64()?)
     }
 
     pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
-        self.proof.get_proof_bytes()
+        Ok(self.proof.get_proof_bytes()?)
     }
 
     pub fn get_program_vk(&self) -> &ProgramVK {
@@ -155,11 +228,11 @@ impl ProveOutput {
     }
 
     pub fn save_proof(&self, path: impl AsRef<Path>) -> Result<()> {
-        self.proof.save(path)
+        Ok(self.proof.save(path)?)
     }
 
     pub fn verify(&self) -> Result<()> {
-        self.proof.verify()
+        Ok(self.proof.verify()?)
     }
 
     pub fn with_publics<'a>(&'a self, publics: &'a PublicValues) -> ZiskVerifyBuilder<'a> {

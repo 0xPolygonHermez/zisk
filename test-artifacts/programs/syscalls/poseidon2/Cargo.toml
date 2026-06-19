@@ -1,0 +1,11 @@
+[package]
+name = "poseidon2"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
+rand.workspace = true
+
+[build-dependencies]
+zisk-sdk.workspace = true

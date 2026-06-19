@@ -1,15 +1,21 @@
-use crate::{mem_module_collector::MemModuleCollector, MemInput, MemModule, MemPreviousSegment};
+use crate::{mem_module_collector::MemModuleCollector, MemModule, MemPreviousSegment};
 use fields::PrimeField64;
 use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
-use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
-use rayon::prelude::*;
 use std::sync::Arc;
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{MEM_AIR_IDS, ZISK_AIRGROUP_ID};
+
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use crate::MemInput;
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use proofman_util::{timer_start_debug, timer_stop_and_log_debug};
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use rayon::prelude::*;
+#[cfg(feature = "legacy_mem_count_and_plan")]
+use zisk_pil::MemTrace;
 
 pub struct MemModuleInstance<F: PrimeField64> {
     /// Instance context
@@ -21,6 +27,7 @@ pub struct MemModuleInstance<F: PrimeField64> {
     min_addr: u32,
     #[allow(dead_code)]
     max_addr: u32,
+    init: bool,
 }
 
 impl<F: PrimeField64> MemModuleInstance<F> {
@@ -29,9 +36,19 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         let mem_check_point = meta.downcast_ref::<MemModuleSegmentCheckPoint>().unwrap().clone();
 
         let (min_addr, max_addr) = module.get_addr_range();
-        Self { ictx, module: module.clone(), check_point: mem_check_point, min_addr, max_addr }
+        let init = module.is_initializable();
+
+        Self {
+            ictx,
+            module: module.clone(),
+            check_point: mem_check_point,
+            min_addr,
+            max_addr,
+            init,
+        }
     }
 
+    #[cfg(feature = "legacy_mem_count_and_plan")]
     fn prepare_inputs(&self, inputs: &mut [MemInput], parallelize: bool) {
         // sort all instance inputs
         timer_start_debug!(MEM_SORT);
@@ -43,15 +60,28 @@ impl<F: PrimeField64> MemModuleInstance<F> {
         timer_stop_and_log_debug!(MEM_SORT);
     }
 
-    pub fn build_mem_collector(&self, chunk_id: ChunkId) -> MemModuleCollector {
+    pub fn build_mem_collector(
+        &self,
+        chunk_id: ChunkId,
+        mem_sections: &dyn zisk_core::MemDataSection,
+    ) -> MemModuleCollector {
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
-        MemModuleCollector::new(
+        let mut collector = MemModuleCollector::new(
             chunk_check_point,
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
-        )
+            #[cfg(feature = "save_addr_action")]
+            self.module.get_mem_name(),
+            #[cfg(feature = "save_addr_action")]
+            chunk_id.0,
+        );
+
+        if self.init && chunk_id == ChunkId(0) {
+            collector.init_with_mem_sections(mem_sections);
+        }
+        collector
     }
 }
 
@@ -82,17 +112,22 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
                 mem_module_collector.inputs
             })
             .collect();
+        #[cfg(feature = "legacy_mem_count_and_plan")]
         let mut inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
+        #[cfg(not(feature = "legacy_mem_count_and_plan"))]
+        let inputs = inputs.into_iter().flatten().collect::<Vec<_>>();
 
         if inputs.is_empty() {
             return Ok(None);
         }
 
         // This method sorts all inputs
-        let parallelize = self.ictx.plan.air_id == MEM_AIR_IDS[0]
-            && self.ictx.plan.airgroup_id == ZISK_AIRGROUP_ID;
-        self.prepare_inputs(&mut inputs, parallelize);
-
+        #[cfg(feature = "legacy_mem_count_and_plan")]
+        {
+            let parallelize = self.ictx.plan.air_id == MemTrace::<F>::AIR_ID
+                && self.ictx.plan.airgroup_id == MemTrace::<F>::AIRGROUP_ID;
+            self.prepare_inputs(&mut inputs, parallelize);
+        }
         // This method calculates intermediate accesses without adding inputs and trims
         // the inputs while considering skipped rows for this instance.
         // Additionally, it computes the necessary information for memory continuations.
@@ -110,6 +145,7 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             &prev_segment,
             trace_buffer,
             packed,
+            &self.check_point,
         )?))
     }
 
@@ -122,13 +158,23 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
         let chunk_check_point = self.check_point.chunks.get(&chunk_id).unwrap();
-        Some(Box::new(MemModuleCollector::new(
+        let collector = MemModuleCollector::new(
             chunk_check_point,
             self.min_addr,
             self.ictx.plan.segment_id.unwrap(),
             Some(chunk_id) == self.check_point.first_chunk_id,
             self.module.is_dual(),
-        )))
+            #[cfg(feature = "save_addr_action")]
+            self.module.get_mem_name(),
+            #[cfg(feature = "save_addr_action")]
+            chunk_id.0,
+        );
+
+        assert!(!self.init, "mem module instance should not build collector with init because method don't has mem_sections as argument");
+        // if self.init && chunk_id == ChunkId(0) {
+        //     collector.init_with_mem_sections(mem_sections);
+        // }
+        Some(Box::new(collector))
     }
 
     fn check_point(&self) -> &CheckPoint {

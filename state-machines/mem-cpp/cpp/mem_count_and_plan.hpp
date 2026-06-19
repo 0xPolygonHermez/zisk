@@ -89,7 +89,7 @@ public:
 MemCountAndPlan *create_mem_count_and_plan(void);
 void destroy_mem_count_and_plan(MemCountAndPlan *mcp);
 void execute_mem_count_and_plan(MemCountAndPlan *mcp);
-void save_chunk(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chunk_size);
+void save_chunk_data(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chunk_size);
 void add_chunk_mem_count_and_plan(MemCountAndPlan *mcp, MemCountersBusData *chunk_data, uint32_t chunk_size);
 void stats_mem_count_and_plan(MemCountAndPlan *mcp);
 void set_completed_mem_count_and_plan(MemCountAndPlan *mcp);

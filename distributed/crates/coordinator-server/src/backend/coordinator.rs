@@ -19,7 +19,8 @@ use zisk_coordinator::{
 };
 
 use super::{
-    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
+    BackendService, DomainAirInstanceCount, DomainAsmExecution, DomainExecutionStats,
+    DomainExecutorTime, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
     DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
@@ -60,6 +61,7 @@ fn make_proof(hash_id: String, data: Vec<u8>) -> DomainProof {
 }
 
 fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
+    let et = s.executor_time;
     DomainExecutionStats {
         steps: s.steps,
         duration_nanos: s.duration_nanos,
@@ -69,12 +71,30 @@ fn coord_stats_to_domain(s: CoordinatorExecutionStats) -> DomainExecutionStats {
         precompile_cost: s.precompile_cost,
         tables_cost: s.tables_cost,
         other_cost: s.other_cost,
+        executor_time: DomainExecutorTime {
+            total_duration: et.total_duration,
+            execution_duration: et.execution_duration,
+            count_and_plan_duration: et.count_and_plan_duration,
+            count_and_plan_mo_duration: et.count_and_plan_mo_duration,
+            asm: et.asm_execution_duration.map(|a| DomainAsmExecution { time: a.time, mhz: a.mhz }),
+        },
+        plan: s
+            .plan
+            .into_iter()
+            .map(|p| DomainAirInstanceCount {
+                airgroup_id: p.airgroup_id,
+                air_id: p.air_id,
+                count: p.count,
+            })
+            .collect(),
     }
 }
 
 fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> DomainJobKindResponse {
     match result {
-        CoordinatorJobResult::Setup { vk } => DomainJobKindResponse::Setup { vk },
+        CoordinatorJobResult::Setup { vk, hash_mode } => {
+            DomainJobKindResponse::Setup { vk, hash_mode }
+        }
         CoordinatorJobResult::Prove { proof_bytes, stats } => DomainJobKindResponse::Prove {
             proof: make_proof(hash_id.to_string(), proof_bytes),
             stats: coord_stats_to_domain(stats),
@@ -260,7 +280,7 @@ impl BackendService for CoordinatorBackend {
             DomainJobKind::Setup(r) => {
                 let job_id_internal = self
                     .coordinator
-                    .setup_program(&r.hash_id, r.program_name, r.with_hints)
+                    .setup_program(&r.hash_id, r.program_name, r.with_hints, r.emulator_only)
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&job_id_internal.as_string())
@@ -483,24 +503,38 @@ impl BackendService for CoordinatorBackend {
             return Err(internal(format!("job {} has no assigned workers", job_id)));
         }
 
-        // Drain the input stream and forward each chunk to every worker.
-        while let Some(chunk_result) = chunks.next().await {
-            let chunk = chunk_result.map_err(|e| internal(format!("input stream error: {e}")))?;
+        // On error, fail_job fast — workers otherwise block on partial
+        // input until the phase 1 timeout fires.
+        let result: ApiResult<()> = async {
+            while let Some(chunk_result) = chunks.next().await {
+                let chunk =
+                    chunk_result.map_err(|e| internal(format!("input stream error: {e}")))?;
+                for worker_id in &workers {
+                    let msg = zisk_cluster_common::CoordinatorMessageDto::InputStreamData(
+                        InputStreamDataDto {
+                            job_id: job_id_internal.clone(),
+                            payload: chunk.data.clone(),
+                        },
+                    );
+                    self.coordinator.workers_pool().send_message(worker_id, msg).await.map_err(
+                        |e| {
+                            internal(format!("failed to send input to worker {}: {}", worker_id, e))
+                        },
+                    )?;
+                }
+            }
+            Ok(())
+        }
+        .await;
 
-            for worker_id in &workers {
-                let msg = zisk_cluster_common::CoordinatorMessageDto::InputStreamData(
-                    InputStreamDataDto {
-                        job_id: job_id_internal.clone(),
-                        payload: chunk.data.clone(),
-                    },
-                );
-                self.coordinator.workers_pool().send_message(worker_id, msg).await.map_err(
-                    |e| internal(format!("failed to send input to worker {}: {}", worker_id, e)),
-                )?;
+        if let Err(ref e) = result {
+            let reason = format!("Client input stream failed: {}", e);
+            if let Err(fail_err) = self.coordinator.fail_job(&job_id_internal, &reason).await {
+                warn!("Failed to fail_job after push_job_input error for {}: {}", job_id, fail_err);
             }
         }
 
-        Ok(())
+        result
     }
 
     async fn push_job_hints_input(
@@ -510,23 +544,35 @@ impl BackendService for CoordinatorBackend {
     ) -> ApiResult<()> {
         let job_id_internal = zisk_cluster_common::JobId::from(job_id.to_string());
 
-        // Feed each chunk into the coordinator's per-job relay channel.
-        // The channel feeds into PrecompileHintsRelay which parses the hint
-        // format and dispatches StreamData messages to workers.
-        while let Some(chunk_result) = futures::StreamExt::next(&mut chunks).await {
-            let chunk: zisk_coordinator_api::dto::DomainInputChunk =
-                chunk_result.map_err(|e| internal(format!("hints stream error: {e}")))?;
-            if !chunk.data.is_empty() {
-                self.coordinator
-                    .push_hints_grpc_data(&job_id_internal, chunk.data)
-                    .await
-                    .map_err(|e| internal(format!("hints relay error: {e}")))?;
+        let result: ApiResult<()> = async {
+            while let Some(chunk_result) = futures::StreamExt::next(&mut chunks).await {
+                let chunk: zisk_coordinator_api::dto::DomainInputChunk =
+                    chunk_result.map_err(|e| internal(format!("hints stream error: {e}")))?;
+                if !chunk.data.is_empty() {
+                    self.coordinator
+                        .push_hints_grpc_data(&job_id_internal, chunk.data)
+                        .await
+                        .map_err(|e| internal(format!("hints relay error: {e}")))?;
+                }
             }
+            Ok(())
         }
-        // Signal EOF so the relay thread exits cleanly.
+        .await;
+
+        // Always signal EOF so the relay thread exits cleanly, even on error.
         self.coordinator.finish_hints_grpc_stream(&job_id_internal).await;
 
-        Ok(())
+        if let Err(ref e) = result {
+            let reason = format!("Client hints stream failed: {}", e);
+            if let Err(fail_err) = self.coordinator.fail_job(&job_id_internal, &reason).await {
+                warn!(
+                    "Failed to fail_job after push_job_hints_input error for {}: {}",
+                    job_id, fail_err
+                );
+            }
+        }
+
+        result
     }
 
     async fn cancel_job(&self, job_id: Uuid) -> ApiResult<bool> {

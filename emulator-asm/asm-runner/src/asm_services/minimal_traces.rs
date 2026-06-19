@@ -2,7 +2,7 @@ use crate::asm_services::CMD_MT_RESPONSE_ID;
 
 use super::{FromResponsePayload, RequestData, ResponseData, ToRequestPayload, CMD_MT_REQUEST_ID};
 
-pub struct MinimalTraceRequest {
+pub(crate) struct MinimalTraceRequest {
     pub max_steps: u64,
     pub chunk_len: u64,
 }
@@ -14,7 +14,7 @@ impl ToRequestPayload for MinimalTraceRequest {
 }
 
 #[derive(Debug)]
-pub struct MinimalTraceResponse {
+pub(crate) struct MinimalTraceResponse {
     pub result: u8,
     pub allocated_len: u64,
     pub trace_len: u64,

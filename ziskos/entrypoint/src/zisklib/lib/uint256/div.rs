@@ -4,7 +4,7 @@ use crate::syscalls::{
 use crate::zisklib::fcall_uint256_div;
 use crate::zisklib::lib::{
     constants::ZERO_256 as ZERO,
-    utils::{is_zero, lt},
+    utils::{eq, is_zero, lt},
 };
 
 /// Given 256-bit integers `a,b`, it computes `a / b`.
@@ -74,8 +74,8 @@ pub fn div_rem256(
         #[cfg(feature = "hints")]
         hints,
     );
-    assert_eq!(dl, *a);
-    assert_eq!(dh, ZERO);
+    assert!(eq(&dl, a), "Quotient does not satisfy the division lemma");
+    assert!(is_zero(&dh), "Quotient does not satisfy the division lemma (high part is not zero)");
 
     // Check that: r < b
     assert!(lt(&rem, b), "Remainder must be less than the divisor");

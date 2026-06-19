@@ -1,13 +1,16 @@
 fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let accelerators_header = format!("{}/zkvm_accelerators.h", manifest_dir);
+    let accelerators_ext_header = format!("{}/zkvm_accelerators_ext.h", manifest_dir);
     let io_header = format!("{}/zkvm_io.h", manifest_dir);
 
     println!("cargo:rerun-if-changed={}", accelerators_header);
+    println!("cargo:rerun-if-changed={}", accelerators_ext_header);
     println!("cargo:rerun-if-changed={}", io_header);
 
     let bindings = bindgen::Builder::default()
         .header(&accelerators_header)
+        .header(&accelerators_ext_header)
         .header(&io_header)
         .clang_arg("-std=c11")
         .use_core()

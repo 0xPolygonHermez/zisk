@@ -1,0 +1,26 @@
+[package]
+name = "integration-tests"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+publish = false
+
+# This crate holds cross-cutting integration tests that run guest ELFs through
+# the ZisK emulator/prover. It has no library or binary of its own — only the
+# `tests/` directory matters. It exists as a workspace member (unlike
+# `test-artifacts`, which is workspace-excluded) so `cargo test --workspace`
+# actually runs these tests.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[dev-dependencies]
+zisk-sdk = { workspace = true }
+test-artifacts = { workspace = true }
+serial_test = { workspace = true }
+anyhow = { workspace = true }
+tokio = { workspace = true }

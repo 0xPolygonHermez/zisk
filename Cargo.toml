@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.18.0"
+version = "1.0.0-alpha"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -7,68 +7,69 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_zisk_testvectors_branch = "develop-0.3.0"
-gha_zisk_ethproofs_branch = "pre-develop-0.18.0"
-gha_zisk_eth_client_branch = "develop-0.9.0"
-gha_zisk_template_branch = "pre-develop-0.18.0"
-gha_pil2_proofman_js_branch = "tags/v0.17.0"
-gha_pil2_compiler_branch = "tags/v0.9.0"
+gha_package_setup_version = "pre-develop-1.0.0-alpha"
+gha_zisk_ethproofs_branch = "develop-0.10.0"
+gha_zisk_eth_client_branch = "develop-0.10.0"
+gha_zisk_template_branch = "pre-develop-1.0.0-alpha"
 
 [workspace]
 members = [
-    "cli",
-    "core",
-    "data-bus",
-    "emulator",
-    "executor",
-    "pil",
-    "prover-backend",
-    "riscv",
-    "rom-setup",
-    "state-machines/arith",
-    "state-machines/binary",
-    "state-machines/frequent-ops",
-    "state-machines/main",
-    "state-machines/mem",
-    "state-machines/mem-common",
-    "state-machines/mem-cpp",
-    "state-machines/rom",
-    "ziskos/entrypoint",
-    "ziskos-staticlib",
-    "ziskos-hints",
-    "precompiles/arith_eq",
-    "precompiles/arith_eq_384",
-    "precompiles/common",
-    "precompiles/helpers",
-    "precompiles/hints",
-    "precompiles/keccakf",
-    "precompiles/sha256f",
-    "precompiles/blake2",
-    "precompiles/big_int",
-    "precompiles/dma",
-    "precompiles/poseidon2",
-    "lib-c",
-    "lib-float",
-    "emulator-asm/asm-runner",
-    "ziskclib",
-    "common",
-    "tools/circuit",
-    "distributed/crates/coordinator",
-    "distributed/crates/coordinator-server",
-    "distributed/crates/coordinator-api",
-    "distributed/crates/coordinator-client",
-    "distributed/crates/cluster-api",
-    "distributed/crates/cluster-common",
-    "distributed/crates/worker",
-    "distributed/crates/prove-client",
-    "sdk",
-    "ziskbuild",
-    "definitions",
-    "zkvm-interface",
-    "verifier",
+  "cli",
+  "core",
+  "integration-tests",
+  "data-bus",
+  "emulator",
+  "executor",
+  "pil",
+  "prover-backend",
+  "prover-backend/macros",
+  "riscv",
+  "rom-setup",
+  "state-machines/arith",
+  "state-machines/binary",
+  "state-machines/frequent-ops",
+  "state-machines/main",
+  "state-machines/mem",
+  "state-machines/mem-common",
+  "state-machines/mem-cpp",
+  "state-machines/rom",
+  "ziskos/entrypoint",
+  "ziskos-staticlib",
+  "ziskos-hints",
+  "precompiles/arith_eq",
+  "precompiles/arith_eq_384",
+  "precompiles/common",
+  "precompiles/helpers",
+  "precompiles/hints",
+  "precompiles/keccakf",
+  "precompiles/sha256f",
+  "precompiles/blake2",
+  "precompiles/big_int",
+  "precompiles/dma",
+  "precompiles/poseidon",
+  "lib-c",
+  "lib-float",
+  "emulator-asm/asm-runner",
+  "ziskclib",
+  "common",
+  "stream",
+  "tools/circuit",
+  "distributed/crates/coordinator",
+  "distributed/crates/coordinator-server",
+  "distributed/crates/coordinator-api",
+  "distributed/crates/coordinator-client",
+  "distributed/crates/cluster-api",
+  "distributed/crates/cluster-common",
+  "distributed/crates/worker",
+  "distributed/crates/prove-client",
+  "sdk",
+  "ziskbuild",
+  "definitions",
+  "zkvm-interface",
+  "verifier",
 ]
-
 resolver = "2"
+exclude = ["test-artifacts"]
 
 [profile.release]
 opt-level = 3
@@ -78,8 +79,8 @@ opt-level = 3
 
 [workspace.dependencies]
 # Internal crates
-cargo-zisk = { path = "cli" }
 zisk-common = { path = "common" }
+zisk-stream = { path = "stream" }
 zisk-core = { path = "core" }
 data-bus = { path = "data-bus" }
 ziskemu = { path = "emulator" }
@@ -95,7 +96,7 @@ precompiles-helpers = { path = "precompiles/helpers" }
 precomp-keccakf = { path = "precompiles/keccakf" }
 precomp-sha256f = { path = "precompiles/sha256f" }
 precomp-blake2 = { path = "precompiles/blake2" }
-precomp-poseidon2 = { path = "precompiles/poseidon2" }
+precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
 riscv = { path = "riscv" }
@@ -108,6 +109,7 @@ sm-frequent-ops = { path = "state-machines/frequent-ops" }
 mem-common = { path = "state-machines/mem-common" }
 mem-planner-cpp = { path = "state-machines/mem-cpp" }
 sm-rom = { path = "state-machines/rom" }
+test-artifacts = { path = "test-artifacts" }
 ziskclib = { path = "ziskclib" }
 zkvm-interface = { path = "zkvm-interface" }
 ziskos = { path = "ziskos/entrypoint" }
@@ -130,14 +132,15 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
@@ -148,6 +151,7 @@ fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "
 # pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
 # witness = { path = "../pil2-proofman/witness" }
 # fields = { path = "../pil2-proofman/fields" }
+# pil2-stark-setup = { path = "../pil2-proofman/setup/pil2-stark" }
 
 # External dependencies
 arc-swap = "1"
@@ -170,9 +174,9 @@ anyhow = "1.0"
 named-sem = "0.2.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [
-    "fmt",
-    "env-filter",
-    "json",
+  "fmt",
+  "env-filter",
+  "json",
 ] }
 tracing-appender = "0.2"
 static_assertions = "1"
@@ -181,7 +185,10 @@ ripemd = "0.1.3"
 clap = { version = "4", features = ["derive", "env"] }
 futures = { version = "0.3" }
 thiserror = { version = "2" }
-bincode = { version = "2.0", default-features = false, features = ["serde", "std"] }
+bincode = { version = "2.0", default-features = false, features = [
+  "serde",
+  "std",
+] }
 blake3 = "1.3.1"
 bytes = "1"
 hex = "0.4"
@@ -207,10 +214,16 @@ prost = "0.14"
 prost-types = "0.14"
 config = "0.15"
 toml = "0.9.8"
+serial_test = "3.4"
 borsh = { version = "1.5", features = ["derive"] }
 reqwest = { version = "0.12", features = [
-    "stream",
-    "json",
-    "rustls-tls",
+  "stream",
+  "json",
+  "rustls-tls",
 ], default-features = false }
 vergen-git2 = { version = "9", default-features = false, features = ["build"] }
+env = "1.0.1"
+# Pin: time 0.3.48 triggers a rustc E0119 coherence false-positive when built
+# alongside rcgen 0.14.x. 0.3.47 is the newest version that satisfies
+# vergen-git2's `time ^0.3.45` and avoids the bug. Consumed by cli (workspace=true).
+time = "=0.3.47"
