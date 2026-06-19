@@ -1018,14 +1018,12 @@ impl Riscv2ZiskContext<'_> {
             // return_pc = pc + len(auipc) + len(jalr)
             // jump_pc = pc + auipc_imm + jalr_imm
             let current_inst_size = if i.inst.starts_with("c.") { 2 } else { 4 };
-            let next_inst_size = if next_instructions[0].inst.starts_with("c.") { 2 } else { 4 };
+            let next_inst_size = 4;
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
             let jump_pc = (i.rom_address as i64
                 + (i.imm as i64) // already shifted << 12 at decoding time
                 + next_instructions[0].imm as i64) as u64
                 & JALR_MASK;
-
-            let internal_address_1 = self.rom.get_internal_address();
 
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
@@ -1033,23 +1031,12 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_b("imm", return_pc, false);
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
-                zib.set_next_internal_address(internal_address_1);
-                let jump_address = internal_address_1 as i64 - i.rom_address as i64;
+                let jump_address = jump_pc as i64 - i.rom_address as i64;
                 zib.j(jump_address, jump_address);
                 zib.verbose(&format!(
                     "auipc r{}, 0x{:x} + jalr (1) pc=0x{:x}",
                     i.rd, i.imm, jump_pc
                 ));
-                zib.build(self.rom);
-            }
-            {
-                let mut zib = ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst.clone());
-                zib.src_a("imm", 0, false);
-                zib.src_b("imm", jump_pc, false);
-                zib.op("copyb").unwrap();
-                zib.set_pc();
-                zib.j(0, 0);
-                zib.verbose("internal 1 auipc");
                 zib.build(self.rom);
             }
 
