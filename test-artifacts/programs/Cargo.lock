@@ -3780,8 +3780,13 @@ name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
 dependencies = [
  "crossbeam-channel",
+ "proofman-starks-src",
  "tracing",
 ]
+
+[[package]]
+name = "proofman-starks-src"
+version = "1.0.0-beta"
 
 [[package]]
 name = "proofman-util"
