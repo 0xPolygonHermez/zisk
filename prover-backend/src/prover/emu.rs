@@ -8,7 +8,6 @@ use crate::{
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
 use asm_runner::HintsShmem;
-use executor::ZiskExecutor;
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -24,6 +23,7 @@ use zisk_common::{
     StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_executor::ZiskExecutor;
 
 use anyhow::Result;
 

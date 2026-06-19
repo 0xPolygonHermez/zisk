@@ -1,5 +1,5 @@
 [package]
-name = "executor"
+name = "zisk-executor"
 description = "Execution engine that orchestrates witness generation across ZisK state machines"
 version = { workspace = true }
 edition = { workspace = true }

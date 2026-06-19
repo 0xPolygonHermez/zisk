@@ -10,7 +10,7 @@ categories = { workspace = true }
 
 [dependencies]
 lib-c = { workspace = true }
-circuit = { workspace = true }
+zisk-circuit = { workspace = true }
 
 ark-ff = { workspace = true }
 ark-secp256k1 = { workspace = true }

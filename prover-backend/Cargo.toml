@@ -21,7 +21,7 @@ zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-cluster-common = { workspace = true }
-executor = { workspace = true }
+zisk-executor = { workspace = true }
 rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 precompiles-hints = { workspace = true }
@@ -41,6 +41,6 @@ alloy-sol-types = { workspace = true }
 
 [features]
 default = []
-cpu-only = ["proofman-common/cpu-only", "executor/cpu-only"]
+cpu-only = ["proofman-common/cpu-only", "zisk-executor/cpu-only"]
 stats = []
 diagnostic = ["proofman-common/diagnostic"]

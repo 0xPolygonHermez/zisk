@@ -25,7 +25,7 @@ precompiles-helpers = { workspace = true }
 
 pil-std-lib = { workspace = true }
 
-circuit = { workspace = true }
+zisk-circuit = { workspace = true }
 
 proofman-fields = { workspace = true }
 tracing = { workspace = true }

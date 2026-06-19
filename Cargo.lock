@@ -1182,10 +1182,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "circuit"
-version = "1.0.0-beta"
-
-[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2029,48 +2025,6 @@ dependencies = [
  "hashbag",
  "left-right",
  "smallvec",
-]
-
-[[package]]
-name = "executor"
-version = "1.0.0-beta"
-dependencies = [
- "anyhow",
- "arc-swap",
- "asm-runner",
- "crossbeam",
- "data-bus",
- "mem-common",
- "named-sem",
- "paste",
- "pil-std-lib",
- "precomp-arith-eq",
- "precomp-arith-eq-384",
- "precomp-big-int",
- "precomp-blake2",
- "precomp-dma",
- "precomp-keccakf",
- "precomp-poseidon",
- "precomp-sha256f",
- "precompiles-common",
- "precompiles-hints",
- "proofman",
- "proofman-common",
- "proofman-fields",
- "proofman-util",
- "proofman-witness",
- "rayon",
- "sm-arith",
- "sm-binary",
- "sm-main",
- "sm-mem",
- "sm-rom",
- "thiserror 2.0.18",
- "tracing",
- "zisk-common",
- "zisk-core",
- "zisk-pil",
- "ziskemu",
 ]
 
 [[package]]
@@ -4142,7 +4096,6 @@ dependencies = [
 name = "precomp-keccakf"
 version = "1.0.0-beta"
 dependencies = [
- "circuit",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -4154,6 +4107,7 @@ dependencies = [
  "test-artifacts",
  "tiny-keccak",
  "tracing",
+ "zisk-circuit",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -4214,11 +4168,11 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "cfg-if",
- "circuit",
  "crunchy",
  "lib-c",
  "num-bigint",
  "num-traits",
+ "zisk-circuit",
 ]
 
 [[package]]
@@ -4980,10 +4934,6 @@ checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
 dependencies = [
  "digest 0.10.7",
 ]
-
-[[package]]
-name = "riscv"
-version = "1.0.0-beta"
 
 [[package]]
 name = "rlp"
@@ -7567,6 +7517,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisk-circuit"
+version = "1.0.0-beta"
+
+[[package]]
 name = "zisk-cluster-api"
 version = "1.0.0-beta"
 dependencies = [
@@ -7724,16 +7678,58 @@ dependencies = [
  "precompiles-helpers",
  "proofman-fields",
  "rayon",
- "riscv",
  "sha2",
  "tiny-keccak",
  "zisk-definitions",
+ "zisk-riscv",
  "ziskos",
 ]
 
 [[package]]
 name = "zisk-definitions"
 version = "1.0.0-beta"
+
+[[package]]
+name = "zisk-executor"
+version = "1.0.0-beta"
+dependencies = [
+ "anyhow",
+ "arc-swap",
+ "asm-runner",
+ "crossbeam",
+ "data-bus",
+ "mem-common",
+ "named-sem",
+ "paste",
+ "pil-std-lib",
+ "precomp-arith-eq",
+ "precomp-arith-eq-384",
+ "precomp-big-int",
+ "precomp-blake2",
+ "precomp-dma",
+ "precomp-keccakf",
+ "precomp-poseidon",
+ "precomp-sha256f",
+ "precompiles-common",
+ "precompiles-hints",
+ "proofman",
+ "proofman-common",
+ "proofman-fields",
+ "proofman-util",
+ "proofman-witness",
+ "rayon",
+ "sm-arith",
+ "sm-binary",
+ "sm-main",
+ "sm-mem",
+ "sm-rom",
+ "thiserror 2.0.18",
+ "tracing",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+ "ziskemu",
+]
 
 [[package]]
 name = "zisk-pil"
@@ -7781,7 +7777,6 @@ dependencies = [
  "blake3",
  "borsh",
  "colored",
- "executor",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -7794,10 +7789,15 @@ dependencies = [
  "zisk-cluster-common",
  "zisk-common",
  "zisk-core",
+ "zisk-executor",
  "zisk-pil",
  "zisk-program-macros",
  "ziskemu",
 ]
+
+[[package]]
+name = "zisk-riscv"
+version = "1.0.0-beta"
 
 [[package]]
 name = "zisk-sdk"
@@ -7889,7 +7889,6 @@ dependencies = [
  "proofman-fields",
  "rayon",
  "regex",
- "riscv",
  "serde_json",
  "sm-arith",
  "sm-binary",
@@ -7901,6 +7900,7 @@ dependencies = [
  "zisk-core",
  "zisk-definitions",
  "zisk-pil",
+ "zisk-riscv",
 ]
 
 [[package]]

@@ -7,9 +7,9 @@ mod utils;
 
 pub use execute_client::ExecuteClient;
 
-pub use executor::PlanSummaryEntry;
 pub use proofman_common::VerboseMode;
 pub use rom_setup::HashMode;
+pub use zisk_executor::PlanSummaryEntry;
 pub use zisk_pil::get_packed_info;
 
 pub use builder::*;

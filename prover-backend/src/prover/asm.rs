@@ -7,7 +7,6 @@ use crate::{
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -31,6 +30,7 @@ use zisk_common::{
     StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
 use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 
 use anyhow::Result;
 

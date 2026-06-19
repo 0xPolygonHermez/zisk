@@ -6,7 +6,6 @@ use crate::{
 use anyhow::Result;
 use asm_runner::HintsShmem;
 use colored::Colorize;
-use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
@@ -27,6 +26,7 @@ use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
     HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
 };
+use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,

@@ -7,7 +7,6 @@
 //! subprocess spawn) is amortized across many executions.
 
 use anyhow::{Context, Result};
-use executor::{AsmResources, ZiskExecutor};
 use proofman_common::VerboseMode;
 use proofman_fields::Goldilocks;
 use std::path::PathBuf;
@@ -15,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_executor::{AsmResources, ZiskExecutor};
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;

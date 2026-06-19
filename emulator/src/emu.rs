@@ -4,13 +4,13 @@ use std::mem;
 use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions};
 use mem_common::MemHelpers;
 use proofman_fields::PrimeField64;
-use riscv::RiscVRegisters;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
     ROM_BUS_ID, ZISK_PUBLICS,
 };
 use zisk_core::elf_extraction::DataSection;
 use zisk_pil::MainTraceRowOps;
+use zisk_riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use data_bus::DataBusTrait;
