@@ -66,7 +66,7 @@ impl Rvd {
                         match (inst >> 20) & 0xFFF {
                             0b011010111000 => return ("I", "rev8", 2),
                             0b011010000111 => return ("I", "brev8", 2),
-                            0b001010000111 => return ("I", "opc.r", 2),
+                            0b001010000111 => return ("I", "orc.b", 2),
                             _ => {}
                         }
                         match (inst >> 26) & 0x3F {
