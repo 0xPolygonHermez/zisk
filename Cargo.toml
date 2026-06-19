@@ -135,7 +135,7 @@ zisk-coordinator-client = { path = "distributed/crates/coordinator-client", vers
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", default-features = false }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
 pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
 proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
