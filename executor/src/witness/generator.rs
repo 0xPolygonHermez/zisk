@@ -2,8 +2,8 @@
 //!
 //! This module handles the computation of witnesses for main and secondary state machine instances.
 
-use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
+use proofman_fields::PrimeField64;
 use sm_main::MainInstance;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;

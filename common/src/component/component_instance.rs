@@ -3,8 +3,8 @@
 //! and integrating them with state machines and proofs.
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType, StatsType};
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::any::Any;
 
 /// Represents the type of an instance, either a standalone instance or a table.
@@ -108,7 +108,7 @@ macro_rules! table_instance {
         use std::collections::VecDeque;
         use std::sync::Arc;
 
-        use fields::PrimeField64;
+        use proofman_fields::PrimeField64;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use zisk_common::{
@@ -218,7 +218,7 @@ macro_rules! table_instance_array {
         use std::collections::VecDeque;
         use std::sync::Arc;
 
-        use fields::PrimeField64;
+        use proofman_fields::PrimeField64;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
         use zisk_common::{

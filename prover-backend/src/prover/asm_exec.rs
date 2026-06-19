@@ -8,8 +8,8 @@
 
 use anyhow::{Context, Result};
 use executor::{AsmResources, ZiskExecutor};
-use fields::Goldilocks;
 use proofman_common::VerboseMode;
+use proofman_fields::Goldilocks;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;

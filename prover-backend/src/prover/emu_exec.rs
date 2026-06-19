@@ -8,8 +8,8 @@
 
 use anyhow::{Context, Result};
 use executor::ZiskExecutor;
-use fields::Goldilocks;
 use proofman_common::VerboseMode;
+use proofman_fields::Goldilocks;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};

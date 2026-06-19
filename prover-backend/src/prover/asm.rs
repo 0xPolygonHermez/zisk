@@ -15,6 +15,7 @@ use proofman::{
 use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
+use proofman_fields::Goldilocks;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
@@ -145,7 +146,7 @@ impl AsmProver {
         program_vk: &ProgramVK,
         asm_mt_path: PathBuf,
         with_hints: bool,
-        pctx: &Arc<ProofCtx<fields::Goldilocks>>,
+        pctx: &Arc<ProofCtx<Goldilocks>>,
     ) -> std::result::Result<(), anyhow::Error> {
         let world_rank = self.core_prover.rank_info.world_rank;
         let local_rank = self.core_prover.rank_info.local_rank;

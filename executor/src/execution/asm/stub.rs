@@ -12,8 +12,8 @@
 use std::sync::Arc;
 
 use asm_runner::HintsShmem;
-use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
+use proofman_fields::PrimeField64;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AsmExecutionInfo, ExecutorStatsHandle, StatsScope,

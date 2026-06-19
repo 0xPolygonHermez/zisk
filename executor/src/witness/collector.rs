@@ -11,8 +11,8 @@
 
 use crossbeam::atomic::AtomicCell;
 use data_bus::DataBusTrait;
-use fields::PrimeField64;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::{
     collections::HashMap,

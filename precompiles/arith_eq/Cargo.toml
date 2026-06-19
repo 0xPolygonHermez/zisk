@@ -49,7 +49,7 @@ proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 pil-std-lib = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 ark-ff = { workspace = true }

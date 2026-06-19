@@ -1,6 +1,6 @@
-use fields::PrimeField64;
 use lib_c::add256;
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
+use proofman_fields::PrimeField64;
 
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 

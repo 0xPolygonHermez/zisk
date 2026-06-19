@@ -2,11 +2,11 @@
 
 use crate::error::{ExecutorError, ExecutorResult};
 
-use fields::PrimeField64;
 use precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
     DmaPrePostCollector, DmaPrePostInstance, DmaUnalignedCollector, DmaUnalignedInstance,
 };
+use proofman_fields::PrimeField64;
 use sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollector};
 use sm_binary::{
     BinaryAddCollector, BinaryAddInstance, BinaryBasicCollector, BinaryBasicInstance,

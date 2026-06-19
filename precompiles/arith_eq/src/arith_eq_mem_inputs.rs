@@ -1,5 +1,5 @@
-use fields::PrimeField64;
 use precompiles_common::{MemProcessor, PrecompileMemInputs};
+use proofman_fields::PrimeField64;
 use zisk_common::OP;
 use zisk_core::zisk_ops::ZiskOp;
 

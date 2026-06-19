@@ -14,8 +14,8 @@ use crate::{CountersChunkMetrics, MAX_NUM_STEPS};
 
 use super::{AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor};
 use asm_runner::{AsmRunnerMT, HintsShmem};
-use fields::PrimeField64;
 use precompiles_hints::HintsProcessor;
+use proofman_fields::PrimeField64;
 use zisk_common::{
     io::StreamSource, io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
     ExecutorStatsHandle, StatsScope,

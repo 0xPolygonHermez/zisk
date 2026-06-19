@@ -25,7 +25,7 @@ executor = { workspace = true }
 rom-setup = { workspace = true }
 asm-runner = { workspace = true }
 precompiles-hints = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 borsh = { workspace = true }
 
 # Optional dependencies

@@ -1,5 +1,5 @@
-use fields::PrimeField64;
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
+use proofman_fields::PrimeField64;
 use tiny_keccak::keccakf;
 
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;

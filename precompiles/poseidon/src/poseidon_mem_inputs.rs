@@ -1,7 +1,7 @@
-use fields::{
+use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
+use proofman_fields::{
     poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
 };
-use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
 use zisk_common::{OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::zisk_ops::ZiskOp;

@@ -3,8 +3,8 @@
 //! [`CustomRom`] builds the `RomRomTrace<F>` commit that holds the program code as field
 //! elements. Pure transformation: ELF bytes → `ZiskRom` → trace rows.
 
-use fields::PrimeField64;
 use mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
+use proofman_fields::PrimeField64;
 use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 
@@ -161,7 +161,7 @@ impl CustomRom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use zisk_core::ZiskInstBuilder;
 
     type F = Goldilocks;

@@ -1,7 +1,7 @@
 use core::panic;
 use std::sync::Arc;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;

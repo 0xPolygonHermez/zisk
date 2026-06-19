@@ -15,7 +15,7 @@ zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 
 tracing = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 proofman-common = { workspace = true }
 anyhow = { workspace = true }
 blake3 = { workspace = true }

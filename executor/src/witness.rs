@@ -20,8 +20,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use asm_runner::AsmRunnerRH;
-use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
+use proofman_fields::PrimeField64;
 use sm_main::MainInstance;
 use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
 use zisk_core::ZiskRom;

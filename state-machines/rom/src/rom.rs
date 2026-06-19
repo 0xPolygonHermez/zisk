@@ -6,7 +6,7 @@ use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
 use crate::{RomError, RomInstance, RomResult};
 use asm_runner::AsmRunnerRH;
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use zisk_common::{create_atomic_vec, ComponentBuilder, Instance, InstanceCtx};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
@@ -86,7 +86,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for RomSM {
 mod tests {
     use super::*;
     use asm_runner::{AsmRHData, AsmRunnerRH};
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use zisk_common::{CheckPoint, InstanceType, Plan};
 
     type F = Goldilocks;

@@ -48,7 +48,7 @@ macro_rules! register_precompiles {
         /// Tagged union of every precompile state machine registered via
         /// [`register_precompiles!`](crate::register_precompiles). One variant
         /// per declaration.
-        pub enum Precompiles<F: ::fields::PrimeField64> {
+        pub enum Precompiles<F: ::proofman_fields::PrimeField64> {
             $(
                 #[doc = concat!(
                     "`", stringify!($variant),
@@ -58,7 +58,7 @@ macro_rules! register_precompiles {
             )*
         }
 
-        impl<F: ::fields::PrimeField64> Precompiles<F> {
+        impl<F: ::proofman_fields::PrimeField64> Precompiles<F> {
             /// Static planner dispatch by AIR id — no instance needed.
             /// Used by the plan path without constructing the precompile.
             pub fn planner_for_air_id(
@@ -140,7 +140,7 @@ macro_rules! register_precompiles {
             /// Counter-phase slots for every precompile registered via
             /// `register_precompiles!`. Each field stores
             /// `(bundle_position, counter_input_gen)`.
-            pub struct PrecompileCounters<F: ::fields::PrimeField64> {
+            pub struct PrecompileCounters<F: ::proofman_fields::PrimeField64> {
                 $(
                     #[doc = concat!(
                         "Counter for the `", stringify!($variant),
@@ -154,7 +154,7 @@ macro_rules! register_precompiles {
                 )*
             }
 
-            impl<F: ::fields::PrimeField64> PrecompileCounters<F> {
+            impl<F: ::proofman_fields::PrimeField64> PrecompileCounters<F> {
                 /// Build each precompile's counter via static dispatch.
                 /// Bundle position is `BUILTIN_COUNT + slot`.
                 pub fn build(is_asm_emulator: ::std::primitive::bool) -> Self {
@@ -233,7 +233,7 @@ macro_rules! register_precompiles {
             /// `try_push_collector` during per-chunk setup, plus a
             /// `CounterInputGen` used by the bus to emit derived
             /// mem-ops on each operation message.
-            pub struct PrecompileCollectors<F: ::fields::PrimeField64> {
+            pub struct PrecompileCollectors<F: ::proofman_fields::PrimeField64> {
                 $(
                     #[doc = concat!(
                         "Per-chunk collectors for the `", stringify!($variant),
@@ -253,7 +253,7 @@ macro_rules! register_precompiles {
                 )*
             }
 
-            impl<F: ::fields::PrimeField64> PrecompileCollectors<F> {
+            impl<F: ::proofman_fields::PrimeField64> PrecompileCollectors<F> {
                 pub fn new() -> Self {
                     Self {
                         $(

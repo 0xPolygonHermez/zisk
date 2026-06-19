@@ -1,4 +1,4 @@
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 use rayon::prelude::*;
 #[cfg(feature = "save_mem_counters")]
 use std::collections::HashMap;

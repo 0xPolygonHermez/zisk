@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};

@@ -1,6 +1,6 @@
 use anyhow::Result;
-use fields::{Goldilocks, PrimeField64};
 use proofman_common::{custom_commit_file_size_bytes, ProofCtx};
+use proofman_fields::{Goldilocks, PrimeField64};
 use std::path::{Path, PathBuf};
 use zisk_common::ProgramVK;
 use zisk_pil::RomRomTrace;

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use fields::{
+use proofman_fields::{
     add, matmul_external, pow7, pow7add, prodadd, Poseidon1Constants, Poseidon1_16,
     Poseidon2Constants, Poseidon2_16, PrimeField64,
 };

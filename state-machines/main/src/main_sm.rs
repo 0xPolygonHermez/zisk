@@ -10,10 +10,10 @@
 use std::sync::Arc;
 
 use crate::MainSmError;
-use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
@@ -440,7 +440,7 @@ impl MainSM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use std::any::Any;
     use zisk_common::{CheckPoint, ChunkId, InstanceType};
 

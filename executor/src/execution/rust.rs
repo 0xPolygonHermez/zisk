@@ -5,7 +5,7 @@ use crate::{
     StaticDataBus, MAX_NUM_STEPS,
 };
 use data_bus::DataBusTrait;
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use rayon::prelude::*;
 use zisk_common::{io::ZiskStdin, ChunkId, EmuTrace};

@@ -1,7 +1,7 @@
 use clap::Parser;
-use fields::Goldilocks;
 use mem_common::MemHelpers;
 use mem_common::{MemCounters, MemDebug};
+use proofman_fields::Goldilocks;
 use std::path::PathBuf;
 use zisk_common::ChunkId;
 use zisk_common::MemBusData;

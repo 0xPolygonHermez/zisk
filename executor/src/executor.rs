@@ -19,15 +19,15 @@ use crate::{
     ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
     ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
-use fields::PrimeField64;
 use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use proofman_witness::{WitnessComponent, WitnessManager};
 use sm_main::MainSM;
 use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
-use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId,
     ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,

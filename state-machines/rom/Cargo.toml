@@ -15,7 +15,7 @@ zisk-pil = { workspace = true }
 asm-runner = { workspace = true }
 mem-common = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 proofman-common = { workspace = true }
 
 tracing = { workspace = true }

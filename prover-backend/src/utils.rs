@@ -1,4 +1,4 @@
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use std::path::PathBuf;
 use std::str::FromStr;
 

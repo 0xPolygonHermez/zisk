@@ -18,9 +18,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
-use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 

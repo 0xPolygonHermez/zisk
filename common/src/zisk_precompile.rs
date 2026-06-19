@@ -101,18 +101,18 @@ macro_rules! zisk_precompile_explicit {
             // Manager
             // ============================================================
             #[allow(dead_code)]
-            pub struct [<$name Manager>]<F: ::fields::PrimeField64> {
+            pub struct [<$name Manager>]<F: ::proofman_fields::PrimeField64> {
                 [<$name:snake _sm>]: ::std::sync::Arc<$sm<F>>,
             }
 
-            impl<F: ::fields::PrimeField64> [<$name Manager>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> [<$name Manager>]<F> {
                 pub fn new(std: ::std::sync::Arc<::pil_std_lib::Std<F>>) -> ::std::sync::Arc<Self> {
                     let [<$name:snake _sm>] = <$sm<F>>::new(std);
                     ::std::sync::Arc::new(Self { [<$name:snake _sm>] })
                 }
             }
 
-            impl<F: ::fields::PrimeField64> $crate::ComponentPlanBuilder<F>
+            impl<F: ::proofman_fields::PrimeField64> $crate::ComponentPlanBuilder<F>
                 for [<$name Manager>]<F>
             {
                 type Counter = [<$name CounterInputGen>]<F>;
@@ -143,7 +143,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64> $crate::ComponentBuilder<F>
+            impl<F: ::proofman_fields::PrimeField64> $crate::ComponentBuilder<F>
                 for [<$name Manager>]<F>
             {
                 fn build_instance(
@@ -165,19 +165,19 @@ macro_rules! zisk_precompile_explicit {
             // ============================================================
             // Planner
             // ============================================================
-            pub struct [<$name Planner>]<F: ::fields::PrimeField64> {
+            pub struct [<$name Planner>]<F: ::proofman_fields::PrimeField64> {
                 instances_info: ::std::vec::Vec<$crate::InstanceInfo>,
                 tables_info: ::std::vec::Vec<$crate::TableInfo>,
                 _phantom: ::std::marker::PhantomData<F>,
             }
 
-            impl<F: ::fields::PrimeField64> ::std::default::Default for [<$name Planner>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> ::std::default::Default for [<$name Planner>]<F> {
                 fn default() -> Self {
                     Self::new()
                 }
             }
 
-            impl<F: ::fields::PrimeField64> [<$name Planner>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> [<$name Planner>]<F> {
                 pub fn new() -> Self {
                     Self {
                         instances_info: ::std::vec::Vec::new(),
@@ -197,7 +197,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64> $crate::Planner for [<$name Planner>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> $crate::Planner for [<$name Planner>]<F> {
                 fn plan(
                     &self,
                     counters: ::std::vec::Vec<(
@@ -266,12 +266,12 @@ macro_rules! zisk_precompile_explicit {
             // ============================================================
             // Instance
             // ============================================================
-            pub struct [<$name Instance>]<F: ::fields::PrimeField64> {
+            pub struct [<$name Instance>]<F: ::proofman_fields::PrimeField64> {
                 [<$name:snake _sm>]: ::std::sync::Arc<$sm<F>>,
                 ictx: $crate::InstanceCtx,
             }
 
-            impl<F: ::fields::PrimeField64> [<$name Instance>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> [<$name Instance>]<F> {
                 pub fn new(
                     [<$name:snake _sm>]: ::std::sync::Arc<$sm<F>>,
                     ictx: $crate::InstanceCtx,
@@ -301,7 +301,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64> $crate::Instance<F> for [<$name Instance>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> $crate::Instance<F> for [<$name Instance>]<F> {
                 fn compute_witness(
                     &self,
                     _pctx: &::proofman_common::ProofCtx<F>,
@@ -455,13 +455,13 @@ macro_rules! zisk_precompile_explicit {
             // should_skip`. The SM's PrecompileMemInputs impl handles any
             // inner sub-op match for multi-op precompiles.
             // ============================================================
-            pub struct [<$name CounterInputGen>]<F: ::fields::PrimeField64> {
+            pub struct [<$name CounterInputGen>]<F: ::proofman_fields::PrimeField64> {
                 counter: $crate::Counter,
                 mode: $crate::BusDeviceMode,
                 _phantom: ::std::marker::PhantomData<F>,
             }
 
-            impl<F: ::fields::PrimeField64> [<$name CounterInputGen>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> [<$name CounterInputGen>]<F> {
                 pub fn new(mode: $crate::BusDeviceMode) -> Self {
                     Self {
                         counter: $crate::Counter::default(),
@@ -522,7 +522,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64> $crate::Metrics for [<$name CounterInputGen>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> $crate::Metrics for [<$name CounterInputGen>]<F> {
                 #[inline(always)]
                 fn measure(&mut self, _data: &[u64]) {
                     self.counter.update(1);
@@ -533,7 +533,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64> ::std::ops::Add for [<$name CounterInputGen>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> ::std::ops::Add for [<$name CounterInputGen>]<F> {
                 type Output = [<$name CounterInputGen>]<F>;
 
                 fn add(self, other: Self) -> [<$name CounterInputGen>]<F> {
@@ -545,7 +545,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64> $crate::BusDevice<u64> for [<$name CounterInputGen>]<F> {
+            impl<F: ::proofman_fields::PrimeField64> $crate::BusDevice<u64> for [<$name CounterInputGen>]<F> {
                 fn as_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn ::std::any::Any> {
                     self
                 }

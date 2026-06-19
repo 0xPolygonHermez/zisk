@@ -4,13 +4,13 @@
 use std::collections::VecDeque;
 
 use data_bus::DataBusTrait;
-use fields::PrimeField64;
 use precomp_dma::Dma64AlignedCollector;
 use precomp_dma::DmaCollector;
 use precomp_dma::DmaCounterInputGen;
 use precomp_dma::DmaPrePostCollector;
 use precomp_dma::DmaUnalignedCollector;
 use precompiles_common::{MemCollectorProcessor, MemProcessor};
+use proofman_fields::PrimeField64;
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
 use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};

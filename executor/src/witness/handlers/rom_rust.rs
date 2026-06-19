@@ -1,6 +1,6 @@
 //! ROM pre-calculate hook on the **Rust** backend.
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use sm_rom::RomInstance;
 
 use super::{SecnInstanceMap, SecnInstanceMapRef};
@@ -39,7 +39,7 @@ mod tests {
     use super::*;
     use crate::ports::fakes::FakeProofRegistry;
     use asm_runner::{AsmRHData, AsmRunnerRH};
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
     use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};

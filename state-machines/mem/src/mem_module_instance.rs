@@ -1,7 +1,7 @@
 use crate::{mem_module_collector::MemModuleCollector, MemModule, MemPreviousSegment};
-use fields::PrimeField64;
 use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::StatsType;
 use zisk_common::{

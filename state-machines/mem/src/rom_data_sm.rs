@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
-use fields::PrimeField64;
 use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS};
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_fields::PrimeField64;
 use std::{
     fs::File,
     io::{BufWriter, Write},

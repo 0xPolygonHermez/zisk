@@ -22,7 +22,7 @@ lib-c = { workspace = true }
 ziskos = { workspace = true }
 riscv = { workspace = true }
 rayon = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 sha2 = { workspace = true }
 paste = { workspace = true }
 zisk-definitions = { workspace = true }

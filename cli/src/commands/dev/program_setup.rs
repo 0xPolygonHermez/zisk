@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use colored::Colorize;
-use fields::Goldilocks;
 use proofman_common::{init_gpu_setup, MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
+use proofman_fields::Goldilocks;
 use rom_setup::gen_assembly;
 use rom_setup::rom_merkle_setup;
 use rom_setup::HashMode;

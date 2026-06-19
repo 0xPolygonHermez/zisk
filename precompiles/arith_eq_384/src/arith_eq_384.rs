@@ -1,4 +1,4 @@
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::sync::Arc;
 

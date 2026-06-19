@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
-use fields::{Goldilocks, PrimeField64};
 use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanError, ProofmanResult};
+use proofman_fields::{Goldilocks, PrimeField64};
 use sm_rom::CustomRom;
 use std::fs;
 use std::fs::File;

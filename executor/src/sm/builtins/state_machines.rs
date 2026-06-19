@@ -2,10 +2,10 @@
 //! (`configure_instances`, `build_instance`) and plan-time static
 //! dispatch (`planner_for_position`).
 
-use fields::PrimeField64;
 use pil_std_lib::Std;
 use precomp_dma::DmaManager;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use sm_arith::ArithSM;
 use sm_binary::BinarySM;
 use sm_mem::Mem;

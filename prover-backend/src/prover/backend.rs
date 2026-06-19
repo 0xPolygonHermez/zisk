@@ -7,7 +7,6 @@ use anyhow::Result;
 use asm_runner::HintsShmem;
 use colored::Colorize;
 use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
-use fields::Goldilocks;
 use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
@@ -15,6 +14,7 @@ use proofman::{
     SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
+use proofman_fields::Goldilocks;
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;

@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::{PoisonError, RwLock};
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use sm_main::MainInstance;
 use zisk_common::Instance;
 
@@ -51,7 +51,7 @@ impl<F: PrimeField64> Default for InstanceSet<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
 
     type F = Goldilocks;
 

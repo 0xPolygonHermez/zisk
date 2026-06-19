@@ -1,8 +1,8 @@
 use crate::{MemAlignCollector, MemAlignSM};
 use mem_common::MemAlignCheckPoint;
 
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{

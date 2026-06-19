@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use fields::PrimeField64;
 use pil_std_lib::Std;
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
 use crate::MemAlignInput;

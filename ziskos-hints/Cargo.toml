@@ -35,7 +35,7 @@ serde = { workspace = true, features = ["derive"] }
 bincode = { workspace = true }
 paste = "1.0"
 sha2 = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 ripemd = { workspace = true }
 
 anyhow = { workspace = true }

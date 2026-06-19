@@ -1,8 +1,8 @@
 //! Counters for the built-in SMs.
 
-use fields::PrimeField64;
 use mem_common::MemCounters;
 use precomp_dma::{DmaCounterInputGen, DmaManager};
+use proofman_fields::PrimeField64;
 use sm_arith::{ArithCounterInputGen, ArithSM};
 use sm_binary::{BinaryCounter, BinarySM};
 use sm_mem::Mem;

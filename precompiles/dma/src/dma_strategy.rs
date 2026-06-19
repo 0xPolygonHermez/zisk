@@ -18,7 +18,7 @@ use crate::{
 #[cfg(feature = "save_dma_plans")]
 use crate::get_dma_air_name;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, BusDeviceMode, CheckPoint, ChunkId};
 use zisk_core::{
     DMA_64_ALIGNED_COST, DMA_64_ALIGNED_INPUTCPY_COST, DMA_64_ALIGNED_MEMCPY_COST,

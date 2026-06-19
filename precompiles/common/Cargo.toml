@@ -14,4 +14,4 @@ zisk-common = { workspace = true }
 sm-mem = { workspace = true }
 mem-common = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
