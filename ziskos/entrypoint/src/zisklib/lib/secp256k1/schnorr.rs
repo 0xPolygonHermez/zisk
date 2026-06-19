@@ -127,9 +127,9 @@ pub fn schnorr_batch_verify_secp256k1(
     if u == 0 {
         return true;
     }
-    debug_assert_eq!(pk_xs.len(), u);
-    debug_assert_eq!(sig_rs.len(), u);
-    debug_assert_eq!(sig_ss.len(), u);
+    debug_assert_eq!(pk_xs.len(), u, "Number of public keys must match number of messages");
+    debug_assert_eq!(sig_rs.len(), u, "Number of r values must match number of messages");
+    debug_assert_eq!(sig_ss.len(), u, "Number of s values must match number of messages");
 
     // For u=1, delegate to single verification
     if u == 1 {
@@ -275,7 +275,7 @@ pub fn schnorr_batch_verify_secp256k1(
         );
         // With a 256-bit modulus, the probability of a = 0 is slightly less than 2⁻²⁵⁶.
         // We don't check it in release builds
-        debug_assert!(!is_zero(&a));
+        debug_assert!(!is_zero(&a), "Random coefficient aᵢ is zero, which is extremely unlikely");
 
         coeffs.push(a);
     }
@@ -296,7 +296,7 @@ pub fn schnorr_batch_verify_secp256k1(
             hints,
         );
     }
-    debug_assert!(!is_zero(&s_total));
+    debug_assert!(!is_zero(&s_total), "Total scalar s_total is zero, which is extremely unlikely");
 
     let mut msm_scalars = Vec::with_capacity(2 * u + 1);
     let mut msm_points = Vec::with_capacity(2 * u + 1);
@@ -318,7 +318,7 @@ pub fn schnorr_batch_verify_secp256k1(
         msm_scalars.push(neg_ai);
         msm_points.push(points_r[i]);
 
-        debug_assert!(!is_zero(&neg_ai_ei));
+        debug_assert!(!is_zero(&neg_ai_ei), "Scalar (-aᵢ)·eᵢ is zero, which is extremely unlikely");
         msm_scalars.push(neg_ai_ei);
         msm_points.push(points_p[i]);
     }

@@ -601,7 +601,7 @@ pub fn exp_fp12_bn254(
     }
 
     // Check that the reconstructed e is equal to the input e
-    assert_eq!(e_rec, e);
+    assert_eq!(e_rec, e, "Reconstructed e does not match input e");
 
     result
 }

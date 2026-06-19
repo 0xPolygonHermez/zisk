@@ -988,7 +988,7 @@ pub fn msm_complete_safe_twist_bls12_381(
     scalars: &[[u64; 4]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 24], u8> {
-    debug_assert_eq!(points.len(), scalars.len());
+    debug_assert_eq!(points.len(), scalars.len(), "Points and scalars must have the same length");
 
     let mut acc = G2_IDENTITY;
     let mut acc_is_inf = true;

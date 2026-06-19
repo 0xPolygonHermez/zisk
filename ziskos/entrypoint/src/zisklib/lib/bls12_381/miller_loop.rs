@@ -76,13 +76,16 @@ pub fn miller_loop_bls12_381(
         );
 
         // Check that the line is correct
-        assert!(is_tangent_twist_bls12_381(
-            &r,
-            &lambda,
-            &mu,
-            #[cfg(feature = "hints")]
-            hints,
-        ));
+        assert!(
+            is_tangent_twist_bls12_381(
+                &r,
+                &lambda,
+                &mu,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            "Line is not tangent to the curve at r"
+        );
 
         // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bls12_381(
@@ -124,14 +127,17 @@ pub fn miller_loop_bls12_381(
             );
 
             // Check that the line is correct
-            assert!(is_line_twist_bls12_381(
-                &r,
-                q,
-                &lambda,
-                &mu,
-                #[cfg(feature = "hints")]
-                hints,
-            ));
+            assert!(
+                is_line_twist_bls12_381(
+                    &r,
+                    q,
+                    &lambda,
+                    &mu,
+                    #[cfg(feature = "hints")]
+                    hints,
+                ),
+                "Line does not pass through r and q"
+            );
 
             // Compute f = f · line_{twist(r),twist(q)}
             let l = line_eval_twist_bls12_381(
@@ -243,13 +249,16 @@ pub fn miller_loop_batch_bls12_381(
             );
 
             // Check that the line is correct
-            assert!(is_tangent_twist_bls12_381(
-                r,
-                &lambda,
-                &mu,
-                #[cfg(feature = "hints")]
-                hints,
-            ));
+            assert!(
+                is_tangent_twist_bls12_381(
+                    r,
+                    &lambda,
+                    &mu,
+                    #[cfg(feature = "hints")]
+                    hints,
+                ),
+                "Line is not tangent to the curve at r"
+            );
 
             let xp_prime = &xp_primes[i];
             let yp_prime = &yp_primes[i];
@@ -289,14 +298,17 @@ pub fn miller_loop_batch_bls12_381(
                 );
 
                 // Check that the line is correct
-                assert!(is_line_twist_bls12_381(
-                    r,
-                    q,
-                    &lambda,
-                    &mu,
-                    #[cfg(feature = "hints")]
-                    hints,
-                ));
+                assert!(
+                    is_line_twist_bls12_381(
+                        r,
+                        q,
+                        &lambda,
+                        &mu,
+                        #[cfg(feature = "hints")]
+                        hints,
+                    ),
+                    "Line does not pass through r and q"
+                );
 
                 // Compute f = f · line_{twist(r),twist(q')}
                 let l = line_eval_twist_bls12_381(
