@@ -9,7 +9,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-proofman-verifier = { path = "../../pil2-proofman/verifier", version = "1.0.0-beta", default-features = false, features = [
+proofman-verifier = { workspace = true, default-features = false, features = [
   "verify",
 ] }
 

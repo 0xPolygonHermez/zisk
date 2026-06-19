@@ -52,7 +52,7 @@ ark-bn254 = { workspace = true }
 ark-ff = { workspace = true }
 sha2 = { workspace = true }
 tiny-keccak = { workspace = true }
-proofman-fields = { path = "../../../pil2-proofman/fields", version = "1.0.0-beta", features = [
+proofman-fields = { workspace = true, features = [
   "verify",
 ] }
 blst = "0.3.16"
