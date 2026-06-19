@@ -2,25 +2,28 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_common::ProofKind;
 use zisk_prover_backend::{GuestProgram, ProveOutput};
 
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
 use crate::job_handle::{subscriber_list_from, JobHandle, JobId, Subscriber, SubscriberList};
-use crate::{Client, ExecutorKind};
+use crate::{Client, ClientSync, ExecutorKind};
 
+/// Result of a prove operation.
 pub struct ProveResult {
     pub(crate) job_id: Option<JobId>,
     output: ProveOutput,
 }
 
 impl ProveResult {
+    /// Create a new `ProveResult` with the given output and job ID.
     pub fn new(output: ProveOutput, job_id: Option<JobId>) -> Self {
         Self { output, job_id }
     }
 
+    /// Get the ID of the job that produced this result, if available.
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }
@@ -59,14 +62,16 @@ pub enum JobEvent {
 
 /// Builder for a prove request.
 ///
-/// Obtain via [`crate::ProverClient::prove`].
+/// Obtain via [`EmbeddedClient::prove`](crate::EmbeddedClient::prove),
+/// [`RemoteClient::prove`](crate::RemoteClient::prove), or
+/// [`ZiskClient::prove`](crate::ZiskClient::prove).
 /// Finalize with `.run()` which returns a [`JobHandle<ProveResult>`].
 pub struct ProveRequest<'a, C> {
     client: &'a C,
     program: &'a GuestProgram,
     stdin: InputSource,
     hints: Option<HintsSource>,
-    executor: Option<ExecutorKind>,
+    executor: ExecutorKind,
     timeout: Option<Duration>,
     proof_kind: ProofKind,
     subscribers: Vec<Subscriber>,
@@ -78,13 +83,14 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         client: &'a C,
         program: &'a GuestProgram,
         stdin: impl Into<InputSource>,
+        executor: ExecutorKind,
     ) -> Self {
         Self {
             client,
             program,
             stdin: stdin.into(),
             hints: None,
-            executor: None,
+            executor,
             timeout: None,
             proof_kind: ProofKind::default(),
             subscribers: Vec::new(),
@@ -105,7 +111,7 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     /// Override the executor for this prove call.
     #[must_use]
     pub fn executor(mut self, executor: ExecutorKind) -> Self {
-        self.executor = Some(executor);
+        self.executor = executor;
         self
     }
 
@@ -132,22 +138,38 @@ impl<'a, C: Client> ProveRequest<'a, C> {
         self
     }
 
-    fn resolve_mode(&self) -> ProofKind {
-        self.proof_kind
-    }
-
     /// Submit proof generation, returning a [`JobHandle<ProveResult>`] immediately.
     pub fn run(self) -> Result<JobHandle<ProveResult>> {
-        let mode = self.resolve_mode();
-        let executor = self.executor.unwrap_or_else(|| self.client.default_executor());
         let subs: SubscriberList = subscriber_list_from(self.subscribers);
         self.client.run_prove(
             self.program,
             self.stdin,
             self.hints,
-            executor,
-            mode,
+            self.executor,
+            self.proof_kind,
             self.timeout,
+            subs,
+        )
+    }
+}
+
+#[allow(private_bounds)]
+impl<'a, C: ClientSync> ProveRequest<'a, C> {
+    /// Run proof generation synchronously, returning the result directly.
+    ///
+    /// Unlike [`run`](Self::run), this drives the work on the calling thread and
+    /// requires no async runtime — use it when embedding the SDK in a
+    /// synchronous program. Registered [`on`](Self::on) callbacks fire
+    /// synchronously during the call. Available only for the embedded client
+    /// ([`EmbeddedClient`](crate::EmbeddedClient)).
+    pub fn run_sync(self) -> Result<ProveResult> {
+        let subs = subscriber_list_from(self.subscribers);
+        self.client.run_prove_sync(
+            self.program,
+            self.stdin,
+            self.hints,
+            self.executor,
+            self.proof_kind,
             subs,
         )
     }

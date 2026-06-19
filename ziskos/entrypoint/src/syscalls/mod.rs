@@ -15,6 +15,7 @@
 //! ### Hashing
 //! - [`syscall_blake2br`] — BLAKE2b round function
 //! - [`syscall_keccakf`] — Keccak-f\[1600\] permutation
+//! - [`syscall_poseidon1`] — Poseidon1 hash function
 //! - [`syscall_poseidon2`] — Poseidon2 hash function
 //! - [`syscall_sha256f`] — SHA-256 compression function
 //!
@@ -52,6 +53,7 @@ mod bn254_curve_dbl;
 mod complex;
 mod keccakf;
 mod point;
+mod poseidon1;
 mod poseidon2;
 mod secp256k1_add;
 mod secp256k1_dbl;
@@ -77,6 +79,7 @@ pub use bn254_curve_dbl::*;
 pub use complex::*;
 pub use keccakf::*;
 pub use point::*;
+pub use poseidon1::*;
 pub use poseidon2::*;
 pub use secp256k1_add::*;
 pub use secp256k1_dbl::*;

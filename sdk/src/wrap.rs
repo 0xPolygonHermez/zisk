@@ -1,11 +1,11 @@
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_common::{ProgramVK, Proof, ProofKind, PublicValues};
 
 use crate::job_handle::{new_subscriber_list, JobHandle};
 use crate::prove::ProveResult;
-use crate::Client;
+use crate::{Client, ClientSync};
 
 /// Builder for a proof wrapping/conversion request.
 ///
@@ -62,6 +62,26 @@ impl<'a, C: Client> WrapRequest<'a, C> {
             self.override_publics,
             self.override_program_vk,
             self.timeout,
+            subs,
+        )
+    }
+}
+
+#[allow(private_bounds)]
+impl<'a, C: ClientSync> WrapRequest<'a, C> {
+    /// Wrap/convert the proof synchronously, returning the result directly.
+    ///
+    /// Unlike [`run`](Self::run), this drives the work on the calling thread and
+    /// requires no async runtime — use it when embedding the SDK in a
+    /// synchronous program. Available only for the embedded client
+    /// ([`EmbeddedClient`](crate::EmbeddedClient)).
+    pub fn run_sync(self) -> Result<ProveResult> {
+        let subs = new_subscriber_list();
+        self.client.run_wrap_sync(
+            self.proof,
+            self.proof_kind,
+            self.override_publics,
+            self.override_program_vk,
             subs,
         )
     }

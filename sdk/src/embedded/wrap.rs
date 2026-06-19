@@ -5,7 +5,7 @@ use crate::{
     prove::ProveResult,
     JobEvent,
 };
-use anyhow::Result;
+use crate::{Result, SdkError};
 use std::{sync::Arc, time::Duration};
 use zisk_common::{ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
 use zisk_prover_backend::ProverEngine;
@@ -43,6 +43,30 @@ impl EmbeddedClient {
         Ok(JobHandle::new_embedded(handle, subs, timeout))
     }
 
+    /// Wrap/convert a proof synchronously on the calling thread.
+    ///
+    /// Unlike [`do_wrap`](Self::do_wrap), this performs no `spawn_blocking`
+    /// and returns the result directly, so it requires no async runtime.
+    pub(crate) fn do_wrap_sync(
+        &self,
+        proof: &Proof,
+        proof_kind: ProofKind,
+        override_publics: Option<PublicValues>,
+        override_program_vk: Option<ProgramVK>,
+        subs: SubscriberList,
+    ) -> Result<ProveResult> {
+        fire_event(&subs, JobEvent::Started);
+        let result = Self::do_wrap_inner(
+            self.prover.clone(),
+            proof,
+            proof_kind,
+            override_publics.as_ref(),
+            override_program_vk.as_ref(),
+        );
+        fire_result_event(&subs, &result);
+        result
+    }
+
     fn do_wrap_inner(
         prover: Arc<EmbeddedProver>,
         proof: &Proof,
@@ -55,7 +79,7 @@ impl EmbeddedClient {
         let proof_words = match &proof.body {
             ProofBody::Vadcop { proof, .. } => proof.as_slice(),
             ProofBody::Plonk { .. } => {
-                return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
+                return Err(SdkError::InvalidConfig("Cannot wrap a Plonk proof".to_string()));
             }
         };
 
@@ -63,11 +87,13 @@ impl EmbeddedClient {
             EmbeddedProver::Emu(p) => p
                 .prover
                 .wrap_proof(proof_words, publics, program_vk, proof_kind)
-                .map(ProveResult::from),
+                .map(ProveResult::from)
+                .map_err(SdkError::backend),
             EmbeddedProver::Asm(p) => p
                 .prover
                 .wrap_proof(proof_words, publics, program_vk, proof_kind)
-                .map(ProveResult::from),
+                .map(ProveResult::from)
+                .map_err(SdkError::backend),
         }
     }
 }

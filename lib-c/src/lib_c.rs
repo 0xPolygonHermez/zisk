@@ -40,6 +40,10 @@ pub fn secp256k1_fn_inv_c(params: &[u64], result: &mut [u64]) -> i32 {
     run_on_linux!(InverseFnEc(&params[0], &mut result[0]))
 }
 
+pub fn secp256r1_fn_inv_c(params: &[u64], result: &mut [u64]) -> i32 {
+    run_on_linux!(InverseFnEcR1(&params[0], &mut result[0]))
+}
+
 pub fn secp256k1_fp_parity_sqrt_c(params: &[u64], parity: u64, result: &mut [u64]) -> i32 {
     run_on_linux!(SqrtFpEcParity(&params[0], parity, &mut result[0]))
 }

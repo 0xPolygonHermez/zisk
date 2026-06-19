@@ -33,16 +33,18 @@ impl Coordinator {
             jobs_map.get(job_id).cloned().ok_or(CoordinatorError::NotFoundOrInaccessible)?
         };
 
-        // If job has Failed, mark worker as Idle and return early
-        if matches!(job_entry.read().await.state(), JobState::Failed) {
-            self.workers_pool
-                .mark_worker_with_state(&execute_task_response.worker_id, WorkerState::Ready)
-                .await?;
+        // Hold the write lock through all state mutations so a racing
+        // fail_job cannot park the worker SettingUp between is_resolved
+        // and our worker-state writes. Drop it before sibling calls that
+        // take their own.
+        let mut job = job_entry.write().await;
+
+        if job.state().is_resolved() {
             return Ok(());
         }
 
-        // An aggregation request has failed, fail the job
         if !execute_task_response.success {
+            drop(job);
             let reason = format!("Aggregation failed in job {}", job_id);
             self.fail_job(job_id, &reason).await?;
 
@@ -62,16 +64,14 @@ impl Coordinator {
         // Empty proof_data means this was an intermediate aggregation step.
         // Clear the in-flight slot and dispatch the next queued task, if any.
         if proof_data.proof_data.is_empty() {
+            drop(job);
             self.dispatch_next_agg_task(job_id).await?;
             return Ok(());
         }
 
-        let mut job = job_entry.write().await;
+        let agg_worker_id = job.agg_worker_id.as_ref().unwrap().clone();
 
-        let agg_worker_id = &job.agg_worker_id.as_ref().unwrap().clone();
-
-        // Mark the aggregation worker as Idle
-        self.workers_pool.mark_worker_with_state(agg_worker_id, WorkerState::Ready).await?;
+        self.workers_pool.mark_worker_with_state(&agg_worker_id, WorkerState::Ready).await?;
 
         // Finalize completed job
         let zisk_proof = bincode::serde::decode_from_slice::<Proof, _>(

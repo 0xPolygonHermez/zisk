@@ -1,7 +1,7 @@
 use cfg_if::cfg_if;
 
 cfg_if! {
-    if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
+    if #[cfg(zisk_guest)] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_param, zisklib::FCALL_UINT256_DIV_ID};
         #[cfg(not(feature = "inputcpy"))]
@@ -30,7 +30,7 @@ pub fn fcall_uint256_div(
     b: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> ([u64; 4], [u64; 4]) {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let (quotient, remainder) = uint256_div(a, b);
         #[cfg(feature = "hints")]
@@ -42,7 +42,7 @@ pub fn fcall_uint256_div(
 
         (quotient, remainder)
     }
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         ziskos_fcall_param!(a, 4);
         ziskos_fcall_param!(b, 4);

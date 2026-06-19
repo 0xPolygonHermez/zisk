@@ -1,4 +1,5 @@
 #include "mem_planner.hpp"
+#include <assert.h>
 
 MemPlanner::MemPlanner(uint32_t id, uint32_t rows, uint32_t from_addr, uint32_t mb_size)
 #ifdef MEM_CHECK_POINT_MAP
@@ -11,6 +12,7 @@ MemPlanner::MemPlanner(uint32_t id, uint32_t rows, uint32_t from_addr, uint32_t 
     reference_addr = 0;
     reference_skip = 0;
     locators_done = 0;
+    last_addr = 0;
     #ifdef MEM_PLANNER_STATS
     locators_time_count = 0;
     #endif
@@ -85,9 +87,54 @@ void MemPlanner::execute_from_locators(const std::vector<MemCounter *> &workers,
     #endif
 }
 
-void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, uint32_t segment_id, const MemLocator *locator) {
-    uint32_t addr = 0;
+void MemPlanner::precompute_locator_requirements(const std::vector<MemCounter *> &workers, const MemLocator *locator,
+                                                  uint32_t &first_addr_out, uint32_t &last_addr_out, uint32_t &num_addrs_out) {
+    first_addr_out = 0;
+    last_addr_out = 0;
+    num_addrs_out = 0;
+    
+    uint32_t offset = locator->offset;
+    uint32_t page = MemCounter::offset_to_page(offset);
+    uint32_t max_offset = get_max_offset(workers, page);
+    uint32_t thread_index = locator->thread_index;
+    
+    for (; page <= to_page; ++page, thread_index = 0, get_offset_limits(workers, page, offset, max_offset)) {
+        for (; offset <= max_offset; ++offset, thread_index = 0) {
+            for (; thread_index < MAX_THREADS; ++thread_index) {
+                uint32_t pos = workers[thread_index]->get_addr_table(offset);
+                if (pos == 0) continue;
+                
+                uint32_t addr = MemCounter::offset_to_addr(offset, thread_index);
+                if (first_addr_out == 0) {
+                    first_addr_out = addr;
+                }
+                last_addr_out = addr;
+                ++num_addrs_out;
+            }
+        }
+    }
+}
 
+void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, uint32_t segment_id, const MemLocator *locator) {
+    current_segment = nullptr;
+    uint32_t addr = 0;
+    
+    rows_available = rows;
+    reference_addr_chunk = NO_CHUNK_ID;
+    reference_addr = 0;
+    reference_skip = 0;
+    locators_done = 0;
+    last_addr = 0;
+
+    current_chunk = NO_CHUNK_ID;
+
+    // Pre-compute requirements and preallocate
+    uint32_t first_addr, last_addr, num_addrs;
+    precompute_locator_requirements(workers, locator, first_addr, last_addr, num_addrs);
+    
+    // Create local MemOffsets for this segment
+    MemOffsets mem_offsets(10000 + segment_id);
+    mem_offsets.preallocate(first_addr, last_addr, num_addrs);
     ++locators_done;
     #ifdef MEM_PLANNER_STATS
     uint32_t addr_count = 0;
@@ -104,6 +151,7 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
     uint32_t first_segment_addr = MemCounter::offset_to_addr(offset, thread_index);
     uint32_t last_segment_addr = first_segment_addr;
     #endif
+    rows_available = rows;
     for (;page <= to_page; ++page, thread_index = 0, get_offset_limits(workers, page, offset, max_offset)) {
         for (;offset <= max_offset; ++offset, thread_index = 0) {
             addr = MemCounter::offset_to_addr(offset, thread_index);
@@ -124,13 +172,22 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
                     skip = 0;      
                     cpos = workers[thread_index]->get_initial_pos(pos); 
                 }
+
                 while (cpos != 0) {
                     uint32_t chunk_id = workers[thread_index]->get_pos_value(cpos);
                     uint32_t count = workers[thread_index]->get_pos_count(cpos+1);
+                    // Update offsets before adding chunk
+                    mem_offsets.update(addr, (segment_id > 0 && rows_available == rows && skip > 0) ? 0 : (rows - rows_available + 1));
+
                     if (add_chunk(chunk_id, addr, count - skip, skip) == false) {
                         #ifdef MEM_PLANNER_STATS
                         update_segment_stats(addr_count, offset_count, first_segment_addr, last_segment_addr);
                         #endif
+                        #ifdef MEM_SAVE_CPP_OFFSETS
+                        mem_offsets.save_offsets_to_file("tmp/mem_trace_" + std::to_string(segment_id) + "_cpp_offsets.txt", false);
+                        #endif
+                        // Move MemOffsets data to current_segment->offsets
+                        mem_offsets.move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr);
                         return;
                     }
                     skip = 0;
@@ -140,9 +197,15 @@ void MemPlanner::execute_from_locator(const std::vector<MemCounter *> &workers, 
             }
         }
     }
+    #ifdef MEM_SAVE_CPP_OFFSETS
+    mem_offsets.save_offsets_to_file("tmp/mem_trace_" + std::to_string(segment_id) + "_cpp_offsets.txt", false);
+    #endif
     #ifdef MEM_PLANNER_STATS
     update_segment_stats(addr_count, offset_count, first_segment_addr, last_segment_addr);
     #endif
+    
+    // Move MemOffsets data to current_segment->offsets
+    mem_offsets.move_to_paged_offsets(current_segment->offsets, current_segment->offsets_base_addr);
 }
 
 #ifdef MEM_PLANNER_STATS
@@ -163,17 +226,20 @@ void MemPlanner::generate_locators(const std::vector<MemCounter *> &workers, Mem
     rows_available = rows;
     uint32_t count;
     uint32_t offset, max_offset;
+    uint32_t previous_addr, addr = 0;
     bool inserted_first_locator = false;
     for (uint32_t page = from_page; page <= to_page; ++page) {
         get_offset_limits(workers, page, offset, max_offset);
         for (;offset <= max_offset; ++offset) {
             for (uint32_t thread_index = 0; thread_index < MAX_THREADS; ++thread_index) {
+                previous_addr = addr;
+                addr = MemCounter::offset_to_addr(offset, thread_index);
                 uint32_t pos = workers[thread_index]->get_addr_table(offset);
                 if (pos == 0) continue;
                 // the first locator must be open
                 if (inserted_first_locator == false) {
                     inserted_first_locator = true;
-                    locators.push_locator(thread_index, offset, pos, 0);
+                    locators.push_locator(thread_index, offset, pos, 0, 0);
                 }
                 uint32_t addr_count = workers[thread_index]->get_count_table(offset);
 
@@ -198,7 +264,7 @@ void MemPlanner::generate_locators(const std::vector<MemCounter *> &workers, Mem
                             #endif
                             count -= rows_available;
                             uint32_t skip = initial_count - count;
-                            locators.push_locator(thread_index, offset, cpos, skip);
+                            locators.push_locator(thread_index, offset, cpos, skip, previous_addr);
                             rows_available = rows;
                         }
                     }

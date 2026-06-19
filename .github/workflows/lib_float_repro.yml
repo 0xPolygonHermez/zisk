@@ -1,10 +1,11 @@
 name: lib-float reproducibility
 
-# Guards the reproducibility of lib-float's artifacts. ziskfloat.elf is compiled
-# inside a pinned Docker image (lib-float/c/docker/Dockerfile) and feeds the
-# program vk via include_bytes! in core/src/elf2rom.rs, so its bytes must be
-# both deterministic (same image -> same bytes) and stable unless changed
-# deliberately (locked by the committed per-artifact lib-float/c/*.md5).
+# Guards the reproducibility of lib-float's committed artifacts. ziskfloat.elf is
+# compiled inside a pinned Docker image (lib-float/c/docker/Dockerfile) and feeds
+# the program vk via include_bytes! in core/src/elf2rom.rs. This job rebuilds the
+# artifacts from source in that image and fails if the result differs from the
+# committed lib-float/c/lib/ziskfloat.elf and libziskfloat.a — i.e. the committed
+# binaries must be byte-identical to a fresh reproducible build.
 
 on:
   pull_request:
@@ -36,30 +37,17 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Build in pinned Docker image (run 1)
+      - name: Rebuild artifacts in the pinned Docker image
         run: |
           set -euxo pipefail
           make clean
           make docker
-          md5sum lib/ziskfloat.elf lib/libziskfloat.a > "$RUNNER_TEMP/run1.md5"
 
-      - name: Rebuild from scratch (run 2) and assert determinism
-        run: |
-          set -euxo pipefail
-          make clean
-          make docker
-          md5sum lib/ziskfloat.elf lib/libziskfloat.a > "$RUNNER_TEMP/run2.md5"
-          if ! diff -u "$RUNNER_TEMP/run1.md5" "$RUNNER_TEMP/run2.md5"; then
-            echo "::error::Non-deterministic build: two clean builds in the pinned image produced different artifacts."
-            exit 1
-          fi
-          echo "Determinism OK: both clean builds produced identical artifacts."
-
-      - name: Verify artifacts match md5 references
+      - name: Verify committed artifacts match built artifacts
         run: |
           set -euo pipefail
-          if ! make check-hashes; then
-            echo "::error::ziskfloat artifacts changed vs the committed lib-float/c/*.md5 -> the code has changed. If this is intended, run 'make -C lib-float/c docker && make -C lib-float/c update-hashes' and commit the updated lib-float/c/*.md5 in this PR."
+          if ! git diff --exit-code -- lib/ziskfloat.elf lib/libziskfloat.a; then
+            echo "::error::Committed lib-float/c/lib artifacts differ from built artifacts in the pinned Docker image -> If this is intended, run 'make -C lib-float/c docker' and commit the updated lib-float/c/lib/ziskfloat.elf and libziskfloat.a in this PR."
             exit 1
           fi
-          echo "OK: artifacts match the committed c/*.md5 files."
+          echo "OK: committed ziskfloat.elf / libziskfloat.a match built artifacts."

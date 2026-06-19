@@ -57,12 +57,16 @@ def delta(b, p):
     if b is None or p is None:
         return "N/A"
     d = p - b
-    if d == 0:
-        return "➖ 0.00%"
     if b == 0:
+        if d == 0:
+            return "➖ 0.00%"
         return "🔴 new" if d > 0 else "🟢 —"
+    pct = d / b * 100
+    # A diff that rounds to 0.00% is reported as no-change.
+    if round(pct, 2) == 0:
+        return "➖ 0.00%"
     dot = "🔴" if d > 0 else "🟢"
-    return f"{dot} {d / b * 100:+.2f}%"
+    return f"{dot} {pct:+.2f}%"
 
 
 def summary(rows):

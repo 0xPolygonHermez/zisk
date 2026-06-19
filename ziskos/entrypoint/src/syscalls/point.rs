@@ -1,7 +1,7 @@
 //! Shared data structures for elliptic curve points used by curve syscalls.
 
 /// An affine elliptic curve point with two 256-bit coordinates `(x, y)`.
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
 pub struct SyscallPoint256 {
     pub x: [u64; 4],

@@ -3,9 +3,9 @@ use core::{
     fmt::{self, Debug, Display},
 };
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec;
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 use crate::alloc_extern::vec::Vec;
 
 /// A 256-bit unsigned integer stored as four little-endian 64-bit limbs.
@@ -79,6 +79,15 @@ impl U256 {
             }
         }
         Ordering::Equal
+    }
+
+    pub fn is_zero_slices(a: &[Self]) -> bool {
+        for limb in a {
+            if !limb.is_zero() {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn eq_slices(a: &[Self], b: &[Self]) -> bool {

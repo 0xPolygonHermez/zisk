@@ -45,6 +45,13 @@ impl EmuContext {
         }
 
         ctx.inst_ctx.input_len = input.len() as u64;
+
+        // Skip memory data allocation when in chunk mode, since memory reads are obtained from the
+        // minimal traces, not from memory
+        if !options.with_memory_data {
+            return ctx;
+        }
+
         let free_input = 0u64;
         ctx.inst_ctx.mem.add_read_section(INPUT_ADDR, &free_input.to_le_bytes());
         ctx.inst_ctx.mem.add_read_section(INPUT_ADDR + 8, &input);
@@ -53,6 +60,11 @@ impl EmuContext {
         ctx.inst_ctx.mem.add_write_section(RAM_ADDR, RAM_SIZE);
 
         ctx
+    }
+
+    pub fn new_with_memory_data(with_memory_data: bool) -> Self {
+        let emu_options = EmuOptions { with_memory_data, ..EmuOptions::default() };
+        Self::new(Vec::new(), &emu_options)
     }
 }
 

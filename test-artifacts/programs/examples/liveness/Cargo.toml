@@ -1,0 +1,7 @@
+[package]
+name = "liveness"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true

@@ -238,7 +238,7 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
         }
 
         if frops_row != ArithFrops::NO_FROPS {
-            self.std.inc_virtual_row(self.frops_table_id, frops_row as u64, 1);
+            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 

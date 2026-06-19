@@ -57,15 +57,26 @@ main() {
     else
         step "Generating program setup..."
         local gpu_flag=""
-        [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
-        ensure cargo-zisk program-setup -e "$ELF_PATH" ${gpu_flag} 2>&1 | tee romsetup_output.log || return 1
+        # Only enable GPU when not forced to CPU, not on macOS, and the installed
+        # cargo-zisk is actually a GPU build (its `--version` description contains
+        # "[gpu]", e.g. "cargo-zisk 0.18.0 [gpu] (790f9e2 ...)").
+        if [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]"; then
+            gpu_flag="--gpu"
+        fi
+        # The Rust emulator is the default backend; force the ASM backend (the
+        # production path) everywhere except macOS, which has no ASM support.
+        local asm_flag=""
+        if [[ "${PLATFORM}" != "darwin" ]]; then
+            asm_flag="--asm"
+        fi
+        ensure cargo-zisk-dev program-setup -e "$ELF_PATH" ${gpu_flag} 2>&1 | tee romsetup_output.log || return 1
         if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
            err "program setup failed"
            return 1
         fi
 
         step "Verifying constraints..."
-        ensure cargo-zisk verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" ${gpu_flag} 2>&1 | tee constraints_output.log || return 1
+        ensure cargo-zisk-dev verify-constraints -e "$ELF_PATH" -i "$INPUT_BIN" ${asm_flag} ${gpu_flag} 2>&1 | tee constraints_output.log || return 1
         if ! grep -F "All global constraints were successfully verified" constraints_output.log; then
             err "verify constraints failed"
             return 1
@@ -73,7 +84,7 @@ main() {
 
         if [[ "${DISABLE_PROVE}" != "1" ]]; then
             step "Generating proof..."
-            ensure cargo-zisk prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof.bin $PROVE_FLAGS ${gpu_flag} 2>&1 | tee prove_output.log || return 1
+            ensure cargo-zisk-dev prove -e "$ELF_PATH" -i "$INPUT_BIN" -o proof.bin $PROVE_FLAGS ${asm_flag} ${gpu_flag} 2>&1 | tee prove_output.log || return 1
             if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
                 err "prove program failed"
                 return 1

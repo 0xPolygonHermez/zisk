@@ -2,7 +2,7 @@
 
 use crate::{
     syscalls::{syscall_arith384_mod, SyscallArith384ModParams},
-    zisklib::{eq, fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt},
+    zisklib::{eq, fcall_bls12_381_fp_inv, fcall_bls12_381_fp_sqrt, is_one, lt},
 };
 
 use super::constants::{NQR_FP, P, P_MINUS_ONE};
@@ -155,7 +155,10 @@ pub fn sqrt_fp_bls12_381(
         hints,
     );
     let is_qr = hint[0] == 1;
-    let sqrt = hint[1..7].try_into().unwrap();
+    let sqrt: [u64; 6] = hint[1..7].try_into().unwrap();
+
+    // Check that the sqrt is canonical
+    assert!(lt(&sqrt, &P), "Square root is not canonical");
 
     // Compute sqrt * sqrt
     let mut params = SyscallArith384ModParams {
@@ -173,7 +176,7 @@ pub fn sqrt_fp_bls12_381(
 
     if is_qr {
         // Check that sqrt * sqrt == x
-        assert_eq!(*params.d, *x);
+        assert!(eq(params.d, x), "Square root verification failed");
         (sqrt, true)
     } else {
         // Check that sqrt * sqrt == x * NQR
@@ -183,7 +186,7 @@ pub fn sqrt_fp_bls12_381(
             #[cfg(feature = "hints")]
             hints,
         );
-        assert_eq!(*params.d, nqr);
+        assert!(eq(params.d, &nqr), "Square root verification failed");
         (sqrt, false)
     }
 }
@@ -206,6 +209,9 @@ pub fn inv_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<
         hints,
     );
 
+    // Check that the inverse is canonical
+    assert!(lt(&inv, &P), "Inverse is not canonical");
+
     // x·y + 0
     let mut params = SyscallArith384ModParams {
         a: x,
@@ -219,7 +225,8 @@ pub fn inv_fp_bls12_381(x: &[u64; 6], #[cfg(feature = "hints")] hints: &mut Vec<
         #[cfg(feature = "hints")]
         hints,
     );
-    assert_eq!(*params.d, [1, 0, 0, 0, 0, 0]);
+
+    assert!(is_one(params.d), "Inverse verification failed");
 
     inv
 }

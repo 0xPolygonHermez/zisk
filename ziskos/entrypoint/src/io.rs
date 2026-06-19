@@ -2,7 +2,7 @@
 //!
 //! This module provides a high-level API for reading inputs and committing public outputs.
 
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+#[cfg(not(zisk_guest))]
 use crate::read_input;
 
 use serde::{de::DeserializeOwned, Serialize};
@@ -24,22 +24,35 @@ use serde::{de::DeserializeOwned, Serialize};
 ///
 /// Note: This uses zero-copy deserialization on zkvm to avoid unnecessary data copies.
 pub fn read<T: DeserializeOwned>() -> T {
-    let bytes = read_input_slice();
+    let bytes = read_slice();
     let (val, _): (T, usize) =
         bincode::serde::decode_from_slice(bytes.as_ref(), bincode::config::standard())
             .expect("Deserialization failed");
     val
 }
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-pub fn read_input_slice<'a>() -> &'a [u8] {
+#[cfg(zisk_guest)]
+pub fn read_slice<'a>() -> &'a [u8] {
     crate::read_slice_zerocopy()
 }
 
 #[allow(unused)]
-#[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
-pub fn read_input_slice() -> Box<[u8]> {
+#[cfg(not(zisk_guest))]
+pub fn read_slice() -> Box<[u8]> {
     read_input().into_boxed_slice()
+}
+
+#[cfg(zisk_guest)]
+#[deprecated(since = "1.0.0-alpha", note = "renamed to `read_slice`")]
+pub fn read_input_slice<'a>() -> &'a [u8] {
+    read_slice()
+}
+
+#[allow(unused)]
+#[cfg(not(zisk_guest))]
+#[deprecated(since = "1.0.0-alpha", note = "renamed to `read_slice`")]
+pub fn read_input_slice() -> Box<[u8]> {
+    read_slice()
 }
 
 /// Commit a serializable value to public outputs.

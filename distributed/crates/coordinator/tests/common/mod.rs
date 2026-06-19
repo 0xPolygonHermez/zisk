@@ -28,7 +28,7 @@ impl MessageSender for MockMessageSender {
 /// Create a test Config with optional overrides.
 pub fn test_config(overrides: impl FnOnce(&mut Config)) -> Config {
     let mut config =
-        Config::load(None, None, None, true, None).expect("Failed to create default test config");
+        Config::load(None, None, None, None, None).expect("Failed to create default test config");
     overrides(&mut config);
     config
 }
@@ -58,6 +58,7 @@ pub fn create_test_job(workers: &[WorkerId]) -> Job {
     let partitions: Vec<Vec<u32>> =
         workers.iter().enumerate().map(|(i, _)| vec![i as u32]).collect();
     Job::new(
+        JobId::new(),
         Default::default(),
         String::new(),
         InputsModeDto::InputsNone,

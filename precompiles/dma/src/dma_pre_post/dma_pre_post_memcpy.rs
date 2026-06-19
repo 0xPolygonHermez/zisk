@@ -163,31 +163,30 @@ impl<F: PrimeField64> DmaPrePostMemCpySM<F> {
         let _mask = 0xFFFF_FFFF_FFFF_FFFFu64 << (dst_offset * 8);
         let mask = _mask ^ (_mask << (count * 8));
 
-        trace.set_sb(0, (mask & 0x0000_0000_0000_00FF) != 0);
-        trace.set_sb(1, (mask & 0x0000_0000_0000_FF00) != 0);
-        trace.set_sb(2, (mask & 0x0000_0000_00FF_0000) != 0);
-        trace.set_sb(3, (mask & 0x0000_0000_FF00_0000) != 0);
-        trace.set_sb(4, (mask & 0x0000_00FF_0000_0000) != 0);
-        trace.set_sb(5, (mask & 0x0000_FF00_0000_0000) != 0);
-        trace.set_sb(6, (mask & 0x00FF_0000_0000_0000) != 0);
-        trace.set_sb(7, (mask & 0xFF00_0000_0000_0000) != 0);
+        let sb = [
+            mask & 0x0000_0000_0000_00FF != 0,
+            mask & 0x0000_0000_0000_FF00 != 0,
+            mask & 0x0000_0000_00FF_0000 != 0,
+            mask & 0x0000_0000_FF00_0000 != 0,
+            mask & 0x0000_00FF_0000_0000 != 0,
+            mask & 0x0000_FF00_0000_0000 != 0,
+            mask & 0x00FF_0000_0000_0000 != 0,
+            mask & 0xFF00_0000_0000_0000 != 0,
+        ];
+        trace.set_all_sb(&sb);
+        trace.set_all_rb(&rb);
+        trace.set_all_pb(&pb);
 
-        for (index, byte) in rb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_rb(index, *byte);
-        }
-        for (index, byte) in pb.iter().enumerate() {
-            // println!("PRE-POST bytes[{index}]: 0x{byte:02X}");
-            trace.set_pb(index, *byte);
-        }
-
-        trace.set_selr(0, selr_value == 0);
-        trace.set_selr(1, selr_value == 1);
-        trace.set_selr(2, selr_value == 2);
-        trace.set_selr(3, selr_value == 3);
-        trace.set_selr(4, selr_value == 4);
-        trace.set_selr(5, selr_value == 5);
-        trace.set_selr(6, selr_value == 6);
+        let selr = [
+            selr_value == 0,
+            selr_value == 1,
+            selr_value == 2,
+            selr_value == 3,
+            selr_value == 4,
+            selr_value == 5,
+            selr_value == 6,
+        ];
+        trace.set_all_selr(&selr);
 
         // println!("PRE-POST write_value: 0x{write_value_01:016X} 0x{write_value_23:016X}");
 
@@ -255,11 +254,11 @@ impl<F: PrimeField64> DmaPrePostMemCpySM<F> {
 
         for pre_post_table_mul in global_pre_post_table_mul.iter() {
             // println!("PRE_POST_TABLE_MUL {:?}", pre_post_table_mul);
-            self.std.inc_virtual_rows_ranged(self.pre_post_table_id, pre_post_table_mul);
+            self.std.inc_virtual_rows_ranged(self.pre_post_table_id, None, pre_post_table_mul);
         }
 
         for dual_range_byte_mul in global_dual_range_byte_mul.iter() {
-            self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, dual_range_byte_mul);
+            self.std.inc_virtual_rows_ranged(self.dual_range_byte_id, None, dual_range_byte_mul);
         }
 
         /*

@@ -5,6 +5,7 @@ use crate::*;
 
 #[cfg(feature = "save_mem_plans")]
 use mem_common::save_plans;
+use mem_common::MEM_OFFSETS_PAGE_SIZE;
 use mem_common::{
     MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
 };
@@ -135,6 +136,15 @@ impl MemPlanner {
         unsafe { bindings::wait_mem_count_and_plan(self.inner) };
     }
 
+    /// Zero-copy injection of GPU-produced metas into `mcp->segments[]`.
+    ///
+    /// # Safety
+    /// `gpu_metas` must point to a valid array of `n` GPU-produced meta entries,
+    /// and the GPU planner that produced them must remain alive across this call.
+    pub unsafe fn inject_gpu_metas_from_pointers(&self, gpu_metas: *const c_void, n: u32) -> bool {
+        bindings::inject_gpu_metas_from_pointers(self.inner, gpu_metas, n)
+    }
+
     /// Retrieves a Vec of memory plans, adding to this result plans the mem_align_plans provided as argument.
     ///
     /// # Parameters
@@ -173,6 +183,38 @@ impl MemPlanner {
                             count: checkpoint.count,
                         },
                     );
+                }
+
+                // Collect paged-dense offsets for this segment
+                let mut offsets_base_addr: u32 = 0;
+                let off = unsafe {
+                    bindings::get_mem_segment_offset_pages(
+                        self.inner,
+                        mem_id as u32,
+                        segment_id,
+                        &mut offsets_base_addr as *mut u32,
+                    )
+                };
+                if !off.page_starts.is_null() && off.num_pages > 0 {
+                    assert!(offsets_base_addr > 0);
+                    segment.offsets_base_addr = offsets_base_addr;
+                    segment.addr_range_slots = off.addr_range_slots;
+                    segment.num_pages = off.num_pages;
+                    segment.present_count = off.present_count;
+                    segment.page_starts = unsafe {
+                        std::slice::from_raw_parts(off.page_starts, off.num_pages as usize)
+                    }
+                    .to_vec();
+                    segment.page_single_value = unsafe {
+                        std::slice::from_raw_parts(off.page_single_value, off.num_pages as usize)
+                    }
+                    .to_vec();
+                    let dense_len = off.present_count as usize * MEM_OFFSETS_PAGE_SIZE as usize;
+                    segment.pages_dense = if dense_len == 0 {
+                        Vec::new()
+                    } else {
+                        unsafe { std::slice::from_raw_parts(off.pages_dense, dense_len) }.to_vec()
+                    };
                 }
                 plans.push(Plan::new(
                     ZISK_AIRGROUP_ID,

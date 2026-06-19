@@ -1,6 +1,10 @@
+//! Non-Linux-x86_64 stub: placeholder type whose methods are unreachable. Off
+//! the supported platform these are never exercised, so they carry no docs.
+#![allow(missing_docs)]
+
 use std::sync::Arc;
 
-use zisk_common::io::{StreamProcessor, StreamSink};
+use zisk_common::io::{StreamError, StreamProcessor, StreamSink};
 
 use crate::ControlShmem;
 
@@ -57,7 +61,7 @@ impl InputsShmemWriter {
 }
 
 impl StreamProcessor for InputsShmemWriter {
-    fn process_hints(&self, _data: &[u64], _first_batch: bool) -> anyhow::Result<bool> {
+    fn process_hints(&self, _data: &[u64], _first_batch: bool) -> Result<bool, StreamError> {
         unreachable!(
             "InputsShmemWriter::process_hints() is not supported on this platform. Only Linux x86_64 is supported."
         );
@@ -71,7 +75,7 @@ impl StreamProcessor for InputsShmemWriter {
 }
 
 impl StreamSink for InputsShmemWriter {
-    fn submit(&self, _hints: &[u64]) -> anyhow::Result<()> {
+    fn submit(&self, _hints: &[u64]) -> Result<(), StreamError> {
         unreachable!(
             "InputsShmemWriter::submit() is not supported on this platform. Only Linux x86_64 is supported."
         );

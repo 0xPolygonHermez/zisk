@@ -9,6 +9,7 @@ use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
     ROM_BUS_ID, ZISK_PUBLICS,
 };
+use zisk_core::elf_extraction::DataSection;
 use zisk_pil::MainTraceRowOps;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
@@ -81,9 +82,16 @@ impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu<'_> {
         Emu { rom, ctx: EmuContext::default(), static_array: [0; MAX_OPERATION_DATA_SIZE] }
     }
+    pub fn new_with_memory_data(rom: &ZiskRom, with_memory_data: bool) -> Emu<'_> {
+        Emu {
+            rom,
+            ctx: EmuContext::new_with_memory_data(with_memory_data),
+            static_array: [0; MAX_OPERATION_DATA_SIZE],
+        }
+    }
 
     pub fn from_emu_trace_start(rom: &'a ZiskRom, trace_start: &'a EmuTraceStart) -> Emu<'a> {
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, false);
         emu.ctx.inst_ctx.pc = trace_start.pc;
         emu.ctx.inst_ctx.sp = trace_start.sp;
         emu.ctx.inst_ctx.step = trace_start.step;
@@ -97,16 +105,43 @@ impl<'a> Emu<'a> {
         // Initialize an empty instance
         let mut ctx = EmuContext::new(inputs, options);
 
+        // Skip memory data allocation when in chunk mode, since memory reads are obtained from the
+        // minimal traces, not from memory
+        if !options.with_memory_data {
+            return ctx;
+        }
         // Create a new read section for every RO data entry of the rom
-        for i in 0..self.rom.ro_data.len() {
-            ctx.inst_ctx.mem.add_read_section(self.rom.ro_data[i].from, &self.rom.ro_data[i].data);
+        for i in 0..self.rom.ro_data_64.len() {
+            // Convert from DataSection64 to DataSection
+            let mut data_section = DataSection {
+                addr: self.rom.ro_data_64[i].addr,
+                data: Vec::with_capacity(self.rom.ro_data_64[i].data.len() * 8),
+            };
+            for j in 0..self.rom.ro_data_64[i].data.len() {
+                data_section.data.extend_from_slice(&self.rom.ro_data_64[i].data[j].to_le_bytes());
+            }
+
+            // Add the read section to the memory
+            ctx.inst_ctx.mem.add_read_section(data_section.addr, &data_section.data);
+        }
+
+        // Write the initial RAM data to the memory, as it will be used for the execution of the program (e.g. for jumps to code in the ROM, or for read-only data)
+        for i in 0..self.rom.rw_data_64.len() {
+            // Convert from DataSection64 to DataSection
+            let mut data_section = DataSection {
+                addr: self.rom.rw_data_64[i].addr,
+                data: Vec::with_capacity(self.rom.rw_data_64[i].data.len() * 8),
+            };
+            for j in 0..self.rom.rw_data_64[i].data.len() {
+                data_section.data.extend_from_slice(&self.rom.rw_data_64[i].data[j].to_le_bytes());
+            }
+
+            // Write the data to the write section of the memory
+            ctx.inst_ctx.mem.init_write_section_data(&data_section);
         }
 
         // Sort read sections by start address to improve performance when using binary search
         ctx.inst_ctx.mem.read_sections.sort_by_key(|a| a.start);
-
-        // Get registers
-        //emu.get_regs(); // TODO: ask Jordi
 
         ctx
     }
@@ -2619,12 +2654,9 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
-        trace.set_a(0, a[0]);
-        trace.set_a(1, a[1]);
-        trace.set_b(0, b[0]);
-        trace.set_b(1, b[1]);
-        trace.set_c(0, c[0]);
-        trace.set_c(1, c[1]);
+        trace.set_all_a(&a);
+        trace.set_all_b(&b);
+        trace.set_all_c(&c);
         trace.set_flag(inst_ctx.flag);
         trace.set_pc(inst.paddr as u32);
         trace.set_a_src_imm(inst.a_src == SRC_IMM);
@@ -2682,8 +2714,7 @@ impl<'a> Emu<'a> {
         trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
-        trace.set_store_reg_prev_value(0, store_prev_value[0]);
-        trace.set_store_reg_prev_value(1, store_prev_value[1]);
+        trace.set_all_store_reg_prev_value(&store_prev_value);
     }
 
     /// Returns if the emulation ended

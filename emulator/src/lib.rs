@@ -37,3 +37,4 @@ pub use emu_segment::*;
 pub use emulator::*;
 pub use emulator_errors::*;
 pub use stats::*;
+pub use zisk_common::ProfilingMode;

@@ -1,6 +1,6 @@
-// This example program takes a number `n` as input and computes the SHA-256 hash `n` times sequentially.
+//! Reads a u32 `n` from stdin, computes SHA-256 hashed `n` times sequentially,
+//! and commits the ABI-encoded `Output { hash, iterations, magic_number }`.
 
-// Mark the main function as the entry point for ZisK
 #![no_main]
 ziskos::entrypoint!(main);
 
@@ -9,12 +9,10 @@ use sha2::{Digest, Sha256};
 use sha_hasher_common::Output;
 
 fn main() {
-    // Read the input data
     let n: u32 = ziskos::io::read();
 
     let mut hash = [0u8; 32];
 
-    // Compute SHA-256 hashing 'n' times
     for _ in 0..n {
         let mut hasher = Sha256::new();
         hasher.update(hash);
@@ -28,9 +26,7 @@ fn main() {
     println!("Iterations: {}", output.iterations);
 
     let bytes = output.abi_encode();
-
     println!("Bytes to commit: {:?}", bytes);
 
-    // Write raw ABI-encoded bytes directly (no bincode serialization)
     ziskos::io::commit_slice(&bytes);
 }

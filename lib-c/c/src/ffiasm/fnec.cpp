@@ -67,7 +67,7 @@ char *Fnec_element2str(PFnecElement pE) {
     if (!(pE->type & Fnec_LONG)) {
         if (pE->shortVal>=0) {
             char *r = new char[32];
-            snprintf(r, 32, "%d", pE->shortVal);
+            sprintf(r, "%d", pE->shortVal);
             return r;
         } else {
             mpz_init_set_si(r, pE->shortVal);
@@ -166,6 +166,9 @@ void Fnec_fail() {
     assert(false);
 }
 
+void Fnec_longErr() {
+    Fnec_fail();
+}
 
 RawFnec::RawFnec() {
     Fnec_init();
@@ -212,7 +215,7 @@ void RawFnec::set(Element &r, int value) {
   }
 
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-      
+
   for (int i=0; i<Fnec_N64; i++) r.v[i] = 0;
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
   Fnec_rawToMontgomery(r.v,r.v);
@@ -242,7 +245,7 @@ void RawFnec::inv(Element &r, const Element &a) {
     for (int i=0; i<Fnec_N64; i++) r.v[i] = 0;
     mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
 
-    Fnec_rawMMul(r.v, r.v,Fnec_rawR3);
+    Fnec_rawMMul(r.v, r.v,Fnec_R3.longVal);
     mpz_clear(mr);
 }
 
@@ -294,12 +297,11 @@ int RawFnec::toRprBE(const Element &element, uint8_t *data, int bytes)
 
     mpz_t r;
     mpz_init(r);
-  
+
     toMpz(r, element);
-    
-    mpz_export(data, NULL, 1, 8, 1, 0, r);
-  
-    mpz_clear(r);
+   
+    mpz_export(data, NULL, 1, bytes, 1, 0, r);
+
     return Fnec_N64 * 8;
 }
 
@@ -313,8 +315,6 @@ int RawFnec::fromRprBE(Element &element, const uint8_t *data, int bytes)
 
     mpz_import(r, Fnec_N64 * 8, 0, 1, 0, 0, data);
     fromMpz(element, r);
-
-    mpz_clear(r);
     return Fnec_N64 * 8;
 }
 

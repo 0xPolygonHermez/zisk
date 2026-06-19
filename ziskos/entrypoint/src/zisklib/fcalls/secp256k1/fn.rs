@@ -1,7 +1,7 @@
 use cfg_if::cfg_if;
 
 cfg_if! {
-    if #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))] {
+    if #[cfg(zisk_guest)] {
         use core::arch::asm;
         use crate::{ziskos_fcall, ziskos_fcall_param, zisklib::FCALL_SECP256K1_FN_INV_ID};
         #[cfg(not(feature = "inputcpy"))]
@@ -31,7 +31,7 @@ pub fn fcall_secp256k1_fn_inv(
     x: &[u64; 4],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 4] {
-    #[cfg(not(all(target_os = "zkvm", target_vendor = "zisk")))]
+    #[cfg(not(zisk_guest))]
     {
         let mut result: [u64; 4] = [0; 4];
         secp256k1_fn_inv_c(x, &mut result);
@@ -42,7 +42,7 @@ pub fn fcall_secp256k1_fn_inv(
         }
         result
     }
-    #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+    #[cfg(zisk_guest)]
     {
         ziskos_fcall_param!(x, 4);
         ziskos_fcall!(FCALL_SECP256K1_FN_INV_ID);

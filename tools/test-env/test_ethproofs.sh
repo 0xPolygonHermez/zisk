@@ -11,21 +11,15 @@ main() {
     # Load environment variables from .env file
     load_env || return 1
 
-    cd "${WORKSPACE_DIR}"
+    ensure cd "${WORKSPACE_DIR}" || return 1
 
-    step "Cloning zisk-eth-client repository..."
-    if [[ -n "${DISABLE_CLONE_REPO:-}" && "$DISABLE_CLONE_REPO" == "1" ]]; then
-        warn "Skipping cloning zisk-eth-client repository as DISABLE_CLONE_REPO is set to 1"
-    else
-        # Remove existing directory if it exists
-        rm -rf zisk-eth-client
-        # Clone zisk-eth-client repository
-        if [[ -n "${ZISK_ETH_CLIENT_BRANCH:-}" ]]; then
-            info "Cloning branch '$ZISK_ETH_CLIENT_BRANCH' of zisk-eth-client..."
-            ensure git clone --branch "$ZISK_ETH_CLIENT_BRANCH" --single-branch --depth 1 https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
-        else
-            ensure git clone --depth 1 https://github.com/0xPolygonHermez/zisk-eth-client.git || return 1
-        fi
+    ZEC_RETH_ELF="${WORKSPACE_DIR}/zisk-eth-client/bin/guests/stateless-validator-reth/target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth"
+    ZEC_RETH_INPUTS="${WORKSPACE_DIR}/zisk-eth-client/bin/guests/stateless-validator-reth/inputs"
+
+    step "Verifying zec-reth ELF exists..."
+    if [[ ! -f "${ZEC_RETH_ELF}" ]]; then
+        err "zec-reth ELF not found: ${ZEC_RETH_ELF}. Please run build_zec_reth.sh first."
+        return 1
     fi
 
     step "Cloning zisk-ethproofs repository..."
@@ -44,33 +38,29 @@ main() {
     fi
 
     step "Building zisk-ethproofs..."
-    ensure cd zisk-ethproofs
+    ensure cd zisk-ethproofs || return 1
     local cfg_hints=""
     [[ "${ENABLE_HINTS:-}" == "1" ]] && cfg_hints="RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread'"
     ensure eval "$cfg_hints cargo build --release" || return 1
     cd ..
 
     step "Deploying ZisK coordinator and worker services..."
-    deploy_distributed
+    deploy_distributed || return 1
 
     step "Executing ethproofs-client tests..."
-    BLOCK_MODULUS=1
-    COORDINATOR_URL=http://localhost:7010
-    INPUTS_FOLDER="${WORKSPACE_DIR}/zisk-ethproofs/inputs"
-    COMPUTE_CAPACITY=10
-    export BLOCK_MODULUS COORDINATOR_URL INPUTS_FOLDER COMPUTE_CAPACITY
-
-    ensure cd zisk-ethproofs
+    ensure cd zisk-ethproofs || return 1
     local input_files_arg=""
     if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
-        [[ -n "${BLOCK_INPUTS_ETHPROOFS_HINTS:-}" ]] && input_files_arg="--input-files ${BLOCK_INPUTS_ETHPROOFS_HINTS}"
+        [[ -n "${BLOCK_INPUTS_ETHPROOFS_HINTS:-}" ]] && input_files_arg="--folder.input-files ${BLOCK_INPUTS_ETHPROOFS_HINTS}"
     else
-        [[ -n "${BLOCK_INPUTS_ETHPROOFS:-}" ]] && input_files_arg="--input-files ${BLOCK_INPUTS_ETHPROOFS}"
+        [[ -n "${BLOCK_INPUTS_ETHPROOFS:-}" ]] && input_files_arg="--folder.input-files ${BLOCK_INPUTS_ETHPROOFS}"
     fi
     ensure ./target/release/ethproofs-client \
+        -c http://localhost:7010 \
+        --input.folder "${WORKSPACE_DIR}/zisk-ethproofs/inputs" \
         -n folder \
-        -g ../zisk-eth-client/bin/guests/stateless-validator-reth/elf/zec-reth.elf \
-        --inputs-queue ../zisk-eth-client/bin/guests/stateless-validator-reth/inputs \
+        -g "$ZEC_RETH_ELF" \
+        --folder.path "$ZEC_RETH_INPUTS" \
         ${input_files_arg:+$input_files_arg} \
         --exit-on-error \
         || return 1

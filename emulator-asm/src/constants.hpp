@@ -10,16 +10,16 @@
 // Address map
 // There definitions must match the ZisK rust code ones at core/src/mem.rs used to generate the
 // assembly code, and that are used by the assembly code to access memory and generate the trace
-#define ROM_ADDR (uint64_t)0x80000000
-#define ROM_SIZE (uint64_t)0x08000000 // 128MB
-#define INPUT_ADDR (uint64_t)0x40000000
-#define MAX_INPUT_SIZE (uint64_t)0x40000000 // 1024MB
-
-#define RAM_ADDR (uint64_t)0xA0000000
-#define RAM_SIZE (uint64_t)0x20000000 // 512MB
-#define SYS_ADDR RAM_ADDR
-#define SYS_SIZE (uint64_t)0x10000
-#define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
+#define ROM_ADDR          (uint64_t)0x80000000
+#define ROM_SIZE          (uint64_t)0x08000000 // 128MB
+#define INPUT_ADDR        (uint64_t)0x40000000
+#define MAX_INPUT_SIZE    (uint64_t)0x40000000 // 1024MB = 1GB
+#define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
+#define RAM_ADDR          (uint64_t)0xA0000000
+#define RAM_SIZE          (uint64_t)0x20000000 // 512MB
+#define SYS_ADDR          (RAM_ADDR)
+#define SYS_SIZE          (uint64_t)0x10000
+#define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
 #ifdef TRACE_TARGET_MO
     #define TRACE_INITIAL_SIZE (uint64_t)0x180000000 /* 6GB */
@@ -31,6 +31,8 @@
     #define TRACE_INITIAL_SIZE (uint64_t)0x180000000 /* 6GB */
     #define TRACE_DELTA_SIZE   (uint64_t)0x080000000 /* 2GB */
 #endif
+
+#define TRACE_INITIAL_SIZE_RH (uint64_t)(0x02000000 + 0x1000) /* 32MB (ROM histogram) + 4kB (header) */
 
 #define TRACE_ADDR         (uint64_t)0xd0000000
 #define TRACE_MAX_SIZE     (uint64_t)0x800000000 // 32GB

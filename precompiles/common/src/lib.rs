@@ -67,6 +67,36 @@ pub trait MemProcessor {
     fn skip_addr_range(&mut self, addr_from: u32, addr_to: u32) -> bool;
 }
 
+/// Mem-input contract for uniform precompiles (`blake2`, `keccakf`, `sha256f`,
+/// `poseidon2`, `add256`).
+///
+/// Implemented on each precompile's SM (`Blake2SM<F>`, `KeccakfSM<F>`, …).
+/// The `zisk_precompile!` macro dispatches to these methods from the
+/// generated `*CounterInputGen::process_data` body in Counter / InputGenerator
+/// modes.
+///
+/// `generate` is called once per accepted op; `should_skip` is consulted in
+/// `InputGenerator` mode to decide whether to skip the op entirely (default:
+/// never skip).
+pub trait PrecompileMemInputs {
+    /// Emit derived mem inputs for this precompile's operation.
+    /// `only_counters = true` in Counter mode, `false` in InputGenerator mode.
+    fn generate<P: MemProcessor>(
+        addr_main: u32,
+        step_main: u64,
+        data: &[u64],
+        only_counters: bool,
+        mem_processors: &mut P,
+    );
+
+    /// Decide whether the op should be skipped in InputGenerator mode.
+    /// Default: never skip.
+    #[allow(unused_variables)]
+    fn should_skip<P: MemProcessor>(addr_main: u32, data: &[u64], mem_processors: &mut P) -> bool {
+        false
+    }
+}
+
 /// Collector-based memory mem_processor
 pub struct MemCollectorProcessor<'a> {
     pub mem: &'a mut [(usize, MemModuleCollector)],

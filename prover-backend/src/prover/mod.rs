@@ -1,15 +1,19 @@
 mod asm;
+mod asm_exec;
 mod backend;
 mod emu;
+mod emu_exec;
 use crate::guest::{GuestProgram, ProgramId};
 pub use asm::*;
+pub use asm_exec::*;
 use backend::*;
 pub use emu::*;
-use executor::get_packed_info;
+pub use emu_exec::*;
 use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
+use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;
@@ -21,7 +25,8 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues, ZiskExecutorTime,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+    StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 
@@ -69,6 +74,7 @@ impl AsmOptions {
 pub struct BackendProverOpts {
     // Proof settings
     pub(crate) aggregation: bool,
+    pub(crate) verify_constraints: bool,
     pub(crate) verify_proofs: bool,
     pub(crate) minimal_memory: bool,
     pub(crate) verbose: u8,
@@ -82,6 +88,7 @@ pub struct BackendProverOpts {
 
     // ProofmanOptions fields (flattened)
     pub(crate) gpu: bool,
+    pub(crate) cpu_mops: bool,
     pub(crate) packed: bool,
     pub(crate) max_witness_stored: Option<usize>,
     pub(crate) number_threads_witness: Option<usize>,
@@ -95,6 +102,7 @@ impl Default for BackendProverOpts {
     fn default() -> Self {
         Self {
             aggregation: true,
+            verify_constraints: false,
             verify_proofs: false,
 
             minimal_memory: false,
@@ -104,6 +112,7 @@ impl Default for BackendProverOpts {
             preload_plonk: false,
             plonk: false,
             gpu: false,
+            cpu_mops: false,
             packed: false,
             max_witness_stored: None,
             number_threads_witness: None,
@@ -143,8 +152,12 @@ impl BackendProverOpts {
 
         options.verbose_mode(self.verbose.into());
 
-        if !self.aggregation {
+        if !self.aggregation || self.verify_constraints {
             options.no_aggregation();
+        }
+
+        if self.verify_constraints {
+            options.verify_constraints();
         }
 
         options
@@ -170,6 +183,10 @@ impl BackendProverOpts {
         self.preload_plonk
     }
 
+    pub fn cpu_mops_enabled(&self) -> bool {
+        self.cpu_mops
+    }
+
     // Builder methods for all configuration
     pub fn aggregation(mut self, value: bool) -> Self {
         self.aggregation = value;
@@ -177,6 +194,12 @@ impl BackendProverOpts {
     }
 
     pub fn no_aggregation(mut self) -> Self {
+        self.aggregation = false;
+        self
+    }
+
+    pub fn verify_constraints(mut self) -> Self {
+        self.verify_constraints = true;
         self.aggregation = false;
         self
     }
@@ -219,6 +242,11 @@ impl BackendProverOpts {
         self
     }
 
+    pub fn cpu_mops(mut self) -> Self {
+        self.cpu_mops = true;
+        self
+    }
+
     pub fn packed(mut self) -> Self {
         self.packed = true;
         self
@@ -258,7 +286,12 @@ pub trait ProverEngine {
         Self: 'a;
 
     /// Internal setup implementation (called by builder's run())
-    fn setup_internal(&self, elf: &GuestProgram, with_hints: bool) -> Result<ProgramVK>;
+    fn setup_internal(
+        &self,
+        elf: &GuestProgram,
+        with_hints: bool,
+        emulator_only: bool,
+    ) -> Result<ProgramVK>;
 
     /// Create a setup builder for the given ELF program.
     ///
@@ -275,6 +308,12 @@ pub trait ProverEngine {
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()>;
 
     fn executed_steps(&self) -> u64;
+
+    /// Per-type execution cost from the last execution or proof run.
+    fn execution_cost_per_type(&self) -> StatsCostPerType;
+
+    /// Per-AIR instance plan from the last execution or proof run.
+    fn execution_plan(&self) -> Vec<AirInstanceCount>;
 
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
 
@@ -356,6 +395,9 @@ pub trait ProverEngine {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    fn hash(&self) -> Result<String>;
+
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 
     // --- ASM-only operations ---
@@ -387,7 +429,7 @@ pub trait ProverEngine {
 
     fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>>;
 
-    fn set_active_services(&self, _is_first_partition: bool) -> Result<()> {
+    fn set_active_services(&self, _is_first_process: bool) -> Result<()> {
         Ok(())
     }
 
@@ -464,6 +506,16 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Get the number of executed steps by the prover after a proof generation or execution.
     pub fn executed_steps(&self) -> u64 {
         self.prover.executed_steps()
+    }
+
+    /// Get the per-type execution cost from the last execution or proof run.
+    pub fn execution_cost_per_type(&self) -> StatsCostPerType {
+        self.prover.execution_cost_per_type()
+    }
+
+    /// Get the per-AIR instance plan from the last execution or proof run.
+    pub fn execution_plan(&self) -> Vec<AirInstanceCount> {
+        self.prover.execution_plan()
     }
 
     /// Get the executor time from the last execution or proof run.
@@ -610,6 +662,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.get_vadcop_vk(minimal)
     }
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    pub fn hash(&self) -> Result<String> {
+        self.prover.hash()
+    }
+
     pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
         self.prover.submit_hint(bytes)
     }
@@ -634,8 +691,8 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.get_hints_processor()
     }
 
-    pub fn set_active_services(&self, is_first_partition: bool) -> Result<()> {
-        self.prover.set_active_services(is_first_partition)
+    pub fn set_active_services(&self, is_first_process: bool) -> Result<()> {
+        self.prover.set_active_services(is_first_process)
     }
 
     pub fn reset(&self) -> Result<()> {
@@ -681,6 +738,38 @@ impl ZiskProver<Asm> {
     /// Returns `true` if the last `setup()` call used `.with_hints()`.
     pub fn was_setup_with_hints(&self) -> bool {
         self.get_hints_processor().is_ok()
+    }
+
+    /// Execute via the Rust emulator path, regardless of how the program was set up.
+    /// Lets callers run the AsmProver in emulator mode without spinning up ASM children.
+    pub fn execute_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+    ) -> Result<ExecuteOutput> {
+        self.prover.execute_emulator(program, stdin)
+    }
+
+    /// Generate a proof via the Rust emulator path, regardless of how the program was set up.
+    /// Bypasses the `emulator_only` guard on the regular `prove()` method — this is the
+    /// supported way to do emulator-mode proving with the ASM backend.
+    pub fn prove_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        proof_kind: ProofKind,
+    ) -> Result<ProveOutput> {
+        self.prover.prove_emulator(program, stdin, proof_kind, self.prover_options.clone())
+    }
+
+    /// Verify constraints via the Rust emulator path, regardless of how the program was set up.
+    pub fn verify_constraints_emulator(
+        &self,
+        program: &GuestProgram,
+        stdin: ZiskStdin,
+        debug_info: Option<Option<String>>,
+    ) -> Result<VerifyConstraintsOutput> {
+        self.prover.verify_constraints_emulator(program, stdin, debug_info)
     }
 }
 

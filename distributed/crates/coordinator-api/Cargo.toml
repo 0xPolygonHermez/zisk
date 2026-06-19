@@ -15,7 +15,6 @@ prost-types = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 anyhow = { workspace = true }
-tokio = { workspace = true }
 
 [build-dependencies]
 tonic-prost-build = { workspace = true }

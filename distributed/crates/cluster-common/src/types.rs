@@ -15,7 +15,7 @@ use std::{
     ops::Range,
 };
 use tracing::error;
-use zisk_common::{Proof, ZiskExecutorTime};
+use zisk_common::{Proof, StatsCostPerType, ZiskExecutorTime};
 
 use crate::{HintsModeDto, HintsSourceDto, InputSourceDto, InputsModeDto, ProofKind};
 
@@ -304,6 +304,7 @@ pub struct Job {
 impl Job {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
+        job_id: JobId,
         data_id: DataId,
         hash_id: String,
         inputs_mode: InputsModeDto,
@@ -318,7 +319,7 @@ impl Job {
         proof_type: ProofKind,
     ) -> Self {
         Self {
-            job_id: JobId::new(),
+            job_id,
             hash_id,
             phase_timings: HashMap::new(),
             duration_ms: None,
@@ -391,7 +392,8 @@ impl Job {
             }
             JobState::Completed | JobState::Failed | JobState::Cancelled => {
                 let now = Utc::now();
-                if let Some(start_time) = self.phase_start_time(&JobPhase::Contributions) {
+                let earliest_start = self.phase_timings.values().map(|t| t.start_time).min();
+                if let Some(start_time) = earliest_start {
                     let duration = now.signed_duration_since(start_time);
                     self.duration_ms = Some(duration.num_milliseconds() as u64);
                 }
@@ -468,6 +470,7 @@ pub struct ContributionsResult {
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     pub instances: u64,
+    pub cost_per_type: StatsCostPerType,
 }
 
 #[derive(Debug, Clone)]
@@ -477,6 +480,8 @@ pub struct ExecutionResult {
     pub zisk_executor_time: ZiskExecutorTime,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     pub public_outputs: Vec<u8>,
+    pub cost_per_type: StatsCostPerType,
+    pub plan: Vec<zisk_common::AirInstanceCount>,
 }
 
 #[derive(Debug, Clone)]
@@ -590,6 +595,7 @@ mod tests {
 
     fn make_job() -> Job {
         Job::new(
+            JobId::new(),
             Default::default(),
             String::new(),
             crate::InputsModeDto::InputsNone,

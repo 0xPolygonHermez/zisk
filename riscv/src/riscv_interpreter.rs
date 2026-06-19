@@ -258,14 +258,11 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
     } else if i.t == *"F" {
         i.funct3 = (inst & 0x7000) >> 12;
         if i.funct3 == 0 {
-            if (inst & 0xF00F8F80) != 0 {
-                //panic!("Invalid F funct3=0 inst=0x{inst:x} at index={code_index} addr=0x{rom_address:x}");
-                i.inst = "reserved".to_string();
-            } else {
-                i.pred = (inst & 0x0F000000) >> 24;
-                i.succ = (inst & 0x00F00000) >> 20;
-                i.inst = "fence".to_string();
-            }
+            // Per the unprivileged spec, base impls shall ignore FENCE rs1/rd
+            // and treat reserved fm/pred/succ as a regular FENCE (fm=0000).
+            i.pred = (inst & 0x0F000000) >> 24;
+            i.succ = (inst & 0x00F00000) >> 20;
+            i.inst = "fence".to_string();
         } else if i.funct3 == 1 {
             if (inst & 0xFFFF8F80) != 0 {
                 //panic!("Invalid F funct3=1 inst=0x{inst:x} at index={code_index} addr=0x{rom_address:x}");

@@ -1,13 +1,14 @@
+pub mod bigint;
 pub mod blake2b;
 pub mod bls381;
 pub mod bn254;
 pub mod keccak256;
 pub mod kzg;
-pub mod modexp;
 pub mod ripemd160;
 pub mod secp256k1;
 pub mod secp256r1;
 pub mod sha256;
+pub mod uint256;
 
 /// Macro to generate size, offset, and expected length constants for hint data fields.
 ///
@@ -80,9 +81,10 @@ fn read_field_bytes<'a>(data: &'a [u64], pos: &mut usize) -> anyhow::Result<(&'a
         anyhow::bail!("MODEXP hint data too short to read length");
     }
 
-    // Read length as native-endian u64
+    // Read length as little-endian u64 — matches the `to_le_bytes()` encoding written by
+    // `define_hint_ptr!`, so the format is well-defined and portable across host endianness.
     let len_bytes =
-        u64::from_ne_bytes(byte_data[*pos..*pos + 8].try_into().expect("slice length checked"))
+        u64::from_le_bytes(byte_data[*pos..*pos + 8].try_into().expect("slice length checked"))
             as usize;
     *pos += 8;
 

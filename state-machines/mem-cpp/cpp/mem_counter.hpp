@@ -99,6 +99,7 @@ public:
     inline static uint32_t addr_to_offset(uint32_t addr, uint32_t chunk_id = 0);
     inline static uint32_t addr_to_page(uint32_t addr, uint32_t chunk_id = 0);
     inline static uint32_t page_to_addr(uint8_t page);
+    inline static const char *page_to_tag(uint8_t page);
     inline uint32_t get_used_slots(void) const;
     inline uint64_t get_first_chunk_us(void) const;
     void stats();
@@ -252,7 +253,43 @@ uint32_t MemCounter::addr_to_offset(uint32_t addr, uint32_t chunk_id) {
     msg << "ERROR: addr_to_offset: 0x" << std::hex << addr << " (" << std::dec << chunk_id << ")";
     throw std::runtime_error(msg.str());
 }
-
+const char *MemCounter::page_to_tag(uint8_t page) {
+    switch(page) {
+        // ROM: 128 MB
+        case 0:
+        case 1:
+            return "rom_data";
+        // INPUT: 1024 MB
+        case 2:
+        case 3:
+        case 4:
+        case 5:
+        case 6:
+        case 7:
+        case 8:
+        case 9:
+        case 10:
+        case 11:
+        case 12:
+        case 13:
+        case 14:
+        case 15:
+        case 16:
+        case 17:
+            return "input_data";
+        // RAM: 512 MB 
+        case 18:
+        case 19:
+        case 20:
+        case 21:
+        case 22:
+        case 23:
+        case 24:
+        case 25:
+            return "mem";
+    }
+    return "??";
+}
 uint32_t MemCounter::addr_to_page(uint32_t addr, uint32_t chunk_id) {
     switch((uint8_t)((addr >> 24) & 0xFC)) {
         // ROM: 128 MB 

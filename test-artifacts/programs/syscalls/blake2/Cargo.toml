@@ -1,0 +1,13 @@
+[package]
+name = "blake2"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
+precompiles-helpers.workspace = true
+
+rand.workspace = true
+
+[build-dependencies]
+zisk-sdk.workspace = true

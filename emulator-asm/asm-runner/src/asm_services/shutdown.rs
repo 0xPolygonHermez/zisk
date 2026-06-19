@@ -4,14 +4,15 @@ use super::{
     FromResponsePayload, RequestData, ResponseData, ToRequestPayload, CMD_SHUTDOWN_REQUEST_ID,
 };
 
-pub struct ShutdownRequest;
+pub(crate) struct ShutdownRequest;
 
 impl ToRequestPayload for ShutdownRequest {
     fn to_request_payload(&self) -> RequestData {
         [CMD_SHUTDOWN_REQUEST_ID, 0, 0, 0, 0]
     }
 }
-pub struct ShutdownResponse;
+
+pub(crate) struct ShutdownResponse;
 
 impl FromResponsePayload for ShutdownResponse {
     fn from_response_payload(payload: ResponseData) -> Self {

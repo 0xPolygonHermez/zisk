@@ -1,0 +1,17 @@
+[package]
+name = "test-artifacts"
+description = "Compiled Zisk guest ELFs used as fixtures by other crates' tests and benchmarks."
+readme = "README.md"
+version = "1.0.0"
+edition = "2021"
+license = "Apache-2.0 or MIT"
+repository = "https://github.com/0xPolygonHermez/zisk"
+keywords = ["zisk", "zkvm", "zero-knowledge", "tests"]
+categories = ["cryptography"]
+publish = false
+
+[dependencies]
+zisk-sdk = { path = "../sdk" }
+
+[build-dependencies]
+zisk-sdk = { path = "../sdk" }

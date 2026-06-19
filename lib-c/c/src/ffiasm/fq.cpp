@@ -166,6 +166,9 @@ void Fq_fail() {
     assert(false);
 }
 
+void Fq_longErr() {
+    Fq_fail();
+}
 
 RawFq::RawFq() {
     Fq_init();
@@ -212,7 +215,7 @@ void RawFq::set(Element &r, int value) {
   }
 
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-      
+
   for (int i=0; i<Fq_N64; i++) r.v[i] = 0;
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
   Fq_rawToMontgomery(r.v,r.v);
@@ -242,7 +245,7 @@ void RawFq::inv(Element &r, const Element &a) {
     for (int i=0; i<Fq_N64; i++) r.v[i] = 0;
     mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
 
-    Fq_rawMMul(r.v, r.v,Fq_rawR3);
+    Fq_rawMMul(r.v, r.v,Fq_R3.longVal);
     mpz_clear(mr);
 }
 
@@ -294,12 +297,11 @@ int RawFq::toRprBE(const Element &element, uint8_t *data, int bytes)
 
     mpz_t r;
     mpz_init(r);
-  
+
     toMpz(r, element);
-    
-    mpz_export(data, NULL, 1, 8, 1, 0, r);
-  
-    mpz_clear(r);
+   
+    mpz_export(data, NULL, 1, bytes, 1, 0, r);
+
     return Fq_N64 * 8;
 }
 
@@ -313,8 +315,6 @@ int RawFq::fromRprBE(Element &element, const uint8_t *data, int bytes)
 
     mpz_import(r, Fq_N64 * 8, 0, 1, 0, 0, data);
     fromMpz(element, r);
-
-    mpz_clear(r);
     return Fq_N64 * 8;
 }
 

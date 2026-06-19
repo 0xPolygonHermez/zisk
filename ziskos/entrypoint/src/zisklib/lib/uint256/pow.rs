@@ -58,6 +58,9 @@ pub fn overflowing_pow256(
             hints,
         );
 
+        // Bound before use as index/shift
+        assert!(limb < 4 && bit < 64, "msb_pos hint out of range");
+
         // Check that the hinted bit position matches the original exponent
         let mut check_exp = [0u64; 4];
         check_exp[limb as usize] = 1u64 << (bit as usize);
@@ -88,6 +91,8 @@ pub fn overflowing_pow256(
 
     // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
+    assert!(len <= 256, "Exponent bit length out of range");
+    assert!(bits.len() == len, "Bit decomposition length mismatch");
 
     // Left-to-right square-and-multiply, starting from the second bit
     let mut overflow = false;
@@ -160,6 +165,9 @@ pub fn wrapping_pow256(
             hints,
         );
 
+        // Bound before use as index/shift
+        assert!(limb < 4 && bit < 64, "msb_pos hint out of range");
+
         // Check that the hinted bit position matches the original exponent
         let mut check_exp = [0u64; 4];
         check_exp[limb as usize] = 1u64 << (bit as usize);
@@ -187,6 +195,8 @@ pub fn wrapping_pow256(
 
     // The leading bit must be 1 for a non-zero exponent
     assert!(len > 0 && bits[0] == 1, "Exponent must be non-zero");
+    assert!(len <= 256, "Exponent bit length out of range");
+    assert!(bits.len() == len, "Bit decomposition length mismatch");
 
     // Left-to-right square-and-multiply, starting from the second bit
     let mut result = *base;

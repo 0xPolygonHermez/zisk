@@ -4,8 +4,8 @@
 
 use crate::{
     zisk_ops::{InvalidNameError, OpType, ZiskOp},
-    ZiskInst, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND, SRC_MEM,
-    SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    ZiskInst, ZiskRom, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO, REG_FIRST, SRC_C, SRC_IMM, SRC_IND,
+    SRC_MEM, SRC_REG, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // #[cfg(feature = "sp")]
@@ -244,8 +244,24 @@ impl ZiskInstBuilder {
         self.i.verbose = s.to_owned();
     }
 
+    /// Links this instruction to the next internal instruction, when existing
+    pub fn set_next_internal_address(&mut self, addr: u64) {
+        self.i.next_internal_inst = Some(addr);
+    }
+
     /// Called when the instruction has been built
-    pub fn build(&mut self) {
+    pub fn build(&mut self, rom: &mut ZiskRom) {
+        // Set the instruction index to the current value of the ZiskRom build counter
+        self.i.index = rom.build_counter;
+        rom.build_counter += 1;
+
+        // Insert the instruction in the rom instructions map, using the instruction pc as key
+        // We can use std::mem::take() to move the instruction out of the builder, and replace it
+        // with a default one, to avoid cloning it since we won't use it any more
+        let paddr = self.i.paddr;
+        let zib = std::mem::take(self);
+        rom.insts.insert(paddr, zib);
+
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }
 }
