@@ -9,6 +9,7 @@
 use fields::PrimeField64;
 use pil_std_lib::{RCMultiplicity, RCValue, Std};
 use proofman_common::ProofmanResult;
+use std::sync::Mutex;
 
 /// The virtual-table accumulation surface that input collectors depend on.
 ///
@@ -180,5 +181,128 @@ impl RangeChecker for NoopRangeChecker {
         _start: Option<u64>,
         _muls: &[M],
     ) {
+    }
+}
+
+/// A recording [`RangeChecker`]/[`VirtualTableSink`] for tests.
+///
+/// Unlike [`NoopRangeChecker`] (which discards every write), this captures what
+/// a collector or witness-generator emits, so a test can assert *what* was
+/// recorded:
+/// - virtual-table row bumps from [`VirtualTableSink::inc_row_one`] (the FROPS
+///   path collectors take) — see [`Self::recorded_rows`];
+/// - range checks from `range_check` / `range_check_one` / `range_check_ranged`
+///   — see [`Self::range_checks`] (the `RCValue` is recorded as `i64`, the
+///   multiplicity as `u64`);
+/// - virtual-row increments from `inc_virtual_row` / `inc_virtual_row_one` /
+///   `inc_virtual_rows_ranged` — see [`Self::virtual_rows`].
+///
+/// `virtual_table_id` / `get_virtual_table_id` echo the logical id so recorded
+/// entries correlate with the table the caller resolved.
+#[derive(Debug, Default)]
+pub struct RecordingRangeChecker {
+    rows: Mutex<Vec<(usize, usize)>>,
+    range_checks: Mutex<Vec<(usize, i64, u64)>>,
+    virtual_rows: Mutex<Vec<(usize, u64, u64)>>,
+}
+
+impl RecordingRangeChecker {
+    /// `(table_id, row)` for every `inc_row_one` call, in call order.
+    pub fn recorded_rows(&self) -> Vec<(usize, usize)> {
+        self.rows.lock().unwrap().clone()
+    }
+
+    /// Number of `inc_row_one` calls recorded.
+    pub fn row_count(&self) -> usize {
+        self.rows.lock().unwrap().len()
+    }
+
+    /// `(range_id, value, multiplicity)` for every `range_check*` call, in order.
+    pub fn range_checks(&self) -> Vec<(usize, i64, u64)> {
+        self.range_checks.lock().unwrap().clone()
+    }
+
+    /// `(table_id, row, multiplicity)` for every `inc_virtual_row*` call, in order.
+    pub fn virtual_rows(&self) -> Vec<(usize, u64, u64)> {
+        self.virtual_rows.lock().unwrap().clone()
+    }
+}
+
+impl VirtualTableSink for RecordingRangeChecker {
+    fn virtual_table_id(&self, table_id: usize) -> usize {
+        table_id
+    }
+    fn inc_row_one(&self, table_id: usize, row: usize) {
+        self.rows.lock().unwrap().push((table_id, row));
+    }
+}
+
+impl RangeChecker for RecordingRangeChecker {
+    fn get_range_id<V: RCValue>(
+        &self,
+        _min: V,
+        _max: V,
+        _predefined: Option<bool>,
+    ) -> ProofmanResult<usize> {
+        Ok(0)
+    }
+    fn range_check<V: RCValue, M: RCMultiplicity>(&self, id: usize, val: V, mul: M) {
+        self.range_checks.lock().unwrap().push((id, val.to_i64(), mul.to_u64()));
+    }
+    fn range_check_one<V: RCValue>(&self, id: usize, val: V) {
+        self.range_checks.lock().unwrap().push((id, val.to_i64(), 1));
+    }
+    fn range_check_ranged<M: RCMultiplicity>(&self, id: usize, start: Option<i64>, muls: &[M]) {
+        let base = start.unwrap_or(0);
+        let mut guard = self.range_checks.lock().unwrap();
+        for (i, m) in muls.iter().enumerate() {
+            guard.push((id, base + i as i64, (*m).to_u64()));
+        }
+    }
+    fn get_virtual_table_id(&self, id: usize) -> ProofmanResult<usize> {
+        Ok(id)
+    }
+    fn inc_virtual_row<M: RCMultiplicity>(&self, id: usize, row: M, mul: M) {
+        self.virtual_rows.lock().unwrap().push((id, row.to_u64(), mul.to_u64()));
+    }
+    fn inc_virtual_row_one<M: RCMultiplicity>(&self, id: usize, row: M) {
+        self.virtual_rows.lock().unwrap().push((id, row.to_u64(), 1));
+    }
+    fn inc_virtual_rows_ranged<M: RCMultiplicity>(&self, id: usize, start: Option<u64>, muls: &[M]) {
+        let base = start.unwrap_or(0);
+        let mut guard = self.virtual_rows.lock().unwrap();
+        for (i, m) in muls.iter().enumerate() {
+            guard.push((id, base + i as u64, (*m).to_u64()));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recording_range_checker_captures_each_surface() {
+        let rc = RecordingRangeChecker::default();
+
+        // VirtualTableSink::inc_row_one — the FROPS path collectors take.
+        rc.inc_row_one(5010, 7);
+        rc.inc_row_one(5010, 9);
+        assert_eq!(rc.recorded_rows(), vec![(5010, 7), (5010, 9)]);
+        assert_eq!(rc.row_count(), 2);
+
+        // RangeChecker range checks — value recorded as i64, multiplicity as u64.
+        rc.range_check_one(3, 42u64);
+        rc.range_check(3, -1i64, 4u64);
+        rc.range_check_ranged(7, Some(10), &[2u32, 5u32]);
+        assert_eq!(
+            rc.range_checks(),
+            vec![(3, 42, 1), (3, -1, 4), (7, 10, 2), (7, 11, 5)],
+        );
+
+        // RangeChecker virtual-row increments.
+        rc.inc_virtual_row_one(8, 100u32);
+        rc.inc_virtual_row(8, 101u64, 2u64);
+        assert_eq!(rc.virtual_rows(), vec![(8, 100, 1), (8, 101, 2)]);
     }
 }
