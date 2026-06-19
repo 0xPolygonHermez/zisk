@@ -2828,7 +2828,7 @@ name = "mem-common"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -3266,12 +3266,13 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "colored",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -3384,7 +3385,7 @@ dependencies = [
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "regex",
@@ -3411,7 +3412,7 @@ dependencies = [
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -3429,7 +3430,7 @@ dependencies = [
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3445,7 +3446,7 @@ dependencies = [
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3462,7 +3463,7 @@ dependencies = [
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3480,7 +3481,7 @@ dependencies = [
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -3498,7 +3499,7 @@ dependencies = [
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3514,7 +3515,7 @@ dependencies = [
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -3528,7 +3529,7 @@ name = "precompiles-common"
 version = "1.0.0-beta"
 dependencies = [
  "mem-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "sm-mem",
  "zisk-common",
  "zisk-core",
@@ -3629,6 +3630,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "bincode",
  "blake3",
@@ -3644,12 +3646,12 @@ dependencies = [
  "pil-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-hints",
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-witness",
  "rayon",
  "serde",
@@ -3662,6 +3664,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "bincode",
  "borsh",
@@ -3675,7 +3678,7 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
@@ -3692,10 +3695,11 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "num-bigint",
  "num-traits",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
 ]
 
 [[package]]
@@ -3709,12 +3713,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "proofman-fields"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
+
+[[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-starks-lib-c",
  "proofman-util",
  "tracing",
@@ -3723,6 +3739,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3732,6 +3749,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -3741,10 +3759,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "bincode",
  "colored",
@@ -3756,9 +3776,19 @@ dependencies = [
 name = "proofman-verifier"
 version = "1.0.0-beta"
 dependencies = [
+ "num-traits",
+ "proofman-fields 1.0.0-beta",
+ "serde",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
+dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "serde",
  "tracing",
@@ -3767,11 +3797,12 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#f317a1a33fbf3616d9aad3268a215f6611a0e999"
 dependencies = [
  "colored",
  "libloading",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "serde_json",
  "tracing",
@@ -4171,7 +4202,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "sm-rom",
  "tracing",
  "zisk-common",
@@ -4732,7 +4763,7 @@ version = "1.0.0-beta"
 dependencies = [
  "pil-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "sm-binary",
  "sm-frequent-ops",
@@ -4748,7 +4779,7 @@ version = "1.0.0-beta"
 dependencies = [
  "pil-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "sm-frequent-ops",
  "static_assertions",
@@ -4764,7 +4795,7 @@ version = "1.0.0-beta"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "static_assertions",
  "zisk-core",
 ]
@@ -4776,7 +4807,7 @@ dependencies = [
  "mem-common",
  "pil-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "thiserror 2.0.18",
  "tracing",
@@ -4794,7 +4825,7 @@ dependencies = [
  "mem-common",
  "pil-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -4810,7 +4841,7 @@ dependencies = [
  "asm-runner",
  "mem-common",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "thiserror 2.0.18",
  "tracing",
@@ -6550,8 +6581,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "serde",
  "serde_json",
  "sha2",
@@ -6601,7 +6632,7 @@ dependencies = [
  "lib-c",
  "paste",
  "precompiles-helpers",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -6639,7 +6670,7 @@ dependencies = [
  "precompiles-hints",
  "proofman",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -6661,7 +6692,7 @@ name = "zisk-pil"
 version = "1.0.0-beta"
 dependencies = [
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -6691,9 +6722,9 @@ dependencies = [
  "precompiles-hints",
  "proofman",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rom-setup",
  "serde",
  "tracing",
@@ -6745,7 +6776,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.0.0-beta"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta",
 ]
 
 [[package]]
@@ -6759,7 +6790,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rayon",
  "regex",
  "serde_json",
@@ -6801,7 +6832,7 @@ dependencies = [
  "once_cell",
  "paste",
  "precompiles-helpers",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta",
  "rand 0.8.6",
  "ripemd",
  "secp256k1 0.31.1",
@@ -6830,7 +6861,7 @@ dependencies = [
  "num-traits",
  "paste",
  "precompiles-helpers",
- "proofman-fields",
+ "proofman-fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io)",
  "rand 0.8.6",
  "ripemd",
  "serde",
