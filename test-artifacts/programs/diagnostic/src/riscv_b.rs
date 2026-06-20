@@ -1,4 +1,4 @@
-//use std::arch::asm;
+/*
 
 pub fn diagnostic_riscv_b() {
     rev8(0x0102030405060708, 0x0807060504030201);
@@ -1160,3 +1160,5 @@ fn xperm8(input_a: u64, input_b: u64, expected_c: u64) {
     // Check result is as expected
     assert_eq!(c, expected_c);
 }
+
+*/

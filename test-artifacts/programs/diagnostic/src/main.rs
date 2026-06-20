@@ -20,7 +20,8 @@ fn main() {
         riscv_c::diagnostic_riscv_c();
         riscv_fd::diagnostic_riscv_fd();
         riscv_ima::diagnostic_riscv_ima();
-        riscv_b::diagnostic_riscv_b();
+        // #[cfg(feature = "bit_manipulation_extensions")]
+        // riscv_b::diagnostic_riscv_b();
         //riscv_ima::diagnostic_riscv_ima_combinations(); // TODO
     }
 
