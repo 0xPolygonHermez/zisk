@@ -268,7 +268,12 @@ impl RangeChecker for RecordingRangeChecker {
     fn inc_virtual_row_one<M: RCMultiplicity>(&self, id: usize, row: M) {
         self.virtual_rows.lock().unwrap().push((id, row.to_u64(), 1));
     }
-    fn inc_virtual_rows_ranged<M: RCMultiplicity>(&self, id: usize, start: Option<u64>, muls: &[M]) {
+    fn inc_virtual_rows_ranged<M: RCMultiplicity>(
+        &self,
+        id: usize,
+        start: Option<u64>,
+        muls: &[M],
+    ) {
         let base = start.unwrap_or(0);
         let mut guard = self.virtual_rows.lock().unwrap();
         for (i, m) in muls.iter().enumerate() {
@@ -295,10 +300,7 @@ mod tests {
         rc.range_check_one(3, 42u64);
         rc.range_check(3, -1i64, 4u64);
         rc.range_check_ranged(7, Some(10), &[2u32, 5u32]);
-        assert_eq!(
-            rc.range_checks(),
-            vec![(3, 42, 1), (3, -1, 4), (7, 10, 2), (7, 11, 5)],
-        );
+        assert_eq!(rc.range_checks(), vec![(3, 42, 1), (3, -1, 4), (7, 10, 2), (7, 11, 5)],);
 
         // RangeChecker virtual-row increments.
         rc.inc_virtual_row_one(8, 100u32);
