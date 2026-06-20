@@ -463,10 +463,10 @@ define_ops! {
     (Sh3addUW, "sh3add_u_w", BinaryE, BINARY_E_COST, 0x4e, 0, 0, opc_sh3add_u_w, op_sh3add_u_w, ops_none),
     (SllUW, "sll_u_w", BinaryE, BINARY_E_COST, 0x4f, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
     (Clmul, "clmul", BinaryE, BINARY_E_COST, 0x50, 0, 0, opc_clmul, op_clmul, ops_none),
-    (ClmulH, "clmul_h", BinaryE, BINARY_E_COST, 0x51, 0, 0, opc_clmul_h, op_clmul_h, ops_none),
-    (ClmulR, "clmul_r", BinaryE, BINARY_E_COST, 0x52, 0, 0, opc_clmul_r, op_clmul_r, ops_none),
-    (Xperm4, "xperm4", BinaryE, BINARY_E_COST, 0x53, 0, 0, opc_xperm4, op_xperm4, ops_none),
-    (Xperm8, "xperm8", BinaryE, BINARY_E_COST, 0x54, 0, 0, opc_xperm8, op_xperm8, ops_none),
+    (ClmulH, "clmul_h", BinaryE, BINARY_E_COST, 0x53, 0, 0, opc_clmul_h, op_clmul_h, ops_none),
+    (ClmulR, "clmul_r", BinaryE, BINARY_E_COST, 0x54, 0, 0, opc_clmul_r, op_clmul_r, ops_none),
+    (Xperm4, "xperm4", BinaryE, BINARY_E_COST, 0x55, 0, 0, opc_xperm4, op_xperm4, ops_none),
+    (Xperm8, "xperm8", BinaryE, BINARY_E_COST, 0x56, 0, 0, opc_xperm8, op_xperm8, ops_none),
 
     // Opcodes 0x50,0x51,0x60,0x61 are reserved for binary
     (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),

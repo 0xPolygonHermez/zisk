@@ -556,7 +556,7 @@ pub const fn op_rol(a: u64, b: u64) -> (u64, bool) {
     (a.rotate_left((b & 0x3F) as u32), false)
 }
 
-/// Sets c to the value low16(a) rotated left b bits (modulo 32), and flag to false
+/// Sets c to the value low32(a) rotated left b bits (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_rol_w(a: u64, b: u64) -> (u64, bool) {
     (((a & 0xFFFFFFFF) as u32).rotate_left((b & 0x1F) as u32) as i32 as u64, false)
@@ -568,7 +568,7 @@ pub const fn op_ror(a: u64, b: u64) -> (u64, bool) {
     (a.rotate_right((b & 0x3F) as u32), false)
 }
 
-/// Sets c to the value low16(a) rotated right b bits (modulo 32), and flag to false
+/// Sets c to the value low32(a) rotated right b bits (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_ror_w(a: u64, b: u64) -> (u64, bool) {
     (((a & 0xFFFFFFFF) as u32).rotate_right((b & 0x1F) as u32) as i32 as u64, false)
@@ -672,43 +672,43 @@ pub const fn op_bset(a: u64, b: u64) -> (u64, bool) {
 /// Sets c to b plus a (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (b + (a & 0xFFFFFFFF), false)
+    (b.wrapping_add(a & 0xFFFFFFFF), false)
 }
 
 /// Sets c to b plus a << 1, and flag to false
 #[inline(always)]
 pub const fn op_sh1add(a: u64, b: u64) -> (u64, bool) {
-    (b + (a << 1), false)
+    (b.wrapping_add(a << 1), false)
 }
 
 /// Sets c to b plus a (modulo 32) << 1, and flag to false
 #[inline(always)]
 pub const fn op_sh1add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (b + ((a & 0xFFFFFFFF) << 1), false)
+    (b.wrapping_add((a & 0xFFFFFFFF) << 1), false)
 }
 
 /// Sets c to b plus a << 2, and flag to false
 #[inline(always)]
 pub const fn op_sh2add(a: u64, b: u64) -> (u64, bool) {
-    (b + (a << 2), false)
+    (b.wrapping_add(a << 2), false)
 }
 
 /// Sets c to b plus a (modulo 32) << 2, and flag to false
 #[inline(always)]
 pub const fn op_sh2add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (b + ((a & 0xFFFFFFFF) << 2), false)
+    (b.wrapping_add((a & 0xFFFFFFFF) << 2), false)
 }
 
 /// Sets c to b plus a << 3, and flag to false
 #[inline(always)]
 pub const fn op_sh3add(a: u64, b: u64) -> (u64, bool) {
-    (b + (a << 3), false)
+    (b.wrapping_add(a << 3), false)
 }
 
 /// Sets c to b plus a (modulo 32) << 3, and flag to false
 #[inline(always)]
 pub const fn op_sh3add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (b + ((a & 0xFFFFFFFF) << 3), false)
+    (b.wrapping_add((a & 0xFFFFFFFF) << 3), false)
 }
 
 /// Sets c to a (modulo 32) << b, and flag to false

@@ -323,7 +323,7 @@ pub fn opc_rev8(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_rev8(ctx.a, ctx.b);
 }
 
-/// InstContext-based wrapper over op_rev8()
+/// InstContext-based wrapper over op_brev8()
 #[inline(always)]
 pub fn opc_brev8(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_brev8(ctx.a, ctx.b);
