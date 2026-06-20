@@ -735,7 +735,7 @@ pub const fn op_clmul(a: u64, b: u64) -> (u64, bool) {
 #[inline(always)]
 pub const fn op_clmul_h(a: u64, b: u64) -> (u64, bool) {
     let mut output: u64 = 0;
-    let mut i = 0;
+    let mut i = 1;
     while i < 64 {
         if (b >> i) & 1 == 1 {
             output ^= a >> (64 - i);
