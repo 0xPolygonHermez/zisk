@@ -1081,9 +1081,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.64"
+version = "1.2.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dad887fd958be91b5098c0248def011f4523ab786cd411be668777e55063501f"
+checksum = "e228eec9be7c17ccb640b59b36a5cd805ea2a564a4c5e162c2f659fea30d3b96"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -3829,6 +3829,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "colored",
  "proofman-common",
@@ -3846,6 +3847,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "anyhow",
  "clap",
@@ -3870,6 +3872,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4279,6 +4282,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "bincode",
  "blake3",
@@ -4310,6 +4314,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "borsh",
  "colored",
@@ -4338,6 +4343,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "proofman-fields",
 ]
@@ -4345,6 +4351,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -4355,6 +4362,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4366,6 +4374,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4375,6 +4384,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -4383,10 +4393,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4395,6 +4407,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4407,6 +4420,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -5727,6 +5741,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#05251f8f904cd5def17688b3eb1db53ae830484e"
 dependencies = [
  "anyhow",
  "num-bigint",
