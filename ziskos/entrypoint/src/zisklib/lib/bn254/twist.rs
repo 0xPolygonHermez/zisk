@@ -107,15 +107,17 @@ pub fn is_on_subgroup_twist_bn254(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     // p in subgroup iff:
-    //      (x+1)·Q + 𝜓(x·Q) + 𝜓²(x·Q) == 𝜓³((2x)·Q)
+    //      (x+1)·P + 𝜓(x·P) + 𝜓²(x·P) == 𝜓³((2x)·P)
     // where 𝜓 is the Frobenius endomorphism
     // as described in https://eprint.iacr.org/2022/348.pdf
-    let xp: [u64; 16] = scalar_mul_by_x_twist_bn254(
+    // Notice that 𝜓²(P),𝜓²(P),𝜓³(P) = 𝒪 <==> P = 𝒪
+
+    let xp: [u64; 16] = scalar_mul_by_x_complete_twist_bn254(
         p,
         #[cfg(feature = "hints")]
         hints,
     );
-    let x1p = add_twist_bn254(
+    let x1p = add_twist_complete_bn254(
         p,
         &xp,
         #[cfg(feature = "hints")]
@@ -131,13 +133,13 @@ pub fn is_on_subgroup_twist_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut lhs = add_twist_bn254(
+    let mut lhs = add_twist_complete_bn254(
         &x1p,
         &psi_one,
         #[cfg(feature = "hints")]
         hints,
     );
-    lhs = add_twist_bn254(
+    lhs = add_twist_complete_bn254(
         &lhs,
         &psi_two,
         #[cfg(feature = "hints")]
@@ -164,7 +166,7 @@ pub fn is_on_subgroup_twist_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    eq(&lhs, &rhs) || eq(p, &G2_IDENTITY)
+    eq(&lhs, &rhs)
 }
 
 /// Compute the untwist-frobenius-twist (utf) endomorphism 𝜓: (x,y) = (𝛾₁₂·x̄,𝛾₁₃·ȳ)
@@ -205,6 +207,30 @@ pub fn utf_endomorphism_twist_bn254(
         qx[0], qx[1], qx[2], qx[3], qx[4], qx[5], qx[6], qx[7], qy[0], qy[1], qy[2], qy[3], qy[4],
         qy[5], qy[6], qy[7],
     ]
+}
+
+/// Complete addition of two points
+///
+/// # Soundness
+/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn add_twist_complete_bn254(
+    p1: &[u64; 16],
+    p2: &[u64; 16],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 16] {
+    // Handle identity cases
+    if eq(p1, &G2_IDENTITY) {
+        return *p2;
+    } else if eq(p2, &G2_IDENTITY) {
+        return *p1;
+    }
+
+    add_twist_bn254(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// Addition of two non-zero points
@@ -402,6 +428,25 @@ pub fn dbl_twist_bn254(p: &[u64; 16], #[cfg(feature = "hints")] hints: &mut Vec<
         x3[0], x3[1], x3[2], x3[3], x3[4], x3[5], x3[6], x3[7], y3[0], y3[1], y3[2], y3[3], y3[4],
         y3[5], y3[6], y3[7],
     ]
+}
+
+/// Scalar multiplication of a point by x
+///
+/// # Soundness
+/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn scalar_mul_by_x_complete_twist_bn254(
+    p: &[u64; 16],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 16] {
+    if eq(p, &G2_IDENTITY) {
+        return G2_IDENTITY;
+    }
+
+    scalar_mul_by_x_twist_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// Scalar multiplication of a non-zero point by x

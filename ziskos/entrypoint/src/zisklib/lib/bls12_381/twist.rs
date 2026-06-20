@@ -206,6 +206,7 @@ pub fn is_on_subgroup_twist_bls12_381(
     // p in subgroup iff:
     //          x·𝜓³(P) + P == 𝜓²(P)
     // where ψ := 𝜑⁻¹𝜋ₚ𝜑 is the untwist-Frobenius-twist endomorphism
+    // Notice that 𝜓²(P),𝜓³(P) = 𝒪 <==> P = 𝒪
 
     // Compute ψ²(P), ψ³(P)
     let utf1 = utf_endomorphism_twist_bls12_381(
@@ -225,7 +226,7 @@ pub fn is_on_subgroup_twist_bls12_381(
     );
 
     // Compute [x]ψ³(P) + P (since x is negative, we compute -[|x|]ψ³(P))
-    let xutf3: [u64; 24] = scalar_mul_by_abs_x_twist_bls12_381(
+    let xutf3: [u64; 24] = scalar_mul_by_abs_x_complete_twist_bls12_381(
         &utf3,
         #[cfg(feature = "hints")]
         hints,
@@ -235,14 +236,14 @@ pub fn is_on_subgroup_twist_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    lhs = add_twist_bls12_381(
+    lhs = add_complete_twist_bls12_381(
         &lhs,
         p,
         #[cfg(feature = "hints")]
         hints,
     );
 
-    eq(&lhs, &rhs) || eq(p, &G2_IDENTITY)
+    eq(&lhs, &rhs)
 }
 
 /// Compute the psi endomorphism on a point of the twist
@@ -316,9 +317,6 @@ fn psi2_twist_bls12_381(
 ///     𝜑 : E'(Fp2) -> E(Fp12) defined by 𝜑(x,y) = (x/ω²,y/ω³) is the untwist map
 ///     𝜋ₚ : E(Fp12) -> E(Fp12) defined by 𝜋ₚ(x,y) = (xᵖ,yᵖ) is the Frobenius map
 ///     𝜑⁻¹ : E(Fp12) -> E'(Fp2) defined by 𝜑⁻¹(x,y) = (x·ω²,y·ω³) is the twist map
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
 pub fn utf_endomorphism_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -458,6 +456,30 @@ pub fn clear_cofactor_twist_bls12_381(
     sub_twist_bls12_381(
         &t3,
         p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
+/// Addition of two points
+///
+/// # Soundness
+/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn add_complete_twist_bls12_381(
+    p1: &[u64; 24],
+    p2: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    // Handle identity cases
+    if eq(p1, &G2_IDENTITY) {
+        return *p2;
+    } else if eq(p2, &G2_IDENTITY) {
+        return *p1;
+    }
+
+    add_twist_bls12_381(
+        p1,
+        p2,
         #[cfg(feature = "hints")]
         hints,
     )
@@ -960,6 +982,26 @@ pub fn scalar_mul_bin_twist_bls12_381(
         }
     }
     r
+}
+
+/// Scalar multiplication of a point by x
+///
+/// # Soundness
+/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The scalar is assumed to be in [0, r-1].
+pub fn scalar_mul_by_abs_x_complete_twist_bls12_381(
+    p: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    if eq(p, &G2_IDENTITY) {
+        return G2_IDENTITY;
+    }
+
+    scalar_mul_by_abs_x_twist_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// Scalar multiplication of a non-zero point by x

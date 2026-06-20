@@ -181,6 +181,7 @@ pub fn is_on_subgroup_bls12_381(
     // p in subgroup iff:
     //          ((x²-1)/3)(2·σ(P) - P - σ²(P)) == σ²(P)
     // where σ(x,y) = (ɣ·x,y)
+    // Notice that σ(P),σ²(P) = 𝒪 <==> P = 𝒪
 
     // Compute σ(P), σ²(P)
     let sigma1 = sigma_endomorphism_bls12_381(
@@ -200,25 +201,25 @@ pub fn is_on_subgroup_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    lhs = sub_bls12_381(
+    lhs = sub_complete_bls12_381(
         &lhs,
         p,
         #[cfg(feature = "hints")]
         hints,
     );
-    lhs = sub_bls12_381(
+    lhs = sub_complete_bls12_381(
         &lhs,
         &rhs,
         #[cfg(feature = "hints")]
         hints,
     );
-    lhs = scalar_mul_by_x2div3_bls12_381(
+    lhs = scalar_mul_by_x2div3_complete_bls12_381(
         &lhs,
         #[cfg(feature = "hints")]
         hints,
     );
 
-    eq(&lhs, &rhs) || eq(p, &G1_IDENTITY)
+    eq(&lhs, &rhs)
 }
 
 /// Compute the sigma endomorphism σ of a non-zero point `p`, defined as:
@@ -412,6 +413,34 @@ pub(crate) fn dbl_bls12_381(
     result
 }
 
+/// Subtraction of two points `p1` and `p2` on the BLS12-381 curve
+///
+/// # Soundness
+/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn sub_complete_bls12_381(
+    p1: &[u64; 12],
+    p2: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
+    // Handle identity cases
+    if eq(p1, &G1_IDENTITY) {
+        return neg_bls12_381(
+            p2,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+    } else if eq(p2, &G1_IDENTITY) {
+        return *p1;
+    }
+
+    sub_bls12_381(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
 /// Subtraction of two non-zero points `p1` and `p2` on the BLS12-381 curve
 ///
 /// # Soundness
@@ -439,43 +468,6 @@ pub fn sub_bls12_381(
     add_bls12_381(
         p1,
         &p2_neg,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-}
-
-/// Subtraction of two points `p1` and `p2` on the BLS12-381 curve
-///
-/// # Soundness
-/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
-pub fn sub_complete_bls12_381(
-    p1: &[u64; 12],
-    p2: &[u64; 12],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 12] {
-    let p1_is_inf = *p1 == G1_IDENTITY;
-    let p2_is_inf = *p2 == G1_IDENTITY;
-
-    // Handle identity cases
-    if p1_is_inf && p2_is_inf {
-        // O - O = O
-        return G1_IDENTITY;
-    } else if p1_is_inf {
-        // O - P2 = -P2
-        return neg_bls12_381(
-            p2,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-    } else if p2_is_inf {
-        // P1 - O = P1
-        return *p1;
-    }
-
-    // Perform regular subtraction: P1 - P2 = P1 + (-P2)
-    sub_bls12_381(
-        p1,
-        p2,
         #[cfg(feature = "hints")]
         hints,
     )
@@ -630,6 +622,25 @@ pub fn scalar_mul_bin_bls12_381(
     result[0..6].copy_from_slice(&r.x);
     result[6..12].copy_from_slice(&r.y);
     result
+}
+
+/// Scalar multiplication of a point by (x²-1)/3
+///
+/// # Soundness
+/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn scalar_mul_by_x2div3_complete_bls12_381(
+    p: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
+    if eq(p, &G1_IDENTITY) {
+        return G1_IDENTITY;
+    }
+
+    scalar_mul_by_x2div3_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// Scalar multiplication of a non-zero point by (x²-1)/3
@@ -865,7 +876,7 @@ pub unsafe extern "C" fn add_bls12_381_c(
 ///
 /// ### Safety
 /// - `a` must point to a valid `[u8; 96]` for the first input point
-/// - `b` must point to a valid `[u8; 96]` for the second input point  
+/// - `b` must point to a valid `[u8; 96]` for the second input point
 /// - `ret` must point to a valid `[u8; 96]` for the output
 ///
 /// Returns:
