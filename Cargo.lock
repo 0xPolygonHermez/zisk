@@ -3235,7 +3235,6 @@ name = "mem-planner-cpp"
 version = "1.0.0-beta"
 dependencies = [
  "mem-common",
- "proofman-common",
  "proofman-util",
  "tracing",
  "zisk-common",
@@ -3832,8 +3831,6 @@ name = "pil-std-lib"
 version = "1.0.0-beta"
 dependencies = [
  "colored",
- "num-bigint",
- "num-traits",
  "proofman-common",
  "proofman-fields",
  "proofman-hints",
@@ -3858,7 +3855,6 @@ dependencies = [
  "proofman-common",
  "proofman-fields",
  "proofman-starks-lib-c",
- "proofman-util",
  "prost 0.13.5",
  "rayon",
  "rug",
@@ -4010,7 +4006,6 @@ dependencies = [
  "zisk-common",
  "zisk-core",
  "zisk-pil",
- "ziskemu",
 ]
 
 [[package]]
@@ -4294,7 +4289,6 @@ dependencies = [
  "csv",
  "libloading",
  "mpi",
- "num-bigint",
  "num-traits",
  "pil-std-lib",
  "proofman-common",
@@ -4309,7 +4303,6 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
- "tokio",
  "tokio-util",
  "tracing",
 ]
@@ -4318,14 +4311,12 @@ dependencies = [
 name = "proofman-common"
 version = "1.0.0-beta"
 dependencies = [
- "bincode",
  "borsh",
  "colored",
  "crossbeam-channel",
  "crossbeam-queue",
  "csv",
  "env",
- "lazy_static",
  "libc",
  "libloading",
  "mpi",
@@ -4348,8 +4339,6 @@ dependencies = [
 name = "proofman-curves"
 version = "1.0.0-beta"
 dependencies = [
- "num-bigint",
- "num-traits",
  "proofman-fields",
 ]
 
@@ -4371,7 +4360,6 @@ dependencies = [
  "proofman-common",
  "proofman-fields",
  "proofman-starks-lib-c",
- "proofman-util",
  "tracing",
 ]
 
@@ -4390,7 +4378,6 @@ version = "1.0.0-beta"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
- "tracing",
 ]
 
 [[package]]
@@ -4401,9 +4388,7 @@ version = "1.0.0-beta"
 name = "proofman-util"
 version = "1.0.0-beta"
 dependencies = [
- "bincode",
  "colored",
- "serde",
  "sysinfo 0.35.2",
 ]
 
@@ -4423,13 +4408,9 @@ dependencies = [
 name = "proofman-witness"
 version = "1.0.0-beta"
 dependencies = [
- "colored",
  "libloading",
  "proofman-common",
  "proofman-fields",
- "proofman-util",
- "serde_json",
- "tracing",
 ]
 
 [[package]]
@@ -5748,7 +5729,6 @@ name = "stark-recurser"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "indexmap",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -7672,7 +7652,6 @@ name = "zisk-core"
 version = "1.0.0-beta"
 dependencies = [
  "elf",
- "lib-c",
  "lib-float",
  "paste",
  "precompiles-helpers",

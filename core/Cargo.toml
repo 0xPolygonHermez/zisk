@@ -18,7 +18,6 @@ path = "src/bin/riscv2zisk.rs"
 
 [dependencies]
 precompiles-helpers = { workspace = true }
-lib-c = { workspace = true }
 ziskos = { workspace = true }
 zisk-riscv = { workspace = true }
 rayon = { workspace = true }
