@@ -97,9 +97,8 @@ impl Rvd {
                             0b011000000010 => return ("I", "cpopw", 2),
                             _ => {}
                         }
-                        match (inst >> 26) & 0x3F {
-                            2 => return ("I", "slli.uw", 2),
-                            _ => {}
+                        if (inst >> 26) & 0x3F == 2 {
+                            return ("I", "slli.uw", 2);
                         }
                         match (inst >> 25) & 0x7F {
                             0 => ("I", "slliw", 2),
@@ -291,9 +290,8 @@ impl Rvd {
                         }
                     }
                     4 => {
-                        match (inst >> 20) & 0xFFF {
-                            0b000010000000 => return ("R", "zext.h", 2),
-                            _ => {}
+                        if (inst >> 20) & 0xFFF == 0b000010000000 {
+                            return ("R", "zext.h", 2);
                         }
                         match (inst >> 25) & 0x7F {
                             1 => ("R", "divw", 2),
