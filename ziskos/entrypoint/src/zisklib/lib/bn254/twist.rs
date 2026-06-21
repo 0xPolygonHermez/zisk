@@ -101,7 +101,7 @@ pub fn is_on_curve_twist_bn254(
 /// Check if a point `p` is on the BN254 twist subgroup
 ///
 /// # Soundness
-/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn is_on_subgroup_twist_bn254(
     p: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -433,7 +433,7 @@ pub fn dbl_twist_bn254(p: &[u64; 16], #[cfg(feature = "hints")] hints: &mut Vec<
 /// Scalar multiplication of a point by x
 ///
 /// # Soundness
-/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn scalar_mul_by_x_complete_twist_bn254(
     p: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,

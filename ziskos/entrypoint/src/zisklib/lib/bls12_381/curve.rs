@@ -173,7 +173,7 @@ pub fn is_on_curve_bls12_381(
 /// Check if a point `p` is on the BLS12-381 subgroup
 ///
 /// # Soundness
-/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn is_on_subgroup_bls12_381(
     p: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -242,6 +242,29 @@ pub fn sigma_endomorphism_bls12_381(
     result[0..6].copy_from_slice(&x);
     result[6..12].copy_from_slice(&y);
     result
+}
+
+/// Adds two points `p1` and `p2` on the BLS12-381 curve
+///
+/// # Soundness
+/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn add_complete_bls12_381(
+    p1: &[u64; 12],
+    p2: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
+    if eq(p1, &G1_IDENTITY) {
+        return *p2;
+    } else if eq(p2, &G1_IDENTITY) {
+        return *p1;
+    }
+
+    add_bls12_381(
+        p1,
+        p2,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// Adds two non-zero points `p1` and `p2` on the BLS12-381 curve
@@ -391,6 +414,26 @@ pub fn neg_bls12_381(p: &[u64; 12], #[cfg(feature = "hints")] hints: &mut Vec<u6
     result
 }
 
+/// Doubling of a point `p` on the BLS12-381 curve
+///
+/// # Soundness
+/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn dbl_complete_bls12_381(
+    p: &[u64; 12],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
+    // Handle identity case
+    if eq(p, &G1_IDENTITY) {
+        return G1_IDENTITY;
+    }
+
+    dbl_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
 /// Doubling of a non-zero point `p` on the BLS12-381 curve
 ///
 /// # Soundness
@@ -471,6 +514,113 @@ pub fn sub_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     )
+}
+
+/// Multiplies a point `p` on the BLS12-381 curve by a scalar `k` on the BLS12-381 scalar field
+///
+/// # Soundness
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
+pub fn scalar_mul_complete_bls12_381(
+    p: &[u64; 12],
+    k: &[u64; 4],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 12] {
+    // Handle identity case
+    if eq(p, &G1_IDENTITY) {
+        return G1_IDENTITY;
+    }
+
+    // Reduce the scalar
+    let k = reduce_fr_bls12_381(
+        k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    // Direct cases: k = 0, k = 1, k = 2
+    if is_zero(&k) {
+        // Return 𝒪
+        return G1_IDENTITY;
+    } else if is_one(&k) {
+        // Return p
+        return *p;
+    } else if is_two(&k) {
+        // Return 2p
+        return dbl_bls12_381(
+            p,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+    }
+
+    // We can assume k > 2 from now on
+    // Hint the length the binary representations of k
+    // We will verify the output by recomposing k
+    // Moreover, we should check that the first received bit is 1
+    let (max_limb, max_bit) = fcall_msb_pos_256(
+        &k,
+        #[cfg(feature = "hints")]
+        hints,
+    );
+
+    // Bound before use as index/shift
+    assert!(max_limb < 4 && max_bit < 64, "msb_pos hint out of range");
+
+    // Perform the loop, based on the binary representation of k
+
+    // We do the first iteration separately
+    let max_limb = max_limb as usize;
+    let max_bit = max_bit as usize;
+
+    // The first received bit should be 1
+    assert_eq!((k[max_limb] >> max_bit) & 1, 1, "The most significant bit of the scalar must be 1");
+
+    // Start at P
+    let mut k_rec = [0u64; 4];
+    k_rec[max_limb] |= 1 << max_bit;
+
+    // Determine starting limb/bit for the loop
+    let mut limb = max_limb;
+    let mut bit = if max_bit == 0 {
+        // If max_bit is 0 then limb > 0; otherwise k = 1, which is excluded here
+        limb -= 1;
+        63
+    } else {
+        max_bit - 1
+    };
+
+    // Perform the rest of the loop
+    let mut q: [u64; 12] = *p;
+    for i in (0..=limb).rev() {
+        for j in (0..=bit).rev() {
+            // Always double
+            q = dbl_complete_bls12_381(
+                &q,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+
+            // Get the next bit b of k.
+            // If b == 1, we should add P to Q, otherwise start the next iteration
+            if ((k[i] >> j) & 1) == 1 {
+                q = add_complete_bls12_381(
+                    &q,
+                    p,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
+
+                // Reconstruct k
+                k_rec[i] |= 1 << j;
+            }
+        }
+        bit = 63;
+    }
+
+    // Check that the reconstructed k is equal to the input k
+    assert!(eq(&k, &k_rec), "Reconstructed scalar does not match input scalar");
+
+    q
 }
 
 /// Multiplies a non-zero point `p` on the BLS12-381 curve by a scalar `k` on the BLS12-381 scalar field
@@ -627,7 +777,7 @@ pub fn scalar_mul_bin_bls12_381(
 /// Scalar multiplication of a point by (x²-1)/3
 ///
 /// # Soundness
-/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn scalar_mul_by_x2div3_complete_bls12_381(
     p: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
