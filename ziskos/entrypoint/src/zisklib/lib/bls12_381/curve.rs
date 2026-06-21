@@ -12,7 +12,7 @@ use crate::{
 };
 
 use super::{
-    constants::{E_B, G1_IDENTITY, GAMMA, P},
+    constants::{E_B, G1_IDENTITY, GAMMA, P, X2DIV3_BIN_BE},
     fp::{
         add_fp_bls12_381, mul_fp_bls12_381, neg_fp_bls12_381, sqrt_fp_bls12_381,
         square_fp_bls12_381,
@@ -181,7 +181,10 @@ pub fn is_on_subgroup_bls12_381(
     // p in subgroup iff:
     //          ((x²-1)/3)(2·σ(P) - P - σ²(P)) == σ²(P)
     // where σ(x,y) = (ɣ·x,y)
-    // Notice that σ(P),σ²(P) = 𝒪 <==> P = 𝒪
+    //
+    // Notice that the σ-fixed points are those with the
+    // x-coordinate equal to 0, e.g. P = (0, 2) or P = 𝒪
+    // In such case, (2·σ(P) - P - σ²(P)) = 𝒪
 
     // Compute σ(P), σ²(P)
     let sigma1 = sigma_endomorphism_bls12_381(
@@ -196,7 +199,7 @@ pub fn is_on_subgroup_bls12_381(
     );
 
     // Compute lhs = ((x²-1)/3)(2·σ(P) - P - σ²(P))
-    let mut lhs = dbl_bls12_381(
+    let mut lhs = dbl_complete_bls12_381(
         &sigma1,
         #[cfg(feature = "hints")]
         hints,
@@ -247,7 +250,7 @@ pub fn sigma_endomorphism_bls12_381(
 /// Adds two points `p1` and `p2` on the BLS12-381 curve
 ///
 /// # Soundness
-/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// Both points must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn add_complete_bls12_381(
     p1: &[u64; 12],
     p2: &[u64; 12],
@@ -417,7 +420,7 @@ pub fn neg_bls12_381(p: &[u64; 12], #[cfg(feature = "hints")] hints: &mut Vec<u6
 /// Doubling of a point `p` on the BLS12-381 curve
 ///
 /// # Soundness
-/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn dbl_complete_bls12_381(
     p: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -459,7 +462,7 @@ pub(crate) fn dbl_bls12_381(
 /// Subtraction of two points `p1` and `p2` on the BLS12-381 curve
 ///
 /// # Soundness
-/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// Both points must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn sub_complete_bls12_381(
     p1: &[u64; 12],
     p2: &[u64; 12],
@@ -733,47 +736,6 @@ pub fn scalar_mul_bls12_381(
     result
 }
 
-/// Scalar multiplication of a non-zero point `p` by a binary scalar `k`
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates
-/// (`x, y < p`).
-/// The scalar is assumed to be in [0, r-1].
-pub fn scalar_mul_bin_bls12_381(
-    p: &[u64; 12],
-    k: &[u8],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 12] {
-    debug_assert!(!k.is_empty(), "Scalar must not be empty");
-    debug_assert!(k.len() <= 256, "Scalar must be at most 256 bits");
-
-    let x1: [u64; 6] = p[0..6].try_into().unwrap();
-    let y1: [u64; 6] = p[6..12].try_into().unwrap();
-    let p = SyscallPoint384 { x: x1, y: y1 };
-
-    let mut r = SyscallPoint384 { x: x1, y: y1 };
-    for &bit in k.iter().skip(1) {
-        syscall_bls12_381_curve_dbl(
-            &mut r,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        if bit == 1 {
-            let mut params = SyscallBls12_381CurveAddParams { p1: &mut r, p2: &p };
-            syscall_bls12_381_curve_add(
-                &mut params,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-        }
-    }
-
-    let mut result = [0u64; 12];
-    result[0..6].copy_from_slice(&r.x);
-    result[6..12].copy_from_slice(&r.y);
-    result
-}
-
 /// Scalar multiplication of a point by (x²-1)/3
 ///
 /// # Soundness
@@ -782,41 +744,29 @@ pub fn scalar_mul_by_x2div3_complete_bls12_381(
     p: &[u64; 12],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 12] {
+    // Handle identity case
     if eq(p, &G1_IDENTITY) {
         return G1_IDENTITY;
     }
 
-    scalar_mul_by_x2div3_bls12_381(
-        p,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-}
-
-/// Scalar multiplication of a non-zero point by (x²-1)/3
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates
-/// (`x, y < p`).
-pub fn scalar_mul_by_x2div3_bls12_381(
-    p: &[u64; 12],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 12] {
-    /// Family parameter (X²-1)/3
-    const X2DIV3_BIN_BE: [u8; 126] = [
-        1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1,
-        0, 1, 0, 1, 0, 1,
-    ];
-
-    scalar_mul_bin_bls12_381(
-        p,
-        &X2DIV3_BIN_BE,
-        #[cfg(feature = "hints")]
-        hints,
-    )
+    // Start at p
+    let mut r = *p;
+    for &bit in X2DIV3_BIN_BE.iter().skip(1) {
+        r = dbl_complete_bls12_381(
+            &r,
+            #[cfg(feature = "hints")]
+            hints,
+        );
+        if bit == 1 {
+            r = add_complete_bls12_381(
+                &r,
+                p,
+                #[cfg(feature = "hints")]
+                hints,
+            );
+        }
+    }
+    r
 }
 
 /// Multi-Scalar Multiplication (MSM) for BLS12-381 G1 points

@@ -3,7 +3,7 @@
 use crate::zisklib::{eq, is_one, is_zero};
 
 use super::{
-    constants::{ETWISTED_B, E_B, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13, G2_IDENTITY},
+    constants::{ETWISTED_B, E_B, FROBENIUS_GAMMA12, FROBENIUS_GAMMA13, G2_IDENTITY, X_BIN_BE},
     fp2::{
         add_fp2_bn254, conjugate_fp2_bn254, dbl_fp2_bn254, inv_fp2_bn254, mul_fp2_bn254,
         neg_fp2_bn254, scalar_mul_fp2_bn254, square_fp2_bn254, sub_fp2_bn254,
@@ -117,7 +117,7 @@ pub fn is_on_subgroup_twist_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    let x1p = add_twist_complete_bn254(
+    let x1p = add_complete_twist_bn254(
         p,
         &xp,
         #[cfg(feature = "hints")]
@@ -133,20 +133,20 @@ pub fn is_on_subgroup_twist_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut lhs = add_twist_complete_bn254(
+    let mut lhs = add_complete_twist_bn254(
         &x1p,
         &psi_one,
         #[cfg(feature = "hints")]
         hints,
     );
-    lhs = add_twist_complete_bn254(
+    lhs = add_complete_twist_bn254(
         &lhs,
         &psi_two,
         #[cfg(feature = "hints")]
         hints,
     );
 
-    let mut rhs = dbl_twist_bn254(
+    let mut rhs = dbl_complete_twist_bn254(
         &xp,
         #[cfg(feature = "hints")]
         hints,
@@ -213,7 +213,7 @@ pub fn utf_endomorphism_twist_bn254(
 ///
 /// # Soundness
 /// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
-pub fn add_twist_complete_bn254(
+pub fn add_complete_twist_bn254(
     p1: &[u64; 16],
     p2: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -348,6 +348,25 @@ pub fn neg_twist_bn254(p: &[u64; 16], #[cfg(feature = "hints")] hints: &mut Vec<
     ]
 }
 
+/// Doubling of a point
+///
+/// # Soundness
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
+pub fn dbl_complete_twist_bn254(
+    p: &[u64; 16],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 16] {
+    if eq(p, &G2_IDENTITY) {
+        return G2_IDENTITY;
+    }
+
+    dbl_twist_bn254(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
 /// Doubling of a non-zero point
 ///
 /// # Soundness
@@ -438,50 +457,29 @@ pub fn scalar_mul_by_x_complete_twist_bn254(
     p: &[u64; 16],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 16] {
+    // Handle identity case
     if eq(p, &G2_IDENTITY) {
         return G2_IDENTITY;
     }
 
-    scalar_mul_by_x_twist_bn254(
-        p,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-}
-
-/// Scalar multiplication of a non-zero point by x
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates
-/// (`x, y < p`).
-pub fn scalar_mul_by_x_twist_bn254(
-    p: &[u64; 16],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 16] {
-    // Binary representation of the exponent x = 4965661367192848881 in big-endian format
-    const X_BIN_BE: [u8; 63] = [
-        1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0,
-        0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0,
-        0, 0, 1,
-    ];
-
-    let mut q = *p;
+    // Start at p
+    let mut r = *p;
     for &bit in X_BIN_BE.iter().skip(1) {
-        q = dbl_twist_bn254(
-            &q,
+        r = dbl_complete_twist_bn254(
+            &r,
             #[cfg(feature = "hints")]
             hints,
         );
         if bit == 1 {
-            q = add_twist_bn254(
-                &q,
+            r = add_complete_twist_bn254(
+                &r,
                 p,
                 #[cfg(feature = "hints")]
                 hints,
             );
         }
     }
-    q
+    r
 }
 
 // ==================== C FFI Functions ====================

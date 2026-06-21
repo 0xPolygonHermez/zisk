@@ -974,22 +974,23 @@ pub fn scalar_mul_twist_bls12_381(
     q
 }
 
-/// Scalar multiplication of a point `p` by a binary scalar `k`
+/// Scalar multiplication of a point by x = 0xd201000000010000
 ///
 /// # Soundness
-/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 /// The scalar is assumed to be in [0, r-1].
-pub fn scalar_mul_bin_complete_twist_bls12_381(
+pub fn scalar_mul_by_abs_x_complete_twist_bls12_381(
     p: &[u64; 24],
-    k: &[u8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 24] {
+    // Handle identity case
     if eq(p, &G2_IDENTITY) {
         return G2_IDENTITY;
     }
 
+    // Start at p
     let mut r = *p;
-    for &bit in k.iter().skip(1) {
+    for &bit in X_ABS_BIN_BE.iter().skip(1) {
         r = dbl_complete_twist_bls12_381(
             &r,
             #[cfg(feature = "hints")]
@@ -1005,71 +1006,6 @@ pub fn scalar_mul_bin_complete_twist_bls12_381(
         }
     }
     r
-}
-
-/// Scalar multiplication of a non-zero point `p` by a binary scalar `k`
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates
-/// (`x, y < p`).
-/// The scalar is assumed to be in [0, r-1].
-pub fn scalar_mul_bin_twist_bls12_381(
-    p: &[u64; 24],
-    k: &[u8],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 24] {
-    let mut r = *p;
-    for &bit in k.iter().skip(1) {
-        r = dbl_twist_bls12_381(
-            &r,
-            #[cfg(feature = "hints")]
-            hints,
-        );
-        if bit == 1 {
-            r = add_twist_bls12_381(
-                &r,
-                p,
-                #[cfg(feature = "hints")]
-                hints,
-            );
-        }
-    }
-    r
-}
-
-/// Scalar multiplication of a point by x
-///
-/// # Soundness
-/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
-/// The scalar is assumed to be in [0, r-1].
-pub fn scalar_mul_by_abs_x_complete_twist_bls12_381(
-    p: &[u64; 24],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 24] {
-    scalar_mul_bin_complete_twist_bls12_381(
-        p,
-        &X_ABS_BIN_BE,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-}
-
-/// Scalar multiplication of a non-zero point by x
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates
-/// (`x, y < p`).
-/// The scalar is assumed to be in [0, r-1].
-pub fn scalar_mul_by_abs_x_twist_bls12_381(
-    p: &[u64; 24],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 24] {
-    scalar_mul_bin_twist_bls12_381(
-        p,
-        &X_ABS_BIN_BE,
-        #[cfg(feature = "hints")]
-        hints,
-    )
 }
 
 /// Multi-Scalar Multiplication (MSM) for BLS12-381 G2 points
