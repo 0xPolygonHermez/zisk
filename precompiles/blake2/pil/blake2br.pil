@@ -210,8 +210,22 @@ airtemplate Blake2br(const int N = 2**20) {
     const expr perm_active_expr = clock_set(in_use, start: 0, end: CLOCKS - NUM_G_FUNCTIONS, step: 2, skip: 1);
     perm_active <== perm_active_expr;
 
-    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX, m[0], m[1]], sel: perm_active, sel_is_binary: 1);
-    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [sigma_idx, ms[0], ms[1]], sel: perm_active, sel_is_binary: 1);
+    // Clocks where perm_active == 1
+    const int MSG_CLOCKS[16] = [0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 15, 16, 18, 19, 21, 22];
+
+    // Operation step and address
+    col witness bits(40) step_addr;
+
+    const int STEP_MAIN = 0;
+    const int ADDR_OP = STEP_MAIN + 1;
+
+    // Per-call discriminator
+    col witness bits(40) op_step;
+    const expr op_step_expr = clock_shift_with_seq(step_addr, STEP_MAIN, seq: MSG_CLOCKS);
+    op_step <== op_step_expr;
+
+    permutation_assumes(opid: BLAKE2BR_PERMUTATION_ID, expressions: [MSG_IDX + 16 * op_step, m[0], m[1]], sel: perm_active, sel_is_binary: 1);
+    permutation_proves(opid: BLAKE2BR_PERMUTATION_ID, expressions: [sigma_idx + 16 * op_step, ms[0], ms[1]], sel: perm_active, sel_is_binary: 1);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // G-FUNCTION STATE VARIABLES
@@ -373,10 +387,6 @@ airtemplate Blake2br(const int N = 2**20) {
     //   - addr_input is read from addr_op + 16
     //   - Both must match the actual memory addresses used
 
-    col witness bits(40) step_addr;
-
-    const int STEP_MAIN = 0;
-    const int ADDR_OP = STEP_MAIN + 1;
     const int ADDR_STATE = ADDR_OP + 1;
     const int ADDR_INPUT = ADDR_STATE + 1;
     const int ADDR_IND_0 = ADDR_INPUT + 1;
