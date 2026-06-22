@@ -5,7 +5,7 @@
 //! sink, so no `ProofCtx`/`SetupCtx`/`Std` is required. It is the before/after
 //! harness for the typed-args decode optimization.
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use std::hint::black_box;
 use std::sync::Arc;
 
@@ -38,16 +38,18 @@ fn bench_process_data(c: &mut Criterion) {
     let witness = Arc::new(NoopRangeChecker);
 
     c.bench_function("binary_basic_collector_process_data", |b| {
-        b.iter(|| {
+        b.iter_batched(
             // `with_adds = true`, `force_execute_to_end = true` so every payload
             // is processed (no early stop on completion).
-            let mut collector =
-                BinaryBasicCollector::new(N, CollectSkipper::new(0), true, true, witness.clone());
-            for payload in &payloads {
-                black_box(collector.process_data(&OPERATION_BUS_ID, black_box(&payload[..])));
-            }
-            black_box(collector.inputs.len())
-        });
+            || BinaryBasicCollector::new(N, CollectSkipper::new(0), true, true, witness.clone()),
+            |mut collector| {
+                for payload in &payloads {
+                    black_box(collector.process_data(&OPERATION_BUS_ID, black_box(&payload[..])));
+                }
+                black_box(collector.inputs.len())
+            },
+            BatchSize::PerIteration,
+        );
     });
 }
 
