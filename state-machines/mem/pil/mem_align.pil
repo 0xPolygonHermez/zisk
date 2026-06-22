@@ -178,12 +178,12 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     // Width should be 8 in aligned memory accesses, but this is ensured by the rom
 
     // On assume rows, we reconstruct the value from the registers directly
-    expr assume_val[RC];
+    expr aligned_val[RC];
     for (int rc_index = 0; rc_index < RC; rc_index++) {
-        assume_val[rc_index] = 0;
+        aligned_val[rc_index] = 0;
         int base = 1;
         for (int _offset = 0; _offset < CHUNKS_BY_RC; _offset++) {
-            assume_val[rc_index] += reg[_offset + rc_index * CHUNKS_BY_RC] * base;
+            aligned_val[rc_index] += reg[_offset + rc_index * CHUNKS_BY_RC] * base;
             base *= 256;
         }
     }
@@ -191,9 +191,9 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     // 3] Prove unaligned memory accesses against the Main component
 
     // On prove rows, we reconstruct the value in the correct manner chosen by the selectors
-    expr prove_val[RC];
+    expr non_aligned_val[RC];
     for (int rc_index = 0; rc_index < RC; rc_index++) {
-        prove_val[rc_index] = 0;
+        non_aligned_val[rc_index] = 0;
     }
     for (int _offset = 0; _offset < CHUNK_NUM; _offset++) {
         for (int rc_index = 0; rc_index < RC; rc_index++) {
@@ -203,14 +203,14 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
                 _tmp += reg[(_offset + rc_index * CHUNKS_BY_RC + ichunk) % CHUNK_NUM] * base;
                 base *= 256;
             }
-            prove_val[rc_index] += sel[_offset] * _tmp;
+            non_aligned_val[rc_index] += sel[_offset] * _tmp;
         }
     }
 
     // We prove and assume with the same permutation check but with disjoint and different sign selectors
     col witness bits(32) value[RC];
     for (int i = 0; i < RC; i++) {
-        value[i] === is_aligned_op * (assume_val[i] - prove_val[i]) + prove_val[i];
+        value[i] === is_non_aligned_op * non_aligned_val[i] + is_aligned_op * aligned_val[i];
     }
     permutation(MEMORY_ID, expressions: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...value], sel: is_non_aligned_op - is_aligned_op, sel_is_ternary: 1);
 }
