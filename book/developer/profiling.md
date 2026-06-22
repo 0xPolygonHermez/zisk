@@ -224,7 +224,7 @@ The cost is broken down into these categories:
 
 These frequent operations are analyzed, detected, and **pre-calculated**, becoming part of the BASE cost but representing significant savings. In this example, FROPS show 8.42% - this is the cost the program would have if these optimizations were not applied. The actual savings are already reflected in the lower costs of the affected operations.
 
-**RAM USAGE**: The amount of memory used out of the total available. This information is **only available with the default allocator (bump allocator)**, which:
+**RAM USAGE**: The highest address any allocation has reached. The default allocator is bump allocator, which:
 - Never frees memory - always allocates new memory
 - Avoids the CPU cycles needed to manage the entire heap (typically >10% overhead)
 - Is recommended as long as sufficient memory is available

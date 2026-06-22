@@ -13,10 +13,10 @@ unsafe impl DlAllocator for ZiskSystem {
     fn alloc(&self, size: usize) -> (*mut u8, usize, u32) {
         unsafe {
             // Return a block from your reserved heap
-            let ptr = BUMP_PTR;
+            let ptr = super::HEAP_POS;
             let aligned = (ptr + 7) & !7;
-            BUMP_PTR = aligned + size;
-            if BUMP_PTR > BUMP_END {
+            super::HEAP_POS = aligned + size;
+            if super::HEAP_POS > super::HEAP_TOP {
                 return (core::ptr::null_mut(), 0, 0);
             }
             (aligned as *mut u8, size, 0)
@@ -48,9 +48,6 @@ unsafe impl DlAllocator for ZiskSystem {
     }
 }
 
-static mut BUMP_PTR: usize = 0;
-static mut BUMP_END: usize = 0;
-
 static mut DLMALLOC: Dlmalloc<ZiskSystem> = Dlmalloc::new_with_allocator(ZiskSystem);
 
 struct Allocator;
@@ -78,9 +75,7 @@ unsafe impl core::alloc::GlobalAlloc for Allocator {
 
 pub fn init() {
     unsafe {
-        let heap_start = &_kernel_heap_bottom as *const u8 as usize;
-        let heap_end = &_kernel_heap_top as *const u8 as usize;
-        BUMP_PTR = heap_start;
-        BUMP_END = heap_end;
+        super::HEAP_POS = &_kernel_heap_bottom as *const u8 as usize;
+        super::HEAP_TOP = &_kernel_heap_top as *const u8 as usize;
     }
 }
