@@ -15,7 +15,7 @@ use ziskos::zisklib::fcall_proxy;
 use crate::{
     blake2br, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
     ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST, ARITHAM32_COST,
-    ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST,
+    ARITH_EQ_384_COST, ARITH_EQ_COST, BABYJUBJUB_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST,
     DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST,
     DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST,
     INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST,
@@ -66,6 +66,7 @@ pub enum OpType {
     Dma,
     Blake2,
     Profile,
+    BabyJubJub,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -87,6 +88,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Dma => ZiskOperationType::Dma,
             OpType::Blake2 => ZiskOperationType::Blake2,
             OpType::Profile => ZiskOperationType::Profile,
+            OpType::BabyJubJub => ZiskOperationType::BabyJubJub,
         }
     }
 }
@@ -112,6 +114,7 @@ impl Display for OpType {
             Self::Dma => write!(f, "Dma"),
             Self::Blake2 => write!(f, "Blake2"),
             Self::Profile => write!(f, "Profile"),
+            Self::BabyJubJub => write!(f, "BabyJubJub"),
         }
     }
 }
@@ -138,6 +141,7 @@ impl FromStr for OpType {
             "dma" => Ok(Self::Dma),
             "bl" => Ok(Self::Blake2),
             "profile" => Ok(Self::Profile),
+            "babyjubjub" => Ok(Self::BabyJubJub),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -517,6 +521,7 @@ define_ops! {
     (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, 96, opc_bls12_381_complex_sub, op_bls12_381_complex_sub, ops_bls12_381_complex_sub),
     (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, 96, opc_bls12_381_complex_mul, op_bls12_381_complex_mul, ops_bls12_381_complex_mul),
     (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
+    (BabyJubJubAdd, "babyjubjub_add", BabyJubJub, BABYJUBJUB_COST, 0xee, 144, 64, opc_babyjubjub_add, op_babyjubjub_add, ops_babyjubjub_add),
     (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_none),
     (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
@@ -1435,6 +1440,46 @@ pub fn op_bn254_curve_add(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn ops_bn254_curve_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
+pub fn opc_babyjubjub_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "babyjubjub_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
+
+        let p1: &[u64; 8] = p1.try_into().expect("opc_babyjubjub_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_babyjubjub_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
+
+        zisk_precomp_helpers::babyjubjub_add(p1, p2, &mut p3);
+
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  BabyJubJubAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_babyjubjub_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_babyjubjub_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_babyjubjub_add(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 

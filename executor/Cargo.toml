@@ -43,6 +43,7 @@ zisk-precomp-blake2 = { workspace = true }
 zisk-precomp-arith-eq = { workspace = true }
 zisk-precomp-arith-eq-384 = { workspace = true }
 zisk-precomp-big-int = { workspace = true }
+zisk-precomp-babyjubjub = { workspace = true }
 zisk-precomp-dma = { workspace = true }
 zisk-precomp-evm = { workspace = true }
 

@@ -1,0 +1,416 @@
+require "std_lookup.pil"
+require "std_range_check.pil"
+require "operations.pil"
+require "opids.pil"
+require "babyjubjub_lt_table.pil"
+
+// BabyJubJub (twisted Edwards) complete point addition, circom/circomlib compatible.
+//
+// Curve:  a*x^2 + y^2 = 1 + d*x^2*y^2   over Fr = BN254 scalar field
+//         a = 168700, d = 168696
+//         p = 0x30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F0000001
+//
+// Addition law (complete — same formula doubles, no exceptional cases for valid points):
+//         tau = x1*x2*y1*y2
+//         x3 = (x1*y2 + y1*x2) / (1 + d*tau)
+//         y3 = (y1*y2 - a*x1*x2) / (1 - d*tau)
+//
+// Decomposed into 7 flat degree-<=2 polynomial identities over 16x16-bit chunks with carries
+// (the arith_eq model). Five scratch values A, B, Nx, T, DT keep every quotient ~2^254 so all
+// share a uniform 16-chunk layout:
+//
+//   EQ_A  : x1*x2          - A  - p*qa  + p*offset  ==> A  = x1*x2 mod p
+//   EQ_B  : y1*y2          - B  - p*qb  + p*offset  ==> B  = y1*y2 mod p
+//   EQ_N  : x1*y2 + y1*x2  - Nx - p*qn  + p*offset  ==> Nx = x1*y2 + y1*x2 mod p
+//   EQ_T  : A*B            - T  - p*qt  + p*offset  ==> T  = A*B mod p   (= tau)
+//   EQ_DT : d*T            - DT - p*qdt + p*offset  ==> DT = d*T mod p
+//   EQ_X3 : x3 + x3*DT - Nx     - p*qx  + p*offset  ==> x3*(1 + DT) = Nx       mod p
+//   EQ_Y3 : y3 - y3*DT - B + a*A + p*qy - p*offset  ==> y3*(1 - DT) = B - a*A  mod p
+//
+// Only x3,y3 are pinned alias-free (< p) via the LT table; the scratch values are merely
+// constrained to 16-bit chunks (their reductions are not unique, but the mod-p chain plus the
+// alias-free outputs make the committed result unambiguous).
+//
+// SOUNDNESS NOTE — why no explicit "1 +- d*tau != 0" inverse gate is needed.
+//   EQ_X3/EQ_Y3 are written in multiply-through form (x3*(1+DT) = Nx, y3*(1-DT) = B - a*A) rather
+//   than circomlib's x3 = Nx * inv(1+d*tau) with the gate inv*(1+d*tau) === 1. A multiply-through
+//   identity uniquely pins the output UNLESS the multiplier (1 +- DT) is == 0 mod p AND the RHS is
+//   also == 0 (only then is the output free). We do NOT add an inverse gate because for THESE curve
+//   parameters that degenerate configuration is unreachable over all of Fr (on- or off-curve):
+//     * Freeing x3 needs 1+DT==0 and Nx==0 together. With s = x1*y2, t = x2*y1 we have Nx = s + t
+//       and tau = s*t, so Nx==0 and 1+d*tau==0 force s^2 == 1/d. d = 168696 is a quadratic
+//       NON-residue mod Fr, so 1/d has no square root => no such (x1,y1,x2,y2) exists.
+//     * Freeing y3 needs 1-DT==0 and B - a*A == 0 together, which force (x1*x2)^2 == 1/(a*d).
+//       a*d is a NON-residue mod Fr => no such inputs exist.
+//   (a = 168700 is a QR; d and a*d are non-residues mod Fr — exactly the twisted-Edwards
+//   complete-addition parameter choice.) Hence both denominators are effectively always invertible
+//   whenever the equations are satisfiable, and x3,y3 are uniquely determined for every Fr input.
+//   CAUTION: this argument is specific to these parameters. Reusing this AIR for a curve where d or
+//   a*d is a square WOULD require an explicit inverse/non-zero gate on the denominators.
+//   (Liveness aside: the honest executor divides by 1 +- d*tau and panics on inputs that make a
+//   denominator zero, so callers must pass valid in-field, on-curve points — see the syscall doc.)
+
+airtemplate BabyJubJub (const int N = 2**18) {
+
+    const int BABYJUBJUB_PRIME = 0x30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F0000001;
+
+    const int CLOCKS = 16;
+    col fixed CLK_0 = [1, 0:(CLOCKS-1)]...;
+    const expr LAST_CLK = CLK_0';
+
+    const int CHUNKS = CLOCKS;
+    const int CBC = 2;
+    const int CHUNK_BITS = 16;
+    const int CHUNK_SIZE = 2**CHUNK_BITS;
+    const int CHUNK_MAX = CHUNK_SIZE - 1;
+
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; ++i) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    const int Q_HSC_BITS = 22; // Number of bits for high safe chunk of q
+    const int Q_HSC_MAX = 2**Q_HSC_BITS-1;
+
+    const int CARRY_BITS = 22;
+    const int CARRY_MIN = -(2**CARRY_BITS - 1);
+    const int CARRY_MAX = 2**CARRY_BITS;
+
+    const int EQS = 7;      // Number of equations
+    const int OPS = 1;      // Number of operations
+    const int MAX_CEQS = 7; // Max concurrent equations (all run for the single add op)
+    const int QS = 7;       // Number of quotients
+
+    col witness bits(CHUNK_BITS) x1;
+    col witness bits(CHUNK_BITS) y1;
+    col witness bits(CHUNK_BITS) x2;
+    col witness bits(CHUNK_BITS) y2;
+    col witness bits(CHUNK_BITS) x3;
+    col witness bits(CHUNK_BITS) y3;
+    col witness bits(CHUNK_BITS) A;
+    col witness bits(CHUNK_BITS) B;
+    col witness bits(CHUNK_BITS) Nx;
+    col witness bits(CHUNK_BITS) T;
+    col witness bits(CHUNK_BITS) DT;
+    col witness bits(Q_HSC_BITS) qa;
+    col witness bits(Q_HSC_BITS) qb;
+    col witness bits(Q_HSC_BITS) qn;
+    col witness bits(Q_HSC_BITS) qt;
+    col witness bits(Q_HSC_BITS) qdt;
+    col witness bits(Q_HSC_BITS) qx;
+    col witness bits(Q_HSC_BITS) qy;
+    col witness bits(1) sel_op[OPS];
+
+    const expr sel_babyjubjub_add = sel_op[0];
+
+    const expr chunk_cols[11] = [x1, y1, x2, y2, x3, y3, A, B, Nx, T, DT];
+    const expr qs[QS] = [qa, qb, qn, qt, qdt, qx, qy];
+
+    include "equations/babyjubjub_a.pil"
+    include "equations/babyjubjub_b.pil"
+    include "equations/babyjubjub_n.pil"
+    include "equations/babyjubjub_t.pil"
+    include "equations/babyjubjub_dt.pil"
+    include "equations/babyjubjub_x3.pil"
+    include "equations/babyjubjub_y3.pil"
+
+    col witness bits(1) sel_op_clk0[OPS];
+
+    const expr babyjubjub_add_clk0 = sel_op_clk0[0];
+
+    expr sum_sel_op = 0;
+    expr sum_sel_op_clk0 = 0;
+    for (int i = 0; i < OPS; ++i) {
+        // binary constraint
+        sel_op_clk0[i] * (1 - sel_op_clk0[i]) === 0;
+        sel_op[i] * (1 - sel_op[i]) === 0;
+
+        // selector latch
+        (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
+
+        // only one selector could be enabled
+        sum_sel_op = sum_sel_op + sel_op[i];
+        sum_sel_op_clk0 = sum_sel_op_clk0 + sel_op_clk0[i];
+
+        // only could be one in CLK_0
+        (1 - CLK_0) * sel_op_clk0[i] === 0;
+
+        // clock of selector must be active if selector is active
+        CLK_0 * (sel_op[i] - sel_op_clk0[i]) === 0;
+    }
+
+    const expr in_use = sum_sel_op;
+    in_use * (1 - in_use) === 0;
+
+    const expr in_use_clk0 = sum_sel_op_clk0;
+    in_use_clk0 * (1 - in_use_clk0) === 0;
+
+    const expr eq[MAX_CEQS][CBC];
+
+    for (int i = 0; i < CBC; ++i) {
+        eq[0][i] = expr_group_by_cbc(babyjubjub_add_clk0, eq_babyjubjub_a_chunks, i);
+        eq[1][i] = expr_group_by_cbc(babyjubjub_add_clk0, eq_babyjubjub_b_chunks, i);
+        eq[2][i] = expr_group_by_cbc(babyjubjub_add_clk0, eq_babyjubjub_n_chunks, i);
+        eq[3][i] = expr_group_by_cbc(babyjubjub_add_clk0, eq_babyjubjub_t_chunks, i);
+        eq[4][i] = expr_group_by_cbc(babyjubjub_add_clk0, eq_babyjubjub_dt_chunks, i);
+        eq[5][i] = expr_group_by_cbc(babyjubjub_add_clk0, eq_babyjubjub_x3_chunks, i);
+        eq[6][i] = expr_group_by_cbc(babyjubjub_add_clk0, eq_babyjubjub_y3_chunks, i);
+    }
+
+    for (int i = 0; i < length(chunk_cols); ++i) {
+        range_check(min: 0, max: CHUNK_MAX, expression: chunk_cols[i]);
+        if (i < length(qs)) {
+            // range_sel = 1 => [0, CHUNK_MAX]
+            // range_sel = 0 => [0, Q_HSC_MAX]
+            multi_range_check(min1: 0, max1: CHUNK_MAX, min2: 0, max2: Q_HSC_MAX,
+                              range_sel: (1 - LAST_CLK), expression: qs[i]);
+        }
+    }
+
+    // FEATURE:
+    // Verify that the result coordinates are free of alias, i.e. that x3,y3 in [0, p-1].
+    // Strategy mirrors arith_eq: a per-chunk LT flag validated by the BabyJubJub LT table.
+
+    col witness bits(1) x3_lt;
+    col witness bits(1) y3_lt;
+
+    x3_lt * (1 - x3_lt) === 0;
+    y3_lt * (1 - y3_lt) === 0;
+
+    const expr lt_cte = clk_cte_selector(babyjubjub_add_clk0, BABYJUBJUB_PRIME);
+
+    col witness bits(64, signed) delta_x3;
+    col witness bits(64, signed) delta_y3;
+
+    delta_x3 <== x3 - lt_cte;
+    delta_y3 <== y3 - lt_cte;
+
+    // CLK_LT_SELECTOR
+    // 0 - middle clocks
+    // 1 - first clock
+    // 2 - last clock
+    const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
+    lookup_assumes(BABYJUBJUB_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: in_use);
+    lookup_assumes(BABYJUBJUB_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: in_use);
+
+    col witness bits(64, signed) carry[MAX_CEQS][CBC];
+
+    for (int i = 0; i < MAX_CEQS; ++i) {
+        carry[i][0] * CLK_0 === 0;
+        for (int j = 0; j < CBC; ++j) {
+            range_check(min: CARRY_MIN, max: CARRY_MAX, expression: carry[i][j]);
+            if (j == CBC - 1) {
+                // in last clock (CLK_0') carry belongs to next operation cycle
+                eq[i][j] + carry[i][j] === (1 - LAST_CLK) * carry[i][0]' * CHUNK_SIZE;
+            } else {
+                eq[i][j] + carry[i][j] === carry[i][j+1] * CHUNK_SIZE;
+            }
+        }
+    }
+
+    // step_addr column reused across clocks (see arith_eq.pil for the technique).
+    col witness bits(40) step_addr;
+
+    const int MAIN_STEP = 0;
+
+    // 2 reads   256-bit points  (x1||y1) and (x2||y2)  = 2 * 4 = 8 reads 64-bit (x col + y col)
+    // 1 write   256-bit point   (x3||y3)               = 1 * 4 = 4 writes 64-bit
+    // 2 indirect 64-bit pointers (p1_addr, p2_addr)    = 2 reads 64-bit
+    //
+    //            READ        WRITE   INDIRECT
+    // bjj_add    x1,y1,x2,y2  x3,y3  x1,y1,x2,y2   (result overwrites p1)
+
+    const int ADDR_OP = MAIN_STEP + 1;
+    const int ADDR_X1 = ADDR_OP + 1;
+    const int ADDR_Y1 = ADDR_X1 + 1;
+    const int ADDR_X2 = ADDR_X1 + 2;
+    const int ADDR_Y2 = ADDR_X1 + 3;
+    const int ADDR_X3 = ADDR_X1 + 4;
+    const int ADDR_Y3 = ADDR_X1 + 5;
+
+    const int ADDR_IND_0 = ADDR_Y3 + 1;
+    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+
+    // MEMORY ACCESS MAP
+    //
+    //  0  STEP     | R | ADDR_X1       x1[0..3]    | ADDR_Y1       y1[0..3]
+    //  1  STEP     | R | ADDR_X1 + 8   x1[4..7]    | ADDR_Y1 + 8   y1[4..7]
+    //  2  STEP     | R | ADDR_X1 + 16  x1[8..11]   | ADDR_Y1 + 16  y1[8..11]
+    //  3  STEP     | R | ADDR_X1 + 24  x1[12..15]  | ADDR_Y1 + 24  y1[12..15]
+    //  4  STEP     | R | ADDR_X2       x2[0..3]    | ADDR_Y2       y2[0..3]
+    //  5  STEP     | R | ADDR_X2 + 8   x2[4..7]    | ADDR_Y2 + 8   y2[4..7]
+    //  6  STEP     | R | ADDR_X2 + 16  x2[8..11]   | ADDR_Y2 + 16  y2[8..11]
+    //  7  STEP     | R | ADDR_X2 + 24  x2[12..15]  | ADDR_Y2 + 24  y2[12..15]
+    //  8  STEP + 1 | W | ADDR_X3       x3[0..3]    | ADDR_Y3       y3[0..3]
+    //  9  STEP + 1 | W | ADDR_X3 + 8   x3[4..7]    | ADDR_Y3 + 8   y3[4..7]
+    // 10  STEP + 1 | W | ADDR_X3 + 16  x3[8..11]   | ADDR_Y3 + 16  y3[8..11]
+    // 11  STEP + 1 | W | ADDR_X3 + 24  x3[12..15]  | ADDR_Y3 + 24  y3[12..15]
+    // 12  STEP     | R | ADDR_OP + 0   ADDR_IND_0  | ADDR_OP + 8   ADDR_IND_1
+    // 13  ---
+    // 14  ---
+    // 15  ---
+
+    const expr use_x2 = in_use;
+    const expr use_y2 = in_use;
+    const expr use_y3 = in_use;
+    const expr use_ind_0 = in_use;
+    const expr use_ind_1 = in_use;
+
+    // [bjj_add] ADDR_X1 === ADDR_IND_0,  ADDR_Y1 === ADDR_IND_0 + 32
+    //           ADDR_X2 === ADDR_IND_1,  ADDR_Y2 === ADDR_IND_1 + 32
+    //           ADDR_X3 === ADDR_X1,     ADDR_Y3 === ADDR_Y1   (result overwrites p1)
+
+    in_use * clock_eq(step_addr, ADDR_X1, ADDR_IND_0) === 0;
+    in_use * clock_eq(step_addr, ADDR_Y1, ADDR_IND_0, 32) === 0;
+    in_use * clock_eq(step_addr, ADDR_X2, ADDR_IND_1) === 0;
+    in_use * clock_eq(step_addr, ADDR_Y2, ADDR_IND_1, 32) === 0;
+    in_use * clock_eq(step_addr, ADDR_X1, ADDR_X3) === 0;
+    in_use * clock_eq(step_addr, ADDR_Y1, ADDR_Y3) === 0;
+
+    const expr mem_addr[2];
+    mem_addr[0] = clock_map(step_addr, ADDR_X1, start: 0, end: 3, delta: 8) +
+                  clock_map(step_addr, ADDR_X2, start: 4, end: 7, delta: 8) +
+                  clock_map(step_addr, ADDR_X3, start: 8, end: 11, delta: 8) +
+                  clock_map(step_addr, ADDR_OP, start: 12, end: 12, delta: 16);
+
+    mem_addr[1] = clock_map(step_addr, ADDR_Y1, start: 0, end: 3, delta: 8) +
+                  clock_map(step_addr, ADDR_Y2, start: 4, end: 7, delta: 8) +
+                  clock_map(step_addr, ADDR_Y3, start: 8, end: 11, delta: 8) +
+                  clock_map(step_addr, ADDR_OP, start: 12, end: 12, delta: 16, offset: 8);
+
+    const expr main_step = clock_map(step_addr, MAIN_STEP, start: 0, end: 12);
+
+    const expr mem_is_write = CLK[8] + CLK[9] + CLK[10] + CLK[11];
+
+    const expr mem_value[2][2];
+
+    mem_value[0][0] =   map_chunks_to_m32(x1, start: 0, end: 3) +
+                        map_chunks_to_m32(x2, start: 4, end: 7) +
+                        map_chunks_to_m32(x3, start: 8, end: 11) +
+                        clock_map(step_addr, ADDR_IND_0, 12);
+
+    mem_value[0][1] =   map_chunks_to_m32(x1, index: 2, start:0, end: 3) +
+                        map_chunks_to_m32(x2, index: 2, start:4, end: 7) +
+                        map_chunks_to_m32(x3, index: 2, start:8, end: 11);
+                        // high bits of indirect addresses are 0.
+
+    mem_value[1][0] =   map_chunks_to_m32(y1, start: 0, end: 3) +
+                        map_chunks_to_m32(y2, start: 4, end: 7) +
+                        map_chunks_to_m32(y3, start: 8, end: 11) +
+                        clock_map(step_addr, ADDR_IND_1, 12);
+
+    mem_value[1][1] =   map_chunks_to_m32(y1, index: 2, start:0, end: 3) +
+                        map_chunks_to_m32(y2, index: 2, start:4, end: 7) +
+                        map_chunks_to_m32(y3, index: 2, start:8, end: 11);
+                        // high bits of indirect addresses are 0.
+
+    const expr mem_sel[2];
+
+    mem_sel[0] = clock_set(in_use, start:0, end: 3) +
+                 clock_set(use_x2, start:4, end: 7) +
+                 clock_set(in_use, start:8, end: 11) +
+                 clock_set(use_ind_0, 12);
+
+    mem_sel[1] = clock_set(in_use, start:0, end: 3) +
+                 clock_set(use_y2, start:4, end: 7) +
+                 clock_set(use_y3, start:8, end: 11) +
+                 clock_set(use_ind_1, 12);
+
+    precompiled_mem_op(
+            is_write: mem_is_write,
+            sel: mem_sel[0],
+            main_step: main_step,
+            addr: mem_addr[0],
+            value: mem_value[0]
+    );
+
+    precompiled_mem_op(
+            is_write: mem_is_write,
+            sel: mem_sel[1],
+            main_step: main_step,
+            addr: mem_addr[1],
+            value: mem_value[1]
+    );
+
+    const expr bus_op = sel_babyjubjub_add * OP_BABYJUBJUB_ADD;
+
+    proves_operation(op: bus_op, a:[0, 0], b:[step_addr'(ADDR_OP), 0], c:[0, 0], flag:0,
+                     main_step: step_addr'(MAIN_STEP), mul: in_use_clk0);
+
+    // selclk0 is the clock 0 dedicated to one operation
+    function expr_group_by_cbc(const expr selclk0, const expr chunks[], const int index ): const expr {
+        expr res = 0;
+        int iclock = 0;
+        for (int i = 0; i < length(chunks); ++i) {
+            if (i % air.CBC == index) {
+                res += (iclock)'selclk0 * chunks[i];
+                ++iclock;
+            }
+        }
+        return res;
+    }
+
+    function map_chunks_to_m32(const expr cl, int index = 0, int start = 0, int end = 0, int delta_index = 4 ): const expr {
+        expr res = 0;
+        for (int iclock = start; iclock <= end; ++iclock) {
+            res += air.CLK[iclock]*(index_on_clock(cl, index, iclock) + air.CHUNK_SIZE * index_on_clock(cl, index + 1, iclock));
+            index += delta_index;
+        }
+        return res;
+    }
+
+    function chunk_to_m32_on_clock(const expr cl, int index, int current_clock): const expr {
+        return air.CLK[cl]*(index_on_clock(cl, index, current_clock) + index_on_clock(cl, index + 1, current_clock));
+    }
+
+    function index_on_clock(const expr cl, int index, int current_clock): const expr {
+        return cl'(index - current_clock);
+    }
+
+    function clock_map(const expr mvcol, int pos, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index <= end; ++index) {
+            int iclock = (pos - index ) % air.CLOCKS;
+            if (offset != 0) {
+                res += air.CLK[index] * (mvcol'(iclock) + offset);
+            } else {
+                res += air.CLK[index] * mvcol'(iclock);
+            }
+            offset += delta;
+        }
+        return res;
+    }
+
+    function clock_set(const expr cl, int start = 0, int end = -1, int offset = 0, int delta = 0): const expr {
+        expr res = 0;
+        if (end == -1) {
+            end = start;
+        }
+        for (int index = start; index <= end; ++index) {
+            if (offset != 0) {
+                res += air.CLK[index] * (cl + offset);
+            } else {
+                res += air.CLK[index] * cl;
+            }
+            offset += delta;
+        }
+        return res;
+    }
+
+    function clock_eq(const expr mvcol, int pos1, int pos2, int pos2_offset = 0): const expr {
+        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2) - pos2_offset);
+    }
+
+    function clk_cte_selector(const expr selclk0, int value, int chunk_bits = 16, int chunks = 16): expr {
+        const int mask = (1 << chunk_bits) - 1;
+        expr result = 0;
+        for (int i_chunk = 0; i_chunk < chunks; ++i_chunk) {
+            result += (i_chunk)'selclk0 * (value & mask);
+            value = value >> chunk_bits;
+        }
+        return result;
+    }
+}

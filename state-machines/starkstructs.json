@@ -41,5 +41,8 @@
   },
   "ArithBn254Complex": {
     "hasCompressor": true
+  },
+  "BabyJubJub": {
+    "hasCompressor": true
   }
 }

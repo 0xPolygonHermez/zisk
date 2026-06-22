@@ -12,6 +12,7 @@ pub const ARITH_EQ_COST: u64 = 90 * 16;
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;
 pub const ADD256_COST: u64 = 104;
+pub const BABYJUBJUB_COST: u64 = ARITH_EQ_COST;
 pub const BLAKE2_COST: u64 = 24 * 209;
 pub const MAIN_COST: u64 = 68;
 
