@@ -8,7 +8,7 @@ use super::{
         ISO_X_NUM_G1, ISO_X_NUM_G2, ISO_Y_DEN_G1, ISO_Y_DEN_G2, ISO_Y_NUM_G1, ISO_Y_NUM_G2, P,
         SWU_Z2_G1, SWU_Z_G1, SWU_Z_G2,
     },
-    curve::{g1_u64_le_to_bytes_be_bls12_381, scalar_mul_bls12_381},
+    curve::{g1_u64_le_to_bytes_be_bls12_381, scalar_mul_complete_bls12_381},
     fp::{
         add_fp_bls12_381, bytes_be_to_u64_le_fp_bls12_381, inv_fp_bls12_381, mul_fp_bls12_381,
         neg_fp_bls12_381, sgn0_fp_bls12_381, sqrt_fp_bls12_381, square_fp_bls12_381,
@@ -57,7 +57,7 @@ pub fn map_to_curve_g1_bls12_381(
     );
 
     // Step 3: Clear cofactor
-    Ok(scalar_mul_bls12_381(
+    Ok(scalar_mul_complete_bls12_381(
         &p,
         &COFACTOR_G1,
         #[cfg(feature = "hints")]
@@ -671,6 +671,8 @@ fn eval_poly_fp2<const N: usize>(
     }
     result
 }
+
+// ==================== C FFI Functions ====================
 
 /// BLS12-381 map Fp field element to G1 point
 ///

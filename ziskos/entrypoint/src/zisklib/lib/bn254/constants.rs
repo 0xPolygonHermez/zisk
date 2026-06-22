@@ -1,5 +1,11 @@
 //! Constants for the BN254 elliptic curve
 
+/// Family parameter X = 0x44e992b44a6909f1
+pub const X_BIN_BE: [u8; 63] = [
+    1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0,
+    1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0, 1,
+];
+
 /// B parameter of the curve E: y² = x³ + 3
 pub const E_B: [u64; 4] = [0x3, 0, 0, 0];
 
