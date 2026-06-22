@@ -142,7 +142,7 @@ airtemplate Blake2br(const int N = 2**20) {
     col witness bits(4) round_idx;
     
     // Round index is constant within a round
-    (1 - CLK_0) * (round_idx - 'round_idx) === 0;
+    in_use * (1 - CLK_0) * (round_idx - 'round_idx) === 0;
 
     // One-hot encoding for round index selection
     col witness bits(1) round_idx_sel[10];
