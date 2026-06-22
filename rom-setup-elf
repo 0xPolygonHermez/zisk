@@ -1,0 +1,54 @@
+#!/bin/bash
+# Run Zisk ROM setup on an ELF.
+# Usage: ./rom-setup-elf <program.elf> [output-dir] [program-setup args...]
+#
+# Override binary locations via env vars:
+#   MONITOR     - path to zkevm-test-monitor checkout (default: ~/zkevm-test-monitor)
+#   CARGO_ZISK  - path to cargo-zisk binary
+#   ZISK_LIB    - path to directory containing bundled shared libs (libsodium etc.)
+#
+# If output-dir is omitted, a temporary directory is used and removed on exit.
+# Run setup jobs sequentially: installed emulator-asm uses a shared build dir.
+
+set -euo pipefail
+
+ELF="${1:?Usage: $0 <program.elf> [output-dir] [program-setup args...]}"
+shift
+
+MONITOR="${MONITOR:-$HOME/zkevm-test-monitor}"
+CARGO_ZISK="${CARGO_ZISK:-$MONITOR/binaries/cargo-zisk}"
+ZISK_LIB="${ZISK_LIB:-$MONITOR/binaries/zisk-lib}"
+
+cleanup_output=1
+if [ "$#" -gt 0 ] && [[ "$1" != -* ]]; then
+    OUT="$1"
+    cleanup_output=0
+    shift
+else
+    OUT="$(mktemp -d /tmp/zisk-rom-setup-XXXXXX)"
+fi
+
+cleanup() {
+    if [ "$cleanup_output" -eq 1 ]; then
+        rm -rf "$OUT"
+    fi
+}
+trap cleanup EXIT
+
+export LD_LIBRARY_PATH="$ZISK_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+if ! "$CARGO_ZISK" program-setup --help >/dev/null 2>&1; then
+    echo "error: $CARGO_ZISK does not support the program-setup command" >&2
+    exit 2
+fi
+
+mkdir -p "$OUT"
+
+"$CARGO_ZISK" program-setup --elf "$ELF" -o "$OUT" "$@"
+
+echo "ROM setup succeeded for: $ELF"
+if [ "$cleanup_output" -eq 1 ]; then
+    echo "Temporary setup output directory: $OUT (removed on exit)"
+else
+    echo "Setup output directory: $OUT"
+fi

@@ -38,6 +38,19 @@ current `store_pc` expression instead supplies `[0x100000000, 0]`, which does
 not match the 64-bit value emitted by the executor/transpiler path and causes
 `VerifyGlobalConstraints` to fail.
 
+## ROM setup check
+
+Run this helper to build the overflow fixture and demonstrate that ROM setup
+accepts it:
+
+```
+./demo-auipc-rom-setup
+```
+
+The expected result is a zero exit with `ROM setup successfully completed`.
+This shows the failure is not caught while decoding/transpiling the ELF or
+generating ROM setup artifacts.
+
 ## Why this is a spec violation
 
 RV64 AUIPC writes an XLEN-wide `pc + sext(imm20 << 12)` result to `rd`.
