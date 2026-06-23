@@ -18,7 +18,7 @@ use zisk_definitions::{
 use crate::{
     convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
     EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR,
-    ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT,
+    ROM_ADDR_MAX, ROM_ENTRY, ROM_ENTRY_ADDR_MAX, ROM_EXIT,
 };
 
 #[cfg(feature = "float")]
@@ -1028,11 +1028,14 @@ impl Riscv2ZiskContext<'_> {
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
             let auipc_result = i.rom_address as i64 + (i.imm as i64); // already shifted << 12 at decoding time
             let jump_pc = (auipc_result + next_instructions[0].imm as i64) as u64 & JALR_MASK;
-            assert!(jump_pc >= ROM_ADDR && jump_pc <= ROM_ADDR_MAX);
+            assert!(
+                (jump_pc >= ROM_ADDR && jump_pc <= ROM_ADDR_MAX)
+                    || (jump_pc >= ROM_ENTRY && jump_pc <= ROM_ENTRY_ADDR_MAX)
+            );
 
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
-                // auipc part: store auipc_result in i.rd
+                // auipc part: write auipc result to rd, unless jalr also writes rd (link), in which case rd gets return_pc
                 zib.src_a("imm", 0, false);
                 zib.src_b(
                     "imm",

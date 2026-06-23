@@ -125,6 +125,8 @@ pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Size of the BIOS instruction area
 pub const ROM_ENTRY_SIZE: u64 = 1 << 20;
+// Maximum ROM entry address, i.e. last instruction of the BIOS
+pub const ROM_ENTRY_ADDR_MAX: u64 = ROM_ENTRY + ROM_ENTRY_SIZE - 1;
 /// Last BIOS instruction address, i.e. last instruction executed
 pub const ROM_EXIT: u64 = 0x1004;
 /// Maximum Zisk OS ROM instruction address, i.e. last instruction of the BIOS
