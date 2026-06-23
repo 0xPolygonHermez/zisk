@@ -17,7 +17,8 @@ use zisk_definitions::{
 
 use crate::{
     convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
-    EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT,
+    EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR,
+    ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT,
 };
 
 #[cfg(feature = "float")]
@@ -1015,27 +1016,36 @@ impl Riscv2ZiskContext<'_> {
 
         if !next_instructions.is_empty()
             && next_instructions[0].inst == "jalr"
+            && i.rd != 0
             && next_instructions[0].rs1 == i.rd
-            && next_instructions[0].rd == i.rd
+            && ((next_instructions[0].rd == i.rd && i.rd != 0)
+                || (next_instructions[0].rd != i.rd && next_instructions[0].rd == 0))
         {
             // return_pc = pc + len(auipc) + len(jalr)
             // jump_pc = pc + auipc_imm + jalr_imm
             let current_inst_size = if i.inst.starts_with("c.") { 2 } else { 4 };
             let next_inst_size = 4;
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
-            let jump_pc = (i.rom_address as i64
-                + (i.imm as i64) // already shifted << 12 at decoding time
-                + next_instructions[0].imm as i64) as u64
-                & JALR_MASK;
+            let auipc_result = i.rom_address as i64 + (i.imm as i64); // already shifted << 12 at decoding time
+            let jump_pc = (auipc_result + next_instructions[0].imm as i64) as u64 & JALR_MASK;
+            assert!(jump_pc >= ROM_ADDR && jump_pc <= ROM_ADDR_MAX);
 
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+                // auipc part: store auipc_result in i.rd
                 zib.src_a("imm", 0, false);
-                zib.src_b("imm", return_pc, false);
+                zib.src_b(
+                    "imm",
+                    if next_instructions[0].rd == 0 { auipc_result as u64 } else { return_pc },
+                    false,
+                );
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
+
+                // jalr part: jump to jump_pc
                 let jump_address = jump_pc as i64 - i.rom_address as i64;
                 zib.j(jump_address, jump_address);
+
                 zib.verbose(&format!(
                     "auipc r{}, 0x{:x} + jalr (1) pc=0x{:x}",
                     i.rd, i.imm, jump_pc
@@ -1193,29 +1203,44 @@ impl Riscv2ZiskContext<'_> {
         // architecture test suite but which seeems to test requirements of other parts of the
         // spec.
 
-        let internal_address_1 = self.rom.get_internal_address();
-        {
+        // For imm even, (rs1 + imm) & ~1 is equivalent to (rs1 & ~1) + imm,
+        // so we save 1 ZisK instruction
+        if (i.imm % 2) == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
-            zib.src_a("imm", i.imm as u64, false);
-            zib.src_b("reg", i.rs1 as u64, false);
-            zib.op("add").unwrap();
-            zib.set_next_internal_address(internal_address_1);
-            let jump_address = internal_address_1 as i64 - i.rom_address as i64;
-            zib.j(jump_address, jump_address);
-            zib.verbose(&format!("jalr r{}, r{}, 0x{:x} ; 1/2", i.rd, i.rs1, i.imm));
-            zib.build(self.rom);
-        }
-        {
-            let mut zib = ZiskInstBuilder::new(internal_address_1);
             zib.src_a("imm", JALR_MASK, false);
-            zib.src_b("lastc", 0, false);
+            zib.src_b("reg", i.rs1 as u64, false);
             zib.op("and").unwrap();
             zib.set_pc();
             zib.store_pc("reg", i.rd as i64, false);
-            let jump_address = rom_address as i64 + inst_size as i64 - internal_address_1 as i64;
-            zib.j(0, jump_address);
-            zib.verbose(&format!("internal jalr r{}, r{}, 0x{:x} ; 2/2", i.rd, i.rs1, i.imm));
+            zib.j(i.imm as i64, inst_size as i64);
+            zib.verbose(&format!("jalr r{}, r{}, 0x{:x}", i.rd, i.rs1, i.imm));
             zib.build(self.rom);
+        } else {
+            let internal_address_1 = self.rom.get_internal_address();
+            {
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                zib.src_a("imm", i.imm as u64, false);
+                zib.src_b("reg", i.rs1 as u64, false);
+                zib.op("add").unwrap();
+                zib.set_next_internal_address(internal_address_1);
+                let jump_address = internal_address_1 as i64 - i.rom_address as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!("jalr r{}, r{}, 0x{:x} ; 1/2", i.rd, i.rs1, i.imm));
+                zib.build(self.rom);
+            }
+            {
+                let mut zib = ZiskInstBuilder::new(internal_address_1);
+                zib.src_a("imm", JALR_MASK, false);
+                zib.src_b("lastc", 0, false);
+                zib.op("and").unwrap();
+                zib.set_pc();
+                zib.store_pc("reg", i.rd as i64, false);
+                let jump_address =
+                    rom_address as i64 + inst_size as i64 - internal_address_1 as i64;
+                zib.j(0, jump_address);
+                zib.verbose(&format!("internal jalr r{}, r{}, 0x{:x} ; 2/2", i.rd, i.rs1, i.imm));
+                zib.build(self.rom);
+            }
         }
     }
 
