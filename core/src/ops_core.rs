@@ -502,16 +502,13 @@ pub const fn op_rev8(_a: u64, b: u64) -> (u64, bool) {
 /// Sets c to the value of b, reversing the bits of each byte, and flag to false
 #[inline(always)]
 pub const fn op_brev8(_a: u64, b: u64) -> (u64, bool) {
-    let mut bytes: [u8; 8] = b.to_ne_bytes();
-    bytes[0] = bytes[0].reverse_bits();
-    bytes[1] = bytes[1].reverse_bits();
-    bytes[2] = bytes[2].reverse_bits();
-    bytes[3] = bytes[3].reverse_bits();
-    bytes[4] = bytes[4].reverse_bits();
-    bytes[5] = bytes[5].reverse_bits();
-    bytes[6] = bytes[6].reverse_bits();
-    bytes[7] = bytes[7].reverse_bits();
-    (u64::from_ne_bytes(bytes), false)
+    let mut bytes: [u8; 8] = b.to_le_bytes();
+    let mut i = 0;
+    while i < 8 {
+        bytes[i] = bytes[i].reverse_bits();
+        i += 1;
+    }
+    (u64::from_le_bytes(bytes), false)
 }
 
 /// Sets c to the value a and not(b), and flag to false
@@ -672,7 +669,7 @@ pub const fn op_bset(a: u64, b: u64) -> (u64, bool) {
 /// Sets c to b plus a (modulo 32), and flag to false
 #[inline(always)]
 pub const fn op_add_u_w(a: u64, b: u64) -> (u64, bool) {
-    (b.wrapping_add(a & 0xFFFFFFFF), false)
+    (b.wrapping_add(a & 0xFFFF_FFFF), false)
 }
 
 /// Sets c to b plus a << 1, and flag to false

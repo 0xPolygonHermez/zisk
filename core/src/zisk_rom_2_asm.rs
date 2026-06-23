@@ -7711,42 +7711,44 @@ impl ZiskRom2Asm {
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
-            ZiskOp::Rev8 => todo!(),
-            ZiskOp::Brev8 => todo!(),
-            ZiskOp::Andn => todo!(),
-            ZiskOp::Orn => todo!(),
-            ZiskOp::Xnor => todo!(),
-            ZiskOp::Pack => todo!(),
-            ZiskOp::PackH => todo!(),
-            ZiskOp::PackW => todo!(),
-            ZiskOp::Rol => todo!(),
-            ZiskOp::RolW => todo!(),
-            ZiskOp::Ror => todo!(),
-            ZiskOp::RorW => todo!(),
-            ZiskOp::Clz => todo!(),
-            ZiskOp::ClzW => todo!(),
-            ZiskOp::Ctz => todo!(),
-            ZiskOp::CtzW => todo!(),
-            ZiskOp::Cpop => todo!(),
-            ZiskOp::CpopW => todo!(),
-            ZiskOp::OrcB => todo!(),
-            ZiskOp::Bclr => todo!(),
-            ZiskOp::Bext => todo!(),
-            ZiskOp::Binv => todo!(),
-            ZiskOp::Bset => todo!(),
-            ZiskOp::AddUW => todo!(),
-            ZiskOp::Sh1add => todo!(),
-            ZiskOp::Sh1addUW => todo!(),
-            ZiskOp::Sh2add => todo!(),
-            ZiskOp::Sh2addUW => todo!(),
-            ZiskOp::Sh3add => todo!(),
-            ZiskOp::Sh3addUW => todo!(),
-            ZiskOp::SllUW => todo!(),
-            ZiskOp::Clmul => todo!(),
-            ZiskOp::ClmulH => todo!(),
-            ZiskOp::ClmulR => todo!(),
-            ZiskOp::Xperm4 => todo!(),
-            ZiskOp::Xperm8 => todo!(),
+            ZiskOp::Rev8
+            | ZiskOp::Brev8
+            | ZiskOp::Andn
+            | ZiskOp::Orn
+            | ZiskOp::Xnor
+            | ZiskOp::Pack
+            | ZiskOp::PackH
+            | ZiskOp::PackW
+            | ZiskOp::Rol
+            | ZiskOp::RolW
+            | ZiskOp::Ror
+            | ZiskOp::RorW
+            | ZiskOp::Clz
+            | ZiskOp::ClzW
+            | ZiskOp::Ctz
+            | ZiskOp::CtzW
+            | ZiskOp::Cpop
+            | ZiskOp::CpopW
+            | ZiskOp::OrcB
+            | ZiskOp::Bclr
+            | ZiskOp::Bext
+            | ZiskOp::Binv
+            | ZiskOp::Bset
+            | ZiskOp::AddUW
+            | ZiskOp::Sh1add
+            | ZiskOp::Sh1addUW
+            | ZiskOp::Sh2add
+            | ZiskOp::Sh2addUW
+            | ZiskOp::Sh3add
+            | ZiskOp::Sh3addUW
+            | ZiskOp::SllUW
+            | ZiskOp::Clmul
+            | ZiskOp::ClmulH
+            | ZiskOp::ClmulR
+            | ZiskOp::Xperm4
+            | ZiskOp::Xperm8 => {
+                panic!("B extension opcode {:?} not supported in assembly emulator", inst.op);
+            }
         }
     }
 
