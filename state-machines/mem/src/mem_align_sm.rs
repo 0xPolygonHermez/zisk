@@ -144,7 +144,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_offset(offset as u8);
                 value_row.set_width(width as u8);
                 value_row.set_pc(next_pc as u8);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
 
                 // Compute reg and sel arrays for read_row
                 let mut read_reg_values = [0u8; CHUNK_NUM];
@@ -288,7 +288,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_width(width as u8);
                 value_row.set_wr(true);
                 value_row.set_pc(next_pc as u8 + 1);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
 
                 // Compute arrays for read_row
                 let mut read_reg_values = [0u8; CHUNK_NUM];
@@ -442,7 +442,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_offset(offset as u8);
                 value_row.set_width(width as u8);
                 value_row.set_pc(next_pc as u8);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
 
                 let mut second_read_row: R = Default::default();
                 second_read_row.set_step(step);
@@ -652,7 +652,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_width(width as u8);
                 value_row.set_wr(true);
                 value_row.set_pc(next_pc as u8 + 1);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
 
                 let mut second_write_row: R = Default::default();
                 second_write_row.set_step(step + 1);
