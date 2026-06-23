@@ -3,6 +3,9 @@ mod poseidon_mem_inputs;
 
 pub use poseidon::*;
 
+use zisk_common::unit_test_sm;
+use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowPacked, POSEIDON_AIR_IDS};
+
 zisk_common::zisk_precompile! {
     name = Poseidon,
     op_type = Poseidon,
@@ -40,5 +43,23 @@ mod poseidon_tests {
         stdin.write(&NUM_POSEIDON1S);
 
         ELF_POSEIDON1.run_emulation(stdin, None).expect("poseidon1 guest emulation failed");
+    }
+}
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+unit_test_sm! {
+    PoseidonSm => {
+        name: "Poseidon",
+        air: POSEIDON_AIR_IDS[0],
+        input: PoseidonInput,
+        manager: PoseidonSM<F>,
+        row: PoseidonTraceRow<F>,
+        row_packed: PoseidonTraceRowPacked<F>,
+        trace: PoseidonTrace,
+        rows_per_input: CLOCKS,
+        chunk_size: |sm| sm.num_available_poseidons,
     }
 }

@@ -111,6 +111,49 @@ macro_rules! register_precompiles {
                     )*
                 ]
             }
+
+            /// Unit-test registry: insert each precompile's inner
+            /// witness-producing SM under its AIR id, erased to
+            /// `Arc<dyn Any + Send + Sync>`. The accessor name follows the
+            /// `zisk_precompile!` convention (`[<variant:snake _sm>]`) and the
+            /// marker is `[<variant Sm>]`, so this is fully derived from the
+            /// registration list — no per-precompile unit-test declaration.
+            pub(crate) fn register_unit_tests(
+                &self,
+                map: &mut ::std::collections::HashMap<
+                    ::std::primitive::usize,
+                    ::std::sync::Arc<dyn ::std::any::Any + ::std::marker::Send + ::std::marker::Sync>,
+                >,
+            ) {
+                ::paste::paste! {
+                    match self {
+                        $(
+                            Self::$variant(mgr) => {
+                                map.insert(
+                                    $air[0],
+                                    $crate::unit_test_targets::erase(mgr.[<$variant:snake _sm>]()),
+                                );
+                            }
+                        )*
+                    }
+                }
+            }
+        }
+
+        ::paste::paste! {
+            /// Unit-test SM markers for every registered precompile, in
+            /// declaration order. Derived from the registration list:
+            /// variant `Foo` → marker `FooSm`.
+            pub(crate) const PRECOMPILE_UNIT_TEST_MARKERS:
+                &[&'static dyn ::zisk_common::DynUnitTestSm<::fields::Goldilocks>] =
+                &[ $( &[<$variant Sm>], )* ];
+
+            /// Raw trace-authoring overrides for every registered precompile,
+            /// in declaration order. Same markers as
+            /// [`PRECOMPILE_UNIT_TEST_MARKERS`].
+            pub(crate) const PRECOMPILE_UNIT_TEST_OVERRIDES:
+                &[&'static dyn ::zisk_common::DynTraceOverride<::fields::Goldilocks>] =
+                &[ $( &[<$variant Sm>], )* ];
         }
 
         /// Variant slot index used to compute the bundle position

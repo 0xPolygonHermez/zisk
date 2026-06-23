@@ -9,6 +9,9 @@ use keccakf_constants::*;
 pub use keccakf_expr_generator::*;
 use keccakf_table::*;
 
+use zisk_common::unit_test_sm;
+use zisk_pil::{KeccakfTrace, KeccakfTraceRow, KeccakfTraceRowPacked, KECCAKF_AIR_IDS};
+
 zisk_common::zisk_precompile! {
     name = Keccakf,
     op_type = Keccak,
@@ -36,5 +39,22 @@ mod keccakf_tests {
         stdin.write(&NUM_KECCAKFS);
 
         ELF_KECCAK.run_emulation(stdin, None).expect("keccak guest emulation failed");
+    }
+}
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+unit_test_sm! {
+    KeccakfSm => {
+        name: "Keccakf",
+        air: KECCAKF_AIR_IDS[0],
+        input: KeccakfInput,
+        manager: KeccakfSM<F>,
+        row: KeccakfTraceRow<F>,
+        row_packed: KeccakfTraceRowPacked<F>,
+        trace: KeccakfTrace,
+        chunk_size: |sm| sm.num_available_keccakfs,
     }
 }

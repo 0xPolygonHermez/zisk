@@ -14,7 +14,8 @@ pub use arith_eq_constants::*;
 pub use arith_eq_input::*;
 pub use arith_eq_lt_table::*;
 
-use zisk_common::zisk_precompile;
+use zisk_common::{unit_test_sm, zisk_precompile};
+use zisk_pil::{ArithEqTrace, ArithEqTraceRow, ArithEqTraceRowPacked, ARITH_EQ_AIR_IDS};
 
 zisk_precompile! {
     name = ArithEq,
@@ -137,5 +138,23 @@ mod arith_eq_tests {
         ELF_BN254_COMPLEX_SUB
             .run_emulation(ZiskStdin::new(), None)
             .expect("bn254_complex_sub guest emulation failed");
+    }
+}
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+unit_test_sm! {
+    ArithEqSm => {
+        name: "ArithEq",
+        air: ARITH_EQ_AIR_IDS[0],
+        input: ArithEqInput,
+        manager: ArithEqSM<F>,
+        row: ArithEqTraceRow<F>,
+        row_packed: ArithEqTraceRowPacked<F>,
+        trace: ArithEqTrace,
+        rows_per_input: ARITH_EQ_ROWS_BY_OP,
+        chunk_size: |_| ArithEqTrace::<usize>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP,
     }
 }

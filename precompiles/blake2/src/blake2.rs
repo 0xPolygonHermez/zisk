@@ -5,7 +5,7 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationBlake2Data;
 use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
@@ -292,7 +292,6 @@ impl<F: PrimeField64> Blake2SM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: Blake2brTraceRowOps<F>>(
         &self,
-        _sctx: &SetupCtx<F>,
         inputs: &[Vec<Blake2Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

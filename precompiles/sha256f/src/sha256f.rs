@@ -5,7 +5,7 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationSha256Data;
 use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowOps};
@@ -364,7 +364,6 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: Sha256fTraceRowOps<F>>(
         &self,
-        _sctx: &SetupCtx<F>,
         inputs: &[Vec<Sha256fInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

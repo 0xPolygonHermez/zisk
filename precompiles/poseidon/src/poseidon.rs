@@ -7,7 +7,7 @@ use fields::{
 use rayon::prelude::*;
 
 use pil_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::{OperationPoseidonData, OP};
 use zisk_core::zisk_ops::ZiskOp;
@@ -314,7 +314,6 @@ impl<F: PrimeField64> PoseidonSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: PoseidonTraceRowOps<F>>(
         &self,
-        _sctx: &SetupCtx<F>,
         inputs: &[Vec<PoseidonInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

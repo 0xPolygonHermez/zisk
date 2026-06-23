@@ -5,6 +5,9 @@ mod blake2_mem_inputs;
 pub use blake2::*;
 pub use blake2_constants::*;
 
+use zisk_common::unit_test_sm;
+use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowPacked, BLAKE_2_BR_AIR_IDS};
+
 zisk_common::zisk_precompile! {
     name = Blake2,
     op_type = Blake2,
@@ -32,5 +35,23 @@ mod blake2_tests {
         stdin.write(&NUM_BLAKE2B_ROUNDS);
 
         ELF_BLAKE2.run_emulation(stdin, None).expect("blake2 guest emulation failed");
+    }
+}
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+unit_test_sm! {
+    Blake2Sm => {
+        name: "Blake2",
+        air: BLAKE_2_BR_AIR_IDS[0],
+        input: Blake2Input,
+        manager: Blake2SM<F>,
+        row: Blake2brTraceRow<F>,
+        row_packed: Blake2brTraceRowPacked<F>,
+        trace: Blake2brTrace,
+        rows_per_input: CLOCKS,
+        chunk_size: |sm| sm.num_available_blake2s,
     }
 }

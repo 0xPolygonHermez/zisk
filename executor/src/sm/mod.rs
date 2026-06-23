@@ -103,6 +103,13 @@ impl<F: PrimeField64> StaticSMBundle<F> {
         self.std.clone()
     }
 
+    /// All registered state machines (built-ins + precompiles), each paired
+    /// with the AIR ids it serves. Used by the unit-test executor to build
+    /// its AIR-id → inner-SM manager registry.
+    pub fn iter_sms(&self) -> impl Iterator<Item = &SMType<F>> {
+        self.sm.iter()
+    }
+
     /// Configure the instances of the SMs in the bundle for the given plans.
     pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &BTreeMap<usize, Vec<Plan>>) {
         for (pos, (_, sm)) in self.sm.iter().enumerate() {
