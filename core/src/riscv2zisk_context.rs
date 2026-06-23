@@ -1018,8 +1018,7 @@ impl Riscv2ZiskContext<'_> {
             && next_instructions[0].inst == "jalr"
             && i.rd != 0
             && next_instructions[0].rs1 == i.rd
-            && ((next_instructions[0].rd == i.rd && i.rd != 0)
-                || (next_instructions[0].rd != i.rd && next_instructions[0].rd == 0))
+            && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
         {
             // return_pc = pc + len(auipc) + len(jalr)
             // jump_pc = pc + auipc_imm + jalr_imm
@@ -1029,12 +1028,13 @@ impl Riscv2ZiskContext<'_> {
             let auipc_result = i.rom_address as i64 + (i.imm as i64); // already shifted << 12 at decoding time
             let jump_pc = (auipc_result + next_instructions[0].imm as i64) as u64 & JALR_MASK;
             assert!(
-                (jump_pc >= ROM_ADDR && jump_pc <= ROM_ADDR_MAX)
-                    || (jump_pc >= ROM_ENTRY && jump_pc <= ROM_ENTRY_ADDR_MAX)
+                (ROM_ADDR..=ROM_ADDR_MAX).contains(&jump_pc)
+                    || (ROM_ENTRY..=ROM_ENTRY_ADDR_MAX).contains(&jump_pc)
             );
 
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+
                 // auipc part: write auipc result to rd, unless jalr also writes rd (link), in which case rd gets return_pc
                 zib.src_a("imm", 0, false);
                 zib.src_b(
