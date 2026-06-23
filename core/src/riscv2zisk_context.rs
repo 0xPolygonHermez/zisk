@@ -18,7 +18,7 @@ use zisk_definitions::{
 use crate::{
     convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
     EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR,
-    ROM_ADDR_MAX, ROM_ENTRY, ROM_ENTRY_ADDR_MAX, ROM_EXIT,
+    ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT,
 };
 
 #[cfg(feature = "float")]
@@ -1029,7 +1029,7 @@ impl Riscv2ZiskContext<'_> {
             let jump_pc = (auipc_result + next_instructions[0].imm as i64) as u64 & JALR_MASK;
             assert!(
                 (ROM_ADDR..=ROM_ADDR_MAX).contains(&jump_pc)
-                    || (ROM_ENTRY..=ROM_ENTRY_ADDR_MAX).contains(&jump_pc)
+                    || (ROM_ENTRY..=MAX_ZISK_OS_ROM_ADDR).contains(&jump_pc)
             );
 
             {
