@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "802c6c935624191134a89ea26082c91f3d417181307c0f553d738b5fb5a2c22d";
+pub const PILOUT_HASH: &str = "e2db26c7ce7b878516a8d3a3286915481538d3249a4a172c9c3cc8af4b34a164";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -197,7 +197,7 @@ trace_row!(MemAlignFixedRow<F> {
 pub type MemAlignFixed<F> = GenericTrace<MemAlignFixedRow<F>, 2097152, 0, 5>;
 
 trace_row!(MemAlignTraceRow<F> {
- addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, sel_prove:bit, value:[u32; 2],
+ addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, is_non_aligned_op:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, value:[u32; 2],
 });
 
 pub type MemAlignTrace<R> = GenericTrace<R, 2097152, 0, 5>;
@@ -740,7 +740,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 5, PackedInfoConst {
         is_packed: true,
         num_packed_words: 5,
-        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 1, 32, 32],
+        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 32, 32],
     }),
     (0, 6, PackedInfoConst {
         is_packed: true,
