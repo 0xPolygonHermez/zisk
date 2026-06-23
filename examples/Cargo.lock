@@ -529,13 +529,13 @@ checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
 
 [[package]]
 name = "arrayvec"
-version = "0.7.6"
+version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+checksum = "f02882884d3e1bc524fb12c79f107f6ad0e1cfd498c536ffb494301740995dfe"
 
 [[package]]
 name = "asm-runner"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "libc",
@@ -801,15 +801,15 @@ dependencies = [
 
 [[package]]
 name = "bitcoin-io"
-version = "0.1.100"
+version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11301df0b06f22dea7bb1916403fdd88a371031e495c49b8f96931b28189e175"
+checksum = "2dee39a0ee5b4095224a0cfc6bf4cc1baf0f9624b96b367e53b66d974e51d953"
 
 [[package]]
 name = "bitcoin_hashes"
-version = "0.14.100"
+version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c9901a56e133a1fc86eeb1113e2591f45f4682451ca893bff494d2f88918e3f"
+checksum = "4ed83caece3afc59919481b33b472e1432d1abc4641ed9100be142ef5110b406"
 dependencies = [
  "bitcoin-io",
  "hex-conservative",
@@ -823,9 +823,9 @@ checksum = "b4388bee8683e3d04af747c73422af53102d2bd24d9eadb6cbc100baef4b43f8"
 
 [[package]]
 name = "bitvec"
-version = "1.0.1"
+version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bc2832c24239b0141d5674bb9174f9d68a8b5b3f2753311927c172ca46f7e9c"
+checksum = "ddcec3d12c579d40898fe0a9a358a803c23e9c52ca3c425707f81c9436211837"
 dependencies = [
  "funty",
  "radium",
@@ -879,9 +879,9 @@ dependencies = [
 
 [[package]]
 name = "borsh"
-version = "1.6.1"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cfd1e3f8955a5d7de9fab72fc8373fade9fb8a703968cb200ae3dc6cf08e185a"
+checksum = "2f3f6da4992df95bbcd9af42a6c7dcb994498fc9048230405f3b36ff7cd3f145"
 dependencies = [
  "borsh-derive",
  "bytes",
@@ -890,9 +890,9 @@ dependencies = [
 
 [[package]]
 name = "borsh-derive"
-version = "1.6.1"
+version = "1.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bfcfdc083699101d5a7965e49925975f2f55060f94f9a05e7187be95d530ca59"
+checksum = "3ae8fb4fb5740e4b2c4884ff95f5f32f5e8479db1e8fd8eb49ddbe09eb09bb7c"
 dependencies = [
  "once_cell",
  "proc-macro-crate",
@@ -963,9 +963,9 @@ dependencies = [
 
 [[package]]
 name = "camino"
-version = "1.2.2"
+version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e629a66d692cb9ff1a1c664e41771b3dcaf961985a9774c0eb0bd1b51cf60a48"
+checksum = "b4ce8d3bd5823c7504d3f579f13e7b2f3da252fcb938c594d5680ee508bf846f"
 dependencies = [
  "serde_core",
 ]
@@ -996,9 +996,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.64"
+version = "1.2.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dad887fd958be91b5098c0248def011f4523ab786cd411be668777e55063501f"
+checksum = "e228eec9be7c17ccb640b59b36a5cd805ea2a564a4c5e162c2f659fea30d3b96"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1049,7 +1049,7 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "clang-sys"
@@ -1409,8 +1409,8 @@ dependencies = [
 
 [[package]]
 name = "curves"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1460,7 +1460,7 @@ dependencies = [
 
 [[package]]
 name = "data-bus"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "zisk-common",
 ]
@@ -1756,7 +1756,7 @@ version = "0.1.0"
 
 [[package]]
 name = "executor"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -1872,8 +1872,8 @@ dependencies = [
 
 [[package]]
 name = "fields"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2711,7 +2711,7 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "lib-c"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "libc"
@@ -2721,9 +2721,9 @@ checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
 
 [[package]]
 name = "libffi"
-version = "5.1.0"
+version = "5.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0498fe5655f857803e156523e644dcdcdc3b3c7edda42ea2afdae2e09b2db87b"
+checksum = "ed185dbb87539a100c1b36c219e16e71572c6d4d4fed3ded898140f755adeaaf"
 dependencies = [
  "libc",
  "libffi-sys",
@@ -2731,9 +2731,9 @@ dependencies = [
 
 [[package]]
 name = "libffi-sys"
-version = "4.1.0"
+version = "4.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71d4f1d4ce15091955144350b75db16a96d4a63728500122706fb4d29a26afbb"
+checksum = "25831b230b6a90bdea9f28339c1d00d59773a1c492e8ca09b1ad80e56394c261"
 dependencies = [
  "cc",
 ]
@@ -2810,9 +2810,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.32"
+version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "953f07c43838f8e6f9758cab68bf5bed85465e7587ebe0b823f1bcd81978ad3a"
+checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
 name = "lru-slab"
@@ -2848,7 +2848,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mem-common"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "clap",
  "fields",
@@ -2861,7 +2861,7 @@ dependencies = [
 
 [[package]]
 name = "mem-planner-cpp"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "mem-common",
  "proofman-common",
@@ -2879,9 +2879,9 @@ checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
 name = "memmap2"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
@@ -3311,8 +3311,8 @@ dependencies = [
 
 [[package]]
 name = "pil-std-lib"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "colored",
  "fields",
@@ -3397,7 +3397,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
@@ -3427,7 +3427,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq-384"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
@@ -3452,7 +3452,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-big-int"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "lib-c",
@@ -3469,7 +3469,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-blake2"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -3485,7 +3485,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-dma"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -3502,7 +3502,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "circuit",
  "fields",
@@ -3522,7 +3522,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-poseidon"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -3538,7 +3538,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-sha256f"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -3554,7 +3554,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "mem-common",
@@ -3565,7 +3565,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-helpers"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -3582,7 +3582,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-hints"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "borsh",
@@ -3683,8 +3683,8 @@ dependencies = [
 
 [[package]]
 name = "proofman"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "bincode",
  "blake3",
@@ -3717,8 +3717,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-common"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "bincode",
  "borsh",
@@ -3748,8 +3748,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-hints"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "fields",
  "itoa",
@@ -3761,8 +3761,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-macros"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3771,8 +3771,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3780,8 +3780,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-util"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "bincode",
  "colored",
@@ -3791,8 +3791,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-verifier"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "bincode",
  "fields",
@@ -3922,9 +3922,9 @@ checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
 
 [[package]]
 name = "quinn"
-version = "0.11.9"
+version = "0.11.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9e20a958963c291dc322d98411f541009df2ced7b5a4f2bd52337638cfccf20"
+checksum = "0c1a41e437b6bbd489372cd4971de128e85c855f56c57f283d20ff016cf7c0a8"
 dependencies = [
  "bytes",
  "cfg_aliases",
@@ -3942,9 +3942,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.11.14"
+version = "0.11.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
+checksum = "4fcb935c5bec503c2f0e306bdd3e58bb9029dcb14fa8d9ac76e3a5256ac0763e"
 dependencies = [
  "bytes",
  "fastbloom",
@@ -3979,9 +3979,9 @@ dependencies = [
 
 [[package]]
 name = "quote"
-version = "1.0.45"
+version = "1.0.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
+checksum = "dfbc457d0c7a0759a614551b11a6409e5951f6c7537be1f1b7682b9ae9230368"
 dependencies = [
  "proc-macro2",
 ]
@@ -4219,7 +4219,7 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "rkyv"
@@ -4263,7 +4263,7 @@ dependencies = [
 
 [[package]]
 name = "rom-setup"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -4389,9 +4389,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.40"
+version = "0.23.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
+checksum = "6b92b125634d9b795e7beca796cc790df15a7fb38323bf3196fda83292d06b1f"
 dependencies = [
  "aws-lc-rs",
  "log",
@@ -4806,7 +4806,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "sm-arith"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -4822,7 +4822,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -4838,7 +4838,7 @@ dependencies = [
 
 [[package]]
 name = "sm-frequent-ops"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "clap",
  "fields",
@@ -4849,7 +4849,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "mem-common",
@@ -4866,7 +4866,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "env",
  "fields",
@@ -4883,7 +4883,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "asm-runner",
  "fields",
@@ -6288,8 +6288,8 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
 name = "witness"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fsnark-gpu#1f9ae770eb7f7efab15b8e6553c9c5bf730d4c73"
 dependencies = [
  "colored",
  "fields",
@@ -6468,7 +6468,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-build"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -6497,7 +6497,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "alloy-sol-types",
  "bincode",
@@ -6521,7 +6521,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator-api"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "chrono",
@@ -6536,7 +6536,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator-client"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "bytes",
@@ -6551,7 +6551,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "elf",
  "fields",
@@ -6568,11 +6568,11 @@ dependencies = [
 
 [[package]]
 name = "zisk-definitions"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "zisk-pil"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "fields",
  "proofman-common",
@@ -6583,7 +6583,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-program-macros"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "blake3",
  "proc-macro-crate",
@@ -6594,7 +6594,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-prover-backend"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "alloy-sol-types",
  "anyhow",
@@ -6622,7 +6622,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sdk"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "bincode",
  "proofman-common",
@@ -6640,7 +6640,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-stream"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "libc",
  "quinn",
@@ -6653,14 +6653,14 @@ dependencies = [
 
 [[package]]
 name = "zisk-verifier"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "proofman-verifier",
 ]
 
 [[package]]
 name = "ziskemu"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "clap",
  "data-bus",
@@ -6688,7 +6688,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -6727,7 +6727,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos-hints"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "bincode",
@@ -6752,7 +6752,7 @@ dependencies = [
 
 [[package]]
 name = "zkvm-interface"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "bindgen 0.72.1",
 ]

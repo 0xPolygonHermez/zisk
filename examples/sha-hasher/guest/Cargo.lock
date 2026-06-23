@@ -639,7 +639,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "circuit"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "clang-sys"
@@ -973,8 +973,8 @@ dependencies = [
 
 [[package]]
 name = "fields"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v1.0.0-alpha#4f2a34ac686c788ad66a1a8ea0a17a016319e65b"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -1257,7 +1257,7 @@ checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 
 [[package]]
 name = "lib-c"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "libc"
@@ -1530,7 +1530,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-helpers"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -1608,8 +1608,8 @@ dependencies = [
 
 [[package]]
 name = "proofman-verifier"
-version = "1.0.0-alfa"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-alfa#e221d5c500abe117519375e15eca9833031ce115"
+version = "1.0.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v1.0.0-alpha#4f2a34ac686c788ad66a1a8ea0a17a016319e65b"
 dependencies = [
  "fields",
  "num-traits",
@@ -2485,11 +2485,11 @@ dependencies = [
 
 [[package]]
 name = "zisk-definitions"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 
 [[package]]
 name = "zisk-stream"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "libc",
  "thiserror",
@@ -2498,14 +2498,14 @@ dependencies = [
 
 [[package]]
 name = "zisk-verifier"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "proofman-verifier",
 ]
 
 [[package]]
 name = "ziskos"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -2544,7 +2544,7 @@ dependencies = [
 
 [[package]]
 name = "zkvm-interface"
-version = "1.0.0-alfa"
+version = "1.0.0-alpha"
 dependencies = [
  "bindgen",
 ]
