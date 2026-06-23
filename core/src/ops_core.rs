@@ -493,7 +493,7 @@ pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
     }
 }
 
-/// Sets c to the value of b, switching endianess of each byte, and flag to false
+/// Sets c to the value of b, switching endianness of each byte, and flag to false
 #[inline(always)]
 pub const fn op_rev8(_a: u64, b: u64) -> (u64, bool) {
     (b.swap_bytes(), false)
