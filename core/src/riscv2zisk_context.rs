@@ -1049,10 +1049,7 @@ impl Riscv2ZiskContext<'_> {
                 let jump_address = jump_pc as i64 - i.rom_address as i64;
                 zib.j(jump_address, jump_address);
 
-                zib.verbose(&format!(
-                    "auipc r{}, 0x{:x} + jalr (1) pc=0x{:x}",
-                    i.rd, i.imm, jump_pc
-                ));
+                zib.verbose(&format!("auipc r{}, 0x{:x} + jalr pc=0x{:x}", i.rd, i.imm, jump_pc));
                 zib.build(self.rom);
             }
 
@@ -1207,7 +1204,7 @@ impl Riscv2ZiskContext<'_> {
         // spec.
 
         // For imm even, (rs1 + imm) & ~1 is equivalent to (rs1 & ~1) + imm,
-        // so we save 1 ZisK instruction
+        // so we save 1 zisk instruction
         if (i.imm % 2) == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
             zib.src_a("imm", JALR_MASK, false);
