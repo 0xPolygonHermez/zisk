@@ -31,7 +31,7 @@ use std::{
     str::FromStr,
 };
 use tiny_keccak::keccakf;
-use ziskos::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::{FCALL_INPUT_READY_ID, FCALL_PUBLIC_OUTPUT_ID};
 
 use crate::ops_core::*;
 use crate::ops_core_context::*;
@@ -1866,6 +1866,17 @@ pub fn opc_fcall(ctx: &mut InstContext) {
                 required_bytes,
                 ctx.input_len
             );
+        }
+        0
+    } else if function_id == FCALL_PUBLIC_OUTPUT_ID as u64 {
+        // Side-effecting fcall: append `len` bytes at `ptr` to the host's public-output buffer.
+        // Unconstrained transport for the plaintext behind the OUTPUT_ADDR digest; the guest
+        // reads no result back.
+        let ptr = ctx.fcall.parameters[0];
+        let len = ctx.fcall.parameters[1];
+        if len != 0 {
+            let bytes = ctx.mem.read_slice(ptr, len).to_vec();
+            ctx.public_output.extend_from_slice(&bytes);
         }
         0
     } else {

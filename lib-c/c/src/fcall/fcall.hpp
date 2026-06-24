@@ -30,6 +30,8 @@ extern "C" {
 #define FCALL_UINT256_INV_ID 20
 #define FCALL_UINT256_INV_MOD_ID 21
 #define FCALL_BIGINT_DIV_ID 22
+// Note: id 23 (FCALL_INPUT_READY) is handled inline in the generated asm (never reaches Fcall).
+#define FCALL_PUBLIC_OUTPUT_ID 24
 
 #define FCALL_PARAMS_MAX_SIZE 386
 #define FCALL_RESULT_MAX_SIZE 8193

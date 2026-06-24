@@ -157,6 +157,12 @@ extern volatile uint64_t * precompile_read_address;
 extern volatile uint64_t * waiting_for_precompile_address;
 extern volatile uint64_t * waiting_for_input_address;
 
+// Public output shared memory (MinimalTrace service only): standard public-output transport.
+// Layout: [uint64_t used_size][output bytes...]. NULL on services that do not capture output.
+extern char shmem_public_output_name[128];
+extern int shmem_public_output_fd;
+extern uint8_t * shmem_public_output_address;
+
 /**************/
 /* TRACE SIZE */
 /**************/

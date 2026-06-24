@@ -11,16 +11,26 @@ use std::time::Instant;
 use tracing::{error, info, warn};
 
 use crate::{
-    sem_chunk_done_name, shmem_output_name, AsmMTChunk, AsmMTHeader, AsmMultiShmem, AsmRunError,
-    AsmService, AsmServices, SEM_CHUNK_DONE_WAIT_DURATION, TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE,
-    TRACE_MAX_SIZE,
+    sem_chunk_done_name, shmem_output_name, shmem_public_output_name, AsmMTChunk, AsmMTHeader,
+    AsmMultiShmem, AsmRunError, AsmService, AsmServices, ShmemReader, SEM_CHUNK_DONE_WAIT_DURATION,
+    TRACE_DELTA_SIZE, TRACE_INITIAL_SIZE, TRACE_MAX_SIZE,
 };
+
+/// Total size of the C `_MT_public_output` segment, in bytes. Must match `PUBLIC_OUTPUT_SIZE` in
+/// `emulator-asm/src/constants.hpp`. Layout: `[u64 used_size][output bytes...]`.
+pub(crate) const PUBLIC_OUTPUT_SIZE: usize = 0x1000_0000; // 256 MB (sparse)
+/// Bytes of `used_size` header preceding the output data. Matches `PUBLIC_OUTPUT_HEADER_SIZE`.
+const PUBLIC_OUTPUT_HEADER_SIZE: usize = 8;
 
 use anyhow::{Context, Result};
 
 /// This struct manages the shared memory and synchronization primitives for reading memory operation traces from the C++ side.
 pub struct MTShmemReader {
     pub(crate) output_shmem: AsmMultiShmem<AsmMTHeader>,
+    /// Read-only view of the C `_MT_public_output` segment. `None` if the segment is absent (e.g.
+    /// a service variant that does not capture output), in which case `read_public_output`
+    /// returns empty and the proof falls back to the digest-only commitment.
+    public_output_shmem: Option<ShmemReader>,
 }
 
 impl MTShmemReader {
@@ -37,7 +47,38 @@ impl MTShmemReader {
             false,
         )?;
 
-        Ok(Self { output_shmem })
+        // Open the public-output capture segment read-only and unlocked (the cap is large and
+        // sparse). Absence is non-fatal: capture simply degrades to digest-only.
+        let public_output_name = shmem_public_output_name(shm_prefix, AsmService::MT);
+        let public_output_shmem =
+            match ShmemReader::new_unlocked(&public_output_name, PUBLIC_OUTPUT_SIZE) {
+                Ok(reader) => Some(reader),
+                Err(e) => {
+                    warn!("MT public-output segment '{public_output_name}' unavailable: {e}");
+                    None
+                }
+            };
+
+        Ok(Self { output_shmem, public_output_shmem })
+    }
+
+    /// Reads the plaintext public output captured by the MinimalTrace service during the last run.
+    ///
+    /// Returns an empty vector when the segment is absent or nothing was written. The C side
+    /// resets the `used_size` header at the start of every run, so this reflects only the most
+    /// recent emulation.
+    pub fn read_public_output(&self) -> Vec<u8> {
+        match &self.public_output_shmem {
+            Some(reader) => {
+                let used = reader.read_u64_at(0) as usize;
+                if used == 0 {
+                    Vec::new()
+                } else {
+                    reader.read_bytes(PUBLIC_OUTPUT_HEADER_SIZE, used)
+                }
+            }
+            None => Vec::new(),
+        }
     }
 }
 

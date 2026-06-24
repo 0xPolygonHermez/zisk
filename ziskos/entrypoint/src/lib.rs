@@ -83,6 +83,11 @@ pub extern "C" fn zkvm_init() {
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_deinit")]
 pub extern "C" fn zkvm_deinit() {
+    // Finalize the standard public-output commitment: pad the streaming SHA-256 and write
+    // the digest into the public-output slots at OUTPUT_ADDR. No-op unless the guest used
+    // `write_output`.
+    unsafe { crate::zisklib::zkvm_io::flush_output() };
+
     #[cfg(all(not(zisk_guest), zisk_hints, feature = "user-hints"))]
     {
         crate::hints::close_hints().expect("hints close failed");

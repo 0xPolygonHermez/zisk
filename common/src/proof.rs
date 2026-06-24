@@ -371,6 +371,22 @@ impl PublicValues {
 
         hash.to_vec()
     }
+
+    /// Verify that `output` is the plaintext behind the standard-IO public-output commitment.
+    ///
+    /// The streaming `write_output` interface commits `sha256(output)` into the first 8 public
+    /// slots: slot `i` holds the i-th big-endian SHA-256 state word, i.e.
+    /// `public_u64()[i] == u32::from_be_bytes(sha256(output)[4*i .. 4*i + 4])`. This recomputes
+    /// the digest over the supplied `output` and checks it against those slots, binding the
+    /// carried plaintext to the proof's (already STARK-verified) public outputs.
+    pub fn verify_public_output(&self, output: &[u8]) -> bool {
+        let digest = Sha256::digest(output);
+        let publics = self.public_u64();
+        (0..8).all(|i| {
+            let expected = u32::from_be_bytes(digest[4 * i..4 * i + 4].try_into().unwrap());
+            publics[i] as u32 == expected
+        })
+    }
 }
 
 impl PublicValues {
@@ -438,6 +454,14 @@ pub struct Proof {
     pub publics: PublicValues,
     /// The program verification key associated with the proof.
     pub program_vk: ProgramVK,
+    /// Optional plaintext public output, for guests that use the standard streaming
+    /// `write_output` interface (which commits only `sha256(output)` into the public values).
+    /// When present, `verify` rehashes it and binds it to those public values; when absent,
+    /// verification falls back to the digest-only mode (the proof is still fully verified, the
+    /// caller just doesn't receive the preimage). Detachable: it can be stripped for recursion
+    /// (which consumes only the digest) and re-attached for terminal delivery.
+    #[serde(default)]
+    pub output: Vec<u8>,
 }
 
 /// Builder for customizing verification parameters before calling verify.
@@ -539,7 +563,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 result.map_err(|e| {
                     CommonError::Invalid(format!("snark proof verification failed: {e}"))
                 })?;
-                Ok(())
+                bind_public_output(&self.proof_with_values.output, publics)
             }
             ProofBody::Vadcop { proof, zisk_vk, minimal, hash } => {
                 let minimal = *minimal;
@@ -580,17 +604,39 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 if !is_valid {
                     Err(CommonError::NotVerified)
                 } else {
-                    Ok(())
+                    bind_public_output(&self.proof_with_values.output, publics)
                 }
             }
         }
     }
 }
 
+/// Bind carried plaintext public output (if any) to the already-verified public values.
+///
+/// For guests using the streaming `write_output` interface, the public values commit only
+/// `sha256(output)`; this rehashes the carried plaintext and checks it against that digest, so
+/// a tampered or mismatched `output` fails verification. When `output` is empty the proof is
+/// accepted in digest-only mode (still fully verified — the preimage is simply not carried).
+fn bind_public_output(output: &[u8], publics: &PublicValues) -> Result<()> {
+    if output.is_empty() || publics.verify_public_output(output) {
+        Ok(())
+    } else {
+        Err(CommonError::InvalidProof(
+            "carried public output does not match the committed sha256 digest".to_string(),
+        ))
+    }
+}
+
 impl Proof {
     /// Creates a new `Proof` instance with the provided body, public values, and program verification key.
     pub fn new(body: ProofBody, publics: PublicValues, program_vk: ProgramVK) -> Self {
-        Self { body, publics, program_vk }
+        Self { body, publics, program_vk, output: Vec::new() }
+    }
+
+    /// Attach the plaintext public output (the preimage of the committed `sha256(output)`).
+    pub fn with_output(mut self, output: Vec<u8>) -> Self {
+        self.output = output;
+        self
     }
 
     /// Derive the `ProofKind` from the body discriminant.
@@ -766,6 +812,9 @@ impl Proof {
                 &vadcop_proof.public_values,
                 hash_mode,
             ),
+            // Plaintext output is attached separately (via `with_output`) when available; this
+            // path reconstructs a proof from its serialized bytes only.
+            output: Vec::new(),
         })
     }
 

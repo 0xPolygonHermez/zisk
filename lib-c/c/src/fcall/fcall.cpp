@@ -125,6 +125,18 @@ int Fcall (
             iresult = BigIntDivCtx(ctx);
             break;
         }
+        case FCALL_PUBLIC_OUTPUT_ID:
+        {
+            // Standard streaming `write_output` transport (params = [ptr, len]). The plaintext is
+            // bound by the SHA-256 digest the guest commits to OUTPUT_ADDR, so it is sound to not
+            // capture it on the ASM path: the proof still verifies in digest-only mode. Producing
+            // a self-contained proof here is a follow-up — read `len` bytes at the guest pointer
+            // `params[0]` (guest memory is mapped 1:1 in the ASM runner) and stream them to a
+            // host-side channel. The call returns no result for the guest to read.
+            ctx->result_size = 0;
+            iresult = 0;
+            break;
+        }
         default:
         {
             printf("Fcall() found unsupported function_id=%lu\n", ctx->function_id);

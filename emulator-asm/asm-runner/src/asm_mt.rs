@@ -73,6 +73,9 @@ impl AsmMTChunk {
             end: chunk.end == 1,
             steps: chunk.steps,
             mem_reads,
+            // The ASM runner does not yet stream public output back to the host; populated by
+            // the interpreted emulator path only (see the C ASM-runner follow-up).
+            public_output: Vec::new(),
         }
     }
 }

@@ -409,6 +409,8 @@ impl ProverBackend {
                             },
                             publics,
                             program_vk,
+                            // Carry plaintext public output for self-contained verification.
+                            output: self.executor.public_output(),
                         },
                     ))
                 } else {
@@ -433,6 +435,9 @@ impl ProverBackend {
                         &p.public_values,
                         self.hash_mode()?,
                     ),
+                    // Carry the plaintext public output so the proof is self-contained and the
+                    // verifier can rehash-bind it (empty unless the guest used standard write_output).
+                    output: self.executor.public_output(),
                 },
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
@@ -472,6 +477,9 @@ impl ProverBackend {
                 &minimal_proof.public_values,
                 self.hash_mode()?,
             ),
+            // Compression step re-wraps an existing proof; the plaintext output is detached for
+            // recursion (only the digest propagates) and re-attached at terminal delivery.
+            output: Vec::new(),
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
@@ -525,6 +533,8 @@ impl ProverBackend {
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
             ),
+            // Snark-wrap re-wraps an existing proof; plaintext output is carried separately.
+            output: Vec::new(),
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))

@@ -19,16 +19,43 @@ unsafe impl Send for ShmemReader {}
 unsafe impl Sync for ShmemReader {}
 
 impl ShmemReader {
-    /// Opens and maps a shared memory region for read-only access.
+    /// Opens and maps a shared memory region for read-only access (pages locked resident).
     pub fn new(name: &str, size: usize) -> Result<Self> {
+        Self::open(name, size, true)
+    }
+
+    /// Like [`new`](Self::new) but without `MAP_LOCKED`, so a large sparse segment does not force
+    /// the whole region resident. Used for the public-output channel, whose generous cap is only
+    /// ever touched up to the actual output length.
+    pub fn new_unlocked(name: &str, size: usize) -> Result<Self> {
+        Self::open(name, size, false)
+    }
+
+    fn open(name: &str, size: usize, lock: bool) -> Result<Self> {
         // Open existing shared memory (read-only)
         let fd = shmem_sys::open(name, libc::O_RDONLY)?;
 
-        // Map the memory region for read-only (always locked)
-        let ptr = shmem_sys::map(fd, size, PROT_READ, true, name)?;
+        // Map the memory region for read-only.
+        let ptr = shmem_sys::map(fd, size, PROT_READ, lock, name)?;
         let ptr_u8 = ptr as *const u8;
 
         Ok(Self { ptr: ptr_u8, size, fd, name: name.to_string() })
+    }
+
+    /// Reads `len` bytes starting at `offset` into a fresh `Vec<u8>`.
+    ///
+    /// # Safety contract
+    /// The caller must ensure the segment contains at least `offset + len` valid bytes; callers
+    /// derive `len` from a length header the producer wrote before signalling completion.
+    pub fn read_bytes(&self, offset: usize, len: usize) -> Vec<u8> {
+        debug_assert!(offset + len <= self.size, "read_bytes out of bounds");
+        let mut out = vec![0u8; len];
+        if len != 0 {
+            unsafe {
+                std::ptr::copy_nonoverlapping(self.ptr.add(offset), out.as_mut_ptr(), len);
+            }
+        }
+        out
     }
 
     unsafe fn unmap(&mut self) {
