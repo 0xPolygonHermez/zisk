@@ -30,7 +30,7 @@ pub const HELPER_TARGET_SUBDIR: &str = "elf";
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 pub struct BuildArgs {
     #[clap(short = 'F', long)]
-    features: Option<String>,
+    pub features: Option<String>,
 
     #[clap(long)]
     all_features: bool,
