@@ -158,7 +158,7 @@ grep -q '^# zisk-worker:CONFIG_FILE=/etc/zisk/worker.toml$' "$UNIT" \
 info "ziskup bundle metadata at $BUNDLE/.zisk-bundle"
 BUNDLE_META="$BUNDLE/.zisk-bundle"
 [[ -f "$BUNDLE_META" ]] && ok "$BUNDLE_META exists" || { fail "$BUNDLE_META missing"; exit 1; }
-grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+$' "$BUNDLE_META" \
+grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$' "$BUNDLE_META" \
     && ok "bundle metadata has version field" \
     || fail "bundle metadata missing/invalid version"
 grep -qE '^manifest=.*\bbin\b' "$BUNDLE_META" \
