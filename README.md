@@ -1,6 +1,6 @@
 ## ⚠️ Disclaimer ⚠️
 
-This version is intended for production use and the project is currently undergoing security and correctness audits.
+This version serves as the foundation for the production release and is currently undergoing security and correctness audits.
 
 Although extensive testing and validation have been performed, additional bugs or vulnerabilities may still be discovered. Users should evaluate the software according to their own requirements and use it at their own discretion and responsibility.
 
