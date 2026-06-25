@@ -17,7 +17,8 @@ use zisk_definitions::{
 
 use crate::{
     convert_vector, ZiskInstBuilder, ZiskRom, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
-    EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ENTRY, ROM_EXIT,
+    EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR,
+    ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT,
 };
 
 #[cfg(feature = "float")]
@@ -1001,8 +1002,7 @@ impl Riscv2ZiskContext<'_> {
     }
 
     // auipc rd, upimm
-    //     flag(0,0), j(pc+upimm<<12, pc+4) -> [%rd]    // 4 goes to jmp_offset2 and upimm << 12 to
-    // jmp_offset1
+    //     c = pc+upimm<<12 -> [%rd]
     pub fn auipc(&mut self, i: &RiscvInstruction, next_instructions: &[RiscvInstruction]) {
         // If the auipc is immediately followed by a jalr that uses the value of rd, we can directly
         // store the result of auipc in the register and statically jump to the target of auipc,
@@ -1010,46 +1010,46 @@ impl Riscv2ZiskContext<'_> {
         // then dynamically jump to it in the next instruction. This optimization allows us to save one instruction in the
         // common case of auipc + jalr used for function calls, which is a common pattern in RISC-V
         // code.
+        // Example:
+        // 80000010:    003c2097              auipc    ra,0x3c2
+        // 80000014:    b30080e7              jalr     ra, -1232(ra) # 803c1b40 <_zisk_main>
+
         if !next_instructions.is_empty()
             && next_instructions[0].inst == "jalr"
+            && i.rd != 0
             && next_instructions[0].rs1 == i.rd
             && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
         {
             // return_pc = pc + len(auipc) + len(jalr)
             // jump_pc = pc + auipc_imm + jalr_imm
             let current_inst_size = if i.inst.starts_with("c.") { 2 } else { 4 };
-            let next_inst_size = if next_instructions[0].inst.starts_with("c.") { 2 } else { 4 };
+            let next_inst_size = 4;
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
-            let jump_pc = (i.rom_address as i64
-                + (i.imm as i64) // already shifted << 12 at decoding time
-                + next_instructions[0].imm as i64) as u64
-                & JALR_MASK;
-
-            let internal_address_1 = self.rom.get_internal_address();
+            let auipc_result = i.rom_address as i64 + (i.imm as i64); // already shifted << 12 at decoding time
+            let jump_pc = (auipc_result + next_instructions[0].imm as i64) as u64 & JALR_MASK;
+            assert!(
+                (ROM_ADDR..=ROM_ADDR_MAX).contains(&jump_pc)
+                    || (ROM_ENTRY..=MAX_ZISK_OS_ROM_ADDR).contains(&jump_pc)
+            );
 
             {
                 let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+
+                // auipc part: write auipc result to rd, unless jalr also writes rd (link), in which case rd gets return_pc
                 zib.src_a("imm", 0, false);
-                zib.src_b("imm", return_pc, false);
+                zib.src_b(
+                    "imm",
+                    if next_instructions[0].rd == 0 { auipc_result as u64 } else { return_pc },
+                    false,
+                );
                 zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
-                zib.set_next_internal_address(internal_address_1);
-                let jump_address = internal_address_1 as i64 - i.rom_address as i64;
-                zib.j(jump_address, jump_address);
-                zib.verbose(&format!(
-                    "auipc r{}, 0x{:x} + jalr (1) pc=0x{:x}",
-                    i.rd, i.imm, jump_pc
-                ));
-                zib.build(self.rom);
-            }
-            {
-                let mut zib = ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst.clone());
-                zib.src_a("imm", 0, false);
-                zib.src_b("imm", jump_pc, false);
-                zib.op("copyb").unwrap();
-                zib.set_pc();
-                zib.j(0, 0);
-                zib.verbose("internal 1 auipc");
+
+                // jalr part: jump to jump_pc
+                let jump_offset = jump_pc as i64 - i.rom_address as i64;
+                zib.j(jump_offset, jump_offset);
+
+                zib.verbose(&format!("auipc r{}, 0x{:x} + jalr pc=0x{:x}", i.rd, i.imm, jump_pc));
                 zib.build(self.rom);
             }
 
@@ -1058,10 +1058,10 @@ impl Riscv2ZiskContext<'_> {
 
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
         zib.src_a("imm", 0, false);
-        zib.src_b("imm", 0, false);
-        zib.op("flag").unwrap();
-        zib.store_pc("reg", i.rd as i64, false);
-        zib.j(4, i.imm as i64);
+        zib.src_b("imm", (i.rom_address as i64 + (i.imm as i64)) as u64, false);
+        zib.op("copyb").unwrap();
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(4, 4);
         zib.verbose(&format!("auipc r{}, 0x{:x}", i.rd, i.imm));
         zib.build(self.rom);
     }
@@ -1203,7 +1203,9 @@ impl Riscv2ZiskContext<'_> {
         // architecture test suite but which seeems to test requirements of other parts of the
         // spec.
 
-        if (i.imm % 4) == 0 {
+        // For imm even, (rs1 + imm) & ~1 is equivalent to (rs1 & ~1) + imm,
+        // so we save 1 zisk instruction
+        if (i.imm % 2) == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
             zib.src_a("imm", JALR_MASK, false);
             zib.src_b("reg", i.rs1 as u64, false);
