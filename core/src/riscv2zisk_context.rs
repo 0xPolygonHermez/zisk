@@ -1046,8 +1046,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("reg", i.rd as i64, false, false);
 
                 // jalr part: jump to jump_pc
-                let jump_address = jump_pc as i64 - i.rom_address as i64;
-                zib.j(jump_address, jump_address);
+                let jump_offset = jump_pc as i64 - i.rom_address as i64;
+                zib.j(jump_offset, jump_offset);
 
                 zib.verbose(&format!("auipc r{}, 0x{:x} + jalr pc=0x{:x}", i.rd, i.imm, jump_pc));
                 zib.build(self.rom);
