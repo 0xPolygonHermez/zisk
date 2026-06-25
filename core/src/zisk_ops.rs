@@ -430,13 +430,13 @@ define_ops! {
     (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x29, 0, 0, opc_signextend_w, op_signextend_w, ops_none),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, 0, opc_pubout, op_pubout, ops_none),
 
-    // Bit manipulation extensions (Zbkb)
+    // Bit manipulation extensions (Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx)
     (Rev8, "rev8", BinaryE, BINARY_E_COST, 0x31, 0, 0, opc_rev8, op_rev8, ops_none),
     (Brev8, "brev8", BinaryE, BINARY_E_COST, 0x32, 0, 0, opc_brev8, op_brev8, ops_none),
     (Andn, "andn", BinaryE, BINARY_E_COST, 0x33, 0, 0, opc_andn, op_andn, ops_none),
     (Orn, "orn", BinaryE, BINARY_E_COST, 0x34, 0, 0, opc_orn, op_orn, ops_none),
     (Xnor, "xnor", BinaryE, BINARY_E_COST, 0x35, 0, 0, opc_xnor, op_xnor, ops_none),
-    (Pack, "pack", Binary, BINARY_E_COST, 0x36, 0, 0, opc_pack, op_pack, ops_none),
+    (Pack, "pack", BinaryE, BINARY_E_COST, 0x36, 0, 0, opc_pack, op_pack, ops_none),
     (PackH, "pack_h", BinaryE, BINARY_E_COST, 0x37, 0, 0, opc_pack_h, op_pack_h, ops_none),
     (PackW, "pack_w", BinaryE, BINARY_E_COST, 0x38, 0, 0, opc_pack_w, op_pack_w, ops_none),
     (Rol, "rol", BinaryE, BINARY_E_COST, 0x39, 0, 0, opc_rol, op_rol, ops_none),
