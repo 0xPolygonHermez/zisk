@@ -3,8 +3,8 @@
 //use std::arch::asm;
 
 pub fn diagnostic_riscv_c() {
-    // Disabled since the RISC-V C extension is not supported in the current rust toolchain used
-    // for CI
+    // Note: this diagnostic is compiled only when `c_extension` is enabled. CI keeps it off because
+    // the current Rust toolchain used there does not support assembling C-extension mnemonics.
 
     riscv_c_add(1, 2, 3);
     println!("All RISC-V C extension diagnostics passed!");

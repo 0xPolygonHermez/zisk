@@ -508,7 +508,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "float")]
             "fmv.x.d" => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
 
-            // RISC-V Bit manipulation Extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx)
+            // RISC-V Bit manipulation Extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
 
             // Byte and bit reverse operations
             #[cfg(feature = "bit_manipulation_extensions")]

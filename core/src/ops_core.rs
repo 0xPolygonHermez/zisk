@@ -779,9 +779,7 @@ pub const fn op_xperm4(a: u64, b: u64) -> (u64, bool) {
     let mut output: [u8; 16] = [0; 16];
     i = 0;
     while i < 16 {
-        if indexes[i] < 16 {
-            output[i] = values[indexes[i] as usize];
-        }
+        output[i] = values[indexes[i] as usize];
         i += 1;
     }
 
