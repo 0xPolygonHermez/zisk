@@ -19,9 +19,7 @@ fn main() -> Result<()> {
     }
 
     let mut build_args = BuildArgs::default();
-    if !features.is_empty() {
-        build_args.features = Some(features.join(","));
-    }
+    build_args.features = if features.is_empty() { None } else { Some(features.join(",")) };
 
     build_program_with_args(
         programs_path
