@@ -13,6 +13,10 @@ struct AggregationToml {
     programs: Vec<String>,
     /// `AggregatePublics` circom body, relative to this TOML.
     aggregate_publics: PathBuf,
+    /// Side inputs the `AggregatePublics` circuit reads directly (for
+    /// hash-style publics: preimages checked and re-hashed at the fold).
+    #[serde(default)]
+    aggregate_free_inputs: usize,
     #[serde(default)]
     normalize: Vec<NormalizeToml>,
 }
@@ -35,6 +39,7 @@ pub struct ResolvedAggregation {
     pub name: String,
     pub programs: Vec<ResolvedProgram>,
     pub aggregate_publics_body: String,
+    pub aggregate_n_free_inputs: usize,
     pub normalize_groups: Vec<ResolvedNormalizeGroup>,
 }
 
@@ -220,7 +225,13 @@ pub fn resolve_aggregation(
 
     let (normalize_paths, normalize_groups) = groups.into_iter().unzip();
     Ok((
-        ResolvedAggregation { name, programs, aggregate_publics_body, normalize_groups },
+        ResolvedAggregation {
+            name,
+            programs,
+            aggregate_publics_body,
+            aggregate_n_free_inputs: def.aggregate_free_inputs,
+            normalize_groups,
+        },
         ResolvedCircuitPaths { aggregate: aggregate_path, normalize: normalize_paths },
     ))
 }
@@ -279,6 +290,10 @@ fn codegen(
         aggregate_path.display().to_string(),
     );
     let _ = writeln!(out, "    )");
+    if resolved.aggregate_n_free_inputs > 0 {
+        let _ =
+            writeln!(out, "    .aggregate_free_inputs({}usize)", resolved.aggregate_n_free_inputs);
+    }
     for (g, (path, group)) in normalize_paths.iter().zip(&resolved.normalize_groups).enumerate() {
         let member_refs: Vec<String> =
             group.member_indices.iter().map(|i| format!("&__ZISK_AGG_PROGRAMS[{i}]")).collect();

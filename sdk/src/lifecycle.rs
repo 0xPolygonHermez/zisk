@@ -7,7 +7,9 @@ use crate::recurser::Recurser;
 
 /// What `client.upload()` is targeting.
 pub enum UploadTarget<'a> {
+    /// A guest program: registers its ELF.
     Program(&'a GuestProgram),
+    /// A recurser: registers its aggregation spec.
     Recurser(&'a Recurser),
 }
 
@@ -25,7 +27,9 @@ impl<'a> From<&'a Recurser> for UploadTarget<'a> {
 
 /// What `client.setup()` is targeting.
 pub enum SetupTarget<'a> {
+    /// A guest program: generates its proving-key setup.
     Program(&'a GuestProgram),
+    /// A recurser: generates its aggregation setup.
     Recurser(&'a Recurser),
 }
 

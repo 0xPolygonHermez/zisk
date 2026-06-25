@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
 use zisk_common::Proof;
 use zisk_coordinator_api::dto::{
     DomainAggregateProofsRequest, DomainAggregationProgramSpec, DomainJobKind,
@@ -15,6 +14,7 @@ use crate::prove::ProveResult;
 use crate::recurser::Recurser;
 use crate::setup::SetupResult;
 use crate::upload::UploadResult;
+use crate::{Result, SdkError};
 
 impl RemoteClient {
     /// Pushes the recurser spec to the coordinator; idempotent server-side.
@@ -32,19 +32,19 @@ impl RemoteClient {
                 })
                 .collect(),
             aggregate_publics_body: agg.templates.aggregate_publics.clone(),
+            aggregate_n_free_inputs: agg.templates.aggregate_n_free_inputs as u64,
         };
 
         let returned = self
             .gw
             .register_aggregation_program(agg.recurser_id.clone(), spec)
-            .context("RegisterRecurser failed")?;
+            .map_err(SdkError::backend)?;
 
         if returned != agg.recurser_id {
-            return Err(anyhow!(
+            return Err(SdkError::Recurser(format!(
                 "coordinator returned recurser_id '{}', expected '{}'",
-                returned,
-                agg.recurser_id
-            ));
+                returned, agg.recurser_id
+            )));
         }
         Ok(UploadResult::new(agg.recurser_id.clone()))
     }
@@ -59,7 +59,7 @@ impl RemoteClient {
             DomainJobKind::SetupAggregationProgram(DomainSetupAggregationProgramRequest {
                 recurser_id: agg.recurser_id.clone(),
             });
-        let remote_job = self.gw.submit_job(job_kind)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 
@@ -76,12 +76,12 @@ impl RemoteClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveResult>> {
         // Bincode each proof for the wire.
-        let vfp_a = proof_a.get_vadcop_final_proof()?;
-        let vfp_b = proof_b.get_vadcop_final_proof()?;
+        let vfp_a = proof_a.get_vadcop_final_proof().map_err(SdkError::backend)?;
+        let vfp_b = proof_b.get_vadcop_final_proof().map_err(SdkError::backend)?;
         let bytes_a = bincode::serde::encode_to_vec(&vfp_a, bincode::config::standard())
-            .map_err(|e| anyhow!("failed to serialize proof_a: {e}"))?;
+            .map_err(|e| SdkError::Serialization(format!("proof_a: {e}")))?;
         let bytes_b = bincode::serde::encode_to_vec(&vfp_b, bincode::config::standard())
-            .map_err(|e| anyhow!("failed to serialize proof_b: {e}"))?;
+            .map_err(|e| SdkError::Serialization(format!("proof_b: {e}")))?;
 
         // Server-side deadline not on the wire yet; `timeout` is honored client-side via JobHandle.
         let job_kind = DomainJobKind::AggregateProofs(DomainAggregateProofsRequest {
@@ -92,7 +92,7 @@ impl RemoteClient {
             free_inputs_b: free_inputs_b.to_vec(),
             root_c_recurser_agg,
         });
-        let remote_job = self.gw.submit_job(job_kind)?;
+        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
         Ok(JobHandle::new_remote(remote_job, subs, timeout, None, None))
     }
 }

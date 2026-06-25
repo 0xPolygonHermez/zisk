@@ -42,6 +42,7 @@ pub struct DomainAggregationProgramSpec {
     pub program_vks: Vec<DomainProgramVk>,
     pub normalize_groups: Vec<DomainNormalizeGroup>,
     pub aggregate_publics_body: String,
+    pub aggregate_n_free_inputs: u64,
 }
 
 pub struct RegisterAggregationProgramRequestDto {

@@ -146,7 +146,7 @@ mod tests {
         } else {
             vec![]
         };
-        RecurserManifestInputs::new(zisk_vk, vks, &groups, "a")
+        RecurserManifestInputs::new(zisk_vk, vks, &groups, "a", 0)
     }
 
     fn publics_with_program_vk(vk: [u64; 4]) -> Vec<u64> {

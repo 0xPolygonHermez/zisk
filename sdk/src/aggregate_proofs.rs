@@ -3,13 +3,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Result};
 use zisk_common::Proof;
 
 use crate::job_handle::{subscriber_list_from, JobHandle, Subscriber};
 use crate::prove::{JobEvent, ProveResult};
 use crate::recurser::Recurser;
-use crate::Client;
+use crate::{Client, Result, SdkError};
 
 /// A proof entering a fold, optionally carrying the side inputs its
 /// normalization circuit consumes. A plain `&Proof` converts with no
@@ -104,7 +103,7 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
             let expected = expected_free_inputs(self.agg, input.proof);
             let got = input.free_inputs.len();
             if got != expected {
-                return Err(anyhow!(
+                return Err(SdkError::Recurser(format!(
                     "proof_{side} supplies {got} free inputs but its normalization group \
                      consumes {expected}{}",
                     if expected == 0 {
@@ -113,7 +112,7 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
                     } else {
                         ""
                     },
-                ));
+                )));
             }
             // The circuit's per-side arrays are fixed at the worst case across
             // groups; the unused tail is zero.

@@ -169,8 +169,15 @@ template Main(nPublics, nFreeInputs, nPrograms) {
 {% endif %}
 
     // -- Consistency + aggregation (VK-agnostic). AggregatePublics both asserts
-    //    the user's consistency constraints and produces the merged publics.
-    signal aggPublics[nPublics] <== AggregatePublics(nPublics)(ziskPublicsA, ziskPublicsB);
+    //    the user's consistency constraints and produces the merged publics. It
+    //    also receives both sides' freeInputs so a hash-style public can be
+    //    checked against its preimage, the preimages recombined, and re-hashed —
+    //    without a NormalizePublics stage. freeInputsA/B are the SAME arrays the
+    //    normalize groups read their leading slots from; when both stages are
+    //    used the caller owns slot discipline (n_free_inputs is sized to the max
+    //    demand across normalize groups and the aggregate stage).
+    signal aggPublics[nPublics] <== AggregatePublics(nPublics, nFreeInputs)(
+        ziskPublicsA, ziskPublicsB, freeInputsA, freeInputsB);
 
     // Re-emit in the same VK-first layout: user publics after the VK slot.
     for (var i = 0; i < nPublics; i++) {

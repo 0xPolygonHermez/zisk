@@ -200,9 +200,10 @@ message NormalizeGroup {
 }
 
 message AggregationProgramSpec {
-  repeated ProgramVk      program_vks            = 1;
-  repeated NormalizeGroup normalize_groups       = 2;
-  string                  aggregate_publics_body = 3;
+  repeated ProgramVk      program_vks              = 1;
+  repeated NormalizeGroup normalize_groups         = 2;
+  string                  aggregate_publics_body   = 3;
+  uint64                  aggregate_n_free_inputs  = 4;
 }
 
 message RegisterAggregationProgramRequest {

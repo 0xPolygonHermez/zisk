@@ -300,6 +300,7 @@ impl BackendService for CoordinatorBackend {
                 })
                 .collect(),
             aggregate_publics_body: spec.aggregate_publics_body,
+            aggregate_n_free_inputs: spec.aggregate_n_free_inputs,
         };
         self.coordinator
             .register_aggregation_program(recurser_id.clone(), cluster_spec)

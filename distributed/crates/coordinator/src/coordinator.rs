@@ -197,6 +197,7 @@ fn aggregation_program_spec_eq(
     a.program_vks == b.program_vks
         && a.normalize_groups == b.normalize_groups
         && a.aggregate_publics_body == b.aggregate_publics_body
+        && a.aggregate_n_free_inputs == b.aggregate_n_free_inputs
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -3492,6 +3493,7 @@ mod tests {
             program_vks: vec![["1".into(), "2".into(), "3".into(), "4".into()]],
             normalize_groups: vec![],
             aggregate_publics_body: "// body".into(),
+            aggregate_n_free_inputs: 0,
         }
     }
 

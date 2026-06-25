@@ -37,6 +37,12 @@ pub enum SdkError {
     #[error("unexpected coordinator response: {0}")]
     UnexpectedResponse(String),
 
+    /// A recurser request was misconfigured or produced an inconsistent
+    /// result (bad guest set, duplicate or ill-formed program VK, coordinator
+    /// `recurser_id` mismatch, unexpected verkey length).
+    #[error("recurser: {0}")]
+    Recurser(String),
+
     /// A filesystem or other standard I/O operation failed.
     #[error(transparent)]
     Io(#[from] std::io::Error),

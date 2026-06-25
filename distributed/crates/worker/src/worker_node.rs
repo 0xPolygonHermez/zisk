@@ -1408,6 +1408,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             program_vks.clone(),
             &normalize_groups,
             &spec.aggregate_publics_body,
+            spec.aggregate_n_free_inputs as usize,
         );
         let expected_id = expected_inputs.compute_id();
         if expected_id != setup.recurser_id {
@@ -1431,6 +1432,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 templates: recurser::CircomTemplates {
                     normalize_groups,
                     aggregate_publics: spec.aggregate_publics_body.clone(),
+                    aggregate_n_free_inputs: spec.aggregate_n_free_inputs as usize,
                 },
             };
 

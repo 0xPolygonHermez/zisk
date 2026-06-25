@@ -48,12 +48,19 @@ pub struct NormalizeGroup {
 pub struct CircomTemplates {
     pub normalize_groups: Vec<NormalizeGroup>,
     pub aggregate_publics: String,
+    pub aggregate_n_free_inputs: usize,
 }
 
 impl CircomTemplates {
-    /// Size of the per-side `freeInputs` arrays: worst case across groups.
+    /// Size of the per-side `freeInputs` arrays: worst case across the
+    /// normalize groups and the aggregate stage.
     pub fn max_free_inputs(&self) -> usize {
-        self.normalize_groups.iter().map(|g| g.n_free_inputs).max().unwrap_or(0)
+        self.normalize_groups
+            .iter()
+            .map(|g| g.n_free_inputs)
+            .chain(std::iter::once(self.aggregate_n_free_inputs))
+            .max()
+            .unwrap_or(0)
     }
 }
 

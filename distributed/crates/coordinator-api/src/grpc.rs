@@ -76,6 +76,7 @@ impl From<DomainAggregationProgramSpec> for AggregationProgramSpec {
                 })
                 .collect(),
             aggregate_publics_body: s.aggregate_publics_body,
+            aggregate_n_free_inputs: s.aggregate_n_free_inputs,
         }
     }
 }
@@ -94,6 +95,7 @@ impl From<AggregationProgramSpec> for DomainAggregationProgramSpec {
                 })
                 .collect(),
             aggregate_publics_body: s.aggregate_publics_body,
+            aggregate_n_free_inputs: s.aggregate_n_free_inputs,
         }
     }
 }

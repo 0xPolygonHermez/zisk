@@ -3,7 +3,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result};
 use recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
 use zisk_common::{Proof, StatsCostPerType};
 use zisk_prover_backend::ProveOutput;
@@ -14,7 +13,7 @@ use crate::prove::ProveResult;
 use crate::recurser::Recurser;
 use crate::setup::SetupResult;
 use crate::upload::UploadResult;
-use crate::JobEvent;
+use crate::{JobEvent, Result, SdkError};
 
 impl EmbeddedClient {
     pub(crate) fn do_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
@@ -65,8 +64,8 @@ impl EmbeddedClient {
         subs: SubscriberList,
     ) -> Result<JobHandle<ProveResult>> {
         let agg = agg.clone();
-        let vfp_a = proof_a.get_vadcop_final_proof()?;
-        let vfp_b = proof_b.get_vadcop_final_proof()?;
+        let vfp_a = proof_a.get_vadcop_final_proof().map_err(SdkError::backend)?;
+        let vfp_b = proof_b.get_vadcop_final_proof().map_err(SdkError::backend)?;
         let free_inputs_a = free_inputs_a.to_vec();
         let free_inputs_b = free_inputs_b.to_vec();
         let subs_cloned = Arc::clone(&subs);
@@ -106,7 +105,7 @@ fn run_setup_aggregation_program_blocking(
         // register them before proving.
         prover
             .register_recurser(&agg.output_dir, &agg.recurser_id)
-            .context("recurser registration failed")?;
+            .map_err(|e| SdkError::Recurser(format!("registration failed: {e}")))?;
         return Ok(SetupResult { job_id: None });
     }
 
@@ -123,13 +122,14 @@ fn run_setup_aggregation_program_blocking(
     let pool = rayon::ThreadPoolBuilder::new()
         .stack_size(64 * 1024 * 1024)
         .build()
-        .map_err(|e| anyhow!("failed to build 64 MB-stack rayon pool: {e}"))?;
-    pool.install(|| run_setup_recurser_aggregator(&opts)).context("recurser setup failed")?;
+        .map_err(SdkError::backend)?;
+    pool.install(|| run_setup_recurser_aggregator(&opts))
+        .map_err(|e| SdkError::Recurser(format!("setup failed: {e}")))?;
 
     // Register the freshly-generated setup with proofman so it can prove.
     prover
         .register_recurser(&agg.output_dir, &agg.recurser_id)
-        .context("recurser registration failed")?;
+        .map_err(|e| SdkError::Recurser(format!("registration failed: {e}")))?;
     Ok(SetupResult { job_id: None })
 }
 
@@ -151,7 +151,7 @@ fn run_aggregate_proofs_blocking(
             free_inputs_b,
             root_c_override,
         )
-        .context("recurser proof generation failed")?;
+        .map_err(|e| SdkError::Recurser(format!("proof generation failed: {e}")))?;
 
     // Recurser's own verkey → output Proof's zisk_vk.
     let zisk_vk = agg.vk()?.vk;
@@ -162,7 +162,8 @@ fn run_aggregate_proofs_blocking(
         vfp.compressed,
         zisk_vk,
         vfp.hash.clone(),
-    )?;
+    )
+    .map_err(SdkError::backend)?;
 
     Ok(ProveResult::from(ProveOutput::from_remote(
         proof,

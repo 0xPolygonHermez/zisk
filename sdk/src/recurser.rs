@@ -7,9 +7,10 @@
 
 use std::sync::{Arc, OnceLock};
 
-use anyhow::{anyhow, bail, Context, Result};
 use zisk_common::{HashMode, ProgramVK, ZiskPaths};
 use zisk_prover_backend::{CircomCircuit, GuestProgram};
+
+use crate::{Result, SdkError};
 
 /// Handle to a recurser. Cheap to clone (paths plus an `Arc`-shared
 /// VK cache). Heavy setup artifacts live on disk under `output_dir`.
@@ -43,9 +44,12 @@ impl Recurser {
             return Ok(vk.clone());
         }
         let artifacts = recurser::RecurserArtifacts::new(&self.output_dir, &self.recurser_id);
-        let limbs = artifacts
-            .read_verkey()
-            .context("Failed to read recurser verkey. Did `client.setup(&agg).run()` complete?")?;
+        let limbs = artifacts.read_verkey().map_err(|e| {
+            SdkError::Recurser(format!(
+                "failed to read recurser verkey ({e}). \
+                 Did `client.setup(&agg).run()` complete?"
+            ))
+        })?;
         // The hash family is a property of the proving key the recurser was set
         // up against; read it from the same globalInfo.json the setup did so the
         // verkey's mode matches the proofs it will be verified against.
@@ -59,7 +63,10 @@ impl Recurser {
 /// Read the recurser's hash family from the proving key's `globalInfo.json`,
 /// the same source `run_setup_recurser_aggregator` uses.
 fn read_setup_hash_mode(setup_dir: &str) -> Result<HashMode> {
-    recurser::setup::read_proving_key_hash(setup_dir)?.parse::<HashMode>()
+    recurser::setup::read_proving_key_hash(setup_dir)
+        .map_err(SdkError::backend)?
+        .parse::<HashMode>()
+        .map_err(SdkError::backend)
 }
 
 /// The body must declare `template <name>(...)` exactly once — the same check
@@ -68,10 +75,10 @@ fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
     let needle = format!("template {template}(");
     match circuit.source().matches(&needle).count() {
         1 => Ok(()),
-        n => bail!(
+        n => Err(SdkError::Recurser(format!(
             "circuit '{}' must define `template {template}(...)` exactly once, found {n}",
             circuit.name(),
-        ),
+        ))),
     }
 }
 
@@ -101,6 +108,7 @@ struct NormalizeEntry<'a> {
 pub struct AggregationProgramBuilder<'a> {
     guests: Vec<&'a GuestProgram>,
     aggregate: CircomCircuit,
+    aggregate_n_free_inputs: usize,
     normalize: Vec<NormalizeEntry<'a>>,
 }
 
@@ -111,7 +119,25 @@ impl<'a> AggregationProgramBuilder<'a> {
     /// constraints between the two folded proofs' publics plus the merge
     /// into the output publics.
     pub fn new(guests: &[&'a GuestProgram], aggregate: impl Into<CircomCircuit>) -> Self {
-        Self { guests: guests.to_vec(), aggregate: aggregate.into(), normalize: Vec::new() }
+        Self {
+            guests: guests.to_vec(),
+            aggregate: aggregate.into(),
+            aggregate_n_free_inputs: 0,
+            normalize: Vec::new(),
+        }
+    }
+
+    /// Number of prover-supplied side inputs the `AggregatePublics` circuit
+    /// reads directly (defaults to 0). Use this for hash-style publics: feed
+    /// each side's preimage as free inputs so `AggregatePublics` can check the
+    /// hash, recombine the preimages, and re-hash — no `normalize_with`
+    /// needed. The recurser's shared per-side free-input array is sized to the
+    /// max of this and every group's count; when both are used the same array
+    /// is shared, so the caller owns slot discipline.
+    #[must_use]
+    pub fn aggregate_free_inputs(mut self, n_free_inputs: usize) -> Self {
+        self.aggregate_n_free_inputs = n_free_inputs;
+        self
     }
 
     /// Attach a `NormalizePublics` circuit to a subset of
@@ -143,7 +169,7 @@ impl<'a> AggregationProgramBuilder<'a> {
     /// remotely it must match the workers' copy or `recurser_id` diverges.
     pub fn build(self) -> Result<Recurser> {
         if self.guests.is_empty() {
-            bail!("at least one guest program is required");
+            return Err(SdkError::Recurser("at least one guest program is required".into()));
         }
 
         expect_template_decl(&self.aggregate, "AggregatePublics")?;
@@ -154,15 +180,17 @@ impl<'a> AggregationProgramBuilder<'a> {
         // Validate normalize groups against the allowlist.
         for group in &self.normalize {
             if group.guests.is_empty() {
-                bail!("normalize_with(...) requires at least one guest program");
+                return Err(SdkError::Recurser(
+                    "normalize_with(...) requires at least one guest program".into(),
+                ));
             }
             for guest in &group.guests {
                 if !self.guests.iter().any(|g| g.program_id() == guest.program_id()) {
-                    bail!(
+                    return Err(SdkError::Recurser(format!(
                         "normalize_with(...) references program '{}' which is not in the \
                          allowlist passed to AggregationProgramBuilder::new(...)",
                         guest.name(),
-                    );
+                    )));
                 }
             }
         }
@@ -172,10 +200,10 @@ impl<'a> AggregationProgramBuilder<'a> {
                     .iter()
                     .any(|prior| prior.guests.iter().any(|g| g.program_id() == guest.program_id()))
                 {
-                    bail!(
+                    return Err(SdkError::Recurser(format!(
                         "program '{}' appears in more than one normalize_with(...) group",
                         guest.name(),
-                    );
+                    )));
                 }
             }
         }
@@ -204,43 +232,53 @@ impl<'a> AggregationProgramBuilder<'a> {
         let templates = recurser::CircomTemplates {
             normalize_groups,
             aggregate_publics: self.aggregate.source().to_string(),
+            aggregate_n_free_inputs: self.aggregate_n_free_inputs,
         };
 
         let setup_dir = ZiskPaths::global()
             .home
             .to_str()
-            .context("default ~/.zisk path is not valid UTF-8")?
+            .ok_or_else(|| SdkError::Recurser("default ~/.zisk path is not valid UTF-8".into()))?
             .to_string();
         let output_dir = ZiskPaths::global()
             .home
             .join("recurser")
             .to_str()
-            .context("~/.zisk/recurser path is not valid UTF-8")?
+            .ok_or_else(|| SdkError::Recurser("~/.zisk/recurser path is not valid UTF-8".into()))?
             .to_string();
 
-        let zisk_vk = recurser::setup::read_vadcop_final_verkey(&setup_dir).with_context(|| {
-            "Failed to locate local vadcop_final verkey. Run `cargo-zisk setup --recursive` \
-             on this machine (required even when using a remote coordinator)."
+        let zisk_vk = recurser::setup::read_vadcop_final_verkey(&setup_dir).map_err(|e| {
+            SdkError::Recurser(format!(
+                "failed to locate local vadcop_final verkey ({e}). \
+                 Run `cargo-zisk setup --recursive` on this machine \
+                 (required even when using a remote coordinator)."
+            ))
         })?;
 
         let mut program_vks: Vec<[String; 4]> = Vec::with_capacity(self.guests.len());
         for prog in &self.guests {
-            let pvk = prog
-                .vk()
-                .with_context(|| format!("Failed to derive VK for program '{}'", prog.name()))?;
+            let pvk = prog.vk().map_err(|e| {
+                SdkError::Recurser(format!(
+                    "failed to derive VK for program '{}': {e}",
+                    prog.name()
+                ))
+            })?;
             let limbs: [u64; 4] = <[u64; 4]>::try_from(pvk.vk.as_slice()).map_err(|_| {
-                anyhow!("Program VK for '{}' did not decode into 4 u64 limbs", prog.name())
+                SdkError::Recurser(format!(
+                    "program VK for '{}' did not decode into 4 u64 limbs",
+                    prog.name()
+                ))
             })?;
             let limbs_str: [String; 4] = limbs.map(|w| w.to_string());
             if let Some(prior_idx) = program_vks.iter().position(|existing| existing == &limbs_str)
             {
-                bail!(
-                    "Duplicate program VK at index {} ('{}'); already registered at index {} ('{}')",
+                return Err(SdkError::Recurser(format!(
+                    "duplicate program VK at index {} ('{}'); already registered at index {} ('{}')",
                     program_vks.len(),
                     prog.name(),
                     prior_idx,
                     self.guests[prior_idx].name(),
-                );
+                )));
             }
             program_vks.push(limbs_str);
         }
@@ -252,6 +290,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             program_vks.clone(),
             &templates.normalize_groups,
             &templates.aggregate_publics,
+            templates.aggregate_n_free_inputs,
         );
         let recurser_id = inputs.compute_id();
 
@@ -354,6 +393,7 @@ mod tests {
             templates: recurser::CircomTemplates {
                 normalize_groups: vec![],
                 aggregate_publics: "// body".into(),
+                aggregate_n_free_inputs: 0,
             },
             setup_dir: "/tmp/zisk-test-setup".into(),
             output_dir: "/tmp/zisk-test-output".into(),

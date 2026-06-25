@@ -255,14 +255,14 @@ impl ProveOutput {
     pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
         &self,
     ) -> Result<T> {
-        self.proof.publics().read()
+        Ok(self.proof.publics().read()?)
     }
 
     pub fn get_public_values_abi<T>(&self) -> Result<T>
     where
         T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
     {
-        self.proof.publics().read_abi()
+        Ok(self.proof.publics().read_abi()?)
     }
 
     pub fn get_public_values_slice(&self, slice: &mut [u8]) {

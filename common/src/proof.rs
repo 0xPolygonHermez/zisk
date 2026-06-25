@@ -410,16 +410,26 @@ impl PublicValues {
 ///   exist in the u32 `PublicValues` form, so it stores exactly that.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProofBody {
+    /// A recursive (Vadcop) proof carrying its native field-element publics.
     Vadcop {
+        /// The proof, as a flat vector of field elements.
         proof: Vec<u64>,
+        /// The ZisK verification key associated with the proof.
         zisk_vk: Vec<u64>,
+        /// Whether this is a minimal proof.
         minimal: bool,
+        /// Hash identifying the proof.
         hash: String,
+        /// The full native (field-element) publics the proof committed to.
         publics_full: Vec<u64>,
     },
+    /// A Plonk proof for on-chain verification, storing its u32 publics directly.
     Plonk {
+        /// The serialized proof bytes.
         proof_bytes: Vec<u8>,
+        /// The Plonk verification key blob.
         plonk_vk: Box<PlonkVkBlob>,
+        /// The proof's public values, in u32 `PublicValues` form.
         publics: PublicValues,
     },
 }
@@ -441,6 +451,7 @@ impl Default for ProofBody {
 pub struct Proof {
     /// The data of the proof.
     pub body: ProofBody,
+    /// The program verification key.
     pub program_vk: ProgramVK,
 }
 
@@ -593,6 +604,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
 }
 
 impl Proof {
+    /// Creates a new `Proof` from a body and program verification key.
     pub fn new(body: ProofBody, program_vk: ProgramVK) -> Self {
         Self { body, program_vk }
     }
@@ -745,6 +757,7 @@ impl Proof {
         Ok(bytes)
     }
 
+    /// Returns the u32 `PublicValues` view of this proof's publics.
     pub fn get_publics(&self) -> PublicValues {
         self.publics()
     }

@@ -101,13 +101,15 @@ impl<'a, C: Client> SetupRequest<'a, C> {
                         // The hash mode is dictated by the worker's proving key, not
                         // the client; use the authoritative value returned with the
                         // setup to name the verkey artifact.
-                        let hash_mode = hash_mode.parse::<HashMode>()?;
-                        let output_path = get_output_path(&output_dir)?;
+                        let hash_mode = hash_mode.parse::<HashMode>().map_err(SdkError::backend)?;
+                        let output_path =
+                            get_output_path(&output_dir).map_err(SdkError::backend)?;
                         let path = get_elf_bin_verkey_file_path_with_hash(
                             &hash_id,
                             &output_path,
                             hash_mode,
-                        )?;
+                        )
+                        .map_err(SdkError::backend)?;
                         std::fs::write(&path, vk)?;
                     }
                     Ok(())
@@ -128,15 +130,15 @@ impl<'a, C: Client> SetupRequest<'a, C> {
                     ) = status
                     {
                         if vk.len() != 32 {
-                            return Err(anyhow::anyhow!(
+                            return Err(SdkError::Recurser(format!(
                                 "coordinator returned a {}-byte recurser verkey; expected 32",
                                 vk.len()
-                            ));
+                            )));
                         }
                         // The hash mode is dictated by the worker's proving key;
                         // it must travel with the verkey so a later verify can
                         // match it against the proof's hash family.
-                        let hash_mode = hash_mode.parse::<HashMode>()?;
+                        let hash_mode = hash_mode.parse::<HashMode>().map_err(SdkError::backend)?;
                         let mut limbs = [0u64; 4];
                         for i in 0..4 {
                             let chunk: [u8; 8] = vk[i * 8..(i + 1) * 8].try_into().unwrap();

@@ -110,6 +110,7 @@ pub struct AggregationProgramSpecDto {
     pub program_vks: Vec<RecurserProgramVk>,
     pub normalize_groups: Vec<NormalizeGroupDto>,
     pub aggregate_publics_body: String,
+    pub aggregate_n_free_inputs: u64,
 }
 
 #[derive(Debug, Clone)]

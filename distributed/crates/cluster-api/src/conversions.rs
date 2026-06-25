@@ -159,6 +159,7 @@ impl From<AggregationProgramSpecDto> for AggregationProgramSpec {
                 })
                 .collect(),
             aggregate_publics_body: dto.aggregate_publics_body,
+            aggregate_n_free_inputs: dto.aggregate_n_free_inputs,
         }
     }
 }
@@ -181,6 +182,7 @@ impl From<AggregationProgramSpec> for AggregationProgramSpecDto {
                 })
                 .collect(),
             aggregate_publics_body: spec.aggregate_publics_body,
+            aggregate_n_free_inputs: spec.aggregate_n_free_inputs,
         }
     }
 }

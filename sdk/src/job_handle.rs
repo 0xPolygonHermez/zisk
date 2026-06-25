@@ -415,7 +415,11 @@ impl FromWaitResult for crate::prove::ProveResult {
                 let proof_with_pv: zisk_common::Proof =
                     bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
                         .map(|(v, _)| v)
-                        .map_err(|e| anyhow::anyhow!("failed to deserialize remote proof: {e}"))?;
+                        .map_err(|e| {
+                            SdkError::Serialization(format!(
+                                "failed to deserialize remote proof: {e}"
+                            ))
+                        })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
                     proof_with_pv,
                     0,
@@ -424,9 +428,9 @@ impl FromWaitResult for crate::prove::ProveResult {
                 );
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
-            TerminalStatus::Completed(other) => {
-                anyhow::bail!("unexpected job kind response for prove/wrap/aggregate: {:?}", other)
-            }
+            TerminalStatus::Completed(other) => Err(SdkError::UnexpectedResponse(format!(
+                "unexpected job kind response for prove/wrap/aggregate: {other:?}"
+            ))),
             TerminalStatus::Failed(f) => Err(SdkError::JobFailed(format_failure(&f))),
             TerminalStatus::Cancelled => Err(SdkError::Cancelled),
         }

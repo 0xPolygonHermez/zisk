@@ -1,7 +1,5 @@
-use anyhow::Result;
-
 use crate::lifecycle::UploadTarget;
-use crate::Client;
+use crate::{Client, Result};
 
 pub struct UploadResult {
     hash_id: String,

@@ -432,11 +432,12 @@ enum EmbeddedProver {
 }
 
 impl EmbeddedProver {
-    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> anyhow::Result<()> {
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
         match self {
             EmbeddedProver::Emu(p) => p.register_recurser(output_dir, recurser_id),
             EmbeddedProver::Asm(p) => p.register_recurser(output_dir, recurser_id),
         }
+        .map_err(SdkError::backend)
     }
 
     fn prove_recurser(
@@ -447,7 +448,7 @@ impl EmbeddedProver {
         free_inputs_a: &[u64],
         free_inputs_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
-    ) -> anyhow::Result<proofman_verifier::VadcopFinalProof> {
+    ) -> Result<proofman_verifier::VadcopFinalProof> {
         match self {
             EmbeddedProver::Emu(p) => p.prove_recurser(
                 recurser_id,
@@ -466,9 +467,12 @@ impl EmbeddedProver {
                 root_c_recurser_agg,
             ),
         }
+        .map_err(SdkError::backend)
     }
 }
 
+/// An in-process prover client: runs setup, proving, and aggregation locally
+/// rather than dispatching to a remote coordinator.
 pub struct EmbeddedClient {
     prover: Arc<EmbeddedProver>,
     executor: ExecutorKind,

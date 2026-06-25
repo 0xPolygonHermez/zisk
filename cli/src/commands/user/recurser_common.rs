@@ -39,7 +39,8 @@ pub(crate) fn resolve_recurser(aggregation: &Path, release: bool) -> Result<Recu
             format!("{}-aggregate_publics", definition.name),
             definition.aggregate_publics_body.clone(),
         ),
-    );
+    )
+    .aggregate_free_inputs(definition.aggregate_n_free_inputs);
     for (i, group) in definition.normalize_groups.iter().enumerate() {
         let members: Vec<&GuestProgram> = group
             .member_indices
@@ -59,7 +60,7 @@ pub(crate) fn resolve_recurser(aggregation: &Path, release: bool) -> Result<Recu
             group.n_free_inputs,
         );
     }
-    builder.build()
+    Ok(builder.build()?)
 }
 
 /// Parse comma-separated decimal u64s ("" / absent → empty).

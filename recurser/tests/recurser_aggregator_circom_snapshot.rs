@@ -24,11 +24,16 @@ fn templates_one_group() -> CircomTemplates {
     CircomTemplates {
         normalize_groups: vec![group(&[0], NORMALIZE, 1)],
         aggregate_publics: AGGREGATE.to_string(),
+        aggregate_n_free_inputs: 0,
     }
 }
 
 fn templates_no_groups() -> CircomTemplates {
-    CircomTemplates { normalize_groups: vec![], aggregate_publics: AGGREGATE.to_string() }
+    CircomTemplates {
+        normalize_groups: vec![],
+        aggregate_publics: AGGREGATE.to_string(),
+        aggregate_n_free_inputs: 0,
+    }
 }
 
 fn vk_row(prefix: &str) -> [String; 4] {
@@ -63,7 +68,11 @@ fn recurser_renders_required_layout() {
     assert!(out.contains("include \"publics_helpers.circom\";"));
 
     // User-supplied sub-templates: aggregate verbatim, normalize renamed per group.
-    assert!(out.contains("template AggregatePublics(nPublics)"));
+    assert!(out.contains("template AggregatePublics(nPublics, nFreeInputs)"));
+    // AggregatePublics is wired both sides' publics AND both sides' free inputs.
+    assert!(out.contains(
+        "signal aggPublics[nPublics] <== AggregatePublics(nPublics, nFreeInputs)(\n        ziskPublicsA, ziskPublicsB, freeInputsA, freeInputsB);"
+    ));
     assert!(out.contains("template NormalizePublics_0(nPublics, nFreeInputs)"));
     assert!(!out.contains("template NormalizePublics(nPublics, nFreeInputs)"));
     // IsEqualVK helper is emitted exactly once and used twice in the membership check.
@@ -162,6 +171,7 @@ fn recurser_muxes_multiple_normalize_groups() {
     let templates = CircomTemplates {
         normalize_groups: vec![group(&[0, 2], NORMALIZE, 3), group(&[1], NORMALIZE_ALT, 1)],
         aggregate_publics: AGGREGATE.to_string(),
+        aggregate_n_free_inputs: 0,
     };
 
     let out = gen_recurser("v.circom", &zisk_vk, &program_vks, &empty_stark(), &templates).unwrap();
@@ -211,7 +221,10 @@ fn recurser_without_groups_passes_publics_through() {
 
     let out = gen_recurser("v.circom", &zisk_vk, &program_vks, &empty_stark(), &templates).unwrap();
 
-    assert!(!out.contains("NormalizePublics"));
+    // No normalize template/instantiation emitted (the AggregatePublics doc
+    // comment mentions the word, so match the template machinery, not the substring).
+    assert!(!out.contains("template NormalizePublics"));
+    assert!(!out.contains("NormalizePublics_0("));
     assert!(!out.contains("inGroupA"));
     assert!(!out.contains("wIdA"));
     assert!(out.contains("ziskPublicsA[i] <== aPublics[i];"));
@@ -230,6 +243,7 @@ fn recurser_rejects_invalid_groups() {
     let templates = CircomTemplates {
         normalize_groups: vec![group(&[2], NORMALIZE, 0)],
         aggregate_publics: AGGREGATE.to_string(),
+        aggregate_n_free_inputs: 0,
     };
     let err =
         gen_recurser("v.circom", &zisk_vk, &program_vks, &empty_stark(), &templates).unwrap_err();
@@ -239,6 +253,7 @@ fn recurser_rejects_invalid_groups() {
     let templates = CircomTemplates {
         normalize_groups: vec![group(&[0], NORMALIZE, 0), group(&[0], NORMALIZE_ALT, 0)],
         aggregate_publics: AGGREGATE.to_string(),
+        aggregate_n_free_inputs: 0,
     };
     let err =
         gen_recurser("v.circom", &zisk_vk, &program_vks, &empty_stark(), &templates).unwrap_err();
@@ -248,6 +263,7 @@ fn recurser_rejects_invalid_groups() {
     let templates = CircomTemplates {
         normalize_groups: vec![group(&[0], "// not a template", 0)],
         aggregate_publics: AGGREGATE.to_string(),
+        aggregate_n_free_inputs: 0,
     };
     let err =
         gen_recurser("v.circom", &zisk_vk, &program_vks, &empty_stark(), &templates).unwrap_err();
