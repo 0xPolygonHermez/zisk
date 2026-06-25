@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ProgramVK;
-use zisk_core::Riscv2zisk;
+use riscv2zisk::Riscv2zisk;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
 

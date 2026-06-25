@@ -1,0 +1,25 @@
+[package]
+name = "riscv2zisk"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "riscv2zisk"
+path = "src/bin/riscv2zisk.rs"
+
+[dependencies]
+zisk-definitions = { workspace = true }
+zisk-core = { workspace = true }
+transpilers-common = { workspace = true }
+
+[build-dependencies]
+lib-float = { workspace = true, optional = true }
+
+[features]
+default = []
+float = ["dep:lib-float", "lib-float/float"]
+bit_manipulation_extensions = []

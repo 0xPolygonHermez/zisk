@@ -29,7 +29,8 @@ use zisk_common::{
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey,
     StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use riscv2zisk::Riscv2zisk;
 
 use anyhow::Result;
 

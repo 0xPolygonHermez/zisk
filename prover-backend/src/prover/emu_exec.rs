@@ -13,7 +13,8 @@ use proofman_common::VerboseMode;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use riscv2zisk::Riscv2zisk;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;

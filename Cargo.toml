@@ -23,7 +23,8 @@ members = [
   "pil",
   "prover-backend",
   "prover-backend/macros",
-  "riscv",
+  "transpilers/riscv",
+  "transpilers/common",
   "rom-setup",
   "state-machines/arith",
   "state-machines/binary",
@@ -99,7 +100,9 @@ precomp-blake2 = { path = "precompiles/blake2" }
 precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
-riscv = { path = "riscv" }
+riscv = { path = "transpilers/riscv" }
+transpilers-common = { path = "transpilers/common" }
+riscv2zisk = { path = "transpilers/riscv2zisk" }
 rom-setup = { path = "rom-setup" }
 sm-arith = { path = "state-machines/arith" }
 sm-binary = { path = "state-machines/binary" }

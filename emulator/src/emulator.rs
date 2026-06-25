@@ -26,7 +26,8 @@ use std::{
 };
 use sysinfo::System;
 use zisk_common::EmuTrace;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use riscv2zisk::Riscv2zisk;
 
 pub trait Emulator {
     fn emulate(

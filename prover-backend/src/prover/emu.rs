@@ -23,7 +23,8 @@ use zisk_common::{
     io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues,
     StatsCostPerType, ZiskExecutorTime,
 };
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use riscv2zisk::Riscv2zisk;
 
 use anyhow::Result;
 
