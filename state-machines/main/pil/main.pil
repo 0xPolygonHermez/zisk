@@ -411,6 +411,17 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     // The selectors flag an set_pc are disjoint, meaning they cannot be active simultaneously.
     flag * set_pc === 0;
 
+    // A user program lives in [0x8000_0000, 0x8000_0000 + 128MB), so any valid address plus a
+    // valid 12-bit (or 32-bit) offset is guaranteed to fit within a Goldilocks field element.
+    // If the result is "negative" or falls outside this range, proof generation will fail,
+    // because the program will have jumped to a non-existent address and the ROM lookup will fail.
+    // This constraint addresses a soundness issue: without it, if c[1] were non-zero,
+    // the jump destination would be computed using only c[0] + jmp_offset1 — ignoring the upper
+    // part of the address — which could silently land on a different but valid address, producing
+    // a valid proof for an incorrect jump target.
+    // To prevent this, c[1] is assumed to be zero, and this constraint enforces it.
+    set_pc * c[1] === 0;
+
     const expr expected_current_pc = 'set_pc * ('c[0] + 'jmp_offset1) + (1 - 'set_pc) * ('pc + 'jmp_offset2) + 'flag * ('jmp_offset1 - 'jmp_offset2);
     (1 - SEGMENT_L1) * (pc - expected_current_pc) === 0;
 
