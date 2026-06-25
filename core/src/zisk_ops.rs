@@ -18,9 +18,11 @@ use crate::{
     ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST, DMA_64_ALIGNED_COST,
     DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST,
     DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
-    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON2_COST, REG_A0, SHA256_COST, SYS_ADDR,
+    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, SHA256_COST, SYS_ADDR,
 };
-use fields::{poseidon2_hash, Goldilocks, Poseidon16, PrimeField64};
+use fields::{
+    poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
+};
 use paste::paste;
 use std::{
     collections::HashMap,
@@ -50,7 +52,7 @@ pub enum OpType {
     BinaryE,
     Keccak,
     Sha256,
-    Poseidon2,
+    Poseidon,
     PubOut,
     ArithEq,
     Fcall,
@@ -70,7 +72,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::BinaryE => ZiskOperationType::BinaryE,
             OpType::Keccak => ZiskOperationType::Keccak,
             OpType::Sha256 => ZiskOperationType::Sha256,
-            OpType::Poseidon2 => ZiskOperationType::Poseidon2,
+            OpType::Poseidon => ZiskOperationType::Poseidon,
             OpType::PubOut => ZiskOperationType::PubOut,
             OpType::ArithEq => ZiskOperationType::ArithEq,
             OpType::Fcall => ZiskOperationType::Fcall,
@@ -94,7 +96,7 @@ impl Display for OpType {
             Self::BinaryE => write!(f, "BinaryE"),
             Self::Keccak => write!(f, "Keccak"),
             Self::Sha256 => write!(f, "Sha256"),
-            Self::Poseidon2 => write!(f, "Poseidon2"),
+            Self::Poseidon => write!(f, "Poseidon"),
             Self::PubOut => write!(f, "PubOut"),
             Self::ArithEq => write!(f, "Arith256"),
             Self::Fcall => write!(f, "Fcall"),
@@ -120,7 +122,7 @@ impl FromStr for OpType {
             "be" => Ok(Self::BinaryE),
             "k" => Ok(Self::Keccak),
             "s" => Ok(Self::Sha256),
-            "p" => Ok(Self::Poseidon2),
+            "p" => Ok(Self::Poseidon),
             "aeq" => Ok(Self::ArithEq),
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
@@ -427,6 +429,45 @@ define_ops! {
     (SignExtendH, "signextend_h", BinaryE, BINARY_E_COST, 0x28, 0, 0, opc_signextend_h, op_signextend_h, ops_none),
     (SignExtendW, "signextend_w", BinaryE, BINARY_E_COST, 0x29, 0, 0, opc_signextend_w, op_signextend_w, ops_none),
     (PubOut, "pubout", PubOut, 0, 0x30, 0, 0, opc_pubout, op_pubout, ops_none),
+
+    // Bit manipulation extensions (Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx)
+    (Rev8, "rev8", BinaryE, BINARY_E_COST, 0x31, 0, 0, opc_rev8, op_rev8, ops_none),
+    (Brev8, "brev8", BinaryE, BINARY_E_COST, 0x32, 0, 0, opc_brev8, op_brev8, ops_none),
+    (Andn, "andn", BinaryE, BINARY_E_COST, 0x33, 0, 0, opc_andn, op_andn, ops_none),
+    (Orn, "orn", BinaryE, BINARY_E_COST, 0x34, 0, 0, opc_orn, op_orn, ops_none),
+    (Xnor, "xnor", BinaryE, BINARY_E_COST, 0x35, 0, 0, opc_xnor, op_xnor, ops_none),
+    (Pack, "pack", BinaryE, BINARY_E_COST, 0x36, 0, 0, opc_pack, op_pack, ops_none),
+    (PackH, "pack_h", BinaryE, BINARY_E_COST, 0x37, 0, 0, opc_pack_h, op_pack_h, ops_none),
+    (PackW, "pack_w", BinaryE, BINARY_E_COST, 0x38, 0, 0, opc_pack_w, op_pack_w, ops_none),
+    (Rol, "rol", BinaryE, BINARY_E_COST, 0x39, 0, 0, opc_rol, op_rol, ops_none),
+    (RolW, "rol_w", BinaryE, BINARY_E_COST, 0x3a, 0, 0, opc_rol_w, op_rol_w, ops_none),
+    (Ror, "ror", BinaryE, BINARY_E_COST, 0x3b, 0, 0, opc_ror, op_ror, ops_none),
+    (RorW, "ror_w", BinaryE, BINARY_E_COST, 0x3c, 0, 0, opc_ror_w, op_ror_w, ops_none),
+    (Clz, "clz", BinaryE, BINARY_E_COST, 0x3d, 0, 0, opc_clz, op_clz, ops_none),
+    (ClzW, "clz_w", BinaryE, BINARY_E_COST, 0x3e, 0, 0, opc_clz_w, op_clz_w, ops_none),
+    (Ctz, "ctz", BinaryE, BINARY_E_COST, 0x3f, 0, 0, opc_ctz, op_ctz, ops_none),
+    (CtzW, "ctz_w", BinaryE, BINARY_E_COST, 0x40, 0, 0, opc_ctz_w, op_ctz_w, ops_none),
+    (Cpop, "cpop", BinaryE, BINARY_E_COST, 0x41, 0, 0, opc_cpop, op_cpop, ops_none),
+    (CpopW, "cpop_w", BinaryE, BINARY_E_COST, 0x42, 0, 0, opc_cpop_w, op_cpop_w, ops_none),
+    (OrcB, "orc_b", BinaryE, BINARY_E_COST, 0x43, 0, 0, opc_orc_b, op_orc_b, ops_none),
+    (Bclr, "bclr", BinaryE, BINARY_E_COST, 0x44, 0, 0, opc_bclr, op_bclr, ops_none),
+    (Bext, "bext", BinaryE, BINARY_E_COST, 0x45, 0, 0, opc_bext, op_bext, ops_none),
+    (Binv, "binv", BinaryE, BINARY_E_COST, 0x46, 0, 0, opc_binv, op_binv, ops_none),
+    (Bset, "bset", BinaryE, BINARY_E_COST, 0x47, 0, 0, opc_bset, op_bset, ops_none),
+    (AddUW, "add_u_w", BinaryE, BINARY_E_COST, 0x48, 0, 0, opc_add_u_w, op_add_u_w, ops_none),
+    (Sh1add, "sh1add", BinaryE, BINARY_E_COST, 0x49, 0, 0, opc_sh1add, op_sh1add, ops_none),
+    (Sh1addUW, "sh1add_u_w", BinaryE, BINARY_E_COST, 0x4a, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
+    (Sh2add, "sh2add", BinaryE, BINARY_E_COST, 0x4b, 0, 0, opc_sh2add, op_sh2add, ops_none),
+    (Sh2addUW, "sh2add_u_w", BinaryE, BINARY_E_COST, 0x4c, 0, 0, opc_sh2add_u_w, op_sh2add_u_w, ops_none),
+    (Sh3add, "sh3add", BinaryE, BINARY_E_COST, 0x4d, 0, 0, opc_sh3add, op_sh3add, ops_none),
+    (Sh3addUW, "sh3add_u_w", BinaryE, BINARY_E_COST, 0x4e, 0, 0, opc_sh3add_u_w, op_sh3add_u_w, ops_none),
+    (SllUW, "sll_u_w", BinaryE, BINARY_E_COST, 0x4f, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
+    (Clmul, "clmul", BinaryE, BINARY_E_COST, 0x52, 0, 0, opc_clmul, op_clmul, ops_none),
+    (ClmulH, "clmul_h", BinaryE, BINARY_E_COST, 0x53, 0, 0, opc_clmul_h, op_clmul_h, ops_none),
+    (ClmulR, "clmul_r", BinaryE, BINARY_E_COST, 0x54, 0, 0, opc_clmul_r, op_clmul_r, ops_none),
+    (Xperm4, "xperm4", BinaryE, BINARY_E_COST, 0x55, 0, 0, opc_xperm4, op_xperm4, ops_none),
+    (Xperm8, "xperm8", BinaryE, BINARY_E_COST, 0x56, 0, 0, opc_xperm8, op_xperm8, ops_none),
+
     // Opcodes 0x50,0x51,0x60,0x61 are reserved for binary
     (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),
     (Muluh, "muluh", ArithAm32, ARITHAM32_COST, 0xb1, 0, 0, opc_muluh, op_muluh, ops_none),
@@ -443,6 +484,7 @@ define_ops! {
     (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, 0, opc_div_w, op_div_w, ops_none),
     (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, 0, opc_rem_w, op_rem_w, ops_none),
     // opcpdes 0xc0-0xcf are available
+
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
     (DmaInputCpy, "dma_inputcpy", Dma, DMA_INPUTCPY_COST, 0xd2, 8, 0, opc_dma_inputcpy, op_dma_inputcpy, ops_dma_inputcpy),
@@ -453,7 +495,8 @@ define_ops! {
     // opcodes 0xda-0xdf reserved for dma extra operations (costs)
     // opcodes 0xe0 is available
     (Profile, "profile", Profile, 0, 0xe0, 0, 0, opc_profile, op_profile, ops_profile),
-    (Poseidon2, "poseidon2", Poseidon2, POSEIDON2_COST, 0xe1, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
+    (Poseidon2, "poseidon2", Poseidon, POSEIDON_COST, 0xeb, 128, 128, opc_poseidon2, op_poseidon2, ops_poseidon2),
+    (Poseidon1, "poseidon1", Poseidon, POSEIDON_COST, 0xec, 128, 128, opc_poseidon1, op_poseidon1, ops_poseidon1),
     (Arith384Mod, "arith384_mod", ArithEq384, ARITH_EQ_384_COST, 0xe2, 232, 48, opc_arith384_mod, op_arith384_mod, ops_arith384_mod),
     (Bls12_381CurveAdd, "bls12_381_curve_add", ArithEq384, ARITH_EQ_384_COST, 0xe3, 208, 96, opc_bls12_381_curve_add, op_bls12_381_curve_add, ops_bls12_381_curve_add),
     (Bls12_381CurveDbl, "bls12_381_curve_dbl", ArithEq384, ARITH_EQ_384_COST, 0xe4, 96, 96, opc_bls12_381_curve_dbl, op_bls12_381_curve_dbl, ops_bls12_381_curve_dbl),
@@ -632,7 +675,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
 
             // Call poseidon2
             let data_gl = data.map(Goldilocks::new);
-            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
             }
@@ -656,7 +699,7 @@ pub fn opc_poseidon2(ctx: &mut InstContext) {
 
             // Call poseidon2
             let data_gl = data.map(Goldilocks::new);
-            let res_gl = poseidon2_hash::<Goldilocks, Poseidon16, 16>(&data_gl);
+            let res_gl = poseidon2_hash::<Goldilocks, Poseidon2_16, 16>(&data_gl);
             for (i, d) in data.iter_mut().enumerate() {
                 *d = res_gl[i].as_canonical_u64();
             }
@@ -697,6 +740,98 @@ pub fn op_poseidon2(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn ops_poseidon2(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_direct_data(ctx, stats, 16, 16);
+}
+
+/// Performs a Poseidon1 hash over a 16 elements stored in memory at the address
+/// specified by register A0, and stores the output state in the same memory address
+#[inline(always)]
+pub fn opc_poseidon1(ctx: &mut InstContext) {
+    // Get address from b (a = step)
+    let address = ctx.b;
+    if address & 0x7 != 0 {
+        panic!("opc_poseidon1() found address not aligned to 8 bytes");
+    }
+
+    // Allocate room for 16 u64 = 128 bytes = 1024 bits
+    const WORDS: usize = 16;
+    let mut data = [0u64; WORDS];
+
+    // Get input data from memory or from the precompiled context
+    match ctx.emulation_mode {
+        EmulationMode::Mem => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Call poseidon1
+            let data_gl = data.map(Goldilocks::new);
+            let res_gl = poseidon1_hash::<Goldilocks, Poseidon1_16, 16>(&data_gl);
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = res_gl[i].as_canonical_u64();
+            }
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+        }
+        EmulationMode::GenerateMemReads => {
+            // Read data from the memory address
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Copy data to the precompiled context
+            ctx.precompiled.input_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.input_data.push(*d);
+            }
+
+            // Call poseidon1
+            let data_gl = data.map(Goldilocks::new);
+            let res_gl = poseidon1_hash::<Goldilocks, Poseidon1_16, 16>(&data_gl);
+            for (i, d) in data.iter_mut().enumerate() {
+                *d = res_gl[i].as_canonical_u64();
+            }
+
+            // Write data to the memory address
+            for (i, d) in data.iter().enumerate() {
+                ctx.mem.write(address + (8 * i as u64), *d, 8);
+            }
+
+            // Write data to the precompiled context
+            ctx.precompiled.output_data.clear();
+            for (i, d) in data.iter_mut().enumerate() {
+                ctx.precompiled.output_data.push(*d);
+            }
+        }
+        EmulationMode::ConsumeMemReads => {
+            // Check input data has the expected length
+            if ctx.precompiled.input_data.len() != WORDS {
+                panic!(
+                    "opc_poseidon1() found ctx.precompiled.input_data.len={} != {}",
+                    ctx.precompiled.input_data.len(),
+                    WORDS
+                );
+            }
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Poseidon1 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_poseidon1(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_poseidon1() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_poseidon1(ctx: &InstContext, stats: &mut dyn OpStats) {
     precompiled_stats_direct_data(ctx, stats, 16, 16);
 }
 

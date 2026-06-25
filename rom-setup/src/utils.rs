@@ -9,8 +9,7 @@ use std::path::{Path, PathBuf};
 use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
 
-pub const ROM_MERKLE_TREE_ARITY: u64 = 4;
-pub const ROM_BLOWUP_FACTOR: u64 = 2;
+pub use zisk_common::HashMode;
 
 pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     let output_path = if output_dir.is_none() {
@@ -32,8 +31,7 @@ pub fn gen_elf_hash<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &[u8],
     rom_buffer_path: &Path,
-    blowup_factor: u64,
-    merkle_tree_arity: u64,
+    hash_mode: HashMode,
 ) -> ProofmanResult<Vec<F>> {
     let mut custom_rom_trace =
         CustomRom::build::<F>(elf).map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
@@ -41,8 +39,8 @@ pub fn gen_elf_hash<F: PrimeField64>(
     write_custom_commit_trace(
         pctx,
         &mut custom_rom_trace,
-        blowup_factor,
-        merkle_tree_arity,
+        hash_mode.blowup_factor(),
+        hash_mode.merkle_tree_arity(),
         rom_buffer_path,
     )
 }
@@ -79,6 +77,7 @@ pub fn get_elf_bin_file_path_with_hash(
     hash: &str,
     default_cache_path: &Path,
     gpu: bool,
+    hash_mode: HashMode,
 ) -> Result<PathBuf> {
     let pilout_hash = PILOUT_HASH;
 
@@ -86,12 +85,13 @@ pub fn get_elf_bin_file_path_with_hash(
 
     let gpu_suffix = if gpu { "_gpu" } else { "" };
     let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}{}.bin",
+        "{}_{}_{}_{}_{}_{}{}.bin",
         hash,
         pilout_hash,
         &n.to_string(),
-        &ROM_BLOWUP_FACTOR.to_string(),
-        &ROM_MERKLE_TREE_ARITY.to_string(),
+        hash_mode.file_tag(),
+        &hash_mode.blowup_factor().to_string(),
+        &hash_mode.merkle_tree_arity().to_string(),
         gpu_suffix
     );
 
@@ -101,26 +101,23 @@ pub fn get_elf_bin_file_path_with_hash(
 pub fn get_elf_bin_verkey_file_path_with_hash(
     hash: &str,
     default_cache_path: &Path,
+    hash_mode: HashMode,
 ) -> Result<PathBuf> {
     let pilout_hash = PILOUT_HASH;
 
     let n = RomRomTrace::<Goldilocks>::NUM_ROWS;
 
     let rom_cache_file_name = format!(
-        "{}_{}_{}_{}_{}.verkey.bin",
+        "{}_{}_{}_{}_{}_{}.verkey.bin",
         hash,
         pilout_hash,
         &n.to_string(),
-        &ROM_BLOWUP_FACTOR.to_string(),
-        &ROM_MERKLE_TREE_ARITY.to_string(),
+        hash_mode.file_tag(),
+        &hash_mode.blowup_factor().to_string(),
+        &hash_mode.merkle_tree_arity().to_string(),
     );
 
     Ok(default_cache_path.join(rom_cache_file_name))
-}
-
-pub struct RomInfo {
-    pub blowup_factor: u64,
-    pub merkle_tree_arity: u64,
 }
 
 pub fn ensure_dir_exists(path: &PathBuf) {

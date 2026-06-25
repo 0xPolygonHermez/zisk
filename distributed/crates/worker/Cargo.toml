@@ -37,6 +37,10 @@ colored = { workspace = true }
 config = { workspace = true }
 uuid = { workspace = true }
 
+# Not used directly; pins the transitive `time` to =0.3.47 (workspace dep) to
+# avoid the rcgen 0.14.x E0119 coherence bug triggered by time 0.3.48.
+time = { workspace = true }
+
 [features]
 default = []
 cpu-only = ["zisk-prover-backend/cpu-only"]

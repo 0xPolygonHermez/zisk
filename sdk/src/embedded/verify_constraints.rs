@@ -1,7 +1,6 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
 use zisk_common::io::StreamSource;
 use zisk_prover_backend::{GuestProgram, VerifyConstraintsOutput};
 
@@ -13,6 +12,7 @@ use crate::verify_constraints::{
     RunVerifyConstraints, VerifyConstraintsExtension, VerifyConstraintsResult,
 };
 use crate::{ExecutorKind, ZiskStdin};
+use crate::{Result, SdkError};
 
 impl RunVerifyConstraints for EmbeddedClient {
     fn run_verify_constraints(
@@ -61,53 +61,67 @@ impl EmbeddedClient {
             EmbeddedProver::Emu(p) => {
                 // The Emu prover has no assembly backend to switch to.
                 if executor == ExecutorKind::Assembly {
-                    anyhow::bail!(ERR_ASSEMBLY_NOT_ENABLED);
+                    return Err(SdkError::UnsupportedExecutor(
+                        ERR_ASSEMBLY_NOT_ENABLED.to_string(),
+                    ));
                 }
                 if hints.is_some() {
-                    anyhow::bail!("Hints require Assembly executor");
+                    return Err(SdkError::UnsupportedExecutor(
+                        "Hints require Assembly executor".to_string(),
+                    ));
                 }
                 p.verify_constraints(&program, stdin.into_inner(), debug_info)
+                    .map_err(SdkError::backend)
             }
             EmbeddedProver::Asm(p) => {
                 // The Rust-emulator verify path does not consume hints.
                 if executor == ExecutorKind::Emulator {
                     if hints.is_some() {
-                        anyhow::bail!("Hints require the Assembly executor");
+                        return Err(SdkError::UnsupportedExecutor(
+                            "Hints require the Assembly executor".to_string(),
+                        ));
                     }
-                    return p.verify_constraints_emulator(&program, stdin.into_inner(), debug_info);
+                    return p
+                        .verify_constraints_emulator(&program, stdin.into_inner(), debug_info)
+                        .map_err(SdkError::backend);
                 }
 
                 match hints {
                     Some(hints) => {
                         if !p.was_setup_with_hints() {
-                            anyhow::bail!(
+                            return Err(SdkError::InvalidConfig(
                                 "Program was set up without hints — call setup().with_hints() first"
-                            );
+                                    .to_string(),
+                            ));
                         }
                         match hints {
                             HintsSource::Hints(h) => {
-                                p.register_hints_stream(h.into_inner())?;
+                                p.register_hints_stream(h.into_inner())
+                                    .map_err(SdkError::backend)?;
                             }
                             HintsSource::Stream(stream) => {
                                 if stream.is_grpc() {
-                                    anyhow::bail!("gRPC streams are not supported with the embedded executor — use a remote client");
+                                    return Err(SdkError::UnsupportedExecutor("gRPC streams are not supported with the embedded executor — use a remote client".to_string()));
                                 }
                                 stream.start()?;
                                 let uri = stream.uri().to_string();
-                                let source = StreamSource::from_uri(&uri)?;
-                                p.register_hints_stream(source)?;
+                                let source =
+                                    StreamSource::from_uri(&uri).map_err(SdkError::backend)?;
+                                p.register_hints_stream(source).map_err(SdkError::backend)?;
                             }
                         }
                     }
                     None => {
                         if p.was_setup_with_hints() {
-                            anyhow::bail!(
+                            return Err(SdkError::InvalidConfig(
                                 "Program was set up with hints — call .hints() on the request"
-                            );
+                                    .to_string(),
+                            ));
                         }
                     }
                 }
                 p.verify_constraints(&program, stdin.into_inner(), debug_info)
+                    .map_err(SdkError::backend)
             }
         }
     }

@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "9125bf5647309396e79051910953780ee93a5c99254e3425cd4325d7b1511adf";
+pub const PILOUT_HASH: &str = "8ada3a280a9af7a09fbf614eab1706090d85c3e2da3a39941857d4c778022ddc";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -62,7 +62,7 @@ pub const KECCAKF_AIR_IDS: &[usize] = &[16];
 
 pub const SHA_256_F_AIR_IDS: &[usize] = &[17];
 
-pub const POSEIDON_2_AIR_IDS: &[usize] = &[18];
+pub const POSEIDON_AIR_IDS: &[usize] = &[18];
 
 pub const BLAKE_2_BR_AIR_IDS: &[usize] = &[19];
 
@@ -197,7 +197,7 @@ trace_row!(MemAlignFixedRow<F> {
 pub type MemAlignFixed<F> = GenericTrace<MemAlignFixedRow<F>, 2097152, 0, 5>;
 
 trace_row!(MemAlignTraceRow<F> {
- addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, sel_prove:bit, value:[u32; 2],
+ addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, is_non_aligned_op:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, value:[u32; 2],
 });
 
 pub type MemAlignTrace<R> = GenericTrace<R, 2097152, 0, 5>;
@@ -334,16 +334,16 @@ trace_row!(Sha256fTraceRow<F> {
 
 pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 17>;
 
-trace_row!(Poseidon2FixedRow<F> {
+trace_row!(PoseidonFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type Poseidon2Fixed<F> = GenericTrace<Poseidon2FixedRow<F>, 131072, 0, 18>;
+pub type PoseidonFixed<F> = GenericTrace<PoseidonFixedRow<F>, 131072, 0, 18>;
 
-trace_row!(Poseidon2TraceRow<F> {
- in_use:bit, in_use_clk_0:bit, chunks:[[u32; 2]; 16], step_addr:ubit(40),
+trace_row!(PoseidonTraceRow<F> {
+ in_use:bit, in_use_clk_0:bit, sel_poseidon1:bit, chunks:[[u16; 4]; 16], step_addr:ubit(40), t_inv:[u64; 16],
 });
 
-pub type Poseidon2Trace<R> = GenericTrace<R, 131072, 0, 18>;
+pub type PoseidonTrace<R> = GenericTrace<R, 131072, 0, 18>;
 
 trace_row!(Blake2brFixedRow<F> {
  CLK_0: F, MSG_IDX: F, __L1__: F,
@@ -351,7 +351,7 @@ trace_row!(Blake2brFixedRow<F> {
 pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 19>;
 
 trace_row!(Blake2brTraceRow<F> {
- in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:ubit(4), m_limbs:[[u16; 2]; 2], ms:[u32; 2], perm_active:bit, g_active:bit, va_limbs:[[u16; 2]; 2], vc_limbs:[[u16; 2]; 2], vb:[[bit; 32]; 2], vd:[[bit; 32]; 2], step_addr:ubit(40), in_use_clk_0:bit,
+ in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:ubit(4), m_limbs:[[u16; 2]; 2], ms:[u32; 2], perm_active:bit, step_addr:ubit(40), op_step:ubit(40), g_active:bit, va_limbs:[[u16; 2]; 2], vc_limbs:[[u16; 2]; 2], vb:[[bit; 32]; 2], vd:[[bit; 32]; 2], in_use_clk_0:bit,
 });
 
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 19>;
@@ -652,7 +652,7 @@ values!(Sha256fAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
-values!(Poseidon2AirGroupValues<F> {
+values!(PoseidonAirGroupValues<F> {
  gsum_result: FieldExtension<F>,
 });
 
@@ -740,7 +740,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 5, PackedInfoConst {
         is_packed: true,
         num_packed_words: 5,
-        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 1, 32, 32],
+        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 32, 32],
     }),
     (0, 6, PackedInfoConst {
         is_packed: true,
@@ -804,13 +804,13 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 18, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 17,
-        unpack_info: &[1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 40],
+        num_packed_words: 33,
+        unpack_info: &[1, 1, 1, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 40, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64, 64],
     }),
     (0, 19, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 16, 16, 16, 16, 32, 32, 1, 1, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 40, 1],
+        num_packed_words: 8,
+        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 16, 16, 16, 16, 32, 32, 1, 40, 40, 1, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     }),
     (0, 20, PackedInfoConst {
         is_packed: true,

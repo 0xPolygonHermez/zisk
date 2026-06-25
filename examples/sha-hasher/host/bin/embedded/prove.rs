@@ -1,11 +1,11 @@
-use anyhow::Result;
 use sha2::{Digest, Sha256};
 use sha_hasher_common::Output;
 use sha_hasher_host::ELF_SHA_HASHER;
+use std::error::Error;
 use zisk_sdk::{ExecutorKind, Proof, ProverClient, PublicValues, ZiskStdin};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.

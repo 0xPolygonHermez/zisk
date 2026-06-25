@@ -395,6 +395,9 @@ pub trait ProverEngine {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
 
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    fn hash(&self) -> Result<String>;
+
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 
     // --- ASM-only operations ---
@@ -657,6 +660,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     ///   If false, returns the full verification key.
     pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.prover.get_vadcop_vk(minimal)
+    }
+
+    /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
+    pub fn hash(&self) -> Result<String> {
+        self.prover.hash()
     }
 
     pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {

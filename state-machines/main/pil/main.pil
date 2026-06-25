@@ -309,6 +309,11 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
     const expr store_value[2];
 
     store_value[0] = store_pc*(pc + jmp_offset2 - c[0]) + c[0];
+    // BUG(rv64-auipc): when store_pc=1 (AUIPC), store_value[1] is forced to 0, dropping the
+    // carry out of bit 31 of (pc + jmp_offset2).  For pc + jmp_offset2 >= 2^32 - valid in RV64I,
+    // e.g. auipc rd, 0x7ffff at PC >= 0x80001000 - this no longer matches the 64-bit value
+    // that the memory/register bus represents as two 32-bit limbs.
+    // Reproducer: elf-regressions/auipc_rv64_overflow/
     store_value[1] = (1 - store_pc) * c[1];
 
     // Memory function to prove that previous register store_offset access.
@@ -405,6 +410,17 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     // The selectors flag an set_pc are disjoint, meaning they cannot be active simultaneously.
     flag * set_pc === 0;
+
+    // A user program lives in [0x8000_0000, 0x8000_0000 + 128MB), so any valid address plus a
+    // valid 12-bit (or 32-bit) offset is guaranteed to fit within a Goldilocks field element.
+    // If the result is "negative" or falls outside this range, proof generation will fail,
+    // because the program will have jumped to a non-existent address and the ROM lookup will fail.
+    // This constraint addresses a soundness issue: without it, if c[1] were non-zero,
+    // the jump destination would be computed using only c[0] + jmp_offset1 — ignoring the upper
+    // part of the address — which could silently land on a different but valid address, producing
+    // a valid proof for an incorrect jump target.
+    // To prevent this, c[1] is assumed to be zero, and this constraint enforces it.
+    set_pc * c[1] === 0;
 
     const expr expected_current_pc = 'set_pc * ('c[0] + 'jmp_offset1) + (1 - 'set_pc) * ('pc + 'jmp_offset2) + 'flag * ('jmp_offset1 - 'jmp_offset2);
     (1 - SEGMENT_L1) * (pc - expected_current_pc) === 0;

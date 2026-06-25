@@ -1,0 +1,30 @@
+#!/bin/bash
+# Build a RISC-V assembly file into a Zisk-compatible ELF.
+# Usage: ./build-elf <source.s> [output.elf]
+#
+# Uses riscv64-elf-as / riscv64-elf-ld from PATH.
+# Default link: -Ttext=0x80000000 (no linker script).
+# To use a linker script, place a .ld file next to the source; it will be picked up automatically.
+
+set -euo pipefail
+
+SRC="${1:?Usage: $0 <source.s> [output.elf]}"
+OUT="${2:-${SRC%.s}.elf}"
+OBJ="$(mktemp /tmp/zisk-XXXXXX.o)"
+trap 'rm -f "$OBJ"' EXIT
+
+riscv64-elf-as -march=rv64ima "$SRC" -o "$OBJ"
+
+LD_SCRIPT="$(dirname "$SRC")/$(basename "$SRC" .s).ld"
+if [ ! -f "$LD_SCRIPT" ]; then
+    LD_SCRIPT="$(find "$(dirname "$SRC")" -maxdepth 1 -name '*.ld' | head -1)"
+fi
+
+if [ -n "$LD_SCRIPT" ] && [ -f "$LD_SCRIPT" ]; then
+    riscv64-elf-ld -T "$LD_SCRIPT" "$OBJ" -o "$OUT"
+else
+    riscv64-elf-ld -Ttext=0x80000000 "$OBJ" -o "$OUT"
+fi
+
+echo "Built: $OUT"
+riscv64-elf-objdump -d "$OUT" | head -20 || true

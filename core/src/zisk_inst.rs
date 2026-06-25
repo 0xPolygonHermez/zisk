@@ -78,7 +78,7 @@ pub enum ZiskOperationType {
     BinaryE,
     Keccak,
     Sha256,
-    Poseidon2,
+    Poseidon,
     Blake2,
     PubOut,
     ArithEq,
@@ -99,7 +99,7 @@ pub const BINARY_OP_TYPE_ID: u32 = ZiskOperationType::Binary as u32;
 pub const BINARY_E_OP_TYPE_ID: u32 = ZiskOperationType::BinaryE as u32;
 pub const KECCAK_OP_TYPE_ID: u32 = ZiskOperationType::Keccak as u32;
 pub const SHA256_OP_TYPE_ID: u32 = ZiskOperationType::Sha256 as u32;
-pub const POSEIDON2_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon2 as u32;
+pub const POSEIDON_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon as u32;
 pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
 pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
 pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;

@@ -193,7 +193,7 @@ impl ExecutorError {
     /// shmem, etc.) into [`Self::AsmBackend`] with the formatted `Display`
     /// chain. Intended for use as `.map_err(ExecutorError::asm_backend)?`.
     #[inline]
-    pub fn asm_backend(e: anyhow::Error) -> Self {
+    pub fn asm_backend(e: impl std::fmt::Display) -> Self {
         Self::AsmBackend(format!("{e:#}"))
     }
 }

@@ -26,11 +26,11 @@ impl ChannelStreamReader {
 }
 
 impl StreamRead for ChannelStreamReader {
-    fn open(&mut self) -> anyhow::Result<()> {
+    fn open(&mut self) -> crate::error::Result<()> {
         Ok(())
     }
 
-    fn next(&mut self) -> anyhow::Result<Option<Vec<u8>>> {
+    fn next(&mut self) -> crate::error::Result<Option<Vec<u8>>> {
         if self.done {
             return Ok(None);
         }
@@ -48,7 +48,7 @@ impl StreamRead for ChannelStreamReader {
         }
     }
 
-    fn close(&mut self) -> anyhow::Result<()> {
+    fn close(&mut self) -> crate::error::Result<()> {
         self.done = true;
         Ok(())
     }

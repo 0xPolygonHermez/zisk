@@ -81,6 +81,15 @@ impl U256 {
         Ordering::Equal
     }
 
+    pub fn is_zero_slices(a: &[Self]) -> bool {
+        for limb in a {
+            if !limb.is_zero() {
+                return false;
+            }
+        }
+        true
+    }
+
     pub fn eq_slices(a: &[Self], b: &[Self]) -> bool {
         // TODO: Do with hint and instructions?
 

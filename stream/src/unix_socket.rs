@@ -9,24 +9,29 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::{self, JoinHandle};
 
-use anyhow::{Context, Result};
+use crate::error::{Result, StreamError};
 
 use crate::{StreamRead, StreamWrite};
 
 /// Errors specific to Unix socket operations
 const MAX_MESSAGE_SIZE: usize = 128 * 1024;
 
+/// A Unix domain socket implementation of StreamRead using SOCK_SEQPACKET.
 #[derive(Debug, thiserror::Error)]
 pub enum UnixSocketError {
+    /// No client has connected yet. The writer is listening but no reader has connected.
     #[error("No client connected yet")]
     NoClientConnected,
 
+    /// The socket is not connected. This can happen if the writer has not accepted a connection yet.
     #[error("Socket not connected")]
     NotConnected,
 
+    /// The message size exceeds the maximum allowed size for SOCK_SEQPACKET.
     #[error("Message size {0} exceeds SOCK_SEQPACKET limit of {MAX_MESSAGE_SIZE} bytes")]
     MessageTooLarge(usize),
 
+    /// Failed to create or bind the socket.
     #[error("Failed to write to socket: {0}")]
     WriteFailed(#[from] std::io::Error),
 }
@@ -63,10 +68,10 @@ impl UnixSocketStreamReader {
         let sock_fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0) };
 
         if sock_fd < 0 {
-            return Err(anyhow::anyhow!(
+            return Err(StreamError::Io(format!(
                 "Failed to create socket: {}",
                 std::io::Error::last_os_error()
-            ));
+            )));
         }
 
         // Set CLOEXEC flag on non-Linux systems
@@ -79,8 +84,8 @@ impl UnixSocketStreamReader {
         }
 
         // Connect to the socket path
-        let c_path =
-            CString::new(self.path.as_os_str().as_bytes()).context("Invalid socket path")?;
+        let c_path = CString::new(self.path.as_os_str().as_bytes())
+            .map_err(|e| StreamError::Invalid(format!("Invalid socket path: {e}")))?;
 
         let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
         addr.sun_family = libc::AF_UNIX as _;
@@ -88,7 +93,7 @@ impl UnixSocketStreamReader {
         let path_bytes = c_path.as_bytes_with_nul();
         if path_bytes.len() > addr.sun_path.len() {
             unsafe { libc::close(sock_fd) };
-            return Err(anyhow::anyhow!("Socket path too long"));
+            return Err(StreamError::Invalid("Socket path too long".to_string()));
         }
 
         unsafe {
@@ -117,7 +122,7 @@ impl UnixSocketStreamReader {
                     continue; // Retry on EINTR
                 }
                 unsafe { libc::close(sock_fd) };
-                return Err(anyhow::anyhow!("Failed to connect to socket: {}", err));
+                return Err(StreamError::Io(format!("Failed to connect to socket: {}", err)));
             }
 
             break;
@@ -151,10 +156,9 @@ impl StreamRead for UnixSocketStreamReader {
     fn next(&mut self) -> Result<Option<Vec<u8>>> {
         self.open()?;
 
-        let socket = self
-            .socket
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("UnixSocketStreamReader: Socket not connected"))?;
+        let socket = self.socket.as_mut().ok_or_else(|| {
+            StreamError::Transport("UnixSocketStreamReader: Socket not connected".to_string())
+        })?;
 
         // Buffer for receiving messages (128KB max for SOCK_SEQPACKET)
         let mut buffer = vec![0u8; 128 * 1024];
@@ -181,7 +185,7 @@ impl StreamRead for UnixSocketStreamReader {
                 if err.kind() == std::io::ErrorKind::ConnectionReset {
                     return Ok(None);
                 }
-                return Err(anyhow::anyhow!("Failed to read from socket: {}", err));
+                return Err(StreamError::Io(format!("Failed to read from socket: {}", err)));
             }
 
             if n == 0 {
@@ -193,11 +197,11 @@ impl StreamRead for UnixSocketStreamReader {
 
             // Check if message was truncated
             if n > buffer.len() {
-                return Err(anyhow::anyhow!(
+                return Err(StreamError::Io(format!(
                     "Message truncated: received {} bytes, buffer size {} bytes",
                     n,
                     buffer.len()
-                ));
+                )));
             }
 
             buffer.truncate(n);
@@ -267,12 +271,14 @@ impl UnixSocketStreamWriter {
             let is_stale = std::os::unix::net::UnixStream::connect(&self.path).is_err();
 
             if is_stale {
-                std::fs::remove_file(&self.path).context("Failed to remove stale socket file")?;
+                std::fs::remove_file(&self.path).map_err(|e| {
+                    StreamError::Io(format!("Failed to remove stale socket file: {e}"))
+                })?;
             } else {
-                return Err(anyhow::anyhow!(
+                return Err(StreamError::Io(format!(
                     "Socket path {} is already in use",
                     self.path.display()
-                ));
+                )));
             }
         }
 
@@ -285,10 +291,10 @@ impl UnixSocketStreamWriter {
         let sock_fd = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_SEQPACKET, 0) };
 
         if sock_fd < 0 {
-            return Err(anyhow::anyhow!(
+            return Err(StreamError::Io(format!(
                 "Failed to create socket: {}",
                 std::io::Error::last_os_error()
-            ));
+            )));
         }
 
         // Set CLOEXEC flag on non-Linux systems
@@ -301,8 +307,8 @@ impl UnixSocketStreamWriter {
         }
 
         // Bind to the socket path
-        let c_path =
-            CString::new(self.path.as_os_str().as_bytes()).context("Invalid socket path")?;
+        let c_path = CString::new(self.path.as_os_str().as_bytes())
+            .map_err(|e| StreamError::Invalid(format!("Invalid socket path: {e}")))?;
 
         let mut addr: libc::sockaddr_un = unsafe { std::mem::zeroed() };
         addr.sun_family = libc::AF_UNIX as _;
@@ -310,7 +316,7 @@ impl UnixSocketStreamWriter {
         let path_bytes = c_path.as_bytes_with_nul();
         if path_bytes.len() > addr.sun_path.len() {
             unsafe { libc::close(sock_fd) };
-            return Err(anyhow::anyhow!("Socket path too long"));
+            return Err(StreamError::Invalid("Socket path too long".to_string()));
         }
 
         unsafe {
@@ -334,7 +340,7 @@ impl UnixSocketStreamWriter {
         if bind_result < 0 {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(sock_fd) };
-            return Err(anyhow::anyhow!("Failed to bind socket: {}", err));
+            return Err(StreamError::Io(format!("Failed to bind socket: {}", err)));
         }
 
         // Listen for connections
@@ -343,7 +349,7 @@ impl UnixSocketStreamWriter {
         if listen_result < 0 {
             let err = std::io::Error::last_os_error();
             unsafe { libc::close(sock_fd) };
-            return Err(anyhow::anyhow!("Failed to listen on socket: {}", err));
+            return Err(StreamError::Io(format!("Failed to listen on socket: {}", err)));
         }
 
         self.listener_fd = Some(sock_fd);
@@ -432,7 +438,9 @@ impl StreamWrite for UnixSocketStreamWriter {
                     }
                     Err(mpsc::TryRecvError::Disconnected) => {
                         // Accept thread died unexpectedly
-                        return Err(anyhow::anyhow!("Accept thread terminated unexpectedly"));
+                        return Err(StreamError::Transport(
+                            "Accept thread terminated unexpectedly".to_string(),
+                        ));
                     }
                 }
             }
@@ -545,9 +553,7 @@ mod tests {
             match writer.write(data) {
                 Ok(_) => break,
                 Err(e) => {
-                    if e.downcast_ref::<UnixSocketError>()
-                        .is_some_and(|ue| matches!(ue, UnixSocketError::NoClientConnected))
-                    {
+                    if matches!(&e, StreamError::Unix(UnixSocketError::NoClientConnected)) {
                         thread::sleep(Duration::from_millis(5));
                         continue;
                     }
@@ -975,7 +981,7 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
-            err.downcast_ref::<UnixSocketError>().is_some(),
+            matches!(&err, StreamError::Unix(_)),
             "Expected UnixSocketError::NoClientConnected"
         );
 

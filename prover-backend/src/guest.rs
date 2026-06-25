@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rom_setup::rom_merkle_setup_verkey;
+use rom_setup::{rom_merkle_setup_verkey, HashMode};
 use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
@@ -139,9 +139,17 @@ impl GuestProgram {
     pub fn hash(&self) -> &str {
         &self.program_id.hash_id
     }
-
+    /// Verkey from the ELF, using the default [`HashMode`] (`Poseidon1`).
+    ///
+    /// For a key built with a different mode, use [`vk_with_mode`](Self::vk_with_mode);
+    /// otherwise the verkey is rejected at verify time against that key's proofs.
     pub fn vk(&self) -> Result<ProgramVK> {
-        rom_merkle_setup_verkey(self.elf(), &None)
+        self.vk_with_mode(HashMode::default())
+    }
+
+    /// Verkey from the ELF, under the proving key's [`HashMode`].
+    pub fn vk_with_mode(&self, hash_mode: HashMode) -> Result<ProgramVK> {
+        rom_merkle_setup_verkey(self.elf(), &None, hash_mode)
     }
 
     /// Run the ZisK emulator with the given stdin.

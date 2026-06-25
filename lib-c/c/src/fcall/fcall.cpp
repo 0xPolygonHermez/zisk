@@ -964,11 +964,15 @@ int Uint256InvCtx (
 /******************************/
 
 // Compute a^(-1) mod modulus.
-// Output: _r[0] = flag (1 if inverse exists; 0 otherwise)
-//         _r[1..4] = 4 x u64 little-endian inverse (zeroed when flag == 0)
+// Output (13 x u64): _r[0]     = flag (1 if inverse exists; 0 otherwise)
+//                    _r[1..4]  = w: the inverse when flag == 1, else gcd(a, modulus)
+//                    _r[5..8]  = qa: a / gcd       (zeroed when flag == 1)
+//                    _r[9..12] = qm: modulus / gcd (zeroed when flag == 1)
+// On the no-inverse path (flag == 0) the gcd together with the cofactors qa, qm form a
+// witness that gcd(a, modulus) > 1, mirroring the Rust host implementation.
 int Uint256InvMod (
     const uint64_t * _a, // 4 x 64 bits (a) + 4 x 64 bits (modulus)
-          uint64_t * _r  // 1 x 64 bits (flag) + 4 x 64 bits (inverse)
+          uint64_t * _r  // 1 x 64 bits (flag) + 12 x 64 bits (w, qa, qm)
 )
 {
     mpz_class a, modulus;
@@ -981,14 +985,21 @@ int Uint256InvMod (
     _r[0] = exists ? 1 : 0;
     if (exists)
     {
+        // The inverse exists: return it.
         scalar2array(inv, &_r[1]);
+        for (int i = 5; i < 13; i++) _r[i] = 0;
     }
     else
     {
-        _r[1] = 0;
-        _r[2] = 0;
-        _r[3] = 0;
-        _r[4] = 0;
+        // No inverse exists, i.e. gcd(a, modulus) != 1. Return the gcd together with the
+        // cofactors qa = a / gcd and qm = modulus / gcd as a witness that gcd > 1.
+        mpz_class gcd, qa, qm;
+        mpz_gcd(gcd.get_mpz_t(), a.get_mpz_t(), modulus.get_mpz_t());
+        qa = a / gcd;
+        qm = modulus / gcd;
+        scalar2array(gcd, &_r[1]);
+        scalar2array(qa, &_r[5]);
+        scalar2array(qm, &_r[9]);
     }
 
     return 0;
@@ -1001,8 +1012,8 @@ int Uint256InvModCtx (
     int iresult = Uint256InvMod(ctx->params, ctx->result);
     if (iresult == 0)
     {
-        iresult = 5;
-        ctx->result_size = 5;
+        iresult = 13;
+        ctx->result_size = 13;
     }
     else
     {

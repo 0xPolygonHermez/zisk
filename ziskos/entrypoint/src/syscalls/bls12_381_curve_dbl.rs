@@ -18,11 +18,14 @@ use super::point::SyscallPoint384;
 ///
 /// The caller must ensure that the data is aligned to a 64-bit boundary.
 ///
-/// The caller must ensure that `p` is a point on the BLS12-381 curve.
+/// The caller must ensure that `p` is a finite point on the BLS12-381 curve.
+/// The point at infinity is not allowed.
 ///
-/// The caller must ensure that `p` coordinates are within the range of the BLS12-381 base field.
+/// The caller must ensure that the coordinates of `p` are canonical representatives
+/// of elements in the BLS12-381 base field.
 ///
-/// The resulting point will have both coordinates in the range of the BLS12-381 base field.
+/// The resulting point will have both coordinates reduced to canonical representatives
+/// in the range of the BLS12-381 base field.
 #[allow(unused_variables)]
 #[cfg_attr(not(feature = "hints"), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_syscall_bls12_381_curve_dbl")]

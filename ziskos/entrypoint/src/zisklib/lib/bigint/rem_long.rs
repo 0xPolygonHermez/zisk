@@ -63,6 +63,11 @@ pub fn rem_long_init(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(0 < limbs_quo && limbs_quo <= len_a * 4, "Quotient must fit in the allocated buffer");
+    assert!(limbs_quo % 4 == 0, "Quotient limbs must be a multiple of 4");
+    assert!(0 < limbs_rem && limbs_rem <= len_b * 4, "Remainder must fit in the allocated buffer");
+    assert!(limbs_rem % 4 == 0, "Remainder limbs must be a multiple of 4");
+
     let quo = U256::flat_to_slice(&quo_flat[..limbs_quo]);
     let rem = U256::flat_to_slice(&rem_flat[..limbs_rem]);
 
@@ -135,6 +140,17 @@ pub fn rem_long(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(
+        0 < limbs_quo && limbs_quo <= scratch.quo.len(),
+        "Quotient must fit in the allocated buffer"
+    );
+    assert!(limbs_quo % 4 == 0, "Quotient limbs must be a multiple of 4");
+    assert!(
+        0 < limbs_rem && limbs_rem <= scratch.rem.len(),
+        "Remainder must fit in the allocated buffer"
+    );
+    assert!(limbs_rem % 4 == 0, "Remainder limbs must be a multiple of 4");
+
     let quo = U256::flat_to_slice(&scratch.quo[..limbs_quo]);
     let rem = U256::flat_to_slice(&scratch.rem[..limbs_rem]);
 
@@ -182,6 +198,11 @@ fn verify_division(
     );
     assert!(!quo[len_quo - 1].is_zero(), "Quotient must not have leading zeros");
 
+    // Check 1 <= len(r) <= len(b)
+    assert!(len_rem > 0, "Remainder must have at least one limb");
+    assert!(len_rem <= len_b, "Remainder length must be less than or equal to divisor length");
+    assert!(len_rem == 1 || !rem[len_rem - 1].is_zero(), "Remainder must not have leading zeros");
+
     // Multiply the quotient by b
     let q_b_len = mul_long(
         quo,
@@ -191,15 +212,11 @@ fn verify_division(
         hints,
     );
 
-    // Check 1 <= len(r)
-    assert!(len_rem > 0, "Remainder must have at least one limb");
-
-    if rem[len_rem - 1].is_zero() {
+    if U256::is_zero_slices(rem) {
         // If the remainder is zero, then a must be equal to q·b
         assert!(U256::eq_slices(a, &q_b[..q_b_len]), "Remainder is zero, but a != q·b");
     } else {
         // If the remainder is non-zero, then we should check that a must be equal to q·b + r and r < b
-
         assert!(U256::lt_slices(rem, b), "Remainder must be less than divisor");
 
         let q_b_r_len = add_agtb(

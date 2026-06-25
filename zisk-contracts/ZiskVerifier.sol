@@ -8,20 +8,20 @@ import {PlonkVerifier} from "./PlonkVerifier.sol";
 /// @author SilentSig
 /// @notice This contracts implements a solidity verifier for Zisk.
 contract ZiskVerifier is PlonkVerifier, IZiskVerifier {
-        error InvalidProof();
+    error InvalidProof();
 
     function VERSION() external pure returns (string memory) {
-        return "v1.0.0";
+        return "v1.0.0-alpha";
     }
 
     /// @notice Root constant as bytes32 (pre-packed to match the original uint64[4] layout)
     function getRootCVadcopFinal() external pure returns (bytes32) {
         return bytes32(
             abi.encodePacked(
-                uint64(18174802208081830628),
-                uint64(15667882162744085041),
-                uint64(11334588038231179704),
-                uint64(12369325879324435044)));
+                uint64(16418290590932191654),
+                uint64(2682920145730279116),
+                uint64(9421690135668477588),
+                uint64(7053485478104629196)));
     }
 
     uint256 internal constant _RFIELD =

@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::time::Duration;
 
-use anyhow::Result;
+use crate::Result;
 use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 
 use crate::hints::HintsSource;
@@ -9,20 +9,24 @@ use crate::input_source::InputSource;
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
 use crate::{Client, ClientSync, ExecutorKind};
 
+/// Result of an execute operation.
 pub struct ExecuteResult {
     job_id: Option<JobId>,
     output: ExecuteOutput,
 }
 
 impl ExecuteResult {
+    /// Create a new `ExecuteResult` with the given output and job ID.
     pub fn new(output: ExecuteOutput, job_id: Option<JobId>) -> Self {
         Self { output, job_id }
     }
 
+    /// Get the ID of the job that produced this result, if available.
     pub fn job_id(&self) -> Option<&JobId> {
         self.job_id.as_ref()
     }
 
+    /// Get the output of the execution.
     pub fn output(&self) -> &ExecuteOutput {
         &self.output
     }
@@ -109,8 +113,8 @@ impl<'a, C: ClientSync> ExecuteRequest<'a, C> {
     ///
     /// Unlike [`run`](Self::run), this drives the work on the calling thread and
     /// requires no async runtime — use it when embedding the SDK in a
-    /// synchronous program. Available only for clients that implement
-    /// [`ClientSync`] (the embedded client).
+    /// synchronous program. Available only for the embedded client
+    /// ([`EmbeddedClient`](crate::EmbeddedClient)).
     pub fn run_sync(self) -> Result<ExecuteResult> {
         let subs = new_subscriber_list();
         self.client.run_execute_sync(self.program, self.stdin, self.hints, self.executor, subs)

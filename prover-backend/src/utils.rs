@@ -1,7 +1,8 @@
 use fields::PrimeField64;
 use std::path::PathBuf;
+use std::str::FromStr;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use zisk_common::ProgramVK;
 
 use crate::{GuestProgram, ProgramId};
@@ -9,20 +10,31 @@ use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ProofCtx, ProofmanResult,
     VerboseMode,
 };
-use rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup};
+use rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup, HashMode};
+
+fn hash_mode_from_pctx<F: PrimeField64>(pctx: &ProofCtx<F>) -> Result<HashMode> {
+    HashMode::from_str(&pctx.global_info.hash).with_context(|| {
+        format!(
+            "proving key global_info.hash {:?} is not a recognized HashMode",
+            pctx.global_info.hash
+        )
+    })
+}
 
 pub fn ensure_program_vk<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &GuestProgram,
 ) -> Result<ProgramVK> {
-    rom_merkle_setup(pctx, elf.elf(), &None, false)
+    let hash_mode = hash_mode_from_pctx(pctx)?;
+    rom_merkle_setup(pctx, elf.elf(), &None, false, hash_mode)
 }
 
 pub fn get_rom_bin_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     program_id: &ProgramId,
 ) -> Result<PathBuf> {
-    let rom_bin_path = get_rom_path(pctx, program_id.get_hash(), &None)?;
+    let hash_mode = hash_mode_from_pctx(pctx)?;
+    let rom_bin_path = get_rom_path(pctx, program_id.get_hash(), &None, hash_mode)?;
     Ok(rom_bin_path)
 }
 

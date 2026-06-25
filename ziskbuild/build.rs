@@ -18,7 +18,10 @@ fn main() {
     let compute_mode = if cpu_only {
         "cpu"
     } else {
-        let has_cuda = std::path::Path::new("/usr/local/cuda").exists()
+        // Check for nvcc itself, not just the directory: a stale /usr/local/cuda
+        // (e.g. old samples on macOS) must not flip the label to "gpu" when
+        // proofman-starks-lib-c's detection (which requires nvcc) builds CPU.
+        let has_cuda = std::path::Path::new("/usr/local/cuda/bin/nvcc").exists()
             || std::env::var("CUDA_HOME").is_ok()
             || std::process::Command::new("nvcc")
                 .arg("--version")

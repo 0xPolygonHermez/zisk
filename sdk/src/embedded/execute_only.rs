@@ -10,12 +10,11 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use anyhow::Result;
 use zisk_prover_backend::{
     AsmOptions, BackendProverOpts, ExecuteClient, ExecuteOutput, GuestProgram, ProverClientBuilder,
 };
 
-use crate::{ExecutorKind, ZiskHints, ZiskStdin};
+use crate::{ExecutorKind, Result, SdkError, ZiskHints, ZiskStdin};
 
 /// Builder for an [`EmbeddedExecuteOnlyClient`].
 ///
@@ -99,14 +98,16 @@ impl EmbeddedExecuteOnlyBuilder {
                     .emu()
                     .with_prover_options(backend_opts)
                     .execute_only()
-                    .build()?,
+                    .build()
+                    .map_err(SdkError::backend)?,
             ),
             ExecutorKind::Assembly => Box::new(
                 ProverClientBuilder::new()
                     .asm()
                     .with_prover_options(backend_opts)
                     .execute_only()
-                    .build()?,
+                    .build()
+                    .map_err(SdkError::backend)?,
             ),
         };
 
@@ -151,7 +152,7 @@ impl EmbeddedExecuteOnlyClient {
     /// (caches by program id internally). `with_hints` is meaningful
     /// only with the Assembly backend; the Emulator ignores it.
     pub fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
-        self.prover.setup(program, with_hints)
+        self.prover.setup(program, with_hints).map_err(SdkError::backend)
     }
 
     /// Run a single execution. `program` must match the one passed to
@@ -164,8 +165,12 @@ impl EmbeddedExecuteOnlyClient {
         hints: Option<ZiskHints>,
     ) -> Result<ExecuteOutput> {
         if hints.is_some() && self.executor == ExecutorKind::Emulator {
-            anyhow::bail!("Hints require the Assembly executor");
+            return Err(SdkError::UnsupportedExecutor(
+                "Hints require the Assembly executor".to_string(),
+            ));
         }
-        self.prover.execute(program, stdin.into_inner(), hints.map(ZiskHints::into_inner))
+        self.prover
+            .execute(program, stdin.into_inner(), hints.map(ZiskHints::into_inner))
+            .map_err(SdkError::backend)
     }
 }

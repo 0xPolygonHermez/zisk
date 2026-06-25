@@ -98,9 +98,6 @@ const int OP_DMA_XMEMCMP = OP_DMA_MEMCMP + OP_DMA_X_OFFSET;     // 0xD7
 const int OP_DMA_XMEMSET = __OP_DMA_MEMSET__ + OP_DMA_X_OFFSET; // 0xD9
 const int OP_DMA_XMEMEQ = __OP_DMA_MEMEQ__ + OP_DMA_X_OFFSET;   // 0xDA
 
-
-const int OP_POSEIDON2 = 0xE1;
-
 const int OP_ARITH_384_MOD = 0xE2;
 const int OP_EC_ADD_BLS12_381 = 0xE3;
 const int OP_EC_DBL_BLS12_381 = 0xE4;
@@ -112,6 +109,9 @@ const int OP_EC_ADD_SECP256R1 = 0xE8;
 const int OP_EC_DBL_SECP256R1 = 0xE9;
 
 const int OP_BLAKE2BR = 0xEA;
+
+const int OP_POSEIDON2 = 0xEB;
+const int OP_POSEIDON1 = 0xEC;
 
 const int OP_ADD256 = 0xF0;
 const int OP_KECCAKF = 0xF1;

@@ -11,7 +11,7 @@
 //!
 //! ## Two macros: façade + explicit
 //!
-//! [`zisk_precompile!`] is the **façade**: 4 declarative parameters
+//! [`zisk_precompile!`](crate::zisk_precompile) is the **façade**: 4 declarative parameters
 //! (`name`, `op_type`, `trace`, `num_available`) plus the `ops` list. It
 //! derives every shell name from `$name` and every trace-related type
 //! from `$trace`, then forwards to the explicit form.
@@ -48,9 +48,9 @@
 pub use paste::paste as __zisk_paste;
 
 /// Explicit form — generates the per-precompile shell types from
-/// spelled-out names. The [`zisk_precompile!`] façade desugars to this.
+/// spelled-out names. The [`zisk_precompile!`](crate::zisk_precompile) façade desugars to this.
 ///
-/// Prefer the [`zisk_precompile!`] façade unless you need to override one
+/// Prefer the [`zisk_precompile!`](crate::zisk_precompile) façade unless you need to override one
 /// of the conventional names. The façade derives all of the args this
 /// macro takes from just `$name` + `$trace`.
 ///
