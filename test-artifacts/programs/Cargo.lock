@@ -830,19 +830,40 @@ dependencies = [
 ]
 
 [[package]]
-name = "bitcoin-io"
-version = "0.1.4"
+name = "bitcoin-consensus-encoding"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2dee39a0ee5b4095224a0cfc6bf4cc1baf0f9624b96b367e53b66d974e51d953"
+checksum = "b2d6094e2a1ba3c93b5a596fe5a10d1a10c3c6e06785cde89f693a044c01aa40"
+dependencies = [
+ "bitcoin-internals",
+]
+
+[[package]]
+name = "bitcoin-internals"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a30a22d1f112dde8e16be7b45c63645dc165cef254f835b3e1e9553e485cfa64"
+dependencies = [
+ "hex-conservative 0.3.2",
+]
+
+[[package]]
+name = "bitcoin-io"
+version = "0.1.101"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb5de036369d1ac59d3c1819ebc4d850f89466f5401c571a285b6ed564a4cb78"
+dependencies = [
+ "bitcoin-consensus-encoding",
+]
 
 [[package]]
 name = "bitcoin_hashes"
-version = "0.14.2"
+version = "0.14.101"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ed83caece3afc59919481b33b472e1432d1abc4641ed9100be142ef5110b406"
+checksum = "bca4c7abb40c8817d77403c880988cfd484f23ab2365726afb2f798363e2c4a2"
 dependencies = [
  "bitcoin-io",
- "hex-conservative",
+ "hex-conservative 0.2.2",
 ]
 
 [[package]]
@@ -1479,7 +1500,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "fields 1.0.0-beta",
  "num-bigint",
@@ -1947,7 +1968,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2265,6 +2286,15 @@ name = "hex-conservative"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fda06d18ac606267c40c04e41b9947729bf8b9efe74bd4e82b61a5f26a510b9f"
+dependencies = [
+ "arrayvec",
+]
+
+[[package]]
+name = "hex-conservative"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830e599c2904b08f0834ee6337d8fe8f0ed4a63b5d9e7a7f49c0ffa06d08d360"
 dependencies = [
  "arrayvec",
 ]
@@ -2665,9 +2695,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.102"
+version = "0.3.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03d04c30968dffe80775bd4d7fb676131cd04a1fb46d2686dbffbaec2d9dfd31"
+checksum = "53b44bfcdb3f8d5837a46dae1ca9660a837176eee74a28b229bc626816589102"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -3331,7 +3361,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "colored",
  "fields 1.0.0-beta",
@@ -3695,7 +3725,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "bincode",
  "blake3",
@@ -3729,7 +3759,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "bincode",
  "borsh",
@@ -3760,7 +3790,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "fields 1.0.0-beta",
  "itoa",
@@ -3773,7 +3803,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3783,7 +3813,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -3792,7 +3822,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "bincode",
  "colored",
@@ -3813,7 +3843,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "bincode",
  "fields 1.0.0-beta",
@@ -5608,9 +5638,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.23.3"
+version = "1.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "144d6b123cef80b301b8f72a9e2ca4370ddec21950d0a103dd22c437006d2db7"
+checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
@@ -5721,9 +5751,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ddb3f79143bced6de84270411622a2699cee572fc0875aeaf1e7867cf9fca1a"
+checksum = "4b067c0c11094aef6b7a801c1e34a26affafdf3d051dba08456b868789aaf9a4"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -5734,9 +5764,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e21a184b13fb19e157296e2c46056aec9092264fab83e4ba59e68c61b323c3d"
+checksum = "167ce5e579f6bcf889c4f7175a8a5a585de84e8ff93976ce393efa5f2837aab1"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -5744,9 +5774,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fecefd9c35bd935a20fc3fc344b5f29138961e4f47fb03297d88f2587afb5ebd"
+checksum = "f3997c7839262f4ef12cf90b818d6340c18e80f263f1a94bf157d0ec4420380e"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -5757,9 +5787,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23939e44bb9a5d7576fa2b563dc2e136628f1224e88a8deed09e04858b77871f"
+checksum = "dc1b4cb0cc549fcf58d7dfc081778139b3d283a081644e833e84682ad71cea24"
 dependencies = [
  "unicode-ident",
 ]
@@ -6262,7 +6292,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#4b6f978ef153771c3f3a9994aa06b02f051e084c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fbus-refactor#27eea28ee0eccfb150ad85b9caa54b53b3d1d3d6"
 dependencies = [
  "colored",
  "fields 1.0.0-beta",
