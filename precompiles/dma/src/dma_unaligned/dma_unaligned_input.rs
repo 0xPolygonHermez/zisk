@@ -2,7 +2,7 @@ use precompiles_helpers::DmaInfo;
 use zisk_common::{A, B, DMA_ENCODED, OP, STEP};
 use zisk_core::zisk_ops::ZiskOp;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DmaUnalignedInput {
     pub src: u32,
     pub dst: u32,

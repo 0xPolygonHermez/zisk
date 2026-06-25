@@ -4,7 +4,7 @@ use zisk_core::zisk_ops::ZiskOp;
 
 use crate::DMA_64_ALIGNED_OPS_BY_ROW;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Dma64AlignedInput {
     pub src: u32,
     pub dst: u32,

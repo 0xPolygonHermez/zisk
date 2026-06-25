@@ -12,17 +12,31 @@
 //! Adding a precompile: ONE line in `register_precompiles!`, plus the
 //! matching per-crate import.
 
-use precomp_arith_eq::{ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager};
+// The `*Sm` unit-test markers are referenced by the generated
+// `PRECOMPILE_UNIT_TEST_MARKERS` / `register_unit_tests` code (one marker per
+// precompile, derived as `${Variant}Sm`).
+use precomp_arith_eq::{
+    ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager, ArithEqSm,
+};
 use precomp_arith_eq_384::{
     ArithEq384Collector, ArithEq384CounterInputGen, ArithEq384Instance, ArithEq384Manager,
+    ArithEq384Sm,
 };
-use precomp_big_int::{Add256Collector, Add256CounterInputGen, Add256Instance, Add256Manager};
-use precomp_blake2::{Blake2Collector, Blake2CounterInputGen, Blake2Instance, Blake2Manager};
-use precomp_keccakf::{KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager};
+use precomp_big_int::{
+    Add256Collector, Add256CounterInputGen, Add256Instance, Add256Manager, Add256Sm,
+};
+use precomp_blake2::{
+    Blake2Collector, Blake2CounterInputGen, Blake2Instance, Blake2Manager, Blake2Sm,
+};
+use precomp_keccakf::{
+    KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager, KeccakfSm,
+};
 use precomp_poseidon::{
-    PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance, PoseidonManager,
+    PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance, PoseidonManager, PoseidonSm,
 };
-use precomp_sha256f::{Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager};
+use precomp_sha256f::{
+    Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager, Sha256fSm,
+};
 use zisk_common::ComponentBuilder;
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2_OP_TYPE_ID,

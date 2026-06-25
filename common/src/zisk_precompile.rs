@@ -110,6 +110,13 @@ macro_rules! zisk_precompile_explicit {
                     let [<$name:snake _sm>] = <$sm<F>>::new(std);
                     ::std::sync::Arc::new(Self { [<$name:snake _sm>] })
                 }
+
+                /// Inner witness-producing SM. Exposed for the unit-test
+                /// executor registry, which maps each AIR id to the concrete
+                /// SM that computes its witness.
+                pub fn [<$name:snake _sm>](&self) -> &::std::sync::Arc<$sm<F>> {
+                    &self.[<$name:snake _sm>]
+                }
             }
 
             impl<F: ::fields::PrimeField64> $crate::ComponentPlanBuilder<F>
@@ -328,10 +335,10 @@ macro_rules! zisk_precompile_explicit {
 
                     if packed {
                         Ok(Some(self.[<$name:snake _sm>]
-                            .compute_witness::<$trace_row_packed<F>>(_sctx, &inputs, trace_buffer)?))
+                            .compute_witness::<$trace_row_packed<F>>(&inputs, trace_buffer)?))
                     } else {
                         Ok(Some(self.[<$name:snake _sm>]
-                            .compute_witness::<$trace_row<F>>(_sctx, &inputs, trace_buffer)?))
+                            .compute_witness::<$trace_row<F>>(&inputs, trace_buffer)?))
                     }
                 }
 

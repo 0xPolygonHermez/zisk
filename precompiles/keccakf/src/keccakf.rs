@@ -3,7 +3,7 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use pil_std_lib::Std;
 
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 use precompiles_helpers::{
@@ -159,7 +159,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// An `AirInstance` containing the computed witness data.
     pub fn compute_witness<R: KeccakfTraceRowOps<F>>(
         &self,
-        _sctx: &SetupCtx<F>,
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {

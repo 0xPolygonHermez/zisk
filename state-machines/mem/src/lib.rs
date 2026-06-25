@@ -27,10 +27,10 @@ pub use mem_align_collector::*;
 pub use mem_align_instance::*;
 pub use mem_align_read_byte_instance::*;
 use mem_align_rom_sm::*;
-use mem_align_sm::*;
+pub use mem_align_sm::*;
 pub use mem_align_write_byte_instance::*;
 use mem_counters_cursor::*;
-use mem_inputs::*;
+pub use mem_inputs::*;
 use mem_module::*;
 pub use mem_module_collector::*;
 pub use mem_module_instance::*;
@@ -38,3 +38,98 @@ use mem_module_planner::*;
 pub use mem_planner::*;
 use mem_sm::*;
 use rom_data_sm::*;
+
+// =====================================================================
+// Unit-test framework markers
+// =====================================================================
+
+use zisk_common::unit_test_sm;
+use zisk_pil::{
+    InputDataTrace, InputDataTraceRow, MemAlignTrace, MemAlignTraceRow, MemAlignTraceRowPacked,
+    MemTrace, MemTraceRow, RomDataTrace, RomDataTraceRow, INPUT_DATA_AIR_IDS, MEM_AIR_IDS,
+    MEM_ALIGN_AIR_IDS, ROM_DATA_AIR_IDS,
+};
+
+/// Worst-case rows a single `MemAlignInput` consumes (write + cross-chunk).
+/// Used to keep `chunk_size` conservative so the default uniform planner
+/// never overflows the trace; the per-input variation is handled inside
+/// `compute_witness` via `MemAlignSM::rows_per_input`.
+const MEM_ALIGN_MAX_ROWS_PER_INPUT: usize = 5;
+
+unit_test_sm! {
+    MemAlignSm => {
+        name: "MemAlign",
+        air: MEM_ALIGN_AIR_IDS[0],
+        input: MemAlignInput,
+        row: MemAlignTraceRow<F>,
+        manager: MemAlignSM<F>,
+        trace: MemAlignTrace,
+        chunk_size: |_| MemAlignTrace::<usize>::NUM_ROWS / MEM_ALIGN_MAX_ROWS_PER_INPUT,
+        compute: |sm, _sctx, inputs, buf, packed| {
+            let used_rows: usize = inputs.iter().map(MemAlignSM::<F>::rows_per_input).sum();
+            let inputs = vec![inputs];
+            if packed {
+                sm.compute_witness::<MemAlignTraceRowPacked<F>>(&inputs, used_rows, buf)
+            } else {
+                sm.compute_witness::<MemAlignTraceRow<F>>(&inputs, used_rows, buf)
+            }
+        },
+    }
+}
+
+unit_test_sm! {
+    MemSm => {
+        name: "Mem",
+        air: MEM_AIR_IDS[0],
+        input: MemInput,
+        row: MemTraceRow<F>,
+        manager: MemSM<F>,
+        trace: MemTrace,
+        chunk_size: |_| MemTrace::<usize>::NUM_ROWS,
+        compute: |_sm, _sctx, _inputs, _buf, _packed| {
+            ::std::result::Result::Err(::proofman_common::ProofmanError::InvalidSetup(
+                "UnitTestSm(Mem): not yet supported \u{2014} the Mem-module witness path \
+                 requires a planner-grade segment checkpoint the unit-test framework \
+                 does not build yet (only MemAlign is supported)".into(),
+            ))
+        },
+    }
+}
+
+unit_test_sm! {
+    RomDataSm => {
+        name: "RomData",
+        air: ROM_DATA_AIR_IDS[0],
+        input: MemInput,
+        row: RomDataTraceRow<F>,
+        manager: RomDataSM<F>,
+        trace: RomDataTrace,
+        chunk_size: |_| RomDataTrace::<usize>::NUM_ROWS,
+        compute: |_sm, _sctx, _inputs, _buf, _packed| {
+            ::std::result::Result::Err(::proofman_common::ProofmanError::InvalidSetup(
+                "UnitTestSm(RomData): not yet supported \u{2014} the Mem-module witness \
+                 path requires a planner-grade segment checkpoint the unit-test \
+                 framework does not build yet (only MemAlign is supported)".into(),
+            ))
+        },
+    }
+}
+
+unit_test_sm! {
+    InputDataSm => {
+        name: "InputData",
+        air: INPUT_DATA_AIR_IDS[0],
+        input: MemInput,
+        row: InputDataTraceRow<F>,
+        manager: InputDataSM<F>,
+        trace: InputDataTrace,
+        chunk_size: |_| InputDataTrace::<usize>::NUM_ROWS,
+        compute: |_sm, _sctx, _inputs, _buf, _packed| {
+            ::std::result::Result::Err(::proofman_common::ProofmanError::InvalidSetup(
+                "UnitTestSm(InputData): not yet supported \u{2014} the Mem-module witness \
+                 path requires a planner-grade segment checkpoint the unit-test \
+                 framework does not build yet (only MemAlign is supported)".into(),
+            ))
+        },
+    }
+}

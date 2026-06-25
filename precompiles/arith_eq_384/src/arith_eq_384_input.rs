@@ -16,7 +16,7 @@ pub enum ArithEq384Input {
     Bls12_381ComplexMul(Bls12_381ComplexMulInput),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Arith384ModInput {
     pub addr: u32,
     pub a_addr: u32,
@@ -49,7 +49,7 @@ impl Arith384ModInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bls12_381CurveAddInput {
     pub addr: u32,
     pub p1_addr: u32,
@@ -72,7 +72,7 @@ impl Bls12_381CurveAddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bls12_381CurveDblInput {
     pub addr: u32,
     pub step: u64,
@@ -85,7 +85,7 @@ impl Bls12_381CurveDblInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bls12_381ComplexAddInput {
     pub addr: u32,
     pub f1_addr: u32,
@@ -108,7 +108,7 @@ impl Bls12_381ComplexAddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bls12_381ComplexSubInput {
     pub addr: u32,
     pub f1_addr: u32,
@@ -131,7 +131,7 @@ impl Bls12_381ComplexSubInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bls12_381ComplexMulInput {
     pub addr: u32,
     pub f1_addr: u32,

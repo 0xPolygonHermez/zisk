@@ -17,6 +17,7 @@ members = [
   "cli",
   "core",
   "integration-tests",
+  "unit-tests",
   "data-bus",
   "emulator",
   "executor",
@@ -132,15 +133,17 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/verify-constraints-info" }
+ 
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }

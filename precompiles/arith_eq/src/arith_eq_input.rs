@@ -20,7 +20,7 @@ pub enum ArithEqInput {
     Secp256r1Dbl(Secp256r1DblInput),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Arith256Input {
     pub addr: u32,
     pub a_addr: u32,
@@ -51,7 +51,7 @@ impl Arith256Input {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Arith256ModInput {
     pub addr: u32,
     pub a_addr: u32,
@@ -84,7 +84,7 @@ impl Arith256ModInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Secp256k1AddInput {
     pub addr: u32,
     pub p1_addr: u32,
@@ -107,7 +107,7 @@ impl Secp256k1AddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Secp256k1DblInput {
     pub addr: u32,
     pub step: u64,
@@ -120,7 +120,7 @@ impl Secp256k1DblInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bn254CurveAddInput {
     pub addr: u32,
     pub p1_addr: u32,
@@ -143,7 +143,7 @@ impl Bn254CurveAddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bn254CurveDblInput {
     pub addr: u32,
     pub step: u64,
@@ -156,7 +156,7 @@ impl Bn254CurveDblInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bn254ComplexAddInput {
     pub addr: u32,
     pub f1_addr: u32,
@@ -179,7 +179,7 @@ impl Bn254ComplexAddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bn254ComplexSubInput {
     pub addr: u32,
     pub f1_addr: u32,
@@ -202,7 +202,7 @@ impl Bn254ComplexSubInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Bn254ComplexMulInput {
     pub addr: u32,
     pub f1_addr: u32,
@@ -225,7 +225,7 @@ impl Bn254ComplexMulInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Secp256r1AddInput {
     pub addr: u32,
     pub p1_addr: u32,
@@ -248,7 +248,7 @@ impl Secp256r1AddInput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Secp256r1DblInput {
     pub addr: u32,
     pub step: u64,

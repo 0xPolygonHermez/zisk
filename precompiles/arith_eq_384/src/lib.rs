@@ -11,7 +11,10 @@ pub use arith_eq_384::*;
 pub use arith_eq_384_constants::*;
 pub use arith_eq_384_input::*;
 
-use zisk_common::zisk_precompile;
+use zisk_common::{unit_test_sm, zisk_precompile};
+use zisk_pil::{
+    ArithEq384Trace, ArithEq384TraceRow, ArithEq384TraceRowPacked, ARITH_EQ_384_AIR_IDS,
+};
 
 zisk_precompile! {
     name = ArithEq384,
@@ -88,5 +91,23 @@ mod arith_eq_384_tests {
         ELF_BLS12_381_COMPLEX_SUB
             .run_emulation(ZiskStdin::new(), None)
             .expect("bls12_381_complex_sub guest emulation failed");
+    }
+}
+
+// =====================================================================
+// Unit-test framework marker.
+// =====================================================================
+
+unit_test_sm! {
+    ArithEq384Sm => {
+        name: "ArithEq384",
+        air: ARITH_EQ_384_AIR_IDS[0],
+        input: ArithEq384Input,
+        manager: ArithEq384SM<F>,
+        row: ArithEq384TraceRow<F>,
+        row_packed: ArithEq384TraceRowPacked<F>,
+        trace: ArithEq384Trace,
+        rows_per_input: ARITH_EQ_384_ROWS_BY_OP,
+        chunk_size: |_| ArithEq384Trace::<usize>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1,
     }
 }
