@@ -275,7 +275,7 @@ pub(crate) fn generate_inputs(
     aop.calculate(opcode, a, b);
 
     // If the operation is a division, then use the binary component
-    // to check that the remainer is lower than the divisor
+    // to check that the remainder is lower than the divisor
     if aop.div && !aop.div_by_zero {
         let opcode = match (aop.nr, aop.nb) {
             (false, false) => LTU_OP,
