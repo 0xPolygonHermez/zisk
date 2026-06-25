@@ -501,20 +501,18 @@ pub unsafe extern "C" fn add_bn254_c(
     let p1 = &*(p1_ptr as *const [u64; 8]);
     let p2 = &*(p2_ptr as *const [u64; 8]);
     let result = &mut *(result_ptr as *mut [u64; 8]);
-    match add_bn254(
+
+    *result = add_bn254(
         p1,
         p2,
         #[cfg(feature = "hints")]
         hints,
-    ) {
-        G1_IDENTITY => {
-            *result = G1_IDENTITY;
-            1
-        }
-        sum => {
-            *result = sum;
-            0
-        }
+    );
+
+    if eq(result, &G1_IDENTITY) {
+        G1_ADD_SUCCESS_INFINITY
+    } else {
+        G1_ADD_SUCCESS
     }
 }
 
@@ -559,7 +557,7 @@ pub(crate) unsafe fn add_safe_bn254_c(
 
     // Encode result
     g1_u64_le_to_bytes_be_bn254(&result, ret_bytes);
-    if result == G1_IDENTITY {
+    if eq(&result, &G1_IDENTITY) {
         G1_ADD_SUCCESS_INFINITY
     } else {
         G1_ADD_SUCCESS

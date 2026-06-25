@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "e0eba363372313c7ee099cdbaa73f41d219eac982f53ab31d9edf87b4644a44e";
+pub const PILOUT_HASH: &str = "3615b752dac12c3dd5dc2d1b28541808d7da77acca86159f5c2dade9edfdc366";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -197,7 +197,7 @@ trace_row!(MemAlignFixedRow<F> {
 pub type MemAlignFixed<F> = GenericTrace<MemAlignFixedRow<F>, 2097152, 0, 5>;
 
 trace_row!(MemAlignTraceRow<F> {
- addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, sel_prove:bit, value:[u32; 2],
+ addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, is_non_aligned_op:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, value:[u32; 2],
 });
 
 pub type MemAlignTrace<R> = GenericTrace<R, 2097152, 0, 5>;
@@ -351,7 +351,7 @@ trace_row!(Blake2brFixedRow<F> {
 pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 19>;
 
 trace_row!(Blake2brTraceRow<F> {
- in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:ubit(4), m_limbs:[[u16; 2]; 2], ms:[u32; 2], perm_active:bit, g_active:bit, va_limbs:[[u16; 2]; 2], vc_limbs:[[u16; 2]; 2], vb:[[bit; 32]; 2], vd:[[bit; 32]; 2], step_addr:ubit(40), in_use_clk_0:bit,
+ in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:ubit(4), m_limbs:[[u16; 2]; 2], ms:[u32; 2], perm_active:bit, step_addr:ubit(40), op_step:ubit(40), g_active:bit, va_limbs:[[u16; 2]; 2], vc_limbs:[[u16; 2]; 2], vb:[[bit; 32]; 2], vd:[[bit; 32]; 2], in_use_clk_0:bit,
 });
 
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 19>;
@@ -740,7 +740,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 5, PackedInfoConst {
         is_packed: true,
         num_packed_words: 5,
-        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 1, 32, 32],
+        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 32, 32],
     }),
     (0, 6, PackedInfoConst {
         is_packed: true,
@@ -809,8 +809,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 19, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 7,
-        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 16, 16, 16, 16, 32, 32, 1, 1, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 40, 1],
+        num_packed_words: 8,
+        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 16, 16, 16, 16, 32, 32, 1, 40, 40, 1, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     }),
     (0, 20, PackedInfoConst {
         is_packed: true,

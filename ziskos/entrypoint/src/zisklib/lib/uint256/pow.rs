@@ -64,12 +64,15 @@ pub fn overflowing_pow256(
         // Check that the hinted bit position matches the original exponent
         let mut check_exp = [0u64; 4];
         check_exp[limb as usize] = 1u64 << (bit as usize);
-        assert_eq!(check_exp, *exp, "Exponent bit position mismatch");
+
+        // I already checked that the exponent is a power of two, so I only need
+        // to check that the hinted bit position matches the original exponent
+        assert_eq!(check_exp[limb as usize], exp[limb as usize], "Exponent limb mismatch");
 
         // Perform repeated squaring for the single set bit in the exponent
         let mut overflow = false;
         let mut result = *base;
-        for _ in 0..bit {
+        for _ in 0..(64 * limb + bit) {
             let (res, sq_overflow) = overflowing_square256(
                 &result,
                 #[cfg(feature = "hints")]
@@ -171,11 +174,14 @@ pub fn wrapping_pow256(
         // Check that the hinted bit position matches the original exponent
         let mut check_exp = [0u64; 4];
         check_exp[limb as usize] = 1u64 << (bit as usize);
-        assert_eq!(check_exp, *exp, "Exponent bit position mismatch");
+
+        // I already checked that the exponent is a power of two, so I only need
+        // to check that the hinted bit position matches the original exponent
+        assert_eq!(check_exp[limb as usize], exp[limb as usize], "Exponent limb mismatch");
 
         // Perform repeated squaring for the single set bit in the exponent
         let mut result = *base;
-        for _ in 0..bit {
+        for _ in 0..(64 * limb + bit) {
             result = wrapping_square256(
                 &result,
                 #[cfg(feature = "hints")]

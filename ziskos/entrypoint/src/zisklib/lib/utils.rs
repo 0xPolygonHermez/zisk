@@ -95,6 +95,7 @@ pub fn is_two(x: &[u64]) -> bool {
 
 /// Returns true if x is a power of two
 pub fn is_power_of_two(x: &[u64]) -> bool {
+    // TODO: I could simply hint the bit and the position and check it
     // A multiple-word number is a power of two if it has exactly one bit set across all words
     let mut found_one = false;
     for &word in x {
