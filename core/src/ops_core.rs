@@ -611,7 +611,7 @@ pub const fn op_cpop_w(_a: u64, b: u64) -> (u64, bool) {
     ((b as u32).count_ones() as u64, false)
 }
 
-/// Sets c bytes to 0x0 if the corresponding a byte is zero, 0xFF otherwise, and flag to false
+/// Sets c bytes to 0x00 if the corresponding b byte is zero, 0xFF otherwise, and flag to false
 #[inline(always)]
 pub const fn op_orc_b(_a: u64, b: u64) -> (u64, bool) {
     let mut result = 0;
@@ -708,7 +708,7 @@ pub const fn op_sh3add_u_w(a: u64, b: u64) -> (u64, bool) {
     (b.wrapping_add((a & 0xFFFFFFFF) << 3), false)
 }
 
-/// Sets c to a (modulo 32) << b, and flag to false
+/// Sets c to zext.w(a) << (b mod 64), and flag to false
 #[inline(always)]
 pub const fn op_sll_u_w(a: u64, b: u64) -> (u64, bool) {
     ((a & 0xFFFFFFFF) << (b & 0x3F), false)
