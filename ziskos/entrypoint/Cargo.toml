@@ -86,13 +86,17 @@ inputcpy = []
 # compiled into a static archive linked against a host application (C or Rust).
 # Surfaced as the `zisk_staticlib` cfg by build.rs.
 #
-# It forces the self-contained dlmalloc allocator: its `#[global_allocator]`
-# shim (`__rust_alloc` & friends) routes straight to an internal `Dlmalloc`
-# instance over the `_kernel_heap_*` region, without going through the exported
-# `sys_alloc_*` C ABI. That keeps the set of allocator symbols closed and known,
-# so the staticlib post-build step can localize them (STB_LOCAL) and isolate
-# ziskos's heap from whatever allocator the host application uses.
-staticlib = ["zisk-embedded-dlmalloc-alloc"]
+# It carries NO allocator dependency, so the default self-contained bump
+# allocator is used (`alloc/bump.rs`): its `#[global_allocator]` shim
+# (`__rust_alloc` & friends) routes to `inline_bump_alloc_aligned`, keeping the
+# set of allocator symbols closed and known so the staticlib post-build step can
+# localize them (STB_LOCAL) and isolate ziskos's heap from the host allocator.
+#
+# The `zisk_staticlib` cfg additionally switches the bump heap region (see
+# `alloc/alloc.rs`) from the linker-provided `_kernel_heap_*` symbols — which the
+# host's linker script may not define — to a static buffer compiled into the
+# archive, so ziskos owns a private heap fully isolated from the host's memory.
+staticlib = []
 zisk-custom-alloc = []
 zisk-embedded-alloc = ["zisk-embedded-dlmalloc-alloc"]
 zisk-embedded-dlmalloc-alloc = [

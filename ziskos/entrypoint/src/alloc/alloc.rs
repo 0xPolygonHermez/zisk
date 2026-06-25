@@ -10,15 +10,60 @@ static mut HEAP_TOP: usize = 0;
 #[no_mangle]
 #[warn(dead_code)]
 pub unsafe extern "C" fn init_sys_alloc() {
+    let (bottom, top) = sys_alloc_heap_bounds();
+    unsafe {
+        HEAP_POS = bottom;
+        HEAP_TOP = top;
+    };
+}
+
+#[cfg(all(zisk_guest, not(zisk_staticlib)))]
+#[no_mangle]
+#[warn(dead_code)]
+pub unsafe extern "C" fn reset_sys_alloc() {
+    let (bottom, top) = sys_alloc_heap_bounds();
+    unsafe {
+        HEAP_POS = bottom;
+        HEAP_TOP = top;
+    };
+}
+
+/// Backing region for the bump allocator, as `(bottom, top)` addresses.
+///
+/// Guest binary (default): the heap is the RAM left over after the program
+/// image, delimited by the linker symbols `_kernel_heap_*`.
+#[cfg(all(zisk_guest, not(zisk_staticlib)))]
+unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
     extern "C" {
         static _kernel_heap_bottom: u8;
         static _kernel_heap_top: u8;
     }
 
-    unsafe {
-        HEAP_POS = &_kernel_heap_bottom as *const u8 as usize;
-        HEAP_TOP = &_kernel_heap_top as *const u8 as usize;
-    };
+    unsafe { (&_kernel_heap_bottom as *const u8 as usize, &_kernel_heap_top as *const u8 as usize) }
+}
+
+/// Isolated staticlib (`zisk_staticlib`): ziskos is linked into a host
+/// application that owns the linker script, so `_kernel_heap_*` may not exist.
+/// Carve the heap out of a static buffer compiled into `libziskos.a`, keeping
+/// ziskos's heap fully isolated from the host's memory.
+///
+/// The buffer lives in `.bss` (zero-initialized: it does not bloat the archive
+/// on disk, but the host reserves this much address space at load time). Adjust
+/// `HEAP_SIZE` to the largest working set ziskos needs inside the host.
+#[cfg(all(zisk_guest, zisk_staticlib))]
+unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
+    const HEAP_SIZE: usize = 64 * 1024 * 1024;
+
+    // Only ever accessed by address (the bump allocator re-aligns each block),
+    // so the inner array is never "read" in the borrow-checker's sense.
+    #[allow(dead_code)]
+    #[repr(align(8))]
+    struct Heap([u8; HEAP_SIZE]);
+
+    static mut HEAP: Heap = Heap([0; HEAP_SIZE]);
+
+    let start = core::ptr::addr_of_mut!(HEAP) as usize;
+    (start, start + HEAP_SIZE)
 }
 
 #[cfg(zisk_guest)]
