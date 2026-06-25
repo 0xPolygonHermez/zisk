@@ -22,8 +22,8 @@ use std::sync::{Arc, RwLock};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
-    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues,
-    StatsCostPerType, ZiskExecutorTime,
+    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, StatsCostPerType,
+    ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 
@@ -229,13 +229,12 @@ impl ProverEngine for EmuProver {
     fn wrap_proof(
         &self,
         proof: &[u64],
-        publics: &PublicValues,
-        vk: &ProgramVK,
+        publics_full: &[u64],
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }

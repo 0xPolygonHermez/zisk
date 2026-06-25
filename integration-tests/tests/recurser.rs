@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use anyhow::{anyhow, Context, Result};
-use test_artifacts::{AGG_CHAIN, AGG_CHAIN_SIMPLE, ELF_CHAIN_SEGMENT};
+use test_artifacts::{AGG_CHAIN, ELF_CHAIN_SEGMENT};
 use zisk_sdk::{
     AggregationInput, AggregationProgramBuilder, CircomCircuit, EmbeddedClient,
-    EmbeddedClientBuilder, GuestProgram, JobHandle, ProofExt, ProveResult, ProverClient, Recurser,
+    EmbeddedClientBuilder, GuestProgram, JobHandle, ProveResult, ProverClient, Recurser,
     RemoteClient, SetupTarget, UploadTarget, ZiskStdin,
 };
 
@@ -64,7 +64,7 @@ impl TestClient {
     }
 
     fn prove(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<JobHandle<ProveResult>> {
-        with_client!(self, c => c.prove(program, stdin).run())
+        with_client!(self, c => Ok(c.prove(program, stdin).run()?))
     }
 
     fn aggregate_proofs<'a>(
@@ -73,7 +73,7 @@ impl TestClient {
         input_a: impl Into<AggregationInput<'a>>,
         input_b: impl Into<AggregationInput<'a>>,
     ) -> Result<JobHandle<ProveResult>> {
-        with_client!(self, c => c.aggregate_proofs(agg, input_a, input_b).run())
+        with_client!(self, c => Ok(c.aggregate_proofs(agg, input_a, input_b).run()?))
     }
 }
 
@@ -94,29 +94,12 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
 
     let agg_vk = agg.vk().context("aggregator VK available after setup")?.vk;
 
-    // Second recurser over the same leaf program — no normalization hash, no
-    // free inputs. Set up alongside the first: both stay registered in the
-    // prover at once, and the folds below alternate between them to check
-    // the setups don't interfere.
-    let agg2: &Recurser = &AGG_CHAIN_SIMPLE;
-    eprintln!("[recurser] simple recurser_id = {}", agg2.recurser_id());
-    assert_ne!(agg.recurser_id(), agg2.recurser_id(), "distinct circuits must get distinct ids");
-
-    client.setup(agg2).await.context("simple aggregator setup failed")?;
-
-    let agg2_vk = agg2.vk().context("simple aggregator VK available after setup")?.vk;
-    assert_ne!(agg_vk, agg2_vk, "distinct recursers must have distinct verkeys");
-
+    // The programmatic builder must derive the same id as the declarative TOML.
     let circuits_dir =
         concat!(env!("CARGO_MANIFEST_DIR"), "/../test-artifacts/programs/aggregations/circuits");
     let programmatic = AggregationProgramBuilder::new(
         &[&ELF_CHAIN_SEGMENT],
         CircomCircuit::from_path(format!("{circuits_dir}/aggregate_publics.circom"))?,
-    )
-    .normalize_with(
-        &[&ELF_CHAIN_SEGMENT],
-        CircomCircuit::from_path(format!("{circuits_dir}/normalize.circom"))?,
-        1,
     )
     .build()
     .context("programmatic AggregationProgramBuilder build failed")?;
@@ -177,9 +160,10 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     assert_eq!((pubs_a[0], pubs_a[1]), (10, 20), "leaf publics must round-trip");
     assert_eq!((pubs_d[0], pubs_d[1]), (40, 50), "leaf publics must round-trip");
 
-    // Level 1: two leaf+leaf folds.
+    // Level 1: two leaf+leaf folds. The recurser takes no free inputs, so the
+    // proofs are passed plain.
     let ab = client
-        .aggregate_proofs(agg, pa.with_free_inputs(vec![4u64]), pb.with_free_inputs(vec![4u64]))
+        .aggregate_proofs(agg, &pa, &pb)
         .map_err(|e| anyhow!("submit recurser prove ab failed: {e}"))?
         .await
         .map_err(|e| anyhow!("recurser prove ab [10,20]+[20,30] failed: {e}"))?
@@ -187,7 +171,7 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
         .clone();
 
     let cd = client
-        .aggregate_proofs(agg, pc.with_free_inputs(vec![4u64]), pd.with_free_inputs(vec![4u64]))
+        .aggregate_proofs(agg, &pc, &pd)
         .map_err(|e| anyhow!("submit recurser prove cd failed: {e}"))?
         .await
         .map_err(|e| anyhow!("recurser prove cd [30,40]+[40,50] failed: {e}"))?
@@ -200,44 +184,19 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     assert_eq!((pubs_ab[0], pubs_ab[1]), (10, 30), "leaf+leaf must merge to [a.old, b.new]");
     assert_eq!((pubs_cd[0], pubs_cd[1]), (30, 50), "leaf+leaf must merge to [a.old, b.new]");
 
-    // NormalizePublics hashed [1, 2, 3, 4] on both leaves, so slots [2..6) hold
-    // the Poseidon1_8 digest. Both folds hashed the same tuple, so both carry
-    // the same (non-zero) digest. AggregatePublics already enforced A==B in-circuit;
-    // here we confirm it surfaced in the public output and is genuinely a hash
-    // (not zeros, which untouched slots would have carried).
-    let digest = &pubs_ab[2..6];
-    assert_ne!(digest, &[0u64; 4], "NormalizePublics must write a non-zero hash digest to [2..6)");
-    assert_eq!(&pubs_cd[2..6], digest, "both leaf+leaf folds must carry the same digest");
+    // The aggregate circuit zero-fills slots [2, 64), so the merged publics keep
+    // the well-formed all-zero tail their inputs had (essential: an aggregated
+    // proof is fed straight back into the next fold level).
+    assert_eq!(&pubs_ab[2..6], &[0u64; 4], "merged tail must stay zero");
+    assert_eq!(&pubs_cd[2..6], &[0u64; 4], "merged tail must stay zero");
 
-    // A leaf+leaf fold stamps the aggregator's own VK as the chain identity (§7 row 1).
+    // A leaf+leaf fold stamps the aggregator's own VK as the chain identity (§6 row 1).
     assert_eq!(ab.get_program_vk().vk, agg_vk, "ab chain identity must be rootCRecurserAgg");
     assert_eq!(cd.get_program_vk().vk, agg_vk, "cd chain identity must be rootCRecurserAgg");
 
-    // Interleave: fold the same leaves through the SIMPLE recurser before the
-    // first recurser's root fold. Ungrouped leaves take the identity path and
-    // no free inputs, so the proofs are passed plain. Digest slots must stay
-    // zero — non-zero here would mean recurser 1's hashing circuit leaked in.
-    let ab2 = client
-        .aggregate_proofs(agg2, &pa, &pb)
-        .map_err(|e| anyhow!("submit simple recurser prove ab2 failed: {e}"))?
-        .await
-        .map_err(|e| anyhow!("simple recurser prove ab2 [10,20]+[20,30] failed: {e}"))?
-        .get_proof()
-        .clone();
-
-    let pubs_ab2 = ab2.get_publics().public_u64();
-    assert_eq!((pubs_ab2[0], pubs_ab2[1]), (10, 30), "simple leaf+leaf must merge to [10, 30]");
-    assert_eq!(
-        &pubs_ab2[2..6],
-        &[0u64; 4],
-        "simple recurser hashes nothing — digest slots must stay zero"
-    );
-    assert_eq!(ab2.get_program_vk().vk, agg2_vk, "ab2 chain identity must be agg2's own VK");
-
-    // Level 2: agg+agg fold. AggregatePublics sees 30==30; §8 forces ab.VK==cd.VK
+    // Level 2: agg+agg fold. AggregatePublics sees 30==30; §7 forces ab.VK==cd.VK
     // (both rootCRecurserAgg, so it passes). This is the strongest single
-    // assertion that the VK-first layout is correct end-to-end. Running it
-    // AFTER an agg2 fold also shows recurser 1's setup survived recurser 2 use.
+    // assertion that the VK-first layout is correct end-to-end.
     let root = client
         .aggregate_proofs(agg, &ab, &cd)
         .map_err(|e| anyhow!("submit recurser prove root failed: {e}"))?
@@ -253,62 +212,26 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
         agg_vk,
         "chain identity must propagate unchanged up the tree"
     );
-    assert_eq!(&pubs_root[2..6], digest, "hash digest must propagate unchanged to the root");
+    assert_eq!(&pubs_root[2..6], &[0u64; 4], "tail must stay zero to the root");
 
-    // Finish the simple recurser's tree: cd2 leaf+leaf, then the agg+agg root.
-    let cd2 = client
-        .aggregate_proofs(agg2, &pc, &pd)
-        .map_err(|e| anyhow!("submit simple recurser prove cd2 failed: {e}"))?
-        .await
-        .map_err(|e| anyhow!("simple recurser prove cd2 [30,40]+[40,50] failed: {e}"))?
-        .get_proof()
-        .clone();
-
-    let root2 = client
-        .aggregate_proofs(agg2, &ab2, &cd2)
-        .map_err(|e| anyhow!("submit simple recurser prove root2 failed: {e}"))?
-        .await
-        .map_err(|e| anyhow!("simple recurser prove root2 ab2+cd2 failed: {e}"))?
-        .get_proof()
-        .clone();
-
-    let pubs_root2 = root2.get_publics().public_u64();
-    assert_eq!((pubs_root2[0], pubs_root2[1]), (10, 50), "simple tree must collapse to [10, 50]");
-    assert_eq!(&pubs_root2[2..6], &[0u64; 4], "digest slots must stay zero up the simple tree");
-    assert_eq!(root2.get_program_vk().vk, agg2_vk, "simple chain identity must be agg2's own VK");
+    // Opt-in: persist the root VadcopFinal proof so it can be fed into a
+    // separate PLONK wrap. Set ZISK_TEST_SAVE_ROOT_PROOF=/path/to/root.bin.
+    if let Some(path) = std::env::var_os("ZISK_TEST_SAVE_ROOT_PROOF") {
+        let path = PathBuf::from(path);
+        root.save(&path)
+            .with_context(|| format!("failed to save root proof to {}", path.display()))?;
+        eprintln!("[recurser] saved root proof to {}", path.display());
+    }
 
     // Negative: non-contiguous segments (pa.new=20 != pc.old=30) must be
     // rejected by the AggregatePublics stitch constraint — a clean `Err` out of
-    // witness generation, not a process abort, which is why this no longer
-    // needs its own per-process test file. On remote the same failure comes
+    // witness generation, not a process abort. On remote the same failure comes
     // back as a failed job through the JobHandle.
-    let broken = client
-        .aggregate_proofs(agg, pa.with_free_inputs(vec![4u64]), pc.with_free_inputs(vec![4u64]))
-        .context("submit broken-chain recurser prove")?
-        .await;
+    let broken =
+        client.aggregate_proofs(agg, &pa, &pc).context("submit broken-chain recurser prove")?.await;
     assert!(
         broken.is_err(),
         "folding [10,20]+[30,40] must fail the AggregatePublics stitch, got Ok"
-    );
-
-    let broken2 = client
-        .aggregate_proofs(agg, pa.with_free_inputs(vec![3u64]), pb.with_free_inputs(vec![4u64]))
-        .context("submit broken-chain recurser prove")?
-        .await;
-    assert!(
-        broken2.is_err(),
-        "mismatched free inputs (A=3 vs B=4) must fail the AggregatePublics stitch, got Ok"
-    );
-
-    let cross =
-        client.aggregate_proofs(agg2, &ab, &cd).context("submit cross-tree recurser prove")?.await;
-    let cross_err = match cross {
-        Ok(_) => panic!("feeding recurser-1 outputs into recurser 2 must be rejected, got Ok"),
-        Err(e) => format!("{e:#}"),
-    };
-    assert!(
-        cross_err.contains("neither in the registered-program allowlist"),
-        "cross-tree fold must be rejected by programVK validation, got: {cross_err}"
     );
 
     Ok(())

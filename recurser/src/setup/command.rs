@@ -10,7 +10,6 @@ use super::proving_key::{gen_recurser_setup, RecurserConfig};
 use super::resolve::{resolve_circom_exec, resolve_path_env};
 use crate::artifacts::RecurserArtifacts;
 use crate::manifest::{write_manifest_and_templates, RecurserManifest, RecurserManifestInputs};
-use crate::templates::validate_normalize_groups;
 use crate::CircomTemplates;
 
 pub struct SetupRecurserAggregatorOptions {
@@ -20,8 +19,8 @@ pub struct SetupRecurserAggregatorOptions {
     pub output_dir: String,
     /// Registered program VKs (4 Goldilocks limbs each, decimal strings).
     pub program_vks: Vec<[String; 4]>,
-    /// Circom bodies: normalization groups (programs not covered by any group
-    /// get identity) plus the required `AggregatePublics`.
+    /// Circom bodies: the required `AggregatePublics`. All registered programs
+    /// must emit the same publics layout (folded through raw).
     pub templates: CircomTemplates,
 }
 
@@ -63,14 +62,12 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     let program_vks = &opts.program_vks;
 
     let circom_templates = &opts.templates;
-    validate_normalize_groups(&circom_templates.normalize_groups, program_vks.len())?;
 
     // Derive the id through the shared constructor so the manifest hashes
     // match every other id-deriving layer (SDK builder, worker claimed-id check).
     let manifest_inputs = RecurserManifestInputs::new(
         zisk_vk.clone(),
         program_vks.clone(),
-        &circom_templates.normalize_groups,
         &circom_templates.aggregate_publics,
         circom_templates.aggregate_n_free_inputs,
     );
@@ -121,13 +118,8 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
 
     let files_dir = RecurserArtifacts::new(output_dir, &recurser_id).dir().to_path_buf();
     let manifest = RecurserManifest { recurser_id: recurser_id.clone(), inputs: manifest_inputs };
-    write_manifest_and_templates(
-        &files_dir,
-        &manifest,
-        &circom_templates.normalize_groups,
-        &circom_templates.aggregate_publics,
-    )
-    .context("Failed to write recurser manifest")?;
+    write_manifest_and_templates(&files_dir, &manifest, &circom_templates.aggregate_publics)
+        .context("Failed to write recurser manifest")?;
 
     tracing::info!("Recurser setup complete");
     Ok(())

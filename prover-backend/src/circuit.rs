@@ -9,7 +9,7 @@ use anyhow::Result;
 ///
 /// This is the circuit-side sibling of [`crate::GuestProgram`]: a typed,
 /// client-independent handle to user-supplied Circom source (e.g. the
-/// recurser's `AggregatePublics` / `NormalizePublics` bodies).
+/// recurser's `AggregatePublics` body).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CircomCircuit {
     /// Display name for diagnostics — the load path or file stem.

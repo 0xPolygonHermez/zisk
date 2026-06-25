@@ -26,7 +26,7 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
     StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
@@ -379,11 +379,14 @@ pub trait ProverEngine {
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput>;
 
+    /// Wrap a vadcop_final proof to `proof_kind` (Plonk or minimal).
+    /// `publics_full` is the full-width `[program_vk(4)][user(ZISK_PUBLICS)]`
+    /// blob, used verbatim — a recurser proof's publics exceed 32 bits, so the
+    /// truncated u32 view must not be used here.
     fn wrap_proof(
         &self,
         proof: &[u64],
-        publics: &PublicValues,
-        vk: &ProgramVK,
+        publics_full: &[u64],
         proof_kind: ProofKind,
     ) -> Result<ProveOutput>;
 
@@ -918,38 +921,21 @@ pub struct WrapBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
     proof: &'a Proof,
     proof_kind: ProofKind,
-    override_publics: Option<&'a PublicValues>,
-    override_program_vk: Option<&'a ProgramVK>,
 }
 
 impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
     fn new(prover: &'a C::Prover, proof: &'a Proof, proof_kind: ProofKind) -> Self {
-        Self { prover, proof, proof_kind, override_publics: None, override_program_vk: None }
-    }
-
-    /// Override the publics from the original proof.
-    pub fn with_publics(mut self, publics: &'a PublicValues) -> Self {
-        self.override_publics = Some(publics);
-        self
-    }
-
-    /// Override the program verification key from the original proof.
-    pub fn with_program_vk(mut self, program_vk: &'a ProgramVK) -> Self {
-        self.override_program_vk = Some(program_vk);
-        self
+        Self { prover, proof, proof_kind }
     }
 
     /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let derived_publics = self.proof.publics();
-        let publics = self.override_publics.unwrap_or(&derived_publics);
-        let program_vk = self.override_program_vk.unwrap_or(&self.proof.program_vk);
-        let proof = match &self.proof.body {
-            ProofBody::Vadcop { proof, .. } => proof.as_slice(),
+        let (proof, publics_full) = match &self.proof.body {
+            ProofBody::Vadcop { proof, publics_full, .. } => (proof.as_slice(), publics_full),
             ProofBody::Plonk { .. } => {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        self.prover.wrap_proof(proof, publics, program_vk, self.proof_kind)
+        self.prover.wrap_proof(proof, publics_full, self.proof_kind)
     }
 }

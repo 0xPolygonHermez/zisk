@@ -31,8 +31,8 @@ impl Recurser {
         &self.recurser_id
     }
 
-    /// Size of the circuit's per-side free-input arrays: the worst case
-    /// across normalization groups.
+    /// Size of the circuit's per-side free-input arrays (the aggregate
+    /// stage's free-input count).
     pub fn n_free_inputs(&self) -> usize {
         self.templates.max_free_inputs()
     }
@@ -82,16 +82,6 @@ fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
     }
 }
 
-/// One `normalize_with(...)` entry: a normalization circuit attached to a
-/// subset of the registered guests, plus the number of free inputs that
-/// circuit consumes. Builder-side shape; resolved to indices as
-/// [`recurser::NormalizeGroup`] in `build()`.
-struct NormalizeEntry<'a> {
-    guests: Vec<&'a GuestProgram>,
-    circuit: CircomCircuit,
-    n_free_inputs: usize,
-}
-
 /// Client-independent builder for a [`Recurser`] — the proof-folding
 /// sibling of [`GuestProgram`].
 ///
@@ -99,9 +89,11 @@ struct NormalizeEntry<'a> {
 /// expands a TOML definition into exactly this builder call. Build it by
 /// hand when the program set or circuits are only known at runtime.
 ///
+/// All registered guests must emit the same publics layout — the recurser
+/// folds publics through raw, with no per-program canonicalization.
+///
 /// ```ignore
 /// let recurser = AggregationProgramBuilder::new(&[&PROG_A, &PROG_B], load_circuit!("aggregate.circom"))
-///     .normalize_with(&[&PROG_A, &PROG_B], load_circuit!("normalize.circom"), 1)
 ///     .build()?;
 /// client.setup(&recurser).run()?.await?;
 /// ```
@@ -109,7 +101,6 @@ pub struct AggregationProgramBuilder<'a> {
     guests: Vec<&'a GuestProgram>,
     aggregate: CircomCircuit,
     aggregate_n_free_inputs: usize,
-    normalize: Vec<NormalizeEntry<'a>>,
 }
 
 impl<'a> AggregationProgramBuilder<'a> {
@@ -119,47 +110,17 @@ impl<'a> AggregationProgramBuilder<'a> {
     /// constraints between the two folded proofs' publics plus the merge
     /// into the output publics.
     pub fn new(guests: &[&'a GuestProgram], aggregate: impl Into<CircomCircuit>) -> Self {
-        Self {
-            guests: guests.to_vec(),
-            aggregate: aggregate.into(),
-            aggregate_n_free_inputs: 0,
-            normalize: Vec::new(),
-        }
+        Self { guests: guests.to_vec(), aggregate: aggregate.into(), aggregate_n_free_inputs: 0 }
     }
 
     /// Number of prover-supplied side inputs the `AggregatePublics` circuit
     /// reads directly (defaults to 0). Use this for hash-style publics: feed
     /// each side's preimage as free inputs so `AggregatePublics` can check the
-    /// hash, recombine the preimages, and re-hash — no `normalize_with`
-    /// needed. The recurser's shared per-side free-input array is sized to the
-    /// max of this and every group's count; when both are used the same array
-    /// is shared, so the caller owns slot discipline.
+    /// hash, recombine the preimages, and re-hash. Sizes the recurser's
+    /// per-side free-input array.
     #[must_use]
     pub fn aggregate_free_inputs(mut self, n_free_inputs: usize) -> Self {
         self.aggregate_n_free_inputs = n_free_inputs;
-        self
-    }
-
-    /// Attach a `NormalizePublics` circuit to a subset of
-    /// the guests passed to [`AggregationProgramBuilder::new`]. Each guest's publics
-    /// are run through its group's circuit the first time they enter the
-    /// recursion; guests not referenced by any group get the identity.
-    ///
-    /// `n_free_inputs` is the number of prover-supplied side inputs this
-    /// circuit consumes; the recurser's shared free-input array is sized
-    /// to the worst case across all groups.
-    #[must_use]
-    pub fn normalize_with(
-        mut self,
-        guests: &[&'a GuestProgram],
-        circuit: impl Into<CircomCircuit>,
-        n_free_inputs: usize,
-    ) -> Self {
-        self.normalize.push(NormalizeEntry {
-            guests: guests.to_vec(),
-            circuit: circuit.into(),
-            n_free_inputs,
-        });
         self
     }
 
@@ -173,64 +134,8 @@ impl<'a> AggregationProgramBuilder<'a> {
         }
 
         expect_template_decl(&self.aggregate, "AggregatePublics")?;
-        for group in &self.normalize {
-            expect_template_decl(&group.circuit, "NormalizePublics")?;
-        }
 
-        // Validate normalize groups against the allowlist.
-        for group in &self.normalize {
-            if group.guests.is_empty() {
-                return Err(SdkError::Recurser(
-                    "normalize_with(...) requires at least one guest program".into(),
-                ));
-            }
-            for guest in &group.guests {
-                if !self.guests.iter().any(|g| g.program_id() == guest.program_id()) {
-                    return Err(SdkError::Recurser(format!(
-                        "normalize_with(...) references program '{}' which is not in the \
-                         allowlist passed to AggregationProgramBuilder::new(...)",
-                        guest.name(),
-                    )));
-                }
-            }
-        }
-        for (i, group) in self.normalize.iter().enumerate() {
-            for guest in &group.guests {
-                if self.normalize[..i]
-                    .iter()
-                    .any(|prior| prior.guests.iter().any(|g| g.program_id() == guest.program_id()))
-                {
-                    return Err(SdkError::Recurser(format!(
-                        "program '{}' appears in more than one normalize_with(...) group",
-                        guest.name(),
-                    )));
-                }
-            }
-        }
-
-        // Resolve each group's guests to indices into the allowlist — the
-        // circuit muxes by `programVKs[]` position, so index order is the
-        // contract (and the reason new()'s guest order must stay stable).
-        let normalize_groups: Vec<recurser::NormalizeGroup> = self
-            .normalize
-            .iter()
-            .map(|group| recurser::NormalizeGroup {
-                member_indices: group
-                    .guests
-                    .iter()
-                    .map(|guest| {
-                        self.guests
-                            .iter()
-                            .position(|g| g.program_id() == guest.program_id())
-                            .expect("membership validated above")
-                    })
-                    .collect(),
-                body: group.circuit.source().to_string(),
-                n_free_inputs: group.n_free_inputs,
-            })
-            .collect();
         let templates = recurser::CircomTemplates {
-            normalize_groups,
             aggregate_publics: self.aggregate.source().to_string(),
             aggregate_n_free_inputs: self.aggregate_n_free_inputs,
         };
@@ -288,7 +193,6 @@ impl<'a> AggregationProgramBuilder<'a> {
         let inputs = recurser::RecurserManifestInputs::new(
             zisk_vk,
             program_vks.clone(),
-            &templates.normalize_groups,
             &templates.aggregate_publics,
             templates.aggregate_n_free_inputs,
         );
@@ -333,7 +237,7 @@ impl std::ops::Deref for AggregationProgram {
 /// expands to.
 ///
 /// ```ignore
-/// static AGG: AggregationProgram = load_aggregation_program!("chain");
+/// static AGG: AggregationProgram = load_aggregation_program!("my_aggregation");
 /// ```
 ///
 /// The build is lazy — it runs on first use, because it does runtime work
@@ -391,7 +295,6 @@ mod tests {
             recurser_id: "rid".into(),
             program_vks: vec![],
             templates: recurser::CircomTemplates {
-                normalize_groups: vec![],
                 aggregate_publics: "// body".into(),
                 aggregate_n_free_inputs: 0,
             },

@@ -10,11 +10,11 @@ use crate::prove::{JobEvent, ProveResult};
 use crate::recurser::Recurser;
 use crate::{Client, Result, SdkError};
 
-/// A proof entering a fold, optionally carrying the side inputs its
-/// normalization circuit consumes. A plain `&Proof` converts with no
-/// inputs — right for aggregated proofs and for leaves of ungrouped
-/// programs; leaves whose group declares free inputs are paired with
-/// them via [`ProofExt::with_free_inputs`].
+/// A proof entering a fold, optionally carrying the side inputs the
+/// `AggregatePublics` circuit reads. A plain `&Proof` converts with no
+/// inputs — right when the recurser declares no aggregate free inputs;
+/// otherwise pair each side with its inputs via
+/// [`ProofExt::with_free_inputs`].
 pub struct AggregationInput<'a> {
     pub(crate) proof: &'a Proof,
     pub(crate) free_inputs: Vec<u64>,
@@ -28,8 +28,8 @@ impl<'a> From<&'a Proof> for AggregationInput<'a> {
 
 /// Sugar for building an [`AggregationInput`] from a [`Proof`].
 pub trait ProofExt {
-    /// Pair this proof with the side inputs its normalization circuit
-    /// consumes the first time it enters the recursion.
+    /// Pair this proof with the side inputs the `AggregatePublics` circuit
+    /// reads for this side of the fold.
     fn with_free_inputs(&self, free_inputs: impl Into<Vec<u64>>) -> AggregationInput<'_>;
 }
 
@@ -94,30 +94,22 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
 
     /// Submit the recurser prove, returning a [`JobHandle<ProveResult>`].
     pub fn run(self) -> Result<JobHandle<ProveResult>> {
-        // Each side must supply exactly what its proof's normalization group
-        // consumes: classifying by programVK catches a forgotten
-        // `with_free_inputs` here, instead of as a wrong digest (or a failed
-        // constraint) deep inside witness generation.
-        let max_n = self.agg.n_free_inputs();
+        // Each side must supply exactly the free inputs the `AggregatePublics`
+        // circuit reads. Checking here catches a forgotten `with_free_inputs`
+        // up front, instead of as a wrong digest (or a failed constraint) deep
+        // inside witness generation.
+        let expected = self.agg.n_free_inputs();
         let check_and_pad = |side: char, input: &AggregationInput<'_>| -> Result<Vec<u64>> {
-            let expected = expected_free_inputs(self.agg, input.proof);
             let got = input.free_inputs.len();
             if got != expected {
                 return Err(SdkError::Recurser(format!(
-                    "proof_{side} supplies {got} free inputs but its normalization group \
+                    "proof_{side} supplies {got} free inputs but the aggregate circuit \
                      consumes {expected}{}",
-                    if expected == 0 {
-                        " (aggregated proofs and ungrouped leaves take none — pass a plain \
-                         `&Proof`)"
-                    } else {
-                        ""
-                    },
+                    if expected == 0 { " (pass a plain `&Proof`)" } else { "" },
                 )));
             }
-            // The circuit's per-side arrays are fixed at the worst case across
-            // groups; the unused tail is zero.
             let mut v = input.free_inputs.clone();
-            v.resize(max_n, 0);
+            v.resize(expected, 0);
             Ok(v)
         };
         let free_inputs_a = check_and_pad('a', &self.input_a)?;
@@ -135,24 +127,4 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
             subs,
         )
     }
-}
-
-/// How many free inputs this proof's normalization consumes: its group's
-/// count when it's a leaf of a grouped program, zero for ungrouped leaves
-/// and aggregated proofs (whose programVK is not in the allowlist).
-fn expected_free_inputs(agg: &Recurser, proof: &Proof) -> usize {
-    let vk = &proof.get_program_vk().vk;
-    let Some(program_idx) = agg
-        .program_vks
-        .iter()
-        .position(|p| p.len() == vk.len() && p.iter().zip(vk).all(|(s, w)| s == &w.to_string()))
-    else {
-        return 0;
-    };
-    agg.templates
-        .normalize_groups
-        .iter()
-        .find(|g| g.member_indices.contains(&program_idx))
-        .map(|g| g.n_free_inputs)
-        .unwrap_or(0)
 }

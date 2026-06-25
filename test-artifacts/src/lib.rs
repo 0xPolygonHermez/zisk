@@ -49,4 +49,3 @@ pub const ELF_UINT256: GuestProgram = load_program!("uint256");
 // Aggregation programs — defined under `programs/aggregations/<name>.toml`
 // and resolved by the same `build_program` pass that builds the guest ELFs.
 pub static AGG_CHAIN: AggregationProgram = load_aggregation_program!("chain");
-pub static AGG_CHAIN_SIMPLE: AggregationProgram = load_aggregation_program!("chain_simple");

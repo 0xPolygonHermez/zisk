@@ -7,5 +7,5 @@ pub mod templates;
 
 pub use artifacts::{RecurserArtifacts, SETUP_STEM};
 pub use error::{RecurserError, Result};
-pub use manifest::{NormalizeGroupHash, RecurserManifest, RecurserManifestInputs, TemplateHashes};
-pub use templates::{gen_recurser, CircomTemplates, NormalizeGroup, StarkInputBlocks};
+pub use manifest::{RecurserManifest, RecurserManifestInputs, TemplateHashes};
+pub use templates::{gen_recurser, CircomTemplates, StarkInputBlocks};

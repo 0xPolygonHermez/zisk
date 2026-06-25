@@ -28,19 +28,9 @@ pub struct RegisterGuestProgramResponseDto {
 /// 4-limb Goldilocks verification key, decimal-encoded.
 pub type DomainProgramVk = [String; 4];
 
-/// One normalization group: a `NormalizePublics` circom body applied to the
-/// leaf proofs of the member programs (indices into `program_vks`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DomainNormalizeGroup {
-    pub member_indices: Vec<u64>,
-    pub body: String,
-    pub n_free_inputs: u64,
-}
-
 #[derive(Debug, Clone)]
 pub struct DomainAggregationProgramSpec {
     pub program_vks: Vec<DomainProgramVk>,
-    pub normalize_groups: Vec<DomainNormalizeGroup>,
     pub aggregate_publics_body: String,
     pub aggregate_n_free_inputs: u64,
 }

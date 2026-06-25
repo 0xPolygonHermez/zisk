@@ -13,10 +13,10 @@ use crate::{
     execute_task_response, AggParams, AggregationProgramSpec, Challenges,
     ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage, CostPerType,
     ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, InputStreamData,
-    JobCancelled, NormalizeGroup, ProgramVk, ProofList, ProofStark, ProveParams,
-    ReconnectionAction, ReconnectionDirective, RunAggregateProofs, SetupAggregationProgram,
-    SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType, WorkerError,
-    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
+    JobCancelled, ProgramVk, ProofList, ProofStark, ProveParams, ReconnectionAction,
+    ReconnectionDirective, RunAggregateProofs, SetupAggregationProgram, SetupProgram, Shutdown,
+    StreamData, StreamPayload, StreamType, TaskType, WorkerError, WorkerReconnectRequest,
+    WorkerRegisterRequest, WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
 
@@ -149,15 +149,6 @@ impl From<AggregationProgramSpecDto> for AggregationProgramSpec {
                 .into_iter()
                 .map(|[l0, l1, l2, l3]| ProgramVk { l0, l1, l2, l3 })
                 .collect(),
-            normalize_groups: dto
-                .normalize_groups
-                .into_iter()
-                .map(|g| NormalizeGroup {
-                    member_indices: g.member_indices,
-                    body: g.body,
-                    n_free_inputs: g.n_free_inputs,
-                })
-                .collect(),
             aggregate_publics_body: dto.aggregate_publics_body,
             aggregate_n_free_inputs: dto.aggregate_n_free_inputs,
         }
@@ -171,15 +162,6 @@ impl From<AggregationProgramSpec> for AggregationProgramSpecDto {
                 .program_vks
                 .into_iter()
                 .map(|vk| [vk.l0, vk.l1, vk.l2, vk.l3])
-                .collect(),
-            normalize_groups: spec
-                .normalize_groups
-                .into_iter()
-                .map(|g| NormalizeGroupDto {
-                    member_indices: g.member_indices,
-                    body: g.body,
-                    n_free_inputs: g.n_free_inputs,
-                })
                 .collect(),
             aggregate_publics_body: spec.aggregate_publics_body,
             aggregate_n_free_inputs: spec.aggregate_n_free_inputs,

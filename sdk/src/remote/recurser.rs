@@ -5,7 +5,7 @@ use std::time::Duration;
 use zisk_common::Proof;
 use zisk_coordinator_api::dto::{
     DomainAggregateProofsRequest, DomainAggregationProgramSpec, DomainJobKind,
-    DomainNormalizeGroup, DomainSetupAggregationProgramRequest,
+    DomainSetupAggregationProgramRequest,
 };
 
 use super::RemoteClient;
@@ -21,16 +21,6 @@ impl RemoteClient {
     pub(crate) fn do_upload_aggregation_program(&self, agg: &Recurser) -> Result<UploadResult> {
         let spec = DomainAggregationProgramSpec {
             program_vks: agg.program_vks.clone(),
-            normalize_groups: agg
-                .templates
-                .normalize_groups
-                .iter()
-                .map(|g| DomainNormalizeGroup {
-                    member_indices: g.member_indices.iter().map(|&i| i as u64).collect(),
-                    body: g.body.clone(),
-                    n_free_inputs: g.n_free_inputs as u64,
-                })
-                .collect(),
             aggregate_publics_body: agg.templates.aggregate_publics.clone(),
             aggregate_n_free_inputs: agg.templates.aggregate_n_free_inputs as u64,
         };

@@ -33,7 +33,7 @@ pub(crate) fn resolve_recurser(aggregation: &Path, release: bool) -> Result<Recu
         .collect::<Result<_>>()?;
     let guest_refs: Vec<&GuestProgram> = guests.iter().collect();
 
-    let mut builder = AggregationProgramBuilder::new(
+    let builder = AggregationProgramBuilder::new(
         &guest_refs,
         CircomCircuit::from_source(
             format!("{}-aggregate_publics", definition.name),
@@ -41,25 +41,6 @@ pub(crate) fn resolve_recurser(aggregation: &Path, release: bool) -> Result<Recu
         ),
     )
     .aggregate_free_inputs(definition.aggregate_n_free_inputs);
-    for (i, group) in definition.normalize_groups.iter().enumerate() {
-        let members: Vec<&GuestProgram> = group
-            .member_indices
-            .iter()
-            .map(|&idx| {
-                guest_refs.get(idx).copied().ok_or_else(|| {
-                    anyhow!("normalize group {i} references program index {idx} out of range")
-                })
-            })
-            .collect::<Result<_>>()?;
-        builder = builder.normalize_with(
-            &members,
-            CircomCircuit::from_source(
-                format!("{}-normalize-{i}", definition.name),
-                group.body.clone(),
-            ),
-            group.n_free_inputs,
-        );
-    }
     Ok(builder.build()?)
 }
 

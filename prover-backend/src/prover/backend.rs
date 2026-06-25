@@ -30,6 +30,7 @@ use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
     HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+    PROGRAM_VK_LEN,
 };
 
 pub(crate) struct ProverBackend {
@@ -388,11 +389,13 @@ impl ProverBackend {
 
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
+                // Freshly proven vadcop_final proof — stamp the default
+                // vadcop_final verkey (no override).
                 let snark_proof = self
                     .snark_wrapper
                     .as_ref()
                     .unwrap()
-                    .generate_final_snark_proof(&vadcop_proof)?;
+                    .generate_final_snark_proof(&vadcop_proof, None)?;
 
                 let publics = PublicValues::new_from_u64(&vadcop_proof.public_values);
                 let program_vk = ProgramVK::new_from_publics_with_mode(
@@ -418,10 +421,12 @@ impl ProverBackend {
                             body: ProofBody::Plonk {
                                 proof_bytes: snark_proof.proof_bytes,
                                 plonk_vk: Box::new(PlonkVkBlob {
-                                    vadcop_vk: vadcop_vk_u64,
+                                    vadcop_vk: vadcop_vk_u64.clone(),
                                     plonk_vkey,
                                 }),
                                 publics,
+                                publics_full: vadcop_proof.public_values.clone(),
+                                rootc: vadcop_vk_u64,
                             },
                             program_vk,
                         },
@@ -454,19 +459,12 @@ impl ProverBackend {
         }
     }
 
-    pub(crate) fn minimal(
-        &self,
-        proof: &[u64],
-        publics: &PublicValues,
-        program_vk: &ProgramVK,
-    ) -> Result<ProveOutput> {
+    pub(crate) fn minimal(&self, proof: &[u64], publics_full: &[u64]) -> Result<ProveOutput> {
         let start = std::time::Instant::now();
 
         let hash = self.hash()?;
-        let mut pubs_u64 = program_vk.vk.clone();
-        pubs_u64.extend(publics.public_u64());
         let vadcop_final_proof =
-            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, hash.clone());
+            VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, hash.clone());
 
         let minimal_proof = self
             .proofman
@@ -492,12 +490,7 @@ impl ProverBackend {
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
 
-    pub(crate) fn plonk(
-        &self,
-        proof: &[u64],
-        publics: &PublicValues,
-        program_vk: &ProgramVK,
-    ) -> Result<ProveOutput> {
+    pub(crate) fn plonk(&self, proof: &[u64], publics_full: &[u64]) -> Result<ProveOutput> {
         if self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
@@ -506,13 +499,15 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        let mut pubs_u64 = program_vk.vk.clone();
-        pubs_u64.extend(publics.public_u64());
         let vadcop_final_proof =
-            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, self.hash()?);
+            VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, self.hash()?);
 
-        let snark_proof =
-            self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(&vadcop_final_proof)?;
+        let proof_verkey = &publics_full[..PROGRAM_VK_LEN];
+        let snark_proof = self
+            .snark_wrapper
+            .as_ref()
+            .unwrap()
+            .generate_final_snark_proof(&vadcop_final_proof, Some(proof_verkey))?;
 
         let time = start.elapsed();
 
@@ -535,6 +530,10 @@ impl ProverBackend {
                     plonk_vkey,
                 }),
                 publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
+                publics_full: vadcop_final_proof.public_values.clone(),
+                // This wrap path stamps the proof's own program VK as rootC
+                // (verkey_override = Some(publics_full[..PROGRAM_VK_LEN])).
+                rootc: vadcop_final_proof.public_values[..PROGRAM_VK_LEN].to_vec(),
             },
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,

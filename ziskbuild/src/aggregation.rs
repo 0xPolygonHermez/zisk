@@ -17,19 +17,6 @@ struct AggregationToml {
     /// hash-style publics: preimages checked and re-hashed at the fold).
     #[serde(default)]
     aggregate_free_inputs: usize,
-    #[serde(default)]
-    normalize: Vec<NormalizeToml>,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-struct NormalizeToml {
-    /// `NormalizePublics` circom body, relative to this TOML.
-    template: PathBuf,
-    #[serde(default)]
-    free_inputs: usize,
-    /// Subset of the top-level `programs` this group covers.
-    programs: Vec<String>,
 }
 
 /// Fully-resolved definition: circuit bodies inlined, member ELFs pinned by
@@ -40,7 +27,6 @@ pub struct ResolvedAggregation {
     pub programs: Vec<ResolvedProgram>,
     pub aggregate_publics_body: String,
     pub aggregate_n_free_inputs: usize,
-    pub normalize_groups: Vec<ResolvedNormalizeGroup>,
 }
 
 #[derive(Debug)]
@@ -48,13 +34,6 @@ pub struct ResolvedProgram {
     pub name: String,
     pub elf_path: String,
     pub elf_blake3: String,
-}
-
-#[derive(Debug)]
-pub struct ResolvedNormalizeGroup {
-    pub member_indices: Vec<usize>,
-    pub body: String,
-    pub n_free_inputs: usize,
 }
 
 /// Discover and process every `aggregations/*.toml` under `programs_dir`.
@@ -102,7 +81,7 @@ fn process_definition(
 
     // Generated builder expression — `load_aggregation_program!`'s input.
     let rs_path = out_dir.join(format!("{}.rs", resolved.name));
-    fs::write(&rs_path, codegen(&resolved, toml_path, &paths.aggregate, &paths.normalize))
+    fs::write(&rs_path, codegen(&resolved, toml_path, &paths.aggregate))
         .with_context(|| format!("Failed to write {}", rs_path.display()))?;
     println!("cargo:rustc-env=ZISK_AGG_{}={}", resolved.name, rs_path.display());
     Ok(())
@@ -112,13 +91,11 @@ fn process_definition(
 /// rerun-if-changed and codegen `include_str!`).
 pub struct ResolvedCircuitPaths {
     pub aggregate: PathBuf,
-    /// One per normalize group, in group order.
-    pub normalize: Vec<PathBuf>,
 }
 
 impl ResolvedCircuitPaths {
     fn circuit_paths(&self) -> impl Iterator<Item = &PathBuf> {
-        std::iter::once(&self.aggregate).chain(self.normalize.iter())
+        std::iter::once(&self.aggregate)
     }
 }
 
@@ -188,51 +165,17 @@ pub fn resolve_aggregation(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let mut covered = vec![false; programs.len()];
-    let mut groups: Vec<(PathBuf, ResolvedNormalizeGroup)> = Vec::new();
-    for (g, entry) in def.normalize.iter().enumerate() {
-        if entry.programs.is_empty() {
-            bail!("normalize group {g} has no member programs");
-        }
-        let member_indices = entry
-            .programs
-            .iter()
-            .map(|prog_name| {
-                let idx = def.programs.iter().position(|p| p == prog_name).with_context(|| {
-                    format!(
-                        "normalize group {g} references {prog_name:?}, which is not an \
-                             entry of `programs`"
-                    )
-                })?;
-                if covered[idx] {
-                    bail!("program {prog_name:?} appears in more than one normalize group");
-                }
-                covered[idx] = true;
-                Ok(idx)
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        let (path, body) = read_circuit(&entry.template)?;
-        expect_template_decl(&body, "NormalizePublics", &path)?;
-        groups.push((
-            path,
-            ResolvedNormalizeGroup { member_indices, body, n_free_inputs: entry.free_inputs },
-        ));
-    }
-
     let (aggregate_path, aggregate_publics_body) = read_circuit(&def.aggregate_publics)?;
     expect_template_decl(&aggregate_publics_body, "AggregatePublics", &aggregate_path)?;
 
-    let (normalize_paths, normalize_groups) = groups.into_iter().unzip();
     Ok((
         ResolvedAggregation {
             name,
             programs,
             aggregate_publics_body,
             aggregate_n_free_inputs: def.aggregate_free_inputs,
-            normalize_groups,
         },
-        ResolvedCircuitPaths { aggregate: aggregate_path, normalize: normalize_paths },
+        ResolvedCircuitPaths { aggregate: aggregate_path },
     ))
 }
 
@@ -247,12 +190,7 @@ fn expect_template_decl(body: &str, template: &str, path: &Path) -> Result<()> {
     }
 }
 
-fn codegen(
-    resolved: &ResolvedAggregation,
-    toml_path: &Path,
-    aggregate_path: &Path,
-    normalize_paths: &[PathBuf],
-) -> String {
+fn codegen(resolved: &ResolvedAggregation, toml_path: &Path, aggregate_path: &Path) -> String {
     use std::fmt::Write;
 
     let mut out = String::new();
@@ -293,20 +231,6 @@ fn codegen(
     if resolved.aggregate_n_free_inputs > 0 {
         let _ =
             writeln!(out, "    .aggregate_free_inputs({}usize)", resolved.aggregate_n_free_inputs);
-    }
-    for (g, (path, group)) in normalize_paths.iter().zip(&resolved.normalize_groups).enumerate() {
-        let member_refs: Vec<String> =
-            group.member_indices.iter().map(|i| format!("&__ZISK_AGG_PROGRAMS[{i}]")).collect();
-        let _ = writeln!(out, "    .normalize_with(");
-        let _ = writeln!(out, "        &[{}],", member_refs.join(", "));
-        let _ = writeln!(
-            out,
-            "        ::zisk_sdk::CircomCircuit::new_static({:?}, include_str!({:?})),",
-            format!("{}/normalize_{g}", resolved.name),
-            path.display().to_string(),
-        );
-        let _ = writeln!(out, "        {}usize,", group.n_free_inputs);
-        let _ = writeln!(out, "    )");
     }
     let _ = writeln!(out, "}}");
     out

@@ -33,11 +33,17 @@ Each input is classified independently, so one fold can mix any
 combination — leaf+leaf, leaf+agg, agg+leaf, agg+agg. The aggregator:
 
 - verifies both input proofs with the right `rootC`,
-- runs the publics-handling circuits: per-program-group `NormalizePublics`
-  (optional) and `AggregatePublics` (required) — see §5/§6,
+- runs the `AggregatePublics` circuit (required) over both proofs' raw
+  publics (plus any free inputs) — see §5,
 - combines the two publics arrays into one,
 - stamps a new `programVK` on the output so that a chain's identity
   propagates unchanged once it's been committed.
+
+> **Single publics layout.** Every accepted guest program must emit the
+> *same* publics layout. The aggregator folds each proof's publics through
+> raw, directly into `AggregatePublics`, so it has no per-program rewrite
+> step — aggregating programs with different publics layouts is intentionally
+> unsupported.
 
 ---
 
@@ -57,12 +63,12 @@ The aggregator consumes two proofs and emits one.
 | **Per proof** (prover-supplied) | `publics[64]` | the 64 user publics |
 | | `programVK[4]` | the proof's identity — see §3 (Classification) |
 | | STARK data | commits, FRI evals, siblings, nonce — verified internally |
-| **Aggregator-level** (prover-supplied) | `freeInputsA[K]`, `freeInputsB[K]` | per-proof side inputs consumed by `NormalizePublics` (§5); `K` = worst case across groups |
+| **Aggregator-level** (prover-supplied) | `freeInputsA[K]`, `freeInputsB[K]` | per-proof side inputs consumed by `AggregatePublics` (§5); `K` = the aggregate stage's free-input count |
 | | `rootCRecurserAgg[4]` | this aggregator's *own* VK — committed at the next level |
 | **Hardcoded** (baked into the circuit at setup) | `programVKs[P][4]` | the **leaf allowlist** — VKs of all registered programs |
 | | `rootCVadcopFinalZisk[4]` | verification key for ZisK proofs |
 | **Out** | `publics[64]` | aggregated user publics |
-| | `programVK[4]` | new chain identity, per §7 (Output programVK) |
+| | `programVK[4]` | new chain identity, per §6 (Output programVK) |
 
 The user publics count is fixed at 64 — that's the ZisK publics layout.
 The `vadcop_final` STARK proof has 64 user publics plus a 4-element
@@ -78,9 +84,9 @@ shape. Changing it would mean re-generating ZisK setup.
 > circuit reads and re-emits the VK from these leading slots, so its output
 > proof re-verifies one fold up.
 
-`K` is the worst-case free-input count across normalization groups (0 when
-there are none), fixed by the definition (`free-inputs` per group in the
-TOML, or `normalize_with(..., n)` in the Rust API). `P` is the number of
+`K` is the aggregate stage's free-input count (0 when there are none),
+fixed by the definition (`aggregate-free-inputs` in the TOML, or
+`.aggregate_free_inputs(n)` in the Rust API). `P` is the number of
 registered programs. `programVKs[]` is derived from the definition's
 programs at setup; `rootCVadcopFinalZisk` comes from the proving key.
 
@@ -90,7 +96,7 @@ programs at setup; `rootCVadcopFinalZisk` comes from the proving key.
 > values there and they propagate through the fold tree unchecked. Nothing
 > catches this by default. Either zero-pad in the producer circuit, or add
 > `a_publics[i] === 0` and `b_publics[i] === 0` constraints for the unused
-> range to your `AggregatePublics` body (§6).
+> range to your `AggregatePublics` body (§5).
 
 ---
 
@@ -103,10 +109,9 @@ The aggregator runs a linear sequence of stages:
 | 1 | **Classify** A and B independently | Each proof's `programVK` is tested against the registered-program allowlist. Match ⇒ leaf, no match ⇒ aggregated. | §3 |
 | 2 | **Pick `rootC`** per proof | Leaf ⇒ `rootCVadcopFinalZisk`. Aggregated ⇒ that proof's own `programVK`. | §4 |
 | 3 | **Verify both STARK proofs** | Each proof's inner STARK verifier runs with its picked `rootC` and the proof data. | §4 |
-| 4 | **NormalizePublics** *(optional, per group)* | Each leaf's publics run through its program group's circuit; aggregated proofs and ungrouped leaves pass through raw. | §5 |
-| 5 | **AggregatePublics** *(required)* | User-supplied stitching constraints between A's and B's publics plus the combination of the two payloads. | §6 |
-| 6 | **Pick output `programVK`** | One of four cases based on each side's leaf/aggregated status. | §7 |
-| 7 | **Emit combined proof** | `(publics, programVK)` — the next fold-level's input. | — |
+| 4 | **AggregatePublics** *(required)* | Consumes both proofs' raw publics plus their free inputs: user-supplied stitching constraints between A's and B's publics plus the combination of the two payloads. | §5 |
+| 5 | **Pick output `programVK`** | One of four cases based on each side's leaf/aggregated status. | §6 |
+| 6 | **Emit combined proof** | `(publics, programVK)` — the next fold-level's input. | — |
 
 Each row corresponds to a contiguous block in
 [aggregator.circom.tera](../templates/aggregator.circom.tera).
@@ -157,7 +162,7 @@ picks it per proof based on the classification from §3:
 - **Leaf proofs** are ZisK proofs, so `rootC = rootCVadcopFinalZisk` (the
   ZisK-proof VK, hardcoded at setup).
 - **Aggregated proofs** were produced by an earlier level of this same
-  aggregator, so `rootC` is the proof's own `programVK` — which by §9's
+  aggregator, so `rootC` is the proof's own `programVK` — which by §8's
   invariant is the prior level's `rootCRecurserAgg`.
 
 ```
@@ -176,77 +181,15 @@ One mux per proof. One circuit, both proof types, no duplicate verifier.
 
 ---
 
-## 5. NormalizePublics (optional, per program group)
+## 5. AggregatePublics (required)
 
-A normalisation hook applied to a leaf proof's publics *before* the
-aggregation — the spot to rewrite raw publics (hash them, re-encode,
-derive new values from that proof's free inputs) the first time the
-proof enters the recursion. Normalization is declared per *group* of
-registered programs: each group supplies its own circuit and side-input
-count, and programs not covered by any group keep their publics unchanged.
-
-| Proof type | Publics used downstream |
-|---|---|
-| leaf of a grouped program | that group's `NormalizePublics` output |
-| leaf of an ungrouped program | raw |
-| aggregated (`isRegisteredProgram = 0`) | raw |
-
-In-circuit, the membership flags from §3 select the path: every group's
-circuit is instantiated on both sides (circuits are static), and a
-sum-of-masks mux picks at most one normalized result per proof — groups
-are disjoint, so the selector weights sum to 1. Aggregated proofs were
-already normalised at a prior level, so they pass through untouched and
-the normalised form propagates unchanged up the whole tree.
-
-### The circuit body
-
-Each group's file defines this exact template name (the generator renames
-it to `NormalizePublics_<g>` at injection so groups coexist):
-
-```circom
-template NormalizePublics(nPublics, nFreeInputs) {
-    signal input publics[nPublics];
-    signal input free_inputs[nFreeInputs];
-    signal output recurser_publics[nPublics];
-
-    // ... your derivation logic ...
-}
-```
-
-The aggregator instantiates each group `g` on both sides as:
-
-```circom
-signal normA_g[nPublics] <==
-    NormalizePublics_g(nPublics, n_g)(aPublics, <leading n_g slots of freeInputsA>);
-```
-
-`nPublics` is fixed to 64 at the `Main(…)` instantiation. Each side's
-`freeInputs` array is sized to the worst case across groups; a group
-consuming fewer sees only its leading slice. The body can do anything
-Circom supports — hashes, decompositions, derived values.
-
-> ⚠ **No `===` constraints in `NormalizePublics`.** Circuits are static:
-> every group's circuit runs on *every* proof's publics (aggregated proofs,
-> other groups' leaves — with zeroed free inputs), and only the mux discards
-> the unwanted results. An assertion inside a normalize body would therefore
-> fire on inputs it was never meant to see and abort valid folds. Constraints
-> belong in `AggregatePublics` (§6), which sees only the selected payloads.
-
-### Free inputs are per proof
-
-The prover supplies side inputs per *proof*, not per fold: in the SDK,
-`proof.with_free_inputs(vec![...])` pairs a leaf with the data its
-group's circuit consumes, while plain `&Proof` (aggregated proofs,
-ungrouped leaves) carries none. The two arrays travel independently to
-the circuit as `freeInputsA` / `freeInputsB`.
-
----
-
-## 6. AggregatePublics (required)
-
-Combines A's and B's `publics[nPublics]` arrays into one same-size output
-that the next fold level consumes. Each output slot is some function of
-the matching slots in A and B.
+Combines A's and B's `publics[64]` arrays into one same-size output that
+the next fold level consumes. The width is ZisK's fixed 64 user-publics
+slots, so it is hardcoded — `AggregatePublics` takes only `nFreeInputs` as
+a template parameter, not `nPublics`. Each output slot is some function of
+the matching slots in A and B. Each proof's publics flow in *raw* — there
+is no per-program rewrite step, so every accepted guest program must emit
+the same publics layout (see the overview).
 
 This is also where stitching constraints between A's and B's publics live —
 e.g. "A's `endBlock` equals B's `startBlock`". A failed constraint aborts
@@ -255,14 +198,16 @@ where you constrain unused publics slots to zero (see the zero-pad warning
 in §1): if your app uses 32 publics, add `a_publics[i] === 0` and
 `b_publics[i] === 0` for `i = 32..64`.
 
-Supply the body via the definition TOML's `aggregate-publics` key (§11) or
+Supply the body via the definition TOML's `aggregate-publics` key (§10) or
 `CircomTemplates::aggregate_publics` in the Rust API. Required signature:
 
 ```circom
-template AggregatePublics(nPublics) {
-    signal output aggregated_publics[nPublics];
-    signal input a_publics[nPublics];
-    signal input b_publics[nPublics];
+template AggregatePublics(nFreeInputs) {
+    signal output aggregated_publics[64];
+    signal input a_publics[64];
+    signal input b_publics[64];
+    signal input free_inputs_a[nFreeInputs];
+    signal input free_inputs_b[nFreeInputs];
 
     // ... your === stitching constraints ...
     // ... your combination logic ...
@@ -272,15 +217,24 @@ template AggregatePublics(nPublics) {
 The aggregator calls it as:
 
 ```circom
-signal aggregatedPublics[nPublics] <==
-    AggregatePublics(nPublics)(ziskPublicsA, ziskPublicsB);
+signal aggPublics[64] <==
+    AggregatePublics(nFreeInputs)(ziskPublicsA, ziskPublicsB, freeInputsA, freeInputsB);
 ```
 
-`ziskPublicsA` and `ziskPublicsB` are the post-normalization payloads from
-§5. Every element of `aggregated_publics` must be driven by `<==` inside
-the body or Circom errors. Free inputs are a normalization-only concern —
-they flow into `NormalizePublics` (§5), not here; anything `AggregatePublics`
-needs from side data should be baked into the normalized publics.
+`ziskPublicsA` and `ziskPublicsB` are the two proofs' raw publics; every
+element of `aggregated_publics` must be driven by `<==` inside the body or
+Circom errors.
+
+### Free inputs
+
+Each proof carries `nFreeInputs` side inputs (`aggregate-free-inputs` in
+the TOML / `.aggregate_free_inputs(n)` in the Rust API), supplied by the
+prover and routed straight into `AggregatePublics` as `free_inputs_a` /
+`free_inputs_b`. The canonical use case is hash-style publics: each side's
+preimage is supplied as free inputs so `AggregatePublics` can check the
+hash against the publics, recombine the two preimages, and re-hash into the
+aggregated output. In the SDK, `proof.with_free_inputs(vec![...])` attaches
+a proof's free inputs; plain `&Proof` carries none.
 
 A common pattern is a per-slot pick of A's value or B's value: e.g.
 `startBlock` inherits from A and `endBlock` from B, so the combined proof
@@ -289,12 +243,12 @@ combinations all work — it's plain Circom.
 
 An inherit-from-A example lives at
 [tests/fixtures/aggregate_publics.circom](../tests/fixtures/aggregate_publics.circom);
-a full chain-fold example (stitch constraint + digest propagation) at
+a full chain-fold example (stitch constraint + zero-filled tail) at
 [test-artifacts/programs/aggregations/circuits/aggregate_publics.circom](../../test-artifacts/programs/aggregations/circuits/aggregate_publics.circom).
 
 ---
 
-## 7. Output programVK
+## 6. Output programVK
 
 The output `programVK` becomes the next fold level's input `programVK`.
 There are four cases:
@@ -304,7 +258,7 @@ There are four cases:
 | leaf | leaf | `rootCRecurserAgg` | First fold of this chain — stamp the aggregator's own identity |
 | leaf | agg | B's `programVK` | B's chain is already committed; A's leaf is absorbed into it |
 | agg | leaf | A's `programVK` | Mirror of the above — A's chain dominates |
-| agg | agg | shared VK | Both chains committed; §8 forces them to match |
+| agg | agg | shared VK | Both chains committed; §7 forces them to match |
 
 In Circom this is a sum of masks with three mutually-exclusive selectors
 that sum to 1:
@@ -327,7 +281,7 @@ non-zero in any given fold.
 
 ---
 
-## 8. Immutability check
+## 7. Immutability check
 
 Once a chain commits to a `programVK` (at its first fold), that VK has to
 propagate upward unchanged. The check:
@@ -350,7 +304,7 @@ different recursion chains. That's what we want to forbid.
 
 ---
 
-## 9. Recursive invariant
+## 8. Recursive invariant
 
 > From level 1 onward, every proof in a chain carries the same `programVK` —
 > the `rootCRecurserAgg` of that chain's level-1 fold.
@@ -359,13 +313,13 @@ different recursion chains. That's what we want to forbid.
    Level 0 (leaves)
        programVK = program's own VK          (∈ registered list)
             │
-            ▼  fold (both leaves → §7 row 1)
+            ▼  fold (both leaves → §6 row 1)
    Level 1
        programVK = rootCRecurserAgg_lvl1     (∉ registered ⇒ "agg" from now on)
             │
-            ▼  fold (any input is "agg" → §7 rows 2/3/4)
+            ▼  fold (any input is "agg" → §6 rows 2/3/4)
    Level 2
-       programVK = rootCRecurserAgg_lvl1     ← inherited; locked by §8
+       programVK = rootCRecurserAgg_lvl1     ← inherited; locked by §7
             │
             ▼  fold
    Level 3, 4, …
@@ -381,32 +335,32 @@ different recursion chains. That's what we want to forbid.
 Why this holds:
 
 - **Level 1.** Both inputs are leaves, so the output is
-  `rootCRecurserAgg_lvl1` by §7's first row.
+  `rootCRecurserAgg_lvl1` by §6's first row.
 - **Level k ≥ 2.** At least one input is aggregated, and by induction its
-  `programVK` is `rootCRecurserAgg_lvl1`. §7 picks an aggregated input's
+  `programVK` is `rootCRecurserAgg_lvl1`. §6 picks an aggregated input's
   `programVK` as the output (rows 2/3/4), so the output `programVK` is
   also `rootCRecurserAgg_lvl1`.
 - **Chains can't be mixed.** Whenever both inputs at level ≥ 2 are
-  aggregated, §8 forces `programVK_A == programVK_B`. Two proofs from
+  aggregated, §7 forces `programVK_A == programVK_B`. Two proofs from
   different chains have different `rootCRecurserAgg_lvl1` values, so the
   equality fails and the fold is rejected.
 
 ---
 
-## 10. Failure modes
+## 9. Failure modes
 
 | Stage | Triggers when… |
 |---|---|
 | STARK verify (vA, vB) | malformed witness or wrong VK; mismatched `rootC` ⇒ FRI / Merkle checks reject |
-| AggregatePublics (§6) | stitching constraint broken |
-| Immutability check (§8) | folding two aggregated proofs from different chains |
+| AggregatePublics (§5) | stitching constraint broken |
+| Immutability check (§7) | folding two aggregated proofs from different chains |
 | Binary check on `isRegisteredProgram` | malicious witness tries to set `isRegisteredProgram_X` non-binary |
 
 Every check is in-circuit, so a passing proof is sound.
 
 ---
 
-## 11. Usage
+## 10. Usage
 
 The definition is authored once (a TOML next to the guest programs) and
 consumed twice: by `build_program` at host-build time (for the SDK path)
@@ -433,13 +387,12 @@ pil/                                   recurser_aggregator.pil
 
 The `<recurser-id>` segment lets a single output directory hold multiple
 coexisting setups (different program-VK allowlists, different template
-bodies, different normalization groups). The id is a content-addressed
-blake3 hash of the circuit inputs — `program_vks`, the normalization
-groups (member indices, body hash, side-input count each), and the
-`aggregate_publics` body, together with the vadcop_final proving-key VK —
-so identical inputs always resolve to the same id and any change produces
-a fresh one. It's computed automatically and logged at startup; there's
-no manual override.
+bodies, different free-input counts). The id is a content-addressed
+blake3 hash of the circuit inputs — `program_vks`, the `aggregate_publics`
+body, and `aggregate_n_free_inputs`, together with the vadcop_final
+proving-key VK — so identical inputs always resolve to the same id and any
+change produces a fresh one. It's computed automatically and logged at
+startup; there's no manual override.
 
 The recurser doesn't nest under the source ZisK pilout name
 (`provingKey/<name>/...`) because the artifacts here are
@@ -451,9 +404,8 @@ aggregator-scoped, not ZisK-program-scoped.
 > re-verifiable by the next fold level, which is the same circuit — so
 > different domain sizes would panic the prover. The setup checks this
 > after `plonk2pil` and bails with a message. If it fires, either shrink
-> the recurser circuit (simpler or fewer `NormalizePublics` groups, a
-> simpler `AggregatePublics`, fewer `free_inputs`) or rebuild
-> `vadcop_final` with a larger `nBits`.
+> the recurser circuit (a simpler `AggregatePublics`, fewer free inputs) or
+> rebuild `vadcop_final` with a larger `nBits`.
 
 ### The definition (build-time)
 
@@ -461,19 +413,17 @@ An aggregation program is *defined* next to the guest programs and built by
 the same `cargo build` that compiles them — `build_program` in the host's
 build.rs discovers `programs/aggregations/<name>.toml`, validates it
 (guest names against the just-built ELFs, circuit files declare the
-expected templates, groups disjoint — all build errors), and generates the
+expected templates — all build errors), and generates the
 builder expression behind [`load_aggregation_program!`] (env
 `ZISK_AGG_<name>`), with circuits and member ELFs embedded.
 
 ```toml
-# programs/aggregations/chain.toml — circuits beside it
-programs = ["chain_segment"]            # guest names, same as load_program!
+# programs/aggregations/myagg.toml — circuits beside it
+programs = ["seg_a", "seg_b"]           # guest names, same as load_program!
 aggregate-publics = "circuits/aggregate_publics.circom"
-
-[[normalize]]
-template = "circuits/normalize.circom"   # defines `template NormalizePublics(nPublics, nFreeInputs)`
-free-inputs = 1
-programs = ["chain_segment"]
+aggregate-free-inputs = 1               # optional; per-proof free inputs into
+                                        # AggregatePublics (default 0 — omit if unused,
+                                        # as the bundled `chain` example does)
 ```
 
 ### The setup (machine-time)
@@ -482,7 +432,7 @@ The CLI consumes the same TOML, resolving guest names against the built
 ELFs (so run the guests' `cargo build` first):
 
 ```text
-cargo-zisk setup --aggregation programs/aggregations/chain.toml
+cargo-zisk setup --aggregation programs/aggregations/myagg.toml
 ```
 
 The command runs the setup through the SDK: it reads the vadcop_final setup
@@ -516,7 +466,7 @@ static AGG: AggregationProgram = load_aggregation_program!("chain");
 
 client.setup(&AGG).run()?.await?;
 
-// Leaves carry their group's free inputs; aggregated proofs are plain refs.
+// Proofs can carry free inputs for AggregatePublics; plain refs carry none.
 let ab = client
     .aggregate_proofs(&AGG, pa.with_free_inputs(vec![4]), pb.with_free_inputs(vec![4]))
     .run()?
@@ -529,7 +479,7 @@ the content-addressed `recurser_id` on first use (proving-key dependent, so
 it can't happen at compile time). For dynamic composition without the
 build pipeline, construct an
 [`AggregationProgram`](../../sdk/src/recurser.rs)
-directly (`new(guests, circuit)` + `normalize_with(...)` + `build()`), or
-go lower with
+directly (`AggregationProgramBuilder::new(guests, aggregate_circuit)`
+`.aggregate_free_inputs(n)` `.build()`), or go lower with
 [`run_setup_recurser_aggregator`](../src/setup/command.rs) /
 [`gen_recurser`](../src/templates.rs).

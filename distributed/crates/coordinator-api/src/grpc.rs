@@ -18,8 +18,8 @@ use crate::dto::{
     DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
-    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainNormalizeGroup, DomainProof,
-    DomainProofKind, DomainProveRequest, DomainSetupAggregationProgramRequest, DomainSetupRequest,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
+    DomainProveRequest, DomainSetupAggregationProgramRequest, DomainSetupRequest,
     DomainWrapRequest, RegisterAggregationProgramRequestDto, RegisterAggregationProgramResponseDto,
     RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto,
 };
@@ -66,15 +66,6 @@ impl From<DomainAggregationProgramSpec> for AggregationProgramSpec {
                 .into_iter()
                 .map(|[l0, l1, l2, l3]| ProgramVk { l0, l1, l2, l3 })
                 .collect(),
-            normalize_groups: s
-                .normalize_groups
-                .into_iter()
-                .map(|g| NormalizeGroup {
-                    member_indices: g.member_indices,
-                    body: g.body,
-                    n_free_inputs: g.n_free_inputs,
-                })
-                .collect(),
             aggregate_publics_body: s.aggregate_publics_body,
             aggregate_n_free_inputs: s.aggregate_n_free_inputs,
         }
@@ -85,15 +76,6 @@ impl From<AggregationProgramSpec> for DomainAggregationProgramSpec {
     fn from(s: AggregationProgramSpec) -> Self {
         Self {
             program_vks: s.program_vks.into_iter().map(|vk| [vk.l0, vk.l1, vk.l2, vk.l3]).collect(),
-            normalize_groups: s
-                .normalize_groups
-                .into_iter()
-                .map(|g| DomainNormalizeGroup {
-                    member_indices: g.member_indices,
-                    body: g.body,
-                    n_free_inputs: g.n_free_inputs,
-                })
-                .collect(),
             aggregate_publics_body: s.aggregate_publics_body,
             aggregate_n_free_inputs: s.aggregate_n_free_inputs,
         }

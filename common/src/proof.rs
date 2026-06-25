@@ -392,45 +392,99 @@ impl PublicValues {
     }
 }
 
-/// Kind-tagged proof payload. The Vadcop variant is u64-native; Plonk is byte-shaped.
+/// The `ZISK_PUBLICS` user publics encoded as the snark circuit's `inputs`
+/// section: each field element as 8 little-endian bytes (`ZISK_PUBLICS * 8`
+/// bytes total). This is the on-chain `publicValues` byte string the Solidity
+/// verifier hashes — NOT the u32 `PublicValues.data`.
 ///
-/// The Plonk vkey blob is boxed so the enum doesn't carry ~880 bytes of inline Plonk
-/// vkey strings on the Vadcop variant — Vadcop is the common case and most-cloned.
-/// Each body variant owns its public values in the only form it can represent,
-/// so there is a single source of truth and no possibility of desync:
+/// The circuit's per-element bit layout `in[(j\8)*8 + (7 - j%8)]` over the
+/// `Num2Bits(64)` (LSB-first) bits is exactly the value's little-endian bytes
+/// once SHA-256 reads them MSB-first per byte.
+pub fn snark_inputs_bytes(publics_full: &[u64]) -> Vec<u8> {
+    assert!(
+        publics_full.len() >= PROGRAM_VK_LEN + ZISK_PUBLICS,
+        "publics_full too short for snark inputs"
+    );
+    publics_full[PROGRAM_VK_LEN..PROGRAM_VK_LEN + ZISK_PUBLICS]
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect()
+}
+
+/// Compute the snark's committed public-input hash exactly as the recurser's
+/// `final.circom getSha256Inputs(publicsProof, rootC)` does, returning the
+/// 32-byte big-endian field element snarkjs verifies against.
 ///
-/// - `Vadcop` carries the FULL-WIDTH (u64) publics `[program_vk(4)][user(ZISK_PUBLICS)]`.
-///   These are genuine Goldilocks field elements; a recurser's in-circuit hash
-///   digest exceeds 32 bits. The recursion/aggregation round-trip must feed the
-///   next fold the *exact* field elements the proof committed to, or the inner
-///   StarkVerifier's transcript diverges (vA.VerifyPoW fails). The u32
-///   `PublicValues` view (used by the guest API and Solidity encoding) is
-///   *derived* from these on demand via [`Proof::publics`].
-/// - `Plonk` wraps a proof for on-chain verification; its publics only ever
-///   exist in the u32 `PublicValues` form, so it stores exactly that.
+/// The circuit SHA-256s `rom_root ‖ inputs ‖ rootCVadcopFinal`, then reduces the
+/// digest mod the BN254 scalar field (`Bits2Num` yields a field element). The
+/// per-element byte forms reduce to: verkeys big-endian, user publics
+/// little-endian (see [`snark_inputs_bytes`]). The three sections are:
+///   - `rom_root`         = the program VK = `publics_full[0..PROGRAM_VK_LEN]`
+///   - `inputs`           = the user publics = `publics_full[PROGRAM_VK_LEN..]`
+///   - `rootCVadcopFinal` = the verkey STAMPED into the RecursiveF proof — the
+///     vadcop_final verkey for a plain proof, the recurser's own verkey for an
+///     aggregated proof. NOT generally equal to the program VK, so it is passed
+///     in (`rootc`) rather than derived from `publics_full`.
+pub fn snark_publics_hash(publics_full: &[u64], rootc: &[u64]) -> Vec<u8> {
+    assert!(rootc.len() >= PROGRAM_VK_LEN, "rootc too short for snark hash");
+    let program_vk = &publics_full[..PROGRAM_VK_LEN];
+
+    let mut preimage = Vec::with_capacity((2 * PROGRAM_VK_LEN + ZISK_PUBLICS) * 8);
+    preimage.extend(program_vk.iter().flat_map(|v| v.to_be_bytes())); // rom_root (BE)
+    preimage.extend(snark_inputs_bytes(publics_full)); // inputs (LE)
+    preimage.extend(rootc[..PROGRAM_VK_LEN].iter().flat_map(|v| v.to_be_bytes())); // rootC (BE)
+    let digest = Sha256::digest(&preimage);
+
+    // `Bits2Num` makes the hash a field element: reduce mod the BN254 scalar
+    // field, as 32 big-endian bytes.
+    let bn254 = num_bigint::BigUint::parse_bytes(
+        b"21888242871839275222246405745257275088548364400416034343698204186575808495617",
+        10,
+    )
+    .expect("valid BN254 modulus");
+    let reduced = num_bigint::BigUint::from_bytes_be(&digest) % bn254;
+    let mut out = reduced.to_bytes_be();
+    out.splice(0..0, std::iter::repeat(0u8).take(32 - out.len())); // left-pad to 32
+    out
+}
+
+/// Kind-tagged proof payload. The Plonk vkey blob is boxed so the enum doesn't
+/// carry ~880 bytes of inline vkey on the (common, most-cloned) Vadcop variant.
+///
+/// Publics are stored as full-width u64 field elements: a recurser proof's
+/// publics exceed 32 bits, and the recursion round-trip / snark hash must use
+/// the exact committed elements. The u32 `PublicValues` view (guest API,
+/// Solidity encoding) is derived on demand via [`Proof::publics`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ProofBody {
-    /// A recursive (Vadcop) proof carrying its native field-element publics.
+    /// A recursive (Vadcop) proof.
     Vadcop {
-        /// The proof, as a flat vector of field elements.
+        /// Proof, as a flat vector of field elements.
         proof: Vec<u64>,
-        /// The ZisK verification key associated with the proof.
+        /// ZisK verification key.
         zisk_vk: Vec<u64>,
-        /// Whether this is a minimal proof.
+        /// Whether this is a minimal (compressed) proof.
         minimal: bool,
-        /// Hash identifying the proof.
+        /// Hash family the proof was generated with.
         hash: String,
-        /// The full native (field-element) publics the proof committed to.
+        /// Full-width `[program_vk(4)][user(ZISK_PUBLICS)]` publics.
         publics_full: Vec<u64>,
     },
-    /// A Plonk proof for on-chain verification, storing its u32 publics directly.
+    /// A Plonk proof for on-chain verification.
     Plonk {
-        /// The serialized proof bytes.
+        /// Serialized proof bytes.
         proof_bytes: Vec<u8>,
-        /// The Plonk verification key blob.
+        /// Plonk verification key blob.
         plonk_vk: Box<PlonkVkBlob>,
-        /// The proof's public values, in u32 `PublicValues` form.
+        /// u32 view of the publics, for the Solidity calldata layout.
         publics: PublicValues,
+        /// Full-width publics; the snark's `publicsHash` is computed over these
+        /// (the u32 `publics` view loses a recurser proof's high bits).
+        publics_full: Vec<u64>,
+        /// The stamped `rootCVadcopFinal` committed into `publicsHash`:
+        /// vadcop_final verkey for a plain proof, recurser verkey for an
+        /// aggregated one. Not derivable from `publics_full` (see `Proof::verify`).
+        rootc: Vec<u64>,
     },
 }
 
@@ -509,14 +563,16 @@ impl<'a> ZiskVerifyBuilder<'a> {
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
 
         match &self.proof_with_values.body {
-            ProofBody::Plonk { proof_bytes, plonk_vk, .. } => {
-                let pubs = publics.bytes_solidity(program_vk, &plonk_vk.vadcop_vk);
-                let hash = Sha256::digest(&pubs).to_vec();
+            ProofBody::Plonk { proof_bytes, plonk_vk, publics_full, rootc, .. } => {
+                // snarkjs checks `public_snark_bytes` = the circuit's publicsHash.
+                // `public_bytes` is the on-chain Solidity layout, unused by snarkjs.
+                let public_snark_bytes = snark_publics_hash(publics_full, rootc);
+                let public_bytes = publics.bytes_solidity(program_vk, &plonk_vk.vadcop_vk);
 
                 let snark_proof = SnarkProof {
                     proof_bytes: proof_bytes.clone(),
-                    public_bytes: pubs,
-                    public_snark_bytes: hash,
+                    public_bytes,
+                    public_snark_bytes,
                     protocol_id: SnarkProtocol::Plonk.protocol_id(),
                 };
 

@@ -1,3 +1,8 @@
+{# ZisK's fixed user-publics width (the 64 slots after the 4-limb programVK).
+   Single source of truth for the literal baked into the generated circuit:
+   the `Main(...)` instantiation below and the `ZISK_PUBLICS()` function the
+   AggregatePublics body sizes its arrays from. #}
+{% set zisk_publics = 64 %}
 pragma circom 2.1.0;
 pragma custom_templates;
 
@@ -6,12 +11,15 @@ include "mux1.circom";
 include "iszero.circom";
 include "publics_helpers.circom";
 
+// ZisK's fixed user-publics width — the 64 slots after the 4-limb programVK.
+// Circom has no const/global-var, so this function is the shared named
+// constant: AggregatePublics sizes its publics arrays as `[ZISK_PUBLICS()]`.
+function ZISK_PUBLICS() {
+    return {{ zisk_publics }};
+}
+
 {{ aggregate_publics_template }}
 
-{% for g in normalize_groups %}
-{{ g.body }}
-
-{% endfor %}
 // Helper: returns 1 iff the two 4-element VKs are element-wise equal, 0 otherwise.
 template IsEqualVK() {
     signal input a[4];
@@ -101,82 +109,23 @@ template Main(nPublics, nFreeInputs, nPrograms) {
         aPublics[i] <== a_sv_publics[PROGRAM_VK_LEN + i];
         bPublics[i] <== b_sv_publics[PROGRAM_VK_LEN + i];
     }
-{% if normalize_groups %}
 
-    // -- Normalization group membership: inGroupX_g = 1 - ∏_{k ∈ members}(1 - eqX[k]).
-    //    Product-complement form for the same {binary}-tag reason as above.
-    //    Groups are disjoint and programVKs unique (enforced at generation),
-    //    so at most one inGroupX_g fires per proof.
-{% for g in normalize_groups %}
-    signal {binary} noGrpA_{{ g.idx }}[{{ g.members | length }}];
-    signal {binary} noGrpB_{{ g.idx }}[{{ g.members | length }}];
-{% for m in g.members %}{% if loop.first %}    noGrpA_{{ g.idx }}[0] <== 1 - eqA[{{ m }}];
-    noGrpB_{{ g.idx }}[0] <== 1 - eqB[{{ m }}];
-{% else %}    noGrpA_{{ g.idx }}[{{ loop.index0 }}] <== noGrpA_{{ g.idx }}[{{ loop.index0 - 1 }}] * (1 - eqA[{{ m }}]);
-    noGrpB_{{ g.idx }}[{{ loop.index0 }}] <== noGrpB_{{ g.idx }}[{{ loop.index0 - 1 }}] * (1 - eqB[{{ m }}]);
-{% endif %}{% endfor %}    signal {binary} inGroupA_{{ g.idx }} <== 1 - noGrpA_{{ g.idx }}[{{ g.last_member_pos }}];
-    signal {binary} inGroupB_{{ g.idx }} <== 1 - noGrpB_{{ g.idx }}[{{ g.last_member_pos }}];
-{% endfor %}
-
-    // -- Identity weight: aggregated proofs (no eq fires) and ungrouped leaves
-    //    pass their publics through raw. Weights sum to 1 by construction.
-    signal wIdA <== 1{% for g in normalize_groups %} - inGroupA_{{ g.idx }}{% endfor %};
-    signal wIdB <== 1{% for g in normalize_groups %} - inGroupB_{{ g.idx }}{% endfor %};
-
-    // -- Run every group's circuit on both sides (the circuit is static; the
-    //    mux below selects at most one result). Each group sees the leading
-    //    n_g slots of its side's freeInputs array.
-{% for g in normalize_groups %}
-    signal fInA_{{ g.idx }}[{{ g.n }}];
-    signal fInB_{{ g.idx }}[{{ g.n }}];
-    for (var i = 0; i < {{ g.n }}; i++) {
-        fInA_{{ g.idx }}[i] <== freeInputsA[i];
-        fInB_{{ g.idx }}[i] <== freeInputsB[i];
-    }
-    signal normA_{{ g.idx }}[nPublics] <== NormalizePublics_{{ g.idx }}(nPublics, {{ g.n }})(aPublics, fInA_{{ g.idx }});
-    signal normB_{{ g.idx }}[nPublics] <== NormalizePublics_{{ g.idx }}(nPublics, {{ g.n }})(bPublics, fInB_{{ g.idx }});
-{% endfor %}
-
-    // -- Sum-of-masks mux: raw publics under the identity weight plus each
-    //    group's normalized publics under its membership flag.
-{% for g in normalize_groups %}
-    signal selA_{{ g.idx }}[nPublics];
-    signal selB_{{ g.idx }}[nPublics];
-{% endfor %}
-    signal idA[nPublics];
-    signal idB[nPublics];
-    signal ziskPublicsA[nPublics];
-    signal ziskPublicsB[nPublics];
-    for (var i = 0; i < nPublics; i++) {
-{% for g in normalize_groups %}
-        selA_{{ g.idx }}[i] <== inGroupA_{{ g.idx }} * normA_{{ g.idx }}[i];
-        selB_{{ g.idx }}[i] <== inGroupB_{{ g.idx }} * normB_{{ g.idx }}[i];
-{% endfor %}
-        idA[i] <== wIdA * aPublics[i];
-        idB[i] <== wIdB * bPublics[i];
-        ziskPublicsA[i] <== idA[i]{% for g in normalize_groups %} + selA_{{ g.idx }}[i]{% endfor %};
-        ziskPublicsB[i] <== idB[i]{% for g in normalize_groups %} + selB_{{ g.idx }}[i]{% endfor %};
-    }
-{% else %}
-
-    // -- No normalization groups: every proof's publics pass through raw.
+    // -- Every proof's publics pass through raw: all accepted guest programs
+    //    emit the same publics layout, so there is nothing to canonicalize
+    //    before aggregation. AggregatePublics consumes these directly.
     signal ziskPublicsA[nPublics];
     signal ziskPublicsB[nPublics];
     for (var i = 0; i < nPublics; i++) {
         ziskPublicsA[i] <== aPublics[i];
         ziskPublicsB[i] <== bPublics[i];
     }
-{% endif %}
 
     // -- Consistency + aggregation (VK-agnostic). AggregatePublics both asserts
     //    the user's consistency constraints and produces the merged publics. It
     //    also receives both sides' freeInputs so a hash-style public can be
-    //    checked against its preimage, the preimages recombined, and re-hashed —
-    //    without a NormalizePublics stage. freeInputsA/B are the SAME arrays the
-    //    normalize groups read their leading slots from; when both stages are
-    //    used the caller owns slot discipline (n_free_inputs is sized to the max
-    //    demand across normalize groups and the aggregate stage).
-    signal aggPublics[nPublics] <== AggregatePublics(nPublics, nFreeInputs)(
+    //    checked against its preimage, the preimages recombined, and re-hashed.
+    //    freeInputsA/B are sized by the aggregate stage's free-input count.
+    signal aggPublics[nPublics] <== AggregatePublics(nFreeInputs)(
         ziskPublicsA, ziskPublicsB, freeInputsA, freeInputsB);
 
     // Re-emit in the same VK-first layout: user publics after the VK slot.
@@ -210,4 +159,4 @@ template Main(nPublics, nFreeInputs, nPrograms) {
     }
 }
 
-component main = Main(64, {{ n_free_inputs }}, {{ n_programs }});
+component main = Main({{ zisk_publics }}, {{ n_free_inputs }}, {{ n_programs }});

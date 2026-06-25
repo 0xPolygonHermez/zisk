@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{Result, SdkError};
 use std::{sync::Arc, time::Duration};
-use zisk_common::{ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
+use zisk_common::{ProgramVK, Proof, ProofBody, ProofKind, PublicValues, PROGRAM_VK_LEN};
 use zisk_prover_backend::ProverEngine;
 
 impl EmbeddedClient {
@@ -74,25 +74,40 @@ impl EmbeddedClient {
         override_publics: Option<&PublicValues>,
         override_program_vk: Option<&ProgramVK>,
     ) -> Result<ProveResult> {
-        let derived_publics = proof.publics();
-        let publics = override_publics.unwrap_or(&derived_publics);
-        let program_vk = override_program_vk.unwrap_or(&proof.program_vk);
-        let proof_words = match &proof.body {
-            ProofBody::Vadcop { proof, .. } => proof.as_slice(),
+        let (proof_words, default_publics_full) = match &proof.body {
+            ProofBody::Vadcop { proof, publics_full, .. } => (proof.as_slice(), publics_full),
             ProofBody::Plonk { .. } => {
                 return Err(SdkError::InvalidConfig("Cannot wrap a Plonk proof".to_string()));
             }
         };
 
+        // Default path uses the proof's full-width publics verbatim. The
+        // overrides come in as u32 `PublicValues`, so reconstructing through
+        // them truncates publics above 32 bits — safe for standard proofs (the
+        // override's intent), lossy for recurser publics. Prefer no override.
+        let reconstructed;
+        let publics_full: &[u64] = if override_publics.is_some() || override_program_vk.is_some() {
+            let vk = override_program_vk
+                .map(|v| v.vk.as_slice())
+                .unwrap_or(&default_publics_full[..PROGRAM_VK_LEN]);
+            let user = override_publics
+                .map(|p| p.public_u64())
+                .unwrap_or_else(|| default_publics_full[PROGRAM_VK_LEN..].to_vec());
+            reconstructed = [vk.to_vec(), user].concat();
+            &reconstructed
+        } else {
+            default_publics_full
+        };
+
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => p
                 .prover
-                .wrap_proof(proof_words, publics, program_vk, proof_kind)
+                .wrap_proof(proof_words, publics_full, proof_kind)
                 .map(ProveResult::from)
                 .map_err(SdkError::backend),
             EmbeddedProver::Asm(p) => p
                 .prover
-                .wrap_proof(proof_words, publics, program_vk, proof_kind)
+                .wrap_proof(proof_words, publics_full, proof_kind)
                 .map(ProveResult::from)
                 .map_err(SdkError::backend),
         }

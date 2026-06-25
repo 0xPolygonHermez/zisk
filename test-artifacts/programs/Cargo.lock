@@ -7053,6 +7053,7 @@ dependencies = [
  "clap",
  "dirs",
  "fields",
+ "num-bigint",
  "paste",
  "proofman",
  "proofman-common",

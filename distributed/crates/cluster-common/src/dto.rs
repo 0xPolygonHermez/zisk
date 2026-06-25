@@ -98,17 +98,9 @@ pub enum CoordinatorMessageDto {
 /// 4-limb Goldilocks verification key, decimal-encoded.
 pub type RecurserProgramVk = [String; 4];
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NormalizeGroupDto {
-    pub member_indices: Vec<u64>,
-    pub body: String,
-    pub n_free_inputs: u64,
-}
-
 #[derive(Debug, Clone)]
 pub struct AggregationProgramSpecDto {
     pub program_vks: Vec<RecurserProgramVk>,
-    pub normalize_groups: Vec<NormalizeGroupDto>,
     pub aggregate_publics_body: String,
     pub aggregate_n_free_inputs: u64,
 }

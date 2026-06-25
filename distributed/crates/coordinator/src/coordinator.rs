@@ -195,7 +195,6 @@ fn aggregation_program_spec_eq(
     b: &AggregationProgramSpecDto,
 ) -> bool {
     a.program_vks == b.program_vks
-        && a.normalize_groups == b.normalize_groups
         && a.aggregate_publics_body == b.aggregate_publics_body
         && a.aggregate_n_free_inputs == b.aggregate_n_free_inputs
 }
@@ -3491,7 +3490,6 @@ mod tests {
     fn dummy_aggregation_program_spec() -> AggregationProgramSpecDto {
         AggregationProgramSpecDto {
             program_vks: vec![["1".into(), "2".into(), "3".into(), "4".into()]],
-            normalize_groups: vec![],
             aggregate_publics_body: "// body".into(),
             aggregate_n_free_inputs: 0,
         }

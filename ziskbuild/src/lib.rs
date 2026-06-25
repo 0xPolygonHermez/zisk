@@ -6,8 +6,7 @@ mod utils;
 use build::build_program_internal;
 
 pub use aggregation::{
-    guest_elf_map, resolve_aggregation, ResolvedAggregation, ResolvedCircuitPaths,
-    ResolvedNormalizeGroup, ResolvedProgram,
+    guest_elf_map, resolve_aggregation, ResolvedAggregation, ResolvedCircuitPaths, ResolvedProgram,
 };
 // pub use build::{execute_build_program, generate_elf_paths};
 

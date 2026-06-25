@@ -34,8 +34,8 @@ pub enum ProveValidationError {
     },
 
     #[error(
-        "free_inputs_{side} has {got} entries, but this recurser's normalization circuits \
-         consume at most {expected}"
+        "free_inputs_{side} has {got} entries, but this recurser's AggregatePublics circuit \
+         consumes {expected}"
     )]
     FreeInputsLength { side: char, got: usize, expected: usize },
 
@@ -137,16 +137,7 @@ mod tests {
     fn manifest(n_free_inputs: usize, program_vks: Vec<[u64; 4]>) -> RecurserManifestInputs {
         let zisk_vk = vk_str([100, 101, 102, 103]);
         let vks: Vec<[String; 4]> = program_vks.into_iter().map(vk_str).collect();
-        let groups = if n_free_inputs > 0 {
-            vec![crate::templates::NormalizeGroup {
-                member_indices: vec![0],
-                body: "norm".to_string(),
-                n_free_inputs,
-            }]
-        } else {
-            vec![]
-        };
-        RecurserManifestInputs::new(zisk_vk, vks, &groups, "a", 0)
+        RecurserManifestInputs::new(zisk_vk, vks, "a", n_free_inputs)
     }
 
     fn publics_with_program_vk(vk: [u64; 4]) -> Vec<u64> {

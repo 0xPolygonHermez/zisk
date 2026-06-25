@@ -290,15 +290,6 @@ impl BackendService for CoordinatorBackend {
         // dispatch time as "recurser_id not found".
         let cluster_spec = zisk_cluster_common::AggregationProgramSpecDto {
             program_vks: spec.program_vks,
-            normalize_groups: spec
-                .normalize_groups
-                .into_iter()
-                .map(|g| zisk_cluster_common::NormalizeGroupDto {
-                    member_indices: g.member_indices,
-                    body: g.body,
-                    n_free_inputs: g.n_free_inputs,
-                })
-                .collect(),
             aggregate_publics_body: spec.aggregate_publics_body,
             aggregate_n_free_inputs: spec.aggregate_n_free_inputs,
         };

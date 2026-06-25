@@ -1389,15 +1389,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .iter()
             .map(|vk| [vk.l0.clone(), vk.l1.clone(), vk.l2.clone(), vk.l3.clone()])
             .collect();
-        let normalize_groups: Vec<recurser::NormalizeGroup> = spec
-            .normalize_groups
-            .iter()
-            .map(|g| recurser::NormalizeGroup {
-                member_indices: g.member_indices.iter().map(|&i| i as usize).collect(),
-                body: g.body.clone(),
-                n_free_inputs: g.n_free_inputs as usize,
-            })
-            .collect();
         // The artifact dir is keyed by the *claimed* id; recompute the id from
         // the spec so a mismatched claim can't be served another definition's
         // completed setup (or silently register under the wrong name).
@@ -1406,7 +1397,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let expected_inputs = recurser::RecurserManifestInputs::new(
             zisk_vk,
             program_vks.clone(),
-            &normalize_groups,
             &spec.aggregate_publics_body,
             spec.aggregate_n_free_inputs as usize,
         );
@@ -1430,7 +1420,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 output_dir: output_dir.clone(),
                 program_vks,
                 templates: recurser::CircomTemplates {
-                    normalize_groups,
                     aggregate_publics: spec.aggregate_publics_body.clone(),
                     aggregate_n_free_inputs: spec.aggregate_n_free_inputs as usize,
                 },

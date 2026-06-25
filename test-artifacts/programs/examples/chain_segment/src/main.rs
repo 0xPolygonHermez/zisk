@@ -7,8 +7,7 @@
 //! Folding two such proofs with the `chain` example's `AggregatePublics`
 //! (which enforces `a.new == b.old` and emits `[a.old, b.new]`) stitches
 //! contiguous segments into one — `[10,20] + [20,30]` collapses to `[10,30]`.
-//! The guest itself does no hashing; the digest in publics `[2..6)` is added
-//! in-circuit by the example's `NormalizePublics` (see
+//! The remaining publics slots `[2..64)` stay zero (see
 //! `programs/aggregations/chain.toml`).
 #![no_main]
 ziskos::entrypoint!(main);
