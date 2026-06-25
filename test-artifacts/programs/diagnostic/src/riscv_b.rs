@@ -1,6 +1,8 @@
-#[cfg(feature = "bit_manipulation_extensions")]
+#![cfg(feature = "bit_manipulation_extensions")]
 
 pub fn diagnostic_riscv_b() {
+    // B bit manipulation extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
+
     rev8(0x0102030405060708, 0x0807060504030201);
     rev8(0xF0F0F0F0F0F0F0F0, 0xF0F0F0F0F0F0F0F0);
     rev8(0x0000000000000000, 0x0000000000000000);

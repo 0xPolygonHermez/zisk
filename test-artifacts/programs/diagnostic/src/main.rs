@@ -2,6 +2,7 @@
 ziskos::entrypoint!(main);
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(feature = "bit_manipulation_extensions")]
 mod riscv_b;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod riscv_c;
