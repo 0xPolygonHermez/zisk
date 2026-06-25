@@ -335,9 +335,9 @@ macro_rules! table_instance_array {
 #[macro_export]
 macro_rules! instance {
     ($name:ident, $sm:ty, $num_rows:path, $operation:path) => {
-        use data_bus::BusId;
         use proofman_common::{AirInstance, ProofCtx};
         use sm_common::{CheckPointSkip, Instance, InstanceType};
+        use $crate::BusId;
 
         /// Represents a standalone computation instance.
         pub struct $name {
@@ -384,6 +384,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField64> data_bus::BusDevice<u64> for $name {}
+        impl<F: PrimeField64> $crate::BusDevice<u64> for $name {}
     };
 }

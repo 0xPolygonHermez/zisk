@@ -10,7 +10,6 @@
 //! 3. Executes chunks and routes data to the appropriate collectors
 
 use crossbeam::atomic::AtomicCell;
-use data_bus::DataBusTrait;
 use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
@@ -24,7 +23,7 @@ use std::{
 };
 use tracing::error;
 use zisk_common::{
-    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
+    CheckPoint, ChunkId, DataBusTrait, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
 };
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;

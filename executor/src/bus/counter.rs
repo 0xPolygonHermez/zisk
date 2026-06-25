@@ -5,13 +5,13 @@
 use std::collections::VecDeque;
 
 use crate::{pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters};
-use data_bus::DataBusTrait;
 use mem_common::MemCounters;
 use precomp_dma::DmaCounterInputGen;
 use precompiles_common::MemCounterProcessor;
 use proofman_fields::PrimeField64;
 use sm_arith::ArithCounterInputGen;
 use sm_binary::BinaryCounter;
+use zisk_common::DataBusTrait;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
     MemDataSection, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID,

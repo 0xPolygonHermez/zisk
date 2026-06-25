@@ -3,7 +3,6 @@
 //! counterpart.
 use std::collections::VecDeque;
 
-use data_bus::DataBusTrait;
 use precomp_dma::Dma64AlignedCollector;
 use precomp_dma::DmaCollector;
 use precomp_dma::DmaCounterInputGen;
@@ -17,6 +16,7 @@ use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollect
 use sm_mem::{MemAlignCollector, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::ChunkId;
+use zisk_common::DataBusTrait;
 use zisk_common::{
     BusDevice, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
 };

@@ -15,7 +15,6 @@ zisk-pil = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
-data-bus = { workspace = true }
 asm-runner = { workspace = true }
 mem-common = { workspace = true }
 

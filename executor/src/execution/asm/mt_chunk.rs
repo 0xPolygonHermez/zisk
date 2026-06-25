@@ -24,9 +24,10 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use data_bus::DataBusTrait;
 use proofman_fields::PrimeField64;
-use zisk_common::{stats_begin, stats_end, ChunkId, EmuTrace, ExecutorStatsHandle, PayloadType};
+use zisk_common::{
+    stats_begin, stats_end, ChunkId, DataBusTrait, EmuTrace, ExecutorStatsHandle, PayloadType,
+};
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 

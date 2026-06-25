@@ -13,8 +13,7 @@ use zisk_pil::MainTraceRowOps;
 use zisk_riscv::RiscVRegisters;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
-use data_bus::DataBusTrait;
-use zisk_common::{EmuTrace, EmuTraceStart};
+use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,

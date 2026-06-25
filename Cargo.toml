@@ -16,7 +16,6 @@ members = [
   "cli",
   "core",
   "integration-tests",
-  "data-bus",
   "emulator",
   "executor",
   "pil",
@@ -83,7 +82,6 @@ opt-level = 3
 zisk-common = { path = "common", version = "1.0.0-beta" }
 zisk-stream = { path = "stream", version = "1.0.0-beta" }
 zisk-core = { path = "core", version = "1.0.0-beta" }
-data-bus = { path = "data-bus", version = "1.0.0-beta" }
 ziskemu = { path = "emulator", version = "1.0.0-beta" }
 asm-runner = { path = "emulator-asm/asm-runner", version = "1.0.0-beta" }
 zisk-executor = { path = "executor", version = "1.0.0-beta" }
