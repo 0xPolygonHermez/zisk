@@ -12,3 +12,4 @@ workspace = true
 [features]
 default = []
 bit_manipulation_extensions = []
+c_extension = []

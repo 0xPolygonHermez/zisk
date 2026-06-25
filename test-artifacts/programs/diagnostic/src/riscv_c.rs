@@ -1,3 +1,5 @@
+#![cfg(feature = "c_extension")]
+
 //use std::arch::asm;
 
 pub fn diagnostic_riscv_c() {
