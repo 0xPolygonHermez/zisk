@@ -2,6 +2,8 @@
 //!
 //! The input parameter is an ELF RISC-V file name, and the output parameter is a JSON Zisk ROM
 //! file.  Optionally, the Zisk ROM can also be saved in x84-64 NASM assembly format.
+//! The input parameter is the contents (bytes) of an ELF RISC-V file.
+//! Optionally, the Zisk ROM can also be saved in x86-64 NASM assembly format.
 
 use transpilers_common::{elf2rom, elf2romfile};
 use zisk_core::AsmGenerationMethod;
@@ -9,7 +11,7 @@ use zisk_core::ZiskRom;
 
 use std::{error::Error, path::PathBuf};
 
-/// RISCV-to-ZisK struct containing the input ELF RISCV file name and the output ZISK ASM file name
+/// RISCV-to-ZisK struct containing the input ELF RISCV file data
 pub struct Riscv2zisk<'a> {
     /// ELF RISC-V file bytes (input)
     pub elf: &'a [u8],

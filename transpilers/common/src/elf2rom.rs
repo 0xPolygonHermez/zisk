@@ -15,7 +15,7 @@ use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]
-    const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
+    const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.elf");
 
     // Extract all relevant sections from the ELF file
     #[cfg(feature = "float")]

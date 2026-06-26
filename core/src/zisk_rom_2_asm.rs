@@ -101,12 +101,12 @@ const PRECOMPILE_BUFFER_SIZE_IN_U64: u64 = PRECOMPILE_BUFFER_SIZE_IN_BYTES / 8;
 const PRECOMPILE_BUFFER_SIZE_U64_MASK: u64 = PRECOMPILE_BUFFER_SIZE_IN_U64 - 1;
 
 /// ZisK Emulator can be executed in assembly to get the maximum performance
-/// in the first sequential emulation, and also is some subsequent parallel tasks.
+/// in the first sequential emulation.
 ///
 /// ROM histogram contains a counter per program counter that is incremented every time that
 /// instruction is executed.  It is generated in one single, sequential emulation.
 ///
-/// Mem reads contain all the memory reads donde during a chunk of the emulation.  Mem reads chunks
+/// Mem reads contain all the memory reads done during a chunk of the emulation.  Mem reads chunks
 /// are generated sequentially, and consumed in parallel after the first chunk is ready to generate
 /// the main AIR traces.
 ///

@@ -24,6 +24,7 @@ members = [
   "prover-backend",
   "prover-backend/macros",
   "transpilers/riscv",
+  "transpilers/riscv2zisk",
   "transpilers/common",
   "rom-setup",
   "state-machines/arith",
