@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use zisk_common::{
-    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo,
-    Planner, StdProvider,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
+    StdProvider,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;

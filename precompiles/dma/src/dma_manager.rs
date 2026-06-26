@@ -3,8 +3,7 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use zisk_common::{
-    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner,
-    StdProvider,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner, StdProvider,
 };
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
