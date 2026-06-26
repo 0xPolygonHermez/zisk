@@ -50,7 +50,7 @@ impl<STD: StdProvider> MemSM<STD> {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn save_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -79,7 +79,7 @@ impl<STD: StdProvider> MemSM<STD> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn dump_trace_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn dump_trace_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
         println!("[MemDebug] dumping trace to {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -108,7 +108,7 @@ impl<STD: StdProvider> MemSM<STD> {
     }
 
     #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
-    pub fn save_addr_offsets_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn save_addr_offsets_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
         use std::io::Write;
 
         println!("[MemDebug] saving address offsets to {} .....", file_name);
@@ -183,7 +183,7 @@ impl<STD: StdProvider> MemSM<STD> {
     /// from_addr: first qword address in the trace for segment 0; previous_segment.addr for later
     ///            segments so the halo slot (index 0) is always present.
     #[cfg(feature = "debug_mem_bin_offsets")]
-    pub fn save_bin_offsets_to_file<R: MemTraceRowOps<F>>(
+    pub fn save_bin_offsets_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(
         trace: &MemTrace<R>,
         segment_id: SegmentId,
         previous_segment: &MemPreviousSegment,

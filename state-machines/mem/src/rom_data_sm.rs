@@ -382,7 +382,7 @@ impl<STD: StdProvider> RomDataSM<STD> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
+    pub fn save_to_file<F: PrimeField64, R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
         let num_rows = RomDataTrace::<R>::NUM_ROWS;
@@ -404,7 +404,7 @@ impl<STD: StdProvider> RomDataSM<STD> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_addr_offsets_to_file<R: RomDataTraceRowOps<F>>(
+    pub fn save_addr_offsets_to_file<F: PrimeField64, R: RomDataTraceRowOps<F>>(
         trace: &RomDataTrace<R>,
         file_name: &str,
     ) {
