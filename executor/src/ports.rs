@@ -114,6 +114,9 @@ pub trait ProofRegistry: Dctx {
     /// Registers a table instance. Returns the assigned global id.
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId>;
 
+    /// Assigns a table instance to a previously-registered instance.
+    fn assign_table_to(&self, info: InstanceInfo, gid: GlobalId) -> ExecutorResult<()>;
+
     /// Looks up the previously-assigned global id for an AIR. Used by
     /// the planner to attach the ROM instance to its existing
     /// rank-assignment.
@@ -248,6 +251,10 @@ pub(crate) mod fakes {
         }
         fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             Ok(self.next_gid(AddKind::Table, info))
+        }
+        fn assign_table_to(&self, info: InstanceInfo, _gid: GlobalId) -> ExecutorResult<()> {
+            self.additions.borrow_mut().push(AddCall { kind: AddKind::Table, info, gid: _gid });
+            Ok(())
         }
         fn find_instance_id(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
             self.additions

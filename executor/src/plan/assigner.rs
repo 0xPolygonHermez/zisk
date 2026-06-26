@@ -3,7 +3,7 @@
 use crate::error::{ExecutorResult, RwLockExt};
 use std::sync::RwLock;
 use zisk_common::{InstanceType, Plan};
-use zisk_pil::{ROM_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{ROM_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use crate::ports::{GlobalId, InstanceInfo, ProofRegistry};
 use crate::AirClassifier;
@@ -24,7 +24,13 @@ impl InstanceAssigner {
     /// # Errors
     /// Returns an error if the registry rejects the assignment.
     pub fn assign_rom_instance(registry: &dyn ProofRegistry) -> ExecutorResult<GlobalId> {
-        registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))
+        let rom_gid =
+            registry.add_instance_assign(InstanceInfo::new(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0]))?;
+        registry.assign_table_to(
+            InstanceInfo::new(ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0]),
+            rom_gid,
+        )?;
+        Ok(rom_gid)
     }
 
     /// Assigns main instances to the proof context.

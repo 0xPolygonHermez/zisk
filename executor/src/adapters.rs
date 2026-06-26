@@ -145,6 +145,11 @@ impl<F: PrimeField64> ProofRegistry for ProofmanAdapter<'_, F> {
         Ok(GlobalId(self.pctx.add_table(info.airgroup_id, info.air_id)?))
     }
 
+    fn assign_table_to(&self, info: InstanceInfo, gid: GlobalId) -> ExecutorResult<()> {
+        self.track(&info);
+        Ok(self.pctx.assign_table_to(info.airgroup_id, info.air_id, gid.0)?)
+    }
+
     fn instance_counts(&self) -> std::collections::HashMap<(usize, usize), usize> {
         self.instance_counts.lock().expect("instance_counts mutex").clone()
     }
@@ -221,6 +226,10 @@ impl ProofRegistry for NoopProofRegistry {
     fn add_instance_assign(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(info);
         Ok(GlobalId(0))
+    }
+    fn assign_table_to(&self, info: InstanceInfo, _gid: GlobalId) -> ExecutorResult<()> {
+        self.track(info);
+        Ok(())
     }
     fn add_table(&self, info: InstanceInfo) -> ExecutorResult<GlobalId> {
         self.track(info);

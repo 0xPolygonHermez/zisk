@@ -132,15 +132,15 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/assign-tables" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
