@@ -1,7 +1,5 @@
 //! Converts a RISC-V program into a Zisk program.
 //!
-//! The input parameter is an ELF RISC-V file name, and the output parameter is a JSON Zisk ROM
-//! file.  Optionally, the Zisk ROM can also be saved in x84-64 NASM assembly format.
 //! The input parameter is the contents (bytes) of an ELF RISC-V file.
 //! Optionally, the Zisk ROM can also be saved in x86-64 NASM assembly format.
 
@@ -33,7 +31,6 @@ impl<'a> Riscv2zisk<'a> {
         hints: bool,
     ) -> Result<(), Box<dyn Error>> {
         elf2romfile(self.elf, &asm_file.into(), generation_method, log_output, comments, hints)
-            .map_err(|e| format!("Error converting elf to assembly: {e}").into())
     }
 
     /// Executes the file conversion process by calling elf2rom()
