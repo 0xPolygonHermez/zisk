@@ -18,5 +18,5 @@ lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-float = ["dep:lib-float", "lib-float/float"]
-bit_manipulation_extensions = []
+float = ["dep:lib-float", "lib-float/float", "riscv/float", "zisk-core/float"]
+bit_manipulation_extensions = ["riscv/bit_manipulation_extensions", "zisk-core/bit_manipulation_extensions"]
