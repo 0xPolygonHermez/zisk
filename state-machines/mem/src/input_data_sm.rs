@@ -73,7 +73,10 @@ impl<STD: StdProvider> InputDataSM<STD> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<F: PrimeField64, R: InputDataTraceRowOps<F>>(trace: &InputDataTrace<R>, file_name: &str) {
+    pub fn save_to_file<F: PrimeField64, R: InputDataTraceRowOps<F>>(
+        trace: &InputDataTrace<R>,
+        file_name: &str,
+    ) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
