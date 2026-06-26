@@ -4,8 +4,8 @@
 //! file.  Optionally, the Zisk ROM can also be saved in x84-64 NASM assembly format.
 
 use transpilers_common::{elf2rom, elf2romfile};
-use zisk_core::ZiskRom;
 use zisk_core::AsmGenerationMethod;
+use zisk_core::ZiskRom;
 
 use std::{error::Error, path::PathBuf};
 

@@ -7,8 +7,8 @@ use elf::{
 };
 use std::{collections::HashMap, error::Error, fs, path::Path};
 
-use zisk_core::{is_elf_file, RAM_ADDR, RAM_SIZE};
 use zisk_core::mem::DataSection;
+use zisk_core::{is_elf_file, RAM_ADDR, RAM_SIZE};
 
 const RAM_START_ADDR: u64 = RAM_ADDR;
 const RAM_END_ADDR: u64 = RAM_ADDR + RAM_SIZE;

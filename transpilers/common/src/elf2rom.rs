@@ -1,18 +1,15 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
-use crate::{
-    elf_extraction::{
-        collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes,
-        merge_adjacent_data_sections, merge_ro_sections, ElfPayload,
-    },
+use crate::elf_extraction::{
+    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_adjacent_data_sections,
+    merge_ro_sections, ElfPayload,
 };
+use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, add_zisk_code};
 use std::{error::Error, path::Path};
 use zisk_core::mem::DataSection;
-use zisk_core::zisk_rom::{ZiskRom, DataSection64};
-use zisk_core::zisk_rom_2_asm::{ZiskRom2Asm, AsmGenerationMethod};
-use riscv::riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code, add_end_and_lib};
-use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR,
-    ROM_ENTRY, ROM_SIZE,};
+use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
+use zisk_core::zisk_rom::{DataSection64, ZiskRom};
+use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {

@@ -1,12 +1,12 @@
 use anyhow::Context;
 use anyhow::Result;
+use riscv2zisk::Riscv2zisk;
 use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod};
-use riscv2zisk::Riscv2zisk;
 
 use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;

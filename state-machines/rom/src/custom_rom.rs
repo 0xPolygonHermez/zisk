@@ -5,9 +5,9 @@
 
 use fields::PrimeField64;
 use mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
+use riscv2zisk::Riscv2zisk;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
-use riscv2zisk::Riscv2zisk;
 
 use crate::error::{RomError, RomResult};
 

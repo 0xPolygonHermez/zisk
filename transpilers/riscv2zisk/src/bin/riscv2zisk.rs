@@ -1,7 +1,7 @@
 //! Executable that performs a transpilation of a RISC-V ELF file to a Zisk ROM file.
 
-use std::{env, process};
 use riscv2zisk::Riscv2zisk;
+use std::{env, process};
 
 /// Performs a transpilation of a RISC-V ELF file to a Zisk ROM file.  
 /// The binary accepts 3 arguments (4 including the executable name):

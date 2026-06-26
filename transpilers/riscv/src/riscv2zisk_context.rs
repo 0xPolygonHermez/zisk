@@ -15,12 +15,12 @@ use zisk_definitions::{
     SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
 };
 
-use zisk_core::{
-    convert_vector, ZiskInstBuilder, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR,
-    EXTRA_PARAMS_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR,
-    ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT,
-};
 use zisk_core::zisk_rom::ZiskRom;
+use zisk_core::{
+    convert_vector, ZiskInstBuilder, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR, EXTRA_PARAMS_ADDR,
+    INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
+    ROM_EXIT,
+};
 
 #[cfg(feature = "float")]
 use crate::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0, REG_X0};

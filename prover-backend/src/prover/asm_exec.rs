@@ -10,13 +10,12 @@ use anyhow::{Context, Result};
 use executor::{AsmResources, ZiskExecutor};
 use fields::Goldilocks;
 use proofman_common::VerboseMode;
+use riscv2zisk::Riscv2zisk;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::ZiskRom;
-use riscv2zisk::Riscv2zisk;
-
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
