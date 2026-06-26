@@ -8,8 +8,7 @@ use fields::PrimeField64;
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
-use std::marker::PhantomData;
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps};
 
 const RC: usize = 2;
@@ -39,7 +38,7 @@ const DEFAULT_WIDTH: u8 = 8;
 
 // NOTE: the range-checker generic is named `S` (not the usual `RC`) because this
 // module already defines a `const RC: usize`.
-pub struct MemAlignSM<F: PrimeField64, S: RangeChecker> {
+pub struct MemAlignSM<S: StdProvider> {
     /// Range-check / virtual-table sink (the real `Std` in production).
     std: Arc<S>,
 
@@ -51,9 +50,6 @@ pub struct MemAlignSM<F: PrimeField64, S: RangeChecker> {
 
     /// The range ID for the byte range check
     range_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
 macro_rules! debug_info {
@@ -65,7 +61,7 @@ macro_rules! debug_info {
     };
 }
 
-impl<F: PrimeField64, S: RangeChecker> MemAlignSM<F, S> {
+impl<S: StdProvider> MemAlignSM<S> {
     pub fn new(std: Arc<S>) -> Arc<Self> {
         // Get the table ID
         let table_id =
@@ -79,11 +75,10 @@ impl<F: PrimeField64, S: RangeChecker> MemAlignSM<F, S> {
             num_computed_rows: Mutex::new(0),
             table_id,
             range_id,
-            _marker: PhantomData,
         })
     }
 
-    pub fn prove_mem_align_op<R: MemAlignTraceRowOps<F>>(
+    pub fn prove_mem_align_op<F: PrimeField64, R: MemAlignTraceRowOps<F>>(
         &self,
         input: &MemAlignInput,
         trace: &mut [R],
@@ -842,7 +837,7 @@ impl<F: PrimeField64, S: RangeChecker> MemAlignSM<F, S> {
         ((value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK) as u8
     }
 
-    pub fn compute_witness<R: MemAlignTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: MemAlignTraceRowOps<F>>(
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,

@@ -5,7 +5,6 @@
 //! state transitions and multiplicity updates.
 
 use std::collections::VecDeque;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use crate::{
@@ -15,7 +14,7 @@ use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::{ArithTrace, ArithTraceRowOps};
@@ -27,21 +26,18 @@ const EXTENSION: u64 = 0xFFFFFFFF;
 ///
 /// This state machine coordinates the computation of arithmetic operations and updates
 /// the `ArithTableSM` and `ArithRangeTableSM` components based on operation traces.
-pub struct ArithFullSM<F: PrimeField64, RC: RangeChecker> {
+pub struct ArithFullSM<STD: StdProvider> {
     /// Reference to the PIL2 standard library.
-    std: Arc<RC>,
+    std: Arc<STD>,
 
     /// The table ID for the Table State Machine
     table_id: usize,
 
     /// The table ID for the Range Table State Machine
     range_table_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> ArithFullSM<F, RC> {
+impl<STD: StdProvider> ArithFullSM<STD> {
     /// Creates a new `ArithFullSM` instance.
     ///
     /// # Arguments
@@ -49,7 +45,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullSM<F, RC> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithFullSM`.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the Arithmetic table ID
         let table_id =
             std.get_virtual_table_id(ArithTableSM::TABLE_ID).expect("Failed to get table ID");
@@ -59,7 +55,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullSM<F, RC> {
             .get_virtual_table_id(ArithRangeTableSM::TABLE_ID)
             .expect("Failed to get range table ID");
 
-        Arc::new(Self { std, table_id, range_table_id, _marker: PhantomData })
+        Arc::new(Self { std, table_id, range_table_id })
     }
 
     /// Computes the witness for arithmetic operations and updates associated tables.
@@ -69,7 +65,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullSM<F, RC> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed arithmetic trace.
-    pub fn compute_witness<R: ArithTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: ArithTraceRowOps<F>>(
         &self,
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
@@ -107,7 +103,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullSM<F, RC> {
 
                     trace_slice.iter_mut().zip(input_slice.iter()).for_each(
                         |(trace_row, input)| {
-                            *trace_row = Self::process_slice::<R>(
+                            *trace_row = Self::process_slice::<F, R>(
                                 &mut range_table,
                                 &mut table,
                                 &mut aop,
@@ -169,7 +165,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullSM<F, RC> {
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut arith_trace)))
     }
 
-    fn process_slice<R: ArithTraceRowOps<F>>(
+    fn process_slice<F: PrimeField64, R: ArithTraceRowOps<F>>(
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,

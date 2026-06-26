@@ -7,7 +7,7 @@ use proofman_common::{ProofCtx, SetupCtx};
 use sm_main::MainInstance;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, RangeChecker, Stats};
+use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats, StdProvider};
 use zisk_pil::{MainTraceRow, MainTraceRowPacked};
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
@@ -43,11 +43,11 @@ impl WitnessGenerator {
     /// * `main_instance` - The main instance to compute witness for.
     /// * `trace_buffer` - Buffer for trace data.
     /// * `caller_stats_id` - Parent stats scope ID.
-    pub fn compute_main_witness<F: PrimeField64, RC: RangeChecker>(
+    pub fn compute_main_witness<F: PrimeField64, STD: StdProvider>(
         &self,
         pctx: &ProofCtx<F>,
-        state: &ExecutionState<F, RC>,
-        main_instance: &MainInstance<F, RC>,
+        state: &ExecutionState<F, STD>,
+        main_instance: &MainInstance<STD>,
         trace_buffer: Vec<F>,
         _caller_stats_id: u64,
     ) -> ExecutorResult<()> {
@@ -62,14 +62,14 @@ impl WitnessGenerator {
         let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
 
         let air_instance = if self.packed.load(Ordering::Relaxed) {
-            main_instance.compute_witness::<MainTraceRowPacked<F>>(
+            main_instance.compute_witness::<F, MainTraceRowPacked<F>>(
                 &zisk_rom,
                 min_traces,
                 self.chunk_size,
                 trace_buffer,
             )?
         } else {
-            main_instance.compute_witness::<MainTraceRow<F>>(
+            main_instance.compute_witness::<F, MainTraceRow<F>>(
                 &zisk_rom,
                 min_traces,
                 self.chunk_size,
@@ -101,11 +101,11 @@ impl WitnessGenerator {
     /// * `trace_buffer` - Buffer for trace data.
     /// * `_caller_stats_id` - Parent stats scope ID.
     #[allow(clippy::too_many_arguments)]
-    pub fn compute_secn_witness<F: PrimeField64, RC: RangeChecker>(
+    pub fn compute_secn_witness<F: PrimeField64, STD: StdProvider>(
         &self,
         pctx: &ProofCtx<F>,
         sctx: &SetupCtx<F>,
-        state: &ExecutionState<F, RC>,
+        state: &ExecutionState<F, STD>,
         global_id: usize,
         secn_instance: &dyn Instance<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<u64>>)>,

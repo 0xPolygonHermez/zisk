@@ -15,27 +15,27 @@ use crate::{
 };
 use fields::PrimeField64;
 use zisk_common::{
-    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner, RangeChecker,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner, StdProvider,
 };
 use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
 
 /// The `BinarySM` struct represents the Binary State Machine,
 /// managing basic, extension and specific add binary operations.
 #[allow(dead_code)]
-pub struct BinarySM<F: PrimeField64, RC: RangeChecker> {
+pub struct BinarySM<STD: StdProvider> {
     /// Binary Basic state machine
-    binary_basic_sm: Arc<BinaryBasicSM<F, RC>>,
+    binary_basic_sm: Arc<BinaryBasicSM<STD>>,
 
     /// Binary Extension state machine
-    binary_extension_sm: Arc<BinaryExtensionSM<F, RC>>,
+    binary_extension_sm: Arc<BinaryExtensionSM<STD>>,
 
     /// Binary Add state machine (optimal only for addition)
-    binary_add_sm: Arc<BinaryAddSM<F, RC>>,
+    binary_add_sm: Arc<BinaryAddSM<STD>>,
 
-    std: Arc<RC>,
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> BinarySM<F, RC> {
+impl<STD: StdProvider> BinarySM<STD> {
     /// Creates a new instance of the `BinarySM` state machine.
     ///
     /// # Arguments
@@ -43,7 +43,7 @@ impl<F: PrimeField64, RC: RangeChecker> BinarySM<F, RC> {
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let binary_basic_sm = BinaryBasicSM::new(std.clone());
 
         let binary_extension_sm = BinaryExtensionSM::new(std.clone());
@@ -54,7 +54,7 @@ impl<F: PrimeField64, RC: RangeChecker> BinarySM<F, RC> {
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> ComponentPlanBuilder<F> for BinarySM<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> ComponentPlanBuilder<F> for BinarySM<STD> {
     type Counter = BinaryCounter;
 
     fn counter(_is_asm_emulator: bool) -> Self::Counter {
@@ -66,7 +66,7 @@ impl<F: PrimeField64, RC: RangeChecker> ComponentPlanBuilder<F> for BinarySM<F, 
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> ComponentBuilder<F> for BinarySM<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> ComponentBuilder<F> for BinarySM<STD> {
     /// Builds an instance for binary operations.
     ///
     /// # Arguments

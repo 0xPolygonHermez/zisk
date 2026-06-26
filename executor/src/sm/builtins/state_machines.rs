@@ -13,8 +13,8 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use zisk_common::{
-    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, NoopRangeChecker, Plan, Planner,
-    RangeChecker,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, NoopStdProvider, Plan, Planner,
+    StdProvider,
 };
 use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
@@ -79,27 +79,27 @@ pub const BUILTIN_COUNT: usize = 5;
 /// Built-in state machines.
 ///
 /// `RC` is the range-checker the witness-bearing SMs are built with (the
-/// real `Std` in production, a no-op stand-in such as `NoopRangeChecker`
+/// real `Std` in production, a no-op stand-in such as `NoopStdProvider`
 /// for tests / standalone). `RomSM` carries no `RC`.
 ///
 /// Note: `planner_for_position` is plan-time and range-checker-independent,
-/// so it uses [`NoopRangeChecker`] purely as a type token — no `RC` instance involved.
-pub enum BuiltinSMs<F: PrimeField64, RC: RangeChecker> {
+/// so it uses [`NoopStdProvider`] purely as a type token — no `RC` instance involved.
+pub enum BuiltinSMs<STD: StdProvider> {
     /// Rom state machine
     RomSM(Arc<RomSM>),
     /// Memory-related state machines.
-    MemSM(Arc<Mem<F, RC>>),
+    MemSM(Arc<Mem<STD>>),
     /// Binary operation state machines.
-    BinarySM(Arc<BinarySM<F, RC>>),
+    BinarySM(Arc<BinarySM<STD>>),
     /// Arithmetic operation state machines.
-    ArithSM(Arc<ArithSM<F, RC>>),
+    ArithSM(Arc<ArithSM<STD>>),
     /// DMA-related state machines.
-    DmaManager(Arc<DmaManager<F, RC>>),
+    DmaManager(Arc<DmaManager<STD>>),
 }
 
-impl<F: PrimeField64, RC: RangeChecker> BuiltinSMs<F, RC> {
+impl<STD: StdProvider> BuiltinSMs<STD> {
     /// Constructs every built-in SM paired with its AIR-id coverage.
-    pub(crate) fn all(std: Arc<RC>) -> Vec<(SMAirType, Self)> {
+    pub(crate) fn all<F: PrimeField64>(std: Arc<STD>) -> Vec<(SMAirType, Self)> {
         vec![
             (Cow::Borrowed(ROM_AIR_IDS_MAP), Self::RomSM(RomSM::new::<F>())),
             (Cow::Borrowed(MEM_AIR_IDS_MAP), Self::MemSM(Mem::new(std.clone()))),
@@ -110,29 +110,32 @@ impl<F: PrimeField64, RC: RangeChecker> BuiltinSMs<F, RC> {
     }
 
     /// Static planner dispatch by bundle position — no SM instance needed.
-    pub(crate) fn planner_for_position(position: usize, is_asm_emulator: bool) -> Box<dyn Planner> {
+    pub(crate) fn planner_for_position<F: PrimeField64>(
+        position: usize,
+        is_asm_emulator: bool,
+    ) -> Box<dyn Planner> {
         match position {
             ROM_POSITION => unreachable!(
                 "ROM planning goes through RomPlanner::plan_for_chunks, not the Planner trait"
             ),
             MEM_POSITION => {
-                <Mem<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+                <Mem<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
             }
             BINARY_POSITION => {
-                <BinarySM<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+                <BinarySM<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
             }
             ARITH_POSITION => {
-                <ArithSM<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+                <ArithSM<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
             }
-            DMA_POSITION => <DmaManager<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::planner(
-                is_asm_emulator,
-            ),
+            DMA_POSITION => {
+                <DmaManager<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+            }
             _ => panic!("planner_for_position: invalid builtin position {position}"),
         }
     }
 
     /// Configures the instances of this built-in for the given plans.
-    pub(crate) fn configure_instances(&self, pctx: &ProofCtx<F>, plans: &[Plan]) {
+    pub(crate) fn configure_instances<F: PrimeField64>(&self, pctx: &ProofCtx<F>, plans: &[Plan]) {
         match self {
             Self::RomSM(sm) => <RomSM as ComponentBuilder<F>>::configure_instances(sm, pctx, plans),
             Self::MemSM(sm) => (**sm).configure_instances(pctx, plans),
@@ -143,7 +146,10 @@ impl<F: PrimeField64, RC: RangeChecker> BuiltinSMs<F, RC> {
     }
 
     /// Builds an instance of this built-in for the given instance context.
-    pub(crate) fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+    pub(crate) fn build_instance<F: PrimeField64>(
+        &self,
+        ictx: InstanceCtx,
+    ) -> Box<dyn Instance<F>> {
         match self {
             Self::RomSM(sm) => <RomSM as ComponentBuilder<F>>::build_instance(sm, ictx),
             Self::MemSM(sm) => (**sm).build_instance(ictx),

@@ -188,7 +188,7 @@ impl EmulatorAsm {
     ) -> ExecutorResult<(Vec<EmuTrace>, CountersChunkMetrics, PubOutsCollector)> {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
-        let processor: MtChunkProcessor<F> = MtChunkProcessor::new();
+        let processor: MtChunkProcessor = MtChunkProcessor::new();
 
         // Capture the parent scope ID so it can be copied into the closure.
         #[allow(unused_variables)]
@@ -199,7 +199,13 @@ impl EmulatorAsm {
             let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
                 let chunk_id = ChunkId(idx);
                 scope.spawn(move |_| {
-                    processor_ref.process_chunk(chunk_id, &emu_trace, zisk_rom, stats, mt_scope_id);
+                    processor_ref.process_chunk::<F>(
+                        chunk_id,
+                        &emu_trace,
+                        zisk_rom,
+                        stats,
+                        mt_scope_id,
+                    );
                 });
             };
 

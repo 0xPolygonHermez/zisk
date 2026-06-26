@@ -1,6 +1,5 @@
-use fields::PrimeField64;
 use precompiles_common::{MemProcessor, PrecompileMemInputs};
-use zisk_common::{RangeChecker, OP};
+use zisk_common::{StdProvider, OP};
 use zisk_core::zisk_ops::ZiskOp;
 
 use crate::mem_inputs::{
@@ -20,7 +19,7 @@ const BLS12_381_COMPLEX_ADD_OP: u8 = ZiskOp::Bls12_381ComplexAdd.code();
 const BLS12_381_COMPLEX_SUB_OP: u8 = ZiskOp::Bls12_381ComplexSub.code();
 const BLS12_381_COMPLEX_MUL_OP: u8 = ZiskOp::Bls12_381ComplexMul.code();
 
-impl<F: PrimeField64, RC: RangeChecker> PrecompileMemInputs for ArithEq384SM<F, RC> {
+impl<STD: StdProvider> PrecompileMemInputs for ArithEq384SM<STD> {
     fn generate<P: MemProcessor>(
         addr_main: u32,
         step_main: u64,

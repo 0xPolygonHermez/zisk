@@ -13,8 +13,8 @@ use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::sync::Arc;
 use zisk_common::ChunkId;
-use zisk_common::RangeChecker;
 use zisk_common::StatsType;
+use zisk_common::StdProvider;
 use zisk_common::{BusDevice, CheckPoint, Instance, InstanceCtx, InstanceType, PayloadType};
 use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPacked};
 
@@ -22,9 +22,9 @@ use zisk_pil::{DmaUnalignedTrace, DmaUnalignedTraceRow, DmaUnalignedTraceRowPack
 ///
 /// It encapsulates the `DmaUnalignedSM` and its associated context, and it processes input data
 /// to compute witnesses for the DmaUnaligned State Machine.
-pub struct DmaUnalignedInstance<F: PrimeField64, RC: RangeChecker> {
+pub struct DmaUnalignedInstance<STD: StdProvider> {
     /// Dma state machine.
-    dma_unaligned_sm: Arc<DmaUnalignedSM<F, RC>>,
+    dma_unaligned_sm: Arc<DmaUnalignedSM<STD>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -33,7 +33,7 @@ pub struct DmaUnalignedInstance<F: PrimeField64, RC: RangeChecker> {
     is_last_segment: bool,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> DmaUnalignedInstance<F, RC> {
+impl<STD: StdProvider> DmaUnalignedInstance<STD> {
     /// Creates a new `DmaUnalignedInstance`.
     ///
     /// # Arguments
@@ -44,7 +44,7 @@ impl<F: PrimeField64, RC: RangeChecker> DmaUnalignedInstance<F, RC> {
     /// # Returns
     /// A new `DmaUnalignedInstance` instance initialized with the provided state machine and
     /// context.
-    pub fn new(dma_unaligned_sm: Arc<DmaUnalignedSM<F, RC>>, ictx: InstanceCtx) -> Self {
+    pub fn new(dma_unaligned_sm: Arc<DmaUnalignedSM<STD>>, ictx: InstanceCtx) -> Self {
         let is_last_segment = {
             let meta = ictx.plan.meta.as_ref().unwrap();
             let checkpoint = meta.downcast_ref::<DmaCheckPoint>().unwrap();
@@ -73,7 +73,7 @@ impl<F: PrimeField64, RC: RangeChecker> DmaUnalignedInstance<F, RC> {
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> Instance<F> for DmaUnalignedInstance<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> Instance<F> for DmaUnalignedInstance<STD> {
     /// Computes the witness for the Dma execution plan.
     ///
     /// This method leverages the `DmaUnalignedSM` to generate an `AirInstance` using the collected
@@ -119,14 +119,14 @@ impl<F: PrimeField64, RC: RangeChecker> Instance<F> for DmaUnalignedInstance<F, 
         )?;
 
         if packed {
-            Ok(Some(self.dma_unaligned_sm.compute_witness::<DmaUnalignedTraceRowPacked<F>>(
+            Ok(Some(self.dma_unaligned_sm.compute_witness::<F, DmaUnalignedTraceRowPacked<F>>(
                 &inputs,
                 segment_id,
                 self.is_last_segment,
                 trace_buffer,
             )?))
         } else {
-            Ok(Some(self.dma_unaligned_sm.compute_witness::<DmaUnalignedTraceRow<F>>(
+            Ok(Some(self.dma_unaligned_sm.compute_witness::<F, DmaUnalignedTraceRow<F>>(
                 &inputs,
                 segment_id,
                 self.is_last_segment,

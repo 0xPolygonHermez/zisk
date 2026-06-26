@@ -12,11 +12,9 @@ use mem_common::MemHelpers;
 use crate::{MemInput, MemModule, MemPreviousSegment};
 use mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
-use std::marker::PhantomData;
-
 use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
-use zisk_common::{RangeChecker, SegmentId};
+use zisk_common::{SegmentId, StdProvider};
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{
     InputDataAirValues, InputDataTrace, InputDataTraceRow, InputDataTraceRowOps,
@@ -42,30 +40,27 @@ const _: () = {
     );
 };
 
-pub struct InputDataSM<F: PrimeField64, RC: RangeChecker> {
+pub struct InputDataSM<STD: StdProvider> {
     /// PIL2 standard library
-    std: Arc<RC>,
+    std: Arc<STD>,
 
     /// Range check ID
     range_id: usize,
 
     /// Range check ID for the 16-bit chunks of the input values
     range_16bits_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+impl<STD: StdProvider> InputDataSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let range_id = std
             .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
             .expect("Failed to get range ID");
         let range_16bits_id =
             std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { range_16bits_id, std: std.clone(), range_id, _marker: PhantomData })
+        Arc::new(Self { range_16bits_id, std: std.clone(), range_id })
     }
     fn get_u16_values(&self, value: u64) -> [u16; 4] {
         [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
@@ -136,7 +131,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
     /// pre-sorted inputs instead of offset tables.
-    fn legacy_compute_witness(
+    fn legacy_compute_witness<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -146,7 +141,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.legacy_compute_witness_inner::<InputDataTraceRowPacked<F>>(
+            self.legacy_compute_witness_inner::<F, InputDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -154,7 +149,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
                 trace_buffer,
             )
         } else {
-            self.legacy_compute_witness_inner::<InputDataTraceRow<F>>(
+            self.legacy_compute_witness_inner::<F, InputDataTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -163,7 +158,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
             )
         }
     }
-    fn legacy_compute_witness_inner<R: InputDataTraceRowOps<F>>(
+    fn legacy_compute_witness_inner<F: PrimeField64, R: InputDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -347,7 +342,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets(
+    fn compute_witness_with_offsets<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -358,7 +353,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_with_offsets_inner::<InputDataTraceRowPacked<F>>(
+            self.compute_witness_with_offsets_inner::<F, InputDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -367,7 +362,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
                 seg,
             )
         } else {
-            self.compute_witness_with_offsets_inner::<InputDataTraceRow<F>>(
+            self.compute_witness_with_offsets_inner::<F, InputDataTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -401,7 +396,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F>>(
+    fn compute_witness_with_offsets_inner<F: PrimeField64, R: InputDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -581,7 +576,7 @@ impl<F: PrimeField64, RC: RangeChecker> InputDataSM<F, RC> {
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> MemModule<F> for InputDataSM<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> MemModule<F> for InputDataSM<STD> {
     fn get_addr_range(&self) -> (u32, u32) {
         (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
     }

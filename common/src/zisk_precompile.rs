@@ -101,21 +101,21 @@ macro_rules! zisk_precompile_explicit {
             // Manager
             // ============================================================
             #[allow(dead_code)]
-            pub struct [<$name Manager>]<F: ::fields::PrimeField64, RC: $crate::RangeChecker> {
-                [<$name:snake _sm>]: ::std::sync::Arc<$sm<F, RC>>,
+            pub struct [<$name Manager>]<STD: $crate::StdProvider> {
+                [<$name:snake _sm>]: ::std::sync::Arc<$sm<STD>>,
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> [<$name Manager>]<F, RC> {
-                pub fn new(std: ::std::sync::Arc<RC>) -> ::std::sync::Arc<Self> {
-                    let [<$name:snake _sm>] = <$sm<F, RC>>::new(std);
+            impl<STD: $crate::StdProvider> [<$name Manager>]<STD> {
+                pub fn new(std: ::std::sync::Arc<STD>) -> ::std::sync::Arc<Self> {
+                    let [<$name:snake _sm>] = <$sm<STD>>::new(std);
                     ::std::sync::Arc::new(Self { [<$name:snake _sm>] })
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> $crate::ComponentPlanBuilder<F>
-                for [<$name Manager>]<F, RC>
+            impl<F: ::fields::PrimeField64, STD: $crate::StdProvider> $crate::ComponentPlanBuilder<F>
+                for [<$name Manager>]<STD>
             {
-                type Counter = [<$name CounterInputGen>]<F, RC>;
+                type Counter = [<$name CounterInputGen>]<STD>;
 
                 fn counter(is_asm_emulator: ::std::primitive::bool) -> Self::Counter {
                     let mode = if is_asm_emulator {
@@ -123,7 +123,7 @@ macro_rules! zisk_precompile_explicit {
                     } else {
                         $crate::BusDeviceMode::Counter
                     };
-                    [<$name CounterInputGen>]::<F, RC>::new(mode)
+                    [<$name CounterInputGen>]::<STD>::new(mode)
                 }
 
                 fn planner(
@@ -131,7 +131,7 @@ macro_rules! zisk_precompile_explicit {
                 ) -> ::std::boxed::Box<dyn $crate::Planner> {
                     let num_available: ::std::primitive::usize = $num_available;
                     ::std::boxed::Box::new(
-                        [<$name Planner>]::<F, RC>::new().add_instance(
+                        [<$name Planner>]::<STD>::new().add_instance(
                             $crate::InstanceInfo::new(
                                 $air_group_id_path,
                                 $air_id_path,
@@ -143,8 +143,8 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> $crate::ComponentBuilder<F>
-                for [<$name Manager>]<F, RC>
+            impl<F: ::fields::PrimeField64, STD: $crate::StdProvider> $crate::ComponentBuilder<F>
+                for [<$name Manager>]<STD>
             {
                 fn build_instance(
                     &self,
@@ -165,19 +165,19 @@ macro_rules! zisk_precompile_explicit {
             // ============================================================
             // Planner
             // ============================================================
-            pub struct [<$name Planner>]<F: ::fields::PrimeField64, RC: $crate::RangeChecker> {
+            pub struct [<$name Planner>]<STD: $crate::StdProvider> {
                 instances_info: ::std::vec::Vec<$crate::InstanceInfo>,
                 tables_info: ::std::vec::Vec<$crate::TableInfo>,
-                _phantom: ::std::marker::PhantomData<(F, RC)>,
+                _phantom: ::std::marker::PhantomData<STD>,
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> ::std::default::Default for [<$name Planner>]<F, RC> {
+            impl<STD: $crate::StdProvider> ::std::default::Default for [<$name Planner>]<STD> {
                 fn default() -> Self {
                     Self::new()
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> [<$name Planner>]<F, RC> {
+            impl<STD: $crate::StdProvider> [<$name Planner>]<STD> {
                 pub fn new() -> Self {
                     Self {
                         instances_info: ::std::vec::Vec::new(),
@@ -197,7 +197,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> $crate::Planner for [<$name Planner>]<F, RC> {
+            impl<STD: $crate::StdProvider> $crate::Planner for [<$name Planner>]<STD> {
                 fn plan(
                     &self,
                     counters: ::std::vec::Vec<(
@@ -213,7 +213,7 @@ macro_rules! zisk_precompile_explicit {
 
                     counters.iter().for_each(|(chunk_id, counter)| {
                         let reg_counter = $crate::Metrics::as_any(&**counter)
-                            .downcast_ref::<[<$name CounterInputGen>]<F, RC>>()
+                            .downcast_ref::<[<$name CounterInputGen>]<STD>>()
                             .unwrap();
 
                         for (index, instance_info) in self.instances_info.iter().enumerate() {
@@ -266,14 +266,14 @@ macro_rules! zisk_precompile_explicit {
             // ============================================================
             // Instance
             // ============================================================
-            pub struct [<$name Instance>]<F: ::fields::PrimeField64, RC: $crate::RangeChecker> {
-                [<$name:snake _sm>]: ::std::sync::Arc<$sm<F, RC>>,
+            pub struct [<$name Instance>]<STD: $crate::StdProvider> {
+                [<$name:snake _sm>]: ::std::sync::Arc<$sm<STD>>,
                 ictx: $crate::InstanceCtx,
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> [<$name Instance>]<F, RC> {
+            impl<STD: $crate::StdProvider> [<$name Instance>]<STD> {
                 pub fn new(
-                    [<$name:snake _sm>]: ::std::sync::Arc<$sm<F, RC>>,
+                    [<$name:snake _sm>]: ::std::sync::Arc<$sm<STD>>,
                     ictx: $crate::InstanceCtx,
                 ) -> Self {
                     Self { [<$name:snake _sm>], ictx }
@@ -301,7 +301,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> $crate::Instance<F> for [<$name Instance>]<F, RC> {
+            impl<F: ::fields::PrimeField64, STD: $crate::StdProvider> $crate::Instance<F> for [<$name Instance>]<STD> {
                 fn compute_witness(
                     &self,
                     _pctx: &::proofman_common::ProofCtx<F>,
@@ -328,10 +328,10 @@ macro_rules! zisk_precompile_explicit {
 
                     if packed {
                         Ok(Some(self.[<$name:snake _sm>]
-                            .compute_witness::<$trace_row_packed<F>>(_sctx, &inputs, trace_buffer)?))
+                            .compute_witness::<F, $trace_row_packed<F>>(_sctx, &inputs, trace_buffer)?))
                     } else {
                         Ok(Some(self.[<$name:snake _sm>]
-                            .compute_witness::<$trace_row<F>>(_sctx, &inputs, trace_buffer)?))
+                            .compute_witness::<F, $trace_row<F>>(_sctx, &inputs, trace_buffer)?))
                     }
                 }
 
@@ -455,13 +455,13 @@ macro_rules! zisk_precompile_explicit {
             // should_skip`. The SM's PrecompileMemInputs impl handles any
             // inner sub-op match for multi-op precompiles.
             // ============================================================
-            pub struct [<$name CounterInputGen>]<F: ::fields::PrimeField64, RC: $crate::RangeChecker> {
+            pub struct [<$name CounterInputGen>]<STD: $crate::StdProvider> {
                 counter: $crate::Counter,
                 mode: $crate::BusDeviceMode,
-                _phantom: ::std::marker::PhantomData<(F, RC)>,
+                _phantom: ::std::marker::PhantomData<STD>,
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> [<$name CounterInputGen>]<F, RC> {
+            impl<STD: $crate::StdProvider> [<$name CounterInputGen>]<STD> {
                 pub fn new(mode: $crate::BusDeviceMode) -> Self {
                     Self {
                         counter: $crate::Counter::default(),
@@ -499,7 +499,7 @@ macro_rules! zisk_precompile_explicit {
                     match self.mode {
                         $crate::BusDeviceMode::Counter => {
                             $crate::Metrics::measure(self, data);
-                            <$sm<F, RC> as ::precompiles_common::PrecompileMemInputs>::generate(
+                            <$sm<STD> as ::precompiles_common::PrecompileMemInputs>::generate(
                                 addr_main, step_main, data, true, mem_processors,
                             );
                         }
@@ -507,12 +507,12 @@ macro_rules! zisk_precompile_explicit {
                             $crate::Metrics::measure(self, data);
                         }
                         $crate::BusDeviceMode::InputGenerator => {
-                            if <$sm<F, RC> as ::precompiles_common::PrecompileMemInputs>::should_skip(
+                            if <$sm<STD> as ::precompiles_common::PrecompileMemInputs>::should_skip(
                                 addr_main, data, mem_processors,
                             ) {
                                 return true;
                             }
-                            <$sm<F, RC> as ::precompiles_common::PrecompileMemInputs>::generate(
+                            <$sm<STD> as ::precompiles_common::PrecompileMemInputs>::generate(
                                 addr_main, step_main, data, false, mem_processors,
                             );
                         }
@@ -522,7 +522,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> $crate::Metrics for [<$name CounterInputGen>]<F, RC> {
+            impl<STD: $crate::StdProvider> $crate::Metrics for [<$name CounterInputGen>]<STD> {
                 #[inline(always)]
                 fn measure(&mut self, _data: &[u64]) {
                     self.counter.update(1);
@@ -533,10 +533,10 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> ::std::ops::Add for [<$name CounterInputGen>]<F, RC> {
-                type Output = [<$name CounterInputGen>]<F, RC>;
+            impl<STD: $crate::StdProvider> ::std::ops::Add for [<$name CounterInputGen>]<STD> {
+                type Output = [<$name CounterInputGen>]<STD>;
 
-                fn add(self, other: Self) -> [<$name CounterInputGen>]<F, RC> {
+                fn add(self, other: Self) -> [<$name CounterInputGen>]<STD> {
                     [<$name CounterInputGen>] {
                         counter: &self.counter + &other.counter,
                         mode: self.mode,
@@ -545,7 +545,7 @@ macro_rules! zisk_precompile_explicit {
                 }
             }
 
-            impl<F: ::fields::PrimeField64, RC: $crate::RangeChecker> $crate::BusDevice<u64> for [<$name CounterInputGen>]<F, RC> {
+            impl<STD: $crate::StdProvider> $crate::BusDevice<u64> for [<$name CounterInputGen>]<STD> {
                 fn as_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn ::std::any::Any> {
                     self
                 }

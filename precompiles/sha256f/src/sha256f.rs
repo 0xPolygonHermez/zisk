@@ -1,5 +1,4 @@
 use core::panic;
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
@@ -7,8 +6,8 @@ use rayon::prelude::*;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::{OperationSha256Data, RangeChecker};
-use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowOps};
+use zisk_common::{OperationSha256Data, StdProvider};
+use zisk_pil::{Sha256fTrace, Sha256fTraceRowOps};
 
 use super::sha256f_constants::*;
 
@@ -37,9 +36,9 @@ impl Sha256fInput {
 }
 
 /// The `Sha256fSM` struct encapsulates the logic of the Sha256f State Machine.
-pub struct Sha256fSM<F: PrimeField64, RC: RangeChecker> {
+pub struct Sha256fSM<STD: StdProvider> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<RC>,
+    pub std: Arc<STD>,
 
     /// Number of available sha256fs in the trace.
     pub num_available_sha256fs: usize,
@@ -49,32 +48,22 @@ pub struct Sha256fSM<F: PrimeField64, RC: RangeChecker> {
     /// Range checks ID's
     a_range_id: usize,
     e_range_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> Sha256fSM<F, RC> {
+impl<STD: StdProvider> Sha256fSM<STD> {
     /// Creates a new Sha256f State Machine instance.
     ///
     /// # Returns
     /// A new `Sha256fSM` instance.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_sha256fs = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
-        let num_non_usable_rows = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS % CLOCKS;
+        let num_available_sha256fs = Sha256fTrace::<()>::NUM_ROWS / CLOCKS - 1;
+        let num_non_usable_rows = Sha256fTrace::<()>::NUM_ROWS % CLOCKS;
 
         let a_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
         let e_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self {
-            std,
-            num_available_sha256fs,
-            num_non_usable_rows,
-            a_range_id,
-            e_range_id,
-            _marker: PhantomData,
-        })
+        Arc::new(Self { std, num_available_sha256fs, num_non_usable_rows, a_range_id, e_range_id })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -85,7 +74,7 @@ impl<F: PrimeField64, RC: RangeChecker> Sha256fSM<F, RC> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input<R: Sha256fTraceRowOps<F>>(
+    pub fn process_input<F: PrimeField64, R: Sha256fTraceRowOps<F>>(
         &self,
         input: &Sha256fInput,
         trace: &mut [R],
@@ -372,7 +361,7 @@ impl<F: PrimeField64, RC: RangeChecker> Sha256fSM<F, RC> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Sha256fTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: Sha256fTraceRowOps<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<Sha256fInput>],
@@ -426,7 +415,7 @@ impl<F: PrimeField64, RC: RangeChecker> Sha256fSM<F, RC> {
             .map(|(index, trace)| {
                 let input_index = inputs_indexes[index];
                 let input = &inputs[input_index.0][input_index.1];
-                self.process_input::<R>(input, trace)
+                self.process_input::<F, R>(input, trace)
             })
             .collect();
 

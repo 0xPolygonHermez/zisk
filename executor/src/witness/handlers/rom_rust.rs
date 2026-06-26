@@ -2,7 +2,7 @@
 
 use fields::PrimeField64;
 use sm_rom::RomInstance;
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 
 use super::{SecnInstanceMap, SecnInstanceMapRef};
 use crate::error::{ExecutorError, ExecutorResult};
@@ -10,9 +10,9 @@ use crate::ports::{Dctx, GlobalId};
 use crate::state::ExecutionState;
 
 /// Pre-calculate hook for Rust ROM.
-pub(crate) fn pre_calculate<'a, F: PrimeField64, RC: RangeChecker>(
+pub(crate) fn pre_calculate<'a, F: PrimeField64, STD: StdProvider>(
     registry: &dyn Dctx,
-    state: &ExecutionState<F, RC>,
+    state: &ExecutionState<F, STD>,
     secn_instances: &'a SecnInstanceMap<F>,
     instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
     global_id: usize,
@@ -43,7 +43,7 @@ mod tests {
     use fields::Goldilocks;
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
-    use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, NoopRangeChecker, Plan};
+    use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, NoopStdProvider, Plan};
     use zisk_core::ZiskRom;
 
     type F = Goldilocks;
@@ -69,7 +69,7 @@ mod tests {
 
     fn run_pre_calculate<'a>(
         registry: &FakeProofRegistry,
-        state: &ExecutionState<F, NoopRangeChecker>,
+        state: &ExecutionState<F, NoopStdProvider>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
     ) -> ExecutorResult<()> {
@@ -91,7 +91,7 @@ mod tests {
         secn_instances.insert(GID, make_rom_instance(None));
 
         let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F, NoopRangeChecker> = ExecutionState::new();
+        let state: ExecutionState<F, NoopStdProvider> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
@@ -112,7 +112,7 @@ mod tests {
         secn_instances.insert(GID, make_rom_instance(Some(rh_data)));
 
         let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F, NoopRangeChecker> = ExecutionState::new();
+        let state: ExecutionState<F, NoopStdProvider> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
@@ -131,7 +131,7 @@ mod tests {
     fn pre_calculate_errors_when_instance_missing() {
         let secn_instances: SecnInstanceMap<F> = HashMap::new(); // empty
         let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F, NoopRangeChecker> = ExecutionState::new();
+        let state: ExecutionState<F, NoopStdProvider> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         let err = run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)

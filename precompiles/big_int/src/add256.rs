@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
@@ -7,9 +6,7 @@ use rayon::prelude::*;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-use zisk_common::{
-    OperationAdd256Data, RangeChecker, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP,
-};
+use zisk_common::{OperationAdd256Data, StdProvider, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
 use zisk_pil::{Add256Trace, Add256TraceRowOps};
 
 use super::add256_constants::{PARAM_CHUNKS, START_READ_PARAMS};
@@ -45,32 +42,29 @@ impl Add256Input {
 }
 
 /// The `Add256SM` struct encapsulates the logic of the Add256 State Machine.
-pub struct Add256SM<F: PrimeField64, RC: RangeChecker> {
+pub struct Add256SM<STD: StdProvider> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<RC>,
+    pub std: Arc<STD>,
 
     /// Number of available add256s in the trace.
     pub num_availables: usize,
 
     /// Range checks ID's
     range_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> Add256SM<F, RC> {
+impl<STD: StdProvider> Add256SM<STD> {
     /// Creates a new Add256 State Machine instance.
     ///
     /// # Returns
     /// A new `Add256SM` instance.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Compute some useful values
         let num_availables = Add256Trace::<()>::NUM_ROWS;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).unwrap();
 
-        Arc::new(Self { std, num_availables, range_id, _marker: PhantomData })
+        Arc::new(Self { std, num_availables, range_id })
     }
 
     /// Processes a slice of operation data, updating the trace.
@@ -79,7 +73,7 @@ impl<F: PrimeField64, RC: RangeChecker> Add256SM<F, RC> {
     /// * `trace` - A mutable reference to the Add256 trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_slice<R: Add256TraceRowOps<F>>(
+    pub fn process_slice<F: PrimeField64, R: Add256TraceRowOps<F>>(
         &self,
         input: &Add256Input,
         trace: &mut R,
@@ -151,7 +145,7 @@ impl<F: PrimeField64, RC: RangeChecker> Add256SM<F, RC> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Add256TraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: Add256TraceRowOps<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<Add256Input>],
@@ -191,7 +185,7 @@ impl<F: PrimeField64, RC: RangeChecker> Add256SM<F, RC> {
 
                 // Sum all local arrays into a global one
                 for (input, trace_row) in input_chunk.iter().zip(trace_chunk.iter_mut()) {
-                    self.process_slice(input, trace_row, &mut local_multiplicities);
+                    self.process_slice::<F, R>(input, trace_row, &mut local_multiplicities);
                 }
 
                 local_multiplicities

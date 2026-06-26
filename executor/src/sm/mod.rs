@@ -20,29 +20,29 @@ use std::sync::Arc;
 use crate::error::{ExecutorError, ExecutorResult};
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
-use zisk_common::{Instance, InstanceCtx, NoopRangeChecker, Plan, RangeChecker};
+use zisk_common::{Instance, InstanceCtx, NoopStdProvider, Plan, StdProvider};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
 use asm_runner::AsmRunnerRH;
 
 use zisk_core::ZiskRom;
 
-pub type SMType<F, RC> = (SMAirType, StateMachines<F, RC>);
+pub type SMType<STD> = (SMAirType, StateMachines<STD>);
 
-pub enum StateMachines<F: PrimeField64, RC: RangeChecker> {
-    Builtin(BuiltinSMs<F, RC>),
-    Precompile(Precompiles<F, RC>),
+pub enum StateMachines<STD: StdProvider> {
+    Builtin(BuiltinSMs<STD>),
+    Precompile(Precompiles<STD>),
 }
 
-impl<F: PrimeField64, RC: RangeChecker> StateMachines<F, RC> {
-    fn configure_instances(&self, pctx: &ProofCtx<F>, plans: &[Plan]) {
+impl<STD: StdProvider> StateMachines<STD> {
+    fn configure_instances<F: PrimeField64>(&self, pctx: &ProofCtx<F>, plans: &[Plan]) {
         match self {
             Self::Builtin(b) => b.configure_instances(pctx, plans),
             Self::Precompile(p) => p.configure_instances(pctx, plans),
         }
     }
 
-    fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
+    fn build_instance<F: PrimeField64>(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match self {
             Self::Builtin(b) => b.build_instance(ictx),
             Self::Precompile(p) => p.build_instance(ictx),
@@ -50,21 +50,24 @@ impl<F: PrimeField64, RC: RangeChecker> StateMachines<F, RC> {
     }
 }
 
-pub struct StaticSMBundle<F: PrimeField64, RC: RangeChecker> {
+pub struct StaticSMBundle<STD: StdProvider> {
     /// Every built-in and precompile SM registered in this bundle.
-    sm: Vec<SMType<F, RC>>,
+    sm: Vec<SMType<STD>>,
 
     /// The range-checker (`Std` in production, a no-op stand-in such as
-    /// `NoopRangeChecker` for tests / standalone) shared
+    /// `NoopStdProvider` for tests / standalone) shared
     /// across built-in SMs and precompiles.
-    std: Arc<RC>,
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> StaticSMBundle<F, RC> {
+impl<STD: StdProvider> StaticSMBundle<STD> {
     /// Construct the bundle with the built-in SMs (Rom, Mem, Binary,
     /// Arith, Dma) created internally + the caller-supplied precompiles.
-    pub fn new(std: Arc<RC>, precompiles: Vec<(usize, Precompiles<F, RC>)>) -> Self {
-        let sm: Vec<SMType<F, RC>> = BuiltinSMs::all(std.clone())
+    pub fn new<F: PrimeField64>(
+        std: Arc<STD>,
+        precompiles: Vec<(usize, Precompiles<STD>)>,
+    ) -> Self {
+        let sm: Vec<SMType<STD>> = BuiltinSMs::all::<F>(std.clone())
             .into_iter()
             .map(|(ids, b)| (ids, StateMachines::Builtin(b)))
             .chain(precompiles.into_iter().map(|(air_id, p)| {
@@ -100,12 +103,16 @@ impl<F: PrimeField64, RC: RangeChecker> StaticSMBundle<F, RC> {
     }
 
     /// Getter for the shared range-checker in the bundle, used by built-in SMs and precompiles.
-    pub fn get_std(&self) -> Arc<RC> {
+    pub fn get_std(&self) -> Arc<STD> {
         self.std.clone()
     }
 
     /// Configure the instances of the SMs in the bundle for the given plans.
-    pub fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &BTreeMap<usize, Vec<Plan>>) {
+    pub fn configure_instances<F: PrimeField64>(
+        &self,
+        pctx: &ProofCtx<F>,
+        plannings: &BTreeMap<usize, Vec<Plan>>,
+    ) {
         for (pos, (_, sm)) in self.sm.iter().enumerate() {
             if let Some(plans) = plannings.get(&pos) {
                 sm.configure_instances(pctx, plans);
@@ -114,7 +121,10 @@ impl<F: PrimeField64, RC: RangeChecker> StaticSMBundle<F, RC> {
     }
 
     /// Builds an instance of the SM in the bundle matching the given `InstanceCtx`.
-    pub fn build_instance(&self, ictx: InstanceCtx) -> ExecutorResult<Box<dyn Instance<F>>> {
+    pub fn build_instance<F: PrimeField64>(
+        &self,
+        ictx: InstanceCtx,
+    ) -> ExecutorResult<Box<dyn Instance<F>>> {
         let airgroup_id = ictx.plan.airgroup_id;
         let air_id = ictx.plan.air_id;
 
@@ -150,9 +160,9 @@ pub fn plan_sec<F: PrimeField64>(
     for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION] {
         if let Some(counters) = vec_counters.remove(&pos) {
             // The planner produced is range-checker-independent, so the `RC`
-            // selector here is irrelevant — use the no-op `NoopRangeChecker` token.
+            // selector here is irrelevant — use the no-op `NoopStdProvider` token.
             let planner =
-                BuiltinSMs::<F, NoopRangeChecker>::planner_for_position(pos, is_asm_emulator);
+                BuiltinSMs::<NoopStdProvider>::planner_for_position::<F>(pos, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));
         }
     }
@@ -161,7 +171,7 @@ pub fn plan_sec<F: PrimeField64>(
         let pos = BUILTIN_COUNT + i;
         if let Some(counters) = vec_counters.remove(&pos) {
             let planner =
-                Precompiles::<F, NoopRangeChecker>::planner_for_air_id(air_id, is_asm_emulator);
+                Precompiles::<NoopStdProvider>::planner_for_air_id::<F>(air_id, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));
         }
     }

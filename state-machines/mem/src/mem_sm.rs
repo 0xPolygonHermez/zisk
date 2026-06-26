@@ -1,6 +1,5 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
-use zisk_common::{RangeChecker, SegmentId};
+use zisk_common::{SegmentId, StdProvider};
 use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
 
 #[cfg(feature = "debug_mem")]
@@ -22,15 +21,12 @@ use zisk_core::{RAM_ADDR, RAM_SIZE};
 const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
 const OFFSET_USE_FLAG: u32 = 0x4000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x3FFF_FFFF;
-pub struct MemSM<F: PrimeField64, RC: RangeChecker> {
+pub struct MemSM<STD: StdProvider> {
     /// PIL2 standard library
-    std: Arc<RC>,
+    std: Arc<STD>,
 
     range_22bits_id: usize,
     range_16bits_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 #[derive(Debug, Default)]
 pub struct MemPreviousSegment {
@@ -40,14 +36,14 @@ pub struct MemPreviousSegment {
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+impl<STD: StdProvider> MemSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let range_22bits_id =
             std.get_range_id(0, (1 << 22) - 1, None).expect("Failed to get 22 bits range ID");
         let range_16bits_id =
             std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get 16 bits range ID");
 
-        Arc::new(Self { range_22bits_id, range_16bits_id, std: std.clone(), _marker: PhantomData })
+        Arc::new(Self { range_22bits_id, range_16bits_id, std: std.clone() })
     }
 
     pub fn get_to_addr() -> u32 {
@@ -252,7 +248,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
     /// pre-sorted inputs instead of offset tables.
-    fn legacy_compute_witness(
+    fn legacy_compute_witness<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -262,7 +258,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.legacy_compute_witness_inner::<MemTraceRowPacked<F>>(
+            self.legacy_compute_witness_inner::<F, MemTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -270,7 +266,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
                 trace_buffer,
             )
         } else {
-            self.legacy_compute_witness_inner::<MemTraceRow<F>>(
+            self.legacy_compute_witness_inner::<F, MemTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -279,7 +275,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
             )
         }
     }
-    fn legacy_compute_witness_inner<R: MemTraceRowOps<F>>(
+    fn legacy_compute_witness_inner<F: PrimeField64, R: MemTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -520,7 +516,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets(
+    fn compute_witness_with_offsets<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -531,7 +527,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
+            self.compute_witness_with_offsets_inner::<F, MemTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -540,7 +536,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
                 seg,
             )
         } else {
-            self.compute_witness_with_offsets_inner::<MemTraceRow<F>>(
+            self.compute_witness_with_offsets_inner::<F, MemTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -575,7 +571,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: MemTraceRowOps<F>>(
+    fn compute_witness_with_offsets_inner<F: PrimeField64, R: MemTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -904,7 +900,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemSM<F, RC> {
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> MemModule<F> for MemSM<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> MemModule<F> for MemSM<STD> {
     fn get_addr_range(&self) -> (u32, u32) {
         (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
     }

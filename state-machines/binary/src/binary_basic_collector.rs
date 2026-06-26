@@ -4,14 +4,14 @@
 
 use crate::{BinaryBasicFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, VirtualTableSink, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CollectSkipper, StdProvider, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 use std::sync::Arc;
 
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector<S: VirtualTableSink> {
+pub struct BinaryBasicCollector<S: StdProvider> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
@@ -32,7 +32,7 @@ pub struct BinaryBasicCollector<S: VirtualTableSink> {
     witness: Arc<S>,
 }
 
-impl<S: VirtualTableSink> BinaryBasicCollector<S> {
+impl<S: StdProvider> BinaryBasicCollector<S> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
@@ -48,7 +48,9 @@ impl<S: VirtualTableSink> BinaryBasicCollector<S> {
         force_execute_to_end: bool,
         witness: Arc<S>,
     ) -> Self {
-        let frops_table_id = witness.virtual_table_id(BinaryBasicFrops::TABLE_ID);
+        let frops_table_id = witness
+            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
+            .expect("get_virtual_table_id failed");
 
         Self {
             inputs: Vec::with_capacity(num_operations),
@@ -100,7 +102,7 @@ impl<S: VirtualTableSink> BinaryBasicCollector<S> {
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.witness.inc_row_one(self.frops_table_id, frops_row);
+            self.witness.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -114,7 +116,7 @@ impl<S: VirtualTableSink> BinaryBasicCollector<S> {
     }
 }
 
-impl<S: VirtualTableSink> BusDevice<u64> for BinaryBasicCollector<S> {
+impl<S: StdProvider> BusDevice<u64> for BinaryBasicCollector<S> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

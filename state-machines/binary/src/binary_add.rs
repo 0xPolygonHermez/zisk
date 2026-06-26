@@ -5,23 +5,20 @@
 use fields::PrimeField64;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
-use std::marker::PhantomData;
 use std::sync::Arc;
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRowOps};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
-pub struct BinaryAddSM<F: PrimeField64, RC: RangeChecker> {
+pub struct BinaryAddSM<STD: StdProvider> {
     /// Range-check / virtual-table sink (the real `Std` in production).
-    std: Arc<RC>,
+    std: Arc<STD>,
     range_id: usize,
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> BinaryAddSM<F, RC> {
+impl<STD: StdProvider> BinaryAddSM<STD> {
     /// Creates a new BinaryAdd State Machine instance.
     ///
     /// # Arguments/// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
@@ -29,11 +26,11 @@ impl<F: PrimeField64, RC: RangeChecker> BinaryAddSM<F, RC> {
     ///
     /// # Returns
     /// A new `BinaryAddSM` instance.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
 
         // Create the BinaryAdd state machine
-        Arc::new(Self { std, range_id, _marker: PhantomData })
+        Arc::new(Self { std, range_id })
     }
 
     /// Processes a slice of operation data, generating a trace row and updating multiplicities.
@@ -45,7 +42,7 @@ impl<F: PrimeField64, RC: RangeChecker> BinaryAddSM<F, RC> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<R: BinaryAddTraceRowOps<F>>(
+    pub fn process_slice<F: PrimeField64, R: BinaryAddTraceRowOps<F>>(
         &self,
         row: &mut R,
         input: &[u64; 2],
@@ -101,7 +98,7 @@ impl<F: PrimeField64, RC: RangeChecker> BinaryAddSM<F, RC> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: BinaryAddTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: BinaryAddTraceRowOps<F>>(
         &self,
         inputs: &[Vec<[u64; 2]>],
         trace_buffer: Vec<F>,
@@ -130,7 +127,7 @@ impl<F: PrimeField64, RC: RangeChecker> BinaryAddSM<F, RC> {
             .zip(add_trace.buffer.par_iter_mut())
             .zip(range_checks.par_iter_mut())
             .for_each(|((input, trace_row), range_check)| {
-                let checks = self.process_slice::<R>(trace_row, input);
+                let checks = self.process_slice::<F, R>(trace_row, input);
                 *range_check = checks;
             });
 

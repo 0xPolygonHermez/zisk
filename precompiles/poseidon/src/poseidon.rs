@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::{
@@ -9,9 +8,9 @@ use rayon::prelude::*;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::{OperationPoseidonData, RangeChecker, OP};
+use zisk_common::{OperationPoseidonData, StdProvider, OP};
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowOps};
+use zisk_pil::{PoseidonTrace, PoseidonTraceRowOps};
 
 /// Per-operation input record assembled from the bus payload.
 ///
@@ -41,30 +40,27 @@ impl PoseidonInput {
 
 /// The `PoseidonSM` struct encapsulates the logic of the Poseidon State Machine,
 /// serving both the Poseidon1 and Poseidon2 hash families.
-pub struct PoseidonSM<F: PrimeField64, RC: RangeChecker> {
+pub struct PoseidonSM<STD: StdProvider> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<RC>,
+    pub std: Arc<STD>,
 
     /// Number of available poseidon permutations in the trace.
     pub num_available_poseidons: usize,
 
     range_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
 pub const CLOCKS: usize = 14;
 
-impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
+impl<STD: StdProvider> PoseidonSM<STD> {
     /// Creates a new Poseidon State Machine instance.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_poseidons = PoseidonTrace::<PoseidonTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
+        let num_available_poseidons = PoseidonTrace::<()>::NUM_ROWS / CLOCKS - 1;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { std, num_available_poseidons, range_id, _marker: PhantomData })
+        Arc::new(Self { std, num_available_poseidons, range_id })
     }
 
     /// Processes a slice of operation data, updating the trace and multiplicities.
@@ -77,7 +73,7 @@ impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
     ///   `is_active` (the PIL range check is gated by `mem_sel`, which is zero on
     ///   padding rows).
     #[inline(always)]
-    pub fn process_input<R: PoseidonTraceRowOps<F>>(
+    pub fn process_input<F: PrimeField64, R: PoseidonTraceRowOps<F>>(
         &self,
         trace: &mut [R],
         input: &PoseidonInput,
@@ -89,9 +85,9 @@ impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
         // round computation differs.
         let sel_poseidon1 = input.is_poseidon1;
         let round_states = if sel_poseidon1 {
-            Self::compute_round_states_poseidon1(&input.state)
+            Self::compute_round_states_poseidon1::<F>(&input.state)
         } else {
-            Self::compute_round_states_poseidon2(&input.state)
+            Self::compute_round_states_poseidon2::<F>(&input.state)
         };
 
         for r in 0..CLOCKS {
@@ -142,7 +138,9 @@ impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
     /// Computes the 14 per-clock round states for the Poseidon2 permutation,
     /// laid out to match the Poseidon2 constraints in poseidon.pil.
     #[inline(always)]
-    fn compute_round_states_poseidon2(input_state: &[u64; 16]) -> [[u64; 16]; CLOCKS] {
+    fn compute_round_states_poseidon2<F: PrimeField64>(
+        input_state: &[u64; 16],
+    ) -> [[u64; 16]; CLOCKS] {
         let mut round_states = [[0u64; 16]; CLOCKS];
         round_states[0] = *input_state;
 
@@ -213,7 +211,9 @@ impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
     ///   row 13 : M·(pow7(row12))                        (final, no ARC)
     /// ```
     #[inline(always)]
-    fn compute_round_states_poseidon1(input_state: &[u64; 16]) -> [[u64; 16]; CLOCKS] {
+    fn compute_round_states_poseidon1<F: PrimeField64>(
+        input_state: &[u64; 16],
+    ) -> [[u64; 16]; CLOCKS] {
         const W: usize = 16;
         const HALF: usize = 4; // Poseidon1_16::HALF_FULL_ROUNDS
         const NP: usize = 22; // Poseidon1_16::N_PARTIAL_ROUNDS
@@ -315,7 +315,7 @@ impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: PoseidonTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: PoseidonTraceRowOps<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<PoseidonInput>],
@@ -367,7 +367,7 @@ impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
                 |mut range_checks, (index, trace)| {
                     let input_index = inputs_indexes[index];
                     let input = &inputs[input_index.0][input_index.1];
-                    self.process_input::<R>(trace, input, true, &mut range_checks);
+                    self.process_input::<F, R>(trace, input, true, &mut range_checks);
                     range_checks
                 },
             )
@@ -398,7 +398,7 @@ impl<F: PrimeField64, RC: RangeChecker> PoseidonSM<F, RC> {
 
         // Process padding in parallel
         if let Some((first, rest)) = padding_chunks.split_first_mut() {
-            self.process_input::<R>(
+            self.process_input::<F, R>(
                 first,
                 &PoseidonInput { state: [0; 16], step_main: 0, addr_main: 0, is_poseidon1: false },
                 false,

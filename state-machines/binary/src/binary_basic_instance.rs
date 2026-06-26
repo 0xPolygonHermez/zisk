@@ -11,7 +11,7 @@ use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType, RangeChecker,
+    PayloadType, StdProvider,
 };
 use zisk_pil::{BinaryTrace, BinaryTraceRow, BinaryTraceRowPacked};
 
@@ -19,9 +19,9 @@ use zisk_pil::{BinaryTrace, BinaryTraceRow, BinaryTraceRowPacked};
 ///
 /// It encapsulates the `BinaryBasicSM` and its associated context, and it processes input data
 /// to compute witnesses for binary operations.
-pub struct BinaryBasicInstance<F: PrimeField64, RC: RangeChecker> {
+pub struct BinaryBasicInstance<STD: StdProvider> {
     /// Binary Basic state machine.
-    binary_basic_sm: Arc<BinaryBasicSM<F, RC>>,
+    binary_basic_sm: Arc<BinaryBasicSM<STD>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -33,10 +33,10 @@ pub struct BinaryBasicInstance<F: PrimeField64, RC: RangeChecker> {
     collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
 
     /// Range-check / virtual-table sink (the real `Std` in production).
-    std: Arc<RC>,
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> BinaryBasicInstance<F, RC> {
+impl<STD: StdProvider> BinaryBasicInstance<STD> {
     /// Creates a new `BinaryBasicInstance`.
     ///
     /// # Arguments
@@ -47,9 +47,9 @@ impl<F: PrimeField64, RC: RangeChecker> BinaryBasicInstance<F, RC> {
     /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
     /// context.
     pub fn new(
-        binary_basic_sm: Arc<BinaryBasicSM<F, RC>>,
+        binary_basic_sm: Arc<BinaryBasicSM<STD>>,
         mut ictx: InstanceCtx,
-        std: Arc<RC>,
+        std: Arc<STD>,
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
@@ -67,7 +67,7 @@ impl<F: PrimeField64, RC: RangeChecker> BinaryBasicInstance<F, RC> {
         Self { binary_basic_sm, ictx, with_adds, collect_info, std }
     }
 
-    pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<RC> {
+    pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<STD> {
         let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         BinaryBasicCollector::new(
             num_ops as usize,
@@ -79,7 +79,7 @@ impl<F: PrimeField64, RC: RangeChecker> BinaryBasicInstance<F, RC> {
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> Instance<F> for BinaryBasicInstance<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> Instance<F> for BinaryBasicInstance<STD> {
     /// Computes the witness for the binary execution plan.
     ///
     /// This method leverages the `BinaryBasicSM` to generate an `AirInstance` using the collected
@@ -103,7 +103,8 @@ impl<F: PrimeField64, RC: RangeChecker> Instance<F> for BinaryBasicInstance<F, R
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
-                let _collector = collector.as_any().downcast::<BinaryBasicCollector<RC>>().unwrap();
+                let _collector =
+                    collector.as_any().downcast::<BinaryBasicCollector<STD>>().unwrap();
                 _collector.inputs
             })
             .collect();
@@ -111,11 +112,12 @@ impl<F: PrimeField64, RC: RangeChecker> Instance<F> for BinaryBasicInstance<F, R
         if packed {
             Ok(Some(
                 self.binary_basic_sm
-                    .compute_witness::<BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?,
+                    .compute_witness::<F, BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?,
             ))
         } else {
             Ok(Some(
-                self.binary_basic_sm.compute_witness::<BinaryTraceRow<F>>(&inputs, trace_buffer)?,
+                self.binary_basic_sm
+                    .compute_witness::<F, BinaryTraceRow<F>>(&inputs, trace_buffer)?,
             ))
         }
     }

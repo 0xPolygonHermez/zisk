@@ -5,23 +5,23 @@ use std::sync::{PoisonError, RwLock};
 
 use fields::PrimeField64;
 use sm_main::MainInstance;
-use zisk_common::{Instance, RangeChecker};
+use zisk_common::{Instance, StdProvider};
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
 ///
 /// `RC` is the range-checker the main instances are built with (the real
-/// `Std` in production, a no-op stand-in such as `NoopRangeChecker` for
+/// `Std` in production, a no-op stand-in such as `NoopStdProvider` for
 /// tests / standalone). Secondary instances are stored as `dyn Instance<F>`
 /// trait objects, so they carry no `RC`.
-pub struct InstanceSet<F: PrimeField64, RC: RangeChecker> {
+pub struct InstanceSet<F: PrimeField64, STD: StdProvider> {
     /// Main state machine instances, indexed by their global ID.
-    pub main_instances: RwLock<HashMap<usize, MainInstance<F, RC>>>,
+    pub main_instances: RwLock<HashMap<usize, MainInstance<STD>>>,
 
     /// Secondary state machine instances, indexed by their global ID.
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> InstanceSet<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> InstanceSet<F, STD> {
     /// Construct an empty set.
     pub fn new() -> Self {
         Self {
@@ -47,7 +47,7 @@ impl<F: PrimeField64, RC: RangeChecker> InstanceSet<F, RC> {
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> Default for InstanceSet<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> Default for InstanceSet<F, STD> {
     fn default() -> Self {
         Self::new()
     }
@@ -57,25 +57,25 @@ impl<F: PrimeField64, RC: RangeChecker> Default for InstanceSet<F, RC> {
 mod tests {
     use super::*;
     use fields::Goldilocks;
-    use zisk_common::NoopRangeChecker;
+    use zisk_common::NoopStdProvider;
 
     type F = Goldilocks;
 
     #[test]
     fn new_is_empty() {
-        let set: InstanceSet<F, NoopRangeChecker> = InstanceSet::new();
+        let set: InstanceSet<F, NoopStdProvider> = InstanceSet::new();
         assert!(set.is_empty());
     }
 
     #[test]
     fn default_matches_new() {
-        let set: InstanceSet<F, NoopRangeChecker> = InstanceSet::default();
+        let set: InstanceSet<F, NoopStdProvider> = InstanceSet::default();
         assert!(set.is_empty());
     }
 
     #[test]
     fn reset_clears_maps() {
-        let set: InstanceSet<F, NoopRangeChecker> = InstanceSet::new();
+        let set: InstanceSet<F, NoopStdProvider> = InstanceSet::new();
         // Direct field access keeps tests honest — InstanceSet exposes
         // the two locks so the caller can populate them; the contract
         // here is that `reset` blanks both regardless of how they got
@@ -89,7 +89,7 @@ mod tests {
         use std::panic::{catch_unwind, AssertUnwindSafe};
         use std::sync::Arc;
 
-        let set: Arc<InstanceSet<F, NoopRangeChecker>> = Arc::new(InstanceSet::new());
+        let set: Arc<InstanceSet<F, NoopStdProvider>> = Arc::new(InstanceSet::new());
         let set_for_panic = set.clone();
         let _ = catch_unwind(AssertUnwindSafe(|| {
             let _guard = set_for_panic.main_instances.write().unwrap();

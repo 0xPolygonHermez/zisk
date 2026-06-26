@@ -2,7 +2,7 @@
 
 use fields::PrimeField64;
 use proofman_common::BufferPool;
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ExecutionState, WitnessGenerator};
@@ -12,9 +12,9 @@ pub struct MainWitnessHandler;
 
 impl MainWitnessHandler {
     /// Compute the witness for `global_id`.
-    pub fn dispatch<F: PrimeField64, RC: RangeChecker>(
+    pub fn dispatch<F: PrimeField64, STD: StdProvider>(
         generator: &WitnessGenerator,
-        state: &ExecutionState<F, RC>,
+        state: &ExecutionState<F, STD>,
         pctx: &proofman_common::ProofCtx<F>,
         global_id: usize,
         buffer_pool: &dyn BufferPool<F>,

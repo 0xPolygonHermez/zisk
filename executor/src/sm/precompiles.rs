@@ -1,8 +1,8 @@
 //! Precompile registry — the declarative source of truth for every
 //! precompile available to the executor.
 //!
-//! The `register_precompiles!` macro emits `Precompiles<F>` (with its
-//! `all` constructor), `PrecompileCounters<F>`, `PrecompileCollectors<F>`,
+//! The `register_precompiles!` macro emits `Precompiles<STD>` (with its
+//! `all` constructor), `PrecompileCounters`, `PrecompileCollectors<STD>`,
 //! plus the `PRECOMPILE_AIR_IDS` / `PRECOMPILE_RANK_ASSIGN` const slices
 //! from the one-liner-per-precompile list below. Per-precompile types
 //! (`*Manager`, `*CounterInputGen`, `*Instance`, `*Collector`) are

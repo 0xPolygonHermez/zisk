@@ -6,7 +6,7 @@ use precomp_dma::{DmaCounterInputGen, DmaManager};
 use sm_arith::{ArithCounterInputGen, ArithSM};
 use sm_binary::{BinaryCounter, BinarySM};
 use sm_mem::Mem;
-use zisk_common::{ComponentPlanBuilder, NoopRangeChecker};
+use zisk_common::{ComponentPlanBuilder, NoopStdProvider};
 use zisk_core::MemDataSection;
 
 use super::state_machines::{ARITH_POSITION, BINARY_POSITION, DMA_POSITION, MEM_POSITION};
@@ -28,8 +28,7 @@ impl BuiltinCounters {
         let mem = if is_asm {
             None
         } else {
-            let mut counter =
-                <Mem<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::counter(is_asm);
+            let mut counter = <Mem<NoopStdProvider> as ComponentPlanBuilder<F>>::counter(is_asm);
             if let Some(mem_sections) = mem_sections {
                 counter.init_with_mem_sections(mem_sections);
             }
@@ -39,15 +38,15 @@ impl BuiltinCounters {
             mem: (MEM_POSITION, mem),
             binary: (
                 BINARY_POSITION,
-                <BinarySM<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::counter(is_asm),
+                <BinarySM<NoopStdProvider> as ComponentPlanBuilder<F>>::counter(is_asm),
             ),
             arith: (
                 ARITH_POSITION,
-                <ArithSM<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::counter(is_asm),
+                <ArithSM<NoopStdProvider> as ComponentPlanBuilder<F>>::counter(is_asm),
             ),
             dma: (
                 DMA_POSITION,
-                <DmaManager<F, NoopRangeChecker> as ComponentPlanBuilder<F>>::counter(is_asm),
+                <DmaManager<NoopStdProvider> as ComponentPlanBuilder<F>>::counter(is_asm),
             ),
         }
     }

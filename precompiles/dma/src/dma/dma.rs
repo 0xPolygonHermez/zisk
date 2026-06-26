@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
@@ -6,7 +5,7 @@ use rayon::prelude::*;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
     DmaTrace, DmaTraceRow, DmaTraceRowOps, DmaTraceRowPacked, DMA_ROM_ID, DUAL_RANGE_7_BITS_ID,
@@ -16,25 +15,23 @@ use crate::{dma::dma_rom::DmaRom, dma_trace, DmaInput, DmaModule, DMA_ROM_WITH_M
 use precompiles_helpers::DmaInfo;
 
 /// The `DmaSM` struct encapsulates the logic of the Dma State Machine.
-pub struct DmaSM<F: PrimeField64, RC: RangeChecker> {
+pub struct DmaSM<STD: StdProvider> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<RC>,
+    pub std: Arc<STD>,
 
     pub rom_table_id: usize,
     pub dual_range_7_bits_id: usize,
     pub range_22_bits_id: usize,
     pub range_24_bits_id: usize,
     pub range_16_bits_id: usize,
-
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> DmaSM<F, RC> {
+impl<STD: StdProvider> DmaSM<STD> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `DmaSM` instance.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             rom_table_id: std.get_virtual_table_id(DMA_ROM_ID).expect("Failed to get dma rom ID"),
@@ -50,7 +47,6 @@ impl<F: PrimeField64, RC: RangeChecker> DmaSM<F, RC> {
             range_16_bits_id: std
                 .get_range_id(0, 0xFFFF, None)
                 .expect("Failed to get 16b table ID"),
-            _marker: PhantomData,
         })
     }
 
@@ -61,7 +57,7 @@ impl<F: PrimeField64, RC: RangeChecker> DmaSM<F, RC> {
     /// * `input` - The operation data to process.
     #[allow(clippy::too_many_arguments)]
     #[inline(always)]
-    pub fn process_slice<R: DmaTraceRowOps<F>>(
+    pub fn process_slice<F: PrimeField64, R: DmaTraceRowOps<F>>(
         &self,
         input: &DmaInput,
         // row_offset: usize,
@@ -192,12 +188,12 @@ impl<F: PrimeField64, RC: RangeChecker> DmaSM<F, RC> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice<R: DmaTraceRowOps<F>>(&self, trace: &mut R) {
+    pub fn process_empty_slice<F: PrimeField64, R: DmaTraceRowOps<F>>(&self, trace: &mut R) {
         // trace was initialized with zeroes
         trace.set_count_lt_256(true);
     }
 
-    fn compute_witness_inner<R: DmaTraceRowOps<F> + Copy + Send>(
+    fn compute_witness_inner<F: PrimeField64, R: DmaTraceRowOps<F> + Copy + Send>(
         &self,
         inputs: &[Vec<DmaInput>],
         trace_buffer: Vec<F>,
@@ -339,7 +335,7 @@ impl<F: PrimeField64, RC: RangeChecker> DmaSM<F, RC> {
         Ok(AirInstance::new_from_trace(from_trace))
     }
 }
-impl<F: PrimeField64, RC: RangeChecker> DmaModule<F> for DmaSM<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> DmaModule<F> for DmaSM<STD> {
     fn get_name(&self) -> &'static str {
         "dma"
     }
@@ -350,9 +346,9 @@ impl<F: PrimeField64, RC: RangeChecker> DmaModule<F> for DmaSM<F, RC> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_inner::<DmaTraceRowPacked<F>>(inputs, trace_buffer)
+            self.compute_witness_inner::<F, DmaTraceRowPacked<F>>(inputs, trace_buffer)
         } else {
-            self.compute_witness_inner::<DmaTraceRow<F>>(inputs, trace_buffer)
+            self.compute_witness_inner::<F, DmaTraceRow<F>>(inputs, trace_buffer)
         }
     }
 }

@@ -1,9 +1,8 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
 use rayon::prelude::*;
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 
 use crate::MemAlignInput;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -299,22 +298,19 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
 const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 
-pub struct MemAlignByteSM<F: PrimeField64, RC: RangeChecker> {
+pub struct MemAlignByteSM<STD: StdProvider> {
     /// PIL2 standard library
-    std: Arc<RC>,
+    std: Arc<STD>,
 
     /// The table ID for the Mem Align ROM State Machine
     table_dual_byte_id: usize,
 
     table_16b_id: usize,
     table_8b_id: usize,
-
-    /// `F` is used by the witness-generation methods, not by a stored field.
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> MemAlignByteSM<F, RC> {
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+impl<STD: StdProvider> MemAlignByteSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the table ID
         Arc::new(Self {
             std: std.clone(),
@@ -323,11 +319,10 @@ impl<F: PrimeField64, RC: RangeChecker> MemAlignByteSM<F, RC> {
                 .expect("Failed to get dual byte table ID"),
             table_16b_id: std.get_range_id(0, 0xFFFF, None).expect("Failed to get 16b table ID"),
             table_8b_id: std.get_range_id(0, 0xFF, None).expect("Failed to get 8b table ID"),
-            _marker: PhantomData,
         })
     }
 
-    pub fn compute_witness<T, R: MemAlignByteRow<F, T>>(
+    pub fn compute_witness<F: PrimeField64, T, R: MemAlignByteRow<F, T>>(
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
@@ -399,7 +394,7 @@ impl<F: PrimeField64, RC: RangeChecker> MemAlignByteSM<F, RC> {
 
     /// Common logic for computing witness that can be shared across different trace types
     #[allow(clippy::too_many_arguments)]
-    fn compute_row_witness<T, R: MemAlignByteRow<F, T>>(
+    fn compute_row_witness<F: PrimeField64, T, R: MemAlignByteRow<F, T>>(
         &self,
         input: &MemAlignInput,
         irow: usize,

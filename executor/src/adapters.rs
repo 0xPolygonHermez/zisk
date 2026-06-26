@@ -7,7 +7,7 @@
 
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, Setup, SetupCtx};
-use zisk_common::{RangeChecker, StatsCostPerType, StatsType};
+use zisk_common::{StatsCostPerType, StatsType, StdProvider};
 use zisk_pil::{
     ZiskPublicValues, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
     ZISK_AIRGROUP_ID,
@@ -71,9 +71,9 @@ impl<'a, F: PrimeField64> ProofmanAdapter<'a, F> {
 
     /// Per-stats-type proving cost. Sole `SetupCtx<F>` consumer in the
     /// plan path; standalone callers skip it.
-    pub fn compute_costs<RC: RangeChecker>(
+    pub fn compute_costs<STD: StdProvider>(
         &self,
-        state: &ExecutionState<F, RC>,
+        state: &ExecutionState<F, STD>,
         main_instances_count: usize,
     ) -> ExecutorResult<StatsCostPerType> {
         let mut cost_per_type = StatsCostPerType::default();

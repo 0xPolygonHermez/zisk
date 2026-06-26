@@ -2,14 +2,14 @@
 
 use crate::BinaryBasicFrops;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, VirtualTableSink, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CollectSkipper, StdProvider, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 use std::sync::Arc;
 
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.
-pub struct BinaryAddCollector<S: VirtualTableSink> {
+pub struct BinaryAddCollector<S: StdProvider> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<[u64; 2]>,
 
@@ -26,7 +26,7 @@ pub struct BinaryAddCollector<S: VirtualTableSink> {
     witness: Arc<S>,
 }
 
-impl<S: VirtualTableSink> BinaryAddCollector<S> {
+impl<S: StdProvider> BinaryAddCollector<S> {
     /// Creates a new `BinaryAddCollector`.
     ///
     /// # Arguments
@@ -41,7 +41,9 @@ impl<S: VirtualTableSink> BinaryAddCollector<S> {
         force_execute_to_end: bool,
         witness: Arc<S>,
     ) -> Self {
-        let frops_table_id = witness.virtual_table_id(BinaryBasicFrops::TABLE_ID);
+        let frops_table_id = witness
+            .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
+            .expect("get_virtual_table_id failed");
         Self {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
@@ -90,7 +92,7 @@ impl<S: VirtualTableSink> BinaryAddCollector<S> {
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.witness.inc_row_one(self.frops_table_id, frops_row);
+            self.witness.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -105,7 +107,7 @@ impl<S: VirtualTableSink> BinaryAddCollector<S> {
     }
 }
 
-impl<S: VirtualTableSink> BusDevice<u64> for BinaryAddCollector<S> {
+impl<S: StdProvider> BusDevice<u64> for BinaryAddCollector<S> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

@@ -1,4 +1,3 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
@@ -14,27 +13,25 @@ use zisk_pil::{
 
 use crate::{dma::dma_rom::DmaRom, dma_trace, DmaInput, DmaModule, DMA_ROM_WITHOUT_MEMCMP_SIZE};
 use precompiles_helpers::DmaInfo;
-use zisk_common::RangeChecker;
+use zisk_common::StdProvider;
 
 /// The `DmaSM` struct encapsulates the logic of the Dma State Machine.
-pub struct DmaMemCpySM<F: PrimeField64, RC: RangeChecker> {
+pub struct DmaMemCpySM<STD: StdProvider> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<RC>,
+    pub std: Arc<STD>,
 
     pub rom_table_id: usize,
     pub dual_range_7_bits_id: usize,
     pub range_22_bits_id: usize,
     pub range_24_bits_id: usize,
-
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> DmaMemCpySM<F, RC> {
+impl<STD: StdProvider> DmaMemCpySM<STD> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `DmaSM` instance.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             rom_table_id: std.get_virtual_table_id(DMA_ROM_ID).expect("Failed to get dma rom ID"),
@@ -47,7 +44,6 @@ impl<F: PrimeField64, RC: RangeChecker> DmaMemCpySM<F, RC> {
             range_24_bits_id: std
                 .get_range_id(0, 0xFF_FFFF, None)
                 .expect("Failed to get 24b table ID"),
-            _marker: PhantomData,
         })
     }
 
@@ -58,7 +54,7 @@ impl<F: PrimeField64, RC: RangeChecker> DmaMemCpySM<F, RC> {
     /// * `input` - The operation data to process.
     #[allow(clippy::too_many_arguments)]
     #[inline(always)]
-    pub fn process_slice<R: DmaMemCpyTraceRowOps<F>>(
+    pub fn process_slice<F: PrimeField64, R: DmaMemCpyTraceRowOps<F>>(
         &self,
         input: &DmaInput,
         trace: &mut R,
@@ -145,11 +141,11 @@ impl<F: PrimeField64, RC: RangeChecker> DmaMemCpySM<F, RC> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice<R: DmaMemCpyTraceRowOps<F>>(&self, trace: &mut R) {
+    pub fn process_empty_slice<F: PrimeField64, R: DmaMemCpyTraceRowOps<F>>(&self, trace: &mut R) {
         trace.set_count_lt_256(true);
     }
 
-    fn compute_witness_inner<R: DmaMemCpyTraceRowOps<F> + Copy + Send>(
+    fn compute_witness_inner<F: PrimeField64, R: DmaMemCpyTraceRowOps<F> + Copy + Send>(
         &self,
         inputs: &[Vec<DmaInput>],
         trace_buffer: Vec<F>,
@@ -273,7 +269,7 @@ impl<F: PrimeField64, RC: RangeChecker> DmaMemCpySM<F, RC> {
         Ok(AirInstance::new_from_trace(from_trace))
     }
 }
-impl<F: PrimeField64, RC: RangeChecker> DmaModule<F> for DmaMemCpySM<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> DmaModule<F> for DmaMemCpySM<STD> {
     fn get_name(&self) -> &'static str {
         "dma_memcpy"
     }
@@ -284,9 +280,9 @@ impl<F: PrimeField64, RC: RangeChecker> DmaModule<F> for DmaMemCpySM<F, RC> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_inner::<DmaMemCpyTraceRowPacked<F>>(inputs, trace_buffer)
+            self.compute_witness_inner::<F, DmaMemCpyTraceRowPacked<F>>(inputs, trace_buffer)
         } else {
-            self.compute_witness_inner::<DmaMemCpyTraceRow<F>>(inputs, trace_buffer)
+            self.compute_witness_inner::<F, DmaMemCpyTraceRow<F>>(inputs, trace_buffer)
         }
     }
 }

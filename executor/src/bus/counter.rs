@@ -27,7 +27,7 @@ use zisk_core::{
 /// * `D` - The type of data payloads handled by the bus.
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
-pub struct StaticDataBus<D, F: PrimeField64> {
+pub struct StaticDataBus<D> {
     /// Flag indicating whether the bus should only process operation bus related data.
     process_only_operation_bus: bool,
 
@@ -47,18 +47,21 @@ pub struct StaticDataBus<D, F: PrimeField64> {
     dma_counter: (usize, DmaCounterInputGen),
 
     /// Precompile operation counters.
-    precompiles: PrecompileCounters<F>,
+    precompiles: PrecompileCounters,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
 }
 
-impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
+impl StaticDataBus<PayloadType> {
     /// Constructs a counter-phase data bus via static dispatch — no
     /// `StaticSMBundle` required. Callable on the standalone path.
-    pub fn build(is_asm_emulator: bool, mem_sections: Option<&dyn MemDataSection>) -> Self {
+    pub fn build<F: PrimeField64>(
+        is_asm_emulator: bool,
+        mem_sections: Option<&dyn MemDataSection>,
+    ) -> Self {
         let builtins = BuiltinCounters::build::<F>(is_asm_emulator, mem_sections);
-        let precompiles = PrecompileCounters::<F>::build(is_asm_emulator);
+        let precompiles = PrecompileCounters::build::<F>(is_asm_emulator);
 
         Self {
             process_only_operation_bus: is_asm_emulator,
@@ -132,9 +135,7 @@ impl<F: PrimeField64> StaticDataBus<PayloadType, F> {
     }
 }
 
-impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>>
-    for StaticDataBus<PayloadType, F>
-{
+impl DataBusTrait<PayloadType, Box<dyn BusDeviceMetrics>> for StaticDataBus<PayloadType> {
     #[inline(always)]
     fn write_to_bus(
         &mut self,

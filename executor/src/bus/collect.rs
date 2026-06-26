@@ -18,7 +18,7 @@ use sm_mem::{MemAlignCollector, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::ChunkId;
 use zisk_common::{
-    BusDevice, BusId, PayloadType, RangeChecker, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
+    BusDevice, BusId, PayloadType, StdProvider, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
 
@@ -37,7 +37,7 @@ use zisk_common::Instance;
 /// * `D` - The type of data payloads handled by the bus.
 /// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
 ///   trait.
-pub struct StaticDataBusCollect<D, F: PrimeField64, RC: RangeChecker> {
+pub struct StaticDataBusCollect<D, STD: StdProvider> {
     /// ROM collector.
     rom_collector: Vec<(usize, RomCollector)>,
 
@@ -47,16 +47,16 @@ pub struct StaticDataBusCollect<D, F: PrimeField64, RC: RangeChecker> {
     mem_align_collector: Vec<(usize, MemAlignCollector)>,
 
     /// Arithmetic collectors.
-    arith_collector: Vec<(usize, ArithInstanceCollector<RC>)>,
+    arith_collector: Vec<(usize, ArithInstanceCollector<STD>)>,
     /// Arithmetic inputs generator.
     arith_inputs_generator: ArithCounterInputGen,
 
     /// Binary operation collectors.
-    binary_basic_collector: Vec<(usize, BinaryBasicCollector<RC>)>,
+    binary_basic_collector: Vec<(usize, BinaryBasicCollector<STD>)>,
     /// Binary add operation collectors.
-    binary_add_collector: Vec<(usize, BinaryAddCollector<RC>)>,
+    binary_add_collector: Vec<(usize, BinaryAddCollector<STD>)>,
     /// Binary extension operation collectors.
-    binary_extension_collector: Vec<(usize, BinaryExtensionCollector<RC>)>,
+    binary_extension_collector: Vec<(usize, BinaryExtensionCollector<STD>)>,
 
     /// Dma collectors.
     dma_collector: Vec<(usize, DmaCollector)>,
@@ -70,7 +70,7 @@ pub struct StaticDataBusCollect<D, F: PrimeField64, RC: RangeChecker> {
     dma_inputs_generator: DmaCounterInputGen,
 
     /// Per-precompile collectors + input generators.
-    precompiles: PrecompileCollectors<F, RC>,
+    precompiles: PrecompileCollectors<STD>,
 
     /// Queue of pending data transfers to be processed.
     pending_transfers: VecDeque<(BusId, Vec<D>, Vec<D>)>,
@@ -81,21 +81,21 @@ const BINARY_E_TYPE: u64 = ZiskOperationType::BinaryE as u64;
 const ARITH_TYPE: u64 = ZiskOperationType::Arith as u64;
 const DMA_OP_TYPE_ID: u64 = ZiskOperationType::Dma as u64;
 
-impl<F: PrimeField64, RC: RangeChecker> StaticDataBusCollect<PayloadType, F, RC> {
+impl<STD: StdProvider> StaticDataBusCollect<PayloadType, STD> {
     /// Constructs a collector-phase data bus for a single chunk. Each
     /// `global_idx` is dispatched to the matching built-in or
     /// precompile wrapper via `try_push_collector`; on a miss the
     /// air-id is reported. Callers are expected to skip empty chunks
     /// (no `global_idxs`) themselves — this constructor always builds.
-    pub fn for_chunk(
+    pub fn for_chunk<F: PrimeField64>(
         pctx: &ProofCtx<F>,
         instances: &HashMap<usize, &dyn Instance<F>>,
         chunk_id: ChunkId,
         global_idxs: &[usize],
         zisk_rom: &zisk_core::ZiskRom,
     ) -> ExecutorResult<Self> {
-        let mut builtins = BuiltinCollectors::<F, RC>::new();
-        let mut precompiles = PrecompileCollectors::<F, RC>::new();
+        let mut builtins = BuiltinCollectors::<STD>::new();
+        let mut precompiles = PrecompileCollectors::<STD>::new();
         let mem_sections = zisk_rom as &dyn zisk_core::MemDataSection;
 
         for global_idx in global_idxs {
@@ -230,8 +230,8 @@ impl<F: PrimeField64, RC: RangeChecker> StaticDataBusCollect<PayloadType, F, RC>
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
-    for StaticDataBusCollect<PayloadType, F, RC>
+impl<STD: StdProvider> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
+    for StaticDataBusCollect<PayloadType, STD>
 {
     #[inline(always)]
     fn write_to_bus(

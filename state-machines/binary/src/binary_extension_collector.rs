@@ -4,7 +4,7 @@
 
 use crate::{BinaryExtensionFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, VirtualTableSink, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CollectSkipper, StdProvider, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use std::sync::Arc;
 use zisk_core::ZiskOperationType;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
-pub struct BinaryExtensionCollector<S: VirtualTableSink> {
+pub struct BinaryExtensionCollector<S: StdProvider> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
@@ -29,14 +29,16 @@ pub struct BinaryExtensionCollector<S: VirtualTableSink> {
     witness: Arc<S>,
 }
 
-impl<S: VirtualTableSink> BinaryExtensionCollector<S> {
+impl<S: StdProvider> BinaryExtensionCollector<S> {
     pub fn new(
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
         witness: Arc<S>,
     ) -> Self {
-        let frops_table_id = witness.virtual_table_id(BinaryExtensionFrops::TABLE_ID);
+        let frops_table_id = witness
+            .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
+            .expect("get_virtual_table_id failed");
         Self {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
@@ -81,7 +83,7 @@ impl<S: VirtualTableSink> BinaryExtensionCollector<S> {
         }
 
         if frops_row != BinaryExtensionFrops::NO_FROPS {
-            self.witness.inc_row_one(self.frops_table_id, frops_row);
+            self.witness.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -96,7 +98,7 @@ impl<S: VirtualTableSink> BinaryExtensionCollector<S> {
     }
 }
 
-impl<S: VirtualTableSink> BusDevice<u64> for BinaryExtensionCollector<S> {
+impl<S: StdProvider> BusDevice<u64> for BinaryExtensionCollector<S> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

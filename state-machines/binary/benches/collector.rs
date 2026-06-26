@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use sm_binary::BinaryBasicCollector;
 use zisk_common::{
-    CollectSkipper, NoopRangeChecker, A, B, OP, OPERATION_BUS_DATA_SIZE, OPERATION_BUS_ID, OP_TYPE,
+    CollectSkipper, NoopStdProvider, A, B, OP, OPERATION_BUS_DATA_SIZE, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -35,7 +35,7 @@ fn make_payloads(n: usize) -> Vec<[u64; OPERATION_BUS_DATA_SIZE]> {
 fn bench_process_data(c: &mut Criterion) {
     const N: usize = 100_000;
     let payloads = make_payloads(N);
-    let witness = Arc::new(NoopRangeChecker);
+    let witness = Arc::new(NoopStdProvider);
 
     c.bench_function("binary_basic_collector_process_data", |b| {
         b.iter_batched(

@@ -1,11 +1,10 @@
-use std::marker::PhantomData;
 use std::sync::Arc;
 
 use fields::PrimeField64;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::{RangeChecker, SegmentId};
+use zisk_common::{SegmentId, StdProvider};
 use zisk_pil::{
     Dma64AlignedMemSetAirValues, Dma64AlignedMemSetTrace, Dma64AlignedMemSetTraceRow,
     Dma64AlignedMemSetTraceRowOps, Dma64AlignedMemSetTraceRowPacked,
@@ -18,30 +17,27 @@ use crate::{
 use precompiles_helpers::DmaInfo;
 
 /// The `Dma64AlignedMemSetSM` struct encapsulates the logic of the Dma64Aligned State Machine.
-pub struct Dma64AlignedMemSetSM<F: PrimeField64, RC: RangeChecker> {
+pub struct Dma64AlignedMemSetSM<STD: StdProvider> {
     /// Reference to the PIL2 standard library.
-    pub std: Arc<RC>,
+    pub std: Arc<STD>,
 
     /// Range checks ID's
     range_16_bits_id: usize,
     op_x_rows: usize,
-
-    _marker: PhantomData<F>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedMemSetSM<F, RC> {
+impl<STD: StdProvider> Dma64AlignedMemSetSM<STD> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `Dma64AlignedMemSetSM` instance.
-    pub fn new(std: Arc<RC>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             range_16_bits_id: std
                 .get_range_id(0, 0xFFFF, None)
                 .expect("Failed to get 16b table ID"),
             op_x_rows: DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
-            _marker: PhantomData,
         })
     }
 
@@ -51,7 +47,7 @@ impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedMemSetSM<F, RC> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_input<R: Dma64AlignedMemSetTraceRowOps<F>>(
+    pub fn process_input<F: PrimeField64, R: Dma64AlignedMemSetTraceRowOps<F>>(
         &self,
         input: &Dma64AlignedInput,
         trace: &mut [R],
@@ -134,12 +130,15 @@ impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedMemSetSM<F, RC> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice<R: Dma64AlignedMemSetTraceRowOps<F>>(&self, trace: &mut R) {
+    pub fn process_empty_slice<F: PrimeField64, R: Dma64AlignedMemSetTraceRowOps<F>>(
+        &self,
+        trace: &mut R,
+    ) {
         trace.set_seq_end(true);
         trace.set_previous_seq_end(true);
     }
 
-    fn compute_witness_inner<R: Dma64AlignedMemSetTraceRowOps<F>>(
+    fn compute_witness_inner<F: PrimeField64, R: Dma64AlignedMemSetTraceRowOps<F>>(
         &self,
         inputs: &[Vec<Dma64AlignedInput>],
         segment_id: SegmentId,
@@ -238,7 +237,7 @@ impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedMemSetSM<F, RC> {
         Ok(AirInstance::new_from_trace(from_trace))
     }
 }
-impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedModule<F> for Dma64AlignedMemSetSM<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> Dma64AlignedModule<F> for Dma64AlignedMemSetSM<STD> {
     fn get_name(&self) -> &'static str {
         "dma_64_aligned_memset"
     }
@@ -251,14 +250,14 @@ impl<F: PrimeField64, RC: RangeChecker> Dma64AlignedModule<F> for Dma64AlignedMe
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_inner::<Dma64AlignedMemSetTraceRowPacked<F>>(
+            self.compute_witness_inner::<F, Dma64AlignedMemSetTraceRowPacked<F>>(
                 inputs,
                 segment_id,
                 is_last_segment,
                 trace_buffer,
             )
         } else {
-            self.compute_witness_inner::<Dma64AlignedMemSetTraceRow<F>>(
+            self.compute_witness_inner::<F, Dma64AlignedMemSetTraceRow<F>>(
                 inputs,
                 segment_id,
                 is_last_segment,

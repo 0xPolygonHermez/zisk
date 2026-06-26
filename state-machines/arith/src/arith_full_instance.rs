@@ -8,9 +8,8 @@ use crate::{ArithFrops, ArithFullSM};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
-use zisk_common::RangeChecker;
 use zisk_common::StatsType;
-use zisk_common::VirtualTableSink;
+use zisk_common::StdProvider;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CollectSkipper, ExtOperationData, Instance, InstanceCtx,
     InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
@@ -23,9 +22,9 @@ use zisk_pil::{ArithTrace, ArithTraceRow, ArithTraceRowPacked};
 ///
 /// It encapsulates the `ArithFullSM` and its associated context, and it processes input data
 /// to compute the witnesses for the arithmetic operations.
-pub struct ArithFullInstance<F: PrimeField64, RC: RangeChecker> {
+pub struct ArithFullInstance<STD: StdProvider> {
     /// Reference to the Arithmetic Full State Machine.
-    arith_full_sm: Arc<ArithFullSM<F, RC>>,
+    arith_full_sm: Arc<ArithFullSM<STD>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
@@ -34,10 +33,10 @@ pub struct ArithFullInstance<F: PrimeField64, RC: RangeChecker> {
     ictx: InstanceCtx,
 
     /// Range-check / virtual-table sink (the real `Std` in production).
-    std: Arc<RC>,
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64, RC: RangeChecker> ArithFullInstance<F, RC> {
+impl<STD: StdProvider> ArithFullInstance<STD> {
     /// Creates a new `ArithFullInstance`.
     ///
     /// # Arguments
@@ -46,11 +45,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullInstance<F, RC> {
     ///
     /// # Returns
     /// A new `ArithFullInstance` instance initialized with the provided state machine and context.
-    pub fn new(
-        arith_full_sm: Arc<ArithFullSM<F, RC>>,
-        mut ictx: InstanceCtx,
-        std: Arc<RC>,
-    ) -> Self {
+    pub fn new(arith_full_sm: Arc<ArithFullSM<STD>>, mut ictx: InstanceCtx, std: Arc<STD>) -> Self {
         assert_eq!(
             ictx.plan.air_id,
             ArithTrace::<()>::AIR_ID,
@@ -67,7 +62,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullInstance<F, RC> {
         Self { arith_full_sm, collect_info, ictx, std }
     }
 
-    pub fn build_arith_collector(&self, chunk_id: ChunkId) -> ArithInstanceCollector<RC> {
+    pub fn build_arith_collector(&self, chunk_id: ChunkId) -> ArithInstanceCollector<STD> {
         let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         ArithInstanceCollector::new(
             num_ops,
@@ -78,7 +73,7 @@ impl<F: PrimeField64, RC: RangeChecker> ArithFullInstance<F, RC> {
     }
 }
 
-impl<F: PrimeField64, RC: RangeChecker> Instance<F> for ArithFullInstance<F, RC> {
+impl<F: PrimeField64, STD: StdProvider> Instance<F> for ArithFullInstance<STD> {
     /// Computes the witness for the arithmetic execution plan.
     ///
     /// This method leverages the `ArithFullSM` to generate an `AirInstance` using the collected
@@ -103,17 +98,19 @@ impl<F: PrimeField64, RC: RangeChecker> Instance<F> for ArithFullInstance<F, RC>
             .into_iter()
             .map(|(_, collector)| {
                 let _collector =
-                    collector.as_any().downcast::<ArithInstanceCollector<RC>>().unwrap();
+                    collector.as_any().downcast::<ArithInstanceCollector<STD>>().unwrap();
                 _collector.inputs
             })
             .collect();
         if packed {
             Ok(Some(
                 self.arith_full_sm
-                    .compute_witness::<ArithTraceRowPacked<F>>(&inputs, trace_buffer)?,
+                    .compute_witness::<F, ArithTraceRowPacked<F>>(&inputs, trace_buffer)?,
             ))
         } else {
-            Ok(Some(self.arith_full_sm.compute_witness::<ArithTraceRow<F>>(&inputs, trace_buffer)?))
+            Ok(Some(
+                self.arith_full_sm.compute_witness::<F, ArithTraceRow<F>>(&inputs, trace_buffer)?,
+            ))
         }
     }
 
@@ -160,7 +157,7 @@ impl<F: PrimeField64, RC: RangeChecker> Instance<F> for ArithFullInstance<F, RC>
 }
 
 /// The `ArithInstanceCollector` struct represents an input collector for arithmetic state machines.
-pub struct ArithInstanceCollector<S: VirtualTableSink> {
+pub struct ArithInstanceCollector<S: StdProvider> {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
 
@@ -180,7 +177,7 @@ pub struct ArithInstanceCollector<S: VirtualTableSink> {
     std: Arc<S>,
 }
 
-impl<S: VirtualTableSink> ArithInstanceCollector<S> {
+impl<S: StdProvider> ArithInstanceCollector<S> {
     /// Creates a new `ArithInstanceCollector`.
     ///
     /// # Arguments
@@ -197,7 +194,8 @@ impl<S: VirtualTableSink> ArithInstanceCollector<S> {
         force_execute_to_end: bool,
         std: Arc<S>,
     ) -> Self {
-        let frops_table_id = std.virtual_table_id(ArithFrops::TABLE_ID);
+        let frops_table_id =
+            std.get_virtual_table_id(ArithFrops::TABLE_ID).expect("get_virtual_table_id failed");
         Self {
             inputs: Vec::with_capacity(num_operations as usize),
             num_operations,
@@ -238,7 +236,7 @@ impl<S: VirtualTableSink> ArithInstanceCollector<S> {
         }
 
         if frops_row != ArithFrops::NO_FROPS {
-            self.std.inc_row_one(self.frops_table_id, frops_row);
+            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -257,7 +255,7 @@ impl<S: VirtualTableSink> ArithInstanceCollector<S> {
     }
 }
 
-impl<S: VirtualTableSink> BusDevice<u64> for ArithInstanceCollector<S> {
+impl<S: StdProvider> BusDevice<u64> for ArithInstanceCollector<S> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
