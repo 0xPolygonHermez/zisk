@@ -159,7 +159,7 @@ pub fn plan_sec<F: PrimeField64>(
 
     for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION] {
         if let Some(counters) = vec_counters.remove(&pos) {
-            // The planner produced is range-checker-independent, so the `RC`
+            // The planner produced is range-checker-independent, so the `STD`
             // selector here is irrelevant — use the no-op `NoopStdProvider` token.
             let planner =
                 BuiltinSMs::<NoopStdProvider>::planner_for_position::<F>(pos, is_asm_emulator);

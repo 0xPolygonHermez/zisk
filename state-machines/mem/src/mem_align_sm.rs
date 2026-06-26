@@ -36,10 +36,11 @@ const ALLOWED_WIDTHS: [u8; 4] = [1, 2, 4, 8];
 const DEFAULT_OFFSET: u8 = 0;
 const DEFAULT_WIDTH: u8 = 8;
 
-// NOTE: the range-checker generic is named `S` (not the usual `RC`) because this
+// NOTE: the range-checker generic is named `S` (not the usual `STD`) because this
 // module already defines a `const RC: usize`.
 pub struct MemAlignSM<S: StdProvider> {
-    /// Range-check / virtual-table sink (the real `Std` in production).
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     std: Arc<S>,
 
     #[cfg(feature = "debug_mem_align")]

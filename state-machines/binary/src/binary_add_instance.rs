@@ -29,7 +29,8 @@ pub struct BinaryAddInstance<STD: StdProvider> {
     /// Instance context.
     ictx: InstanceCtx,
 
-    /// Range-check / virtual-table sink (the real `Std` in production).
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     std: Arc<STD>,
 }
 

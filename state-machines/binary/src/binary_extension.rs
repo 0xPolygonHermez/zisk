@@ -31,9 +31,10 @@ const LS_6_BITS: u64 = 0x3F;
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
 ///
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
-/// tables for the operations. It also manages range checks through the PIL2 standard library.
+/// tables for the operations. It also records its range checks and virtual-table lookups through the shared `Std`.
 pub struct BinaryExtensionSM<STD: StdProvider> {
-    /// Range-check / virtual-table sink (the real `Std` in production).
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     std: Arc<STD>,
 
     /// The range check ID
@@ -47,7 +48,7 @@ impl<STD: StdProvider> BinaryExtensionSM<STD> {
     /// Creates a new instance of the `BinaryExtensionSM`.
     ///
     /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.

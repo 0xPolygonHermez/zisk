@@ -19,7 +19,8 @@ use precompiles_helpers::DmaInfo;
 
 /// The `Dma64AlignedMemCpySM` struct encapsulates the logic of the Dma64Aligned State Machine.
 pub struct Dma64AlignedMemCpySM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     /// Range checks ID's

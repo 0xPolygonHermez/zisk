@@ -116,7 +116,7 @@ impl<F: PrimeField64, STD: StdProvider> ZiskExecutor<F, STD> {
     /// Constructs a standalone executor — no `WitnessManager`, no range-checker
     /// instance, no `StaticSMBundle`, no `WitnessPhase`. Only the emulate + plan
     /// path is wired up; calls to witness-mode-only public methods (e.g.
-    /// `calculate_witness`) will panic. `RC` is never instantiated here, so
+    /// `calculate_witness`) will panic. `STD` is never instantiated here, so
     /// callers typically pick the no-op `NoopStdProvider`.
     pub fn new_standalone(
         verbose_mode: proofman_common::VerboseMode,

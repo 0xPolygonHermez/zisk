@@ -443,8 +443,8 @@ mod tests {
     use zisk_common::NoopStdProvider;
     use zisk_common::{CheckPoint, ChunkId, InstanceType};
 
-    // `mem_steps_for_segment` doesn't use `F`, but it's now an associated fn on
-    // `MainInstance<F>`, so the call site has to pick some concrete `F`.
+    // `mem_steps_for_segment` doesn't use the std-provider type, but it's now an associated fn
+    // on `MainInstance<NoopStdProvider>`, so the call site has to pick some concrete provider.
     type MI = MainInstance<NoopStdProvider>;
 
     fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any>>) -> Plan {

@@ -16,7 +16,8 @@ use precompiles_helpers::DmaInfo;
 
 /// The `DmaSM` struct encapsulates the logic of the Dma State Machine.
 pub struct DmaSM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     pub rom_table_id: usize,

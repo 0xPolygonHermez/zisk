@@ -23,7 +23,8 @@ pub struct DmaUnalignedPrevSegment {
 
 /// The `DmaUnalignedSM` struct encapsulates the logic of the DmaUnaligned State Machine.
 pub struct DmaUnalignedSM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     /// Range checks ID's

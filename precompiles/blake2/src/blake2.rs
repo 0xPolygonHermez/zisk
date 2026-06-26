@@ -39,7 +39,8 @@ impl Blake2Input {
 
 /// The `Blake2SM` struct encapsulates the logic of the Blake2 State Machine.
 pub struct Blake2SM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     /// Number of available blake2s in the trace.

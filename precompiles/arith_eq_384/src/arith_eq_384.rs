@@ -21,7 +21,8 @@ pub struct ArithEq384SM<STD: StdProvider> {
 
     num_non_usable_rows: usize,
 
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     /// The table ID for the Keccakf Table State Machine

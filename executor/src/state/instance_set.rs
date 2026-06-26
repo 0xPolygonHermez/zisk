@@ -9,10 +9,10 @@ use zisk_common::{Instance, StdProvider};
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
 ///
-/// `RC` is the range-checker the main instances are built with (the real
+/// `STD` is the range-checker the main instances are built with (the real
 /// `Std` in production, a no-op stand-in such as `NoopStdProvider` for
 /// tests / standalone). Secondary instances are stored as `dyn Instance<F>`
-/// trait objects, so they carry no `RC`.
+/// trait objects, so they carry no `STD`.
 pub struct InstanceSet<F: PrimeField64, STD: StdProvider> {
     /// Main state machine instances, indexed by their global ID.
     pub main_instances: RwLock<HashMap<usize, MainInstance<STD>>>,

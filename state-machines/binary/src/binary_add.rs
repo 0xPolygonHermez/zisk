@@ -13,7 +13,8 @@ const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
 pub struct BinaryAddSM<STD: StdProvider> {
-    /// Range-check / virtual-table sink (the real `Std` in production).
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     std: Arc<STD>,
     range_id: usize,
 }
@@ -21,8 +22,8 @@ pub struct BinaryAddSM<STD: StdProvider> {
 impl<STD: StdProvider> BinaryAddSM<STD> {
     /// Creates a new BinaryAdd State Machine instance.
     ///
-    /// # Arguments/// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
-    ///   Machine.
+    /// # Arguments
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// A new `BinaryAddSM` instance.

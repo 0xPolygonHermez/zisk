@@ -78,12 +78,12 @@ pub const BUILTIN_COUNT: usize = 5;
 
 /// Built-in state machines.
 ///
-/// `RC` is the range-checker the witness-bearing SMs are built with (the
+/// `STD` is the range-checker the witness-bearing SMs are built with (the
 /// real `Std` in production, a no-op stand-in such as `NoopStdProvider`
-/// for tests / standalone). `RomSM` carries no `RC`.
+/// for tests / standalone). `RomSM` carries no `STD`.
 ///
 /// Note: `planner_for_position` is plan-time and range-checker-independent,
-/// so it uses [`NoopStdProvider`] purely as a type token — no `RC` instance involved.
+/// so it uses [`NoopStdProvider`] purely as a type token — no `STD` instance involved.
 pub enum BuiltinSMs<STD: StdProvider> {
     /// Rom state machine
     RomSM(Arc<RomSM>),

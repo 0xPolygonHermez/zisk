@@ -37,7 +37,8 @@ impl Sha256fInput {
 
 /// The `Sha256fSM` struct encapsulates the logic of the Sha256f State Machine.
 pub struct Sha256fSM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     /// Number of available sha256fs in the trace.

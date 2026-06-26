@@ -70,7 +70,7 @@ pub trait MemProcessor {
 /// Mem-input contract for uniform precompiles (`blake2`, `keccakf`, `sha256f`,
 /// `poseidon2`, `add256`).
 ///
-/// Implemented on each precompile's SM (`Blake2SM<F>`, `KeccakfSM<F>`, …).
+/// Implemented on each precompile's SM (`Blake2SM<STD>`, `KeccakfSM<STD>`, …).
 /// The `zisk_precompile!` macro dispatches to these methods from the
 /// generated `*CounterInputGen::process_data` body in Counter / InputGenerator
 /// modes.

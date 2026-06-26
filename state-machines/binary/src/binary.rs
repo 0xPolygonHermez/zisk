@@ -39,7 +39,7 @@ impl<STD: StdProvider> BinarySM<STD> {
     /// Creates a new instance of the `BinarySM` state machine.
     ///
     /// # Arguments
-    /// * `std` - the range-check / virtual-table sink.
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.

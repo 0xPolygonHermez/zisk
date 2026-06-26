@@ -41,7 +41,8 @@ impl PoseidonInput {
 /// The `PoseidonSM` struct encapsulates the logic of the Poseidon State Machine,
 /// serving both the Poseidon1 and Poseidon2 hash families.
 pub struct PoseidonSM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     /// Number of available poseidon permutations in the trace.

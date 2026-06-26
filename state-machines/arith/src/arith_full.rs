@@ -27,7 +27,8 @@ const EXTENSION: u64 = 0xFFFFFFFF;
 /// This state machine coordinates the computation of arithmetic operations and updates
 /// the `ArithTableSM` and `ArithRangeTableSM` components based on operation traces.
 pub struct ArithFullSM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     std: Arc<STD>,
 
     /// The table ID for the Table State Machine
@@ -41,7 +42,7 @@ impl<STD: StdProvider> ArithFullSM<STD> {
     /// Creates a new `ArithFullSM` instance.
     ///
     /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithFullSM`.
@@ -288,7 +289,7 @@ pub(crate) fn generate_inputs(
             (true, true, true) => (EXTENSION, EXTENSION),
         };
 
-        // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
+        // TODO: We don't need to "glue" the d,b chunks back, we can use the aop API to do this!
         OperationBusData::from_values(
             opcode,
             ZiskOperationType::Binary as u64,

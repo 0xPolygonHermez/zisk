@@ -18,7 +18,8 @@ const SIGN_BYTE: u8 = 0x80;
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
 pub struct BinaryBasicSM<STD: StdProvider> {
-    /// Range-check / virtual-table sink (the real `Std` in production).
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     std: Arc<STD>,
 
     /// The table ID for the Binary Basic State Machine

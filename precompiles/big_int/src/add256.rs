@@ -43,7 +43,8 @@ impl Add256Input {
 
 /// The `Add256SM` struct encapsulates the logic of the Add256 State Machine.
 pub struct Add256SM<STD: StdProvider> {
-    /// Reference to the PIL2 standard library.
+    /// Standard library handle exposing the range-check and virtual-table
+    /// accumulators.
     pub std: Arc<STD>,
 
     /// Number of available add256s in the trace.

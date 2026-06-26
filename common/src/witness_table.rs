@@ -193,7 +193,7 @@ impl<F: PrimeField64> RangeCheckAccumulator for Std<F> {
 /// - unit tests and benches of state machines / precompiles,
 /// - execute-only executors (no witness phase),
 /// - as the type token for the RC-independent count/plan phase, where
-///   `<SM<F, STD> as ComponentPlanBuilder>::counter/planner` only need *a*
+///   `<SM<STD> as ComponentPlanBuilder>::counter/planner` only need *a*
 ///   provider to name the impl and never touch an instance.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct NoopStdProvider;
