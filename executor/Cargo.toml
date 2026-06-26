@@ -18,7 +18,6 @@ data-bus = { workspace = true }
 asm-runner = { workspace = true }
 mem-common = { workspace = true }
 
-proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 witness = { workspace = true }

@@ -25,8 +25,6 @@ use zisk_core::{
 ///
 /// # Type Parameters
 /// * `D` - The type of data payloads handled by the bus.
-/// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
-///   trait.
 pub struct StaticDataBus<D> {
     /// Flag indicating whether the bus should only process operation bus related data.
     process_only_operation_bus: bool,
@@ -60,7 +58,7 @@ impl StaticDataBus<PayloadType> {
         is_asm_emulator: bool,
         mem_sections: Option<&dyn MemDataSection>,
     ) -> Self {
-        let builtins = BuiltinCounters::build::<F>(is_asm_emulator, mem_sections);
+        let builtins = BuiltinCounters::build(is_asm_emulator, mem_sections);
         let precompiles = PrecompileCounters::build::<F>(is_asm_emulator);
 
         Self {

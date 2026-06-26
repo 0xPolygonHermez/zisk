@@ -1856,7 +1856,6 @@ dependencies = [
  "precomp-sha256f",
  "precompiles-common",
  "precompiles-hints",
- "proofman",
  "proofman-common",
  "proofman-util",
  "rayon",

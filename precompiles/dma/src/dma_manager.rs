@@ -3,7 +3,7 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use proofman_common::ProofCtx;
 use zisk_common::{
-    BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner,
     StdProvider,
 };
 use zisk_pil::{
@@ -79,8 +79,7 @@ impl<F: PrimeField64, STD: StdProvider> ComponentPlanBuilder<F> for DmaManager<S
     type Counter = DmaCounterInputGen;
 
     fn counter(is_asm_emulator: bool) -> Self::Counter {
-        let mode = if is_asm_emulator { BusDeviceMode::CounterAsm } else { BusDeviceMode::Counter };
-        DmaCounterInputGen::new(mode)
+        DmaCounterInputGen::for_counter_phase(is_asm_emulator)
     }
 
     fn planner(_is_asm_emulator: bool) -> Box<dyn Planner> {

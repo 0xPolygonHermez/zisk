@@ -35,8 +35,7 @@ use zisk_common::Instance;
 ///
 /// # Type Parameters
 /// * `D` - The type of data payloads handled by the bus.
-/// * `BD` - The type of devices (subscribers) connected to the bus, implementing the `BusDevice`
-///   trait.
+/// * `STD` - A standard provider type that implements the `StdProvider` trait.
 pub struct StaticDataBusCollect<D, STD: StdProvider> {
     /// ROM collector.
     rom_collector: Vec<(usize, RomCollector)>,

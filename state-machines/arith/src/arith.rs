@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 use zisk_common::{
-    BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo,
     Planner, StdProvider,
 };
 use zisk_core::ZiskOperationType;
@@ -44,7 +44,7 @@ impl<F: PrimeField64, STD: StdProvider> ComponentPlanBuilder<F> for ArithSM<STD>
     type Counter = ArithCounterInputGen;
 
     fn counter(_is_asm_emulator: bool) -> Self::Counter {
-        ArithCounterInputGen::new(BusDeviceMode::Counter)
+        ArithCounterInputGen::for_counter_phase()
     }
 
     fn planner(_is_asm_emulator: bool) -> Box<dyn Planner> {

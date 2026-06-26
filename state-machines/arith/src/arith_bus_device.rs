@@ -39,6 +39,13 @@ impl ArithCounterInputGen {
         Self { counter: Counter::default(), mode }
     }
 
+    /// Builds the counter configured for the count phase. Arith always counts
+    /// in plain `Counter` mode (it does not vary with the ASM emulator); this
+    /// policy is owned by the arith crate.
+    pub fn for_counter_phase() -> Self {
+        Self::new(BusDeviceMode::Counter)
+    }
+
     /// Retrieves the count of instructions for a specific `ZiskOperationType`.
     ///
     /// # Arguments
