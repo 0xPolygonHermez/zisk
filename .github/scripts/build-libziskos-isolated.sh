@@ -6,7 +6,7 @@
 # Why: a `staticlib` crate-type is REQUIRED to register a `#[global_allocator]`,
 # which emits the program-global symbols `__rust_alloc`, `__rust_dealloc`, ...
 # When libziskos.a is linked into a Rust host those references would bind to the
-# host's allocator (ziskos would silently stop using its own `_kernel_heap_*`).
+# host's allocator (ziskos would silently stop using its own `_heap_*`).
 # There is no language-level "per-library global allocator", so we isolate at the
 # symbol level: after the build we make ziskos's allocator symbols STB_LOCAL, so
 # ziskos's `Vec`/`Box` resolve to ITS allocator and the host (C or Rust) keeps
@@ -18,13 +18,20 @@
 # (`ld.lld -r`) before localizing the symbols with llvm-objcopy.
 #
 # Usage: .github/scripts/build-libziskos-isolated.sh
-# Env overrides: ZISK_TARGET, ZISK_TOOLCHAIN
+# Env overrides: ZISK_TARGET, ZISK_TOOLCHAIN, ZISK_FEATURES
+#   ZISK_FEATURES: space/comma-separated cargo features to enable, e.g.
+#                  ZISK_FEATURES=alloc-stats .github/scripts/build-libziskos-isolated.sh
 set -euo pipefail
 
 . "$HOME/.cargo/env" 2>/dev/null || true
 
 TARGET="${ZISK_TARGET:-riscv64ima-zisk-zkvm-elf}"
 TOOLCHAIN="${ZISK_TOOLCHAIN:-zisk}"
+
+FEATURE_ARGS=()
+if [[ -n "${ZISK_FEATURES:-}" ]]; then
+  FEATURE_ARGS=(--features "$ZISK_FEATURES")
+fi
 
 # Rust global-allocator shim symbols. Fat LTO + the partial link below normally
 # already internalize these (the shim is only referenced inside ziskos), but if
@@ -80,6 +87,7 @@ REQUIRED_GLOBAL=(
 echo ">> Building ziskos-staticlib (fat LTO) for $TARGET"
 cargo "+${TOOLCHAIN}" build -p ziskos-staticlib --release \
   --target "$TARGET" \
+  "${FEATURE_ARGS[@]}" \
   --config 'profile.release.lto="fat"'
 
 LIB=$(find target -name "libziskos_staticlib.a" -path "*$TARGET*" | head -1)

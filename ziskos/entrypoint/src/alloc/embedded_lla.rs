@@ -28,8 +28,8 @@ unsafe impl GlobalAlloc for Allocator {
 
 pub fn init() {
     unsafe {
-        let heap_start = &_kernel_heap_bottom as *const u8 as usize;
-        let heap_size = &_kernel_heap_size as *const u8 as usize;
+        let heap_start = &_heap_bottom as *const u8 as usize;
+        let heap_size = &_heap_size as *const u8 as usize;
         (*addr_of_mut!(HEAP)).init(heap_start as *mut u8, heap_size);
     }
 }

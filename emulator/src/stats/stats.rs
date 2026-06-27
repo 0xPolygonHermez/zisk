@@ -128,6 +128,9 @@ pub struct Stats {
     profile_tags: Vec<ProfileStats>,
     profile_stack: Vec<(usize, u64)>,
     current_variable_cost: u64,
+    /// When set, `on_op` prints a per-instruction execution trace (ziskemu's
+    /// `--trace-steps`).
+    trace_steps: bool,
     #[cfg(feature = "handle_stdout")]
     stdout_data: String,
     #[cfg(feature = "handle_stdout")]
@@ -194,6 +197,7 @@ impl Default for Stats {
             profile_tags: Vec::new(),
             profile_stack: Vec::new(),
             current_variable_cost: 0,
+            trace_steps: false,
             profiler_output: "profile.json.gz".to_string(),
             #[cfg(feature = "handle_stdout")]
             stdout_data: String::with_capacity(256),
@@ -593,7 +597,10 @@ impl Stats {
     }
     /// Called every time an operation is executed, if statistics are enabled
     pub fn on_op(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
-        // println!("##PC## 0x{:08X} STEPS: {}", inst_ctx.pc, self.costs.steps);
+        // Per-instruction execution trace, enabled by ziskemu's `--trace-steps`.
+        if self.trace_steps {
+            println!("### S:{} PC {:x}: {}", self.costs.steps, inst_ctx.pc, instruction.verbose);
+        }
         let pc = inst_ctx.pc;
         self.costs.steps += 1;
         #[cfg(feature = "handle_stdout")]
@@ -1320,6 +1327,9 @@ impl Stats {
     }
     pub fn set_legacy_stats(&mut self, value: bool) {
         self.legacy_stats = value;
+    }
+    pub fn set_trace_steps(&mut self, value: bool) {
+        self.trace_steps = value;
     }
     pub fn set_sdk(&mut self, value: bool) {
         self.sdk = value;

@@ -17,7 +17,7 @@ pub unsafe extern "C" fn init_sys_alloc() {
     };
 }
 
-#[cfg(all(zisk_guest, not(zisk_staticlib)))]
+#[cfg(all(zisk_guest, zisk_staticlib))]
 #[no_mangle]
 #[warn(dead_code)]
 pub unsafe extern "C" fn reset_sys_alloc() {
@@ -25,25 +25,80 @@ pub unsafe extern "C" fn reset_sys_alloc() {
     unsafe {
         HEAP_POS = bottom;
         HEAP_TOP = top;
+        #[cfg(feature = "alloc-stats")]
+        {
+            HEAP_BOTTOM = bottom;
+        }
     };
+}
+
+// ---------------------------------------------------------------------------
+// Isolated-allocator usage statistics (`alloc-stats` feature).
+//
+// The bump allocator only grows within a single host-facing call (it never
+// frees) and `reset_sys_alloc` rewinds it to `HEAP_BOTTOM` at the start of the
+// next call. So the peak usage of each call is `HEAP_POS - HEAP_BOTTOM` measured
+// right before returning; `update_max_used_sys_alloc` folds that into the
+// program-wide maximum. Single-threaded, so plain `static mut` is sufficient.
+// ---------------------------------------------------------------------------
+
+/// Heap base recorded on the last `reset_sys_alloc`, used to compute usage.
+#[cfg(all(zisk_guest, zisk_staticlib, feature = "alloc-stats"))]
+static mut HEAP_BOTTOM: usize = 0;
+
+/// Program-wide peak bytes handed out by the isolated bump allocator.
+#[cfg(all(zisk_guest, zisk_staticlib, feature = "alloc-stats"))]
+static mut HEAP_MAX_USED: usize = 0;
+
+/// Fold the current heap usage into the running maximum. Called by the
+/// `wrap_export!` wrappers after each host-facing call returns.
+#[cfg(all(zisk_guest, zisk_staticlib, feature = "alloc-stats"))]
+#[no_mangle]
+pub unsafe extern "C" fn update_max_used_sys_alloc() {
+    unsafe {
+        let used = HEAP_POS.saturating_sub(HEAP_BOTTOM);
+        if used > HEAP_MAX_USED {
+            HEAP_MAX_USED = used;
+        }
+    }
+}
+
+/// Query the program-wide peak bytes used by the isolated bump allocator.
+#[cfg(all(zisk_guest, zisk_staticlib, feature = "alloc-stats"))]
+#[no_mangle]
+pub unsafe extern "C" fn get_max_used_sys_alloc() -> usize {
+    unsafe { HEAP_MAX_USED }
+}
+
+/// Print the peak usage to the UART, e.g. `ziskos-isolated-allocator use: 1234 bytes`.
+#[cfg(all(zisk_guest, zisk_staticlib, feature = "alloc-stats"))]
+pub unsafe fn print_max_used_sys_alloc() {
+    use crate::ziskos::{sys_write, sys_write_u64};
+    let prefix = b"ziskos-isolated-allocator use: ";
+    let suffix = b" bytes\n";
+    unsafe {
+        sys_write(1, prefix.as_ptr(), prefix.len());
+        sys_write_u64(get_max_used_sys_alloc() as u64, false);
+        sys_write(1, suffix.as_ptr(), suffix.len());
+    }
 }
 
 /// Backing region for the bump allocator, as `(bottom, top)` addresses.
 ///
 /// Guest binary (default): the heap is the RAM left over after the program
-/// image, delimited by the linker symbols `_kernel_heap_*`.
+/// image, delimited by the linker symbols `_heap_*`.
 #[cfg(all(zisk_guest, not(zisk_staticlib)))]
 unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
     extern "C" {
-        static _kernel_heap_bottom: u8;
-        static _kernel_heap_top: u8;
+        static _heap_bottom: u8;
+        static _heap_top: u8;
     }
 
-    unsafe { (&_kernel_heap_bottom as *const u8 as usize, &_kernel_heap_top as *const u8 as usize) }
+    unsafe { (&_heap_bottom as *const u8 as usize, &_heap_top as *const u8 as usize) }
 }
 
 /// Isolated staticlib (`zisk_staticlib`): ziskos is linked into a host
-/// application that owns the linker script, so `_kernel_heap_*` may not exist.
+/// application that owns the linker script, so `_heap_*` may not exist.
 /// Carve the heap out of a static buffer compiled into `libziskos.a`, keeping
 /// ziskos's heap fully isolated from the host's memory.
 ///

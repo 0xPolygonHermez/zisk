@@ -365,8 +365,7 @@ impl ZiskRom {
                 let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
                 if rom_index >= self.rom_program_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc=0x{0:X} ({0}) is out of range rom_program_instructions (rom_index:{1:} >= {2:})",
-                        pc,
+                        "ZiskRom::get_instruction() pc=0x{pc:x} ({pc}) is out of range rom_program_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_program_instructions.len()
                     );
@@ -377,8 +376,7 @@ impl ZiskRom {
                 let rom_index = (pc - ROM_ADDR) as usize;
                 if rom_index >= self.rom_program_na_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc={} is out of range rom_program_na_instructions (rom_index:{} >= {})",
-                        pc,
+                        "ZiskRom::get_instruction() pc={pc:x} is out of range rom_program_na_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_program_na_instructions.len()
                     );
@@ -393,8 +391,7 @@ impl ZiskRom {
                 let rom_index = ((pc - FLOAT_LIB_ROM_ADDR) >> 2) as usize;
                 if rom_index >= self.rom_float_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc=0x{0:X} ({0}) is out of range rom_float_instructions (rom_index:{1:} >= {2:})",
-                        pc,
+                        "ZiskRom::get_instruction() pc=0x{pc:x} ({pc}) is out of range rom_float_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_float_instructions.len()
                     );
@@ -405,8 +402,7 @@ impl ZiskRom {
                 let rom_index = (pc - FLOAT_LIB_ROM_ADDR) as usize;
                 if rom_index >= self.rom_float_na_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc={} is out of range rom_float_na_instructions (rom_index:{} >= {})",
-                        pc,
+                        "ZiskRom::get_instruction() pc=0x{pc:x} is out of range rom_float_na_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_float_na_instructions.len()
                     );
@@ -414,7 +410,7 @@ impl ZiskRom {
                 &self.rom_float_na_instructions[rom_index]
             }
         } else {
-            panic!("ZiskRom::get_instruction() pc={pc} is out of range");
+            panic!("ZiskRom::get_instruction() pc=0x{pc:x} is out of range");
         }
     }
 

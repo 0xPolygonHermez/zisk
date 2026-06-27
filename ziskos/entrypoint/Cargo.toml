@@ -93,10 +93,15 @@ inputcpy = []
 # localize them (STB_LOCAL) and isolate ziskos's heap from the host allocator.
 #
 # The `zisk_staticlib` cfg additionally switches the bump heap region (see
-# `alloc/alloc.rs`) from the linker-provided `_kernel_heap_*` symbols — which the
+# `alloc/alloc.rs`) from the linker-provided `_heap_*` symbols — which the
 # host's linker script may not define — to a static buffer compiled into the
 # archive, so ziskos owns a private heap fully isolated from the host's memory.
 staticlib = []
+# Track the peak bytes used by the staticlib's isolated bump allocator. Enabled
+# from `ziskos-staticlib` via its own `alloc-stats` feature. The `wrap_export!`
+# wrappers call `update_max_used_sys_alloc` after each call, and `zkvm_deinit`
+# prints the peak. Only meaningful together with `staticlib`.
+alloc-stats = []
 zisk-custom-alloc = []
 zisk-embedded-alloc = ["zisk-embedded-dlmalloc-alloc"]
 zisk-embedded-dlmalloc-alloc = [
@@ -116,6 +121,7 @@ serial_test = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(zisk_staticlib)',
   'cfg(zisk_hints)',
   'cfg(zisk_hints_metrics)',
   'cfg(zisk_hints_debug)',
