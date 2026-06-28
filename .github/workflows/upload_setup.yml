@@ -16,7 +16,7 @@ on:
         description: "Include SNARK artifacts"
         required: false
         type: boolean
-        default: true
+        default: false
       skip_macos:
         description: "Skip macOS dylib"
         required: false
@@ -53,7 +53,7 @@ jobs:
       run:
         shell: bash
     env:
-      TEST_CONTAINER: zisk-gha-upload-build
+      TEST_CONTAINER: zisk-gha-upload-setup
     outputs:
       is_new: ${{ steps.hash.outputs.is_new }}
       local_hash: ${{ steps.hash.outputs.local_hash }}
@@ -76,7 +76,7 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Set up gcloud
+      - name: Set up Google Cloud
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Resolve version
@@ -99,30 +99,68 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved setup version: $VERSION"
 
-      - name: Start build setup container
+      - name: Start test container with systemd
         run: |
           docker rm -f "${TEST_CONTAINER}" || true
+
           docker run -d \
             --name "${TEST_CONTAINER}" \
             --privileged \
+            --cgroupns=host \
             --gpus all \
             --shm-size=48g \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
             -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
-            -v /home/gha/cache-setup:/cache:rw \
-            -v /home/gha/ptau:/ptau:rw \
+            -v /home/gha/cache-setup:/home/ziskuser/output:rw \
             -e ZISK_GHA=1 \
             -e ZISK_REPO_DIR=/workspace/zisk \
+            -e PROVE_FLAGS=-y \
             -e TERM=xterm \
             ziskvm/zisk-runner-gpu:latest \
-            sleep infinity
+            /sbin/init
+
           sleep 3
-          docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$" || { docker logs "${TEST_CONTAINER}" || true; exit 1; }
+
+          if ! docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
+            echo "Container stopped unexpectedly"
+            docker ps -a
+            docker logs "${TEST_CONTAINER}" || true
+            docker inspect "${TEST_CONTAINER}" --format '{{.State.ExitCode}} {{.State.Error}}' || true
+            exit 1
+          fi
+
+          docker exec "${TEST_CONTAINER}" bash -lc '
+            echo "PID 1:"
+            ps -p 1 -o pid,comm,args
+            systemctl is-system-running || true
+          '
+
+          # Wait for the in-container Docker daemon (started by systemd) to be
+          # ready. lib-float/build.rs invokes `docker` early in the build, so it
+          # must be up before the "Build ZisK" step runs.
+          echo "Waiting for in-container Docker daemon..."
+          for i in $(seq 1 30); do
+            if docker exec -u ziskuser "${TEST_CONTAINER}" docker info >/dev/null 2>&1; then
+              echo "Docker daemon is ready."
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Docker daemon did not become ready in time"
+              docker exec "${TEST_CONTAINER}" systemctl status docker.service --no-pager || true
+              docker exec "${TEST_CONTAINER}" journalctl -u docker.service --no-pager -n 50 || true
+              exit 1
+            fi
+            sleep 2
+          done
 
       - name: Build ZisK
         run: |
-          .github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
-            cd /workspace/zisk/tools/test-env && ./build_zisk.sh
-          '
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zisk.sh
+            '
 
       - name: Check setup hash
         id: hash
