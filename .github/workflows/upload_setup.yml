@@ -124,6 +124,7 @@ jobs:
 
           docker run -d \
             --name "${TEST_CONTAINER}" \
+            --pull=always \
             --privileged \
             --cgroupns=host \
             --gpus all \
