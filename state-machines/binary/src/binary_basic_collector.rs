@@ -11,7 +11,7 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use std::sync::Arc;
 
 /// The `BinaryBasicCollector` struct represents an input collector for binary-related operations.
-pub struct BinaryBasicCollector<S: StdProvider> {
+pub struct BinaryBasicCollector<STD: StdProvider> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
@@ -28,11 +28,11 @@ pub struct BinaryBasicCollector<S: StdProvider> {
     /// The table ID for the Binary FROPS
     frops_table_id: usize,
 
-    /// Sink for virtual-table multiplicities (the real `Std` in production).
-    witness: Arc<S>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 }
 
-impl<S: StdProvider> BinaryBasicCollector<S> {
+impl<STD: StdProvider> BinaryBasicCollector<STD> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
@@ -46,9 +46,9 @@ impl<S: StdProvider> BinaryBasicCollector<S> {
         collect_skipper: CollectSkipper,
         with_adds: bool,
         force_execute_to_end: bool,
-        witness: Arc<S>,
+        std: Arc<STD>,
     ) -> Self {
-        let frops_table_id = witness
+        let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("get_virtual_table_id failed");
 
@@ -59,7 +59,7 @@ impl<S: StdProvider> BinaryBasicCollector<S> {
             with_adds,
             force_execute_to_end,
             frops_table_id,
-            witness,
+            std,
         }
     }
 
@@ -102,7 +102,7 @@ impl<S: StdProvider> BinaryBasicCollector<S> {
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.witness.inc_virtual_row_one(self.frops_table_id, frops_row);
+            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -116,7 +116,7 @@ impl<S: StdProvider> BinaryBasicCollector<S> {
     }
 }
 
-impl<S: StdProvider> BusDevice<u64> for BinaryBasicCollector<S> {
+impl<STD: StdProvider> BusDevice<u64> for BinaryBasicCollector<STD> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

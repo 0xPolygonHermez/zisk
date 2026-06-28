@@ -158,7 +158,7 @@ impl<F: PrimeField64, STD: StdProvider> Instance<F> for ArithFullInstance<STD> {
 }
 
 /// The `ArithInstanceCollector` struct represents an input collector for arithmetic state machines.
-pub struct ArithInstanceCollector<S: StdProvider> {
+pub struct ArithInstanceCollector<STD: StdProvider> {
     /// Collected inputs for witness computation.
     inputs: Vec<OperationData<u64>>,
 
@@ -174,8 +174,8 @@ pub struct ArithInstanceCollector<S: StdProvider> {
     /// The table ID for the Arith FROPS
     frops_table_id: usize,
 
-    /// Sink for virtual-table multiplicities (the real `Std` in production).
-    std: Arc<S>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 }
 
 impl<S: StdProvider> ArithInstanceCollector<S> {

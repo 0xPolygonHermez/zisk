@@ -12,7 +12,7 @@ use std::sync::Arc;
 use zisk_core::ZiskOperationType;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
-pub struct BinaryExtensionCollector<S: StdProvider> {
+pub struct BinaryExtensionCollector<STD: StdProvider> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
@@ -25,18 +25,18 @@ pub struct BinaryExtensionCollector<S: StdProvider> {
     /// The table ID for the Binary Extension FROPS
     frops_table_id: usize,
 
-    /// Sink for virtual-table multiplicities (the real `Std` in production).
-    witness: Arc<S>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 }
 
-impl<S: StdProvider> BinaryExtensionCollector<S> {
+impl<STD: StdProvider> BinaryExtensionCollector<STD> {
     pub fn new(
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
-        witness: Arc<S>,
+        std: Arc<STD>,
     ) -> Self {
-        let frops_table_id = witness
+        let frops_table_id = std
             .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
             .expect("get_virtual_table_id failed");
         Self {
@@ -45,7 +45,7 @@ impl<S: StdProvider> BinaryExtensionCollector<S> {
             collect_skipper,
             force_execute_to_end,
             frops_table_id,
-            witness,
+            std,
         }
     }
 
@@ -83,7 +83,7 @@ impl<S: StdProvider> BinaryExtensionCollector<S> {
         }
 
         if frops_row != BinaryExtensionFrops::NO_FROPS {
-            self.witness.inc_virtual_row_one(self.frops_table_id, frops_row);
+            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
@@ -98,7 +98,7 @@ impl<S: StdProvider> BinaryExtensionCollector<S> {
     }
 }
 
-impl<S: StdProvider> BusDevice<u64> for BinaryExtensionCollector<S> {
+impl<STD: StdProvider> BusDevice<u64> for BinaryExtensionCollector<STD> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

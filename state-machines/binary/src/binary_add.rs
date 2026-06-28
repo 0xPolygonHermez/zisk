@@ -13,8 +13,7 @@ const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
 pub struct BinaryAddSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
     range_id: usize,
 }
