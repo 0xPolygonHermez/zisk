@@ -68,16 +68,35 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Prepare cache-setup directory
+        run: |
+          # USE_CACHE_SETUP writes the artifact cache to /home/ziskuser/output
+          # (bind-mounted from /home/gha/cache-setup); ziskuser (UID 1000) owns it.
+          sudo mkdir -p /home/gha/cache-setup
+          sudo chown -R 1000:1000 /home/gha/cache-setup
+          sudo chmod -R u+rwX /home/gha/cache-setup
+
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
         with:
-          # Workload Identity Federation (keyless). Or swap to:
-          #   credentials_json: ${{ secrets.GCP_SA_KEY }}
+          # Workload Identity Federation (keyless). Writes a credentials file into
+          # GITHUB_WORKSPACE and exports GOOGLE_GHA_CREDS_PATH. No host-side
+          # setup-gcloud is needed: all gcloud usage happens inside the container.
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Set up Google Cloud
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Give workspace ownership to container user
+        run: |
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+          
+          # Translate the host credentials-file path to its path inside the
+          # container (GITHUB_WORKSPACE is bind-mounted at /workspace/zisk) and
+          # expose it to the gcloud-using container steps below.
+          rel="${GOOGLE_GHA_CREDS_PATH#"$GITHUB_WORKSPACE"/}"
+          [ "$rel" != "$GOOGLE_GHA_CREDS_PATH" ] || {
+            echo "credentials file '$GOOGLE_GHA_CREDS_PATH' is not under GITHUB_WORKSPACE" >&2; exit 1; }
+          echo "CONTAINER_GCP_CREDS=/workspace/zisk/$rel" >> "$GITHUB_ENV"
 
       - name: Resolve version
         id: resolve
@@ -165,22 +184,27 @@ jobs:
       - name: Check setup hash
         id: hash
         run: |
-          # Compute the hash in-container (needs PROOFMAN_DIR + frops), then run
-          # the gate on the host where gcloud is authenticated.
-          # --print-hash emits ONLY the 64-hex hash on stdout (preamble + frops
-          # go to stderr). tail -n1 is a belt-and-suspenders guard.
+          # Both the hash and the bucket gate run inside the container (gcloud
+          # lives there now). --print-hash emits ONLY the 64-hex hash on stdout
+          # (preamble + frops go to stderr). tail -n1 is a belt-and-suspenders guard.
           LOCAL_HASH="$(.github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
-            cd /workspace/zisk && ./tools/setup/setup_build.sh --print-hash 2>/dev/null
+            cd /workspace/zisk && ./tools/test-env/setup_build.sh --print-hash 2>/dev/null
           ' | tail -n 1 | tr -d '[:space:]')"
           [ -n "$LOCAL_HASH" ] || { echo "failed to compute local hash"; exit 1; }
           echo "local_hash=$LOCAL_HASH" >> "$GITHUB_OUTPUT"
 
           FORCE_FLAG=""
           [ "${{ inputs.force_upload }}" = "true" ] && FORCE_FLAG="--force"
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          RESULT="$(LOCAL_HASH="$LOCAL_HASH" ./fetch_setup.sh --check input \
-            --version "${{ steps.resolve.outputs.version }}" $FORCE_FLAG)"
-          cd "$GITHUB_WORKSPACE"
+          # fetch_setup.sh reads the bucket .hash via gcloud; run it in-container.
+          RESULT="$(.github/scripts/docker_exec.sh -u ziskuser \
+            -e LOCAL_HASH="$LOCAL_HASH" \
+            -e SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
+            -e FORCE_FLAG="$FORCE_FLAG" \
+            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./fetch_setup.sh --check input --version "$SETUP_VERSION" $FORCE_FLAG
+            ' | tail -n 1)"
           echo "Gate: $RESULT (hash $LOCAL_HASH)"
           if [ "$RESULT" = "new" ]; then
             echo "is_new=true" >> "$GITHUB_OUTPUT"
@@ -190,7 +214,7 @@ jobs:
           fi
 
       - name: Build setup
-        if: needs.hash.outputs.is_new == 'true'
+        if: steps.hash.outputs.is_new == 'true'
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
@@ -201,13 +225,17 @@ jobs:
             '
 
       - name: Package and upload setup
-        if: needs.hash.outputs.is_new == 'true'
+        if: steps.hash.outputs.is_new == 'true'
         run: |
+          # PACKAGE_SETUP_UPLOAD=1 makes package_setup.sh upload via `gcloud
+          # storage cp`; CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE points gcloud at
+          # the WIF credentials file (mounted into the container via the workspace).
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
             -e PACKAGE_SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
             -e PACKAGE_SETUP_UPLOAD=1 \
+            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./package_setup.sh
