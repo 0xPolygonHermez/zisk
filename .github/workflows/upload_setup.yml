@@ -1,0 +1,183 @@
+name: Upload Setup to bucket
+
+on:
+  push:
+    branches:
+      - develop
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version"
+        required: false
+        type: string
+        default: ""
+      include_snark:
+        description: "Include SNARK artifacts"
+        required: false
+        type: boolean
+        default: true
+      skip_macos:
+        description: "Skip macOS dylib"
+        required: false
+        type: boolean
+        default: false
+      force_upload:
+        description: "Force setup upload"
+        required: false
+        type: boolean
+        default: false
+      ptau_url:
+        description: "Powers-of-tau URL for SNARK setup"
+        required: false
+        type: string
+        default: "https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau"
+
+concurrency:
+  group: upload-setup-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # required for Workload Identity Federation
+
+env:
+  BUCKET: gs://zisk-setup
+
+jobs:
+  upload-setup:
+    name: Upload setup artifacts to bucket
+    runs-on: gpu-hosted
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEST_CONTAINER: zisk-gha-upload-build
+    outputs:
+      is_new: ${{ steps.hash.outputs.is_new }}
+      local_hash: ${{ steps.hash.outputs.local_hash }}
+      version: ${{ steps.resolve.outputs.version }}
+      stage: ${{ steps.stage.outputs.stage }}
+    steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # Workload Identity Federation (keyless). Or swap to:
+          #   credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve version
+        id: resolve
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            # Take the workspace package version from Cargo.toml. Prefix it with
+            # "pre-" (e.g. 1.0.0-alpha => pre-1.0.0-alpha) EXCEPT on the develop
+            # branch, which publishes the bare Cargo.toml version.
+            CARGO_VERSION="$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$GITHUB_WORKSPACE/Cargo.toml" | head -n1)"
+            [ -n "$CARGO_VERSION" ] || { echo "could not read version from Cargo.toml"; exit 1; }
+            if [ "${{ github.ref_name }}" = "develop" ]; then
+              VERSION="${CARGO_VERSION}"
+            else
+              VERSION="pre-${CARGO_VERSION}"
+            fi
+          fi
+          [ -n "$VERSION" ] || { echo "could not resolve version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved setup version: $VERSION"
+
+      - name: Start build setup container
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          docker run -d \
+            --name "${TEST_CONTAINER}" \
+            --privileged \
+            --gpus all \
+            --shm-size=48g \
+            -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
+            -v /home/gha/cache-setup:/cache:rw \
+            -v /home/gha/ptau:/ptau:rw \
+            -e ZISK_GHA=1 \
+            -e ZISK_REPO_DIR=/workspace/zisk \
+            -e TERM=xterm \
+            ziskvm/zisk-runner-gpu:latest \
+            sleep infinity
+          sleep 3
+          docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$" || { docker logs "${TEST_CONTAINER}" || true; exit 1; }
+
+      - name: Build ZisK
+        run: |
+          .github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
+            cd /workspace/zisk/tools/test-env && ./build_zisk.sh
+          '
+
+      - name: Check setup hash
+        id: hash
+        run: |
+          # Compute the hash in-container (needs PROOFMAN_DIR + frops), then run
+          # the gate on the host where gcloud is authenticated.
+          # --print-hash emits ONLY the 64-hex hash on stdout (preamble + frops
+          # go to stderr). tail -n1 is a belt-and-suspenders guard.
+          LOCAL_HASH="$(.github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
+            cd /workspace/zisk && ./tools/setup/setup_build.sh --print-hash 2>/dev/null
+          ' | tail -n 1 | tr -d '[:space:]')"
+          [ -n "$LOCAL_HASH" ] || { echo "failed to compute local hash"; exit 1; }
+          echo "local_hash=$LOCAL_HASH" >> "$GITHUB_OUTPUT"
+
+          FORCE_FLAG=""
+          [ "${{ inputs.force_upload }}" = "true" ] && FORCE_FLAG="--force"
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          RESULT="$(LOCAL_HASH="$LOCAL_HASH" ./fetch_setup.sh --check input \
+            --version "${{ steps.resolve.outputs.version }}" $FORCE_FLAG)"
+          cd "$GITHUB_WORKSPACE"
+          echo "Gate: $RESULT (hash $LOCAL_HASH)"
+          if [ "$RESULT" = "new" ]; then
+            echo "is_new=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_new=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Setup unchanged (matches $BUCKET/zisk-provingkey-${{ steps.resolve.outputs.version }}.hash) — nothing to publish."
+          fi
+
+      - name: Build setup
+        if: needs.hash.outputs.is_new == 'true'
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_setup.sh
+            '
+
+      - name: Package and upload setup
+        if: needs.hash.outputs.is_new == 'true'
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -e PACKAGE_SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
+            -e PACKAGE_SETUP_UPLOAD=1 \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./package_setup.sh
+            '
+
+      - name: Stop build setup container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
