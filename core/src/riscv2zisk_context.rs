@@ -509,6 +509,137 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "float")]
             "fmv.x.d" => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
 
+            // RISC-V Bit manipulation Extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
+
+            // Byte and bit reverse operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "rev8" => self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "brev8" => self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1),
+
+            // Negate logical operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "andn" => self.create_register_op(riscv_instruction, "andn", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "orn" => self.create_register_op(riscv_instruction, "orn", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "xnor" => self.create_register_op(riscv_instruction, "xnor", 4),
+
+            // Pack operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "pack" => self.create_register_op(riscv_instruction, "pack", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "packh" => self.create_register_op(riscv_instruction, "pack_h", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "packw" => self.create_register_op(riscv_instruction, "pack_w", 4),
+
+            // Rotate operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "rol" => self.create_register_op(riscv_instruction, "rol", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "rolw" => self.create_register_op(riscv_instruction, "rol_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "ror" => self.create_register_op(riscv_instruction, "ror", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "rorw" => self.create_register_op(riscv_instruction, "ror_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "rori" => self.immediate_op(riscv_instruction, "ror", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "roriw" => self.immediate_op(riscv_instruction, "ror_w", 4),
+
+            // Min and max operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "min" => self.create_register_op(riscv_instruction, "min", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "minu" => self.create_register_op(riscv_instruction, "minu", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "max" => self.create_register_op(riscv_instruction, "max", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "maxu" => self.create_register_op(riscv_instruction, "maxu", 4),
+
+            // Sign-extend / zero-extend operations.
+            // These are register-to-register (Zbb) ops, NOT memory loads: they
+            // extend the low byte/half of rs1, so they use the single-source
+            // register path (signature is (op, inst_size, rs), rs=1 -> rs1).
+            // Using load_op here would (wrongly) read memory at rs1 + imm.
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sext.b" => {
+                self.create_single_source_register_op(riscv_instruction, "signextend_b", 4, 1)
+            }
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sext.h" => {
+                self.create_single_source_register_op(riscv_instruction, "signextend_h", 4, 1)
+            }
+            // zext.h zero-extends the low 16 bits of rs1: rd = rs1 & 0xFFFF.
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "zext.h" => self.zero_extend_h(riscv_instruction, 4),
+
+            // Bit count operations
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clz" => self.create_single_source_register_op(riscv_instruction, "clz", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clzw" => self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "ctz" => self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "ctzw" => self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "cpop" => self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "cpopw" => self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "orc.b" => self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1),
+
+            // Single bit operations (Zbs)
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bclr" => self.create_register_op(riscv_instruction, "bclr", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bclri" => self.immediate_op(riscv_instruction, "bclr", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bext" => self.create_register_op(riscv_instruction, "bext", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bexti" => self.immediate_op(riscv_instruction, "bext", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "binv" => self.create_register_op(riscv_instruction, "binv", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "binvi" => self.immediate_op(riscv_instruction, "binv", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bset" => self.create_register_op(riscv_instruction, "bset", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "bseti" => self.immediate_op(riscv_instruction, "bset", 4),
+
+            // Address generation operations (Zba)
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "add.uw" => self.create_register_op(riscv_instruction, "add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh1add" => self.create_register_op(riscv_instruction, "sh1add", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh1add.uw" => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh2add" => self.create_register_op(riscv_instruction, "sh2add", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh2add.uw" => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh3add" => self.create_register_op(riscv_instruction, "sh3add", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "sh3add.uw" => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "slli.uw" => self.immediate_op(riscv_instruction, "sll_u_w", 4),
+
+            // Carry-less multiplication operations (Zbc)
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clmul" => self.create_register_op(riscv_instruction, "clmul", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clmulh" => self.create_register_op(riscv_instruction, "clmul_h", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "clmulr" => self.create_register_op(riscv_instruction, "clmul_r", 4),
+
+            // Crossbar permutations operations (Zbkx)
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "xperm4" => self.create_register_op(riscv_instruction, "xperm4", 4),
+            #[cfg(feature = "bit_manipulation_extensions")]
+            "xperm8" => self.create_register_op(riscv_instruction, "xperm8", 4),
+
             // Special ZisK instructions
             ////////////////////////////
 
@@ -790,7 +921,7 @@ impl Riscv2ZiskContext<'_> {
     ) {
         // inst_size == 8 used for special cases where take arguments of precompiled of
         // next instruction but no need to read again
-        assert!(inst_size == 2 || inst_size == 4 || inst_size == 8);
+        assert!(inst_size == 2 || inst_size == 4 || inst_size == 8 || inst_size == 12);
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
         zib.src_a("reg", rs1 as u64, false);
         if is_rs2_an_imm {
@@ -962,6 +1093,20 @@ impl Riscv2ZiskContext<'_> {
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
+        zib.build(self.rom);
+    }
+
+    /// Creates a Zisk operation implementing `zext.h rd, rs1` (Zbb): zero-extends
+    /// the low 16 bits of rs1 into rd, i.e. `and(rs1, 0xFFFF) -> rd`.
+    pub fn zero_extend_h(&mut self, i: &RiscvInstruction, inst_size: u64) {
+        assert!(inst_size == 2 || inst_size == 4);
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        zib.src_a("reg", i.rs1 as u64, false);
+        zib.src_b("imm", 0xFFFF, false);
+        zib.op("and").unwrap();
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(inst_size as i64, inst_size as i64);
+        zib.verbose(&format!("{} r{}, r{}", i.inst, i.rd, i.rs1));
         zib.build(self.rom);
     }
 
@@ -2258,6 +2403,25 @@ impl Riscv2ZiskContext<'_> {
         let rs1 = i.rs1;
         let rs2 = next_instructions[0].imm as u32;
         self.create_extended_precompiles_op(i, "profile", rs1, rs2 as u64, 0, 0, true, 8);
+    }
+
+    pub fn create_single_source_register_op(
+        &mut self,
+        i: &RiscvInstruction,
+        op: &str,
+        inst_size: u64,
+        rs: u64,
+    ) {
+        assert!(inst_size == 2 || inst_size == 4);
+        assert!(rs == 1 || rs == 2);
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        zib.src_a("imm", 0, false);
+        zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
+        zib.op(op).unwrap();
+        zib.verbose(&format!("{} r{}, r{}", i.inst, i.rd, if rs == 1 { i.rs1 } else { i.rs2 }));
+        zib.store("reg", i.rd as i64, false, false);
+        zib.j(inst_size as i64, inst_size as i64);
+        zib.build(self.rom);
     }
 } // impl Riscv2ZiskContext
 
