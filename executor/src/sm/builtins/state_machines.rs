@@ -77,13 +77,6 @@ pub const DMA_POSITION: usize = 4;
 pub const BUILTIN_COUNT: usize = 5;
 
 /// Built-in state machines.
-///
-/// `STD` is the range-checker the witness-bearing SMs are built with (the
-/// real `Std` in production, a no-op stand-in such as `NoopStdProvider`
-/// for tests / standalone). `RomSM` carries no `STD`.
-///
-/// Note: `planner_for_position` is plan-time and range-checker-independent,
-/// so it uses [`NoopStdProvider`] purely as a type token — no `STD` instance involved.
 pub enum BuiltinSMs<STD: StdProvider> {
     /// Rom state machine
     RomSM(Arc<RomSM>),
@@ -114,22 +107,15 @@ impl<STD: StdProvider> BuiltinSMs<STD> {
         position: usize,
         is_asm_emulator: bool,
     ) -> Box<dyn Planner> {
+        type S = NoopStdProvider;
         match position {
             ROM_POSITION => unreachable!(
                 "ROM planning goes through RomPlanner::plan_for_chunks, not the Planner trait"
             ),
-            MEM_POSITION => {
-                <Mem<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
-            }
-            BINARY_POSITION => {
-                <BinarySM<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
-            }
-            ARITH_POSITION => {
-                <ArithSM<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
-            }
-            DMA_POSITION => {
-                <DmaManager<NoopStdProvider> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
-            }
+            MEM_POSITION => <Mem<S> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            BINARY_POSITION => <BinarySM<S> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            ARITH_POSITION => <ArithSM<S> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            DMA_POSITION => <DmaManager<S> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
             _ => panic!("planner_for_position: invalid builtin position {position}"),
         }
     }
