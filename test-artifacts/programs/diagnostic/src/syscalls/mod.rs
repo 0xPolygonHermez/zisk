@@ -1,5 +1,6 @@
 mod arith256;
 mod arith384;
+mod babyjubjub;
 mod blake2;
 mod bls12_381;
 mod bn254;
@@ -13,6 +14,7 @@ mod sha256f;
 pub fn diagnostic_syscalls() {
     arith256::diagnostic_arith256();
     arith384::diagnostic_arith384();
+    babyjubjub::diagnostic_babyjubjub();
     blake2::diagnostic_blake2();
     bls12_381::diagnostic_bls12_381();
     bn254::diagnostic_bn254();

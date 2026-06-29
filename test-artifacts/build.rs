@@ -16,6 +16,7 @@ const PROGRAMS: &[&str] = &[
     "arith256",
     "arith256_mod",
     "arith384_mod",
+    "babyjubjub_add",
     "big_input",
     "bigint",
     "blake2",
