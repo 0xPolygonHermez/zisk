@@ -714,16 +714,16 @@ impl Stats {
                 // control state and cannot recompute a return from a meaningless internal
                 // instruction. The is_jalr_ra && empty case falls through to the call_stack.last()
                 // branch (None => false), matching the previous behavior.
-                self.external_is_return =
-                    if self.external_is_jalr_ra && !self.call_stack.is_empty() {
-                        true
-                    } else if let Some(top) = self.call_stack.last() {
-                        !instruction.store_pc
-                            && instruction.b_src == SRC_REG
-                            && instruction.b_offset_imm0 == top.return_reg as u64
-                    } else {
-                        false
-                    };
+                self.external_is_return = if self.external_is_jalr_ra && !self.call_stack.is_empty()
+                {
+                    true
+                } else if let Some(top) = self.call_stack.last() {
+                    !instruction.store_pc
+                        && instruction.b_src == SRC_REG
+                        && instruction.b_offset_imm0 == top.return_reg as u64
+                } else {
+                    false
+                };
             };
             self.is_call = self.external_is_call;
             self.call_return_reg = if self.is_call { self.external_store_offset } else { 0 };
