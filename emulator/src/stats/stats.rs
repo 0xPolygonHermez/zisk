@@ -683,10 +683,21 @@ impl Stats {
             self.external_is_jmp
         } else {
             self.previous_pc = pc;
+            // Detect a jump using the offset that actually moves the PC, per the next-pc
+            // constraint in main.pil: when set_pc is not active, next_pc = pc + jmp_offset1 if the
+            // flag is set, else pc + jmp_offset2. The PIL also forces flag=1 for `flag` ops and
+            // flag=0 for `copyb` ops, so each op must be tested against its own active offset:
+            //   - FLAG  (jal/hint/nop): flag=1 -> jmp_offset1
+            //   - COPYB:                flag=0 -> jmp_offset2
+            // A delta beyond MAX_PATTERN_SIZE (or negative) means a real jump rather than the small
+            // forward step used to sequence an instruction's micro-op pattern.
             let is_jmp = instruction.set_pc
-                || (instruction.op == ZiskOp::COPYB
+                || (instruction.op == ZiskOp::FLAG
                     && (instruction.jmp_offset1 > MAX_PATTERN_SIZE as i64
-                        || instruction.jmp_offset1 < 0));
+                        || instruction.jmp_offset1 < 0))
+                || (instruction.op == ZiskOp::COPYB
+                    && (instruction.jmp_offset2 > MAX_PATTERN_SIZE as i64
+                        || instruction.jmp_offset2 < 0));
             self.external_is_jmp = is_jmp;
             self.previous_verbose = instruction.verbose.clone();
             is_jmp
