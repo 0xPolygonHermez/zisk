@@ -682,10 +682,9 @@ impl Stats {
         } else {
             self.previous_pc = pc;
             let is_jmp = instruction.set_pc
-                || (instruction.op == 1
-                    && (internal_pc
-                        || (instruction.jmp_offset1 > MAX_PATTERN_SIZE as i64
-                            || instruction.jmp_offset1 < 0)));
+                || (instruction.op == ZiskOp::COPYB
+                    && (instruction.jmp_offset1 > MAX_PATTERN_SIZE as i64
+                        || instruction.jmp_offset1 < 0));
             self.external_is_jmp = is_jmp;
             self.previous_verbose = instruction.verbose.clone();
             is_jmp
