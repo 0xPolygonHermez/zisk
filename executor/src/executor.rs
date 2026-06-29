@@ -71,9 +71,9 @@ pub struct ZiskExecutor<F: PrimeField64, STD: StdProvider> {
 }
 
 impl<F: PrimeField64, STD: StdProvider> ZiskExecutor<F, STD> {
-   /// Creates a new instance of the `ZiskExecutor` with default state machines.
+    /// Creates a new instance of the `ZiskExecutor` with default state machines.
     ///
-    /// This function initializes the executor with a default set of state machines.    ///
+    /// This function initializes the executor with a default set of state machines.
     /// # Arguments
     ///
     /// * `wcm` - Witness manager for managing witness data.
