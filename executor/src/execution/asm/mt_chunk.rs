@@ -45,6 +45,7 @@ use crate::{
 ///   * after the scope, the caller calls [`Self::finalize`] to drain
 ///     the collected per-chunk buses into chunk-indexed counters and
 ///     accumulated `pub_outs`.
+#[derive(Default)]
 pub struct MtChunkProcessor {
     /// Per-chunk databuses, pushed in arbitrary order. `finalize` sorts
     /// by `ChunkId` before draining.
@@ -57,7 +58,7 @@ pub struct MtChunkProcessor {
 impl MtChunkProcessor {
     /// Fresh processor with no recorded chunks or errors.
     pub fn new() -> Self {
-        Self { results: Mutex::new(Vec::new()), errors: Mutex::new(Vec::new()) }
+        Self::default()
     }
 
     /// Process a single chunk: build a per-chunk bus, replay the
@@ -149,12 +150,6 @@ impl MtChunkProcessor {
     #[cfg(test)]
     pub(crate) fn push_error_for_test(&self, message: String) {
         self.record_error(message);
-    }
-}
-
-impl Default for MtChunkProcessor {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

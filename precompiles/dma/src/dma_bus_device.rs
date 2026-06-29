@@ -134,6 +134,7 @@ impl DmaCounterInputGen {
         let mode = if is_asm { BusDeviceMode::CounterAsm } else { BusDeviceMode::Counter };
         Self::new(mode)
     }
+
     const OPS_X_ROW: [usize; 6] = [
         4, // MEMCPY_4
         4, // MEMSET_4

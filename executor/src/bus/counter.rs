@@ -58,7 +58,7 @@ impl StaticDataBus<PayloadType> {
         is_asm_emulator: bool,
         mem_sections: Option<&dyn MemDataSection>,
     ) -> Self {
-        let builtins = BuiltinCounters::build(is_asm_emulator, mem_sections);
+        let builtins = BuiltinCounters::build::<F>(is_asm_emulator, mem_sections);
         let precompiles = PrecompileCounters::build::<F>(is_asm_emulator);
 
         Self {
