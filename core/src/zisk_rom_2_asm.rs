@@ -7711,6 +7711,44 @@ impl ZiskRom2Asm {
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
+            ZiskOp::Rev8
+            | ZiskOp::Brev8
+            | ZiskOp::Andn
+            | ZiskOp::Orn
+            | ZiskOp::Xnor
+            | ZiskOp::Pack
+            | ZiskOp::PackH
+            | ZiskOp::PackW
+            | ZiskOp::Rol
+            | ZiskOp::RolW
+            | ZiskOp::Ror
+            | ZiskOp::RorW
+            | ZiskOp::Clz
+            | ZiskOp::ClzW
+            | ZiskOp::Ctz
+            | ZiskOp::CtzW
+            | ZiskOp::Cpop
+            | ZiskOp::CpopW
+            | ZiskOp::OrcB
+            | ZiskOp::Bclr
+            | ZiskOp::Bext
+            | ZiskOp::Binv
+            | ZiskOp::Bset
+            | ZiskOp::AddUW
+            | ZiskOp::Sh1add
+            | ZiskOp::Sh1addUW
+            | ZiskOp::Sh2add
+            | ZiskOp::Sh2addUW
+            | ZiskOp::Sh3add
+            | ZiskOp::Sh3addUW
+            | ZiskOp::SllUW
+            | ZiskOp::Clmul
+            | ZiskOp::ClmulH
+            | ZiskOp::ClmulR
+            | ZiskOp::Xperm4
+            | ZiskOp::Xperm8 => {
+                panic!("B extension opcode {:?} not supported in assembly emulator", inst.op);
+            }
         }
     }
 
