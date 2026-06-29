@@ -18,8 +18,7 @@ use precompiles_helpers::DmaInfo;
 
 /// The `Dma64AlignedMemSetSM` struct encapsulates the logic of the Dma64Aligned State Machine.
 pub struct Dma64AlignedMemSetSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     pub std: Arc<STD>,
 
     /// Range checks ID's

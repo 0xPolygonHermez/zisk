@@ -20,8 +20,7 @@ use zisk_common::StdProvider;
 
 /// The `DmaPrePostMemCpySM` struct encapsulates the logic of the DmaPrePost State Machine.
 pub struct DmaPrePostMemCpySM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     pub std: Arc<STD>,
 
     /// Range checks ID's

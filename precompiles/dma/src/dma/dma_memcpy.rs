@@ -17,8 +17,7 @@ use zisk_common::StdProvider;
 
 /// The `DmaSM` struct encapsulates the logic of the Dma State Machine.
 pub struct DmaMemCpySM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     pub std: Arc<STD>,
 
     pub rom_table_id: usize,

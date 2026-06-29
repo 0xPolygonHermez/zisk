@@ -38,8 +38,7 @@ pub struct KeccakfSM<STD: StdProvider> {
     /// Number of available keccakfs in the trace.
     pub num_available_keccakfs: usize,
 
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 
     /// The table ID for the Keccakf Table State Machine

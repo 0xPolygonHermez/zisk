@@ -25,8 +25,7 @@ type GlobalMultiplicities = (PrePostAndByteCmpTables, MultTable);
 
 /// The `DmaPrePostSM` struct encapsulates the logic of the DmaPrePost State Machine.
 pub struct DmaPrePostSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     pub std: Arc<STD>,
 
     /// Range checks ID's
