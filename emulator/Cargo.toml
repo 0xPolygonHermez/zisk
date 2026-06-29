@@ -20,6 +20,8 @@ zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 riscv = { workspace = true }
+riscv2zisk = { workspace = true }
+transpilers-common = { workspace = true }
 data-bus = { workspace = true }
 rayon = { workspace = true }
 mem-common = { workspace = true }
