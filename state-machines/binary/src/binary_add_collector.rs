@@ -90,6 +90,7 @@ impl<STD: StdProvider> BinaryAddCollector<STD> {
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
+            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 
