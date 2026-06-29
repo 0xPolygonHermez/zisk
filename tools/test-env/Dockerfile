@@ -26,6 +26,14 @@ RUN apt update && apt install -y \
     docker.io \
  && systemctl enable docker.service
 
+# Install the Google Cloud CLI (gcloud)
+RUN curl -fsSL https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+      | gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg \
+ && echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
+      > /etc/apt/sources.list.d/google-cloud-sdk.list \
+ && apt update \
+ && apt install -y google-cloud-cli
+
 # Force the `vfs` storage driver for the in-container Docker daemon. Nested
 # overlay2 (overlay-on-overlay) is unreliable in Docker-in-Docker, whereas vfs
 # always works. The performance/disk cost is negligible here because the only

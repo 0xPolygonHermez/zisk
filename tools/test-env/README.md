@@ -43,9 +43,9 @@ This will run the Docker container and open the ZisK test menu inside the contai
    Clones the `zisk-eth-client` repository (branch specified by `ZISK_ETH_CLIENT_BRANCH`) and patches its `bin/guests/stateless-validator-reth/Cargo.toml` so that the `ziskos` dependency points to the local ZisK repository resolved from `ZISK_REPO_DIR` (or `${HOME}/workspace/zisk` if unset). It then builds the guest with `cargo-zisk build --release` and verifies that `target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth` was produced.
    The resulting ELF is consumed by options **8. Test Ethereum Block** and **9. Test EthProofs**, so this option must be run before either of them.
 
-5. **Package setup outcome**
+5. **Upload setup**
    Packages the setup artifacts (`.tar.gz` + `.md5`) from the files generated in option 3: the proving key and verify key always, plus the circom circuits (`zisk-circuits`) and snark proving key (`zisk-provingkey-plonk`) when present in `build/`.
-   The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally. Set `PACKAGE_SETUP_UPLOAD=1` to also upload them to `gs://zisk-setup` (requires `gcloud` auth); by default packaging is local-only.
+   The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally, and are always uploaded to `gs://zisk-setup` (requires `gcloud` auth).
 
 6. **Install ZisK from binaries**
    Installs ZisK from binaries using the latest official release via `ziskup`.
@@ -81,47 +81,3 @@ This will run the Docker container and open the ZisK test menu inside the contai
 14. **Exit**
     Exits the Release Kit container and returns to the host shell.
 
-## Publishing a setup to the cloud (CI)
-
-Setups are published to `gs://zisk-setup` by the manual **Upload Setup to Cloud**
-workflow (`.github/workflows/upload-setup.yml`), triggered from the Actions tab →
-"Run workflow". It publishes only when you explicitly decide a setup is final.
-
-Inputs:
-- **version** — published name/version. Blank ⇒ defaults to
-  `gha_package_setup_version` in `Cargo.toml`. Override for provisional setups.
-- **include_snark** — build + publish the SNARK artifacts. Only honored on `main`.
-- **skip_macos** — publish a Linux-only setup (escape hatch if the macOS runner
-  is broken).
-- **force** — bypass the input-hash newness check.
-- **ptau_url** — powers-of-tau URL for the SNARK setup (downloaded once and
-  cached on the runner). Defaults to the `_24` Hermez ptau.
-
-The workflow runs four jobs:
-1. `build-and-stage` (Linux): builds the proving key **fresh** into a persistent
-   host path (so the per-circuit `.cpp` files are persisted), builds the SNARK
-   part on `main` (with `include_snark`), runs the newness gate, and uploads a
-   small `.cpp`/`.so`/`.globalInfo.json` slice (of `provingKey/` and, on `main`,
-   `provingKeySnark/`). Publishing is skipped if the build-input hash already
-   matches `gs://zisk-setup/zisk-provingkey-<version>.hash` (unless `force`).
-2. `macos-dylibs` (macOS): rebuilds the `.dylib`s from that slice via
-   `cargo-zisk proofman-setup rebuild-witness-libs` — including the snark
-   `recursivef`/`final` libs (`--proving-key-snark`) when the snark slice is
-   present (unless `skip_macos`).
-3. `merge-and-upload` (same Linux runner, reusing the staged tree in place):
-   merges the dylibs, packs the tarballs, uploads them, and finally writes the
-   `.hash` sidecar.
-4. `cleanup-stage` (always): removes the staged tree to reclaim disk.
-
-The large proving key never leaves the Linux runner — only the small slice and
-the dylibs cross machines.
-
-**Local devs:** `./fetch_setup.sh` downloads + installs the latest published
-setup (and records a `.setup-hash` marker). Check whether your installed setup
-is current with `./fetch_setup.sh --check installed`.
-
-**Prerequisite (repo owner):** a GCS write credential must be configured as repo
-secrets — either Workload Identity Federation (`GCP_WIF_PROVIDER`,
-`GCP_SERVICE_ACCOUNT`) or a service-account key (`GCP_SA_KEY`, which requires
-editing the workflow's `auth` step to use `credentials_json`). The principal
-needs object read + write on `gs://zisk-setup`.

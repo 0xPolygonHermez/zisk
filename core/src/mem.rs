@@ -96,7 +96,7 @@
 //! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
 //!   program execution as general purpose memory.
 
-use crate::{elf_extraction::DataSection, M16, M3, M32, M8, REG_FIRST, REG_LAST};
+use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
@@ -159,6 +159,13 @@ pub const FCSR: u64 = CSR_ADDR + 0x003 * 8;
 pub const ARCH_ID_CSR: u64 = 0xF12;
 /// Architecture ID Control and Status Register address
 pub const ARCH_ID_CSR_ADDR: u64 = CSR_ADDR + (ARCH_ID_CSR * 8);
+
+/// Raw bytes of `data` that will live at `addr` once the ROM has booted.
+#[derive(Debug, Clone)]
+pub struct DataSection {
+    pub addr: u64,
+    pub data: Vec<u8>,
+}
 
 /// Memory section data, including a buffer (a vector of bytes) and start and end program
 /// memory addresses.

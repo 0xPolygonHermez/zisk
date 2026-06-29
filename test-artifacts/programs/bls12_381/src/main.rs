@@ -9,6 +9,7 @@ mod fp12;
 mod fp2;
 mod fp6;
 mod hash_to_curve;
+mod msm;
 mod pairing;
 mod twist;
 
@@ -19,6 +20,7 @@ use fp12::fp12_tests;
 use fp2::fp2_tests;
 use fp6::fp6_tests;
 use hash_to_curve::hash_to_curve_tests;
+use msm::msm_tests;
 use pairing::pairing_valid_tests;
 use twist::twist_tests;
 
@@ -50,4 +52,7 @@ fn main() {
     // Pairing
     pairing_valid_tests();
     // pairing_invalid_tests();
+
+    // MSM
+    msm_tests();
 }

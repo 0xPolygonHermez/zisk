@@ -7,7 +7,6 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_package_setup_version = "pre-develop-1.0.0-beta"
 gha_zisk_ethproofs_branch = "develop-0.10.0"
 gha_zisk_eth_client_branch = "develop-0.10.0"
 gha_zisk_template_branch = "pre-develop-1.0.0-beta"
@@ -23,7 +22,9 @@ members = [
   "pil",
   "prover-backend",
   "prover-backend/macros",
-  "riscv",
+  "transpilers/riscv",
+  "transpilers/riscv2zisk",
+  "transpilers/common",
   "rom-setup",
   "state-machines/arith",
   "state-machines/binary",
@@ -99,7 +100,9 @@ precomp-blake2 = { path = "precompiles/blake2" }
 precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
-riscv = { path = "riscv" }
+riscv = { path = "transpilers/riscv" }
+transpilers-common = { path = "transpilers/common" }
+riscv2zisk = { path = "transpilers/riscv2zisk" }
 rom-setup = { path = "rom-setup" }
 sm-arith = { path = "state-machines/arith" }
 sm-binary = { path = "state-machines/binary" }

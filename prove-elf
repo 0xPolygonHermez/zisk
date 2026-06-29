@@ -1,0 +1,35 @@
+#!/bin/bash
+# Run Zisk proving on an ELF and verify the result.
+# Usage: ./prove-elf <program.elf>
+#
+# Override binary locations via env vars:
+#   MONITOR      — path to zkevm-test-monitor checkout (default: ~/zkevm-test-monitor)
+#   CARGO_ZISK   — path to cargo-zisk binary
+#   WITNESS_LIB  — path to libzisk_witness.so
+#   ZISK_LIB     — path to directory containing bundled shared libs (libsodium etc.)
+
+set -euo pipefail
+
+ELF="${1:?Usage: $0 <program.elf>}"
+
+MONITOR="${MONITOR:-$HOME/zkevm-test-monitor}"
+CARGO_ZISK="${CARGO_ZISK:-$MONITOR/binaries/cargo-zisk}"
+ZISK_LIB="${ZISK_LIB:-$MONITOR/binaries/zisk-lib}"
+
+export LD_LIBRARY_PATH="$ZISK_LIB${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+HELP="$("$CARGO_ZISK" prove --help 2>&1 || true)"
+
+ARGS=(prove --elf "$ELF")
+
+if grep -q -- "--emulator" <<< "$HELP"; then
+    ARGS+=(--emulator)
+fi
+
+if grep -q -- "--verify-proofs" <<< "$HELP"; then
+    ARGS+=(--verify-proofs)
+elif grep -q -- "--verify-proof" <<< "$HELP"; then
+    ARGS+=(--verify-proof)
+fi
+
+"$CARGO_ZISK" "${ARGS[@]}"

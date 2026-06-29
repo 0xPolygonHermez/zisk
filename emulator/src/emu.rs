@@ -9,7 +9,7 @@ use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
     ROM_BUS_ID, ZISK_PUBLICS,
 };
-use zisk_core::elf_extraction::DataSection;
+use zisk_core::mem::DataSection;
 use zisk_pil::MainTraceRowOps;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;

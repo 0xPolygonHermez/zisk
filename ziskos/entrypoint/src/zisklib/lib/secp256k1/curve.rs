@@ -110,7 +110,10 @@ pub fn lift_x_secp256k1(
 
     // Check the received parity of the y-coordinate is correct
     let parity = (y[0] & 1) != 0;
-    assert_eq!(parity, y_is_odd);
+    assert_eq!(
+        parity, y_is_odd,
+        "Parity of the computed y-coordinate does not match the expected parity"
+    );
 
     Ok([x[0], x[1], x[2], x[3], y[0], y[1], y[2], y[3]])
 }
@@ -345,7 +348,7 @@ pub fn scalar_mul_secp256k1(
     }
 
     // Soundness: the reconstructed scalar must match the input.
-    assert!(eq(&k_rec, &k));
+    assert!(eq(&k_rec, &k), "Reconstructed scalar does not match input scalar");
 
     if res_is_infinity {
         None
@@ -556,8 +559,8 @@ pub fn double_scalar_mul_with_g_secp256k1(
     }
 
     // Soundness: the reconstructed scalars must match the input.
-    assert!(eq(&k1_rec, &k1));
-    assert!(eq(&k2_rec, &k2));
+    assert!(eq(&k1_rec, &k1), "Reconstructed k1 does not match input k1");
+    assert!(eq(&k2_rec, &k2), "Reconstructed k2 does not match input k2");
 
     if res_is_infinity {
         None
@@ -577,7 +580,7 @@ pub fn msm_secp256k1(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
     let n = scalars.len();
-    assert_eq!(n, points.len());
+    assert_eq!(n, points.len(), "Number of scalars must match number of points");
     if n == 0 {
         return None;
     }
@@ -614,9 +617,9 @@ pub(crate) fn msm_secp256k1_max_bits(
     max_bits: usize,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Option<[u64; 8]> {
-    debug_assert!(!scalars.is_empty());
-    debug_assert_eq!(scalars.len(), points.len());
-    debug_assert!(max_bits > 0 && max_bits <= 256);
+    debug_assert!(!scalars.is_empty(), "Scalars array must not be empty");
+    debug_assert_eq!(scalars.len(), points.len(), "Number of scalars must match number of points");
+    debug_assert!(max_bits > 0 && max_bits <= 256, "max_bits must be in the range (0, 256]");
 
     let n = scalars.len();
     let w = optimal_window_size(n);

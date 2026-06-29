@@ -412,8 +412,8 @@ pub fn double_scalar_mul_with_g_secp256r1(
     }
 
     // Soundness: the reconstructed scalars must match the input.
-    assert!(eq(&k1_rec, &k1));
-    assert!(eq(&k2_rec, &k2));
+    assert!(eq(&k1_rec, &k1), "Reconstructed k1 does not match input k1");
+    assert!(eq(&k2_rec, &k2), "Reconstructed k2 does not match input k2");
 
     if res_is_infinity {
         None

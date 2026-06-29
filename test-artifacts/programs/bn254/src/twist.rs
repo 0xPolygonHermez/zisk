@@ -1,6 +1,6 @@
 use ziskos::zisklib::{
     add_twist_bn254, dbl_twist_bn254, is_on_curve_twist_bn254, is_on_subgroup_twist_bn254,
-    neg_twist_bn254, scalar_mul_by_x_twist_bn254, utf_endomorphism_twist_bn254,
+    neg_twist_bn254, scalar_mul_by_x_complete_twist_bn254, utf_endomorphism_twist_bn254,
 };
 
 use crate::constants::IDENTITY_G2;
@@ -294,7 +294,7 @@ pub fn twist_tests() {
         0xD630C7942FA38E9E,
         0x29B17052D1C5CE03,
     ];
-    let res = scalar_mul_by_x_twist_bn254(&p);
+    let res = scalar_mul_by_x_complete_twist_bn254(&p);
     let res_exp = [
         0xA8B5BFB0B693D450,
         0xF509982175E4FA1D,

@@ -121,6 +121,8 @@ pub fn pow_tests() {
     assert_eq!(overflowing_pow(TWO, [4, 0, 0, 0]), ([16, 0, 0, 0], false));
     // 3^4 = 81
     assert_eq!(overflowing_pow([3, 0, 0, 0], [4, 0, 0, 0]), ([81, 0, 0, 0], false));
+    // >1 limbs power-of-two exponent path 2^(2^64)
+    assert_eq!(overflowing_pow(TWO, [0, 1, 0, 0]), ([0, 0, 0, 0], true));
 
     // General square-and-multiply path
     // 2^3 = 8  (exp=3 = 0b11)
@@ -152,6 +154,8 @@ pub fn pow_tests() {
     assert_eq!(wrapping_pow(MAX, TWO), ONE);
     // 2^256 wraps to 0
     assert_eq!(wrapping_pow(TWO, [256, 0, 0, 0]), ZERO);
+    // >1 limbs power-of-two exponent path 2^(2^64) = 0 mod 2^256
+    assert_eq!(wrapping_pow(TWO, [0, 1, 0, 0]), ZERO);
 
     println!("All U256 Pow tests passed!");
 }
