@@ -1,5 +1,6 @@
 [package]
 name = "riscv2zisk"
+description = "Transpiler from RISC-V to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

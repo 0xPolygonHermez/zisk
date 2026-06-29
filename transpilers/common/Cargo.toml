@@ -1,5 +1,6 @@
 [package]
 name = "transpilers-common"
+description = "Shared ELF-to-ROM transpilation utilities for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -11,7 +12,7 @@ categories = { workspace = true }
 zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
 zisk-riscv = { workspace = true }
-elf = "0.7.4"
+elf = { workspace = true }
 
 [build-dependencies]
 lib-float = { workspace = true, optional = true }
