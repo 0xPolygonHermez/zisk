@@ -145,6 +145,7 @@ pub struct Stats {
     external_is_call: bool,
     external_store_offset: u8,
     external_is_jalr_ra: bool,
+    external_is_return: bool,
 }
 
 impl Default for Stats {
@@ -216,6 +217,7 @@ impl Default for Stats {
             external_is_call: false,
             external_store_offset: 0,
             external_is_jalr_ra: false,
+            external_is_return: false,
         }
     }
 }
@@ -705,30 +707,27 @@ impl Stats {
                     && instruction.set_pc
                     && instruction.b_src == SRC_REG
                     && instruction.b_offset_imm0 == 1;
+
+                // RETURN: set_pc=true, store_pc=false (no stores RA), b_src=SRC_REG,
+                // b_offset_imm0=1 (jumps to ra/x1). Frozen here at the regular entry, exactly like
+                // is_call / is_jalr_ra, so the whole internal (odd-PC) chain inherits a consistent
+                // control state and cannot recompute a return from a meaningless internal
+                // instruction. The is_jalr_ra && empty case falls through to the call_stack.last()
+                // branch (None => false), matching the previous behavior.
+                self.external_is_return =
+                    if self.external_is_jalr_ra && !self.call_stack.is_empty() {
+                        true
+                    } else if let Some(top) = self.call_stack.last() {
+                        !instruction.store_pc
+                            && instruction.b_src == SRC_REG
+                            && instruction.b_offset_imm0 == top.return_reg as u64
+                    } else {
+                        false
+                    };
             };
             self.is_call = self.external_is_call;
             self.call_return_reg = if self.is_call { self.external_store_offset } else { 0 };
-
-            // RETURN: set_pc=true, store_pc=false (no stores RA), b_src=SRC_REG, b_offset_imm0=1 (jumps to ra/x1)
-            // Additionally, verify that the target PC matches the expected return address from the call stack
-            let is_jalr_ra = self.external_is_jalr_ra;
-
-            if is_jalr_ra && !self.call_stack.is_empty() {
-                // Check if we're jumping to the expected return address
-                if let Some(_top) = self.call_stack.last() {
-                    // The new PC should match the RA from the call stack
-                    // Note: we can't check the future PC here, so we rely on the pattern
-                    self.is_return = true;
-                } else {
-                    self.is_return = false;
-                }
-            } else if let Some(top) = self.call_stack.last() {
-                self.is_return = !instruction.store_pc
-                    && instruction.b_src == SRC_REG
-                    && instruction.b_offset_imm0 == top.return_reg as u64;
-            } else {
-                self.is_return = false;
-            }
+            self.is_return = self.external_is_return;
         } else {
             self.is_call = false;
             self.is_return = false;
