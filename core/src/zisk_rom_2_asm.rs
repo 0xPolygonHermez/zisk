@@ -7901,21 +7901,19 @@ impl ZiskRom2Asm {
         // is always a high address.
         #[cfg(not(feature = "float"))]
         {
-            let high_address: u64 = 0x8000_0000;
+            // Check that we are not using the float library.
             assert!(
                 ctx.pc < FLOAT_LIB_ROM_ADDR,
                 "Dynamic jump to low address is not supported without float support"
             );
+            // The next assembly line is an optimization that depends on the ROM_ADDR being
+            // 0x8000_0000, so we assert it to ensure correctness.  If it wasn't, we should subtract
+            // ROM_ADDR from pc, but since it is, we can just clear the 31st bit of pc to get the
+            // correct index into the map.
+            assert!(ROM_ADDR == 0x8000_0000, "ROM_ADDR must be 0x8000_0000");
             *code += &format!("\tbtr {}, 31 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ADDR"));
             *code += &format!(
-                "\tlea {}, [map_pc_{:x}] {}\n",
-                REG_ADDRESS,
-                high_address,
-                ctx.comment_str(&format!("address = map[0x{:x}]", high_address))
-            );
-            *code += &format!(
-                "\tmov {}, [{} + {}*8] {}\n",
-                REG_ADDRESS,
+                "\tmov {}, [map_pc_80000000 + {}*8] {}\n",
                 REG_ADDRESS,
                 REG_PC,
                 ctx.comment_str("address = map[pc]")
