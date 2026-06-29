@@ -30,7 +30,8 @@ impl<'a> Riscv2zisk<'a> {
         comments: bool,
         hints: bool,
     ) -> Result<(), Box<dyn Error>> {
-        elf2romfile(self.elf, &asm_file.into(), generation_method, log_output, comments, hints)
+        let asm_file = asm_file.into();
+        elf2romfile(self.elf, &asm_file, generation_method, log_output, comments, hints)
     }
 
     /// Executes the file conversion process by calling elf2rom()
