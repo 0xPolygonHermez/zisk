@@ -3,9 +3,9 @@
 use crate::BinaryBasicFrops;
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, StdProvider, A, B, OP,
-    OPERATION_BUS_ID, OP_TYPE,
+    OPERATION_BUS_ID,
 };
-use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_core::zisk_ops::ZiskOp;
 
 use std::sync::Arc;
 
@@ -92,7 +92,6 @@ impl<STD: StdProvider> BinaryAddCollector<STD> {
         }
 
         if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 

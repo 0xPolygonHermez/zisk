@@ -3,10 +3,8 @@
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
 use crate::{BinaryBasicFrops, BinaryInput};
-use zisk_common::{
-    BusDevice, BusId, CollectSkipper, StdProvider, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
-};
-use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_common::{BusDevice, BusId, CollectSkipper, StdProvider, A, B, OP, OPERATION_BUS_ID};
+use zisk_core::zisk_ops::ZiskOp;
 
 use std::sync::Arc;
 
@@ -50,7 +48,7 @@ impl<STD: StdProvider> BinaryBasicCollector<STD> {
     ) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
-            .expect("get_virtual_table_id failed");
+            .expect("Failed to get FROPS table ID");
 
         Self {
             inputs: Vec::with_capacity(num_operations),
@@ -76,11 +74,6 @@ impl<STD: StdProvider> BinaryBasicCollector<STD> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
-        // The router (`route_data`) dispatches this collector only for the
-        // `Binary` op-type arm, so the fixed operation header `[op, op_type, a, b]`
-        // can be read directly instead of round-tripping through `ExtOperationData`.
-        debug_assert_eq!(data[OP_TYPE] as u32, ZiskOperationType::Binary as u32);
-
         let instance_complete = self.inputs.len() == self.num_operations;
 
         if instance_complete && !self.force_execute_to_end {

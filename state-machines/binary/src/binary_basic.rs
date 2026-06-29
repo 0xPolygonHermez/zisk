@@ -30,7 +30,7 @@ impl<STD: StdProvider> BinaryBasicSM<STD> {
     /// Creates a new Binary Basic State Machine instance.
     ///
     /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the range-check sink.
+    /// * `std` - Standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicSM`.
