@@ -19,6 +19,7 @@ use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
 use data_bus::DataBusTrait;
 use proofman_fields::PrimeField;
+use riscv2zisk::Riscv2zisk;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -26,7 +27,7 @@ use std::{
 };
 use sysinfo::System;
 use zisk_common::EmuTrace;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
 
 pub trait Emulator {
     fn emulate(

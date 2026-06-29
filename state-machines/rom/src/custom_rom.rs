@@ -5,7 +5,8 @@
 
 use mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
 use proofman_fields::PrimeField64;
-use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
+use riscv2zisk::Riscv2zisk;
+use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
 
 use crate::error::{RomError, RomResult};

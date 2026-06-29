@@ -16,6 +16,7 @@ use proofman_common::{
 };
 use proofman_fields::Goldilocks;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+use riscv2zisk::Riscv2zisk;
 use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -29,7 +30,7 @@ use zisk_common::{
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey,
     StatsCostPerType, ZiskExecutorTime, ZiskPaths,
 };
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
 
 use anyhow::Result;

@@ -1,9 +1,0 @@
-[package]
-name = "zisk-riscv"
-description = "RISC-V instruction structures and parser for the ZisK zkVM"
-version = { workspace = true }
-edition = { workspace = true }
-license = { workspace = true }
-keywords = { workspace = true }
-repository = { workspace = true }
-categories = { workspace = true }

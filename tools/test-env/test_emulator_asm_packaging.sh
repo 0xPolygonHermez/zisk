@@ -38,7 +38,7 @@ python3 -c 'import yaml' 2>/dev/null \
 step "Building libziskclib.a + libziskc.a + riscv2zisk"
 cargo build --release -p ziskclib -p lib-c --manifest-path "$REPO/Cargo.toml" \
   || fail "cargo build of ziskclib/lib-c failed"
-cargo build --release -p zisk-core --bin riscv2zisk --manifest-path "$REPO/Cargo.toml" \
+cargo build --release -p riscv2zisk --bin riscv2zisk --manifest-path "$REPO/Cargo.toml" \
   || fail "cargo build of riscv2zisk failed"
 
 ZISKC="$REPO/target/zisk-libs/libziskc.a"

@@ -2,8 +2,9 @@
 extern crate criterion;
 use criterion::Criterion;
 //use std::{fs::File /* , time::Duration */};
+use riscv2zisk::Riscv2zisk;
 use zisk_common::EmuTrace;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 // Thanks to the example provided by @jebbow in his article

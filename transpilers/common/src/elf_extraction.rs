@@ -7,18 +7,12 @@ use elf::{
 };
 use std::{collections::HashMap, error::Error, fs, path::Path};
 
-use crate::{is_elf_file, RAM_ADDR, RAM_SIZE};
+use zisk_core::mem::DataSection;
+use zisk_core::{is_elf_file, RAM_ADDR, RAM_SIZE};
 
 const RAM_START_ADDR: u64 = RAM_ADDR;
 const RAM_END_ADDR: u64 = RAM_ADDR + RAM_SIZE;
 const MAX_ELF_SECTION_SIZE: usize = 1024 * 1024 * 1024; // 1 GiB, arbitrary limit to prevent OOM from malformed ELFs
-
-/// Raw bytes of `data` that will live at `addr` once the ROM has booted.
-#[derive(Debug, Clone)]
-pub struct DataSection {
-    pub addr: u64,
-    pub data: Vec<u8>,
-}
 
 /// All sections that `ZiskRom` cares about in the ELF file, categorized
 #[derive(Debug, Default)]

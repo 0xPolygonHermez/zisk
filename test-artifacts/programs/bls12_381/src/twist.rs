@@ -1,6 +1,7 @@
 use ziskos::zisklib::{
     add_twist_bls12_381, dbl_twist_bls12_381, is_on_curve_twist_bls12_381,
-    is_on_subgroup_twist_bls12_381, neg_twist_bls12_381, scalar_mul_by_abs_x_twist_bls12_381,
+    is_on_subgroup_twist_bls12_381, neg_twist_bls12_381,
+    scalar_mul_by_abs_x_complete_twist_bls12_381,
 };
 
 use crate::constants::{G2, IDENTITY_G2};
@@ -231,7 +232,7 @@ pub fn twist_tests() {
 
     // Scalar multiplication by x
     let p = G2;
-    let res = scalar_mul_by_abs_x_twist_bls12_381(&p);
+    let res = scalar_mul_by_abs_x_complete_twist_bls12_381(&p);
     let res_exp = [
         0xD928C716F9C1BC67,
         0x4A85F5B285F02508,

@@ -15,3 +15,7 @@ zisk-sdk = { path = "../sdk" }
 
 [build-dependencies]
 zisk-sdk = { path = "../sdk" }
+
+[features]
+default = []
+bit_manipulation_extensions = []

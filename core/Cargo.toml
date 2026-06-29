@@ -12,14 +12,9 @@ categories = { workspace = true }
 name = "zisk_core"
 path = "src/lib.rs"
 
-[[bin]]
-name = "riscv2zisk"
-path = "src/bin/riscv2zisk.rs"
-
 [dependencies]
 precompiles-helpers = { workspace = true }
 ziskos = { workspace = true }
-zisk-riscv = { workspace = true }
 rayon = { workspace = true }
 proofman-fields = { workspace = true }
 sha2 = { workspace = true }
@@ -38,3 +33,4 @@ debug_dma = []
 log_dma_ops = []
 # sp = []
 float = ["dep:lib-float", "lib-float/float"]
+bit_manipulation_extensions = []

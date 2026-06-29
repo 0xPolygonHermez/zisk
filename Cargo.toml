@@ -7,10 +7,9 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_package_setup_version = "pre-develop-1.0.0-alpha"
 gha_zisk_ethproofs_branch = "develop-0.10.0"
 gha_zisk_eth_client_branch = "develop-0.10.0"
-gha_zisk_template_branch = "pre-develop-1.0.0-alpha"
+gha_zisk_template_branch = "pre-develop-1.0.0-beta"
 
 [workspace]
 members = [
@@ -23,7 +22,9 @@ members = [
   "pil",
   "prover-backend",
   "prover-backend/macros",
-  "riscv",
+  "transpilers/riscv",
+  "transpilers/riscv2zisk",
+  "transpilers/common",
   "rom-setup",
   "state-machines/arith",
   "state-machines/binary",
@@ -99,7 +100,9 @@ precomp-blake2 = { path = "precompiles/blake2", version = "1.0.0-beta" }
 precomp-poseidon = { path = "precompiles/poseidon", version = "1.0.0-beta" }
 precomp-big-int = { path = "precompiles/big_int", version = "1.0.0-beta" }
 precomp-dma = { path = "precompiles/dma", version = "1.0.0-beta" }
-zisk-riscv = { path = "riscv", version = "1.0.0-beta" }
+zisk-riscv = { path = "transpilers/riscv", version = "1.0.0-beta" }
+transpilers-common = { path = "transpilers/common", version = "1.0.0-beta" }
+riscv2zisk = { path = "transpilers/riscv2zisk", version = "1.0.0-beta" }
 rom-setup = { path = "rom-setup", version = "1.0.0-beta" }
 sm-arith = { path = "state-machines/arith", version = "1.0.0-beta" }
 sm-binary = { path = "state-machines/binary", version = "1.0.0-beta" }

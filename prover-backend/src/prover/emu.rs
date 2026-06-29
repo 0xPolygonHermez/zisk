@@ -13,6 +13,7 @@ use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
+use riscv2zisk::Riscv2zisk;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -22,7 +23,7 @@ use zisk_common::{
     io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues,
     StatsCostPerType, ZiskExecutorTime,
 };
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
 
 use anyhow::Result;

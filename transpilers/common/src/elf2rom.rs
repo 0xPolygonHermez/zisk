@@ -1,22 +1,21 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
-use crate::{
-    add_end_and_lib,
-    elf_extraction::{
-        collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes,
-        merge_adjacent_data_sections, merge_ro_sections, DataSection, ElfPayload,
-    },
-    riscv2zisk_context::{add_entry_exit_jmp, add_zisk_code},
-    AsmGenerationMethod, DataSection64, ZiskRom, ZiskRom2Asm, RAM_ADDR, RAM_SIZE, ROM_ADDR,
-    ROM_ENTRY, ROM_SIZE,
+use crate::elf_extraction::{
+    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_adjacent_data_sections,
+    merge_ro_sections, ElfPayload,
 };
 use std::{error::Error, path::Path};
+use zisk_core::mem::DataSection;
+use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
+use zisk_core::zisk_rom::{DataSection64, ZiskRom};
+use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
+use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, add_zisk_code};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]
-    const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../lib-float/c/lib/ziskfloat.elf");
+    const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.elf");
 
     // Extract all relevant sections from the ELF file
     #[cfg(feature = "float")]

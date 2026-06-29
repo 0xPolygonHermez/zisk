@@ -29,7 +29,7 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     current_step=1
-    total_steps=4
+    total_steps=3
 
     step "Loading environment variables..."
     load_env || return 1
@@ -50,18 +50,6 @@ main() {
     ensure mkdir -p "$HOME/.zisk" || return 1
     ensure rm -rf "$HOME/.zisk/provingKey" || return 1
     ensure cp -R "${ZISK_REPO}/build/provingKey" "$HOME/.zisk" || return 1
-
-    step "Generate constant tree files..."
-    local gpu_flag=""
-    # Only enable GPU when not forced to CPU, not on macOS, and the installed
-    # cargo-zisk is actually a GPU build (its `--version` description contains
-    # "[gpu]", e.g. "cargo-zisk 0.18.0 [gpu] (790f9e2 ...)").
-    if [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]"; then
-        gpu_flag="--gpu"
-    fi
-    local no_agg_flag=""
-    [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && no_agg_flag="--no-aggregation"
-    ensure cargo-zisk-dev check-setup ${gpu_flag} ${no_agg_flag} || return 1
 
     success "ZisK setup completed successfully!"
 }

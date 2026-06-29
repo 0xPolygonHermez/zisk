@@ -56,8 +56,7 @@ main() {
 
     step  "Building ZisK tools..."
     ensure cargo clean || return 1
-    ensure cargo update || return 1
-
+    
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
     if [[ "${ONLY_CPU}" == "1" ]]; then
