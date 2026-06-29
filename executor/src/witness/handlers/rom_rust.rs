@@ -47,6 +47,7 @@ mod tests {
     use zisk_core::ZiskRom;
 
     type F = Goldilocks;
+    type STD = NoopStdProvider;
 
     const GID: usize = 42;
     const AIRGROUP_ID: usize = 7;
@@ -69,7 +70,7 @@ mod tests {
 
     fn run_pre_calculate<'a>(
         registry: &FakeProofRegistry,
-        state: &ExecutionState<F, NoopStdProvider>,
+        state: &ExecutionState<F, STD>,
         secn_instances: &'a SecnInstanceMap<F>,
         instances_to_collect: &mut SecnInstanceMapRef<'a, F>,
     ) -> ExecutorResult<()> {
@@ -91,7 +92,7 @@ mod tests {
         secn_instances.insert(GID, make_rom_instance(None));
 
         let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F, NoopStdProvider> = ExecutionState::new();
+        let state: ExecutionState<F, STD> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
@@ -112,7 +113,7 @@ mod tests {
         secn_instances.insert(GID, make_rom_instance(Some(rh_data)));
 
         let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F, NoopStdProvider> = ExecutionState::new();
+        let state: ExecutionState<F, STD> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)
@@ -131,7 +132,7 @@ mod tests {
     fn pre_calculate_errors_when_instance_missing() {
         let secn_instances: SecnInstanceMap<F> = HashMap::new(); // empty
         let registry = FakeProofRegistry::new();
-        let state: ExecutionState<F, NoopStdProvider> = ExecutionState::new();
+        let state: ExecutionState<F, STD> = ExecutionState::new();
         let mut instances_to_collect: SecnInstanceMapRef<'_, F> = HashMap::new();
 
         let err = run_pre_calculate(&registry, &state, &secn_instances, &mut instances_to_collect)

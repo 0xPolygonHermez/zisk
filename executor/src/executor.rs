@@ -71,18 +71,13 @@ pub struct ZiskExecutor<F: PrimeField64, STD: StdProvider> {
 }
 
 impl<F: PrimeField64, STD: StdProvider> ZiskExecutor<F, STD> {
-    /// Creates a new instance of the `ZiskExecutor` around the supplied
-    /// range-checker `std`.
+   /// Creates a new instance of the `ZiskExecutor` with default state machines.
     ///
-    /// The caller owns the choice of range-checker: it builds the `Arc<STD>`
-    /// (and, for the real `Std`, registers it on the witness manager via
-    /// `proofman::register_std`) before calling this. The executor stays
-    /// range-checker-agnostic.
-    ///
+    /// This function initializes the executor with a default set of state machines.    ///
     /// # Arguments
     ///
     /// * `wcm` - Witness manager for managing witness data.
-    /// * `std` - The range-checker shared across built-in SMs and precompiles.
+    /// * `std` - The StdProvider implementation to use for range-checking.
     /// * `verbose_mode` - Verbose mode for logging.
     /// * `with_asm_emulator` - Whether the executor supports the ASM backend at runtime.
     /// * `packed` - Whether to use packed representation for witness computation.
@@ -113,11 +108,10 @@ impl<F: PrimeField64, STD: StdProvider> ZiskExecutor<F, STD> {
         Ok(executor)
     }
 
-    /// Constructs a standalone executor — no `WitnessManager`, no range-checker
+    /// Constructs a standalone executor — no `WitnessManager`, no `StdProvider`,
     /// instance, no `StaticSMBundle`, no `WitnessPhase`. Only the emulate + plan
     /// path is wired up; calls to witness-mode-only public methods (e.g.
-    /// `calculate_witness`) will panic. `STD` is never instantiated here, so
-    /// callers typically pick the no-op `NoopStdProvider`.
+    /// `calculate_witness`) will panic.
     pub fn new_standalone(
         verbose_mode: proofman_common::VerboseMode,
         with_asm_emulator: bool,
@@ -130,9 +124,7 @@ impl<F: PrimeField64, STD: StdProvider> ZiskExecutor<F, STD> {
             witness: None,
         }))
     }
-}
 
-impl<F: PrimeField64, STD: StdProvider> ZiskExecutor<F, STD> {
     /// Standalone execution entry point: emulate + count + plan. Returns
     /// the executor summary, the program's captured `(index, value)`
     /// public-output pairs, and a per-AIR plan summary. `cost_per_type`
