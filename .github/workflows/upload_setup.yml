@@ -98,7 +98,7 @@ jobs:
             echo "credentials file '$GOOGLE_GHA_CREDS_PATH' is not under GITHUB_WORKSPACE" >&2; exit 1; }
           echo "CONTAINER_GCP_CREDS=/workspace/zisk/$rel" >> "$GITHUB_ENV"
 
-      - name: Resolve version
+      - name: Resolve setup version
         id: resolve
         run: |
           VERSION="${{ inputs.version }}"
@@ -119,59 +119,7 @@ jobs:
           echo "Resolved setup version: $VERSION"
 
       - name: Start test container with systemd
-        run: |
-          docker rm -f "${TEST_CONTAINER}" || true
-
-          docker run -d \
-            --name "${TEST_CONTAINER}" \
-            --pull=always \
-            --privileged \
-            --cgroupns=host \
-            --gpus all \
-            --shm-size=48g \
-            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-            -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
-            -v /home/gha/cache-setup:/home/ziskuser/output:rw \
-            -e ZISK_GHA=1 \
-            -e ZISK_REPO_DIR=/workspace/zisk \
-            -e PROVE_FLAGS=-y \
-            -e TERM=xterm \
-            ziskvm/zisk-runner-gpu:latest \
-            /sbin/init
-
-          sleep 3
-
-          if ! docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
-            echo "Container stopped unexpectedly"
-            docker ps -a
-            docker logs "${TEST_CONTAINER}" || true
-            docker inspect "${TEST_CONTAINER}" --format '{{.State.ExitCode}} {{.State.Error}}' || true
-            exit 1
-          fi
-
-          docker exec "${TEST_CONTAINER}" bash -lc '
-            echo "PID 1:"
-            ps -p 1 -o pid,comm,args
-            systemctl is-system-running || true
-          '
-
-          # Wait for the in-container Docker daemon (started by systemd) to be
-          # ready. lib-float/build.rs invokes `docker` early in the build, so it
-          # must be up before the "Build ZisK" step runs.
-          echo "Waiting for in-container Docker daemon..."
-          for i in $(seq 1 30); do
-            if docker exec -u ziskuser "${TEST_CONTAINER}" docker info >/dev/null 2>&1; then
-              echo "Docker daemon is ready."
-              break
-            fi
-            if [ "$i" -eq 30 ]; then
-              echo "Docker daemon did not become ready in time"
-              docker exec "${TEST_CONTAINER}" systemctl status docker.service --no-pager || true
-              docker exec "${TEST_CONTAINER}" journalctl -u docker.service --no-pager -n 50 || true
-              exit 1
-            fi
-            sleep 2
-          done
+        run: .github/scripts/start_test_container.sh
 
       - name: Build ZisK
         run: |
@@ -225,23 +173,25 @@ jobs:
               ./build_setup.sh
             '
 
-      - name: Package and upload setup
+      - name: Upload setup
         if: steps.hash.outputs.is_new == 'true'
+        env:
+          # On a push to develop upload all artifacts; otherwise only the proving key.
+          SETUP_ARTIFACTS: ${{ github.event_name == 'push' && github.ref_name == 'develop' && 'all' || 'provingkey' }}
         run: |
-          # PACKAGE_SETUP_UPLOAD=1 makes package_setup.sh upload via `gcloud
-          # storage cp`; CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE points gcloud at
-          # the WIF credentials file (mounted into the container via the workspace).
+          # upload_setup.sh always uploads via `gcloud storage cp`;
+          # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE points gcloud at the WIF
+          # credentials file (mounted into the container via the workspace).
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
-            -e PACKAGE_SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
-            -e PACKAGE_SETUP_UPLOAD=1 \
-            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
-            -e SETUP_ARTIFACTS="provingkey" \
+            -e SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
+            -e SETUP_ARTIFACTS="$SETUP_ARTIFACTS" \
             -e SETUP_HASH="${{ steps.hash.outputs.local_hash }}" \
+            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
-              ./package_setup.sh
+              ./upload_setup.sh
             '
 
       - name: Stop build setup container

@@ -13,7 +13,7 @@ while true; do
     echo " 2) Build ZisK from source"
     echo " 3) Build setup from source"
     echo " 4) Build zec-reth ELF"
-    echo " 5) Package setup outcome"
+    echo " 5) Upload setup"
     echo " 6) Install ZisK from binaries"
     echo " 7) Test sha_hasher"
     echo " 8) Test Ethereum block"
@@ -44,7 +44,7 @@ while true; do
             run_timed "./build_zec_reth.sh"
             ;;
         5)
-            run_timed "./package_setup.sh"
+            run_timed "./upload_setup.sh"
             ;;
         6)
             run_timed "./install_zisk_bin.sh"

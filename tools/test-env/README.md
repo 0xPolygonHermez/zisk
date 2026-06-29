@@ -43,9 +43,9 @@ This will run the Docker container and open the ZisK test menu inside the contai
    Clones the `zisk-eth-client` repository (branch specified by `ZISK_ETH_CLIENT_BRANCH`) and patches its `bin/guests/stateless-validator-reth/Cargo.toml` so that the `ziskos` dependency points to the local ZisK repository resolved from `ZISK_REPO_DIR` (or `${HOME}/workspace/zisk` if unset). It then builds the guest with `cargo-zisk build --release` and verifies that `target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth` was produced.
    The resulting ELF is consumed by options **8. Test Ethereum Block** and **9. Test EthProofs**, so this option must be run before either of them.
 
-5. **Package setup outcome**
+5. **Upload setup**
    Packages the setup artifacts (`.tar.gz` + `.md5`) from the files generated in option 3: the proving key and verify key always, plus the circom circuits (`zisk-circuits`) and snark proving key (`zisk-provingkey-plonk`) when present in `build/`.
-   The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally. Set `PACKAGE_SETUP_UPLOAD=1` to also upload them to `gs://zisk-setup` (requires `gcloud` auth); by default packaging is local-only.
+   The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally, and are always uploaded to `gs://zisk-setup` (requires `gcloud` auth).
 
 6. **Install ZisK from binaries**
    Installs ZisK from binaries using the latest official release via `ziskup`.

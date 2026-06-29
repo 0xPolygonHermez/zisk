@@ -5,7 +5,7 @@
 # optional local artifact cache (--cache-dir) lets a repeat build reuse a
 # previously built provingKey/ keyed by the input hash, instead of rebuilding.
 # To package the result (provingKey/circom/snark tarballs), use
-# tools/test-env/package_setup.sh.
+# tools/test-env/upload_setup.sh.
 #
 # Modes (mutually exclusive)
 # --------------------------
@@ -85,7 +85,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          Runs frops generation but no compile-pil / setup.
 
 To package the result (provingKey + circom + snark tarballs), run:
-  (cd tools/test-env && ./package_setup.sh)
+  (cd tools/test-env && ./upload_setup.sh)
 EOF
   exit 1
 }
@@ -247,7 +247,7 @@ case "$MODE" in
       --publics-info "$PUBLICS_INFO" \
       --powers-of-tau "$PTAU_PATH"
 
-    echo "done. provingKeySnark/ under $BUILD_DIR/ — package with (cd tools/test-env && ./package_setup.sh)"
+    echo "done. provingKeySnark/ under $BUILD_DIR/ — package with (cd tools/test-env && ./upload_setup.sh)"
     exit 0
     ;;
 
@@ -256,7 +256,7 @@ case "$MODE" in
     echo "==> proofman-setup setup-compressed-final"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup setup-compressed-final --build-dir "$BUILD_DIR"
     echo "done. vadcop_final_compressed/ regenerated under $BUILD_DIR/provingKey/"
-    echo "to repackage the updated provingKey/: (cd tools/test-env && ./package_setup.sh)"
+    echo "to repackage the updated provingKey/: (cd tools/test-env && ./upload_setup.sh)"
     exit 0
     ;;
 
@@ -339,7 +339,7 @@ if [ "$CACHE_HIT" -eq 0 ]; then
 fi
 
 if [ "$MODE" = "build" ]; then
-  echo "done. to package: (cd tools/test-env && ./package_setup.sh)"
+  echo "done. to package: (cd tools/test-env && ./upload_setup.sh)"
 else
   echo "done."
 fi
