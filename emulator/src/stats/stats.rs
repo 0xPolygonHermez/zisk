@@ -675,7 +675,7 @@ impl Stats {
         // Increase the PC histogram entry for this PC
         self.pc_histogram.entry(pc).and_modify(|count| *count += 1).or_insert(1);
         self.internal_previous_pc = pc;
-        // check if regular PC to discart internal PC.
+        // Check if PC is regular to discard internal (odd) PCs.
         let internal_pc = pc & 0x01 == 0x01;
         let is_jmp = if internal_pc {
             self.external_is_jmp
