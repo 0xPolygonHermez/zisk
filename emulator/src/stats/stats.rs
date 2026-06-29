@@ -695,7 +695,7 @@ impl Stats {
             // self.is_call = instruction.store_ra && instruction.store_offset == 1;
             if !internal_pc {
                 let store_next_pc = instruction.store_pc
-                    || (instruction.op == 1
+                    || (instruction.op == ZiskOp::COPYB
                         && (instruction.b_offset_imm0 > pc
                             && (instruction.b_offset_imm0 - pc) <= MAX_RETURN_OFFSET as u64)
                         && instruction.b_src == SRC_IMM);
