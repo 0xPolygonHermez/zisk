@@ -4,7 +4,8 @@
 
 use crate::{BinaryExtensionFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, StdProvider, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, StdProvider, A, B, OP,
+    OPERATION_BUS_ID,
 };
 
 use std::sync::Arc;

@@ -3,8 +3,11 @@
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
 use crate::{BinaryBasicFrops, BinaryInput};
-use zisk_common::{BusDevice, BusId, CollectSkipper, StdProvider, A, B, OP, OPERATION_BUS_ID};
-use zisk_core::zisk_ops::ZiskOp;
+use zisk_common::{
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, StdProvider, A, B, OP,
+    OPERATION_BUS_ID,
+};
+use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
 use std::sync::Arc;
 
