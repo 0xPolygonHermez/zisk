@@ -21,8 +21,7 @@ pub struct ArithEqSM<STD: StdProvider> {
     /// Number of available arith256s in the trace.
     pub num_available_ops: usize,
 
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     pub std: Arc<STD>,
 
     /// The table ID for the Keccakf Table State Machine

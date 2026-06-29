@@ -7,12 +7,8 @@ zisk_common::zisk_precompile! {
     name = Poseidon,
     op_type = Poseidon,
     trace = PoseidonTrace,
-    num_available = {
-        ::zisk_pil::PoseidonTrace::<::zisk_pil::PoseidonTraceRow<F>>::NUM_ROWS / CLOCKS - 1
-    },
-    ops = [
-        (OperationPoseidonData, PoseidonInput),
-    ],
+    num_available = ::zisk_pil::PoseidonTrace::<()>::NUM_ROWS / CLOCKS - 1,
+    ops = [ (OperationPoseidonData, PoseidonInput) ],
 }
 
 #[cfg(test)]
