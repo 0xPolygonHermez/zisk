@@ -26,8 +26,7 @@ const _: () = {
 };
 
 pub struct RomDataSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 
     range_24bits_id: usize,

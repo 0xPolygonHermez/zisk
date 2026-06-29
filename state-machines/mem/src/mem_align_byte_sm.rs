@@ -299,8 +299,7 @@ const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 
 pub struct MemAlignByteSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 
     /// The table ID for the Mem Align ROM State Machine

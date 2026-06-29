@@ -32,8 +32,7 @@ pub struct ArithFullInstance<STD: StdProvider> {
     /// The instance context.
     ictx: InstanceCtx,
 
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 }
 

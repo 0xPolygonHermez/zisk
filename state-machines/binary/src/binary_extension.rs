@@ -33,8 +33,7 @@ const LS_6_BITS: u64 = 0x3F;
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
 /// tables for the operations. It also records its range checks and virtual-table lookups through the shared `Std`.
 pub struct BinaryExtensionSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 
     /// The range check ID

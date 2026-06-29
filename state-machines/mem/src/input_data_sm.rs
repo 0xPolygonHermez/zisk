@@ -41,8 +41,7 @@ const _: () = {
 };
 
 pub struct InputDataSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 
     /// Range check ID

@@ -27,8 +27,7 @@ const EXTENSION: u64 = 0xFFFFFFFF;
 /// This state machine coordinates the computation of arithmetic operations and updates
 /// the `ArithTableSM` and `ArithRangeTableSM` components based on operation traces.
 pub struct ArithFullSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 
     /// The table ID for the Table State Machine
@@ -166,6 +165,59 @@ impl<STD: StdProvider> ArithFullSM<STD> {
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut arith_trace)))
     }
 
+    /// Generates binary inputs for arithmetic operations requiring additional
+    /// validation (e.g. division). This is field- and range-checker-independent, so
+    /// it is a free function rather than a method on the (generic) `ArithFullSM`.
+    #[inline(always)]
+    pub(crate) fn generate_inputs(
+        input: &OperationData<u64>,
+        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+    ) {
+        let mut aop = ArithOperation::new();
+
+        let input_data = ExtOperationData::OperationData(*input);
+
+        let opcode = OperationBusData::get_op(&input_data);
+        let a = OperationBusData::get_a(&input_data);
+        let b = OperationBusData::get_b(&input_data);
+
+        aop.calculate(opcode, a, b);
+
+        // If the operation is a division, then use the binary component
+        // to check that the remainder is lower than the divisor
+        if aop.div && !aop.div_by_zero {
+            let opcode = match (aop.nr, aop.nb) {
+                (false, false) => LTU_OP,
+                (false, true) => LT_ABS_PN_OP,
+                (true, false) => LT_ABS_NP_OP,
+                (true, true) => GT_OP,
+            };
+
+            let extension = match (aop.m32, aop.nr, aop.nb) {
+                (false, _, _) => (0, 0),
+                (true, false, false) => (0, 0),
+                (true, false, true) => (0, EXTENSION),
+                (true, true, false) => (EXTENSION, 0),
+                (true, true, true) => (EXTENSION, EXTENSION),
+            };
+
+            // TODO: We don't need to "glue" the d,b chunks back, we can use the aop API to do this!
+            OperationBusData::from_values(
+                opcode,
+                ZiskOperationType::Binary as u64,
+                aop.d[0] as u64
+                    + CHUNK_SIZE * aop.d[1] as u64
+                    + CHUNK_SIZE.pow(2) * (aop.d[2] as u64 + extension.0)
+                    + CHUNK_SIZE.pow(3) * aop.d[3] as u64,
+                aop.b[0] as u64
+                    + CHUNK_SIZE * aop.b[1] as u64
+                    + CHUNK_SIZE.pow(2) * (aop.b[2] as u64 + extension.1)
+                    + CHUNK_SIZE.pow(3) * aop.b[3] as u64,
+                pending,
+            );
+        }
+    }
+
     fn process_slice<F: PrimeField64, R: ArithTraceRowOps<F>>(
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
@@ -250,58 +302,5 @@ impl<STD: StdProvider> ArithFullSM<STD> {
         );
 
         row
-    }
-}
-
-/// Generates binary inputs for arithmetic operations requiring additional
-/// validation (e.g. division). This is field- and range-checker-independent, so
-/// it is a free function rather than a method on the (generic) `ArithFullSM`.
-#[inline(always)]
-pub(crate) fn generate_inputs(
-    input: &OperationData<u64>,
-    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-) {
-    let mut aop = ArithOperation::new();
-
-    let input_data = ExtOperationData::OperationData(*input);
-
-    let opcode = OperationBusData::get_op(&input_data);
-    let a = OperationBusData::get_a(&input_data);
-    let b = OperationBusData::get_b(&input_data);
-
-    aop.calculate(opcode, a, b);
-
-    // If the operation is a division, then use the binary component
-    // to check that the remainder is lower than the divisor
-    if aop.div && !aop.div_by_zero {
-        let opcode = match (aop.nr, aop.nb) {
-            (false, false) => LTU_OP,
-            (false, true) => LT_ABS_PN_OP,
-            (true, false) => LT_ABS_NP_OP,
-            (true, true) => GT_OP,
-        };
-
-        let extension = match (aop.m32, aop.nr, aop.nb) {
-            (false, _, _) => (0, 0),
-            (true, false, false) => (0, 0),
-            (true, false, true) => (0, EXTENSION),
-            (true, true, false) => (EXTENSION, 0),
-            (true, true, true) => (EXTENSION, EXTENSION),
-        };
-
-        // TODO: We don't need to "glue" the d,b chunks back, we can use the aop API to do this!
-        OperationBusData::from_values(
-            opcode,
-            ZiskOperationType::Binary as u64,
-            aop.d[0] as u64
-                + CHUNK_SIZE * aop.d[1] as u64
-                + CHUNK_SIZE.pow(2) * (aop.d[2] as u64 + extension.0)
-                + CHUNK_SIZE.pow(3) * aop.d[3] as u64,
-            aop.b[0] as u64
-                + CHUNK_SIZE * aop.b[1] as u64
-                + CHUNK_SIZE.pow(2) * (aop.b[2] as u64 + extension.1)
-                + CHUNK_SIZE.pow(3) * aop.b[3] as u64,
-            pending,
-        );
     }
 }

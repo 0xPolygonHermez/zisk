@@ -39,13 +39,6 @@ pub(crate) struct ProverBackend {
 
 impl ProverBackend {
     /// Assembles the proving backend, building its executor internally.
-    ///
-    /// This is the single place the proving backend commits to `Std` as the
-    /// range-checker for the (otherwise range-checker-generic) `ZiskExecutor`:
-    /// it builds `Std` from the proof/setup contexts, registers it on the
-    /// witness manager, and wires it into the executor. Concentrating the
-    /// concrete choice in this composition root keeps the `executor` crate
-    /// free of any `Std` / `pil-std-lib` coupling.
     pub fn new(
         proofman: ProofMan<Goldilocks>,
         snark_wrapper: Option<SnarkWrapper<Goldilocks>>,

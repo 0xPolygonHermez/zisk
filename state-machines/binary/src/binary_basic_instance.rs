@@ -32,8 +32,7 @@ pub struct BinaryBasicInstance<STD: StdProvider> {
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
 
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 }
 

@@ -22,8 +22,7 @@ const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
 const OFFSET_USE_FLAG: u32 = 0x4000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x3FFF_FFFF;
 pub struct MemSM<STD: StdProvider> {
-    /// Standard library handle exposing the range-check and virtual-table
-    /// accumulators.
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,
 
     range_22bits_id: usize,
