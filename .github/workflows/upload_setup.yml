@@ -89,7 +89,7 @@ jobs:
         run: |
           sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
           sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
-          
+
           # Translate the host credentials-file path to its path inside the
           # container (GITHUB_WORKSPACE is bind-mounted at /workspace/zisk) and
           # expose it to the gcloud-using container steps below.
@@ -237,6 +237,8 @@ jobs:
             -e PACKAGE_SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
             -e PACKAGE_SETUP_UPLOAD=1 \
             -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
+            -e SETUP_ARTIFACTS="provingkey" \
+            -e SETUP_HASH="${{ steps.hash.outputs.local_hash }}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./package_setup.sh

@@ -16,7 +16,7 @@ export -f ensure
 # Env vars:
 #   SETUP_ADD_DYLIBS=1     merge macOS *.dylib into build/provingKey before
 #                          packing. Source of the dylibs:
-#                            - SETUP_DYLIB_DIR set  -> copy *.dylib straight from
+#                            - SETUP_DYLIB_DIR set   -> copy *.dylib straight from
 #                              that directory (already extracted; used by CI).
 #                            - SETUP_DYLIB_DIR unset -> extract the macOS tarball
 #                              ${OUTPUT_DIR}/macos/${PROVINGKEY_FILE} first, then
@@ -25,6 +25,19 @@ export -f ensure
 #                          upload them to gs://zisk-setup via `gcloud storage`
 #                          (requires gcloud auth). Off by default — packaging is
 #                          local-only unless this is set.
+#   SETUP_ARTIFACTS        which artifacts to upload (only used when
+#                          PACKAGE_SETUP_UPLOAD=1):
+#                            - provingkey    -> upload only the proving key tarball
+#                              zisk-provingkey-<VER>.tar.gz (+ its .md5).
+#                            - all (default) -> upload every packaged artifact
+#                              (proving key, verify key, and circom/snark when
+#                              present).
+#   SETUP_HASH             if set and non-empty (only used when
+#                          PACKAGE_SETUP_UPLOAD=1), after uploading the proving
+#                          key tarball also upload a sidecar named like it but
+#                          with a .hash extension (zisk-provingkey-<VER>.hash)
+#                          whose content is $SETUP_HASH. This is the gate sidecar
+#                          fetch_setup.sh reads.
 
 BUCKET="gs://zisk-setup"
 
@@ -105,6 +118,7 @@ main() {
     [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
     [[ -d "build/provingKeySnark" ]] && total_steps=$((total_steps + 1))
     [[ "${PACKAGE_SETUP_UPLOAD:-0}" == "1" ]] && total_steps=$((total_steps + 1))
+    [[ "${PACKAGE_SETUP_UPLOAD:-0}" == "1" && -n "${SETUP_HASH:-}" ]] && total_steps=$((total_steps + 1))
 
     step "Loading environment variables..."
     load_env || return 1
@@ -178,9 +192,29 @@ main() {
     done
 
     if [[ "${PACKAGE_SETUP_UPLOAD:-0}" == "1" ]]; then
-      step "Uploading artifacts to ${BUCKET}/..."
       command -v gcloud >/dev/null || { err "gcloud not found in PATH (needed for PACKAGE_SETUP_UPLOAD=1)"; return 1; }
-      ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${ARTIFACTS[@]}" "${BUCKET}/" ) || return 1
+
+      # Select which artifacts to upload (SETUP_ARTIFACTS, default "all").
+      local setup_artifacts="${SETUP_ARTIFACTS:-all}"
+      local UPLOAD=()
+      case "${setup_artifacts}" in
+        provingkey) UPLOAD=("${PROVINGKEY_FILE}" "${PROVINGKEY_FILE}.md5") ;;
+        all)        UPLOAD=("${ARTIFACTS[@]}") ;;
+        *) err "invalid SETUP_ARTIFACTS='${setup_artifacts}' (expected 'provingkey' or 'all')"; return 1 ;;
+      esac
+
+      step "Uploading artifacts (${setup_artifacts}) to ${BUCKET}/..."
+      ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${UPLOAD[@]}" "${BUCKET}/" ) || return 1
+
+      # Proving key .hash sidecar (SETUP_HASH): same name as the proving key
+      # tarball but with a .hash extension, content = $SETUP_HASH. This is the
+      # gate file fetch_setup.sh reads from the bucket.
+      if [[ -n "${SETUP_HASH:-}" ]]; then
+        local HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
+        step "Uploading proving key hash sidecar ${HASH_FILE}..."
+        printf '%s' "${SETUP_HASH}" > "${OUTPUT_DIR}/${HASH_FILE}" || { err "failed to write ${HASH_FILE}"; return 1; }
+        ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${HASH_FILE}" "${BUCKET}/" ) || return 1
+      fi
     fi
 
     cd "${current_dir}"
