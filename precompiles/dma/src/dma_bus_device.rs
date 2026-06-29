@@ -127,10 +127,8 @@ impl DmaCounterInputGen {
         Self { counters: [0; DMA_INPUT_GEN_COUNTERS], mode }
     }
 
-    /// Builds the counter configured for the count phase. Under the ASM
-    /// emulator the counter only measures (`CounterAsm`); otherwise it also
-    /// derives mem-ops (`Counter`). This mode policy is owned by the DMA crate.
-    pub fn for_counter_phase(is_asm: bool) -> Self {
+    /// Builds the counter configured for the count phase.
+    pub(crate) fn for_counter_phase(is_asm: bool) -> Self {
         let mode = if is_asm { BusDeviceMode::CounterAsm } else { BusDeviceMode::Counter };
         Self::new(mode)
     }
