@@ -53,9 +53,9 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=5
+    total_steps=4
 
-    step "Loading environment variables..."
+    info "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
 

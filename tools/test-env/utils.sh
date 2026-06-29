@@ -283,6 +283,27 @@ get_zisk_repo_dir() {
     fi
 }
 
+# resolve_proofman_dir: print the pil2-proofman checkout root cargo compiled in
+# (via cargo metadata), so it can't drift. Strips the `proofman` crate segment to
+# reach the checkout root (which holds package.json and pil2-components).
+resolve_proofman_dir() {
+    cargo fetch >&2
+    local manifest root
+    manifest="$(cargo metadata --format-version 1 2>/dev/null \
+        | jq -r '.packages[] | select(.name=="proofman") | .manifest_path')"
+    if [[ -z "$manifest" || "$manifest" == "null" ]]; then
+        err "cargo metadata did not report a 'proofman' package — is it in the dependency tree?" true
+        return 1
+    fi
+    root="$(cd "${manifest%/Cargo.toml}/.." && pwd)"
+    if [[ -f "$root/package.json" && -d "$root/pil2-components/lib/std/pil" ]]; then
+        printf '%s\n' "$root"
+        return 0
+    fi
+    err "proofman manifest '$manifest' does not resolve to a pil2-proofman checkout ($root)" true
+    return 1
+}
+
 # format_duration_ms: format milliseconds to HH:MM:SS.mmm
 format_duration_ms() {
     local ms=$1

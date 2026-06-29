@@ -8,7 +8,7 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=8
+    total_steps=7
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
@@ -19,7 +19,7 @@ main() {
         return 1
     fi
 
-    step "Loading environment variables..."
+    info "Loading environment variables..."
     # Load environment variables from .env file
     load_env || return 1
 
@@ -56,7 +56,7 @@ main() {
 
     step  "Building ZisK tools..."
     ensure cargo clean || return 1
-    
+
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
     if [[ "${ONLY_CPU}" == "1" ]]; then

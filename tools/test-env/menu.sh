@@ -12,22 +12,23 @@ while true; do
     echo " 1) Edit environment variables"
     echo " 2) Build ZisK from source"
     echo " 3) Build setup from source"
-    echo " 4) Build zec-reth ELF"
-    echo " 5) Upload setup"
-    echo " 6) Install ZisK from binaries"
-    echo " 7) Test sha_hasher"
-    echo " 8) Test Ethereum block"
-    echo " 9) Test EthProofs"
-    echo "10) Test ELF diagnostic"
-    echo "11) Test docs examples"
-    echo "12) Install setup from public packages"
-    echo "13) Install setup from local packages"
-    echo "14) Shell"
-    echo "15) Exit"
+    echo " 4) Build dylib files (macOS)"
+    echo " 5) Build zec-reth ELF"
+    echo " 6) Upload setup"
+    echo " 7) Install ZisK from binaries"
+    echo " 8) Test sha_hasher"
+    echo " 9) Test Ethereum block"
+    echo "10) Test EthProofs"
+    echo "11) Test ELF diagnostic"
+    echo "12) Test docs examples"
+    echo "13) Install setup from public packages"
+    echo "14) Install setup from local packages"
+    echo "15) Shell"
+    echo "16) Exit"
     echo
 
     # Prompt for user selection
-    read -p "Select an option [1-15]: " option
+    read -p "Select an option [1-16]: " option
     echo
 
     case $option in
@@ -41,45 +42,48 @@ while true; do
             run_timed "./build_setup.sh"
             ;;
         4)
-            run_timed "./build_zec_reth.sh"
+            run_timed "./build_dylib.sh"
             ;;
         5)
-            run_timed "./upload_setup.sh"
+            run_timed "./build_zec_reth.sh"
             ;;
         6)
-            run_timed "./install_zisk_bin.sh"
+            run_timed "./upload_setup.sh"
             ;;
         7)
-            run_timed "./test_sha_hasher.sh"
+            run_timed "./install_zisk_bin.sh"
             ;;
         8)
-            run_timed "./test_eth_block.sh"
+            run_timed "./test_sha_hasher.sh"
             ;;
         9)
-            run_timed "./test_ethproofs.sh"
+            run_timed "./test_eth_block.sh"
             ;;
         10)
-            run_timed "./test_diagnostic.sh"
+            run_timed "./test_ethproofs.sh"
             ;;
         11)
-            run_timed "./test_examples.sh"
+            run_timed "./test_diagnostic.sh"
             ;;
         12)
-            run_timed "./install_setup_public.sh"
+            run_timed "./test_examples.sh"
             ;;
         13)
-            run_timed "./install_setup_local.sh"
+            run_timed "./install_setup_public.sh"
             ;;
         14)
+            run_timed "./install_setup_local.sh"
+            ;;
+        15)
             info "Open shell"
             bash -i
             ;;
-        15)
+        16)
             info "Exiting ZisK Release Kit. Goodbye!"
             exit
             ;;
         *)
-            info "Invalid selection. Please enter a number between 1 and 14."
+            info "Invalid selection. Please enter a number between 1 and 16."
             ;;
     esac
 
