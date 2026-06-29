@@ -120,6 +120,7 @@ ziskos-hints = { path = "ziskos-hints", version = "1.0.0-beta" }
 zisk-circuit = { path = "tools/circuit", version = "1.0.0-beta" }
 zisk-sdk = { path = "sdk", version = "1.0.0-beta" }
 zisk-prover-backend = { path = "prover-backend", version = "1.0.0-beta" }
+zisk-program-macros = { path = "prover-backend/macros", version = "1.0.0-beta" }
 zisk-build = { path = "ziskbuild", version = "1.0.0-beta" }
 precompiles-hints = { path = "precompiles/hints", version = "1.0.0-beta" }
 zisk-verifier = { path = "verifier", version = "1.0.0-beta" }

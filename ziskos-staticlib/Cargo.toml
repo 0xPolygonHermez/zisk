@@ -17,4 +17,4 @@ default = ["panic-handler"]
 panic-handler = []
 
 [dependencies]
-ziskos = { path = "../ziskos/entrypoint" }
+ziskos = { workspace = true }
