@@ -1265,10 +1265,11 @@ impl Riscv2ZiskContext<'_> {
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
         zib.src_a("imm", 0, false);
         // If the float feature is enabled, we use the MTVEC register as the address to jump to for
-        // the ecall. If not, we use a fixed address (NO_FLOAT_ECALL_ADDR) for the ecall. This
-        // allows us to handle system calls differently based on whether floating-point operations
-        // are supported or not.  When float is disabled, this avoids the only dynamic jump to the
-        // lower addresses space, improving the performance of dynamic jumps in general.
+        // the ecall.
+        //
+        // If the float feature is disabled, we jump to a fixed BIOS address (NO_FLOAT_ECALL_ADDR)
+        // and intentionally ignore the MTVEC CSR value. This avoids the only dynamic jump to the
+        // lower address space, improving the performance of dynamic jumps in general.
         #[cfg(feature = "float")]
         zib.src_b("mem", MTVEC, false);
         #[cfg(not(feature = "float"))]
