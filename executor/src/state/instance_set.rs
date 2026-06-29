@@ -8,11 +8,6 @@ use sm_main::MainInstance;
 use zisk_common::{Instance, StdProvider};
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
-///
-/// `STD` is the range-checker the main instances are built with (the real
-/// `Std` in production, a no-op stand-in such as `NoopStdProvider` for
-/// tests / standalone). Secondary instances are stored as `dyn Instance<F>`
-/// trait objects, so they carry no `STD`.
 pub struct InstanceSet<F: PrimeField64, STD: StdProvider> {
     /// Main state machine instances, indexed by their global ID.
     pub main_instances: RwLock<HashMap<usize, MainInstance<STD>>>,
@@ -60,22 +55,23 @@ mod tests {
     use zisk_common::NoopStdProvider;
 
     type F = Goldilocks;
+    type STD = NoopStdProvider;
 
     #[test]
     fn new_is_empty() {
-        let set: InstanceSet<F, NoopStdProvider> = InstanceSet::new();
+        let set: InstanceSet<F, STD> = InstanceSet::new();
         assert!(set.is_empty());
     }
 
     #[test]
     fn default_matches_new() {
-        let set: InstanceSet<F, NoopStdProvider> = InstanceSet::default();
+        let set: InstanceSet<F, STD> = InstanceSet::default();
         assert!(set.is_empty());
     }
 
     #[test]
     fn reset_clears_maps() {
-        let set: InstanceSet<F, NoopStdProvider> = InstanceSet::new();
+        let set: InstanceSet<F, STD> = InstanceSet::new();
         // Direct field access keeps tests honest — InstanceSet exposes
         // the two locks so the caller can populate them; the contract
         // here is that `reset` blanks both regardless of how they got
@@ -89,7 +85,7 @@ mod tests {
         use std::panic::{catch_unwind, AssertUnwindSafe};
         use std::sync::Arc;
 
-        let set: Arc<InstanceSet<F, NoopStdProvider>> = Arc::new(InstanceSet::new());
+        let set: Arc<InstanceSet<F, STD>> = Arc::new(InstanceSet::new());
         let set_for_panic = set.clone();
         let _ = catch_unwind(AssertUnwindSafe(|| {
             let _guard = set_for_panic.main_instances.write().unwrap();

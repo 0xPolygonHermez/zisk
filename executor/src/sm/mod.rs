@@ -102,7 +102,7 @@ impl<STD: StdProvider> StaticSMBundle<STD> {
         Ok(())
     }
 
-    /// Getter for the shared range-checker in the bundle, used by built-in SMs and precompiles.
+    /// Getter for the shared `StdProvider` instance in the bundle.
     pub fn get_std(&self) -> Arc<STD> {
         self.std.clone()
     }
@@ -157,12 +157,10 @@ pub fn plan_sec<F: PrimeField64>(
         .expect("num_chunks > 0 is upheld by the caller (min_traces.len())");
     plans.insert(ROM_POSITION, rom_plan);
 
+    type S = NoopStdProvider;
     for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION] {
         if let Some(counters) = vec_counters.remove(&pos) {
-            // The planner produced is range-checker-independent, so the `STD`
-            // selector here is irrelevant — use the no-op `NoopStdProvider` token.
-            let planner =
-                BuiltinSMs::<NoopStdProvider>::planner_for_position::<F>(pos, is_asm_emulator);
+            let planner = BuiltinSMs::<S>::planner_for_position::<F>(pos, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));
         }
     }
@@ -170,8 +168,7 @@ pub fn plan_sec<F: PrimeField64>(
     for (i, &air_id) in PRECOMPILE_AIR_IDS.iter().enumerate() {
         let pos = BUILTIN_COUNT + i;
         if let Some(counters) = vec_counters.remove(&pos) {
-            let planner =
-                Precompiles::<NoopStdProvider>::planner_for_air_id::<F>(air_id, is_asm_emulator);
+            let planner = Precompiles::<S>::planner_for_air_id::<F>(air_id, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));
         }
     }
