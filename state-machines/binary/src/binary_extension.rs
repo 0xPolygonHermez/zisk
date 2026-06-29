@@ -31,7 +31,7 @@ const LS_6_BITS: u64 = 0x3F;
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
 ///
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
-/// tables for the operations. It also records its range checks and virtual-table lookups through the shared `Std`.
+/// tables for the operations. It also manages range checks and virtual-table lookups through the shared `Std`.
 pub struct BinaryExtensionSM<STD: StdProvider> {
     /// Standard library handle exposing the range-check and virtual-table accumulators.
     std: Arc<STD>,

@@ -38,7 +38,7 @@ impl<STD: StdProvider> BinaryExtensionCollector<STD> {
     ) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
-            .expect("get_virtual_table_id failed");
+            .expect("Failed to get FROPS table ID");
         Self {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
@@ -62,21 +62,22 @@ impl<STD: StdProvider> BinaryExtensionCollector<STD> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
-        // Dispatched only for the `BinaryE` op-type arm of the router, so the
-        // fixed operation header can be read directly (no `ExtOperationData`).
-        debug_assert_eq!(data[OP_TYPE] as u32, ZiskOperationType::BinaryE as u32);
-
         let instance_complete = self.inputs.len() == self.num_operations;
 
         if instance_complete && !self.force_execute_to_end {
             return false;
         }
 
-        let op = data[OP] as u8;
-        let a = data[A];
-        let b = data[B];
+        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
 
-        let frops_row = BinaryExtensionFrops::get_row(op, a, b);
+        let op_data: ExtOperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
+
+        let op_type = OperationBusData::get_op_type(&op_data);
+
+        if op_type as u32 != ZiskOperationType::BinaryE as u32 {
+            return true;
+        }
 
         if self.collect_skipper.should_skip_query(frops_row == BinaryExtensionFrops::NO_FROPS) {
             return true;
@@ -92,7 +93,7 @@ impl<STD: StdProvider> BinaryExtensionCollector<STD> {
             return true;
         }
 
-        self.inputs.push(BinaryInput::new(op, a, b));
+        self.inputs.push(BinaryInput::from(&op_data));
 
         self.inputs.len() < self.num_operations || self.force_execute_to_end
     }

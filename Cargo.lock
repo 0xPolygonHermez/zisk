@@ -5786,7 +5786,6 @@ dependencies = [
 name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
- "criterion 0.8.2",
  "fields",
  "proofman-common",
  "rayon",

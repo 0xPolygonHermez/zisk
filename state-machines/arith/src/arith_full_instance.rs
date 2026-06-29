@@ -195,7 +195,7 @@ impl<STD: StdProvider> ArithInstanceCollector<STD> {
         std: Arc<STD>,
     ) -> Self {
         let frops_table_id =
-            std.get_virtual_table_id(ArithFrops::TABLE_ID).expect("get_virtual_table_id failed");
+            std.get_virtual_table_id(ArithFrops::TABLE_ID).expect("Failed to get FROPS table ID");
         Self {
             inputs: Vec::with_capacity(num_operations as usize),
             num_operations,

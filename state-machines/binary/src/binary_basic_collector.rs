@@ -80,15 +80,20 @@ impl<STD: StdProvider> BinaryBasicCollector<STD> {
             return false;
         }
 
-        let op = data[OP] as u8;
-        let a = data[A];
-        let b = data[B];
+        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
 
-        if !self.with_adds && op == ZiskOp::Add.code() {
+        let op_data: ExtOperationData<u64> =
+            data.try_into().expect("Regular Metrics: Failed to convert data");
+
+        let op_type = OperationBusData::get_op_type(&op_data);
+
+        if op_type as u32 != ZiskOperationType::Binary as u32 {
             return true;
         }
 
-        let frops_row = BinaryBasicFrops::get_row(op, a, b);
+        if !self.with_adds && OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
+            return true;
+        }
 
         if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
             return true;
@@ -103,7 +108,7 @@ impl<STD: StdProvider> BinaryBasicCollector<STD> {
             // instance complete => no FROPS operation => discard, inputs complete
             return true;
         }
-        self.inputs.push(BinaryInput::new(op, a, b));
+        self.inputs.push(BinaryInput::from(&op_data));
 
         self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
