@@ -134,15 +134,15 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = 
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.0.0-beta" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", default-features = false }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", default-features = false, version = "1.0.0-beta" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch="predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman", version = "1.0.0-beta" }
