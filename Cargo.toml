@@ -7,7 +7,6 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_package_setup_version = "pre-develop-1.0.0-beta"
 gha_zisk_ethproofs_branch = "develop-0.10.0"
 gha_zisk_eth_client_branch = "develop-0.10.0"
 gha_zisk_template_branch = "pre-develop-1.0.0-beta"
