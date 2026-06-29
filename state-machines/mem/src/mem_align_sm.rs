@@ -38,9 +38,9 @@ const DEFAULT_WIDTH: u8 = 8;
 
 // NOTE: the range-checker generic is named `S` (not the usual `STD`) because this
 // module already defines a `const RC: usize`.
-pub struct MemAlignSM<S: StdProvider> {
+pub struct MemAlignSM<STD: StdProvider> {
     /// Standard library handle exposing the range-check and virtual-table accumulators.
-    std: Arc<S>,
+    std: Arc<STD>,
 
     #[cfg(feature = "debug_mem_align")]
     num_computed_rows: Mutex<usize>,
@@ -61,8 +61,8 @@ macro_rules! debug_info {
     };
 }
 
-impl<S: StdProvider> MemAlignSM<S> {
-    pub fn new(std: Arc<S>) -> Arc<Self> {
+impl<STD: StdProvider> MemAlignSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");

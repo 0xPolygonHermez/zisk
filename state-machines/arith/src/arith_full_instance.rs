@@ -177,7 +177,7 @@ pub struct ArithInstanceCollector<STD: StdProvider> {
     std: Arc<STD>,
 }
 
-impl<S: StdProvider> ArithInstanceCollector<S> {
+impl<STD: StdProvider> ArithInstanceCollector<STD> {
     /// Creates a new `ArithInstanceCollector`.
     ///
     /// # Arguments
@@ -192,7 +192,7 @@ impl<S: StdProvider> ArithInstanceCollector<S> {
         num_operations: u64,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
-        std: Arc<S>,
+        std: Arc<STD>,
     ) -> Self {
         let frops_table_id =
             std.get_virtual_table_id(ArithFrops::TABLE_ID).expect("get_virtual_table_id failed");
@@ -255,7 +255,7 @@ impl<S: StdProvider> ArithInstanceCollector<S> {
     }
 }
 
-impl<S: StdProvider> BusDevice<u64> for ArithInstanceCollector<S> {
+impl<STD: StdProvider> BusDevice<u64> for ArithInstanceCollector<STD> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self
