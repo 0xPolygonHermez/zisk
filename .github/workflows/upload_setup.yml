@@ -118,7 +118,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved setup version: $VERSION"
 
-      - name: Start test container with systemd
+      - name: Start upload setup container
         run: .github/scripts/start_test_container.sh
 
       - name: Build ZisK
@@ -159,7 +159,7 @@ jobs:
             echo "is_new=true" >> "$GITHUB_OUTPUT"
           else
             echo "is_new=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Setup unchanged (matches $BUCKET/zisk-provingkey-${{ steps.resolve.outputs.version }}.hash) — nothing to publish."
+            echo "::notice::Setup unchanged (matches $BUCKET/zisk-provingkey-${{ steps.resolve.outputs.version }}.hash) — nothing to upload."
           fi
 
       - name: Build setup
@@ -194,7 +194,7 @@ jobs:
               ./upload_setup.sh
             '
 
-      - name: Stop build setup container
+      - name: Stop upload setup container
         if: always()
         run: |
           docker rm -f "${TEST_CONTAINER}" || true
