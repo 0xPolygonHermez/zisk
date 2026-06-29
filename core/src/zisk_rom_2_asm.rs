@@ -7904,7 +7904,7 @@ impl ZiskRom2Asm {
             // Check that we are not using the float library.
             assert!(
                 ctx.pc < FLOAT_LIB_ROM_ADDR,
-                "Dynamic jump to low address is not supported without float support"
+                "Non-float build must not emit dynamic-jump code for float-lib PCs (ctx.pc must be < FLOAT_LIB_ROM_ADDR)"
             );
             // The next assembly line is an optimization that depends on the ROM_ADDR being
             // 0x8000_0000, so we assert it to ensure correctness.  If it wasn't, we should subtract

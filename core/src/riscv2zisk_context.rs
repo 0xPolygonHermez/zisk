@@ -76,7 +76,7 @@ const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs +
 const JALR_MASK: u64 = 0xfffffffffffffffe;
 
 #[cfg(not(feature = "float"))]
-const NO_FLOAT_ECALL_ADDR: u64 = ROM_EXIT + 0x58;
+const NO_FLOAT_ECALL_ADDR: u64 = ROM_EXIT + 4 + 0x54; // must match add_entry_exit_jmp's trap_handler offset
 
 /// Context to store the list of converted ZisK instructions, including their program address and a
 /// map to store the instructions
@@ -1270,6 +1270,7 @@ impl Riscv2ZiskContext<'_> {
         // If the float feature is disabled, we jump to a fixed BIOS address (NO_FLOAT_ECALL_ADDR)
         // and intentionally ignore the MTVEC CSR value. This avoids the only dynamic jump to the
         // lower address space, improving the performance of dynamic jumps in general.
+
         #[cfg(feature = "float")]
         zib.src_b("mem", MTVEC, false);
         #[cfg(not(feature = "float"))]
