@@ -13,7 +13,6 @@ name = "riscv2zisk"
 path = "src/bin/riscv2zisk.rs"
 
 [dependencies]
-zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
 transpilers-common = { workspace = true }
 

@@ -21,7 +21,6 @@ sha2 = { workspace = true }
 paste = { workspace = true }
 zisk-definitions = { workspace = true }
 
-elf = { workspace = true }
 tiny-keccak = { workspace = true }
 
 [build-dependencies]

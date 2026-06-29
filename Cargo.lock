@@ -4967,7 +4967,6 @@ dependencies = [
  "lib-float",
  "transpilers-common",
  "zisk-core",
- "zisk-definitions",
 ]
 
 [[package]]
@@ -6529,7 +6528,6 @@ dependencies = [
  "elf",
  "lib-float",
  "zisk-core",
- "zisk-definitions",
  "zisk-riscv",
 ]
 
@@ -7719,7 +7717,6 @@ dependencies = [
 name = "zisk-core"
 version = "1.0.0-beta"
 dependencies = [
- "elf",
  "lib-float",
  "paste",
  "precompiles-helpers",
@@ -7948,7 +7945,6 @@ dependencies = [
  "symbolic-demangle",
  "sysinfo 0.38.4",
  "time",
- "transpilers-common",
  "vergen-git2",
  "zisk-common",
  "zisk-core",
