@@ -44,6 +44,14 @@ ALLOC_SYMS=(
   __rust_alloc_error_handler
   __rust_alloc_error_handler_should_panic
   __rust_no_alloc_shim_is_unstable
+  # ziskos's bump-heap reset helpers. They are `#[no_mangle]` so the staticlib
+  # wrappers can bind to them by name (ziskos's `mod alloc` is private, so they
+  # are not reachable by Rust path). The partial link above already resolves
+  # those cross-crate references, so we localize them here to keep them out of
+  # the archive's public symbol surface. (`get_max_used_sys_alloc` is NOT listed:
+  # it is the host-facing query API and must stay global.)
+  reset_sys_alloc
+  update_max_used_sys_alloc
 )
 
 # The GlobalAlloc entry points whose isolation we hard-assert at the end: none of

@@ -1,7 +1,10 @@
 #![cfg_attr(zisk_guest, no_std)]
-// `linkage` is needed for the weak C++ runtime symbols and the weak references to
-// the linker-provided init/fini array bounds (see `_zisk_main`). Guest-only, so
-// native/stable builds of this crate are unaffected.
+// `linkage` is needed for the weak C++ runtime symbols (`__cxa_atexit`,
+// `__cxa_finalize`, `__dso_handle`) declared in `_zisk_main`. The linker-provided
+// init/fini array bounds are declared as *strong* externs (a weak static would be
+// reached through a hidden pointer slot, so `addr_of!` would not yield the section
+// address); standard linkers (GNU ld, LLD) always define those symbols. Guest-only,
+// so native/stable builds of this crate are unaffected.
 #![cfg_attr(zisk_guest, feature(linkage))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]

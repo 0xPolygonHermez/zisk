@@ -1614,9 +1614,16 @@ impl<'a> Emu<'a> {
                     }
                 }
                 if let Ok(address) = elf.load_from_file(elf_file, &LOAD_SYMBOLS) {
+                    // LOAD_SYMBOLS = [_heap_bottom, _heap_top, ZISK_BUMP_HEAP_POS]:
+                    // address[0]/[1] bound the heap region; address[2] is the
+                    // *address* of the heap-position pointer symbol, not a size.
                     println!(
-                        "Loaded symbols from ELF file: 0x{:x} - 0x{:x} ({} bytes)",
-                        address[0], address[1], address[2]
+                        "Loaded symbols from ELF file: heap 0x{:x} - 0x{:x} ({} bytes), \
+                         ZISK_BUMP_HEAP_POS @ 0x{:x}",
+                        address[0],
+                        address[1],
+                        address[1].saturating_sub(address[0]),
+                        address[2]
                     );
                     self.ctx.stats.set_heap_address(address[0], address[1], address[2]);
                 }

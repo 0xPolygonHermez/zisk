@@ -148,9 +148,11 @@ ctor-style crates).
 
 The provided [`linker_script.ld`](linker_script.ld) places `.init_array` /
 `.fini_array` (with `KEEP`) and defines `__init_array_start` / `__init_array_end`
-/ `__fini_array_start` / `__fini_array_end`. Stock GNU ld and LLD scripts define
-these too. The runtime references the bounds **weakly**, so it still links (and
-simply skips construction) if a script omits them.
+/ `__fini_array_start` / `__fini_array_end`. The runtime references these bounds
+as **strong** symbols, so the linker script must define them. In practice this is
+not a burden: stock GNU ld and LLD always provide these symbols automatically
+(even without explicit script lines), and when the arrays are empty the
+construction loops are no-ops.
 
 ### Building a C++ host
 
