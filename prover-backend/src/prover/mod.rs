@@ -143,7 +143,9 @@ impl BackendProverOpts {
         // Mirror the no_aggregation() condition below so the options stay
         // self-consistent.
         let aggregation_enabled = self.aggregation && !self.verify_constraints;
-        if let Some(max_recursive_streams) = self.max_recursive_streams.filter(|_| aggregation_enabled) {
+        if let Some(max_recursive_streams) =
+            self.max_recursive_streams.filter(|_| aggregation_enabled)
+        {
             options.with_max_number_recursive_streams(max_recursive_streams);
         }
 
