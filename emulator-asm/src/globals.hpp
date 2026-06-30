@@ -79,9 +79,9 @@ extern bool precompile_results_enabled;
 // Specifies how the assembly code generates the trace, and what information it includes.
 // It is specified with the mandatory argument --gen=<method>
 // It must match the value returned by the assembly function get_gen_method()
-// The enum names are equivalent to the rust ones defined in core/src/riscv2zisk.rs as AsmGenerationMethod
+// The enum names are equivalent to the rust ones defined in core/src/zisk_rom_2_asm.rs as AsmGenerationMethod
 // ZisK uses generation methods 1 (minimal trace), 2 (ROM histogram) and 7 (memory operations)
-// but the rest of methods can be used for testing and debugging purposes
+// The generation method 0 (fast) can be used for testing and debugging purposes
 typedef enum {
     Fast = 0,
     MinimalTrace = 1,
