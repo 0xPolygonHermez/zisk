@@ -41,7 +41,7 @@ main() {
     ensure cd "${ZISK_REPO}" || return 1
 
     step "Building setup (delegating to tools/test-env/setup_build.sh)..."
-    build_flags=(--build-dir build)
+    build_flags=(--build-dir build --gen-exps --exps-arch major)
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)
     [[ "${USE_CACHE_SETUP}" == "1" ]] && build_flags+=(--cache-dir "${OUTPUT_DIR}")
     ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1

@@ -49,6 +49,27 @@ pub(crate) struct ZiskProofmanSetupSetup {
     #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2"])]
     pub hash: String,
 
+    /// Generate + compile per-AIR Q-expression CUDA kernels (.exps.so) at the end
+    /// of setup. No-op if nvcc is not on PATH.
+    #[arg(long, default_value_t = false)]
+    gen_exps: bool,
+
+    /// CUDA arch spec for --gen-exps: auto | major | "89,120" | sm_120.
+    #[arg(long, default_value = "auto")]
+    exps_arch: String,
+
+    /// Skip an AIR whose Q has more than N ops (stays on the interpreter).
+    #[arg(long, default_value_t = 40000)]
+    exps_cap: usize,
+
+    /// Fixed ops/chunk for every AIR; omit to auto-tune the largest no-spill size.
+    #[arg(long)]
+    exps_chunk: Option<usize>,
+
+    /// pil2-stark source root for the nvcc includes (default: resolved automatically).
+    #[arg(long)]
+    exps_stark_src: Option<String>,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -68,6 +89,11 @@ impl ZiskProofmanSetupSetup {
             recursive_jobs: self.recursive_jobs,
             setup_jobs: self.setup_jobs,
             stats_output_path: self.output.clone(),
+            gen_exps: self.gen_exps,
+            exps_arch: self.exps_arch.clone(),
+            exps_cap: self.exps_cap,
+            exps_chunk: self.exps_chunk,
+            exps_stark_src: self.exps_stark_src.clone(),
         };
 
         let result = run_setup(&opts);
