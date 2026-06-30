@@ -5413,7 +5413,6 @@ impl ZiskRom2Asm {
                         //   2 pre-reads + 2 src-reads + 1 src-loop + 1 write block = 6 mops
                         *code += "\tcall direct_dma_memcpy_mops\n";
                     }
-                    _ => unimplemented!("dma_memcpy not implemented for method {:?}", ctx.mode),
                 }
 
                 // Set result
@@ -5473,7 +5472,6 @@ impl ZiskRom2Asm {
                         //   2 pre-reads + 2 src-reads + 1 src-loop + 1 read block = 6 mops
                         *code += "\tcall direct_dma_memcmp_mops\n";
                     }
-                    _ => unimplemented!("dma_memcmp not implemented for method {:?}", ctx.mode),
                 }
 
                 // Set result
@@ -5521,7 +5519,6 @@ impl ZiskRom2Asm {
                         //   2 pre-reads + 2 src-reads + 1 src-loop + 1 write block = 6 mops
                         *code += "\tcall direct_dma_inputcpy_mops\n";
                     }
-                    _ => unimplemented!("dma_inputcpy not implemented for method {:?}", ctx.mode),
                 }
 
                 // Set result
@@ -5569,7 +5566,6 @@ impl ZiskRom2Asm {
                         //   2 pre-reads + 2 src-reads + 1 src-loop + 1 write block = 6 mops
                         *code += "\tcall direct_dma_xmemset_mops\n";
                     }
-                    _ => unimplemented!("dma_memset not implemented for method {:?}", ctx.mode),
                 }
 
                 // Set result
