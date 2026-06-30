@@ -832,45 +832,6 @@ void server_setup (void)
         trace_map_initialize();
     }
 
-    /***********************/
-    /* INPUT MINIMAL TRACE */
-    /***********************/
-
-    // Input MT trace
-    {
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
-
-        // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
-        if (shmem_mt_fd < 0)
-        {
-            asm_printf("ERROR: Failed calling mt shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
-            exit(-1);
-        }
-
-        // Map it to the trace address
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
-        if (pTrace == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
-            exit(-1);
-        }
-
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
-        }
-    }
-
     /******************/
     /* SEM CHUNK DONE */
     /******************/

@@ -52,7 +52,6 @@ extern char shmem_control_input_name[128];
 extern char shmem_control_output_name[128];
 extern char shmem_input_name[128];
 extern char shmem_output_name[128];
-extern char shmem_mt_name[128];
 extern char shmem_precompile_name[128];
 extern char shmem_rom_name[128];
 extern char shmem_ram_name[128];
@@ -107,9 +106,6 @@ extern int shmem_input_fd;
 
 // Output trace shared memory
 extern int shmem_output_fd;
-
-// Input MT trace shared memory
-extern int shmem_mt_fd;
 
 // ROM shared memory
 extern int shmem_rom_fd;
@@ -168,9 +164,6 @@ extern uint64_t realloc_counter;
 extern uint64_t wait_prec_avail_counter;
 extern uint64_t wait_input_avail_counter;
 extern uint64_t print_pc_counter;
-
-// Chunk player globals
-extern uint64_t chunk_player_mt_size;
 
 // Maximum number of steps to execute, used by the client to limit the execution steps of the
 // assembly code.

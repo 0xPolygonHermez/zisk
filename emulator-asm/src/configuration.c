@@ -634,7 +634,6 @@ void configure (void)
             strcat(sem_shutdown_done_name, "_FT_shutdown_done");
             strcpy(sem_input_avail_name, sem_prefix);
             strcat(sem_input_avail_name, "_FT_input_avail");
-            strcpy(shmem_mt_name, "");
             strcpy(file_lock_name, "/tmp/");
             strcat(file_lock_name, shm_prefix);
             strcat(file_lock_name, ".lock");
@@ -687,7 +686,6 @@ void configure (void)
             strcat(sem_shutdown_done_name, "_MT_shutdown_done");
             strcpy(sem_input_avail_name, sem_prefix);
             strcat(sem_input_avail_name, "_MT_input_avail");
-            strcpy(shmem_mt_name, "");
             strcpy(file_lock_name, "/tmp/");
             strcat(file_lock_name, shm_prefix);
             strcat(file_lock_name, ".lock");
@@ -741,7 +739,6 @@ void configure (void)
             strcat(sem_shutdown_done_name, "_RH_shutdown_done");
             strcpy(sem_input_avail_name, sem_prefix);
             strcat(sem_input_avail_name, "_RH_input_avail");
-            strcpy(shmem_mt_name, "");
             strcpy(file_lock_name, "/tmp/");
             strcat(file_lock_name, shm_prefix);
             strcat(file_lock_name, ".lock");
@@ -795,7 +792,6 @@ void configure (void)
             strcat(sem_shutdown_done_name, "_MO_shutdown_done");
             strcpy(sem_input_avail_name, sem_prefix);
             strcat(sem_input_avail_name, "_MO_input_avail");
-            strcpy(shmem_mt_name, "");
             strcpy(file_lock_name, "/tmp/");
             strcat(file_lock_name, shm_prefix);
             strcat(file_lock_name, ".lock");
@@ -833,7 +829,6 @@ void configure (void)
         asm_printf("\tshmem_input=%s\n", shmem_input_name);
         asm_printf("\tshmem_precompile=%s\n", shmem_precompile_name);
         asm_printf("\tshmem_output=%s\n", shmem_output_name);
-        asm_printf("\tshmem_mt=%s\n", shmem_mt_name);
         asm_printf("\tshmem_rom=%s\n", shmem_rom_name);
         asm_printf("\tshmem_ram=%s\n", shmem_ram_name);
         asm_printf("\tsem_chunk_done=%s\n", sem_chunk_done_name);
