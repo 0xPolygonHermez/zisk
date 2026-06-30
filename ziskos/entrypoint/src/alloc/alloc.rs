@@ -107,6 +107,10 @@ unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
 /// `HEAP_SIZE` to the largest working set ziskos needs inside the host.
 #[cfg(all(zisk_guest, zisk_staticlib))]
 unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
+    // 8 MiB chosen empirically: measuring 60 MiB "killer blocks" with the
+    // `alloc-stats` feature, the peak usage of this bump allocator was just over
+    // 1 MiB. 8 MiB leaves a comfortable safety margin over that observed peak
+    // while keeping the reserved `.bss` address space small.
     const HEAP_SIZE: usize = 8 * 1024 * 1024;
 
     // Only ever accessed by address (the bump allocator re-aligns each block),

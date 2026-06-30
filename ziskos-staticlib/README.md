@@ -243,4 +243,9 @@ Without the feature, none of this is compiled: zero cost in the default build.
 
 The isolated heap is a static buffer in `.bss`. Its size (`HEAP_SIZE`) is defined
 in [`ziskos/entrypoint/src/alloc/alloc.rs`](../ziskos/entrypoint/src/alloc/alloc.rs)
-(64 MiB by default). Use the stats to size it to your real working set.
+(8 MiB by default). Use the stats to size it to your real working set.
+
+The default was chosen empirically: measuring 60 MiB "killer blocks" with the
+`alloc-stats` feature, the peak usage of the isolated bump allocator was just
+over 1 MiB. 8 MiB leaves a comfortable safety margin over that observed peak
+while keeping the reserved `.bss` address space small.
