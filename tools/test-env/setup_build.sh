@@ -58,7 +58,7 @@ fi
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil] [--gen-exps] [-v|-vv|--verbose]
+         [--skip-compile-pil] [--gen-exps] [--exps-arch SPEC] [-v|-vv|--verbose]
          [--compile-pil | --no-aggregation | --snark | --compressed-final | --gen-exps-only | --stats | --print-hash]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
@@ -86,6 +86,9 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
   --gen-exps             Generate + compile per-AIR Q-expression CUDA kernels
                          (.exps.so) at the end of setup. Off by default; no-op
                          if nvcc is not on PATH. Also settable via GEN_EXPS=1.
+  --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
+                         --gen-exps-only). Default: auto (detects the host GPU).
+                         Also settable via EXPS_ARCH env var.
   --compile-pil          Run only frops + compile-pil + pil-helpers regen
                          (writes pil/zisk.pilout and pil/src/pil_helpers/).
                          No setup.
