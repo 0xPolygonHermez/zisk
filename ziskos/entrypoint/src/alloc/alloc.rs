@@ -107,7 +107,7 @@ unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
 /// `HEAP_SIZE` to the largest working set ziskos needs inside the host.
 #[cfg(all(zisk_guest, zisk_staticlib))]
 unsafe fn sys_alloc_heap_bounds() -> (usize, usize) {
-    const HEAP_SIZE: usize = 64 * 1024 * 1024;
+    const HEAP_SIZE: usize = 8 * 1024 * 1024;
 
     // Only ever accessed by address (the bump allocator re-aligns each block),
     // so the inner array is never "read" in the borrow-checker's sense.
