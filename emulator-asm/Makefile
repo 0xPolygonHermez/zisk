@@ -3,10 +3,10 @@ TRACE_TARGET=NONE
 # Debug build flags
 ifeq ($(dbg),1)
 	# CFLAGS = -O0 -g -D DEBUG -no-pie -ggdb -fno-inline
-	CFLAGS = -g -D DEBUG -no-pie
+	CFLAGS = -g -D DEBUG -no-pie -fno-pie
 	ASMFLAGS = -g --noexecstack
 else
-	CFLAGS = -O3 -no-pie
+	CFLAGS = -O3 -no-pie -fno-pie
 	ASMFLAGS = --noexecstack
 endif
 
