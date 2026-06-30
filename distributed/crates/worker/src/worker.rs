@@ -208,6 +208,9 @@ pub struct ProverConfig {
     /// Maximum number of GPU streams
     pub max_streams: Option<usize>,
 
+    /// Maximum number of per-GPU recursive (aggregation) streams
+    pub max_recursive_streams: Option<usize>,
+
     /// Number of threads for witness computation
     pub number_threads_witness: Option<usize>,
 
@@ -247,6 +250,7 @@ impl ProverConfig {
             minimal_memory: prover_service_config.minimal_memory,
             gpu: prover_service_config.gpu,
             max_streams: prover_service_config.max_streams,
+            max_recursive_streams: prover_service_config.max_recursive_streams,
             number_threads_witness: prover_service_config.number_threads_witness,
             max_witness_stored: prover_service_config.max_witness_stored,
             plonk: prover_service_config.plonk,
@@ -320,6 +324,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if let Some(max_streams) = prover_config.max_streams {
             prover_options = prover_options.max_streams(max_streams);
         }
+        if let Some(max_recursive_streams) = prover_config.max_recursive_streams {
+            prover_options = prover_options.max_recursive_streams(max_recursive_streams);
+        }
         if let Some(threads) = prover_config.number_threads_witness {
             prover_options = prover_options.number_threads_witness(threads);
         }
@@ -369,6 +376,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
         if let Some(max_streams) = prover_config.max_streams {
             prover_options = prover_options.max_streams(max_streams);
+        }
+        if let Some(max_recursive_streams) = prover_config.max_recursive_streams {
+            prover_options = prover_options.max_recursive_streams(max_recursive_streams);
         }
         if let Some(threads) = prover_config.number_threads_witness {
             prover_options = prover_options.number_threads_witness(threads);
