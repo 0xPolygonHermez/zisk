@@ -86,14 +86,7 @@ typedef enum {
     Fast = 0,
     MinimalTrace = 1,
     RomHistogram = 2,
-    MainTrace = 3,
-    ChunksOnly = 4,
-    //BusOp = 5,
-    Zip = 6,
     MemOp = 7,
-    ChunkPlayerMTCollectMem = 8,
-    MemReads = 9,
-    ChunkPlayerMemReadsCollectMain = 10,
 } GenMethod;
 
 // Default generation method, can be overridden by the --gen argument

@@ -132,7 +132,6 @@ void server_setup (void)
     /*******/
     /* ROM */
     /*******/
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -308,7 +307,6 @@ void server_setup (void)
     /* INPUT */
     /*********/
 
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -728,7 +726,6 @@ void server_setup (void)
     /* RAM */
     /*******/
 
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -830,12 +827,7 @@ void server_setup (void)
     // Output trace
     if ((gen_method == MinimalTrace) ||
         (gen_method == RomHistogram) ||
-        (gen_method == MainTrace) ||
-        (gen_method == Zip) ||
-        (gen_method == MemOp) ||
-        (gen_method == ChunkPlayerMTCollectMem) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
+        (gen_method == MemOp))
     {
         trace_map_initialize();
     }
@@ -845,7 +837,6 @@ void server_setup (void)
     /***********************/
 
     // Input MT trace
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -995,7 +986,6 @@ void server_reset_fast (void)
 void server_reset_slow (void)
 {
     // Reset RAM and ROM data for next emulation
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
 #ifdef DEBUG
         gettimeofday(&start_time, NULL);
@@ -1025,10 +1015,7 @@ void server_reset_slow (void)
 void server_reset_trace (void)
 {
     // Reset trace header and trace_used_size for next emulation
-    if ( (gen_method != ChunkPlayerMTCollectMem) &&
-         (gen_method != ChunkPlayerMemReadsCollectMain) &&
-         (gen_method != Fast) &&
-         (gen_method != RomHistogram) )
+    if ( (gen_method != Fast) && (gen_method != RomHistogram) )
     {
         // Reset trace: init output header data
         pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -1218,11 +1205,7 @@ void server_run (void)
     // Complete output header data
     if ((gen_method == MinimalTrace) ||
         (gen_method == RomHistogram) ||
-        (gen_method == Zip) ||
-        (gen_method == MainTrace) ||
-        (gen_method == MemOp) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
+        (gen_method == MemOp))
     {
         uint64_t * pOutput = (uint64_t *)trace_address;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -1269,17 +1252,13 @@ void server_run (void)
 #endif
 
     // Log trace
-    if (((gen_method == MinimalTrace) || (gen_method == Zip)) && trace)
+    if ((gen_method == MinimalTrace) && trace)
     {
         log_minimal_trace();
     }
     if ((gen_method == RomHistogram) && trace)
     {
         log_histogram();
-    }
-    if ((gen_method == MainTrace) && trace)
-    {
-        log_main_trace();
     }
     if ((gen_method == MemOp) && trace)
     {
@@ -1288,18 +1267,6 @@ void server_run (void)
     if ((gen_method == MemOp) && save_to_file)
     {
         save_mem_op_to_files();
-    }
-    if ((gen_method == ChunkPlayerMTCollectMem) && trace)
-    {
-        log_mem_trace();
-    }
-    if ((gen_method == MemReads) && trace)
-    {
-        log_minimal_trace();
-    }
-    if ((gen_method == ChunkPlayerMemReadsCollectMain) && trace)
-    {
-        log_chunk_player_main_trace();
     }
 }
 
@@ -1350,7 +1317,7 @@ void server_cleanup (void)
         }
     }
 
-    if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    if (precompile_results_enabled)
     {
         // Cleanup PRECOMPILE
         result = munmap((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE);
