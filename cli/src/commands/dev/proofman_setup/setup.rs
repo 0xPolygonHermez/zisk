@@ -45,8 +45,8 @@ pub(crate) struct ZiskProofmanSetupSetup {
     #[arg(short = 'o', long)]
     output: Option<String>,
 
-    /// Hash function to use: Poseidon1 or Poseidon2
-    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2"])]
+    /// Hash function to use: Poseidon1, Poseidon2 or blake3
+    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
     pub hash: String,
 
     /// Generate + compile per-AIR Q-expression CUDA kernels (.exps.so) at the end
