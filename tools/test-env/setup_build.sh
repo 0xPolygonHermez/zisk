@@ -46,6 +46,15 @@
 
 set -euo pipefail
 
+# Ensure nvcc is reachable for the --gen-exps / --gen-exps-only codegen. The
+# setup binary probes for a bare `nvcc` on PATH; some hosts install CUDA under
+# /usr/local/cuda/bin without adding it to PATH, which would silently skip
+# expression-kernel codegen. Prepend it only when nvcc isn't already found and
+# the CUDA bin dir exists, so this is a no-op on hosts that need neither.
+if ! command -v nvcc >/dev/null 2>&1 && [[ -x /usr/local/cuda/bin/nvcc ]]; then
+    export PATH="/usr/local/cuda/bin:${PATH}"
+fi
+
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
