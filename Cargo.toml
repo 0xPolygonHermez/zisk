@@ -1,5 +1,5 @@
 [workspace.package]
-version = "1.0.0-alpha"
+version = "1.0.0-beta"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -7,10 +7,9 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_package_setup_version = "pre-develop-1.0.0-alpha"
 gha_zisk_ethproofs_branch = "develop-0.10.0"
 gha_zisk_eth_client_branch = "develop-0.10.0"
-gha_zisk_template_branch = "pre-develop-1.0.0-alpha"
+gha_zisk_template_branch = "pre-develop-1.0.0-beta"
 
 [workspace]
 members = [
@@ -23,7 +22,9 @@ members = [
   "pil",
   "prover-backend",
   "prover-backend/macros",
-  "riscv",
+  "transpilers/riscv",
+  "transpilers/riscv2zisk",
+  "transpilers/common",
   "rom-setup",
   "state-machines/arith",
   "state-machines/binary",
@@ -99,7 +100,9 @@ precomp-blake2 = { path = "precompiles/blake2" }
 precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
-riscv = { path = "riscv" }
+riscv = { path = "transpilers/riscv" }
+transpilers-common = { path = "transpilers/common" }
+riscv2zisk = { path = "transpilers/riscv2zisk" }
 rom-setup = { path = "rom-setup" }
 sm-arith = { path = "state-machines/arith" }
 sm-binary = { path = "state-machines/binary" }
@@ -132,15 +135,15 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.0.0-beta" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }

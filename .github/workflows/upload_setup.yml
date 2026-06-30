@@ -1,0 +1,202 @@
+name: Upload Setup to bucket
+
+on:
+  push:
+    branches:
+      - develop
+      - "pre-develop-[0-9]+.[0-9]+.[0-9]*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version"
+        required: false
+        type: string
+        default: ""
+      include_snark:
+        description: "Include SNARK artifacts"
+        required: false
+        type: boolean
+        default: false
+      skip_macos:
+        description: "Skip macOS dylib"
+        required: false
+        type: boolean
+        default: false
+      force_upload:
+        description: "Force setup upload"
+        required: false
+        type: boolean
+        default: false
+      ptau_url:
+        description: "Powers-of-tau URL for SNARK setup"
+        required: false
+        type: string
+        default: "https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau"
+
+concurrency:
+  group: upload-setup-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # required for Workload Identity Federation
+
+env:
+  BUCKET: gs://zisk-setup
+
+jobs:
+  upload-setup:
+    name: Upload setup artifacts to bucket
+    runs-on: gpu-hosted
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEST_CONTAINER: zisk-gha-upload-setup
+    outputs:
+      is_new: ${{ steps.hash.outputs.is_new }}
+      local_hash: ${{ steps.hash.outputs.local_hash }}
+      version: ${{ steps.resolve.outputs.version }}
+      stage: ${{ steps.stage.outputs.stage }}
+    steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Prepare cache-setup directory
+        run: |
+          # USE_CACHE_SETUP writes the artifact cache to /home/ziskuser/output
+          # (bind-mounted from /home/gha/cache-setup); ziskuser (UID 1000) owns it.
+          sudo mkdir -p /home/gha/cache-setup
+          sudo chown -R 1000:1000 /home/gha/cache-setup
+          sudo chmod -R u+rwX /home/gha/cache-setup
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # Workload Identity Federation (keyless). Writes a credentials file into
+          # GITHUB_WORKSPACE and exports GOOGLE_GHA_CREDS_PATH. No host-side
+          # setup-gcloud is needed: all gcloud usage happens inside the container.
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Give workspace ownership to container user
+        run: |
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+
+          # Translate the host credentials-file path to its path inside the
+          # container (GITHUB_WORKSPACE is bind-mounted at /workspace/zisk) and
+          # expose it to the gcloud-using container steps below.
+          rel="${GOOGLE_GHA_CREDS_PATH#"$GITHUB_WORKSPACE"/}"
+          [ "$rel" != "$GOOGLE_GHA_CREDS_PATH" ] || {
+            echo "credentials file '$GOOGLE_GHA_CREDS_PATH' is not under GITHUB_WORKSPACE" >&2; exit 1; }
+          echo "CONTAINER_GCP_CREDS=/workspace/zisk/$rel" >> "$GITHUB_ENV"
+
+      - name: Resolve setup version
+        id: resolve
+        run: |
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then
+            # Take the workspace package version from Cargo.toml. Prefix it with
+            # "pre-" (e.g. 1.0.0-alpha => pre-1.0.0-alpha) EXCEPT on the develop
+            # branch, which publishes the bare Cargo.toml version.
+            CARGO_VERSION="$(sed -nE 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p' "$GITHUB_WORKSPACE/Cargo.toml" | head -n1)"
+            [ -n "$CARGO_VERSION" ] || { echo "could not read version from Cargo.toml"; exit 1; }
+            if [ "${{ github.ref_name }}" = "develop" ]; then
+              VERSION="${CARGO_VERSION}"
+            else
+              VERSION="pre-${CARGO_VERSION}"
+            fi
+          fi
+          [ -n "$VERSION" ] || { echo "could not resolve version"; exit 1; }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved setup version: $VERSION"
+
+      - name: Start upload setup container
+        run: .github/scripts/start_test_container.sh
+
+      - name: Build ZisK
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zisk.sh
+            '
+
+      - name: Check setup hash
+        id: hash
+        run: |
+          # Both the hash and the bucket gate run inside the container (gcloud
+          # lives there now). --print-hash emits ONLY the 64-hex hash on stdout
+          # (preamble + frops go to stderr). tail -n1 is a belt-and-suspenders guard.
+          LOCAL_HASH="$(.github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
+            cd /workspace/zisk && ./tools/test-env/setup_build.sh --print-hash 2>/dev/null
+          ' | tail -n 1 | tr -d '[:space:]')"
+          [ -n "$LOCAL_HASH" ] || { echo "failed to compute local hash"; exit 1; }
+          echo "local_hash=$LOCAL_HASH" >> "$GITHUB_OUTPUT"
+
+          FORCE_FLAG=""
+          [ "${{ inputs.force_upload }}" = "true" ] && FORCE_FLAG="--force"
+          # fetch_setup.sh reads the bucket .hash via gcloud; run it in-container.
+          RESULT="$(.github/scripts/docker_exec.sh -u ziskuser \
+            -e LOCAL_HASH="$LOCAL_HASH" \
+            -e SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
+            -e FORCE_FLAG="$FORCE_FLAG" \
+            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./fetch_setup.sh --check input --version "$SETUP_VERSION" $FORCE_FLAG
+            ' | tail -n 1)"
+          echo "Gate: $RESULT (hash $LOCAL_HASH)"
+          if [ "$RESULT" = "new" ]; then
+            echo "is_new=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_new=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Setup unchanged (matches $BUCKET/zisk-provingkey-${{ steps.resolve.outputs.version }}.hash) — nothing to upload."
+          fi
+
+      - name: Build setup
+        if: steps.hash.outputs.is_new == 'true'
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_setup.sh
+            '
+
+      - name: Upload setup
+        if: steps.hash.outputs.is_new == 'true'
+        env:
+          # On a push to develop upload all artifacts; otherwise only the proving key.
+          SETUP_ARTIFACTS: ${{ github.event_name == 'push' && github.ref_name == 'develop' && 'all' || 'provingkey' }}
+        run: |
+          # upload_setup.sh always uploads via `gcloud storage cp`;
+          # CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE points gcloud at the WIF
+          # credentials file (mounted into the container via the workspace).
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -e SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
+            -e SETUP_ARTIFACTS="$SETUP_ARTIFACTS" \
+            -e SETUP_HASH="${{ steps.hash.outputs.local_hash }}" \
+            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./upload_setup.sh
+            '
+
+      - name: Stop upload setup container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true

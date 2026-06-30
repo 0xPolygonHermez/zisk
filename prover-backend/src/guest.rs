@@ -1,11 +1,11 @@
 use anyhow::Result;
+use riscv2zisk::Riscv2zisk;
 use rom_setup::{rom_merkle_setup_verkey, HashMode};
 use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ProgramVK;
-use zisk_core::Riscv2zisk;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
 

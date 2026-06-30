@@ -15,7 +15,7 @@ use std::{
 use zisk_core::{
     zisk_ops::{OpStats, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
-    ROM_ENTRY_SIZE, ROM_EXIT, SRC_REG,
+    ROM_ENTRY_SIZE, ROM_EXIT, SRC_IMM, SRC_REG,
 };
 
 use zisk_definitions::{
@@ -31,6 +31,9 @@ use crate::{
     CallPathProfiler, OpsCosts, RamMonitor, RegionsOfInterest, StatsCosts, StatsCoverageReport,
     StatsReport, BASE_COST, MAIN_COST, NO_ROI_ID,
 };
+
+const MAX_PATTERN_SIZE: usize = 16;
+const MAX_RETURN_OFFSET: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct CallStackEntry {
@@ -107,7 +110,9 @@ pub struct Stats {
     sdk_top_functions: bool,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
+    internal_previous_pc: u64,
     previous_pc: u64,
+    external_is_jmp: bool,
     call_stack: Vec<CallStackEntry>,
     previous_verbose: String,
     is_call: bool,
@@ -140,6 +145,10 @@ pub struct Stats {
     #[cfg(feature = "debug_stats_trace")]
     previous_stack_depth: usize,
     profiler_output: String,
+    external_is_call: bool,
+    external_store_offset: u8,
+    external_is_jalr_ra: bool,
+    external_is_return: bool,
 }
 
 impl Default for Stats {
@@ -171,6 +180,7 @@ impl Default for Stats {
             sdk: false,
             pc_histogram: HashMap::new(),
             previous_pc: 0,
+            internal_previous_pc: 0,
             call_stack: Vec::new(),
             previous_verbose: String::default(),
             is_call: false,
@@ -207,6 +217,11 @@ impl Default for Stats {
             debug_step_stack: Vec::new(),
             #[cfg(feature = "debug_stats_trace")]
             previous_stack_depth: 0,
+            external_is_jmp: false,
+            external_is_call: false,
+            external_store_offset: 0,
+            external_is_jalr_ra: false,
+            external_is_return: false,
         }
     }
 }
@@ -310,6 +325,7 @@ impl Stats {
             return;
         }
         let pc = inst_ctx.pc as u32;
+        let regular_pc = pc & 0x01 == 0;
         #[cfg(feature = "debug_call_stack")]
         let _previous_roi = self.previous_roi;
         self.previous_roi = self.current_roi;
@@ -347,7 +363,7 @@ impl Stats {
 
         let update_roi = if let Some(previous_index) = self.current_roi {
             let roi = &self.rois[previous_index];
-            pc < roi.from_pc || pc > roi.to_pc
+            regular_pc && (pc < roi.from_pc || pc > roi.to_pc)
         } else {
             true
         };
@@ -665,42 +681,72 @@ impl Stats {
         } else {
             self.costs.add_variable_cost_op(instruction.op, self.current_variable_cost);
         }
+
         // Increase the PC histogram entry for this PC
         self.pc_histogram.entry(pc).and_modify(|count| *count += 1).or_insert(1);
-        self.previous_pc = pc;
-        self.previous_verbose = instruction.verbose.clone();
-        let is_jmp = instruction.set_pc
-            || (instruction.op == 0
-                && (instruction.jmp_offset1 > 4 || instruction.jmp_offset1 < 0));
+        self.internal_previous_pc = pc;
+        // Check if PC is regular to discard internal (odd) PCs.
+        let internal_pc = pc & 0x01 == 0x01;
+        let is_jmp = if internal_pc {
+            self.external_is_jmp
+        } else {
+            self.previous_pc = pc;
+            // Detect a jump using the offset that actually moves the PC, per the next-pc
+            // constraint in main.pil: when set_pc is not active, next_pc = pc + jmp_offset1 if the
+            // flag is set, else pc + jmp_offset2. The PIL also forces flag=1 for `flag` ops and
+            // flag=0 for `copyb` ops, so each op must be tested against its own active offset:
+            //   - FLAG  (jal/hint/nop): flag=1 -> jmp_offset1
+            //   - COPYB:                flag=0 -> jmp_offset2
+            // A delta beyond MAX_PATTERN_SIZE (or negative) means a real jump rather than the small
+            // forward step used to sequence an instruction's micro-op pattern.
+            let is_jmp = instruction.set_pc
+                || (instruction.op == ZiskOp::FLAG
+                    && (instruction.jmp_offset1 > MAX_PATTERN_SIZE as i64
+                        || instruction.jmp_offset1 < 0))
+                || (instruction.op == ZiskOp::COPYB
+                    && (instruction.jmp_offset2 > MAX_PATTERN_SIZE as i64
+                        || instruction.jmp_offset2 < 0));
+            self.external_is_jmp = is_jmp;
+            self.previous_verbose = instruction.verbose.clone();
+            is_jmp
+        };
+
         if is_jmp {
             // CALL: set_pc=true, store_ra=true, store_offset=1 (stores PC+4 or PC+2 in ra)
             // self.is_call = instruction.store_ra && instruction.store_offset == 1;
-            self.is_call = instruction.store_pc;
-            self.call_return_reg = if self.is_call { instruction.store_offset as u8 } else { 0 };
-
-            // RETURN: set_pc=true, store_pc=false (no stores RA), b_src=SRC_REG, b_offset_imm0=1 (jumps to ra/x1)
-            // Additionally, verify that the target PC matches the expected return address from the call stack
-            let is_jalr_ra = !instruction.store_pc
-                && instruction.set_pc
-                && instruction.b_src == SRC_REG
-                && instruction.b_offset_imm0 == 1;
-
-            if is_jalr_ra && !self.call_stack.is_empty() {
-                // Check if we're jumping to the expected return address
-                if let Some(_top) = self.call_stack.last() {
-                    // The new PC should match the RA from the call stack
-                    // Note: we can't check the future PC here, so we rely on the pattern
-                    self.is_return = true;
-                } else {
-                    self.is_return = false;
-                }
-            } else if let Some(top) = self.call_stack.last() {
-                self.is_return = !instruction.store_pc
+            if !internal_pc {
+                let store_next_pc = instruction.store_pc
+                    || (instruction.op == ZiskOp::COPYB
+                        && (instruction.b_offset_imm0 > pc
+                            && (instruction.b_offset_imm0 - pc) <= MAX_RETURN_OFFSET as u64)
+                        && instruction.b_src == SRC_IMM);
+                self.external_is_call = store_next_pc;
+                self.external_store_offset = instruction.store_offset as u8;
+                self.external_is_jalr_ra = !instruction.store_pc
+                    && instruction.set_pc
                     && instruction.b_src == SRC_REG
-                    && instruction.b_offset_imm0 == top.return_reg as u64;
-            } else {
-                self.is_return = false;
-            }
+                    && instruction.b_offset_imm0 == 1;
+
+                // RETURN: set_pc=true, store_pc=false (no stores RA), b_src=SRC_REG,
+                // b_offset_imm0=1 (jumps to ra/x1). Frozen here at the regular entry, exactly like
+                // is_call / is_jalr_ra, so the whole internal (odd-PC) chain inherits a consistent
+                // control state and cannot recompute a return from a meaningless internal
+                // instruction. The is_jalr_ra && empty case falls through to the call_stack.last()
+                // branch (None => false), matching the previous behavior.
+                self.external_is_return = if self.external_is_jalr_ra && !self.call_stack.is_empty()
+                {
+                    true
+                } else if let Some(top) = self.call_stack.last() {
+                    !instruction.store_pc
+                        && instruction.b_src == SRC_REG
+                        && instruction.b_offset_imm0 == top.return_reg as u64
+                } else {
+                    false
+                };
+            };
+            self.is_call = self.external_is_call;
+            self.call_return_reg = if self.is_call { self.external_store_offset } else { 0 };
+            self.is_return = self.external_is_return;
         } else {
             self.is_call = false;
             self.is_return = false;
@@ -1434,10 +1480,14 @@ impl Stats {
             }
 
             println!(
-                "#T: {:>10} {:>7} {jmp_type} {:>10} 0x{pc:08x} {func_name}",
+                "#T: {:>10} {:>7} {jmp_type} {:>10} PC {:x}: [{:x}] ({}) => {pc:x}: ({}) {func_name}",
                 self.costs.steps,
                 self.call_stack.len(),
-                if down { self.costs.steps - self.debug_step_stack[stack_depth - 1] } else { 0 }
+                if down { self.costs.steps - self.debug_step_stack[stack_depth - 1] } else { 0 },
+                self.previous_pc,
+                self.internal_previous_pc,
+                self.previous_roi.unwrap_or(0),
+                self.current_roi.unwrap_or(0),
             );
             self.previous_stack_depth = stack_depth;
         }

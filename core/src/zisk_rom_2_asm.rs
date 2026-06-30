@@ -6,9 +6,9 @@ use std::path::Path;
 use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
-    zisk_ops::ZiskOp, AsmGenerationMethod, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR,
-    FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C,
-    SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
+    INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -99,6 +99,62 @@ const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
 const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB
 const PRECOMPILE_BUFFER_SIZE_IN_U64: u64 = PRECOMPILE_BUFFER_SIZE_IN_BYTES / 8;
 const PRECOMPILE_BUFFER_SIZE_U64_MASK: u64 = PRECOMPILE_BUFFER_SIZE_IN_U64 - 1;
+
+/// ZisK Emulator can be executed in assembly to get the maximum performance
+/// in the first sequential emulation.
+///
+/// ROM histogram contains a counter per program counter that is incremented every time that
+/// instruction is executed.  It is generated in one single, sequential emulation.
+///
+/// Mem reads contain all the memory reads done during a chunk of the emulation.  Mem reads chunks
+/// are generated sequentially, and consumed in parallel after the first chunk is ready to generate
+/// the main AIR traces.
+///
+/// Mem trace contains a record of all the memory operations: step, r/w, address, width, write
+/// value, etc.  Mem trace is generated sequentially in chunks, which are consumed in parallel in C
+/// to generate the memory AIR plan and AIR traces.
+///
+/// ```text
+///                 /-> [ASM seq] -> ROM Histogram
+///                /
+/// RISC-V -> ZisK ---> [ASM seq] -> Mem Reads chunks -> [ASM par chunk player] -> Main Trace
+///                \
+///                 \-> [ASM seq] -> Mem Trace chunks -> [  C par chunk player] -> Mem Plan & Trace
+/// ```
+///
+/// Other meaningful assembly emulation methods used for performance investigation include:
+/// - Fast: Does not generate any trace, but simply emulates the program.  It is the fastest method.
+/// - Chunks: Stops every chunk-size steps, without generating traces.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum AsmGenerationMethod {
+    /// Generate assembly code to not even stop at chunks, nor generate trace, i.e. fast
+    #[default]
+    AsmFast,
+    /// Generate assembly code to compute the minimal trace
+    AsmMinimalTraces,
+    /// Generate assembly code to compute the ROM histogram
+    AsmRomHistogram,
+    /// Generate assembly code to compute the main SM trace
+    AsmMainTrace,
+    /// Generate assembly code to stop at chunks, but do not generate any trace
+    AsmChunks,
+    /// Generate assembly code to compute bus op [op, a, b, mem_read_index] traces
+    //AsmBusOp,
+    /// Generate assembly code to compute the minimal trace, but only at the requested chunks,
+    /// e.g. [0,8,16...], [1,9,17...], etc.  This is done to distribute the minimal trace generation
+    /// across 8 processes, to increase speed and memory bus saturation.  It's called zip because
+    /// one process generates the chunks that are complementary to the sum of the other processes.
+    AsmZip,
+    /// Generate assembly code to compute the memory operations [w/r, width, address] trace
+    AsmMemOp,
+    /// Generate assembly code to play a chunk from its minimal trace and collect the memory WC data
+    AsmChunkPlayerMTCollectMem,
+    /// Generate assembly code to compute the memory reads trace
+    AsmMemReads,
+    /// Generate assembly code to play a chunk from its memory reads trace and collect the main WC
+    /// data
+    AsmChunkPlayerMemReadsCollectMain,
+}
 
 #[derive(Default, Debug, Clone)]
 pub struct ZiskAsmRegister {
@@ -7933,51 +7989,87 @@ impl ZiskRom2Asm {
 
     fn jumpt_to_dynamic_pc(ctx: &mut ZiskAsmContext, code: &mut String) {
         *code += &ctx.full_line_comment("jump to dynamic pc".to_string());
+
+        // When executing zisk without float support, there are no dynamic jumps to low addresses,
+        // so we can optimize the code by skipping the check for address range, assuming that the pc
+        // is always a high address.
+        #[cfg(not(feature = "float"))]
+        {
+            // Check that we are not using the float library.
+            assert!(
+                ctx.pc < FLOAT_LIB_ROM_ADDR,
+                "Non-float build must not emit dynamic-jump code for float-lib PCs (ctx.pc must be < FLOAT_LIB_ROM_ADDR)"
+            );
+            // The next assembly line is an optimization that depends on the ROM_ADDR being
+            // 0x8000_0000, so we assert it to ensure correctness.  If it wasn't, we should subtract
+            // ROM_ADDR from pc, but since it is, we can just clear the 31st bit of pc to get the
+            // correct index into the map.
+            const {
+                assert!(ROM_ADDR == 0x8000_0000, "ROM_ADDR must be 0x8000_0000");
+            }
+            *code += &format!("\tbtr {}, 31 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ADDR"));
+            *code += &format!(
+                "\tmov {}, [map_pc_80000000 + {}*8] {}\n",
+                REG_ADDRESS,
+                REG_PC,
+                ctx.comment_str("address = map[pc]")
+            );
+            *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+        }
+
         // When executing program code, it can dynamically jump to any BIOS instruction
         // (low address) or to any program code address (high address).
         // When executing zisk float library code, it can dynamically jump to any BIOS instruction
         // (low address) or to any float library code address (high address) but not to program
         // code addresses.
-        let high_address = if ctx.pc < FLOAT_LIB_ROM_ADDR { ROM_ADDR } else { FLOAT_LIB_ROM_ADDR };
-        *code += &format!(
-            "\tmov {}, 0x{:x} {}\n",
-            REG_ADDRESS,
-            high_address,
-            ctx.comment_str("is pc a low address?")
-        );
-        *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
-        *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
-        *code +=
-            &format!("\tsub {}, {} {}\n", REG_PC, REG_ADDRESS, ctx.comment_str("pc -= ROM_ADDR"));
-        *code += &format!(
-            "\tlea {}, [map_pc_{:x}] {}\n",
-            REG_ADDRESS,
-            high_address,
-            ctx.comment_str(&format!("address = map[0x{:x}]", high_address))
-        );
-        *code += &format!(
-            "\tmov {}, [{} + {}*8] {}\n",
-            REG_ADDRESS,
-            REG_ADDRESS,
-            REG_PC,
-            ctx.comment_str("address = map[pc]")
-        );
-        *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
-        *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
-        *code += &format!("\tsub {}, 0x1000 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ENTRY"));
-        *code += &format!(
-            "\tlea {}, [map_pc_1000] {}\n",
-            REG_ADDRESS,
-            ctx.comment_str("address = map[ROM_ENTRY]")
-        );
-        *code += &format!(
-            "\tmov {}, [{} + {}*2] {}\n",
-            REG_ADDRESS,
-            REG_ADDRESS,
-            REG_PC,
-            ctx.comment_str("address = map[pc]")
-        );
-        *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+        #[cfg(feature = "float")]
+        {
+            let high_address =
+                if ctx.pc < FLOAT_LIB_ROM_ADDR { ROM_ADDR } else { FLOAT_LIB_ROM_ADDR };
+            *code += &format!(
+                "\tmov {}, 0x{:x} {}\n",
+                REG_ADDRESS,
+                high_address,
+                ctx.comment_str("is pc a low address?")
+            );
+            *code += &format!("\tcmp {REG_PC}, {REG_ADDRESS}\n");
+            *code += &format!("\tjb pc_{:x}_jump_to_low_address\n", ctx.pc);
+            *code += &format!(
+                "\tsub {}, {} {}\n",
+                REG_PC,
+                REG_ADDRESS,
+                ctx.comment_str("pc -= ROM_ADDR")
+            );
+            *code += &format!(
+                "\tlea {}, [map_pc_{:x}] {}\n",
+                REG_ADDRESS,
+                high_address,
+                ctx.comment_str(&format!("address = map[0x{:x}]", high_address))
+            );
+            *code += &format!(
+                "\tmov {}, [{} + {}*8] {}\n",
+                REG_ADDRESS,
+                REG_ADDRESS,
+                REG_PC,
+                ctx.comment_str("address = map[pc]")
+            );
+            *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+            *code += &format!("pc_{:x}_jump_to_low_address:\n", ctx.pc);
+            *code += &format!("\tsub {}, 0x1000 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ENTRY"));
+            *code += &format!(
+                "\tlea {}, [map_pc_1000] {}\n",
+                REG_ADDRESS,
+                ctx.comment_str("address = map[ROM_ENTRY]")
+            );
+            *code += &format!(
+                "\tmov {}, [{} + {}*2] {}\n",
+                REG_ADDRESS,
+                REG_ADDRESS,
+                REG_PC,
+                ctx.comment_str("address = map[pc]")
+            );
+            *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+        }
     }
 
     /*************/

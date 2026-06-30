@@ -1,5 +1,5 @@
 [package]
-name = "zisk-verifier"
+name = "riscv"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -8,10 +8,13 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch ="pre-develop-1.0.0-beta", default-features = false, features = [
-  "verify",
-] }
+zisk-definitions = { workspace = true }
+zisk-core = { workspace = true }
+
+[build-dependencies]
+lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-std = ["proofman-verifier/std"]
+float = ["dep:lib-float", "lib-float/float"]
+bit_manipulation_extensions = []
