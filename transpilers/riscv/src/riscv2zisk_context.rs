@@ -77,6 +77,9 @@ const FLOAT_HANDLER_RETURN_ADDR: u64 = FLOAT_HANDLER_ADDR + 4 * 34; // 31 regs +
 /// Mask to apply to the target address of JALR instructions, to ensure the least significant bit is 0
 const JALR_MASK: u64 = 0xfffffffffffffffe;
 
+#[cfg(not(feature = "float"))]
+const NO_FLOAT_ECALL_ADDR: u64 = ROM_EXIT + 4 + 0x54; // must match add_entry_exit_jmp's trap_handler offset
+
 /// Context to store the list of converted ZisK instructions, including their program address and a
 /// map to store the instructions
 pub struct Riscv2ZiskContext<'a> {
@@ -1409,7 +1412,17 @@ impl Riscv2ZiskContext<'_> {
     pub fn ecall(&mut self, i: &RiscvInstruction) {
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
         zib.src_a("imm", 0, false);
+        // If the float feature is enabled, we use the MTVEC register as the address to jump to for
+        // the ecall.
+        //
+        // If the float feature is disabled, we jump to a fixed BIOS address (NO_FLOAT_ECALL_ADDR)
+        // and intentionally ignore the MTVEC CSR value. This avoids the only dynamic jump to the
+        // lower address space, improving the performance of dynamic jumps in general.
+
+        #[cfg(feature = "float")]
         zib.src_b("mem", MTVEC, false);
+        #[cfg(not(feature = "float"))]
+        zib.src_b("imm", NO_FLOAT_ECALL_ADDR, false);
         zib.op("copyb").unwrap();
         zib.store_pc("reg", 1, false);
         zib.set_pc();
@@ -2599,7 +2612,11 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
 
     // Calculate the trap handler rom pc address as an offset from the current instruction address
     // to the beginning of the ecall section
+    #[cfg(not(feature = "float"))]
+    assert!(rom.next_init_inst_addr == ROM_EXIT + 4);
     let trap_handler: u64 = rom.next_init_inst_addr + 0x54;
+    #[cfg(not(feature = "float"))]
+    assert!(trap_handler == NO_FLOAT_ECALL_ADDR);
 
     // :0000 we note the rom pc address offset from the first address for each instruction
     // Store the Zisk architecture ID into memory
