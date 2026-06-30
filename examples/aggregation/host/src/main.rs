@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
+use zisk_test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
 use zisk_sdk::{EmbeddedOpts, ProfilingMode, ProverClient, ZiskStdin};
 
 #[derive(Serialize, Deserialize)]

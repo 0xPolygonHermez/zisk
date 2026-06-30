@@ -1,4 +1,4 @@
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 
 use crate::{
     zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_MEMCMP_COST,

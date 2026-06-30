@@ -1,5 +1,5 @@
 [package]
-name = "rom-setup"
+name = "zisk-rom-setup"
 description = "ROM setup for ZisK guest programs"
 version = { workspace = true }
 edition = { workspace = true }
@@ -9,11 +9,11 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-sm-rom = { workspace = true }
+zisk-sm-rom = { workspace = true }
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-riscv2zisk = { workspace = true }
+zisk-transpiler-riscv = { workspace = true }
 
 tracing = { workspace = true }
 proofman-fields = { workspace = true }

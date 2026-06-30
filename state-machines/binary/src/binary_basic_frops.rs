@@ -3,7 +3,7 @@ use static_assertions::const_assert;
 use std::error::Error;
 use zisk_core::zisk_ops::ZiskOp;
 
-use sm_frequent_ops::FrequentOpsHelpers;
+use zisk_sm_frequent_ops::FrequentOpsHelpers;
 
 const OP_ADD: u8 = ZiskOp::Add.code();
 const OP_ADDW: u8 = ZiskOp::AddW.code();

@@ -13,9 +13,9 @@ zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-float = ["dep:lib-float", "lib-float/float"]
+float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
 bit_manipulation_extensions = []

@@ -10,14 +10,14 @@
 use std::sync::Arc;
 
 use crate::MainSmError;
-use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::MainAirValues;
+use zisk_sm_mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use ziskemu::{Emu, EmuRegTrace};
 
 use zisk_pil::{MainTrace, MainTraceRowOps};
@@ -352,7 +352,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// based on the provided segment ID, step range checks, and large range checks.
     ///
     /// # Errors
-    /// Returns [`MainSmError::Proofman`] if `pil_std_lib::Std::get_range_id` fails
+    /// Returns [`MainSmError::Proofman`] if `pil2_std_lib::Std::get_range_id` fails
     /// to resolve the range IDs for the `mem_step` or `segment_id` range checks.
     /// This indicates a setup-time misconfiguration of the standard library.
     fn update_std_range_checks(

@@ -1,13 +1,13 @@
 //! Counters for the built-in SMs.
 
-use mem_common::MemCounters;
-use precomp_dma::{DmaCounterInputGen, DmaManager};
 use proofman_fields::PrimeField64;
-use sm_arith::{ArithCounterInputGen, ArithSM};
-use sm_binary::{BinaryCounter, BinarySM};
-use sm_mem::Mem;
 use zisk_common::ComponentPlanBuilder;
 use zisk_core::MemDataSection;
+use zisk_precomp_dma::{DmaCounterInputGen, DmaManager};
+use zisk_sm_arith::{ArithCounterInputGen, ArithSM};
+use zisk_sm_binary::{BinaryCounter, BinarySM};
+use zisk_sm_mem::Mem;
+use zisk_sm_mem_common::MemCounters;
 
 use super::state_machines::{ARITH_POSITION, BINARY_POSITION, DMA_POSITION, MEM_POSITION};
 

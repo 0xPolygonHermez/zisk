@@ -91,11 +91,11 @@ pub enum ExecutorError {
 
     /// Forwarded error from `sm-main`.
     #[error(transparent)]
-    MainSm(#[from] sm_main::MainSmError),
+    MainSm(#[from] zisk_sm_main::MainSmError),
 
     /// Forwarded error from `sm-rom` (ROM state-machine setup / planning).
     #[error(transparent)]
-    Rom(#[from] sm_rom::RomError),
+    Rom(#[from] zisk_sm_rom::RomError),
 
     /// Forwarded error from `ziskemu` (Rust emulator).
     #[error(transparent)]

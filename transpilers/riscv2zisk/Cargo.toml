@@ -1,5 +1,5 @@
 [package]
-name = "riscv2zisk"
+name = "zisk-transpiler-riscv"
 description = "Transpiler from RISC-V to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
@@ -9,17 +9,17 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "riscv2zisk"
+name = "zisk-transpiler-riscv"
 path = "src/bin/riscv2zisk.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
-transpilers-common = { workspace = true }
+zisk-transpiler-common = { workspace = true }
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
 bit_manipulation_extensions = []
-float = ["transpilers-common/float"]
+float = ["zisk-transpiler-common/float"]

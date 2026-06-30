@@ -1,5 +1,5 @@
 [package]
-name = "precompiles-hints"
+name = "zisk-precomp-hints"
 description = "Hint generation for ZisK precompiles"
 version = { workspace = true }
 edition = { workspace = true }
@@ -9,15 +9,15 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [lib]
-name = "precompiles_hints"
+name = "zisk_precomp_hints"
 path = "src/lib.rs"
 
 [[bin]]
-name = "hints-socket-server"
+name = "zisk-hints-socket-server"
 path = "src/bin/hints_socket_server.rs"
 
 [[bin]]
-name = "hints-quic-server"
+name = "zisk-hints-quic-server"
 path = "src/bin/hints_quic_server.rs"
 
 [dependencies]

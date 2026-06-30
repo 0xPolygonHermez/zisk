@@ -1,21 +1,18 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::common::detect_current_project_elf;
+use crate::ux::{print_banner, print_banner_field};
+
 use anyhow::Result;
 use colored::Colorize;
 use proofman_common::{init_gpu_setup, MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
 use proofman_fields::Goldilocks;
-use rom_setup::gen_assembly;
-use rom_setup::rom_merkle_setup;
-use rom_setup::HashMode;
 use std::str::FromStr;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_prover_backend::setup_logger;
-use zisk_prover_backend::GuestProgram;
-
-use crate::common::detect_current_project_elf;
-use crate::ux::{print_banner, print_banner_field};
 use zisk_common::ZiskPaths;
+use zisk_prover_backend::{setup_logger, GuestProgram};
+use zisk_rom_setup::{gen_assembly, rom_merkle_setup, HashMode};
 
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]

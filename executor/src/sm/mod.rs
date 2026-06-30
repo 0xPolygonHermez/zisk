@@ -18,13 +18,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
-use asm_runner::AsmRunnerRH;
+use zisk_asm_runner::AsmRunnerRH;
 
 use zisk_core::ZiskRom;
 
@@ -142,7 +142,7 @@ pub fn plan_sec<F: PrimeField64>(
     let mut plans = BTreeMap::new();
 
     // ROM has no bus-side counter — plan from chunk count directly.
-    let rom_plan = sm_rom::RomPlanner::plan_for_chunks(num_chunks)
+    let rom_plan = zisk_sm_rom::RomPlanner::plan_for_chunks(num_chunks)
         .expect("num_chunks > 0 is upheld by the caller (min_traces.len())");
     plans.insert(ROM_POSITION, rom_plan);
 

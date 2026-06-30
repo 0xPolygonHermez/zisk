@@ -5,8 +5,6 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
-use sm_arith::ArithFrops;
-use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs::File,
@@ -17,6 +15,8 @@ use zisk_core::{
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
     ROM_ENTRY_SIZE, ROM_EXIT, SRC_REG,
 };
+use zisk_sm_arith::ArithFrops;
+use zisk_sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 
 use zisk_definitions::{
     PROFILE_END_COST_ID, PROFILE_END_STEPS_ID, PROFILE_REPORT_END_COST_ID,

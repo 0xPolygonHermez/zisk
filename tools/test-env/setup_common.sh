@@ -73,9 +73,9 @@ generate_frops() {
     return
   fi
   echo "==> generating frops fixed data"
-  cargo run --release --bin arith_frops_fixed_gen
-  cargo run --release --bin binary_basic_frops_fixed_gen
-  cargo run --release --bin binary_extension_frops_fixed_gen
+  cargo run --release --bin zisk-arith-frops-fixed-gen
+  cargo run --release --bin zisk-binary-basic-frops-fixed-gen
+  cargo run --release --bin zisk-binary-extension-frops-fixed-gen
 }
 
 compute_input_hash() (

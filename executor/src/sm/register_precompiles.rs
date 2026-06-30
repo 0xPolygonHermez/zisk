@@ -103,7 +103,7 @@ macro_rules! register_precompiles {
             /// variant. Macro-generated from the registration list; mirrors
             /// `BuiltinSMs::all` on the built-in side.
             pub(crate) fn all(
-                std: ::std::sync::Arc<::pil_std_lib::Std<F>>,
+                std: ::std::sync::Arc<::pil2_std_lib::Std<F>>,
             ) -> ::std::vec::Vec<(::std::primitive::usize, Self)> {
                 ::std::vec![
                     $(
@@ -183,13 +183,13 @@ macro_rules! register_precompiles {
                     op_type: ::std::primitive::u32,
                     bus_id: &::zisk_common::BusId,
                     data: &[::zisk_common::PayloadType],
-                    mem_counter: ::std::option::Option<&mut ::mem_common::MemCounters>,
+                    mem_counter: ::std::option::Option<&mut ::zisk_sm_mem_common::MemCounters>,
                 ) -> ::std::primitive::bool {
                     $(
                         const [<__ $variant:upper _OP>]: ::std::primitive::u32 = $op;
                     )*
                     let mut mem_processor =
-                        ::precompiles_common::MemCounterProcessor::new(mem_counter);
+                        ::zisk_precomp_common::MemCounterProcessor::new(mem_counter);
                     match op_type {
                         $(
                             [<__ $variant:upper _OP>] => self.[<$variant:snake>].1.process_data(
@@ -331,11 +331,11 @@ macro_rules! register_precompiles {
                     data: &[::zisk_common::PayloadType],
                     mem_collector: &mut ::std::vec::Vec<(
                         ::std::primitive::usize,
-                        ::sm_mem::MemModuleCollector,
+                        ::zisk_sm_mem::MemModuleCollector,
                     )>,
                     mem_align_collector: &mut ::std::vec::Vec<(
                         ::std::primitive::usize,
-                        ::sm_mem::MemAlignCollector,
+                        ::zisk_sm_mem::MemAlignCollector,
                     )>,
                 ) -> ::std::primitive::bool {
                     $(
@@ -350,7 +350,7 @@ macro_rules! register_precompiles {
                                 self.[<$variant:snake _inputs_generator>].process_data(
                                     bus_id,
                                     data,
-                                    &mut ::precompiles_common::MemCollectorProcessor::new(
+                                    &mut ::zisk_precomp_common::MemCollectorProcessor::new(
                                         mem_collector,
                                         mem_align_collector,
                                     ),

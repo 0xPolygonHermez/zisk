@@ -70,7 +70,7 @@ pub use paste::paste as __zisk_paste;
 ///
 /// The SM (`$sm<F>`) must:
 ///
-/// * impl `precompiles_common::PrecompileMemInputs` (counter dispatches
+/// * impl `zisk_precomp_common::PrecompileMemInputs` (counter dispatches
 ///   per-op generation through this trait).
 /// * expose `compute_witness::<R>(&self, _sctx: &SetupCtx<F>,
 ///   inputs: &[Vec<$input>], buf: Vec<F>) -> ProofmanResult<AirInstance<F>>`.
@@ -106,7 +106,7 @@ macro_rules! zisk_precompile_explicit {
             }
 
             impl<F: ::proofman_fields::PrimeField64> [<$name Manager>]<F> {
-                pub fn new(std: ::std::sync::Arc<::pil_std_lib::Std<F>>) -> ::std::sync::Arc<Self> {
+                pub fn new(std: ::std::sync::Arc<::pil2_std_lib::Std<F>>) -> ::std::sync::Arc<Self> {
                     let [<$name:snake _sm>] = <$sm<F>>::new(std);
                     ::std::sync::Arc::new(Self { [<$name:snake _sm>] })
                 }
@@ -479,7 +479,7 @@ macro_rules! zisk_precompile_explicit {
                 }
 
                 #[inline(always)]
-                pub fn process_data<P: ::precompiles_common::MemProcessor>(
+                pub fn process_data<P: ::zisk_precomp_common::MemProcessor>(
                     &mut self,
                     bus_id: &$crate::BusId,
                     data: &[u64],
@@ -499,7 +499,7 @@ macro_rules! zisk_precompile_explicit {
                     match self.mode {
                         $crate::BusDeviceMode::Counter => {
                             $crate::Metrics::measure(self, data);
-                            <$sm<F> as ::precompiles_common::PrecompileMemInputs>::generate(
+                            <$sm<F> as ::zisk_precomp_common::PrecompileMemInputs>::generate(
                                 addr_main, step_main, data, true, mem_processors,
                             );
                         }
@@ -507,12 +507,12 @@ macro_rules! zisk_precompile_explicit {
                             $crate::Metrics::measure(self, data);
                         }
                         $crate::BusDeviceMode::InputGenerator => {
-                            if <$sm<F> as ::precompiles_common::PrecompileMemInputs>::should_skip(
+                            if <$sm<F> as ::zisk_precomp_common::PrecompileMemInputs>::should_skip(
                                 addr_main, data, mem_processors,
                             ) {
                                 return true;
                             }
-                            <$sm<F> as ::precompiles_common::PrecompileMemInputs>::generate(
+                            <$sm<F> as ::zisk_precomp_common::PrecompileMemInputs>::generate(
                                 addr_main, step_main, data, false, mem_processors,
                             );
                         }

@@ -13,14 +13,14 @@ use crate::execution::output::{BackendArtifacts, ExecutionOutput};
 use crate::{CountersChunkMetrics, MAX_NUM_STEPS};
 
 use super::{AsmResources, AsmRunnerSupervisor, AsmTransport, MtChunkProcessor};
-use asm_runner::{AsmRunnerMT, HintsShmem};
-use precompiles_hints::HintsProcessor;
 use proofman_fields::PrimeField64;
+use zisk_asm_runner::{AsmRunnerMT, HintsShmem};
 use zisk_common::{
     io::StreamSource, io::ZiskStdin, stats_begin, stats_end, AsmExecutionInfo, ChunkId, EmuTrace,
     ExecutorStatsHandle, StatsScope,
 };
 use zisk_core::ZiskRom;
+use zisk_precomp_hints::HintsProcessor;
 
 /// ASM-backend emulator. Wraps an `AsmTransport` for resource access
 /// and threads MT/MO/RH runner lifecycles through `AsmRunnerSupervisor`

@@ -9,12 +9,12 @@
 use anyhow::{Context, Result};
 use proofman_common::VerboseMode;
 use proofman_fields::Goldilocks;
-use riscv2zisk::Riscv2zisk;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;

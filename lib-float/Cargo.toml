@@ -1,5 +1,5 @@
 [package]
-name = "lib-float"
+name = "zisk-lib-float"
 description = "Software floating-point library for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }

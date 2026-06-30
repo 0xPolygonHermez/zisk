@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 use zisk_common::{
     BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo,

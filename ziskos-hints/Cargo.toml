@@ -16,14 +16,14 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-zkvm-interface = { workspace = true }
-lib-c = { workspace = true }
+zisk-zkvm-interface = { workspace = true }
+zisk-lib-c = { workspace = true }
 
 num-bigint = { workspace = true }
 num-integer = { workspace = true }
 num-traits = { workspace = true }
 
-precompiles-helpers = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
 
 rand = { workspace = true }
 

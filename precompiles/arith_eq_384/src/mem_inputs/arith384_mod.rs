@@ -1,4 +1,4 @@
-use precompiles_common::MemProcessor;
+use zisk_precomp_common::MemProcessor;
 
 use super::ArithEq384MemInputConfig;
 use crate::{executors::Arith384Mod, ARITH_EQ_384_U64S};

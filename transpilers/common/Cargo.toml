@@ -1,5 +1,5 @@
 [package]
-name = "transpilers-common"
+name = "zisk-transpiler-common"
 description = "Shared ELF-to-ROM transpilation utilities for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
@@ -15,9 +15,9 @@ zisk-riscv = { workspace = true }
 elf = "0.7.4"
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-float = ["dep:lib-float", "lib-float/float", "zisk-riscv/float", "zisk-core/float"]
+float = ["dep:zisk-lib-float", "zisk-lib-float/float", "zisk-riscv/float", "zisk-core/float"]
 bit_manipulation_extensions = ["zisk-riscv/bit_manipulation_extensions", "zisk-core/bit_manipulation_extensions"]

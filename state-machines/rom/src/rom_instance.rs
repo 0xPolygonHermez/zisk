@@ -4,10 +4,10 @@ use std::sync::{atomic::AtomicU64, Arc};
 
 use crate::rom_counter::RomCounter;
 use crate::{RomError, RomResult};
-use asm_runner::{AsmRHData, AsmRunnerRH};
 use proofman_common::{AirInstance, ProofCtx, ProofmanError, ProofmanResult, SetupCtx, TraceInfo};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
+use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, BusId, CheckPoint, ChunkId, CounterStats, Instance, InstanceCtx, InstanceType,
@@ -311,9 +311,9 @@ impl BusDevice<u64> for RomCollector {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use asm_runner::{AsmRHData, AsmRunnerRH};
     use proofman_fields::Goldilocks;
     use std::sync::atomic::{AtomicU64, Ordering};
+    use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
     use zisk_common::Plan;
     use zisk_core::{ZiskInst, ZiskInstBuilder};
 

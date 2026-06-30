@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::mem;
 
 use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions};
-use mem_common::MemHelpers;
 use proofman_fields::PrimeField64;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
@@ -11,6 +10,7 @@ use zisk_common::{
 use zisk_core::mem::DataSection;
 use zisk_pil::MainTraceRowOps;
 use zisk_riscv::RiscVRegisters;
+use zisk_sm_mem_common::MemHelpers;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};

@@ -5,7 +5,7 @@
 //! execution plans.
 
 use crate::{ArithFrops, ArithFullSM};
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};

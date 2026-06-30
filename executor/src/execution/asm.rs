@@ -3,7 +3,7 @@
 //! Cross-platform pieces (`resources`, `transport`, `supervisor`,
 //! `mt_chunk`) compile everywhere via internal `#[cfg]` gates — they
 //! contain stub-free type definitions plus inherent methods that touch
-//! Linux-x86_64-only `asm_runner` internals. Only the inherent-impl
+//! Linux-x86_64-only `zisk_asm_runner` internals. Only the inherent-impl
 //! glue that drives `AsmRunnerMT::run_and_count` (i.e. [`emulator`])
 //! is gated to that target; on other targets [`stub`] supplies an
 //! `EmulatorAsm` of the same shape whose methods panic with a clear

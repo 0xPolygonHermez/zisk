@@ -2,11 +2,11 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::sync::Arc;
 
-use pil_std_lib::Std;
-use precomp_arith_eq::ArithEqLtTableSM;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRowOps};
+use zisk_precomp_arith_eq::ArithEqLtTableSM;
 
 use crate::{
     arith_eq_384_constants::*, executors, Arith384ModInput, ArithEq384Input,

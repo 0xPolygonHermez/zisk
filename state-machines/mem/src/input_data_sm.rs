@@ -7,12 +7,12 @@ use std::{
 };
 
 #[cfg(feature = "debug_mem")]
-use mem_common::MemHelpers;
+use zisk_sm_mem_common::MemHelpers;
 
 use crate::{MemInput, MemModule, MemPreviousSegment};
-use mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use zisk_sm_mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use zisk_common::SegmentId;

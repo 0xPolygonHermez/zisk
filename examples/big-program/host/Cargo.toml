@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 zisk-sdk = { workspace = true }
-test-artifacts = { workspace = true }
+zisk-test-artifacts = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [build-dependencies]

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
-use sm_frequent_ops::FrequentOpsHelpers;
 use std::error::Error;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_sm_frequent_ops::FrequentOpsHelpers;
 
 const OP_SIGNEXTENDB: u8 = ZiskOp::SignExtendB.code();
 const OP_SIGNEXTENDH: u8 = ZiskOp::SignExtendH.code();

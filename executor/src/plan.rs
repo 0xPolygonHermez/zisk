@@ -14,8 +14,8 @@ use std::time::{Duration, Instant};
 use crate::error::ExecutorResult;
 use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use sm_main::MainPlanner;
 use zisk_common::{stats_begin, stats_end, EmuTrace, ExecutorStatsHandle, Plan, StatsScope};
+use zisk_sm_main::MainPlanner;
 
 use crate::sm::{extend_mem_plans, plan_sec};
 use crate::{BackendArtifacts, CountersChunkMetrics};

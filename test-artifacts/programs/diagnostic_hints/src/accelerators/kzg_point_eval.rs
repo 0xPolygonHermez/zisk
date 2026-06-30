@@ -1,4 +1,4 @@
-use zkvm_interface::{
+use zisk_zkvm_interface::{
     zkvm_kzg_commitment, zkvm_kzg_field_element, zkvm_kzg_point_eval, zkvm_kzg_proof,
     zkvm_status_ZKVM_EOK as ZKVM_EOK,
 };

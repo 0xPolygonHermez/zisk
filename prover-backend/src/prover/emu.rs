@@ -7,16 +7,14 @@ use crate::{
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use crate::{ensure_program_vk, get_rom_bin_path, BackendProverOpts};
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
-use riscv2zisk::Riscv2zisk;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
+use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
@@ -25,6 +23,8 @@ use zisk_common::{
 };
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
+use zisk_precomp_hints::HintsProcessor;
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use anyhow::Result;
 

@@ -9,13 +9,13 @@
 use anyhow::{Context, Result};
 use proofman_common::VerboseMode;
 use proofman_fields::Goldilocks;
-use riscv2zisk::Riscv2zisk;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, ZiskExecutor};
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
@@ -36,7 +36,7 @@ pub struct AsmExecClient {
 
 impl AsmExecClient {
     pub fn new(verbose: VerboseMode, asm_cache_dir: Option<PathBuf>, gpu: bool) -> Result<Self> {
-        let asm_cache_dir = rom_setup::get_output_path(&asm_cache_dir)?;
+        let asm_cache_dir = zisk_rom_setup::get_output_path(&asm_cache_dir)?;
         let executor = ZiskExecutor::<Goldilocks>::new_standalone(verbose, true)?;
         Ok(Self { executor, asm_cache_dir, verbose, gpu, program: Mutex::new(None) })
     }
@@ -93,9 +93,9 @@ impl AsmExecClient {
     }
 
     /// Resolves cached `<base>-mt.bin` path. Generates all 3 ASM binaries
-    /// via `rom_setup::generate_assembly` if any are missing.
+    /// via `zisk_rom_setup::generate_assembly` if any are missing.
     fn ensure_asm_binaries(&self, program: &GuestProgram, with_hints: bool) -> Result<PathBuf> {
-        let [mt, rh, mo] = rom_setup::get_assembly_file_paths_from_id(
+        let [mt, rh, mo] = zisk_rom_setup::get_assembly_file_paths_from_id(
             program.hash(),
             &self.asm_cache_dir,
             with_hints,
@@ -117,8 +117,13 @@ impl AsmExecClient {
             with_hints
         );
         let gen_verbose = matches!(self.verbose, VerboseMode::Debug | VerboseMode::Trace);
-        rom_setup::generate_assembly(program.elf(), &self.asm_cache_dir, with_hints, gen_verbose)
-            .context("rom_setup::generate_assembly failed")?;
+        zisk_rom_setup::generate_assembly(
+            program.elf(),
+            &self.asm_cache_dir,
+            with_hints,
+            gen_verbose,
+        )
+        .context("zisk_rom_setup::generate_assembly failed")?;
         tracing::info!("ASM binaries generated for ELF '{}'", program.name());
         Ok(mt)
     }

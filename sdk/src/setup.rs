@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::{Result, SdkError};
-use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
 use zisk_coordinator_api::dto::{DomainJobKindResponse, TerminalStatus};
 use zisk_prover_backend::GuestProgram;
+use zisk_rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
 
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
 use crate::{Client, ClientSync};

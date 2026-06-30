@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
-use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS};
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use std::{
@@ -13,6 +12,9 @@ use zisk_common::SegmentId;
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{
     RomDataAirValues, RomDataTrace, RomDataTraceRow, RomDataTraceRowOps, RomDataTraceRowPacked,
+};
+use zisk_sm_mem_common::{
+    MemHelpers, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS,
 };
 
 pub const ROM_DATA_W_ADDR_INIT: u32 = ROM_ADDR as u32 >> MEM_BYTES_BITS;

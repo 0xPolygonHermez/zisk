@@ -36,9 +36,9 @@ python3 -c 'import yaml' 2>/dev/null \
 # Build the artifacts the staged step copies and the test exercises: ziskclib +
 # lib-c (libziskclib.a / libziskc.a) and riscv2zisk (used to generate emu.asm).
 step "Building libziskclib.a + libziskc.a + riscv2zisk"
-cargo build --release -p ziskclib -p lib-c --manifest-path "$REPO/Cargo.toml" \
+cargo build --release -p ziskclib -p zisk-lib-c --manifest-path "$REPO/Cargo.toml" \
   || fail "cargo build of ziskclib/lib-c failed"
-cargo build --release -p riscv2zisk --bin riscv2zisk --manifest-path "$REPO/Cargo.toml" \
+cargo build --release -p zisk-transpiler-riscv --bin zisk-transpiler-riscv --manifest-path "$REPO/Cargo.toml" \
   || fail "cargo build of riscv2zisk failed"
 
 ZISKC="$REPO/target/zisk-libs/libziskc.a"

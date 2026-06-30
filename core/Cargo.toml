@@ -13,7 +13,7 @@ name = "zisk_core"
 path = "src/lib.rs"
 
 [dependencies]
-precompiles-helpers = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
 ziskos = { workspace = true }
 rayon = { workspace = true }
 proofman-fields = { workspace = true }
@@ -24,12 +24,12 @@ zisk-definitions = { workspace = true }
 tiny-keccak = { workspace = true }
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
 debug_dma = []
 log_dma_ops = []
 # sp = []
-float = ["dep:lib-float", "lib-float/float"]
+float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
 bit_manipulation_extensions = []

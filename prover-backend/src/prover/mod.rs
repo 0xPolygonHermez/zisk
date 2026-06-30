@@ -16,19 +16,19 @@ use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
+use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
     StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
+use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 

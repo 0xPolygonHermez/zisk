@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::path::PathBuf;
-use test_artifacts::ELF_BIG_INPUT;
+use zisk_test_artifacts::ELF_BIG_INPUT;
 use zisk_sdk::{ProverClient, ZiskStdin};
 
 #[tokio::main]

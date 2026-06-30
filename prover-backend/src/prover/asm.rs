@@ -6,8 +6,6 @@ use crate::{
     BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
-use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
@@ -16,14 +14,13 @@ use proofman_common::{
 };
 use proofman_fields::Goldilocks;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use riscv2zisk::Riscv2zisk;
-use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     {Arc, RwLock},
 };
+use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
@@ -32,6 +29,9 @@ use zisk_common::{
 };
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
+use zisk_precomp_hints::HintsProcessor;
+use zisk_rom_setup::{generate_assembly, get_output_path};
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use anyhow::Result;
 

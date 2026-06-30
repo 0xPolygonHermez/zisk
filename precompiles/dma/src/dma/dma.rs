@@ -3,7 +3,7 @@ use std::sync::Arc;
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_core::zisk_ops::ZiskOp;
@@ -12,7 +12,7 @@ use zisk_pil::{
 };
 
 use crate::{dma::dma_rom::DmaRom, dma_trace, DmaInput, DmaModule, DMA_ROM_WITH_MEMCMP_SIZE};
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 
 /// The `DmaSM` struct encapsulates the logic of the Dma State Machine.
 pub struct DmaSM<F: PrimeField64> {

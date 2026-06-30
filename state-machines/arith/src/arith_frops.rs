@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 use std::error::Error;
 
-use sm_frequent_ops::FrequentOpsHelpers;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_sm_frequent_ops::FrequentOpsHelpers;
 
 const OP_MULU: u8 = ZiskOp::Mulu.code();
 const OP_MULUH: u8 = ZiskOp::Muluh.code();

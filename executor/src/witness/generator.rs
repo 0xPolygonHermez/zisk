@@ -4,11 +4,11 @@
 
 use proofman_common::{ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
-use sm_main::MainInstance;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
 use zisk_pil::{MainTraceRow, MainTraceRowPacked};
+use zisk_sm_main::MainInstance;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;

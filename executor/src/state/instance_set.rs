@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::sync::{PoisonError, RwLock};
 
 use proofman_fields::PrimeField64;
-use sm_main::MainInstance;
 use zisk_common::Instance;
+use zisk_sm_main::MainInstance;
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
 pub struct InstanceSet<F: PrimeField64> {

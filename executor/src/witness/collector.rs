@@ -30,7 +30,7 @@ use ziskemu::ZiskEmulator;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
-use asm_runner::AsmRunnerRH;
+use zisk_asm_runner::AsmRunnerRH;
 
 /// Per-instance chunk-collector slot map. Same shape as
 /// [`crate::ChunkCollectorStore::inner`].

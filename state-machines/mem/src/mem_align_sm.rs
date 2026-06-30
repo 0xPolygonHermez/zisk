@@ -3,7 +3,7 @@ use std::sync::Arc;
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};

@@ -21,7 +21,7 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 zisk-sdk = { workspace = true }
-test-artifacts = { workspace = true }
+zisk-test-artifacts = { workspace = true }
 serial_test = { workspace = true }
 anyhow = { workspace = true }
 tokio = { workspace = true }

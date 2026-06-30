@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use proofman_fields::PrimeField64;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::{
@@ -16,7 +16,7 @@ use zisk_pil::{
 };
 
 use crate::{dma_trace, DmaPrePostInput, DmaPrePostModule, DmaPrePostRom};
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 
 /// The `DmaPrePostSM` struct encapsulates the logic of the DmaPrePost State Machine.
 pub struct DmaPrePostInputCpySM<F: PrimeField64> {

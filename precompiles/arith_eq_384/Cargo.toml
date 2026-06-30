@@ -1,5 +1,5 @@
 [package]
-name = "precomp-arith-eq-384"
+name = "zisk-precomp-arith-eq-384"
 description = "384-bit arithmetic-equality precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
@@ -9,29 +9,29 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "arith_eq_384_generator"
+name = "zisk-arith-eq-384-generator"
 path = "src/arith_eq_384_generator.rs"
 
 [[bin]]
-name = "arith_eq_384_test_bigint"
+name = "zisk-arith-eq-384-test-bigint"
 path = "src/arith_eq_384_test_bigint.rs"
 required-features = ["test_data"]
 
 [[bin]]
-name = "arith_eq_384_test_generator"
+name = "zisk-arith-eq-384-test-generator"
 path = "src/arith_eq_384_test_generator.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-precompiles-common = { workspace = true }
-precompiles-helpers = { workspace = true }
-precomp-arith-eq = { workspace = true }
+zisk-precomp-common = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
+zisk-precomp-arith-eq = { workspace = true }
 zisk-common = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-pil-std-lib = { workspace = true }
+pil2-std-lib = { workspace = true }
 
 proofman-fields = { workspace = true }
 tracing = { workspace = true }
@@ -46,7 +46,7 @@ lazy_static = { workspace = true }
 path-clean = { workspace = true }
 
 [dev-dependencies]
-test-artifacts = { workspace = true }
+zisk-test-artifacts = { workspace = true }
 serial_test = { workspace = true }
 
 [features]

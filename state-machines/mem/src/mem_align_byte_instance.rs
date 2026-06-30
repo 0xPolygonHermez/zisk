@@ -1,5 +1,5 @@
 use crate::{mem_align_byte_sm::MemAlignByteSM, MemAlignCollector};
-use mem_common::MemAlignCheckPoint;
+use zisk_sm_mem_common::MemAlignCheckPoint;
 
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;

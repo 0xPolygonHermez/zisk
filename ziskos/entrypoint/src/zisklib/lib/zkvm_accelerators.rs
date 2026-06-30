@@ -12,7 +12,7 @@ use super::sw_impl::{
     secp256k1 as secp256k1_sw, sha256 as sha256_sw,
 };
 use super::{bls12_381, bn254};
-use zkvm_interface::{
+use zisk_zkvm_interface::{
     zkvm_blake2f_message, zkvm_blake2f_offset, zkvm_blake2f_state, zkvm_bls12_381_fp,
     zkvm_bls12_381_fp2, zkvm_bls12_381_g1_msm_pair, zkvm_bls12_381_g1_point,
     zkvm_bls12_381_g2_msm_pair, zkvm_bls12_381_g2_point, zkvm_bls12_381_pairing_pair,
@@ -1240,7 +1240,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
 #[allow(dead_code)]
 mod _interface_type_checks {
     use super::*;
-    use zkvm_interface as bindings;
+    use zisk_zkvm_interface as bindings;
     fn _check() {
         let _ = [bindings::zkvm_keccak256, super::zkvm_keccak256];
         let _ = [bindings::zkvm_sha256, super::zkvm_sha256];

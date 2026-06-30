@@ -3,11 +3,11 @@
 //! [`CustomRom`] builds the `RomRomTrace<F>` commit that holds the program code as field
 //! elements. Pure transformation: ELF bytes → `ZiskRom` → trace rows.
 
-use mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
 use proofman_fields::PrimeField64;
-use riscv2zisk::Riscv2zisk;
 use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
+use zisk_sm_mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::error::{RomError, RomResult};
 

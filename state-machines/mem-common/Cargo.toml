@@ -1,5 +1,5 @@
 [package]
-name = "mem-common"
+name = "zisk-sm-mem-common"
 description = "Shared memory-handling types for ZisK state machines"
 version = { workspace = true }
 edition = { workspace = true }
@@ -9,7 +9,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "mem_debug_cli"
+name = "zisk-mem-debug-cli"
 path = "src/mem_debug_cli.rs"
 
 [dependencies]

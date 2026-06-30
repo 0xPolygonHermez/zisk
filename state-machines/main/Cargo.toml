@@ -1,5 +1,5 @@
 [package]
-name = "sm-main"
+name = "zisk-sm-main"
 description = "Main state machine for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
@@ -13,11 +13,11 @@ ziskemu = { workspace = true }
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
-mem-common = { workspace = true }
+zisk-sm-mem-common = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
-pil-std-lib = { workspace = true }
+pil2-std-lib = { workspace = true }
 thiserror = { workspace = true }

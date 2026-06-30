@@ -7,7 +7,7 @@ use zisk_common::{
 };
 use zisk_core::zisk_ops::ZiskOp;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 use std::sync::Arc;
 

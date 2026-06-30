@@ -17,8 +17,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod add256_tests {
-    use test_artifacts::ELF_ADD256;
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::ELF_ADD256;
 
     #[test]
     fn add256_tests() {

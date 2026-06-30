@@ -1,5 +1,5 @@
 [package]
-name = "precompiles-helpers"
+name = "zisk-precomp-helpers"
 description = "Helper routines shared across ZisK precompiles"
 version = { workspace = true }
 edition = { workspace = true }
@@ -9,7 +9,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-lib-c = { workspace = true }
+zisk-lib-c = { workspace = true }
 zisk-circuit = { workspace = true }
 
 ark-ff = { workspace = true }

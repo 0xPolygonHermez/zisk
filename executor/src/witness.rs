@@ -19,13 +19,13 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use asm_runner::AsmRunnerRH;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
-use sm_main::MainInstance;
+use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
+use zisk_sm_main::MainInstance;
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId, ProofRegistry};

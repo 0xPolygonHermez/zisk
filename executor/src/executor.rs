@@ -23,7 +23,6 @@ use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, Proofman
 use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use proofman_witness::{WitnessComponent, WitnessManager};
-use sm_main::MainSM;
 use std::{
     sync::{Arc, RwLock},
     time::Instant,
@@ -33,6 +32,7 @@ use zisk_common::{
     ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
+use zisk_sm_main::MainSM;
 
 use crate::error::{ExecutorResult, RwLockExt};
 
@@ -92,7 +92,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let rank_info = wcm.get_rank_info();
         proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
 
-        let std = pil_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
+        let std = pil2_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
         proofman::register_std(wcm, &std);
 
         let precompiles = crate::Precompiles::all(std.clone());

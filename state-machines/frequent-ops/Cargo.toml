@@ -1,5 +1,5 @@
 [package]
-name = "sm-frequent-ops"
+name = "zisk-sm-frequent-ops"
 description = "Frequent-operations state machine for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
@@ -9,7 +9,7 @@ repository = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "frequent_ops_test"
+name = "zisk-frequent-ops-test"
 path = "src/frequent_ops_test.rs"
 
 [dependencies]

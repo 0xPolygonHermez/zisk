@@ -3272,9 +3272,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "pil-std-lib"
+name = "pil2-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "colored",
  "proofman-common",
@@ -3387,7 +3386,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "path-clean",
- "pil-std-lib",
+ "pil2-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3412,7 +3411,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "path-clean",
- "pil-std-lib",
+ "pil2-std-lib",
  "precomp-arith-eq",
  "precompiles-common",
  "precompiles-helpers",
@@ -3432,7 +3431,7 @@ name = "precomp-big-int"
 version = "1.0.0-beta"
 dependencies = [
  "lib-c",
- "pil-std-lib",
+ "pil2-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-fields",
@@ -3448,7 +3447,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
- "pil-std-lib",
+ "pil2-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-fields",
@@ -3464,7 +3463,7 @@ dependencies = [
 name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
- "pil-std-lib",
+ "pil2-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3482,7 +3481,7 @@ name = "precomp-keccakf"
 version = "1.0.0-beta"
 dependencies = [
  "path-clean",
- "pil-std-lib",
+ "pil2-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3501,7 +3500,7 @@ dependencies = [
 name = "precomp-poseidon"
 version = "1.0.0-beta"
 dependencies = [
- "pil-std-lib",
+ "pil2-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-fields",
@@ -3517,7 +3516,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
- "pil-std-lib",
+ "pil2-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-fields",
@@ -3635,7 +3634,6 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "bincode",
  "blake3",
@@ -3647,7 +3645,7 @@ dependencies = [
  "libloading",
  "mpi",
  "num-traits",
- "pil-std-lib",
+ "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
  "proofman-fields",
@@ -3667,7 +3665,6 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "borsh",
  "colored",
@@ -3696,7 +3693,6 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "proofman-fields",
 ]
@@ -3704,7 +3700,6 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3715,7 +3710,6 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -3727,7 +3721,6 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3737,7 +3730,6 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -3746,12 +3738,10 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -3760,7 +3750,6 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "bincode",
  "num-traits",
@@ -3773,7 +3762,6 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=predev-1.0.0-beta-crates-io#814d1891663234851159dc58f242b34b65fe793e"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -4742,7 +4730,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
- "pil-std-lib",
+ "pil2-std-lib",
  "proofman-common",
  "proofman-fields",
  "rayon",
@@ -4758,7 +4746,7 @@ dependencies = [
 name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
- "pil-std-lib",
+ "pil2-std-lib",
  "proofman-common",
  "proofman-fields",
  "rayon",
@@ -4786,7 +4774,7 @@ name = "sm-main"
 version = "1.0.0-beta"
 dependencies = [
  "mem-common",
- "pil-std-lib",
+ "pil2-std-lib",
  "proofman-common",
  "proofman-fields",
  "rayon",
@@ -4804,7 +4792,7 @@ version = "1.0.0-beta"
 dependencies = [
  "env",
  "mem-common",
- "pil-std-lib",
+ "pil2-std-lib",
  "proofman-common",
  "proofman-fields",
  "proofman-util",
@@ -6513,7 +6501,7 @@ dependencies = [
  "mem-common",
  "named-sem",
  "paste",
- "pil-std-lib",
+ "pil2-std-lib",
  "precomp-arith-eq",
  "precomp-arith-eq-384",
  "precomp-big-int",

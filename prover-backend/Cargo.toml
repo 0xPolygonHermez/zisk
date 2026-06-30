@@ -21,11 +21,11 @@ zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
 zisk-cluster-common = { workspace = true }
-riscv2zisk = { workspace = true }
+zisk-transpiler-riscv = { workspace = true }
 zisk-executor = { workspace = true }
-rom-setup = { workspace = true }
-asm-runner = { workspace = true }
-precompiles-hints = { workspace = true }
+zisk-rom-setup = { workspace = true }
+zisk-asm-runner = { workspace = true }
+zisk-precomp-hints = { workspace = true }
 proofman-fields = { workspace = true }
 borsh = { workspace = true }
 

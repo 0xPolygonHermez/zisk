@@ -11,14 +11,14 @@
 
 use std::sync::Arc;
 
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
 use proofman_fields::PrimeField64;
+use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AsmExecutionInfo, ExecutorStatsHandle, StatsScope,
 };
 use zisk_core::ZiskRom;
+use zisk_precomp_hints::HintsProcessor;
 
 use super::AsmResources;
 use crate::error::ExecutorResult;

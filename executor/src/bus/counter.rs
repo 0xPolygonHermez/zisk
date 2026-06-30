@@ -5,18 +5,18 @@
 use std::collections::VecDeque;
 
 use crate::{pub_outs_collector::PubOutsCollector, BuiltinCounters, PrecompileCounters};
-use mem_common::MemCounters;
-use precomp_dma::DmaCounterInputGen;
-use precompiles_common::MemCounterProcessor;
 use proofman_fields::PrimeField64;
-use sm_arith::ArithCounterInputGen;
-use sm_binary::BinaryCounter;
 use zisk_common::DataBusTrait;
 use zisk_common::{BusDeviceMetrics, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{
     MemDataSection, ARITH_OP_TYPE_ID, BINARY_E_OP_TYPE_ID, BINARY_OP_TYPE_ID, DMA_OP_TYPE_ID,
     PUB_OUT_OP_TYPE_ID,
 };
+use zisk_precomp_common::MemCounterProcessor;
+use zisk_precomp_dma::DmaCounterInputGen;
+use zisk_sm_arith::ArithCounterInputGen;
+use zisk_sm_binary::BinaryCounter;
+use zisk_sm_mem_common::MemCounters;
 
 /// A bus system facilitating communication between multiple publishers and subscribers.
 ///

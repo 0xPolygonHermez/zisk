@@ -1,11 +1,11 @@
 use clap::Parser;
-use mem_common::MemHelpers;
-use mem_common::{MemCounters, MemDebug};
 use proofman_fields::Goldilocks;
 use std::path::PathBuf;
 use zisk_common::ChunkId;
 use zisk_common::MemBusData;
 use zisk_pil::MemTrace;
+use zisk_sm_mem_common::MemHelpers;
+use zisk_sm_mem_common::{MemCounters, MemDebug};
 
 /// Inspect mem_{chunk}.bin files produced with feature save_mem_bus_data
 #[derive(Parser, Debug)]
