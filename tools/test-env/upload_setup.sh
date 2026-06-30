@@ -88,6 +88,7 @@ main() {
 
     info "Loading environment variables..."
     load_env || return 1
+    [[ -n "${SETUP_VERSION:-}" ]] || { err "SETUP_VERSION is required"; return 1; }
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     ensure cd "${ZISK_REPO}" || return 1
