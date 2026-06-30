@@ -294,6 +294,10 @@ case "$MODE" in
 
   gen_exps_only)
     [ -d "$BUILD_DIR/provingKey" ] || { echo "$BUILD_DIR/provingKey not found — run setup first" >&2; exit 1; }
+    if ! command -v nvcc >/dev/null 2>&1; then
+      echo "nvcc not found on PATH — skipping gen-exps (no-op)" >&2
+      exit 0
+    fi
     echo "==> proofman-setup gen-exps (arch: $EXPS_ARCH)"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
       --proving-key "$BUILD_DIR/provingKey" \
@@ -360,7 +364,11 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   setup_jobs_flags=()
   [ -n "$RECURSIVE_JOBS_ARG" ] && setup_jobs_flags+=(--recursive-jobs "$RECURSIVE_JOBS_ARG")
   [ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
-  [ "$GEN_EXPS" -eq 1 ]        && setup_jobs_flags+=(--gen-exps --exps-arch "$EXPS_ARCH")
+  # Only forward --gen-exps when nvcc is actually present, so GEN_EXPS=1 on a
+  # non-CUDA host is the documented no-op rather than invoking extra setup logic.
+  if [ "$GEN_EXPS" -eq 1 ] && command -v nvcc >/dev/null 2>&1; then
+    setup_jobs_flags+=(--gen-exps --exps-arch "$EXPS_ARCH")
+  fi
 
   rm -rf "$BUILD_DIR/provingKey"
   cargo run --release --bin cargo-zisk-dev -- proofman-setup setup \
