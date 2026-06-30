@@ -26,11 +26,7 @@ void print_usage (void)
     asm_printf("\t--gen=0|--generate_fast\n");
     asm_printf("\t--gen=1|--generate_minimal_trace\n");
     asm_printf("\t--gen=2|--generate_rom_histogram\n");
-    asm_printf("\t--gen=3|--generate_main_trace\n");
-    asm_printf("\t--gen=4|--generate_chunks\n");
-    asm_printf("\t--gen=6|--generate_zip\n");
-    asm_printf("\t--gen=9|--generate_mem_reads\n");
-    asm_printf("\t--gen=10|--generate_chunk_player_mem_reads\n");
+    asm_printf("\t--gen=7|--generate_mem_op\n");
     asm_printf("\t--chunk <chunk_number>\n");
     asm_printf("\t--shutdown\n");
     asm_printf("\t--mt <number_of_mt_requests>\n");

@@ -37,7 +37,7 @@ fn main() {
         "--gen=2" => zisk_core::AsmGenerationMethod::AsmRomHistogram,
         "--gen=7" => zisk_core::AsmGenerationMethod::AsmMemOp,
         _ => {
-            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =3 (main trace), =4 (chunks), =5 (bus op), =6 (zip), =7 (mem op), =8 (min trace chunk player), =9 (mem reads), =10 (mem reads chunk player).");
+            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =7 (mem op).");
             process::exit(1);
         }
     };
