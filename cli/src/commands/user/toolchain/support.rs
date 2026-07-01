@@ -77,39 +77,73 @@ fn select_latest_tag(tags: &[String], major: u64) -> Option<String> {
         .map(|(_, _, tag)| tag)
 }
 
-/// Fetch the `tag_name`s of all releases published for `0xPolygonHermez/rust`.
-/// The fork only publishes ZisK toolchain releases, so a single page (100) is
-/// plenty and keeps us clear of the thousands of upstream Rust tags.
-async fn fetch_release_tags(client: &Client) -> Result<Vec<String>> {
+/// GitHub API token from the environment, if set and non-empty. Sending it lifts
+/// the anonymous rate limit (60 → 5000 req/h) and grants access to a private fork.
+/// `GITHUB_TOKEN` takes precedence over `GH_TOKEN` (the `gh` CLI's variable).
+fn github_token() -> Option<String> {
+    std::env::var("GITHUB_TOKEN")
+        .or_else(|_| std::env::var("GH_TOKEN"))
+        .ok()
+        .filter(|token| !token.is_empty())
+}
+
+/// Add `Authorization: Bearer <token>` to `headers` when a GitHub token is set in
+/// the environment. No-op otherwise (requests stay anonymous).
+fn add_github_auth(headers: &mut HeaderMap) {
+    if let Some(token) = github_token() {
+        if let Ok(value) = HeaderValue::from_str(&format!("Bearer {token}")) {
+            headers.insert("Authorization", value);
+        }
+    }
+}
+
+/// Fetch the tag names under `refs/tags/zisk-<major>.` from `0xPolygonHermez/rust`
+/// via the git matching-refs API. It returns only the ZisK tags of this major
+/// (not the thousands of upstream Rust tags), and we assume each tag has a release
+/// published under the same name.
+async fn fetch_matching_tags(client: &Client, major: u64) -> Result<Vec<String>> {
     #[derive(serde::Deserialize)]
-    struct Release {
-        tag_name: String,
+    struct Ref {
+        #[serde(rename = "ref")]
+        name: String,
     }
 
     let mut headers = HeaderMap::new();
     headers.insert("User-Agent", HeaderValue::from_static("cargo-zisk"));
     headers.insert("Accept", HeaderValue::from_static("application/vnd.github+json"));
+    add_github_auth(&mut headers);
 
-    let releases: Vec<Release> = client
-        .get("https://api.github.com/repos/0xPolygonHermez/rust/releases?per_page=100")
+    // The trailing `.` scopes the prefix to `zisk-<major>.` so `zisk-1.` never
+    // matches `zisk-10.` (or the rolling `zisk-1-latest`, which has no dot).
+    let url = format!(
+        "https://api.github.com/repos/0xPolygonHermez/rust/git/matching-refs/tags/zisk-{major}."
+    );
+
+    let refs: Vec<Ref> = client
+        .get(&url)
         .headers(headers)
         .send()
         .await
-        .context("querying GitHub releases")?
+        .context("querying GitHub matching tags")?
         .error_for_status()
-        .context("GitHub releases request failed")?
+        .context("GitHub matching-refs request failed")?
         .json()
         .await
-        .context("parsing GitHub releases response")?;
+        .context("parsing GitHub matching-refs response")?;
 
-    Ok(releases.into_iter().map(|r| r.tag_name).collect())
+    // Strip the `refs/tags/` prefix to leave the bare tag names.
+    Ok(refs
+        .into_iter()
+        .filter_map(|r| r.name.strip_prefix("refs/tags/").map(String::from))
+        .collect())
 }
 
 /// Build the GitHub release URL for the toolchain tarball.
 ///
 /// With an explicit `version` the URL points at that exact release. Otherwise we
-/// resolve the highest `zisk-<TOOLCHAIN_MAJOR>.x.y` release via the GitHub API
-/// (rather than `releases/latest`, which could jump to a newer major).
+/// list the `zisk-<TOOLCHAIN_MAJOR>.*` tags via the matching-refs API and pick the
+/// highest one (rather than `releases/latest`, which could jump to a newer major),
+/// assuming a release exists under the same name.
 pub(crate) async fn get_toolchain_download_url(
     client: &Client,
     target: &String,
@@ -118,11 +152,9 @@ pub(crate) async fn get_toolchain_download_url(
     let tag = if let Some(version) = version {
         version.clone()
     } else {
-        let tags = fetch_release_tags(client).await?;
+        let tags = fetch_matching_tags(client, TOOLCHAIN_MAJOR).await?;
         select_latest_tag(&tags, TOOLCHAIN_MAJOR).with_context(|| {
-            format!(
-                "no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain release found for 0xPolygonHermez/rust"
-            )
+            format!("no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain tag found for 0xPolygonHermez/rust")
         })?
     };
 
@@ -140,6 +172,8 @@ pub(crate) async fn download_file(
     let mut headers = HeaderMap::new();
 
     headers.insert("Accept", HeaderValue::from_static("application/octet-stream"));
+    // Authenticate the download too, so a private fork's release assets are reachable.
+    add_github_auth(&mut headers);
     let res = client
         .get(url)
         .headers(headers)
