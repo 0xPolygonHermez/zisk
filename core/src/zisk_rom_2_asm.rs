@@ -179,9 +179,7 @@ pub struct ZiskAsmContext {
     mem_chunk_address: String,
     mem_chunk_start_step: String,
     fcall_ctx: String,
-    mem_chunk_id: String,                   // 0, 1, 2, 3, 4...
-    mem_chunk_mask: String,                 // Module 8 of the chunks we want to activate, e.g. 0x03
-    mem_rsp: String,                        // Backup of rsp register value from caller
+    mem_rsp: String,        // Backup of rsp register value from caller
     mem_free_input: String, // Free input address (0x40000000) used in free call operations, but stored in memory to allow sharing the input shared memory
     mem_precompile_results_address: String, // Address where precompile results are read from
     mem_precompile_written_address: String, // Address where precompile written counter is stored
@@ -566,8 +564,6 @@ impl ZiskRom2Asm {
         ctx.mem_chunk_address = format!("qword {}[MEM_CHUNK_ADDRESS]", ctx.ptr);
         ctx.mem_chunk_start_step = format!("qword {}[MEM_CHUNK_START_STEP]", ctx.ptr);
         ctx.fcall_ctx = "fcall_ctx".to_string();
-        ctx.mem_chunk_id = format!("qword {}[MEM_CHUNK_ID]", ctx.ptr);
-        ctx.mem_chunk_mask = format!("qword {}[chunk_mask]", ctx.ptr);
         ctx.mem_rsp = format!("qword {}[MEM_RSP]", ctx.ptr);
         ctx.mem_free_input = format!("qword {}[MEM_FREE_INPUT]", ctx.ptr);
         if ctx.precompile_results() {
@@ -3013,7 +3009,7 @@ impl ZiskRom2Asm {
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
                 *code += &format!("\tjmp pc_{:x}_equal_w_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_equal_true:\n", ctx.pc);
+                *code += &format!("pc_{:x}_equal_w_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
                 *code += &format!("pc_{:x}_equal_w_done:\n", ctx.pc);
@@ -3145,11 +3141,11 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Leu: a == b ?")
                 );
-                *code += &format!("\tpc_{:x}_jbe leu_true\n", ctx.pc);
+                *code += &format!("\tjbe pc_{:x}_leu_true\n", ctx.pc);
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tpc_{:x}_jmp leu_done\n", ctx.pc);
+                *code += &format!("\tjmp pc_{:x}_leu_done\n", ctx.pc);
                 *code += &format!("pc_{:x}_leu_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
@@ -3175,15 +3171,15 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Le: a == b ?")
                 );
-                *code += &format!("\tjle pc_{:x}_lte_true\n", ctx.pc);
+                *code += &format!("\tjle pc_{:x}_le_true\n", ctx.pc);
                 *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_lte_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_lte_true:\n", ctx.pc);
+                *code += &format!("\tjmp pc_{:x}_le_done\n", ctx.pc);
+                *code += &format!("pc_{:x}_le_true:\n", ctx.pc);
                 *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
                 *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_lte_done:\n", ctx.pc);
+                *code += &format!("pc_{:x}_le_done:\n", ctx.pc);
                 ctx.c.is_saved = true;
             }
             ZiskOp::LeuW => {

@@ -38,11 +38,9 @@ extern bool client; // Indicates that this process is a client (used for testing
 extern char shm_prefix[MAX_SHM_PREFIX_LENGTH]; // Shared memories prefix
 extern char sem_prefix[MAX_SHM_PREFIX_LENGTH]; // Semaphores prefix
 extern int map_locked_flag; // Flag used in mmap to indicate if the physical memory is locked in RAM (MAP_LOCKED) or can be swapped (0).  By default it is locked, but it can be unlocked with the -u argument, which can be useful for testing and debugging purposes, e.g. to allow core dumps when the assembly code crashes
-extern uint64_t chunk_mask; // ZIP: 0, 1, 2, 3, 4, 5, 6 or 7
 extern bool do_shutdown; // If true, the client will perform a shutdown request to the server when done
 extern uint64_t number_of_mt_requests; // Loop to send this number of minimal trace requests
 extern uint16_t port; // Service TCP port
-extern uint64_t chunk_player_address; // Chunk player address, used for generation methods that use the chunk player, i.e. gen_method=8 or gen_method=10
 extern bool wait_flag; // If true, the shmem will get a flag set to 1 if we are waiting for a semaphore, and set it back to 0 when we are not waiting anymore. This can be used for debugging purposes to know if the assembly code is waiting for a semaphore or not.
 extern bool stdio; // If true, the assembly code will use standard input and output for communication instead of TCP
 extern int server_pid; // PID of the server process, used for testing purposes by the client

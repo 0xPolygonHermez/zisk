@@ -27,7 +27,6 @@ void print_usage (void)
     asm_printf("\t--gen=1|--generate_minimal_trace\n");
     asm_printf("\t--gen=2|--generate_rom_histogram\n");
     asm_printf("\t--gen=7|--generate_mem_op\n");
-    asm_printf("\t--chunk <chunk_number>\n");
     asm_printf("\t--shutdown\n");
     asm_printf("\t--mt <number_of_mt_requests>\n");
     asm_printf("\t-o output on\n");
@@ -39,7 +38,6 @@ void print_usage (void)
     asm_printf("\t-t trace on\n");
     asm_printf("\t-tt trace_trace on\n");
     asm_printf("\t-f(save to file)\n");
-    asm_printf("\t-a chunk_address\n");
     asm_printf("\t-v verbose on\n");
     asm_printf("\t-u unlock physical memory in mmap\n");
     asm_printf("\t--share_input_shm share input shared memories\n");
@@ -213,41 +211,6 @@ void parse_arguments(int argc, char *argv[])
                 strcpy(sem_prefix, argv[i]);
                 continue;
             }
-            if (strcmp(argv[i], "--chunk") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    asm_printf("ERROR: Detected argument --chunk in the last position; please provide chunk number after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                errno = 0;
-                char *endptr;
-                chunk_mask = strtoul(argv[i], &endptr, 10);
-
-                // Check for errors
-                if (errno == ERANGE) {
-                    asm_printf("ERROR: Chunk number is too large\n");
-                    print_usage();
-                    exit(-1);
-                } else if (endptr == argv[i]) {
-                    asm_printf("ERROR: No digits found while parsing chunk number\n");
-                    print_usage();
-                    exit(-1);
-                } else if (*endptr != '\0') {
-                    asm_printf("ERROR: Extra characters after chunk number: %s\n", endptr);
-                    print_usage();
-                    exit(-1);
-                } else if (chunk_mask > MAX_CHUNK_MASK) {
-                    asm_printf("ERROR: Invalid chunk number: %lu\n", chunk_mask);
-                    print_usage();
-                    exit(-1);
-                } else {
-                    asm_printf("Got chunk_mask= %lu\n", chunk_mask);
-                }
-                continue;
-            }
             if (strcmp(argv[i], "--shutdown") == 0)
             {
                 do_shutdown = true;
@@ -361,39 +324,6 @@ void parse_arguments(int argc, char *argv[])
             if (strcmp(argv[i], "-f") == 0)
             {
                 save_to_file = true;
-                continue;
-            }
-            if (strcmp(argv[i], "-a") == 0)
-            {
-                i++;
-                if (i >= argc)
-                {
-                    asm_printf("ERROR: Detected argument -a in the last position; please provide chunk address after it\n");
-                    print_usage();
-                    exit(-1);
-                }
-                errno = 0;
-                char *endptr;
-                char * argument = argv[i];
-                if ((argument[0] == '0') && (argument[1] == 'x')) argument += 2;
-                chunk_player_address = strtoul(argument, &endptr, 16);
-
-                // Check for errors
-                if (errno == ERANGE) {
-                    asm_printf("ERROR: Chunk address is too large\n");
-                    print_usage();
-                    exit(-1);
-                } else if (endptr == argument) {
-                    asm_printf("ERROR: No digits found while parsing chunk address\n");
-                    print_usage();
-                    exit(-1);
-                } else if (*endptr != '\0') {
-                    asm_printf("ERROR: Extra characters after chunk address: %s\n", endptr);
-                    print_usage();
-                    exit(-1);
-                } else {
-                    asm_printf("Got chunk address= %p\n", (void *)chunk_player_address);
-                }
                 continue;
             }
             if (strcmp(argv[i], "--share_input_shm") == 0)
