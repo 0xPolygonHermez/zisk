@@ -251,19 +251,9 @@ void trace_map_next_chunk (void)
         if (verbose) gettimeofday(&start_time, NULL);
         
         void * requested_address;
-        if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-        {
-            requested_address = 0;
-        }
-        else
-        {
-            requested_address = (void *)chunk_address;
-        }
+        requested_address = (void *)chunk_address;
         int flags = MAP_SHARED | map_locked_flag;
-        if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
-        {
-            flags |= MAP_FIXED;
-        }
+        flags |= MAP_FIXED;
         void * pTrace = mmap(requested_address, chunk_size, PROT_READ | PROT_WRITE, flags, trace_chunk_fd[chunk_id], 0);
         if (verbose)
         {
@@ -275,7 +265,7 @@ void trace_map_next_chunk (void)
             asm_printf("ERROR: trace_map_next_chunk() failed calling mmap(pTrace) name=%s errno=%d=%s\n", shmem_chunk_name, errno, strerror(errno));
             exit(-1);
         }
-        if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain) && ((uint64_t)pTrace != (uint64_t)requested_address))
+        if ((uint64_t)pTrace != (uint64_t)requested_address)
         {
             asm_printf("ERROR: trace_map_next_chunk() called mmap(trace) but returned address = %p != 0x%lx\n", pTrace, (uint64_t)requested_address);
             exit(-1);
