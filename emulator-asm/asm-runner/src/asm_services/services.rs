@@ -102,6 +102,13 @@ impl AsmService {
         command.arg("--shm_prefix").arg(shm_prefix);
         command.arg("--sem_prefix").arg(sem_prefix);
 
+        // The shmem-creation step mmaps the ROM/segments too, so it must honor
+        // --unlock-mapped-memory (otherwise it uses MAP_LOCKED and fails with
+        // EAGAIN when RLIMIT_MEMLOCK is low, e.g. in containers).
+        if options.unlock_mapped_memory {
+            command.arg("-u");
+        }
+
         if options.verbose {
             command.arg("-v");
         }
