@@ -1,4 +1,4 @@
-use crate::{BuildArgs, HELPER_TARGET_SUBDIR, ZISK_LINKER_SCRIPT, ZISK_TARGET};
+use crate::{BuildArgs, HELPER_TARGET_SUBDIR, ZISK_TARGET};
 use anyhow::{Context, Result};
 use cargo_metadata::camino::Utf8PathBuf;
 use std::{path::PathBuf, process::Command};
@@ -77,30 +77,9 @@ pub(crate) fn create_command(
     command
         .env_remove("RUSTC")
         .env("RUSTC", rustc_bin.display().to_string())
+        .env_remove("RUSTFLAGS")
         .env_remove("RUSTC_WORKSPACE_WRAPPER")
         .env_remove("CARGO_ENCODED_RUSTFLAGS");
-
-    // Inject the zisk linker script
-
-    // Write the linker script to a uniquely-named temp file. A predictable
-    // path (`$TMPDIR/zisk.ld`) can race across concurrent invocations and is
-    // exposed to temp-file symlink attacks. Keep the handle alive until cargo
-    // finishes so the file is not removed while the linker still needs it.
-
-    let mut linker_script = tempfile::Builder::new()
-        .prefix("zisk-")
-        .suffix(".ld")
-        .tempfile()
-        .context("Failed to create temporary Zisk linker script")?;
-
-    std::io::Write::write_all(&mut linker_script, ZISK_LINKER_SCRIPT)
-        .context("Failed to write Zisk linker script to temp file")?;
-
-    // Set linker script flag and zisk_guest cfg to RUSTFLAGS
-    let rust_flags = format!("--cfg zisk_guest -C link-arg=-T{}", linker_script.path().display())
-        .trim()
-        .to_string();
-    command.env("RUSTFLAGS", rust_flags);
 
     let canonicalized_program_dir =
         program_dir.canonicalize().context("Failed to canonicalize program directory")?;
