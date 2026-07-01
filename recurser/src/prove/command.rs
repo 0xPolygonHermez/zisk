@@ -3,7 +3,7 @@ use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
 use proofman_verifier::VadcopFinalProof;
 
-use super::validate::{validate_prove_inputs, ProgramVkOrigin};
+use super::validate::{validate_prove_inputs, ProofOrigin};
 use crate::artifacts::RecurserArtifacts;
 use crate::manifest::RecurserManifest;
 
@@ -76,15 +76,25 @@ where
     Ok(RegisteredRecurser { recurser_id: recurser_id.to_string(), manifest, verkey })
 }
 
-/// Inputs to a single recurser proof against an already-registered
-/// setup. No filesystem or layout knowledge lives here — everything is the
-/// validated, in-memory result of [`register_recurser_setup`] plus the proofs.
+/// Inputs to a single recurser proof against an already-registered setup.
+/// No filesystem or layout knowledge lives here — everything is the validated,
+/// in-memory result of [`register_recurser_setup`] plus the proofs.
+///
+/// `free_a`/`free_b` are the single per-side free-input arrays (width `n_free`).
+/// The runtime semantics depend on each side's origin: for a leaf proof the
+/// array is the free_in consumed by `NormalizePublics`; for an aggregated proof
+/// it is the free_out fed directly to `AggregatePublics`. Both cases share the
+/// same `n_free` width.
+///
+/// Undersupply is OK (proofman zero-pads to the fixed circuit array size).
+/// Oversupply is an error. The arrays are passed straight through to proofman's
+/// 2-array API as `free_inputs_a`/`free_inputs_b`.
 pub struct ProveRecurserAggregatorOptions<'a> {
     pub registered: &'a RegisteredRecurser,
     pub proof_a: &'a VadcopFinalProof,
     pub proof_b: &'a VadcopFinalProof,
-    pub free_inputs_a: &'a [u64],
-    pub free_inputs_b: &'a [u64],
+    pub free_a: &'a [u64],
+    pub free_b: &'a [u64],
     /// When `None`, defaults to the recurser's verkey (`registered.verkey()`).
     pub root_c_recurser_agg: Option<[u64; PROGRAM_VK_LEN]>,
 }
@@ -115,13 +125,14 @@ where
         );
     }
 
+    let manifest_inputs = &registered.manifest().inputs;
+
     let (origin_a, origin_b) = validate_prove_inputs(
-        &registered.manifest().inputs,
+        manifest_inputs,
         &opts.proof_a.public_values,
         &opts.proof_b.public_values,
-        opts.free_inputs_a,
-        opts.free_inputs_b,
-        &root_c,
+        opts.free_a,
+        opts.free_b,
     )?;
     tracing::info!(
         "Proof classification: a={}, b={}",
@@ -129,34 +140,26 @@ where
         format_origin(origin_b),
     );
 
-    // The circuit's per-side arrays are fixed at n_free_inputs; zero-pad each
-    // side so callers (CLI, SDK) only supply what their proof's group consumes.
-    let n_free_inputs = registered.manifest().inputs.n_free_inputs();
-    let pad = |v: &[u64]| -> Vec<u64> {
-        let mut padded = v.to_vec();
-        padded.resize(n_free_inputs, 0);
-        padded
-    };
-    let free_inputs_a = pad(opts.free_inputs_a);
-    let free_inputs_b = pad(opts.free_inputs_b);
-
+    // The single per-side free arrays pass straight through to proofman, which
+    // zero-pads each to the fixed `n_free` circuit array size. proofman fills
+    // the zkin free region as `[free_a | free_b]`.
     tracing::info!("Proving recurser '{}'", registered.recurser_id());
     let out = proofman
         .prove_recurser_aggregator(
             registered.recurser_id(),
             opts.proof_a,
             opts.proof_b,
-            &free_inputs_a,
-            &free_inputs_b,
+            opts.free_a,
+            opts.free_b,
             &root_c,
         )
         .map_err(|e| anyhow::anyhow!("prove_recurser_aggregator failed: {e}"))?;
     Ok(out)
 }
 
-fn format_origin(origin: ProgramVkOrigin) -> String {
+fn format_origin(origin: ProofOrigin) -> String {
     match origin {
-        ProgramVkOrigin::RegisteredProgram(idx) => format!("leaf(program #{idx})"),
-        ProgramVkOrigin::PriorAggregation => "aggregated".to_string(),
+        ProofOrigin::Leaf => "leaf".to_string(),
+        ProofOrigin::Aggregated => "aggregated".to_string(),
     }
 }

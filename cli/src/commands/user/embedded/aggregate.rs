@@ -22,10 +22,6 @@ pub(crate) struct ZiskEmbeddedAggregate {
     #[arg(short = 'a', long = "aggregation")]
     aggregation: PathBuf,
 
-    /// Resolve guest ELFs from the release profile instead of debug.
-    #[arg(long, default_value_t = false)]
-    release: bool,
-
     /// First input proof (a `cargo-zisk prove` / `aggregate` output file).
     #[arg(long = "proof-a")]
     proof_a: PathBuf,
@@ -34,11 +30,11 @@ pub(crate) struct ZiskEmbeddedAggregate {
     #[arg(long = "proof-b")]
     proof_b: PathBuf,
 
-    /// Proof A's `freeInputs` as comma-separated decimal `u64`s.
+    /// Comma-separated u64s: proof_a's free inputs (leaf only).
     #[arg(long = "free-inputs-a")]
     free_inputs_a: Option<String>,
 
-    /// Proof B's `freeInputs` as comma-separated decimal `u64`s.
+    /// Comma-separated u64s: proof_b's free inputs (leaf only).
     #[arg(long = "free-inputs-b")]
     free_inputs_b: Option<String>,
 
@@ -75,7 +71,7 @@ impl ZiskEmbeddedAggregate {
 
         setup_logger(VerboseMode::from(self.verbose));
 
-        let agg = resolve_recurser(&self.aggregation, self.release)?;
+        let agg = resolve_recurser(&self.aggregation)?;
         info!("Recurser ID: {}", agg.recurser_id());
 
         let proof_a = Proof::load(&self.proof_a)

@@ -17,8 +17,6 @@ pub struct SetupRecurserAggregatorOptions {
     pub setup_dir: String,
     /// Where to write the generated artifacts. Must differ from `setup_dir`.
     pub output_dir: String,
-    /// Registered program VKs (4 Goldilocks limbs each, decimal strings).
-    pub program_vks: Vec<[String; 4]>,
     /// Circom bodies: the required `AggregatePublics`. All registered programs
     /// must emit the same publics layout (folded through raw).
     pub templates: CircomTemplates,
@@ -56,20 +54,15 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     let stark_info: Value = serde_json::from_str(&fs::read_to_string(&starkinfo_path)?)?;
     let verifier_info: Value = serde_json::from_str(&fs::read_to_string(&verifier_info_path)?)?;
 
-    if opts.program_vks.is_empty() {
-        bail!("program_vks must contain at least one entry");
-    }
-    let program_vks = &opts.program_vks;
-
     let circom_templates = &opts.templates;
 
     // Derive the id through the shared constructor so the manifest hashes
     // match every other id-deriving layer (SDK builder, worker claimed-id check).
     let manifest_inputs = RecurserManifestInputs::new(
         zisk_vk.clone(),
-        program_vks.clone(),
+        circom_templates.normalize.as_ref(),
         &circom_templates.aggregate_publics,
-        circom_templates.aggregate_n_free_inputs,
+        circom_templates.n_free,
     );
     let recurser_id = manifest_inputs.compute_id();
     tracing::info!("Recurser id: {}", recurser_id);
@@ -101,7 +94,6 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
         zisk_vk: &zisk_vk,
         stark_info: &stark_info,
         verifier_info: &verifier_info,
-        program_vks,
         circom_templates,
         circom_exec: &circom_exec,
         circuits_gl_path: &circuits_gl_path,
@@ -118,8 +110,13 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
 
     let files_dir = RecurserArtifacts::new(output_dir, &recurser_id).dir().to_path_buf();
     let manifest = RecurserManifest { recurser_id: recurser_id.clone(), inputs: manifest_inputs };
-    write_manifest_and_templates(&files_dir, &manifest, &circom_templates.aggregate_publics)
-        .context("Failed to write recurser manifest")?;
+    write_manifest_and_templates(
+        &files_dir,
+        &manifest,
+        circom_templates.normalize.as_ref(),
+        &circom_templates.aggregate_publics,
+    )
+    .context("Failed to write recurser manifest")?;
 
     tracing::info!("Recurser setup complete");
     Ok(())

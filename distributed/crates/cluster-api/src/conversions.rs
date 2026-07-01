@@ -13,7 +13,7 @@ use crate::{
     execute_task_response, AggParams, AggregationProgramSpec, Challenges,
     ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage, CostPerType,
     ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, InputStreamData,
-    JobCancelled, ProgramVk, ProofList, ProofStark, ProveParams, ReconnectionAction,
+    JobCancelled, NormalizeCircuit, ProofList, ProofStark, ProveParams, ReconnectionAction,
     ReconnectionDirective, RunAggregateProofs, SetupAggregationProgram, SetupProgram, Shutdown,
     StreamData, StreamPayload, StreamType, TaskType, WorkerError, WorkerReconnectRequest,
     WorkerRegisterRequest, WorkerRegisterResponse,
@@ -144,13 +144,9 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
 impl From<AggregationProgramSpecDto> for AggregationProgramSpec {
     fn from(dto: AggregationProgramSpecDto) -> Self {
         AggregationProgramSpec {
-            program_vks: dto
-                .program_vks
-                .into_iter()
-                .map(|[l0, l1, l2, l3]| ProgramVk { l0, l1, l2, l3 })
-                .collect(),
+            normalize: dto.normalize.map(|n| NormalizeCircuit { body: n.body }),
             aggregate_publics_body: dto.aggregate_publics_body,
-            aggregate_n_free_inputs: dto.aggregate_n_free_inputs,
+            n_free: dto.n_free,
         }
     }
 }
@@ -158,13 +154,9 @@ impl From<AggregationProgramSpecDto> for AggregationProgramSpec {
 impl From<AggregationProgramSpec> for AggregationProgramSpecDto {
     fn from(spec: AggregationProgramSpec) -> Self {
         AggregationProgramSpecDto {
-            program_vks: spec
-                .program_vks
-                .into_iter()
-                .map(|vk| [vk.l0, vk.l1, vk.l2, vk.l3])
-                .collect(),
+            normalize: spec.normalize.map(|n| NormalizeCircuitDto { body: n.body }),
             aggregate_publics_body: spec.aggregate_publics_body,
-            aggregate_n_free_inputs: spec.aggregate_n_free_inputs,
+            n_free: spec.n_free,
         }
     }
 }

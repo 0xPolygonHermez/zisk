@@ -7,7 +7,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::{setup_logger, GuestProgram, RemoteClient};
 
 use crate::commands::user::recurser_common::resolve_recurser;
-use crate::common::{resolve_elf, ElfSelectorArgs, Profile};
+use crate::common::{resolve_elf, ElfSelectorArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -54,7 +54,7 @@ impl ZiskRemoteSetup {
             print_banner_field("Aggregation", aggregation.display());
             println!();
 
-            let agg = resolve_recurser(&aggregation, self.selector.profile() == Profile::Release)?;
+            let agg = resolve_recurser(&aggregation)?;
             info!("Recurser ID: {}", agg.recurser_id());
 
             client.upload(&agg).run()?;

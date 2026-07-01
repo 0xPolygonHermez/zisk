@@ -289,9 +289,11 @@ impl BackendService for CoordinatorBackend {
         // Trust the SDK-supplied `recurser_id`; misalignment surfaces at
         // dispatch time as "recurser_id not found".
         let cluster_spec = zisk_cluster_common::AggregationProgramSpecDto {
-            program_vks: spec.program_vks,
+            normalize: spec
+                .normalize
+                .map(|n| zisk_cluster_common::NormalizeCircuitDto { body: n.body }),
             aggregate_publics_body: spec.aggregate_publics_body,
-            aggregate_n_free_inputs: spec.aggregate_n_free_inputs,
+            n_free: spec.n_free,
         };
         self.coordinator
             .register_aggregation_program(recurser_id.clone(), cluster_spec)

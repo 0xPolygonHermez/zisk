@@ -78,18 +78,14 @@ message SetupProgramAck {
   string hash_mode = 7;
 }
 
-// 4-limb Goldilocks verification key, decimal-encoded. Mirrors coordinator-api.
-message ProgramVk {
-  string l0 = 1;
-  string l1 = 2;
-  string l2 = 3;
-  string l3 = 4;
+message NormalizeCircuit {
+  string body = 1;
 }
 
 message AggregationProgramSpec {
-  repeated ProgramVk      program_vks              = 1;
-  string                  aggregate_publics_body   = 3;
-  uint64                  aggregate_n_free_inputs  = 4;
+  NormalizeCircuit normalize              = 1;
+  string           aggregate_publics_body = 2;
+  uint64           n_free                 = 3;
 }
 
 message SetupAggregationProgram {
@@ -113,8 +109,8 @@ message RunAggregateProofs {
   string          recurser_id         = 2;
   bytes           proof_a             = 3; // bincode-serialized VadcopFinalProof
   bytes           proof_b             = 4;
-  repeated uint64 free_inputs_a       = 5; // proof_a's AggregatePublics side inputs
-  repeated uint64 free_inputs_b       = 6; // proof_b's AggregatePublics side inputs
+  repeated uint64 free_inputs_a       = 5; // proof_a's normalization side inputs
+  repeated uint64 free_inputs_b       = 6; // proof_b's normalization side inputs
   repeated uint64 root_c_recurser_agg = 7; // optional override; len 0 or 4
 }
 

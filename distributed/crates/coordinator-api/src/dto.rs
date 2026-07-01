@@ -25,14 +25,16 @@ pub struct RegisterGuestProgramResponseDto {
     pub hash_id: String,
 }
 
-/// 4-limb Goldilocks verification key, decimal-encoded.
-pub type DomainProgramVk = [String; 4];
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DomainNormalizeCircuit {
+    pub body: String,
+}
 
 #[derive(Debug, Clone)]
 pub struct DomainAggregationProgramSpec {
-    pub program_vks: Vec<DomainProgramVk>,
+    pub normalize: Option<DomainNormalizeCircuit>,
     pub aggregate_publics_body: String,
-    pub aggregate_n_free_inputs: u64,
+    pub n_free: u64,
 }
 
 pub struct RegisterAggregationProgramRequestDto {

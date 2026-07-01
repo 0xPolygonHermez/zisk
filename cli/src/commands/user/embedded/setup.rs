@@ -8,7 +8,7 @@ use zisk_sdk::{setup_logger, AsmOptions, EmbeddedClientBuilder, GuestProgram, Ve
 
 use super::validate_setup_asm;
 use crate::commands::user::recurser_common::resolve_recurser;
-use crate::common::{resolve_elf, ElfSelectorArgs, Profile};
+use crate::common::{resolve_elf, ElfSelectorArgs};
 use crate::ux::{print_banner, print_banner_command, print_banner_field};
 
 #[derive(clap::Args, Debug)]
@@ -68,7 +68,7 @@ impl ZiskEmbeddedSetup {
 
             setup_logger(VerboseMode::from(self.verbose));
 
-            let agg = resolve_recurser(&aggregation, self.selector.profile() == Profile::Release)?;
+            let agg = resolve_recurser(&aggregation)?;
             info!("Recurser ID: {}", agg.recurser_id());
 
             let mut builder = EmbeddedClientBuilder::default().verbose(self.verbose);

@@ -37,8 +37,6 @@ pub struct RecurserConfig<'a> {
     pub stark_info: &'a Value,
     pub verifier_info: &'a Value,
 
-    pub program_vks: &'a [[String; 4]],
-
     pub circom_templates: &'a CircomTemplates,
 
     pub circom_exec: &'a str,
@@ -122,7 +120,6 @@ pub fn gen_recurser_setup(
         let circom_src = gen_recurser(
             verifier_name,
             &config.zisk_vk[..],
-            config.program_vks,
             &stark_inputs,
             config.circom_templates,
         )

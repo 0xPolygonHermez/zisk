@@ -1,46 +1,34 @@
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
-use zisk_build::{guest_elf_map, resolve_aggregation};
-use zisk_sdk::{AggregationProgramBuilder, CircomCircuit, GuestProgram, Recurser};
+use zisk_build::resolve_aggregation;
+use zisk_sdk::{AggregationProgramBuilder, CircomCircuit, Recurser};
 
 /// Resolve a `programs/aggregations/<name>.toml` into a [`Recurser`] at runtime —
 /// the CLI sibling of the compile-time `load_aggregation_program!` path. Both
 /// derive the same content-addressed `recurser_id` for the same definition.
 ///
-/// The referenced guest programs must already be built (`cargo build` of the
-/// host crate); `release` selects which profile's ELFs to resolve.
-pub(crate) fn resolve_recurser(aggregation: &Path, release: bool) -> Result<Recurser> {
-    // The definition lives at `<programs>/aggregations/<name>.toml`, so
-    // the guest workspace is two levels up.
+/// Resolution reads only the definition TOML and its circom bodies; no guest
+/// build is required.
+pub(crate) fn resolve_recurser(aggregation: &Path) -> Result<Recurser> {
     let definition_path = aggregation
         .canonicalize()
         .with_context(|| format!("definition not found: {}", aggregation.display()))?;
-    let programs_dir = definition_path
-        .parent()
-        .and_then(|aggregations| aggregations.parent())
-        .context("definition must live under <programs>/aggregations/")?
-        .to_path_buf();
 
-    let elf_map = guest_elf_map(&programs_dir, release)?;
-    let (definition, _circuit_paths) = resolve_aggregation(&definition_path, &elf_map)
+    let (definition, _circuit_paths) = resolve_aggregation(&definition_path)
         .with_context(|| format!("aggregation definition {}", aggregation.display()))?;
 
-    let guests: Vec<GuestProgram> = definition
-        .programs
-        .iter()
-        .map(|p| GuestProgram::from_uri(&p.elf_path))
-        .collect::<Result<_>>()?;
-    let guest_refs: Vec<&GuestProgram> = guests.iter().collect();
-
-    let builder = AggregationProgramBuilder::new(
-        &guest_refs,
-        CircomCircuit::from_source(
-            format!("{}-aggregate_publics", definition.name),
-            definition.aggregate_publics_body.clone(),
-        ),
-    )
-    .aggregate_free_inputs(definition.aggregate_n_free_inputs);
+    let mut builder = AggregationProgramBuilder::new(CircomCircuit::from_source(
+        format!("{}-aggregate_publics", definition.name),
+        definition.aggregate_publics_body.clone(),
+    ))
+    .free_inputs(definition.n_free);
+    if let Some(norm) = &definition.normalize {
+        builder = builder.normalize(CircomCircuit::from_source(
+            format!("{}-normalize", definition.name),
+            norm.body.clone(),
+        ));
+    }
     Ok(builder.build()?)
 }
 

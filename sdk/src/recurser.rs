@@ -8,7 +8,7 @@
 use std::sync::{Arc, OnceLock};
 
 use zisk_common::{HashMode, ProgramVK, ZiskPaths};
-use zisk_prover_backend::{CircomCircuit, GuestProgram};
+use zisk_prover_backend::CircomCircuit;
 
 use crate::{Result, SdkError};
 
@@ -17,7 +17,6 @@ use crate::{Result, SdkError};
 #[derive(Clone)]
 pub struct Recurser {
     pub(crate) recurser_id: String,
-    pub(crate) program_vks: Vec<[String; 4]>,
     pub(crate) templates: recurser::CircomTemplates,
     // SDK-managed paths — not exposed to the user.
     pub(crate) setup_dir: String,
@@ -31,10 +30,12 @@ impl Recurser {
         &self.recurser_id
     }
 
-    /// Size of the circuit's per-side free-input arrays (the aggregate
-    /// stage's free-input count).
-    pub fn n_free_inputs(&self) -> usize {
-        self.templates.max_free_inputs()
+    /// Unified number of free values per side. It is the width of the single
+    /// free array the caller supplies per proof: on a leaf it is normalized
+    /// internally (free_in), on an aggregated proof it is used directly
+    /// (free_out). 0 when the recurser declares no free values.
+    pub fn n_free(&self) -> usize {
+        self.templates.n_free()
     }
 
     /// 4-limb verification key. Available only after `client.setup(&agg).run()`
@@ -87,57 +88,64 @@ fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
 ///
 /// Most users never construct this directly: [`load_aggregation_program!`]
 /// expands a TOML definition into exactly this builder call. Build it by
-/// hand when the program set or circuits are only known at runtime.
-///
-/// All registered guests must emit the same publics layout — the recurser
-/// folds publics through raw, with no per-program canonicalization.
+/// hand when the circuits are only known at runtime.
 ///
 /// ```ignore
-/// let recurser = AggregationProgramBuilder::new(&[&PROG_A, &PROG_B], load_circuit!("aggregate.circom"))
+/// let recurser = AggregationProgramBuilder::new(load_circuit!("aggregate.circom"))
+///     .normalize(load_circuit!("normalize.circom"))
+///     .free_inputs(1)
 ///     .build()?;
 /// client.setup(&recurser).run()?.await?;
 /// ```
-pub struct AggregationProgramBuilder<'a> {
-    guests: Vec<&'a GuestProgram>,
+pub struct AggregationProgramBuilder {
     aggregate: CircomCircuit,
-    aggregate_n_free_inputs: usize,
+    n_free: usize,
+    normalize: Option<CircomCircuit>,
 }
 
-impl<'a> AggregationProgramBuilder<'a> {
-    /// `guests` is the full leaf allowlist — order is significant, it fixes
-    /// each program's `programVKs[]` index, so keep it stable across runs.
+impl AggregationProgramBuilder {
     /// `aggregate` is the `AggregatePublics` Circom body: the consistency
     /// constraints between the two folded proofs' publics plus the merge
     /// into the output publics.
-    pub fn new(guests: &[&'a GuestProgram], aggregate: impl Into<CircomCircuit>) -> Self {
-        Self { guests: guests.to_vec(), aggregate: aggregate.into(), aggregate_n_free_inputs: 0 }
+    pub fn new(aggregate: impl Into<CircomCircuit>) -> Self {
+        Self { aggregate: aggregate.into(), n_free: 0, normalize: None }
     }
 
-    /// Number of prover-supplied side inputs the `AggregatePublics` circuit
-    /// reads directly (defaults to 0). Use this for hash-style publics: feed
-    /// each side's preimage as free inputs so `AggregatePublics` can check the
-    /// hash, recombine the preimages, and re-hash. Sizes the recurser's
-    /// per-side free-input array.
+    /// Unified number of free values per side (defaults to 0). On a leaf the
+    /// `NormalizePublics` circuit consumes this many free inputs and emits the
+    /// same number of free outputs; on an aggregated proof `AggregatePublics`
+    /// reads them directly. Same width for both stages.
     #[must_use]
-    pub fn aggregate_free_inputs(mut self, n_free_inputs: usize) -> Self {
-        self.aggregate_n_free_inputs = n_free_inputs;
+    pub fn free_inputs(mut self, n_free: usize) -> Self {
+        self.n_free = n_free;
         self
     }
 
-    /// Resolves the inputs into a [`Recurser`]. Cheap: derives each
-    /// program's 4-limb VK and computes the content-addressed `recurser_id`.
-    /// Reads this machine's local vadcop_final verkey — even when proving
-    /// remotely it must match the workers' copy or `recurser_id` diverges.
+    /// Attach the single optional `NormalizePublics` circuit (runs on all leaves).
+    #[must_use]
+    pub fn normalize(mut self, circuit: impl Into<CircomCircuit>) -> Self {
+        self.normalize = Some(circuit.into());
+        self
+    }
+
+    /// Resolves the inputs into a [`Recurser`]. Cheap: computes the
+    /// content-addressed `recurser_id`. Reads this machine's local
+    /// vadcop_final verkey — even when proving remotely it must match the
+    /// workers' copy or `recurser_id` diverges.
     pub fn build(self) -> Result<Recurser> {
-        if self.guests.is_empty() {
-            return Err(SdkError::Recurser("at least one guest program is required".into()));
+        expect_template_decl(&self.aggregate, "AggregatePublics")?;
+        if let Some(circuit) = &self.normalize {
+            expect_template_decl(circuit, "NormalizePublics")?;
         }
 
-        expect_template_decl(&self.aggregate, "AggregatePublics")?;
-
+        let normalize = self
+            .normalize
+            .as_ref()
+            .map(|c| recurser::NormalizeCircuit { body: c.source().to_string() });
         let templates = recurser::CircomTemplates {
+            normalize: normalize.clone(),
             aggregate_publics: self.aggregate.source().to_string(),
-            aggregate_n_free_inputs: self.aggregate_n_free_inputs,
+            n_free: self.n_free,
         };
 
         let setup_dir = ZiskPaths::global()
@@ -160,47 +168,16 @@ impl<'a> AggregationProgramBuilder<'a> {
             ))
         })?;
 
-        let mut program_vks: Vec<[String; 4]> = Vec::with_capacity(self.guests.len());
-        for prog in &self.guests {
-            let pvk = prog.vk().map_err(|e| {
-                SdkError::Recurser(format!(
-                    "failed to derive VK for program '{}': {e}",
-                    prog.name()
-                ))
-            })?;
-            let limbs: [u64; 4] = <[u64; 4]>::try_from(pvk.vk.as_slice()).map_err(|_| {
-                SdkError::Recurser(format!(
-                    "program VK for '{}' did not decode into 4 u64 limbs",
-                    prog.name()
-                ))
-            })?;
-            let limbs_str: [String; 4] = limbs.map(|w| w.to_string());
-            if let Some(prior_idx) = program_vks.iter().position(|existing| existing == &limbs_str)
-            {
-                return Err(SdkError::Recurser(format!(
-                    "duplicate program VK at index {} ('{}'); already registered at index {} ('{}')",
-                    program_vks.len(),
-                    prog.name(),
-                    prior_idx,
-                    self.guests[prior_idx].name(),
-                )));
-            }
-            program_vks.push(limbs_str);
-        }
-
-        // The shared constructor owns the hashing, so this id is
-        // byte-identical to the one setup and the worker derive.
         let inputs = recurser::RecurserManifestInputs::new(
             zisk_vk,
-            program_vks.clone(),
+            normalize.as_ref(),
             &templates.aggregate_publics,
-            templates.aggregate_n_free_inputs,
+            templates.n_free,
         );
         let recurser_id = inputs.compute_id();
 
         Ok(Recurser {
             recurser_id,
-            program_vks,
             templates,
             setup_dir,
             output_dir,
@@ -232,18 +209,17 @@ impl std::ops::Deref for AggregationProgram {
 /// definition, mirroring [`load_program!`] for guest programs.
 ///
 /// The name is the file stem of `<programs>/aggregations/<name>.toml`, which
-/// `build_program` resolves at host-build time (guest ELFs pinned, circuit
-/// bodies embedded) into the [`AggregationProgramBuilder`] call this macro
-/// expands to.
+/// `build_program` resolves at host-build time (circuit bodies embedded) into
+/// the [`AggregationProgramBuilder`] call this macro expands to.
 ///
 /// ```ignore
 /// static AGG: AggregationProgram = load_aggregation_program!("my_aggregation");
 /// ```
 ///
 /// The build is lazy — it runs on first use, because it does runtime work
-/// (reads the local vadcop_final verkey, derives program VKs) that can't
-/// happen in a `const`. A build failure panics; for fallible handling,
-/// construct an [`AggregationProgramBuilder`] yourself and call
+/// (reads the local vadcop_final verkey) that can't happen in a `const`. A
+/// build failure panics; for fallible handling, construct an
+/// [`AggregationProgramBuilder`] yourself and call
 /// [`AggregationProgramBuilder::build`].
 ///
 /// [`load_program!`]: crate::load_program
@@ -293,10 +269,10 @@ mod tests {
     fn dummy_agg() -> Recurser {
         Recurser {
             recurser_id: "rid".into(),
-            program_vks: vec![],
             templates: recurser::CircomTemplates {
+                normalize: None,
                 aggregate_publics: "// body".into(),
-                aggregate_n_free_inputs: 0,
+                n_free: 0,
             },
             setup_dir: "/tmp/zisk-test-setup".into(),
             output_dir: "/tmp/zisk-test-output".into(),

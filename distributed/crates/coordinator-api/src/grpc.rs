@@ -18,8 +18,8 @@ use crate::dto::{
     DomainInputChunk, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
     DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
     DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
-    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    DomainProveRequest, DomainSetupAggregationProgramRequest, DomainSetupRequest,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainNormalizeCircuit, DomainProof,
+    DomainProofKind, DomainProveRequest, DomainSetupAggregationProgramRequest, DomainSetupRequest,
     DomainWrapRequest, RegisterAggregationProgramRequestDto, RegisterAggregationProgramResponseDto,
     RegisterGuestProgramRequestDto, RegisterGuestProgramResponseDto,
 };
@@ -61,13 +61,9 @@ impl From<RegisterGuestProgramResponse> for RegisterGuestProgramResponseDto {
 impl From<DomainAggregationProgramSpec> for AggregationProgramSpec {
     fn from(s: DomainAggregationProgramSpec) -> Self {
         Self {
-            program_vks: s
-                .program_vks
-                .into_iter()
-                .map(|[l0, l1, l2, l3]| ProgramVk { l0, l1, l2, l3 })
-                .collect(),
+            normalize: s.normalize.map(|n| NormalizeCircuit { body: n.body }),
             aggregate_publics_body: s.aggregate_publics_body,
-            aggregate_n_free_inputs: s.aggregate_n_free_inputs,
+            n_free: s.n_free,
         }
     }
 }
@@ -75,9 +71,9 @@ impl From<DomainAggregationProgramSpec> for AggregationProgramSpec {
 impl From<AggregationProgramSpec> for DomainAggregationProgramSpec {
     fn from(s: AggregationProgramSpec) -> Self {
         Self {
-            program_vks: s.program_vks.into_iter().map(|vk| [vk.l0, vk.l1, vk.l2, vk.l3]).collect(),
+            normalize: s.normalize.map(|n| DomainNormalizeCircuit { body: n.body }),
             aggregate_publics_body: s.aggregate_publics_body,
-            aggregate_n_free_inputs: s.aggregate_n_free_inputs,
+            n_free: s.n_free,
         }
     }
 }

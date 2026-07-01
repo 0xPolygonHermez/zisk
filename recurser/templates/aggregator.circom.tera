@@ -3,12 +3,16 @@
    the `Main(...)` instantiation below and the `ZISK_PUBLICS()` function the
    AggregatePublics body sizes its arrays from. #}
 {% set zisk_publics = 64 %}
+{# Reserved public slot carrying is_vadcop_final_proof (1 = raw ZisK vadcop_final
+   leaf, 0 = aggregator output). Slot 0, before rom_root / programVK — the
+   vadcop_final circuit emits it as a `signal output` (ordered ahead of the
+   input publics). It lives only in this fold layer; final_compressed /
+   recursion_final strip it before the flag-free publics.json / on-chain hash. #}
 pragma circom 2.1.0;
 pragma custom_templates;
 
 include "{{ verifier_filename }}";
 include "mux1.circom";
-include "iszero.circom";
 include "publics_helpers.circom";
 
 // ZisK's fixed user-publics width — the 64 slots after the 4-limb programVK.
@@ -20,133 +24,184 @@ function ZISK_PUBLICS() {
 
 {{ aggregate_publics_template }}
 
-// Helper: returns 1 iff the two 4-element VKs are element-wise equal, 0 otherwise.
-template IsEqualVK() {
-    signal input a[4];
-    signal input b[4];
-    signal output {binary} out;
+{% if normalize %}
+{{ normalize_body }}
 
-    signal {binary} eq[4];
-    for (var i = 0; i < 4; i++) {
-        eq[i] <== IsZero()(a[i] - b[i]);
-    }
-    signal {binary} eq01 <== eq[0] * eq[1];
-    signal {binary} eq23 <== eq[2] * eq[3];
-    out <== eq01 * eq23;
-}
-
-template Main(nPublics, nFreeInputs, nPrograms) {
-    // Publics layout (matches ZisK's `publics.json` / `common/src/proof.rs`):
-    //   [0 .. PROGRAM_VK_LEN)            programVK (the `rom_root`, verificationKey=true)
-    //   [PROGRAM_VK_LEN .. nPublics+VK)  the nPublics user inputs
-    // VK is FIRST, not last — see publics.json `definitions` (rom_root initialPos 0,
-    // inputs initialPos 4). The inner StarkVerifier consumes a_sv_publics[i] in this
-    // order, and our output must re-emit the same layout so it re-verifies one fold up.
+{% endif %}
+template Main(nPublics) {
+    // Fold-layer publics layout (one slot wider than the SNARK-layer publics.json,
+    // which is flag-free):
+    //   [0]                                     is_vadcop_final_proof (flag: 1=leaf, 0=aggregated)
+    //   [VK_BASE .. VK_BASE+PROGRAM_VK_LEN)     programVK (the `rom_root`, verificationKey=true)
+    //   [PUBLICS_BASE .. PUBLICS_BASE+nPublics)  the nPublics user inputs
+    // Flag is FIRST (slot 0), then VK, then user inputs. The inner StarkVerifier
+    // consumes a_sv_publics[i] in this order, and our output re-emits the same
+    // layout so it re-verifies one fold up.
+    //
+    // OUTPUT_LEN = PUBLICS_BASE + nPublics covers all slots including slot 0.
     var PROGRAM_VK_LEN = 4;
+    var VK_BASE = 1;
+    var PUBLICS_BASE = VK_BASE + PROGRAM_VK_LEN;  // = 5
+    var OUTPUT_LEN = PUBLICS_BASE + nPublics;
 
-    signal output aggregatedPublics[PROGRAM_VK_LEN + nPublics];
+    signal output is_vadcop_final_proof <== 0;  // reserved output slot, always 0 for aggregator output
+    signal output aggregatedPublics[OUTPUT_LEN];
 
     // Proofman fills the witness buffer (zkin) positionally, so input
     // declaration order is a contract with `generate_recurser_aggregator_proof`:
-    // stark inputs A, stark inputs B, freeInputsA, freeInputsB, rootCRecurserAgg.
-    // Reordering these shears the witness silently.
+    //   stark_inputs_A, stark_inputs_B, freeInputsA, freeInputsB, rootCRecurserAgg.
+    // ONE free-value array per side (n_free). Per-side runtime semantics:
+    //   LEAF  (isFinalX=1): freeInputsX is a free INPUT -> NormalizePublics -> free_outputs.
+    //   AGGREGATED (isFinalX=0): freeInputsX is ALREADY a free OUTPUT (accumulation
+    //     values from a prior fold) and feeds AggregatePublics directly.
+    // The free-value mux (aggFreeX) below picks the source, mirroring the publics mux.
+    // Signals are declared BY SIDE (all of A complete, then all of B), matching
+    // the proofman per-side flat buffer layout. Reordering shears the witness silently.
 {{ define_stark_inputs_a }}
 
 {{ define_stark_inputs_b }}
 
-    signal input freeInputsA[nFreeInputs];
-    signal input freeInputsB[nFreeInputs];
+{% if n_free > 0 %}
+    signal input freeInputsA[{{ n_free }}];
+{% endif %}
+{% if n_free > 0 %}
+    signal input freeInputsB[{{ n_free }}];
+{% endif %}
 
     signal input rootCRecurserAgg[4];
 
     var rootCVadcopFinalZisk[4] = [{% for v in root_c_vadcop_final_zisk %}{{ v }}{% if not loop.last %},{% endif %}{% endfor %}];
 
-    var programVKs[nPrograms][4] = [{% for vk in program_vks %}[{{ vk[0] }},{{ vk[1] }},{{ vk[2] }},{{ vk[3] }}]{% if not loop.last %},{% endif %}{% endfor %}];
-
-    // -- Extract programVK from each proof's publics (the leading PROGRAM_VK_LEN slots).
+    // -- Extract programVK from each proof's publics (slots [VK_BASE..VK_BASE+PROGRAM_VK_LEN)).
     signal programVK_A[4];
     signal programVK_B[4];
     for (var i = 0; i < 4; i++) {
-        programVK_A[i] <== a_sv_publics[i];
-        programVK_B[i] <== b_sv_publics[i];
+        programVK_A[i] <== a_sv_publics[VK_BASE + i];
+        programVK_B[i] <== b_sv_publics[VK_BASE + i];
     }
 
-    // Membership check: 1 - ∏(1 - eq[k]) instead of Σ eq[k] so circom 2.1's
-    // {binary} tag survives to the MultiMux1/Mux1 selectors (addition strips
-    // the tag, multiplication preserves it). Same reason we seed noMatch[0]
-    // from (1 - eq[0]) instead of a literal 1. Soundness assumes no
-    // duplicates in programVKs[] (enforced upstream) and nPrograms >= 1.
-    signal {binary} eqA[nPrograms];
-    signal {binary} eqB[nPrograms];
-    signal {binary} noMatchA[nPrograms];
-    signal {binary} noMatchB[nPrograms];
-    for (var k = 0; k < nPrograms; k++) {
-        eqA[k] <== IsEqualVK()(programVK_A, programVKs[k]);
-        eqB[k] <== IsEqualVK()(programVK_B, programVKs[k]);
-    }
-    noMatchA[0] <== 1 - eqA[0];
-    noMatchB[0] <== 1 - eqB[0];
-    for (var k = 1; k < nPrograms; k++) {
-        noMatchA[k] <== noMatchA[k - 1] * (1 - eqA[k]);
-        noMatchB[k] <== noMatchB[k - 1] * (1 - eqB[k]);
-    }
-
-    signal {binary} isRegisteredProgramA <== 1 - noMatchA[nPrograms - 1];
-    signal {binary} isRegisteredProgramB <== 1 - noMatchB[nPrograms - 1];
+    // -- is_vadcop_final_proof selector (reserved slot, outside nPublics):
+    //    1 = raw ZisK vadcop_final leaf, 0 = a proof this aggregator produced.
+    signal {binary} isFinalA <== a_sv_publics[{{ is_vadcop_final_slot }}];
+    signal {binary} isFinalB <== b_sv_publics[{{ is_vadcop_final_slot }}];
+    // Self-defending: enforce boolean, don't merely trust the {binary} tag.
+    isFinalA * (1 - isFinalA) === 0;
+    isFinalB * (1 - isFinalB) === 0;
 
 {{ assign_stark_inputs_a }}
 {{ assign_stark_inputs_b }}
 
-    // -- rootC: leaf (isRegisteredProgram=1) -> rootCVadcopFinalZisk; aggregated (isRegisteredProgram=0) -> programVK.
-    vA.rootC <== MultiMux1(4)([programVK_A, rootCVadcopFinalZisk], isRegisteredProgramA);
-    vB.rootC <== MultiMux1(4)([programVK_B, rootCVadcopFinalZisk], isRegisteredProgramB);
+    // -- rootC: leaf (isFinal=1) -> rootCVadcopFinalZisk; aggregated (isFinal=0) -> programVK.
+    vA.rootC <== MultiMux1(4)([programVK_A, rootCVadcopFinalZisk], isFinalA);
+    vB.rootC <== MultiMux1(4)([programVK_B, rootCVadcopFinalZisk], isFinalB);
 
-    // -- Strip the VK slot from each proof's publics (the nPublics user entries
-    //    live AFTER the leading PROGRAM_VK_LEN VK slots).
+    // -- Strip the flag and VK from each proof's publics (the nPublics user entries
+    //    live at slots [PUBLICS_BASE..PUBLICS_BASE+nPublics)).
     signal aPublics[nPublics];
     signal bPublics[nPublics];
     for (var i = 0; i < nPublics; i++) {
-        aPublics[i] <== a_sv_publics[PROGRAM_VK_LEN + i];
-        bPublics[i] <== b_sv_publics[PROGRAM_VK_LEN + i];
+        aPublics[i] <== a_sv_publics[PUBLICS_BASE + i];
+        bPublics[i] <== b_sv_publics[PUBLICS_BASE + i];
     }
 
-    // -- Every proof's publics pass through raw: all accepted guest programs
-    //    emit the same publics layout, so there is nothing to canonicalize
-    //    before aggregation. AggregatePublics consumes these directly.
+{% if normalize %}
+    // -- Optional NormalizePublics runs on every leaf; aggregated proofs pass raw.
+    //    ziskPublicsX = isFinalX * normX + (1 - isFinalX) * rawX.
+{% if n_free > 0 %}
+    // NormalizePublics emits BOTH recurser_publics AND free_outputs. The free
+    // outputs feed the free-value mux below (leaf side) / aggregate directly.
+    component normACmp = NormalizePublics(nPublics, {{ n_free }});
+    normACmp.publics <== aPublics;
+    normACmp.free_inputs <== freeInputsA;
+    signal normA[nPublics] <== normACmp.recurser_publics;
+    signal normFreeOutA[{{ n_free }}] <== normACmp.free_outputs;
+
+    component normBCmp = NormalizePublics(nPublics, {{ n_free }});
+    normBCmp.publics <== bPublics;
+    normBCmp.free_inputs <== freeInputsB;
+    signal normB[nPublics] <== normBCmp.recurser_publics;
+    signal normFreeOutB[{{ n_free }}] <== normBCmp.free_outputs;
+{% else %}
+    signal normA[nPublics] <== NormalizePublics(nPublics)(aPublics);
+    signal normB[nPublics] <== NormalizePublics(nPublics)(bPublics);
+{% endif %}
+    signal ziskPublicsA[nPublics];
+    signal ziskPublicsB[nPublics];
+    signal selNormA[nPublics];
+    signal selNormB[nPublics];
+    signal selRawA[nPublics];
+    signal selRawB[nPublics];
+    for (var i = 0; i < nPublics; i++) {
+        selNormA[i] <== isFinalA * normA[i];
+        selNormB[i] <== isFinalB * normB[i];
+        selRawA[i] <== (1 - isFinalA) * aPublics[i];
+        selRawB[i] <== (1 - isFinalB) * bPublics[i];
+        ziskPublicsA[i] <== selNormA[i] + selRawA[i];
+        ziskPublicsB[i] <== selNormB[i] + selRawB[i];
+    }
+{% if n_free > 0 %}
+    // -- Free-value mux, parallel to the publics mux:
+    //      leaf (isFinalX=1) -> normalize's free_outputs;
+    //      aggregated (isFinalX=0) -> freeInputsX (already a free_output from a prior fold).
+    signal aggFreeA[{{ n_free }}];
+    signal aggFreeB[{{ n_free }}];
+    signal selFreeNormA[{{ n_free }}];
+    signal selFreeNormB[{{ n_free }}];
+    signal selFreeRawA[{{ n_free }}];
+    signal selFreeRawB[{{ n_free }}];
+    for (var i = 0; i < {{ n_free }}; i++) {
+        selFreeNormA[i] <== isFinalA * normFreeOutA[i];
+        selFreeNormB[i] <== isFinalB * normFreeOutB[i];
+        selFreeRawA[i] <== (1 - isFinalA) * freeInputsA[i];
+        selFreeRawB[i] <== (1 - isFinalB) * freeInputsB[i];
+        aggFreeA[i] <== selFreeNormA[i] + selFreeRawA[i];
+        aggFreeB[i] <== selFreeNormB[i] + selFreeRawB[i];
+    }
+{% endif %}
+{% else %}
+    // -- No normalize configured: every proof's publics pass through raw.
     signal ziskPublicsA[nPublics];
     signal ziskPublicsB[nPublics];
     for (var i = 0; i < nPublics; i++) {
         ziskPublicsA[i] <== aPublics[i];
         ziskPublicsB[i] <== bPublics[i];
     }
+{% if n_free > 0 %}
+    // -- No normalize: freeInputsX is the free value directly (no norm path, no mux).
+    signal aggFreeA[{{ n_free }}] <== freeInputsA;
+    signal aggFreeB[{{ n_free }}] <== freeInputsB;
+{% endif %}
+{% endif %}
 
     // -- Consistency + aggregation (VK-agnostic). AggregatePublics both asserts
     //    the user's consistency constraints and produces the merged publics. It
-    //    also receives both sides' freeInputs so a hash-style public can be
+    //    also receives both sides' free values so a hash-style public can be
     //    checked against its preimage, the preimages recombined, and re-hashed.
-    //    freeInputsA/B are sized by the aggregate stage's free-input count.
-    signal aggPublics[nPublics] <== AggregatePublics(nFreeInputs)(
-        ziskPublicsA, ziskPublicsB, freeInputsA, freeInputsB);
+{% if n_free > 0 %}
+    signal aggPublics[nPublics] <== AggregatePublics({{ n_free }})(
+        ziskPublicsA, ziskPublicsB, aggFreeA, aggFreeB);
+{% else %}
+    signal aggPublics[nPublics] <== AggregatePublics()(ziskPublicsA, ziskPublicsB);
+{% endif %}
 
-    // Re-emit in the same VK-first layout: user publics after the VK slot.
+    // Re-emit in the same flag-first layout: user publics at [PUBLICS_BASE..PUBLICS_BASE+nPublics).
     for (var i = 0; i < nPublics; i++) {
-        aggregatedPublics[PROGRAM_VK_LEN + i] <== aggPublics[i];
+        aggregatedPublics[PUBLICS_BASE + i] <== aggPublics[i];
     }
 
-    // -- When both proofs are aggregated, their programVKs must match (committed invariant).
-    signal bothAggregated <== (1 - isRegisteredProgramA) * (1 - isRegisteredProgramB);
+    // -- When both proofs are aggregated, their programVKs must match.
+    signal bothAggregated <== (1 - isFinalA) * (1 - isFinalB);
     for (var i = 0; i < 4; i++) {
         bothAggregated * (programVK_A[i] - programVK_B[i]) === 0;
     }
 
-    // -- Output programVK selection:
-    //      both leaves          -> rootCRecurserAgg (prover-supplied)
-    //      A aggregated         -> programVK_A (covers "A agg, B leaf" and "both agg")
+    // -- Output programVK selection (selectors mutually exclusive, sum to 1):
+    //      both leaves          -> rootCRecurserAgg
+    //      A aggregated         -> programVK_A
     //      A leaf, B aggregated -> programVK_B
-    //    Selectors are mutually exclusive and sum to 1.
-    signal selectAgg <== isRegisteredProgramA * isRegisteredProgramB;
-    signal selectAVK <== 1 - isRegisteredProgramA;
-    signal selectBVK <== isRegisteredProgramA * (1 - isRegisteredProgramB);
+    signal selectAgg <== isFinalA * isFinalB;
+    signal selectAVK <== 1 - isFinalA;
+    signal selectBVK <== isFinalA * (1 - isFinalB);
 
     signal aggTerm[4];
     signal aTerm[4];
@@ -155,8 +210,12 @@ template Main(nPublics, nFreeInputs, nPrograms) {
         aggTerm[i] <== selectAgg * rootCRecurserAgg[i];
         aTerm[i]   <== selectAVK * programVK_A[i];
         bTerm[i]   <== selectBVK * programVK_B[i];
-        aggregatedPublics[i] <== aggTerm[i] + aTerm[i] + bTerm[i];
+        aggregatedPublics[VK_BASE + i] <== aggTerm[i] + aTerm[i] + bTerm[i];
     }
+
+    // -- Force the reserved output slot to 0: a proof this aggregator produces
+    //    is, by definition, NOT a raw vadcop_final leaf.
+    aggregatedPublics[{{ is_vadcop_final_slot }}] === 0;
 }
 
-component main = Main({{ zisk_publics }}, {{ n_free_inputs }}, {{ n_programs }});
+component main = Main({{ zisk_publics }});

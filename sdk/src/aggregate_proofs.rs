@@ -10,11 +10,19 @@ use crate::prove::{JobEvent, ProveResult};
 use crate::recurser::Recurser;
 use crate::{Client, Result, SdkError};
 
-/// A proof entering a fold, optionally carrying the side inputs the
-/// `AggregatePublics` circuit reads. A plain `&Proof` converts with no
-/// inputs — right when the recurser declares no aggregate free inputs;
-/// otherwise pair each side with its inputs via
-/// [`ProofExt::with_free_inputs`].
+/// A proof entering a fold, optionally carrying its per-side free array.
+///
+/// A plain `&Proof` converts with an empty array — correct when the recurser
+/// declares no free values. Attach the single free array via
+/// [`ProofExt::with_free_inputs`]:
+///
+/// ```ignore
+/// proof.with_free_inputs(free_vals)
+/// ```
+///
+/// The array has width `recurser.n_free()` per side. On a leaf proof it is the
+/// free_in (normalized internally); on an aggregated proof it is the free_out
+/// (used directly). Either way it is one array of width `n_free`.
 pub struct AggregationInput<'a> {
     pub(crate) proof: &'a Proof,
     pub(crate) free_inputs: Vec<u64>,
@@ -28,20 +36,19 @@ impl<'a> From<&'a Proof> for AggregationInput<'a> {
 
 /// Sugar for building an [`AggregationInput`] from a [`Proof`].
 pub trait ProofExt {
-    /// Pair this proof with the side inputs the `AggregatePublics` circuit
-    /// reads for this side of the fold.
-    fn with_free_inputs(&self, free_inputs: impl Into<Vec<u64>>) -> AggregationInput<'_>;
+    /// Pair this proof with its per-side free array (width `recurser.n_free()`).
+    fn with_free_inputs(&self, inputs: impl Into<Vec<u64>>) -> AggregationInput<'_>;
 }
 
 impl ProofExt for Proof {
-    fn with_free_inputs(&self, free_inputs: impl Into<Vec<u64>>) -> AggregationInput<'_> {
-        AggregationInput { proof: self, free_inputs: free_inputs.into() }
+    fn with_free_inputs(&self, inputs: impl Into<Vec<u64>>) -> AggregationInput<'_> {
+        AggregationInput { proof: self, free_inputs: inputs.into() }
     }
 }
 
 /// Builder for a recurser prove request. Obtain via
 /// `client.aggregate_proofs(&agg, &proof_a, &proof_b)` — each side accepts
-/// a `&Proof` or a [`ProofExt::with_free_inputs`] pairing.
+/// a `&Proof` or a [`ProofExt`] pairing.
 pub struct AggregateProofsRequest<'a, C> {
     client: &'a C,
     agg: &'a Recurser,
@@ -93,35 +100,46 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
     }
 
     /// Submit the recurser prove, returning a [`JobHandle<ProveResult>`].
+    ///
+    /// # Free-input layout
+    ///
+    /// One free array per side (width `recurser.n_free()`) is passed straight
+    /// through to the backend. Per-side semantics: on a leaf it is the free_in
+    /// (normalized internally into free_out); on an aggregated proof it is the
+    /// free_out (used directly). The array width is the same either way.
     pub fn run(self) -> Result<JobHandle<ProveResult>> {
-        // Each side must supply exactly the free inputs the `AggregatePublics`
-        // circuit reads. Checking here catches a forgotten `with_free_inputs`
-        // up front, instead of as a wrong digest (or a failed constraint) deep
-        // inside witness generation.
-        let expected = self.agg.n_free_inputs();
-        let check_and_pad = |side: char, input: &AggregationInput<'_>| -> Result<Vec<u64>> {
+        // Per-side classification (leaf vs aggregated) is by
+        // publics_full()[IS_VADCOP_FINAL_SLOT]: 1 = leaf (array is free_in,
+        // normalized into free_out), 0 = aggregated (array is free_out, used
+        // directly). The width is the same either way, so the SDK does not
+        // branch on it here; the backend's validate_prove_inputs is the real
+        // gate. Both sides carry one array of width up to n_free.
+        let n_free = self.agg.n_free();
+
+        let validate = |side: char, input: &AggregationInput<'_>| -> Result<()> {
             let got = input.free_inputs.len();
-            if got != expected {
+            if got > n_free {
                 return Err(SdkError::Recurser(format!(
-                    "proof_{side} supplies {got} free inputs but the aggregate circuit \
-                     consumes {expected}{}",
-                    if expected == 0 { " (pass a plain `&Proof`)" } else { "" },
+                    "proof_{side} supplies {got} free inputs but the recurser \
+                     consumes at most {n_free}",
                 )));
             }
-            let mut v = input.free_inputs.clone();
-            v.resize(expected, 0);
-            Ok(v)
+            Ok(())
         };
-        let free_inputs_a = check_and_pad('a', &self.input_a)?;
-        let free_inputs_b = check_and_pad('b', &self.input_b)?;
+
+        validate('a', &self.input_a)?;
+        validate('b', &self.input_b)?;
+
+        let free_a = self.input_a.free_inputs;
+        let free_b = self.input_b.free_inputs;
 
         let subs = subscriber_list_from(self.subscribers);
         self.client.run_aggregate_proofs(
             self.agg,
             self.input_a.proof,
             self.input_b.proof,
-            &free_inputs_a,
-            &free_inputs_b,
+            &free_a,
+            &free_b,
             self.root_c_recurser_agg,
             self.timeout,
             subs,

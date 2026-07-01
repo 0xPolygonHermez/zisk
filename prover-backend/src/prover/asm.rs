@@ -626,16 +626,16 @@ impl ProverEngine for AsmProver {
         recurser_id: &str,
         proof_a: &VadcopFinalProof,
         proof_b: &VadcopFinalProof,
-        free_inputs_a: &[u64],
-        free_inputs_b: &[u64],
+        free_a: &[u64],
+        free_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<VadcopFinalProof> {
         self.core_prover.backend.prove_recurser(
             recurser_id,
             proof_a,
             proof_b,
-            free_inputs_a,
-            free_inputs_b,
+            free_a,
+            free_b,
             root_c_recurser_agg,
         )
     }

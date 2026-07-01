@@ -57,8 +57,8 @@ impl EmbeddedClient {
         agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
-        free_inputs_a: &[u64],
-        free_inputs_b: &[u64],
+        free_a: &[u64],
+        free_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -66,8 +66,8 @@ impl EmbeddedClient {
         let agg = agg.clone();
         let vfp_a = proof_a.get_vadcop_final_proof().map_err(SdkError::backend)?;
         let vfp_b = proof_b.get_vadcop_final_proof().map_err(SdkError::backend)?;
-        let free_inputs_a = free_inputs_a.to_vec();
-        let free_inputs_b = free_inputs_b.to_vec();
+        let free_a = free_a.to_vec();
+        let free_b = free_b.to_vec();
         let subs_cloned = Arc::clone(&subs);
         let prover = Arc::clone(&self.prover);
 
@@ -78,8 +78,8 @@ impl EmbeddedClient {
                 &agg,
                 vfp_a,
                 vfp_b,
-                &free_inputs_a,
-                &free_inputs_b,
+                &free_a,
+                &free_b,
                 root_c_recurser_agg,
             );
             fire_result_event(&subs_cloned, &result);
@@ -112,7 +112,6 @@ fn run_setup_aggregation_program_blocking(
     let opts = SetupRecurserAggregatorOptions {
         setup_dir: agg.setup_dir.clone(),
         output_dir: agg.output_dir.clone(),
-        program_vks: agg.program_vks.clone(),
         templates: agg.templates.clone(),
     };
 
@@ -138,19 +137,12 @@ fn run_aggregate_proofs_blocking(
     agg: &Recurser,
     proof_a: proofman_verifier::VadcopFinalProof,
     proof_b: proofman_verifier::VadcopFinalProof,
-    free_inputs_a: &[u64],
-    free_inputs_b: &[u64],
+    free_a: &[u64],
+    free_b: &[u64],
     root_c_override: Option<[u64; 4]>,
 ) -> Result<ProveResult> {
     let vfp = prover
-        .prove_recurser(
-            &agg.recurser_id,
-            &proof_a,
-            &proof_b,
-            free_inputs_a,
-            free_inputs_b,
-            root_c_override,
-        )
+        .prove_recurser(&agg.recurser_id, &proof_a, &proof_b, free_a, free_b, root_c_override)
         .map_err(|e| SdkError::Recurser(format!("proof generation failed: {e}")))?;
 
     // Recurser's own verkey → output Proof's zisk_vk.

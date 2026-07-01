@@ -194,9 +194,9 @@ fn aggregation_program_spec_eq(
     a: &AggregationProgramSpecDto,
     b: &AggregationProgramSpecDto,
 ) -> bool {
-    a.program_vks == b.program_vks
+    a.normalize == b.normalize
         && a.aggregate_publics_body == b.aggregate_publics_body
-        && a.aggregate_n_free_inputs == b.aggregate_n_free_inputs
+        && a.n_free == b.n_free
 }
 
 fn exec_stats_from_job(job: &Job) -> CoordinatorExecutionStats {
@@ -3489,9 +3489,9 @@ mod tests {
 
     fn dummy_aggregation_program_spec() -> AggregationProgramSpecDto {
         AggregationProgramSpecDto {
-            program_vks: vec![["1".into(), "2".into(), "3".into(), "4".into()]],
+            normalize: None,
             aggregate_publics_body: "// body".into(),
-            aggregate_n_free_inputs: 0,
+            n_free: 0,
         }
     }
 

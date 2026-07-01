@@ -445,27 +445,17 @@ impl EmbeddedProver {
         recurser_id: &str,
         proof_a: &proofman_verifier::VadcopFinalProof,
         proof_b: &proofman_verifier::VadcopFinalProof,
-        free_inputs_a: &[u64],
-        free_inputs_b: &[u64],
+        free_a: &[u64],
+        free_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
     ) -> Result<proofman_verifier::VadcopFinalProof> {
         match self {
-            EmbeddedProver::Emu(p) => p.prove_recurser(
-                recurser_id,
-                proof_a,
-                proof_b,
-                free_inputs_a,
-                free_inputs_b,
-                root_c_recurser_agg,
-            ),
-            EmbeddedProver::Asm(p) => p.prove_recurser(
-                recurser_id,
-                proof_a,
-                proof_b,
-                free_inputs_a,
-                free_inputs_b,
-                root_c_recurser_agg,
-            ),
+            EmbeddedProver::Emu(p) => {
+                p.prove_recurser(recurser_id, proof_a, proof_b, free_a, free_b, root_c_recurser_agg)
+            }
+            EmbeddedProver::Asm(p) => {
+                p.prove_recurser(recurser_id, proof_a, proof_b, free_a, free_b, root_c_recurser_agg)
+            }
         }
         .map_err(SdkError::backend)
     }
@@ -560,8 +550,8 @@ impl Client for EmbeddedClient {
         agg: &Recurser,
         proof_a: &Proof,
         proof_b: &Proof,
-        free_inputs_a: &[u64],
-        free_inputs_b: &[u64],
+        free_a: &[u64],
+        free_b: &[u64],
         root_c_recurser_agg: Option<[u64; 4]>,
         timeout: Option<Duration>,
         subs: SubscriberList,
@@ -570,8 +560,8 @@ impl Client for EmbeddedClient {
             agg,
             proof_a,
             proof_b,
-            free_inputs_a,
-            free_inputs_b,
+            free_a,
+            free_b,
             root_c_recurser_agg,
             timeout,
             subs,

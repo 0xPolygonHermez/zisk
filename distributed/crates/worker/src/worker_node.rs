@@ -1384,11 +1384,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .ok_or_else(|| anyhow!("~/.zisk/recurser path is not valid UTF-8"))?
             .to_string();
 
-        let program_vks: Vec<[String; 4]> = spec
-            .program_vks
-            .iter()
-            .map(|vk| [vk.l0.clone(), vk.l1.clone(), vk.l2.clone(), vk.l3.clone()])
-            .collect();
+        let normalize =
+            spec.normalize.as_ref().map(|n| recurser::NormalizeCircuit { body: n.body.clone() });
         // The artifact dir is keyed by the *claimed* id; recompute the id from
         // the spec so a mismatched claim can't be served another definition's
         // completed setup (or silently register under the wrong name).
@@ -1396,9 +1393,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .map_err(|e| anyhow!("failed to read local vadcop_final verkey: {e:#}"))?;
         let expected_inputs = recurser::RecurserManifestInputs::new(
             zisk_vk,
-            program_vks.clone(),
+            normalize.as_ref(),
             &spec.aggregate_publics_body,
-            spec.aggregate_n_free_inputs as usize,
+            spec.n_free as usize,
         );
         let expected_id = expected_inputs.compute_id();
         if expected_id != setup.recurser_id {
@@ -1418,10 +1415,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             let opts = SetupRecurserAggregatorOptions {
                 setup_dir,
                 output_dir: output_dir.clone(),
-                program_vks,
                 templates: recurser::CircomTemplates {
+                    normalize,
                     aggregate_publics: spec.aggregate_publics_body.clone(),
-                    aggregate_n_free_inputs: spec.aggregate_n_free_inputs as usize,
+                    n_free: spec.n_free as usize,
                 },
             };
 
@@ -1522,6 +1519,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             )
         })?;
 
+        // The wire carries a single flat free-value buffer per side, which now maps
+        // 1:1 onto the unified `n_free` width that prove_recurser expects.
+        //
         // Reuse the worker's already-initialized proofman rather than building a
         // fresh one per fold: `ProofMan::new` initializes the process-global MPI
         // context, which can only happen once per process.

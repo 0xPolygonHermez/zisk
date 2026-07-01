@@ -98,7 +98,6 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     let circuits_dir =
         concat!(env!("CARGO_MANIFEST_DIR"), "/../test-artifacts/programs/aggregations/circuits");
     let programmatic = AggregationProgramBuilder::new(
-        &[&ELF_CHAIN_SEGMENT],
         CircomCircuit::from_path(format!("{circuits_dir}/aggregate_publics.circom"))?,
     )
     .build()
