@@ -39,6 +39,13 @@ main() {
     ensure cargo-zisk new "$PROJECT_NAME" || return 1
     cd "$PROJECT_NAME"
 
+    # Resolve the absolute path to the ZisK repo (handles ZISK_REPO_DIR overrides used by GHA),
+    # then repoint each git dependency to its local crate so the build uses this repo.
+    ZISK_REPO_DIR="$(get_zisk_repo_dir)"
+    
+    patch_cargo_dep "./Cargo.toml" "zisk-sdk"       "${ZISK_REPO_DIR}/sdk"               || return 1
+    patch_cargo_dep "./Cargo.toml" "ziskos"         "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
+
     step "Building program..."
     ensure cargo build --bin host --release || return 1
 
