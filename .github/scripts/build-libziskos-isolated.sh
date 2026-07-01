@@ -10,8 +10,10 @@
 # There is no language-level "per-library global allocator", so we isolate at the
 # symbol level: after the build we make ziskos's allocator symbols STB_LOCAL, so
 # ziskos's `Vec`/`Box` resolve to ITS allocator and the host (C or Rust) keeps
-# using its own. The closed symbol set is guaranteed by the `staticlib` feature,
-# which forces the self-contained dlmalloc allocator (see ziskos Cargo.toml).
+# using its own. The closed symbol set comes from ziskos's default self-contained
+# bump allocator: the `staticlib` feature pulls in no external allocator (see
+# ziskos Cargo.toml), so the only source of `__rust_alloc` & friends is that
+# bump allocator's global-allocator shim.
 #
 # Option B: the `fat` LTO build leaves LLVM bitcode in the archive, so we first
 # finalize it into a single native relocatable object with a partial link

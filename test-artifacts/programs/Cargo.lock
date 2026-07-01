@@ -4195,6 +4195,19 @@ dependencies = [
 [[package]]
 name = "riscv"
 version = "1.0.0-beta"
+dependencies = [
+ "zisk-core",
+ "zisk-definitions",
+]
+
+[[package]]
+name = "riscv2zisk"
+version = "1.0.0-beta"
+dependencies = [
+ "transpilers-common",
+ "zisk-core",
+ "zisk-definitions",
+]
 
 [[package]]
 name = "rlp"
@@ -4214,6 +4227,7 @@ dependencies = [
  "blake3",
  "fields",
  "proofman-common",
+ "riscv2zisk",
  "sm-rom",
  "tracing",
  "zisk-common",
@@ -4854,6 +4868,7 @@ dependencies = [
  "mem-common",
  "proofman-common",
  "rayon",
+ "riscv2zisk",
  "thiserror 2.0.18",
  "tracing",
  "zisk-common",
@@ -5486,6 +5501,16 @@ dependencies = [
  "tracing-core",
  "tracing-log",
  "tracing-serde",
+]
+
+[[package]]
+name = "transpilers-common"
+version = "1.0.0-beta"
+dependencies = [
+ "elf",
+ "riscv",
+ "zisk-core",
+ "zisk-definitions",
 ]
 
 [[package]]
@@ -6655,7 +6680,6 @@ dependencies = [
  "paste",
  "precompiles-helpers",
  "rayon",
- "riscv",
  "sha2",
  "tiny-keccak",
  "zisk-definitions",
@@ -6705,6 +6729,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "proofman-verifier",
+ "riscv2zisk",
  "rom-setup",
  "serde",
  "tracing",
@@ -6769,12 +6794,14 @@ dependencies = [
  "rayon",
  "regex",
  "riscv",
+ "riscv2zisk",
  "serde_json",
  "sm-arith",
  "sm-binary",
  "symbolic-demangle",
  "sysinfo 0.38.4",
  "time",
+ "transpilers-common",
  "vergen-git2",
  "zisk-common",
  "zisk-core",

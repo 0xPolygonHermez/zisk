@@ -100,8 +100,10 @@ staticlib = []
 # Track the peak bytes used by the staticlib's isolated bump allocator. Enabled
 # from `ziskos-staticlib` via its own `alloc-stats` feature. The `wrap_export!`
 # wrappers call `update_max_used_sys_alloc` after each call, and `zkvm_deinit`
-# prints the peak. Only meaningful together with `staticlib`.
-alloc-stats = []
+# prints the peak. Only meaningful together with `staticlib`, so it enables it
+# (the stats code is gated on the `zisk_staticlib` cfg and would be a silent
+# no-op otherwise).
+alloc-stats = ["staticlib"]
 zisk-custom-alloc = []
 zisk-embedded-alloc = ["zisk-embedded-dlmalloc-alloc"]
 zisk-embedded-dlmalloc-alloc = [

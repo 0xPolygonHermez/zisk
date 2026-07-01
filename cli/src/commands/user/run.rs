@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context, Result};
+use std::io::Write;
 use std::process::{Command, Stdio};
 use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use zisk_common::io::ZiskStdin;
@@ -51,16 +52,24 @@ impl RunCmd {
                 let mut command = Command::new("cargo");
                 command.args(self.cargo_build_args());
 
-                // Generate the linker script from the embedded bytes and write it to a temporary file
-                let linker_script_path = std::env::temp_dir().join("zisk.ld");
-                std::fs::write(&linker_script_path, ZISK_LINKER_SCRIPT)
-                    .context("Failed to write Zisk linker script to temp dir")?;
+                // Write the linker script to a uniquely-named temp file. A predictable
+                // path (`$TMPDIR/zisk.ld`) can race across concurrent invocations and is
+                // exposed to temp-file symlink attacks. Keep the handle alive until cargo
+                // finishes so the file is not removed while the linker still needs it.
+                let mut linker_script = tempfile::Builder::new()
+                    .prefix("zisk-")
+                    .suffix(".ld")
+                    .tempfile()
+                    .context("Failed to create temporary Zisk linker script")?;
+                linker_script
+                    .write_all(ZISK_LINKER_SCRIPT)
+                    .context("Failed to write Zisk linker script to temp file")?;
 
                 // Add linker script flag and zisk_guest cfg to RUSTFLAGS, preserving any existing flags
                 let current_rust_flags = std::env::var("RUSTFLAGS").unwrap_or_default();
                 let rust_flags = format!(
                     "{current_rust_flags} --cfg zisk_guest -C link-arg=-T{}",
-                    linker_script_path.display()
+                    linker_script.path().display()
                 )
                 .trim()
                 .to_string();

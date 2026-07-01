@@ -14,9 +14,9 @@ fn main() {
     //   1. directly by path from a guest program (ziskos *is* the whole no_std
     //      binary and must own the `#[global_allocator]`), and
     //   2. through `ziskos-staticlib`, which produces `libziskos.a` to be linked
-    //      into a host application (Rust or C). In that case ziskos must NOT
-    //      register a `#[global_allocator]`, since it would collide with (or
-    //      hijack) the host application's allocator.
+    //      into a host application (Rust or C). In that case ziskos must keep its
+    //      allocator isolated (i.e. avoid exporting/binding `__rust_alloc` & friends
+    //      to the host application's allocator).
     //
     // A dependency cannot autodetect the crate-type of who links it, so the
     // staticlib build opts in via the `staticlib` feature. We surface it as the

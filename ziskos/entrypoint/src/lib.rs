@@ -584,7 +584,7 @@ pub mod ziskos {
     }
 
     pub extern "C" fn sys_write_u64(val: u64, ln: bool) {
-        let mut buf = [0u8; 21]; // 20 dígitos max u64 + \n — stack, no heap
+        let mut buf = [0u8; 21]; // 20 digits max u64 + \n — stack, no heap
         let mut v = val;
         let mut end = 20usize;
 
