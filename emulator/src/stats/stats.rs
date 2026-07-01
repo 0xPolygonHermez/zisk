@@ -311,6 +311,43 @@ impl Stats {
             );
         }
     }
+
+    /// Print the full ROI list (index and hex PC range). Used at startup with the
+    /// `debug_call_stack` feature so the ROI indices in the call-stack trace can
+    /// be mapped back to functions and address ranges.
+    #[cfg(feature = "debug_call_stack")]
+    pub fn print_rois(&self) {
+        println!("CALL_STACK_DEBUG: ROI list ({} entries):", self.rois.len());
+        for roi in &self.rois {
+            println!(
+                "CALL_STACK_DEBUG: ROI[{}] 0x{:08X}-0x{:08X} {}",
+                roi.id, roi.from_pc, roi.to_pc, roi.name
+            );
+        }
+    }
+    pub fn summary_call_stack(&self) -> String {
+        // Compact one-line summary showing only the ROI of each stack entry, in
+        // top-of-stack-first order (matching `static_print_call_stack`). With more
+        // than 8 entries, show the top 4 and the last 4 elided with "...";
+        // otherwise show them all. The trailing `:N` is the total entry count.
+        let n = self.call_stack.len();
+        let rois: Vec<String> = self
+            .call_stack
+            .iter()
+            .rev()
+            .map(|entry| {
+                entry.called_roi_index.map(|roi| roi.to_string()).unwrap_or_else(|| "-".to_string())
+            })
+            .collect();
+
+        let body = if n <= 8 {
+            rois.join(", ")
+        } else {
+            format!("{}, ..., {}", rois[..4].join(", "), rois[n - 4..].join(", "))
+        };
+
+        format!("[{body}]:{n}")
+    }
     fn call_stack_error(&mut self, msg: &str) {
         if self.use_colors {
             println!("\x1B[1;31m{}\x1B[0m", msg);
@@ -335,18 +372,19 @@ impl Stats {
             #[cfg(feature = "debug_call_stack")]
             {
                 let _proi = if let Some(proi) = _previous_roi {
-                    &format!("ROI[{proi}] RC:{}", self.rois[proi].call_stack_rc)
+                    &format!("[{proi}] RC:{}", self.rois[proi].call_stack_rc)
                 } else {
                     "???"
                 };
                 let _croi = if let Some(croi) = self.current_roi {
-                    &format!("ROI[{croi}] RC:{}", self.rois[croi].call_stack_rc)
+                    &format!("[{croi}] RC:{}", self.rois[croi].call_stack_rc)
                 } else {
                     "???"
                 };
                 println!(
-                    "CALL_STACK_DEBUG: RETURN P_PC:0x{:08x} {_proi} => PC:0x{pc:08x} {_croi}",
-                    self.previous_pc
+                    "CALL_STACK_DEBUG: RETURN P_PC:0x{:08x}{_proi} => PC:0x{pc:08x}{_croi} STACK:{}",
+                    self.previous_pc,
+                    self.summary_call_stack()
                 );
             }
 
@@ -399,10 +437,16 @@ impl Stats {
             if let Some(roi_index) = self.current_roi {
                 // Tail call
                 let cloned_costs = self.clone_costs();
+                #[cfg(feature = "debug_call_stack")]
+                let summary_call_stack = if self.call_stack.is_empty() {
+                    String::new()
+                } else {
+                    self.summary_call_stack()
+                };
                 if let Some(top) = self.call_stack.last_mut() {
                     #[cfg(feature = "debug_call_stack")]
                     println!(
-                        "CALL_STACK_DEBUG: TAIL CALL P_PC:0x{:08x} => PC:0x{pc:08x}",
+                        "CALL_STACK_DEBUG: TAIL CALL P_PC:0x{:08x}[{roi_index}] => PC:0x{pc:08x}[{roi_index}] STACK:{summary_call_stack}",
                         self.previous_pc
                     );
                     top.tail_calls.push((roi_index, cloned_costs));
@@ -526,8 +570,11 @@ impl Stats {
                     };
                     #[cfg(feature = "debug_call_stack")]
                     println!(
-                        "CALL_STACK_DEBUG: CALL P_PC:0x{:08x} => PC:0x{pc:08x} CALLER_ROI:{} CALLED_ROI:{}",
-                        self.previous_pc, previous_roi_index.unwrap_or(900_000_000), self.current_roi.unwrap_or(900_000_000)
+                        "CALL_STACK_DEBUG: CALL P_PC:0x{:08x}[{}] => PC:0x{pc:08x}[{}] STACK:{}",
+                        self.previous_pc,
+                        previous_roi_index.unwrap_or(900_000_000),
+                        self.current_roi.unwrap_or(900_000_000),
+                        self.summary_call_stack()
                     );
                     let mut cloned_costs = self.clone_costs();
                     cloned_costs.steps -= 1; // Current step belongs to the called, we storing the starting point of the called

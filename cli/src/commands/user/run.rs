@@ -1,10 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use std::io::Write;
 use std::process::{Command, Stdio};
-use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
+use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_LINKER_SCRIPT, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use zisk_common::io::ZiskStdin;
 use zisk_prover_backend::{GuestProgram, ProfilingMode};
-use zisk_sdk::ZISK_LINKER_SCRIPT;
 
 use crate::common::{detect_project_elf_for_profile, ElfSelectorArgs, Profile};
 

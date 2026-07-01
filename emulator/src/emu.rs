@@ -1640,6 +1640,11 @@ impl<'a> Emu<'a> {
                     );
                 }
 
+                // With the call-stack debug feature, dump the ROI list up front so
+                // the ROI indices printed during the trace can be mapped back.
+                #[cfg(feature = "debug_call_stack")]
+                self.ctx.stats.print_rois();
+
                 // Second pass: mark selected ROIs for tracking
                 for symbol in elf.functions() {
                     if symbol.is_selected_roi {

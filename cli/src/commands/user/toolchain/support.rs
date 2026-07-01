@@ -120,7 +120,9 @@ pub(crate) async fn get_toolchain_download_url(
     } else {
         let tags = fetch_release_tags(client).await?;
         select_latest_tag(&tags, TOOLCHAIN_MAJOR).with_context(|| {
-            format!("no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain release found for 0xPolygonHermez/rust")
+            format!(
+                "no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain release found for 0xPolygonHermez/rust"
+            )
         })?
     };
 
@@ -211,11 +213,11 @@ mod tests {
         let tags = vec![
             "zisk-1.0.0".to_string(),
             "zisk-1.2.9".to_string(),
-            "zisk-1.10.0".to_string(), // higher minor than 1.2.x
-            "zisk-1.10.3".to_string(), // highest patch of the highest minor
-            "zisk-2.5.0".to_string(),  // different major, ignored
-            "1.99.0".to_string(),      // missing prefix, ignored
-            "zisk-1.4".to_string(),    // too few components, ignored
+            "zisk-1.10.0".to_string(),  // higher minor than 1.2.x
+            "zisk-1.10.3".to_string(),  // highest patch of the highest minor
+            "zisk-2.5.0".to_string(),   // different major, ignored
+            "1.99.0".to_string(),       // missing prefix, ignored
+            "zisk-1.4".to_string(),     // too few components, ignored
             "zisk-1.4.2.1".to_string(), // too many components, ignored
         ];
         assert_eq!(select_latest_tag(&tags, 1).as_deref(), Some("zisk-1.10.3"));
