@@ -6,7 +6,7 @@ use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_f
 
 use super::P;
 
-/// Perform the inversion of a non-zero field element in Fp
+/// Perform the inversion of a NON-ZERO field element in Fp
 pub fn fcall_bls12_381_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a = &params[0..6].try_into().unwrap();

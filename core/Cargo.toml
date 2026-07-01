@@ -11,17 +11,11 @@ categories = { workspace = true }
 name = "zisk_core"
 path = "src/lib.rs"
 
-[[bin]]
-name = "riscv2zisk"
-path = "src/bin/riscv2zisk.rs"
-
 [dependencies]
 precompiles-helpers = { workspace = true }
 lib-c = { workspace = true }
-ziskos-hints = { workspace = true }
-riscv = { workspace = true }
+ziskos = { workspace = true }
 rayon = { workspace = true }
-serde = { workspace = true }
 fields = { workspace = true }
 sha2 = { workspace = true }
 paste = { workspace = true }
@@ -31,7 +25,7 @@ elf = "0.7.4"
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [build-dependencies]
-lib-float = { workspace = true }
+lib-float = { workspace = true, optional = true }
 
 
 [features]
@@ -39,3 +33,5 @@ default = []
 debug_dma = []
 log_dma_ops = []
 # sp = []
+float = ["dep:lib-float", "lib-float/float"]
+bit_manipulation_extensions = []

@@ -1,15 +1,22 @@
 [workspace]
 members = [
-    "sha-hasher/host", 
-    "sha-hasher/guest", 
-    "multiple-programs/host", 
-    "multiple-programs/guest", 
-    "multiple-programs/guest_2",
-    "aggregation/host",
-    "aggregation/guest",
-    "aggregation/guest_agg",
-    "big-program/host",
-    "big-program/guest",
+  "sha-hasher/host",
+  "multiple-programs/host",
+  "aggregation/host",
+  "big-program/host",
+  "hints/host",
+  "hash/host",
+  "hash/guest",
+  "fibonacci/host",
+  "fibonacci/guest",
+  "merkle-tree/host",
+  "gcd/host",
+  "gcd/guest",
+  "primes/host",
+  "primes/guest",
+  "collatz/host",
+  "collatz/guest",
+  "utils"
 ]
 
 resolver = "2"
@@ -18,8 +25,7 @@ resolver = "2"
 opt-level = 3
 
 [workspace.dependencies]
-# Guest dependencies
 ziskos = { path = "../ziskos/entrypoint" }
-
-# Host dependencies
 zisk-sdk = { path = "../sdk" }
+test-artifacts = { path = "../test-artifacts" }
+examples-utils = { path = "utils"}

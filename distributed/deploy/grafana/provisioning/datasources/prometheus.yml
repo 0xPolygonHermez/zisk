@@ -1,0 +1,15 @@
+apiVersion: 1
+
+# Auto-provisioned at Grafana startup. The `uid` is pinned so dashboard JSONs
+# can reference it stably (`"datasource": {"type": "prometheus", "uid": "prometheus"}`).
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 5s        # match coordinator scrape interval
+      httpMethod: POST

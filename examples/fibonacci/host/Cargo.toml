@@ -1,0 +1,12 @@
+[package]
+name = "fibonacci-host"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fibonacci-common = { path = "../common" }
+zisk-sdk = { workspace = true }
+examples-utils = { workspace = true }
+
+[build-dependencies]
+zisk-sdk = { workspace = true }

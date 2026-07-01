@@ -1,0 +1,18 @@
+[package]
+name = "zisk-cluster-common"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+proofman = { workspace = true }
+proofman-common = { workspace = true }
+zisk-common = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+borsh = { workspace = true }
+
+serde = { version = "1.0", features = ["derive"] }
+uuid = { version = "1.0", features = ["v4"] }
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }

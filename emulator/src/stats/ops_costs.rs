@@ -197,7 +197,7 @@ impl OpsCosts {
 
         // Extract and reverse to get descending order
         let mut result: Vec<(u64, u8)> = heap.into_iter().map(|Reverse(x)| x).collect();
-        result.sort_by(|a, b| b.0.cmp(&a.0));
+        result.sort_by_key(|a| std::cmp::Reverse(a.0));
         result.iter().map(|(_, opcode)| *opcode).collect()
     }
 
@@ -236,7 +236,7 @@ impl OpsCosts {
 
         // Extract and reverse to get descending order
         let mut result: Vec<(usize, u8)> = heap.into_iter().map(|Reverse(x)| x).collect();
-        result.sort_by(|a, b| b.0.cmp(&a.0));
+        result.sort_by_key(|a| std::cmp::Reverse(a.0));
         result.iter().map(|(_, opcode)| *opcode).collect()
     }
 }

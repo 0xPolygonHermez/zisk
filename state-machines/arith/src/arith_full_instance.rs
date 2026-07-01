@@ -15,7 +15,7 @@ use zisk_common::{
     InstanceType, OperationData, PayloadType, A, B, OP, OPERATION_BUS_ID, OP_TYPE,
 };
 use zisk_core::ZiskOperationType;
-use zisk_pil::ArithTrace;
+use zisk_pil::{ArithTrace, ArithTraceRow, ArithTraceRowPacked};
 
 /// The `ArithFullInstance` struct represents an instance for arithmetic-related witness
 /// computations.
@@ -52,7 +52,7 @@ impl<F: PrimeField64> ArithFullInstance<F> {
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            ArithTrace::<F>::AIR_ID,
+            ArithTrace::<()>::AIR_ID,
             "ArithFullInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -96,6 +96,7 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let inputs: Vec<_> = collectors
             .into_iter()
@@ -105,7 +106,14 @@ impl<F: PrimeField64> Instance<F> for ArithFullInstance<F> {
                 _collector.inputs
             })
             .collect();
-        Ok(Some(self.arith_full_sm.compute_witness(&inputs, trace_buffer)?))
+        if packed {
+            Ok(Some(
+                self.arith_full_sm
+                    .compute_witness::<ArithTraceRowPacked<F>>(&inputs, trace_buffer)?,
+            ))
+        } else {
+            Ok(Some(self.arith_full_sm.compute_witness::<ArithTraceRow<F>>(&inputs, trace_buffer)?))
+        }
     }
 
     /// Retrieves the checkpoint associated with this instance.
@@ -230,7 +238,7 @@ impl<F: PrimeField64> ArithInstanceCollector<F> {
         }
 
         if frops_row != ArithFrops::NO_FROPS {
-            self.std.inc_virtual_row(self.frops_table_id, frops_row as u64, 1);
+            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
             return true;
         }
 

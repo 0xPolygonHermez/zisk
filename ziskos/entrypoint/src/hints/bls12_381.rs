@@ -1,5 +1,5 @@
 use crate::hints::macros::{define_hint, define_hint_pairs};
-use zisk_common::{
+use zisk_definitions::{
     HINT_BLS12_381_FP2_TO_G2, HINT_BLS12_381_FP_TO_G1, HINT_BLS12_381_G1_ADD,
     HINT_BLS12_381_G1_MSM, HINT_BLS12_381_G2_ADD, HINT_BLS12_381_G2_MSM,
     HINT_BLS12_381_PAIRING_CHECK,

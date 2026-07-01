@@ -1,5 +1,6 @@
 use super::str_test_data;
 
+#[allow(dead_code)]
 pub fn get_bn254_complex_sub_test_data(index: usize) -> Option<([u64; 8], [u64; 8], [u64; 8])> {
     if let Some(sdata) = get_bn254_complex_sub_test_str_data(index) {
         let bdata = str_test_data::<6, 8>(index, "bn254_complex_sub_test", sdata);
@@ -9,6 +10,7 @@ pub fn get_bn254_complex_sub_test_data(index: usize) -> Option<([u64; 8], [u64; 
     }
 }
 
+#[allow(dead_code)]
 pub fn get_bn254_complex_sub_test_str_data(index: usize) -> Option<[&'static str; 6]> {
     match index {
         0 => Some([

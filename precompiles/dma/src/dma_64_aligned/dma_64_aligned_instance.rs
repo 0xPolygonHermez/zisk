@@ -65,12 +65,16 @@ impl<F: PrimeField64> Dma64AlignedInstance<F> {
     }
 
     pub fn build_dma_collector(&self, chunk_id: ChunkId) -> Dma64AlignedCollector {
+        self._build_dma_collector(chunk_id)
+    }
+
+    fn _build_dma_collector(&self, chunk_id: ChunkId) -> Dma64AlignedCollector {
         let ops_by_row = match self.ictx.plan.air_id {
-            Dma64AlignedTrace::<F>::AIR_ID => DMA_64_ALIGNED_OPS_BY_ROW,
-            Dma64AlignedMemCpyTrace::<F>::AIR_ID => DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
-            Dma64AlignedInputCpyTrace::<F>::AIR_ID => DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
-            Dma64AlignedMemSetTrace::<F>::AIR_ID => DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
-            Dma64AlignedMemTrace::<F>::AIR_ID => DMA_64_ALIGNED_MEM_OPS_BY_ROW,
+            Dma64AlignedTrace::<()>::AIR_ID => DMA_64_ALIGNED_OPS_BY_ROW,
+            Dma64AlignedMemCpyTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW,
+            Dma64AlignedInputCpyTrace::<()>::AIR_ID => DMA_64_ALIGNED_INPUTCPY_OPS_BY_ROW,
+            Dma64AlignedMemSetTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
+            Dma64AlignedMemTrace::<()>::AIR_ID => DMA_64_ALIGNED_MEM_OPS_BY_ROW,
             _ => panic!("Dma64AlignedInstance: Unsupported air_id: {:?}", self.ictx.plan.air_id),
         };
 
@@ -104,6 +108,7 @@ impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         #[cfg(feature = "save_dma_collectors")]
         let (debug, inputs): (Vec<_>, Vec<_>) = collectors
@@ -139,6 +144,7 @@ impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
             segment_id,
             self.is_last_segment,
             trace_buffer,
+            packed,
         )?))
     }
 
@@ -163,7 +169,7 @@ impl<F: PrimeField64> Instance<F> for Dma64AlignedInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(self.build_dma_collector(chunk_id)))
+        Some(Box::new(self._build_dma_collector(chunk_id)))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

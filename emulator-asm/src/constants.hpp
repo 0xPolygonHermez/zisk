@@ -10,16 +10,16 @@
 // Address map
 // There definitions must match the ZisK rust code ones at core/src/mem.rs used to generate the
 // assembly code, and that are used by the assembly code to access memory and generate the trace
-#define ROM_ADDR (uint64_t)0x80000000
-#define ROM_SIZE (uint64_t)0x08000000 // 128MB
-#define INPUT_ADDR (uint64_t)0x40000000
-#define MAX_INPUT_SIZE (uint64_t)0x40000000 // 1024MB
-
-#define RAM_ADDR (uint64_t)0xA0000000
-#define RAM_SIZE (uint64_t)0x20000000 // 512MB
-#define SYS_ADDR RAM_ADDR
-#define SYS_SIZE (uint64_t)0x10000
-#define OUTPUT_ADDR (SYS_ADDR + SYS_SIZE)
+#define ROM_ADDR          (uint64_t)0x80000000
+#define ROM_SIZE          (uint64_t)0x08000000 // 128MB
+#define INPUT_ADDR        (uint64_t)0x40000000
+#define MAX_INPUT_SIZE    (uint64_t)0x40000000 // 1024MB = 1GB
+#define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
+#define RAM_ADDR          (uint64_t)0xA0000000
+#define RAM_SIZE          (uint64_t)0x20000000 // 512MB
+#define SYS_ADDR          (RAM_ADDR)
+#define SYS_SIZE          (uint64_t)0x10000
+#define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
 #ifdef TRACE_TARGET_MO
     #define TRACE_INITIAL_SIZE (uint64_t)0x180000000 /* 6GB */
@@ -31,6 +31,8 @@
     #define TRACE_INITIAL_SIZE (uint64_t)0x180000000 /* 6GB */
     #define TRACE_DELTA_SIZE   (uint64_t)0x080000000 /* 2GB */
 #endif
+
+#define TRACE_INITIAL_SIZE_RH (uint64_t)(0x02000000 + 0x1000) /* 32MB (ROM histogram) + 4kB (header) */
 
 #define TRACE_ADDR         (uint64_t)0xd0000000
 #define TRACE_MAX_SIZE     (uint64_t)0x800000000 // 32GB
@@ -66,16 +68,8 @@
 #define TYPE_RH_RESPONSE 6
 #define TYPE_MO_REQUEST 7 // Memory opcode
 #define TYPE_MO_RESPONSE 8
-#define TYPE_MA_REQUEST 9 // Main packed trace
-#define TYPE_MA_RESPONSE 10
-#define TYPE_CM_REQUEST 11 // Collect memory trace
-#define TYPE_CM_RESPONSE 12
 #define TYPE_FA_REQUEST 13 // Fast mode, do not generate any trace
 #define TYPE_FA_RESPONSE 14
-#define TYPE_MR_REQUEST 15 // Mem reads
-#define TYPE_MR_RESPONSE 16
-#define TYPE_CA_REQUEST 17 // Collect main trace
-#define TYPE_CA_RESPONSE 18
 #define TYPE_SD_REQUEST 1000000 // Shutdown
 #define TYPE_SD_RESPONSE 1000001
 
@@ -104,7 +98,7 @@
 
 // Maximum precompile results share memory size
 // It is a circular buffer
-#define MAX_PRECOMPILE_SIZE (uint64_t)0x400000 // 4MB
+#define MAX_PRECOMPILE_SIZE (uint64_t)0x8000000 // 128MB
 
 // Maximum chunk mask for zip generation method, which indicates which chunks are included in the trace,
 // and must be between 0 and 7 (inclusive), as it is used to generate a mask of 8 bits where each

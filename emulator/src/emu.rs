@@ -1,15 +1,16 @@
 use std::borrow::Cow;
 use std::mem;
 
-use crate::{
-    ElfSymbolReader, EmuContext, EmuFullTraceStep, EmuOptions, EmuRegTrace, ParEmuOptions,
-};
+use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions};
 use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
 use zisk_common::{
-    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID, ROM_BUS_ID,
+    OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
+    ROM_BUS_ID, ZISK_PUBLICS,
 };
+use zisk_core::mem::DataSection;
+use zisk_pil::MainTraceRowOps;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
 use data_bus::DataBusTrait;
@@ -21,7 +22,6 @@ use zisk_core::{
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
-pub const ZISK_PUBLICS: usize = 64;
 const LOAD_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
@@ -65,7 +65,7 @@ pub struct Emu<'a> {
 ///     ZiskExecutor::witness_main_instance(&self, pctx: &ProofCtx<F>, main_instance: &MainInstance, trace_buffer: Vec<F>,)
 ///         MainSM::compute_witness<F: PrimeField64>(zisk_rom: &ZiskRom, min_traces: &[EmuTrace], chunk_size: u64, main_instance: &MainInstance, std: Arc<Std<F>>, trace_buffer: Vec<F>,) -> AirInstance<F>
 ///             MainSM::fill_partial_trace<F: PrimeField64>(zisk_rom: &ZiskRom, main_trace: &mut [MainTraceRow<F>], min_trace: &EmuTrace, chunk_size: u64, reg_trace: &mut EmuRegTrace, step_range_check: &mut [u32], last_reg_values: bool,) -> (u64, Vec<u64>)
-///                 Emu::step_slice_full_trace<F: PrimeField64>(&mut self, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,) -> EmuFullTraceStep<F>
+///                 Emu::step_slice_full_trace<R: MainTraceRowOps<F>, F: PrimeField64>(&mut self, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace, step_range_check: Option<&mut [u32]>,) -> R
 ///                     Emu::source_a_mem_reads_consume(&mut self, instruction: &ZiskInst, mem_reads: &[u64], mem_reads_index: &mut usize, reg_trace: &mut EmuRegTrace,)
 ///
 /// 2.- When called from ZiskEmu to simply emulate a RISC-V ELF file with an input file:
@@ -82,9 +82,16 @@ impl<'a> Emu<'a> {
     pub fn new(rom: &ZiskRom) -> Emu<'_> {
         Emu { rom, ctx: EmuContext::default(), static_array: [0; MAX_OPERATION_DATA_SIZE] }
     }
+    pub fn new_with_memory_data(rom: &ZiskRom, with_memory_data: bool) -> Emu<'_> {
+        Emu {
+            rom,
+            ctx: EmuContext::new_with_memory_data(with_memory_data),
+            static_array: [0; MAX_OPERATION_DATA_SIZE],
+        }
+    }
 
     pub fn from_emu_trace_start(rom: &'a ZiskRom, trace_start: &'a EmuTraceStart) -> Emu<'a> {
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, false);
         emu.ctx.inst_ctx.pc = trace_start.pc;
         emu.ctx.inst_ctx.sp = trace_start.sp;
         emu.ctx.inst_ctx.step = trace_start.step;
@@ -98,16 +105,43 @@ impl<'a> Emu<'a> {
         // Initialize an empty instance
         let mut ctx = EmuContext::new(inputs, options);
 
+        // Skip memory data allocation when in chunk mode, since memory reads are obtained from the
+        // minimal traces, not from memory
+        if !options.with_memory_data {
+            return ctx;
+        }
         // Create a new read section for every RO data entry of the rom
-        for i in 0..self.rom.ro_data.len() {
-            ctx.inst_ctx.mem.add_read_section(self.rom.ro_data[i].from, &self.rom.ro_data[i].data);
+        for i in 0..self.rom.ro_data_64.len() {
+            // Convert from DataSection64 to DataSection
+            let mut data_section = DataSection {
+                addr: self.rom.ro_data_64[i].addr,
+                data: Vec::with_capacity(self.rom.ro_data_64[i].data.len() * 8),
+            };
+            for j in 0..self.rom.ro_data_64[i].data.len() {
+                data_section.data.extend_from_slice(&self.rom.ro_data_64[i].data[j].to_le_bytes());
+            }
+
+            // Add the read section to the memory
+            ctx.inst_ctx.mem.add_read_section(data_section.addr, &data_section.data);
+        }
+
+        // Write the initial RAM data to the memory, as it will be used for the execution of the program (e.g. for jumps to code in the ROM, or for read-only data)
+        for i in 0..self.rom.rw_data_64.len() {
+            // Convert from DataSection64 to DataSection
+            let mut data_section = DataSection {
+                addr: self.rom.rw_data_64[i].addr,
+                data: Vec::with_capacity(self.rom.rw_data_64[i].data.len() * 8),
+            };
+            for j in 0..self.rom.rw_data_64[i].data.len() {
+                data_section.data.extend_from_slice(&self.rom.rw_data_64[i].data[j].to_le_bytes());
+            }
+
+            // Write the data to the write section of the memory
+            ctx.inst_ctx.mem.init_write_section_data(&data_section);
         }
 
         // Sort read sections by start address to improve performance when using binary search
-        ctx.inst_ctx.mem.read_sections.sort_by(|a, b| a.start.cmp(&b.start));
-
-        // Get registers
-        //emu.get_regs(); // TODO: ask Jordi
+        ctx.inst_ctx.mem.read_sections.sort_by_key(|a| a.start);
 
         ctx
     }
@@ -845,7 +879,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             1,
-                            8,
+                            instruction.ind_width as u8,
                             [raw_data_1, raw_data_2],
                         );
                         data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
@@ -2502,13 +2536,16 @@ impl<'a> Emu<'a> {
 
     /// Performs one single step of the emulation
     #[inline(always)]
-    pub fn step_slice_full_trace<F: PrimeField64>(
+    pub fn step_slice_full_trace<R, F: PrimeField64>(
         &mut self,
+        trace: &mut R,
         mem_reads: &[u64],
         mem_reads_index: &mut usize,
         reg_trace: &mut EmuRegTrace,
         step_range_check: Option<&mut [u32]>,
-    ) -> EmuFullTraceStep<F> {
+    ) where
+        R: MainTraceRowOps<F>,
+    {
         if self.ctx.inst_ctx.pc == 0 {
             println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
         }
@@ -2554,13 +2591,10 @@ impl<'a> Emu<'a> {
         self.ctx.inst_ctx.end = instruction.end;
 
         // Build and store the full trace
-        let full_trace_step =
-            Self::build_full_trace_step(instruction, &self.ctx.inst_ctx, reg_trace);
+        Self::build_full_trace_step::<R, F>(trace, instruction, &self.ctx.inst_ctx, reg_trace);
 
         *mem_reads_index += self.ctx.inst_ctx.data_ext_len;
         self.ctx.inst_ctx.step += 1;
-
-        full_trace_step
     }
 
     pub fn intermediate_value<F: PrimeField64>(value: u64) -> [F; 2] {
@@ -2568,11 +2602,14 @@ impl<'a> Emu<'a> {
     }
 
     #[inline(always)]
-    pub fn build_full_trace_step<F: PrimeField64>(
+    pub fn build_full_trace_step<R, F: PrimeField64>(
+        trace: &mut R,
         inst: &ZiskInst,
         inst_ctx: &InstContext,
         reg_trace: &EmuRegTrace,
-    ) -> EmuFullTraceStep<F> {
+    ) where
+        R: MainTraceRowOps<F>,
+    {
         // Calculate intermediate values
         let a: [u32; 2] =
             [(inst_ctx.a & 0xFFFFFFFF) as u32, ((inst_ctx.a >> 32) & 0xFFFFFFFF) as u32];
@@ -2617,13 +2654,9 @@ impl<'a> Emu<'a> {
             F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
         };
 
-        let mut trace = EmuFullTraceStep::default();
-        trace.set_a(0, a[0]);
-        trace.set_a(1, a[1]);
-        trace.set_b(0, b[0]);
-        trace.set_b(1, b[1]);
-        trace.set_c(0, c[0]);
-        trace.set_c(1, c[1]);
+        trace.set_all_a(&a);
+        trace.set_all_b(&b);
+        trace.set_all_c(&c);
         trace.set_flag(inst_ctx.flag);
         trace.set_pc(inst.paddr as u32);
         trace.set_a_src_imm(inst.a_src == SRC_IMM);
@@ -2681,9 +2714,7 @@ impl<'a> Emu<'a> {
         trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
-        trace.set_store_reg_prev_value(0, store_prev_value[0]);
-        trace.set_store_reg_prev_value(1, store_prev_value[1]);
-        trace
+        trace.set_all_store_reg_prev_value(&store_prev_value);
     }
 
     /// Returns if the emulation ended

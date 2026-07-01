@@ -14,12 +14,18 @@ bool verbose = false;
 bool save_to_file = false;
 bool share_input_shm = false;
 bool create_input_shm = true;
-bool create_internal_shm = true;
-bool create_output_shm = true;
+bool open_input_shm = true;
 bool delete_input_shm = true;
+bool create_internal_shm = true;
+bool open_internal_shm = true;
 bool delete_internal_shm = true;
+bool create_output_shm = true;
+bool open_output_shm = true;
 bool delete_output_shm = true;
+bool create_semaphores = true;
+bool delete_semaphores = true;
 bool just_create_all_shm = false;
+bool just_create_non_input_shm = false;
 char input_file[4096] = {0};
 bool redirect_output_to_file = false;
 bool server = false;
@@ -27,11 +33,9 @@ bool client = false;
 char shm_prefix[MAX_SHM_PREFIX_LENGTH] = {0};
 char sem_prefix[MAX_SHM_PREFIX_LENGTH] = {0};
 int map_locked_flag = MAP_LOCKED;
-uint64_t chunk_mask = 0x0;
 bool do_shutdown = false;
 uint64_t number_of_mt_requests = 1;
 uint16_t port = 0;
-uint64_t chunk_player_address = 0;
 bool wait_flag = true;
 bool stdio = false;
 int server_pid = 0;
@@ -41,7 +45,6 @@ char shmem_control_input_name[128] = {0};
 char shmem_control_output_name[128] = {0};
 char shmem_input_name[128] = {0};
 char shmem_output_name[128] = {0};
-char shmem_mt_name[128] = {0};
 char shmem_precompile_name[128] = {0};
 char shmem_rom_name[128] = {0};
 char shmem_ram_name[128] = {0};
@@ -80,9 +83,6 @@ int shmem_input_fd = -1;
 // Output trace shared memory
 int shmem_output_fd = -1;
 
-// Input MT trace shared memory
-int shmem_mt_fd = -1;
-
 // ROM shared memory
 int shmem_rom_fd = -1;
 
@@ -113,6 +113,7 @@ uint64_t * shmem_control_input_address = NULL;
 volatile uint64_t * precompile_written_address = NULL;
 volatile uint64_t * precompile_exit_address = NULL;
 volatile uint64_t * input_written_address = NULL;
+volatile uint64_t * precompile_reset_address = NULL;
 
 // Control output shared memory
 int shmem_control_output_fd = -1;
@@ -139,9 +140,6 @@ uint64_t realloc_counter = 0;
 uint64_t wait_prec_avail_counter = 0;
 uint64_t wait_input_avail_counter = 0;
 uint64_t print_pc_counter = 0;
-
-// Chunk player globals
-uint64_t chunk_player_mt_size = TRACE_INITIAL_SIZE;
 
 // Maximum number of steps to execute, used by the client to limit the execution steps of the
 // assembly code.

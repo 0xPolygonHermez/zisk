@@ -8,7 +8,7 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=9
+    total_steps=8
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
@@ -23,30 +23,10 @@ main() {
     # Load environment variables from .env file
     load_env || return 1
 
-    # If ZISK_GHA is set, force skip cloning pil2-proofman and use pil2-proofman dependency defined in zisk Cargo.toml
-    if is_gha; then
-        unset PIL2_PROOFMAN_BRANCH
-    fi
+    # pil2-proofman is consumed as the git dependency pinned in the ZisK
+    # Cargo.toml / Cargo.lock — it is never cloned or path-patched here.
 
     cd "${WORKSPACE_DIR}"
-
-    step "Cloning pil2-proofman repository..."
-    if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        if [[ "$DISABLE_CLONE_REPO" == "1" ]]; then
-            warn "Skipping cloning pil2-proofman repository as DISABLE_CLONE_REPO is set to 1"
-        else
-            # Remove existing directory if it exists
-            rm -rf pil2-proofman
-            # Clone pil2-proofman repository
-            ensure git clone https://github.com/0xPolygonHermez/pil2-proofman.git || return 1
-            cd pil2-proofman
-            info "Checking out branch '$PIL2_PROOFMAN_BRANCH' for pil2-proofman..."
-            ensure git checkout "$PIL2_PROOFMAN_BRANCH" || return 1
-            cd ..
-        fi
-    else
-        info "Skipping cloning pil2-proofman repository as PIL2_PROOFMAN_BRANCH is not defined"
-    fi
 
     step "Setting up ZisK repository..."
     if [[ -n "${ZISK_REPO_DIR}" ]]; then
@@ -65,11 +45,8 @@ main() {
                 # Remove existing directory if it exists
                 rm -rf zisk
                 # Clone ZisK repository
-                ensure git clone https://github.com/0xPolygonHermez/zisk.git || return 1
+                ensure git clone --branch "$ZISK_BRANCH" --depth 1 --single-branch https://github.com/0xPolygonHermez/zisk.git || return 1
                 ensure cd zisk
-                # Check out the branch
-                info "Checking out branch '$ZISK_BRANCH'..."
-                ensure git checkout "$ZISK_BRANCH" || return 1
             fi
         else
             info "Skipping cloning ZisK repository as ZISK_BRANCH is not defined"
@@ -77,50 +54,14 @@ main() {
         fi
     fi
 
-    if [[ -n "$PIL2_PROOFMAN_BRANCH" ]]; then
-        info "Update ZisK cargo dependencies to use local pil2-proofman repo..."
-
-        PIL2_PROOFMAN_DIR="${WORKSPACE_DIR}/pil2-proofman"
-
-        replacements="
-            proofman          | { path = \"${PIL2_PROOFMAN_DIR}/proofman\" }
-            proofman-common   | { path = \"${PIL2_PROOFMAN_DIR}/common\" }
-            proofman-macros   | { path = \"${PIL2_PROOFMAN_DIR}/macros\" }
-            proofman-verifier | { path = \"${PIL2_PROOFMAN_DIR}/verifier\" }
-            proofman-util     | { path = \"${PIL2_PROOFMAN_DIR}/util\" }
-            pil-std-lib       | { path = \"${PIL2_PROOFMAN_DIR}/pil2-components/lib/std/rs\" }
-            witness           | { path = \"${PIL2_PROOFMAN_DIR}/witness\" }
-            fields            | { path = \"${PIL2_PROOFMAN_DIR}/fields\" }
-        "
-
-        if [[ "${PLATFORM}" == "linux" ]]; then
-            # GNU sed
-            SED_PARAMS=( -i -E )
-        else
-            # BSD sed (macOS)
-            SED_PARAMS=( -i "" -E )
-        fi
-
-        # Iterate through the list of replacements and update Cargo.toml
-        while IFS='|' read -r crate repl; do
-            [[ -z "$crate" ]] && continue
-
-            pattern="^${crate//[[:space:]]/} = \\{ git = \\\"https://github.com/0xPolygonHermez/pil2-proofman.git\\\", (tag|branch) = \\\".*\\\" *\\}"
-            replacement="${crate//[[:space:]]/} = ${repl}"
-
-            ensure sed "${SED_PARAMS[@]}" "s~${pattern}~${replacement}~" Cargo.toml
-        done <<< "$replacements"
-    fi
-
     step  "Building ZisK tools..."
     ensure cargo clean || return 1
-    ensure cargo update || return 1
-
+    
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
-    if [[ "${BUILD_GPU}" == "1" ]]; then
-        FEATURES+=("gpu")
-        warn "Building with GPU support..."
+    if [[ "${ONLY_CPU}" == "1" ]]; then
+        FEATURES+=("cpu-only")
+        warn "Building with CPU only..."
     fi
 
     BUILD_FEATURES=""
@@ -128,22 +69,7 @@ main() {
         BUILD_FEATURES="--features $(IFS=,; echo "${FEATURES[*]}")"
     fi
 
-    if ! (cargo build --release --target ${TARGET} ${BUILD_FEATURES}); then
-        warn "Build failed. Trying to fix missing stddef.h..."
-
-        stddef_path=$(find /usr -name "stddef.h" 2>/dev/null | head -n 1)
-        if [ -z "$stddef_path" ]; then
-            err "stddef.h not found. You may need to install gcc headers."
-            return 1
-        fi
-
-        include_dir=$(dirname "$stddef_path")
-        export C_INCLUDE_PATH=$include_dir
-        export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
-
-        info  "Retrying build..."
-        ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES} || return 1
-    fi
+    ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES}
 
     step "Copying binaries to ${ZISK_BIN_DIR}..."
     mkdir -p "${ZISK_BIN_DIR}"
@@ -159,6 +85,7 @@ main() {
     fi
 
     ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/cargo-zisk-dev "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/ziskemu "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
@@ -172,6 +99,9 @@ main() {
 
     ensure cp ziskup/ziskup "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/libziskclib.a "${ZISK_BIN_DIR}" || return 1
+    if [[ "${PLATFORM}" == "linux" ]]; then
+        ensure cp target/zisk-libs/libziskc.a "${ZISK_BIN_DIR}" || return 1
+    fi
 
     step "Copying emulator-asm files..."
     if [[ "${PLATFORM}" == "linux" ]]; then
@@ -194,7 +124,7 @@ main() {
     fi
 
     step "Installing ZisK Rust toolchain..."
-    ensure cargo-zisk sdk install-toolchain || return 1
+    ensure cargo-zisk toolchain install || return 1
 
     step "Verifying toolchain installation..."
     rustup toolchain list | grep zisk || {

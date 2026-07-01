@@ -1,6 +1,7 @@
 //! The `ArithOperationTest` module implements a comprehensive testing framework for validating
 //! the correctness of arithmetic operations executed by the `ArithOperation` module.
 
+use zisk_core::ops_core::*;
 use zisk_core::zisk_ops::*;
 
 use crate::{arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers};
@@ -181,26 +182,26 @@ impl ArithOperationTest {
         println!("{aop:#?}");
 
         const CHUNK_SIZE: u64 = 0x10000;
-        let bus_a_low: u64 = aop.div as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)
-            + (1 - aop.div as u64) * (aop.a[0] + aop.a[1] * CHUNK_SIZE);
-        let bus_a_high: u64 = aop.div as u64 * (aop.c[2] + aop.c[3] * CHUNK_SIZE)
-            + (1 - aop.div as u64) * (aop.a[2] + aop.a[3] * CHUNK_SIZE);
+        let bus_a_low: u64 = aop.div as u64 * (aop.c[0] as u64 + aop.c[1] as u64 * CHUNK_SIZE)
+            + (1 - aop.div as u64) * (aop.a[0] as u64 + aop.a[1] as u64 * CHUNK_SIZE);
+        let bus_a_high: u64 = aop.div as u64 * (aop.c[2] as u64 + aop.c[3] as u64 * CHUNK_SIZE)
+            + (1 - aop.div as u64) * (aop.a[2] as u64 + aop.a[3] as u64 * CHUNK_SIZE);
 
-        let bus_b_low: u64 = aop.b[0] + CHUNK_SIZE * aop.b[1];
-        let bus_b_high: u64 = aop.b[2] + CHUNK_SIZE * aop.b[3];
+        let bus_b_low: u64 = aop.b[0] as u64 + CHUNK_SIZE * aop.b[1] as u64;
+        let bus_b_high: u64 = aop.b[2] as u64 + CHUNK_SIZE * aop.b[3] as u64;
 
         let secondary_res: u64 = if aop.main_mul || aop.main_div { 0 } else { 1 };
 
-        let bus_res_low = secondary_res * (aop.d[0] + aop.d[1] * CHUNK_SIZE)
-            + aop.main_mul as u64 * (aop.c[0] + aop.c[1] * CHUNK_SIZE)
-            + aop.main_div as u64 * (aop.a[0] + aop.a[1] * CHUNK_SIZE);
+        let bus_res_low = secondary_res * (aop.d[0] as u64 + aop.d[1] as u64 * CHUNK_SIZE)
+            + aop.main_mul as u64 * (aop.c[0] as u64 + aop.c[1] as u64 * CHUNK_SIZE)
+            + aop.main_div as u64 * (aop.a[0] as u64 + aop.a[1] as u64 * CHUNK_SIZE);
 
-        let bus_res_high_64 = secondary_res * (aop.d[2] + aop.d[3] * CHUNK_SIZE)
-            + aop.main_mul as u64 * (aop.c[2] + aop.c[3] * CHUNK_SIZE)
-            + aop.main_div as u64 * (aop.a[2] + aop.a[3] * CHUNK_SIZE);
+        let bus_res_high_64 = secondary_res * (aop.d[2] as u64 + aop.d[3] as u64 * CHUNK_SIZE)
+            + aop.main_mul as u64 * (aop.c[2] as u64 + aop.c[3] as u64 * CHUNK_SIZE)
+            + aop.main_div as u64 * (aop.a[2] as u64 + aop.a[3] as u64 * CHUNK_SIZE);
 
-        let bus_res_high = if aop.sext && !aop.div_overflow { 0xFFFF_FFFF } else { 0 }
-            + (1 - aop.m32 as u64) * bus_res_high_64;
+        let bus_res_high =
+            if aop.sext { 0xFFFF_FFFF } else { 0 } + (1 - aop.m32 as u64) * bus_res_high_64;
 
         let expected_a_low = a & 0xFFFF_FFFF;
         let expected_a_high = (a >> 32) & 0xFFFF_FFFF;
@@ -237,21 +238,21 @@ impl ArithOperationTest {
             ArithRangeTableHelpers::get_row_carry_range_check(aop.carry[i]);
         }
 
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab, aop.a[3]);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 26, aop.a[1]);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 17, aop.b[3]);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 9, aop.b[1]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab, aop.a[3] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 26, aop.a[1] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 17, aop.b[3] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 9, aop.b[1] as u64);
 
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd, aop.c[3]);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 26, aop.c[1]);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 17, aop.d[3]);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 9, aop.d[1]);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd, aop.c[3] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 26, aop.c[1] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 17, aop.d[3] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 9, aop.d[1] as u64);
 
         for i in [0, 2] {
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.a[i]);
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.b[i]);
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.c[i]);
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.d[i]);
+            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.a[i] as u64);
+            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.b[i] as u64);
+            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.c[i] as u64);
+            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.d[i] as u64);
         }
 
         #[cfg(debug_assertions)]
@@ -263,7 +264,7 @@ impl ArithOperationTest {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow,
+            aop.div_overflow_mul_rz,
             aop.m32,
             aop.div,
             aop.main_mul,
@@ -281,7 +282,7 @@ impl ArithOperationTest {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow,
+            aop.div_overflow_mul_rz,
         );
         self.table_rows[row_1] += 1;
     }

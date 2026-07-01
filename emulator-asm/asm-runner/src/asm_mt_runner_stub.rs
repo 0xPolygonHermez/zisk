@@ -1,3 +1,7 @@
+//! Non-Linux-x86_64 stub: placeholder types whose methods error/panic. Off the
+//! supported platform these are never exercised, so they carry no docs.
+#![allow(missing_docs)]
+
 use zisk_common::{EmuTrace, ExecutorStatsHandle};
 
 use std::ffi::c_void;
@@ -6,16 +10,13 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-pub struct PreloadedMT {}
+pub struct MTShmemReader {}
 
 // This struct is used to run the assembly code in a separate process and generate minimal traces.
 #[derive(Debug)]
 pub struct AsmRunnerMT {
     pub vec_chunks: Vec<EmuTrace>,
 }
-
-unsafe impl Send for AsmRunnerMT {}
-unsafe impl Sync for AsmRunnerMT {}
 
 impl AsmRunnerMT {
     pub fn new(_: String, _: *mut c_void, _: Vec<EmuTrace>) -> Self {
@@ -25,16 +26,21 @@ impl AsmRunnerMT {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn run_and_count<F: FnMut(usize, Arc<EmuTrace>)>(
-        _: &mut PreloadedMT,
+    pub fn run_and_count<F, R>(
+        _: &mut MTShmemReader,
         _: u64,
         _: u64,
         _: F,
+        _: R,
         _: i32,
         _: i32,
         _: Option<u16>,
         _: ExecutorStatsHandle,
-    ) -> Result<Vec<Arc<EmuTrace>>> {
+    ) -> Result<Vec<Arc<EmuTrace>>>
+    where
+        F: FnMut(usize, Arc<EmuTrace>),
+        R: FnOnce() -> Result<()>,
+    {
         Err(anyhow::anyhow!("AsmRunnerMT::run_and_count() is not supported on this platform. Only Linux x86_64 is supported."))
     }
 }

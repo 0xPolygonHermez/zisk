@@ -9,6 +9,7 @@ pub trait Dma64AlignedModule<F: Clone>: Send + Sync {
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>>;
     fn get_name(&self) -> &'static str;
 }

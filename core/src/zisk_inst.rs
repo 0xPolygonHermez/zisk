@@ -78,7 +78,7 @@ pub enum ZiskOperationType {
     BinaryE,
     Keccak,
     Sha256,
-    Poseidon2,
+    Poseidon,
     Blake2,
     PubOut,
     ArithEq,
@@ -99,7 +99,7 @@ pub const BINARY_OP_TYPE_ID: u32 = ZiskOperationType::Binary as u32;
 pub const BINARY_E_OP_TYPE_ID: u32 = ZiskOperationType::BinaryE as u32;
 pub const KECCAK_OP_TYPE_ID: u32 = ZiskOperationType::Keccak as u32;
 pub const SHA256_OP_TYPE_ID: u32 = ZiskOperationType::Sha256 as u32;
-pub const POSEIDON2_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon2 as u32;
+pub const POSEIDON_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon as u32;
 pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
 pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
 pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
@@ -149,6 +149,8 @@ pub struct ZiskInst {
     pub input_size: u64,
     pub sorted_pc_list_index: usize,
     pub riscv_inst: Option<String>,
+    pub index: u64, // internal field used for tracking the instruction creation order in the ROM
+    pub next_internal_inst: Option<u64>, // connection to next internal odd instruction, if any
 }
 
 /// Default constructor
@@ -187,6 +189,8 @@ impl Default for ZiskInst {
             input_size: 0,
             sorted_pc_list_index: 0,
             riscv_inst: None,
+            index: 0,
+            next_internal_inst: None,
         }
     }
 }
@@ -262,6 +266,10 @@ impl ZiskInst {
         }
         if self.m32 {
             s += &format!(" m32={}", self.m32);
+        }
+        s += &format!(" index={}", self.index);
+        if let Some(next_internal_inst) = self.next_internal_inst {
+            s += &format!(" next_internal_inst=0x{:x}", next_internal_inst);
         }
         s
     }

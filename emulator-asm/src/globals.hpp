@@ -19,12 +19,18 @@ extern bool verbose;
 extern bool save_to_file;
 extern bool share_input_shm; // Shares input shared memories: input, precompile results and control input, using a common name
 extern bool create_input_shm; // Create input shared memories.  If false, open them without creating them.  They must be previously created by another process (assembly emulator or witness computation)
-extern bool create_internal_shm; // Create internal shared memories.  If false, open them without creating them.  They must be previously created by another process (assembly emulator or witness computation)
-extern bool create_output_shm; // Create output shared memories.  If false, open them without creating them.  They must be previously created by another process (assembly emulator or witness computation)
+extern bool open_input_shm; // Open input shared memories.  If false, create them.  They must be created by another process (assembly emulator or witness computation)
 extern bool delete_input_shm; // Delete input shared memories.  If false, close them without deleting them.  They must be previously deleted by another process (assembly emulator or witness computation)
+extern bool create_internal_shm; // Create internal shared memories.  If false, open them without creating them.  They must be previously created by another process (assembly emulator or witness computation)
+extern bool open_internal_shm; // Open internal shared memories.  If false, create them.  They must be created by another process (assembly emulator or witness computation)
 extern bool delete_internal_shm; // Delete internal shared memories.  If false, close them without deleting them.  They must be previously deleted by another process (assembly emulator or witness computation)
+extern bool create_output_shm; // Create output shared memories.  If false, open them without creating them.  They must be previously created by another process (assembly emulator or witness computation)
+extern bool open_output_shm; // Open output shared memories.  If false, create them.  They must be created by another process (assembly emulator or witness computation)
 extern bool delete_output_shm; // Delete output shared memories.  If false, close them without deleting them.  They must be previously deleted by another process (assembly emulator or witness computation)
+extern bool create_semaphores; // Create semaphores
+extern bool delete_semaphores; // Delete semaphores
 extern bool just_create_all_shm; // Just create all shared memories and exit, without doing any other setup or starting the server.
+extern bool just_create_non_input_shm; // Just create all shared memories except the input ones and exit, without doing any other setup or starting the server.
 extern char input_file[4096];
 extern bool redirect_output_to_file;
 extern bool server; // Indicates that this process is a server
@@ -32,11 +38,9 @@ extern bool client; // Indicates that this process is a client (used for testing
 extern char shm_prefix[MAX_SHM_PREFIX_LENGTH]; // Shared memories prefix
 extern char sem_prefix[MAX_SHM_PREFIX_LENGTH]; // Semaphores prefix
 extern int map_locked_flag; // Flag used in mmap to indicate if the physical memory is locked in RAM (MAP_LOCKED) or can be swapped (0).  By default it is locked, but it can be unlocked with the -u argument, which can be useful for testing and debugging purposes, e.g. to allow core dumps when the assembly code crashes
-extern uint64_t chunk_mask; // ZIP: 0, 1, 2, 3, 4, 5, 6 or 7
 extern bool do_shutdown; // If true, the client will perform a shutdown request to the server when done
 extern uint64_t number_of_mt_requests; // Loop to send this number of minimal trace requests
 extern uint16_t port; // Service TCP port
-extern uint64_t chunk_player_address; // Chunk player address, used for generation methods that use the chunk player, i.e. gen_method=8 or gen_method=10
 extern bool wait_flag; // If true, the shmem will get a flag set to 1 if we are waiting for a semaphore, and set it back to 0 when we are not waiting anymore. This can be used for debugging purposes to know if the assembly code is waiting for a semaphore or not.
 extern bool stdio; // If true, the assembly code will use standard input and output for communication instead of TCP
 extern int server_pid; // PID of the server process, used for testing purposes by the client
@@ -46,7 +50,6 @@ extern char shmem_control_input_name[128];
 extern char shmem_control_output_name[128];
 extern char shmem_input_name[128];
 extern char shmem_output_name[128];
-extern char shmem_mt_name[128];
 extern char shmem_precompile_name[128];
 extern char shmem_rom_name[128];
 extern char shmem_ram_name[128];
@@ -73,21 +76,14 @@ extern bool precompile_results_enabled;
 // Specifies how the assembly code generates the trace, and what information it includes.
 // It is specified with the mandatory argument --gen=<method>
 // It must match the value returned by the assembly function get_gen_method()
-// The enum names are equivalent to the rust ones defined in core/src/riscv2zisk.rs as AsmGenerationMethod
+// The enum names are equivalent to the rust ones defined in core/src/zisk_rom_2_asm.rs as AsmGenerationMethod
 // ZisK uses generation methods 1 (minimal trace), 2 (ROM histogram) and 7 (memory operations)
-// but the rest of methods can be used for testing and debugging purposes
+// The generation method 0 (fast) can be used for testing and debugging purposes
 typedef enum {
     Fast = 0,
     MinimalTrace = 1,
     RomHistogram = 2,
-    MainTrace = 3,
-    ChunksOnly = 4,
-    //BusOp = 5,
-    Zip = 6,
     MemOp = 7,
-    ChunkPlayerMTCollectMem = 8,
-    MemReads = 9,
-    ChunkPlayerMemReadsCollectMain = 10,
 } GenMethod;
 
 // Default generation method, can be overridden by the --gen argument
@@ -108,9 +104,6 @@ extern int shmem_input_fd;
 
 // Output trace shared memory
 extern int shmem_output_fd;
-
-// Input MT trace shared memory
-extern int shmem_mt_fd;
 
 // ROM shared memory
 extern int shmem_rom_fd;
@@ -142,6 +135,7 @@ extern uint64_t * shmem_control_input_address;
 extern volatile uint64_t * precompile_written_address;
 extern volatile uint64_t * precompile_exit_address;
 extern volatile uint64_t * input_written_address;
+extern volatile uint64_t * precompile_reset_address;
 
 // Control output shared memory
 extern int shmem_control_output_fd;
@@ -168,9 +162,6 @@ extern uint64_t realloc_counter;
 extern uint64_t wait_prec_avail_counter;
 extern uint64_t wait_input_avail_counter;
 extern uint64_t print_pc_counter;
-
-// Chunk player globals
-extern uint64_t chunk_player_mt_size;
 
 // Maximum number of steps to execute, used by the client to limit the execution steps of the
 // assembly code.

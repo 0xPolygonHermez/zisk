@@ -1,0 +1,18 @@
+---
+- name: Deploy zisk-worker systemd unit
+  ansible.builtin.template:
+    src: zisk-worker.service.j2
+    dest: "{{ zisk_worker_unit_file }}"
+    mode: "0644"
+    owner: root
+    group: root
+  notify:
+    - reload systemd
+    - restart zisk-worker
+
+- name: Ensure zisk-worker service is enabled and started
+  ansible.builtin.systemd_service:
+    name: zisk-worker
+    enabled: true
+    state: started
+    daemon_reload: true

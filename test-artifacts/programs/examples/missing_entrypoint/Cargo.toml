@@ -1,0 +1,7 @@
+[package]
+name = "missing_entrypoint"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true

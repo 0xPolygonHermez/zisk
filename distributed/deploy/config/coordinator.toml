@@ -1,0 +1,31 @@
+# coordinator.toml — ZisK Coordinator Docker configuration
+#
+# Mounted into the coordinator container at /etc/zisk/coordinator.toml.
+# Override individual values via environment variables (see env column in README)
+
+[service]
+name = "ZisK Coordinator"
+environment = "production"
+
+[server]
+host = "0.0.0.0"
+port = 7001
+shutdown_timeout_seconds = 30
+
+[metrics]
+enabled = true
+host = "0.0.0.0"
+port = 9091
+
+[logging]
+level = "info"
+format = "json"
+
+[backend]
+mode = "coordinator"
+
+[coordinator]
+# Port on which the embedded coordinator listens for worker connections.
+# Workers must connect to this port on the coordinator host/container.
+port = 50052
+# config_file = "/etc/zisk/coordinator.toml"  # optional: tune coordinator core internals

@@ -13,6 +13,8 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
+#include <signal.h>
+#include <setjmp.h>
 #include "server.hpp"
 #include "globals.hpp"
 #include "asm_provided.hpp"
@@ -21,6 +23,80 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
+
+/****************************/
+/* EMULATION FAULT RECOVERY */
+/****************************/
+// Catch synchronous signals raised while running the JIT-translated assembly
+// (a guest panic ends in `unimp`/OOB access) and longjmp back to a safe point
+// in `server_run` instead of letting the kernel kill the long-running service.
+// `sigsetjmp(env, 1)` saves the signal mask so the caught signal isn't left
+// blocked after recovery; the handler runs on `sigaltstack` because the
+// emulator swaps `rsp` to a guest stack via `MEM_RSP` mid-run.
+
+static sigjmp_buf emulation_jmp_buf;
+static volatile sig_atomic_t in_emulation = 0;
+static volatile sig_atomic_t caught_signal = 0;
+static char emulation_alt_stack[1 << 17]; // 128 KB
+
+static void on_emulation_signal(int sig)
+{
+    if (in_emulation)
+    {
+        in_emulation = 0;
+        caught_signal = (sig_atomic_t)sig;
+        siglongjmp(emulation_jmp_buf, 1);
+    }
+    // Faulted outside emulation — no recovery point; restore default and re-raise.
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+// Write a minimal "end" chunk at MEM_CHUNK_ADDRESS so the parent's reader
+// sees `end=1` and exits its chunk loop cleanly. Used on signal recovery to
+// avoid the parent's 10 s chunk-wait timeout. Layouts must match AsmMOChunk
+// / AsmMTChunk in emulator-asm/asm-runner/src/asm_mo.rs and asm_mt.rs:
+//   MemOp: { end, mem_ops_size }                                — 2 u64s, end @ 0
+//   MT-style: pc,sp,c,step, regs[33], last_c,end,steps,mem_reads_size — 41 u64s, end @ 38
+static void write_abort_chunk(void)
+{
+    bool is_mo = (gen_method == MemOp);
+    size_t n_words = is_mo ? 2 : 41;
+    size_t end_idx = is_mo ? 0 : 38;
+
+    uint64_t * chunk = (uint64_t *)MEM_CHUNK_ADDRESS;
+    memset(chunk, 0, n_words * sizeof(uint64_t));
+    chunk[end_idx] = 1;
+    MEM_CHUNK_ADDRESS += n_words * sizeof(uint64_t);
+}
+
+void server_signal_handler(void)
+{
+    stack_t alt_stack = {
+        .ss_sp   = emulation_alt_stack,
+        .ss_size = sizeof(emulation_alt_stack),
+    };
+    if (sigaltstack(&alt_stack, NULL) != 0)
+    {
+        asm_printf("WARNING: sigaltstack failed errno=%d=%s\n", errno, strerror(errno));
+    }
+
+    struct sigaction sa = {
+        .sa_handler = on_emulation_signal,
+        .sa_flags   = SA_ONSTACK | SA_NODEFER,
+    };
+    sigemptyset(&sa.sa_mask);
+
+    int signals[] = { SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT };
+    for (size_t i = 0; i < sizeof(signals) / sizeof(signals[0]); ++i)
+    {
+        if (sigaction(signals[i], &sa, NULL) != 0)
+        {
+            asm_printf("WARNING: sigaction(sig=%d) failed errno=%d=%s\n",
+                       signals[i], errno, strerror(errno));
+        }
+    }
+}
 
 /**********/
 /* SERVER */
@@ -41,8 +117,7 @@
 
 // ROM histogram
 uint64_t histogram_size = 0;
-uint64_t bios_size = 0;
-uint64_t program_size = 0;
+uint64_t rom_length = 0;
 
 // Shutdown done semaphore: notifies the caller when a shutdown has been processed
 sem_t * sem_shutdown_done = NULL;
@@ -57,13 +132,18 @@ void server_setup (void)
     /*******/
     /* ROM */
     /*******/
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
 
         if (create_internal_shm)
         {
+            // If we are not reusing an existing shared memory, we be more strict with the
+            // permissions during the emulation, saving the time to initialize it, done only once.
+            // First, the ROM shared memory is created and initialized (zero + ROM init data).
+            // Then, the sared memory is reopened as read-only, containing the proper constant data
+            // values, and preventing the assembly code from modifying it.
+
             // Make sure the rom shared memory is deleted
             shm_unlink(shmem_rom_name);
 
@@ -85,9 +165,94 @@ void server_setup (void)
 
             // Sync
             fsync(shmem_rom_fd);
+
+            // Map as read-write for writing the initialization data
+#ifdef USE_HUGE_PAGES
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            }
+#else
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+#endif
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRom != ROM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+                exit(-1);
+            }
+
+            // Initialize the ROM content by calling the assembly code, which writes it to the
+            // shared memory
+            write_ro_init_data();
+
+            // Sync
+            fsync(shmem_rom_fd);
+
+            // Unmap the ROM memory since we will remap it later as read-only (if create_internal_shm is false) or with the same permissions (if create_internal_shm is true)
+            if (munmap(pRom, ROM_SIZE) != 0)
+            {
+                asm_printf("ERROR: Failed calling munmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Close the descriptor since we don't need it anymore after initializing the content
+            if (close(shmem_rom_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_rom_fd = -1;
+
+            // Reopen the rom shared memory as read-only for mapping it
+            shmem_rom_fd = shm_open(shmem_rom_name, O_RDONLY, 0666);
+            if (shmem_rom_fd < 0)
+            {
+                asm_printf("ERROR: Failed reopening rom RO shm_open(%s) as read-only errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
+
+            // Remap as read-only for the assembly code, which should not modify it
+#ifdef USE_HUGE_PAGES
+            pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            }
+#else
+            pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+#endif
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRom != ROM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+                exit(-1);
+            }
+
+            // Close the descriptor since we don't need it anymore after mapping
+            if (close(shmem_rom_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_rom_fd = -1;
         }
         else
         {
+            // If we are reusing an existing shared memory, we have to map it as read-write and
+            // initialize the ROM content before every emulation.
+
             // Open the rom shared memory
             shmem_rom_fd = shm_open(shmem_rom_name, O_RDWR, 0666);
             if (shmem_rom_fd < 0)
@@ -95,38 +260,46 @@ void server_setup (void)
                 asm_printf("ERROR: Failed opening rom RW shm_open(%s) as read-write errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
                 exit(-1);
             }
-        }
 
+            // Map as read-write for writing the initialization data before every emulation
 #ifdef USE_HUGE_PAGES
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
-        if (pRom == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
-        }
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_rom_fd, 0);
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) with huge pages errno=%d=%s\n", errno, strerror(errno));
+                pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            }
 #else
-        void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
+            void * pRom = mmap((void *)ROM_ADDR, ROM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_rom_fd, 0);
 #endif
-        if (pRom == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pRom != ROM_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
-            exit(-1);
-        }
+            if (pRom == MAP_FAILED)
+            {
+                asm_printf("ERROR: Failed calling mmap(rom) errno=%d=%s\n", errno, strerror(errno));
+                exit(-1);
+            }
+            if ((uint64_t)pRom != ROM_ADDR)
+            {
+                asm_printf("ERROR: Called mmap(rom) but returned address = %p != 0x%lx\n", pRom, ROM_ADDR);
+                exit(-1);
+            }
 
-        // Close the descriptor since we don't need it anymore after mapping
-        close(shmem_rom_fd);
-        shmem_rom_fd = -1;
+            // Close the descriptor since we don't need it anymore after mapping
+            if (close(shmem_rom_fd) != 0)
+            {
+                asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_rom_name, errno, strerror(errno));
+                exit(-1);
+            }
+            shmem_rom_fd = -1;
+
+            // Initialize data by calling the assembly code
+            write_ro_init_data();
+        }
 
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
             duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(rom) mapped %lu B and returned address %p in %lu us\n", ROM_SIZE, pRom, duration);
+            asm_printf("mmap(rom) mapped %lu B and returned address %p in %lu us\n", ROM_SIZE, (void *)ROM_ADDR, duration);
         }
     }
 
@@ -134,7 +307,6 @@ void server_setup (void)
     /* INPUT */
     /*********/
 
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -169,6 +341,7 @@ void server_setup (void)
                 asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
                 exit(-1);
             }
+            shmem_input_fd = -1;
         }
 
         // Open the input shared memory as read-only
@@ -179,16 +352,28 @@ void server_setup (void)
             exit(-1);
         }
 
-        // Map input address space
+        // The maximum input size is MAX_INPUT_SIZE = 1GB, but in most of the cases the actual input
+        // size is much smaller, so we can map this address space in two parts:
+        // - 128 MB with MAP_LOCKED to ensure it is always resident in RAM
+        // - The rest of the 1 GB without MAP_LOCKED, taking RAM physical pages only if used
+
+        // Check the input sizes
+        if (LOCKED_INPUT_SIZE > MAX_INPUT_SIZE)
+        {
+            asm_printf("ERROR: LOCKED_INPUT_SIZE=%lu is higher than MAX_INPUT_SIZE=%lu\n", LOCKED_INPUT_SIZE, MAX_INPUT_SIZE);
+            exit(-1);
+        }
+
+        // Map 128 MB of input address space locked to physical RAM
 #ifdef USE_HUGE_PAGES
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag | MAP_HUGETLB, shmem_input_fd, 0);
         if (pInput == MAP_FAILED)
         {
             asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
-            pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+            pInput = mmap((void *)INPUT_ADDR, LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
         }
 #else
-        void * pInput = mmap((void *)INPUT_ADDR, MAX_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
+        void * pInput = mmap((void *)INPUT_ADDR, LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_input_fd, 0);
 #endif
         if (pInput == MAP_FAILED)
         {
@@ -200,6 +385,36 @@ void server_setup (void)
             asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR);
             exit(-1);
         }
+
+        // Map the rest of the input address space without MAP_LOCKED
+#ifdef USE_HUGE_PAGES
+        pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED | MAP_HUGETLB, shmem_input_fd, LOCKED_INPUT_SIZE);
+        if (pInput == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(input) with huge pages errno=%d=%s\n", errno, strerror(errno));
+            pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED, shmem_input_fd, LOCKED_INPUT_SIZE);
+        }
+#else
+        pInput = mmap((void *)(INPUT_ADDR + LOCKED_INPUT_SIZE), MAX_INPUT_SIZE - LOCKED_INPUT_SIZE, PROT_READ, MAP_SHARED | MAP_FIXED, shmem_input_fd, LOCKED_INPUT_SIZE);
+#endif
+        if (pInput == MAP_FAILED)
+        {
+            asm_printf("ERROR: Failed calling mmap(input) errno=%d=%s\n", errno, strerror(errno));
+            exit(-1);
+        }
+        if ((uint64_t)pInput != INPUT_ADDR + LOCKED_INPUT_SIZE)
+        {
+            asm_printf("ERROR: Called mmap(pInput) but returned address = %p != 0x%lx\n", pInput, INPUT_ADDR + LOCKED_INPUT_SIZE);
+            exit(-1);
+        }
+
+        // Close the descriptor since we don't need it anymore after mapping
+        if (close(shmem_input_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_input_name, errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_input_fd = -1;
         
         // Report duration
         if (verbose)
@@ -253,6 +468,7 @@ void server_setup (void)
                 asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
                 exit(-1);
             }
+            shmem_precompile_fd = -1;
         }
 
         // Open the precompile shared memory as read-only
@@ -272,6 +488,15 @@ void server_setup (void)
         }
         shmem_precompile_address = pPrecompile;
         precompile_results_address = (uint64_t *)pPrecompile;
+
+        // Close the descriptor since we don't need it anymore after mapping
+        if (close(shmem_precompile_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_precompile_name, errno, strerror(errno));
+            exit(-1);
+        }
+        shmem_precompile_fd = -1;
+        
         if (verbose)
         {
             gettimeofday(&stop_time, NULL);
@@ -369,13 +594,14 @@ void server_setup (void)
             asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
             exit(-1);
         }
+        shmem_control_input_fd = -1;
     }
 
     // Open the control input shared memory as read-only
     shmem_control_input_fd = shm_open(shmem_control_input_name, O_RDONLY, 0666);
     if (shmem_control_input_fd < 0)
     {
-        asm_printf("ERROR: Failed calling precompile RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+        asm_printf("ERROR: Failed calling shmem_control_input_fd RO shm_open(%s) as read-only errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
         exit(-1);
     }
 
@@ -395,6 +621,15 @@ void server_setup (void)
     precompile_written_address = &shmem_control_input_address[0];
     precompile_exit_address = &shmem_control_input_address[1];
     input_written_address = &shmem_control_input_address[2];
+    precompile_reset_address = &shmem_control_input_address[3];
+
+    // Close the descriptor since we don't need it anymore after mapping
+    if (close(shmem_control_input_fd) != 0)
+    {
+        asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_input_name, errno, strerror(errno));
+        exit(-1);
+    }
+    shmem_control_input_fd = -1;
 
     // Report duration
     if (verbose)
@@ -434,6 +669,14 @@ void server_setup (void)
 
         // Sync
         fsync(shmem_control_output_fd);
+
+        // Log duration
+        if (verbose)
+        {
+            gettimeofday(&stop_time, NULL);
+            duration = TimeDiff(start_time, stop_time);
+            asm_printf("Created control output shmem %s with size %lu B in %lu us\n", shmem_control_output_name, CONTROL_OUTPUT_SIZE, duration);
+        }
     }
     else
     {
@@ -463,6 +706,14 @@ void server_setup (void)
     waiting_for_precompile_address = &shmem_control_output_address[1];
     waiting_for_input_address = &shmem_control_output_address[2];
 
+    // Close the descriptor since we don't need it anymore after mapping
+    if (close(shmem_control_output_fd) != 0)
+    {
+        asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_control_output_name, errno, strerror(errno));
+        exit(-1);
+    }
+    shmem_control_output_fd = -1;
+
     // Report duration
     if (verbose)
     {
@@ -475,7 +726,6 @@ void server_setup (void)
     /* RAM */
     /*******/
 
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -538,7 +788,11 @@ void server_setup (void)
         }
         
         // Close the descriptor since we don't need it anymore after mapping
-        close(shmem_ram_fd);
+        if (close(shmem_ram_fd) != 0)
+        {
+            asm_printf("ERROR: Failed calling close(%s) errno=%d=%s\n", shmem_ram_name, errno, strerror(errno));
+            exit(-1);
+        }
         shmem_ram_fd = -1;
 
         // Report duration
@@ -550,6 +804,7 @@ void server_setup (void)
         }
     }
 
+
     /****************/
     /* OUTPUT TRACE */
     /****************/
@@ -557,72 +812,24 @@ void server_setup (void)
     // If ROM histogram, configure trace size
     if (gen_method == RomHistogram)
     {
-        // Get max PC values for low and high addresses
-        uint64_t max_bios_pc = get_max_bios_pc();
-        uint64_t max_program_pc = get_max_program_pc();
-        assert(max_bios_pc >= 0x1000);
-        assert((max_bios_pc & 0x3) == 0);
-        assert(max_program_pc >= 0x80000000);
+        // Get rom length, i.e. number of instructions
+        rom_length = get_rom_length();
 
-        // Calculate sizes
-        bios_size = ((max_bios_pc - 0x1000) >> 2) + 1;
-        program_size = max_program_pc - 0x80000000 + 1;
-        histogram_size = (4 + 1 + bios_size + 1 + program_size)*8;
-        initial_trace_size = ((histogram_size/TRACE_SIZE_GRANULARITY) + 1) * TRACE_SIZE_GRANULARITY;
-        trace_size = initial_trace_size;
+        // Calculate histogram size
+        histogram_size = (4 + 1 + rom_length)*8;
+        if (histogram_size > TRACE_INITIAL_SIZE_RH)
+        {
+            asm_printf("ERROR: ROM histogram size %lu is larger than the trace initial size RH %lu\n", histogram_size, TRACE_INITIAL_SIZE_RH);
+            exit(-1);
+        }
     }
 
     // Output trace
     if ((gen_method == MinimalTrace) ||
         (gen_method == RomHistogram) ||
-        (gen_method == MainTrace) ||
-        (gen_method == Zip) ||
-        (gen_method == MemOp) ||
-        (gen_method == ChunkPlayerMTCollectMem) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
+        (gen_method == MemOp))
     {
         trace_map_initialize();
-    }
-
-    /***********************/
-    /* INPUT MINIMAL TRACE */
-    /***********************/
-
-    // Input MT trace
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
-
-        // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
-        if (shmem_mt_fd < 0)
-        {
-            asm_printf("ERROR: Failed calling mt shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
-            exit(-1);
-        }
-
-        // Map it to the trace address
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
-        if (pTrace == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
-            exit(-1);
-        }
-
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
-        }
     }
 
     /******************/
@@ -711,6 +918,7 @@ void server_setup (void)
         duration = TimeDiff(start_time, stop_time);
         asm_printf("sem_open(%s) succeeded in %lu us\n", sem_input_avail_name, duration);
     }
+    
 }
 
 void server_reset_fast (void)
@@ -739,17 +947,28 @@ void server_reset_fast (void)
 void server_reset_slow (void)
 {
     // Reset RAM and ROM data for next emulation
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
 #ifdef DEBUG
         gettimeofday(&start_time, NULL);
 #endif
+        // Reset RAM data
         memset((void *)RAM_ADDR, 0, RAM_SIZE);
-        memset((void *)ROM_ADDR, 0, ROM_SIZE);
+        write_rw_init_data();
+
+        // Reset ROM data only if we are sharing the ROM memory with other assembly processes, i.e.
+        // if other programs are executed using the same ROM, with different content.
+        // If we created it from scratch, we initialized it with the correct content and reopen it
+        // as read-only, so we don't need to reset it again.
+        if (!create_internal_shm)
+        {
+            memset((void *)ROM_ADDR, 0, ROM_SIZE);
+            write_ro_init_data();
+        }
+        
 #ifdef DEBUG
         gettimeofday(&stop_time, NULL);
         duration = TimeDiff(start_time, stop_time);
-        if (verbose) asm_printf("server_reset_slow() memset(ram) and memset(rom) in %lu us\n", duration);
+        if (verbose) asm_printf("server_reset_slow() memset(ram), write_rw_init_data(), and memset(rom) in %lu us\n", duration);
 #endif
     }
 }
@@ -757,10 +976,7 @@ void server_reset_slow (void)
 void server_reset_trace (void)
 {
     // Reset trace header and trace_used_size for next emulation
-    if ( (gen_method != ChunkPlayerMTCollectMem) &&
-         (gen_method != ChunkPlayerMemReadsCollectMain) &&
-         (gen_method != Fast) &&
-         (gen_method != RomHistogram) )
+    if ( (gen_method != Fast) && (gen_method != RomHistogram) )
     {
         // Reset trace: init output header data
         pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -789,7 +1005,8 @@ void server_run (void)
 {
     // If ROM histogram, reset the trace area to 0 for the histogram data since it represents the
     // ROM instruction multiplicity and one of them will be increased at every executed instruction
-    if ((gen_method == RomHistogram)) {
+    if ((gen_method == RomHistogram))
+    {
         memset((void *)trace_address, 0, trace_size);
     }
 
@@ -826,11 +1043,31 @@ void server_run (void)
     /* ASM */
     /*******/
 
-    // Call emulator assembly code
+    // Run the emulator under a sigsetjmp guard — see signal handler block above.
+    // On fault we set MEM_ERROR, write a sentinel "end" chunk so the parent's
+    // chunk-wait wakes immediately (instead of timing out), and fall through.
+    // The post-emulation code publishes MEM_ERROR in the trace header; the
+    // response then carries result=1 back to the parent, which reports the
+    // error.
     gettimeofday(&start_time,NULL);
-    if (verbose) asm_printf("Before calling emulator_start() trace_address=%lx\n", trace_address);
-    emulator_start();
-    if (verbose) asm_printf("After calling emulator_start() trace_address=%lx\n", trace_address);
+    if (verbose) asm_printf("Before calling emu_start() trace_address=%lx\n", trace_address);
+    caught_signal = 0;
+    bool emulation_aborted = false;
+    if (sigsetjmp(emulation_jmp_buf, 1) == 0)
+    {
+        in_emulation = 1;
+        emu_start();
+        in_emulation = 0;
+    }
+    else
+    {
+        in_emulation = 0;
+        MEM_ERROR = (uint64_t)caught_signal;
+        emulation_aborted = true;
+        asm_printf("WARNING: caught signal %d during emulation, aborting run\n",
+                   (int)caught_signal);
+    }
+    if (verbose) asm_printf("After calling emu_start() trace_address=%lx\n", trace_address);
     gettimeofday(&stop_time,NULL);
     assembly_duration = TimeDiff(start_time, stop_time);
 
@@ -929,11 +1166,7 @@ void server_run (void)
     // Complete output header data
     if ((gen_method == MinimalTrace) ||
         (gen_method == RomHistogram) ||
-        (gen_method == Zip) ||
-        (gen_method == MainTrace) ||
-        (gen_method == MemOp) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
+        (gen_method == MemOp))
     {
         uint64_t * pOutput = (uint64_t *)trace_address;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -943,8 +1176,7 @@ void server_run (void)
         if (gen_method == RomHistogram)
         {
             pOutput[3] = MEM_STEP;
-            pOutput[4] = bios_size;
-            pOutput[4 + bios_size + 1] = program_size;
+            pOutput[4] = rom_length;
         }
         else
         {
@@ -955,7 +1187,12 @@ void server_run (void)
     // Notify client
     if (gen_method == RomHistogram)
     {
-        _chunk_done();   
+        _chunk_done();
+    }
+    else if (emulation_aborted && call_chunk_done)
+    {
+        write_abort_chunk();
+        _chunk_done();
     }
 
 
@@ -976,17 +1213,13 @@ void server_run (void)
 #endif
 
     // Log trace
-    if (((gen_method == MinimalTrace) || (gen_method == Zip)) && trace)
+    if ((gen_method == MinimalTrace) && trace)
     {
         log_minimal_trace();
     }
     if ((gen_method == RomHistogram) && trace)
     {
         log_histogram();
-    }
-    if ((gen_method == MainTrace) && trace)
-    {
-        log_main_trace();
     }
     if ((gen_method == MemOp) && trace)
     {
@@ -995,18 +1228,6 @@ void server_run (void)
     if ((gen_method == MemOp) && save_to_file)
     {
         save_mem_op_to_files();
-    }
-    if ((gen_method == ChunkPlayerMTCollectMem) && trace)
-    {
-        log_mem_trace();
-    }
-    if ((gen_method == MemReads) && trace)
-    {
-        log_minimal_trace();
-    }
-    if ((gen_method == ChunkPlayerMemReadsCollectMain) && trace)
-    {
-        log_chunk_player_main_trace();
     }
 }
 
@@ -1057,7 +1278,7 @@ void server_cleanup (void)
         }
     }
 
-    if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    if (precompile_results_enabled)
     {
         // Cleanup PRECOMPILE
         result = munmap((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE);

@@ -161,6 +161,8 @@ impl DmaCounterInputGen {
                 let rows = loop_count.div_ceil(Self::OPS_X_ROW[operation]);
                 self.counters[DMA_64_ALIGNED_OFFSET + operation] += rows;
                 self.counters[DMA_64_ALIGNED_INPUTS_OFFSET + operation] += 1;
+                // Some operations can be grouped in different rows. For example, 8 memcpy words
+                // could be grouped into two rows of 4 operations or into one row of 8 operations.
                 if Self::IS_DOUBLE[operation] == 1 {
                     let rows = loop_count.div_ceil(Self::OPS_X_ROW[operation + 4]);
                     self.counters[DMA_64_ALIGNED_OFFSET + operation + 4] += rows;

@@ -161,7 +161,7 @@ pub fn skip_dma_memcmp_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
     let dst64_from = dst as u32 & !0x07;
     let dst64_to = (dst + count + 7) as u32 & !0x07;
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
-    let (count64, step) = (dst64_to as u64 - dst64_from as u64 + 1, data[STEP]);
+    let (_count64, step) = (dst64_to as u64 - dst64_from as u64 + 1, data[STEP]);
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
     println!("[dma_memcmp] SKIP DST:[0x{dst64_from:08X}..=0x{dst64_to:08X}] C:{count} S:{step}");
 
@@ -180,7 +180,7 @@ pub fn skip_dma_memcmp_mem_inputs<P: MemProcessor>(data: &[u64], mem_processors:
     let src64_from = src as u32 & !0x07;
     let src64_to = (src + count + 7) as u32 & !0x07;
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
-    let (count64, step) = (dst64_to as u64 - dst64_from as u64 + 1, data[STEP]);
+    let (_count64, step) = (dst64_to as u64 - dst64_from as u64 + 1, data[STEP]);
 
     #[cfg(feature = "debug_dma_gen_mem_inputs")]
     println!("[dma_memcmp] SKIP SRC:[0x{src64_from:08X}..=0x{src64_to:08X}] C:{count} S:{step}");

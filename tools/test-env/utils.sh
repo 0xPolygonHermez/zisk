@@ -52,8 +52,13 @@ warn() {
 }
 
 err() {
-    echo "${RED}❌ Error: $1${RESET}" >&2
-    press_any_key
+    local message="$1"
+    local skip_press_any_key="${2:-false}"
+
+    echo "${RED}❌ Error: ${message}${RESET}" >&2
+    if [[ "${skip_press_any_key}" != "true" ]]; then
+        press_any_key
+    fi
     return 1
 }
 
@@ -67,8 +72,6 @@ tolower() {
 
 # load_env: Load environment variables from .env file, without overwriting existing ones
 load_env() {
-    local zisk_repo_dir=$1
-
     # Check if .env file exists
     if [[ ! -f ".env" ]]; then
         info "Skipping loading .env file as it does not exist"
@@ -87,22 +90,22 @@ load_env() {
             continue
         fi
 
-        # Try to get the value from Cargo.toml (takes precedence)
-        key_value=$(get_var_from_cargo_toml "$key") || return 1
-
-        if [[ -n "$key_value" ]]; then
-            # If defined in Cargo.toml, export it (overrides anything else)
-            export "$key=$key_value"
-            [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
-        elif [[ -z "${!key}" ]]; then
-            # If not already defined, set the value from the .env file if ZISK_GHA is not set
-            if ! is_gha; then
-                export "$key=$value"
-                [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
-            fi
-        else
-            # Already defined in the shell: keep current value
+        # Precedence (highest first): already-set env var, then .env, then Cargo.toml.
+        if [[ -n "${!key}" ]]; then
+            # Already defined in the shell/CI environment: keep current value.
             [[ "${!key}" != "0" ]] && __env_print_lines+=(" - [shell] ${key} = ${!key}")
+        elif [[ -n "$value" ]] && ! is_gha; then
+            # Value from .env (skipped under ZISK_GHA, where the environment and
+            # Cargo.toml drive configuration).
+            export "$key=$value"
+            [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
+        else
+            # Fall back to Cargo.toml.
+            key_value=$(get_var_from_cargo_toml "$key") || return 1
+            if [[ -n "$key_value" ]]; then
+                export "$key=$key_value"
+                [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
+            fi
         fi
     done < .env
 
@@ -157,7 +160,7 @@ is_proving_key_installed() {
 
 # is_gha: Check if the script is running in a GitHub Actions environment
 is_gha() {
-    [[ "$ZISK_GHA" == "1" ]]
+    [[ "${ZISK_GHA:-}" == "1" ]]
 }
 
 # get_var_list_to_array: fills a bash array with items from a comma-separated env var
@@ -254,29 +257,6 @@ get_var_from_cargo_toml() {
     local var_lc
     var_lc="$(printf '%s' "$var_name" | tr '[:upper:]' '[:lower:]')"
 
-    # Special case: pil2_proofman_branch
-    # Assumption: the "proofman = { ... }" entry is a single line and contains "pil2-proofman" in the URL
-    if [[ "$var_lc" == "pil2_proofman_branch" ]]; then
-        # Find the single line starting with "proofman =" that references pil2-proofman
-        local proof_line
-        proof_line="$(LC_ALL=C grep -E '^[[:space:]]*proofman[[:space:]]*=' "$file")"
-
-        if [[ -n "$proof_line" ]]; then
-            local branch
-            # Try to extract branch in three formats: "value", 'value', or unquoted value
-            branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*"([^"]*)".*/\1/p')
-            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE "s/.*branch[[:space:]]*=[[:space:]]*'([^']*)'.*/\1/p")
-            [[ -z "$branch" ]] && branch=$(printf '%s' "$proof_line" | LC_ALL=C sed -nE 's/.*branch[[:space:]]*=[[:space:]]*([^,}[:space:]]+).*/\1/p')
-
-            if [[ -n "$branch" ]]; then
-                echo "$branch"
-                return
-            fi
-            # If no branch found, fall back to the standard variable lookup below
-        fi
-        # If no proofman line found, fall back to the standard variable lookup below
-    fi
-
     # Always add prefix "gha_"
     local prefixed_var="gha_${var_lc}"
 
@@ -296,10 +276,10 @@ get_var_from_cargo_toml() {
 
 # get_zisk_repo_dir: returns the ZisK repository directory
 get_zisk_repo_dir() {
-    if [[ -n "${ZISK_REPO_DIR}" ]]; then
+    if [[ -n "${ZISK_REPO_DIR:-}" ]]; then
         echo "${ZISK_REPO_DIR}"
     else
-        echo "${WORKSPACE_DIR}/zisk"
+        echo "${WORKSPACE_DIR:-${PWD}}/zisk"
     fi
 }
 
@@ -369,9 +349,8 @@ run_timed() {
 get_platform || return 1
 # Sets PROFILE and PREF_SHELL based on the current shell
 get_shell_and_profile || return 1
-# Ensure profile is loaded
-touch $PROFILE
-source "$PROFILE"
+
+source "$HOME/.cargo/env"
 
 # Define directories
 ZISK_DIR="$HOME/.zisk"

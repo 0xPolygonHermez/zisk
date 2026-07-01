@@ -1,3 +1,5 @@
+#![no_std]
+
 mod syscall;
 pub use syscall::*;
 
@@ -6,3 +8,6 @@ pub use profile::*;
 
 mod labels;
 pub use labels::*;
+
+pub mod hints;
+pub use hints::*;

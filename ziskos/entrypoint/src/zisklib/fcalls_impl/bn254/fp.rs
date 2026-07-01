@@ -6,7 +6,7 @@ use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_f
 
 use super::P;
 
-/// Perform the inversion of a non-zero field element in Fp
+/// Perform the inversion of a NON-ZERO field element in Fp
 pub fn fcall_bn254_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a: &[u64; 4] = &params[0..4].try_into().unwrap();
@@ -18,6 +18,18 @@ pub fn fcall_bn254_fp_inv(params: &[u64], results: &mut [u64]) -> i64 {
     results[0..4].copy_from_slice(&inv);
 
     4
+}
+
+pub fn bn254_fp_inv(a: &[u64; 4]) -> [u64; 4] {
+    let a_big = biguint_from_u64_digits(a);
+    let inv = a_big.modinv(&P);
+    match inv {
+        Some(inverse) => n_u64_digits_from_biguint(&inverse),
+        None => {
+            // Handle the case where the inverse does not exist
+            panic!("Inverse does not exist");
+        }
+    }
 }
 
 pub fn bn254_fp_add(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
@@ -60,18 +72,6 @@ pub fn bn254_fp_square(a: &[u64; 4]) -> [u64; 4] {
     let a_big = biguint_from_u64_digits(a);
     let square = (a_big.clone() * a_big) % &*P;
     n_u64_digits_from_biguint(&square)
-}
-
-pub fn bn254_fp_inv(a: &[u64; 4]) -> [u64; 4] {
-    let a_big = biguint_from_u64_digits(a);
-    let inv = a_big.modinv(&P);
-    match inv {
-        Some(inverse) => n_u64_digits_from_biguint(&inverse),
-        None => {
-            // Handle the case where the inverse does not exist
-            panic!("Inverse does not exist");
-        }
-    }
 }
 
 #[cfg(test)]

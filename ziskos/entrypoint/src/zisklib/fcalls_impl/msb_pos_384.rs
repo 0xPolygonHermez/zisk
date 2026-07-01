@@ -1,3 +1,5 @@
+/// Finds the limb index and bit position of the most significant set bit across two
+/// 384-bit values `x` and `y`. Panics if both are zero.
 pub fn fcall_msb_pos_384(parameters: &[u64], results: &mut [u64]) -> i64 {
     // Check if the parameters are valid
     let x = &parameters[0..6].try_into().unwrap();

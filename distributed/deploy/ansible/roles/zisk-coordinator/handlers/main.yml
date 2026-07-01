@@ -1,0 +1,9 @@
+---
+- name: reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: restart zisk-coordinator
+  ansible.builtin.systemd_service:
+    name: zisk-coordinator
+    state: restarted

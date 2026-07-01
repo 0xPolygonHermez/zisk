@@ -12,7 +12,6 @@ lib-c = { workspace = true }
 circuit = { workspace = true }
 
 ark-ff = { workspace = true }
-ark-std = { workspace = true }
 ark-secp256k1 = { workspace = true }
 ark-secp256r1 = { workspace = true }
 ark-bn254 = { workspace = true }

@@ -1,0 +1,119 @@
+# Default values for zisk-worker. Override per environment.
+# Values that MUST be set are flagged "REQUIRED — no sensible default".
+
+replicaCount: 1
+
+image:
+  repository: zisk-worker
+  tag: ""              # empty → falls back to .Chart.appVersion (see _helpers.tpl)
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Coordinator gRPC endpoint. Cluster-internal DNS recommended:
+#   coordinator.<namespace>.svc.cluster.local:7000
+# REQUIRED — no sensible default.
+coordinator:
+  url: ""
+
+# Worker-side flags. Mirrored from worker/install.sh and worker.toml.
+# Anything left empty/false is omitted from the args list.
+worker:
+  # workerId is auto-UUID'd by the worker if empty. Leave empty for stateless
+  # replicas. Set explicitly if you need stable identity (also switch the
+  # workload to a StatefulSet — see workloadKind below).
+  workerId: ""
+  computeCapacity: 1
+  emulator: false
+  asm: ""              # path inside the container (e.g. /opt/zisk/zisk/...)
+  gpu: false
+  logLevel: info       # trace|debug|info|warn|error
+
+# Path to a worker.toml that the chart mounts as a ConfigMap. The full file
+# content goes here; the chart writes it to a ConfigMap and mounts it at
+# /etc/zisk/worker.toml. Leave empty to mount nothing (the worker uses CLI
+# args only — only works if your worker.toml would be defaults-only).
+config:
+  workerToml: |
+    # Minimal worker.toml — overrides via CLI args (set in deployment.yaml).
+    # See distributed/crates/worker/config/prod.toml for the full schema.
+
+# Proving key strategy. Pick ONE. The chart picks the right volume mount and
+# (for "download") init container based on .strategy.
+provingKey:
+  strategy: pvc      # pvc | image | download
+  # strategy=pvc: bundle lives on a ReadOnlyMany PVC pre-created by the
+  # operator. PVC layout must match the standard /opt/zisk/ tree.
+  pvc:
+    claimName: zisk-bundle
+  # strategy=image: bundle is baked into the worker image at /opt/zisk/.
+  # No volume mounted; chart sets ZISK_HOME=/opt/zisk via env.
+  # (Build-time concern — no chart values needed.)
+
+  # strategy=download: init container fetches the proving-key tarball into an
+  # emptyDir on every pod start. Slow + bandwidth-heavy at scale; only use for
+  # one-off testing or single-replica setups.
+  download:
+    starkUrl: ""     # e.g. https://storage.googleapis.com/zisk-setup/zisk-provingkey-0.17.0.tar.gz
+    starkMd5Url: ""
+    snarkUrl: ""     # optional; only when snark.enabled=true
+    snarkMd5Url: ""
+
+  # Optional SNARK proving key — applies only with strategy=pvc or =download.
+  snark:
+    enabled: false
+    # If strategy=pvc: defaults to ${pvc.claimName}/provingKeySnark.
+    # If strategy=download: see download.snarkUrl above.
+
+# Per-pod ephemeral cache. Cleared on pod restart; rebuilt on first job.
+# For a persistent cache, switch workloadKind to StatefulSet and add a
+# volumeClaimTemplate (see notes in templates/deployment.yaml).
+cache:
+  size: 50Gi
+
+# "Deployment" or "StatefulSet". StatefulSet gives stable pod names + per-pod
+# PVCs (useful with a persistent cache or a stable workerId per ordinal).
+workloadKind: Deployment
+
+resources:
+  requests:
+    cpu: "8"
+    memory: "32Gi"
+  limits:
+    cpu: "32"
+    memory: "128Gi"
+    # Uncomment for GPU workers (also set worker.gpu=true and pull a GPU
+    # image variant):
+    # nvidia.com/gpu: 1
+
+# Worker is compute-heavy. Schedule onto dedicated nodes if you have them.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Gracefully drain in-flight work on rolling updates / scale-down. The worker
+# should respond to SIGTERM by finishing the current chunk and exiting.
+terminationGracePeriodSeconds: 300
+
+# Horizontal autoscaling. The CPU-based default is a coarse approximation;
+# for production, plug in a custom external metric tracking coordinator
+# queue depth (see e.g. KEDA or the prometheus-adapter).
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Pod-level security. UID/GID must match the zisk user baked into
+# distributed/deploy/k8s/Dockerfile.worker — drift here means the worker
+# can't read its own bundle. fsGroup also drives ownership of the proving-key
+# PVC mount.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 998
+  runAsGroup: 999
+  fsGroup: 999
+
+serviceAccount:
+  create: true
+  name: ""             # empty → generated from chart fullname
+  annotations: {}

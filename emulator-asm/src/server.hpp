@@ -7,5 +7,6 @@ void server_reset_slow (void);
 void server_reset_trace (void);
 void server_run (void);
 void server_cleanup (void);
+void server_signal_handler (void);
 
 #endif // EMULATOR_ASM_SERVER_HPP

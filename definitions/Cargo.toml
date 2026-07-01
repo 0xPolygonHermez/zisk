@@ -17,5 +17,4 @@ path = "src/lib.rs"
 
 [features]
 default = []
-disable_distributed = []
 stats = []

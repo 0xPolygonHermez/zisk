@@ -1252,7 +1252,7 @@ void Div256_benchmark(uint64_t *data) {
         for (uint64_t i = 0; i<N_TESTS; i++)
         {
             uint64_t *test_data = data + i * TEST_SIZE_U64;
-            BigInt256Div(test_data, test_data + 8);
+            Uint256Div(test_data, test_data + 8);
         }
 
         uint64_t duration = TimeDiff(startTime);

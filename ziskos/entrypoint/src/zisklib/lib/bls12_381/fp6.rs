@@ -8,7 +8,7 @@ use super::{
     },
 };
 
-/// Addition in Fp6
+/// Addition in the degree 6 extension of the BLS12-381 curve
 #[inline]
 pub fn add_fp6_bls12_381(
     a: &[u64; 36],
@@ -30,7 +30,7 @@ pub fn add_fp6_bls12_381(
     result
 }
 
-/// Doubling in Fp6
+/// Doubling in the degree 6 extension of the BLS12-381 curve
 #[inline]
 pub fn dbl_fp6_bls12_381(
     a: &[u64; 36],
@@ -49,7 +49,7 @@ pub fn dbl_fp6_bls12_381(
     result
 }
 
-/// Negation in Fp6
+/// Negation in the degree 6 extension of the BLS12-381 curve
 #[inline]
 pub fn neg_fp6_bls12_381(
     a: &[u64; 36],
@@ -68,7 +68,7 @@ pub fn neg_fp6_bls12_381(
     result
 }
 
-/// Subtraction in Fp6
+/// Subtraction in the degree 6 extension of the BLS12-381 curve
 #[inline]
 pub fn sub_fp6_bls12_381(
     a: &[u64; 36],
@@ -90,7 +90,7 @@ pub fn sub_fp6_bls12_381(
     result
 }
 
-/// Multiplication in Fp6
+/// Multiplication in the degree 6 extension of the BLS12-381 curve
 //  in: (a1 + a2·v + a3·v²),(b1 + b2·v + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
 //  out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
 //       - c1 = a1·b1 + [a2·b3 + a3·b2]·(1+u)
@@ -217,7 +217,7 @@ pub fn mul_fp6_bls12_381(
     result[24..36].copy_from_slice(&c3);
     result
 }
-/// Multiplication of a = a1 + a2·v + a3·v² and b = b2·v in Fp6
+/// Sparse multiplication in the degree 6 extension of the BLS12-381 curve: a = a1 + a2·v + a3·v², b = b2·v
 //
 //  in: (a1 + a2·v + a3·v²),(b2·v) ∈ Fp6, where ai,bi ∈ Fp2
 //  out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
@@ -270,7 +270,7 @@ pub fn sparse_mula_fp6_bls12_381(
     result
 }
 
-/// Multiplication of a = a1 + a2·v + a3·v² and b = b2·v + b3·v² in Fp6
+/// Sparse multiplication in the degree 6 extension of the BLS12-381 curve: a = a1 + a2·v + a3·v², b = b2·v + b3·v²
 //
 //  in: (a1 + a2·v + a3·v²),(b2·v + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
 //  out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
@@ -364,7 +364,7 @@ pub fn sparse_mulb_fp6_bls12_381(
     result
 }
 
-/// Multiplication of a = a1 + a2·v + a3·v² and b = b1 + b3·v² in Fp6
+/// Sparse multiplication in the degree 6 extension of the BLS12-381 curve: a = a1 + a2·v + a3·v², b = b1 + b3·v²
 //
 //  in: (a1 + a2·v + a3·v²),(b1 + b3·v²) ∈ Fp6, where ai,bi ∈ Fp2
 //  out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
@@ -458,7 +458,7 @@ pub fn sparse_mulc_fp6_bls12_381(
     result
 }
 
-/// Squaring in Fp6
+/// Squaring in the degree 6 extension of the BLS12-381 curve
 //
 //  in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
 //  out: (c1 + c2·v + c3·v²) ∈ Fp6, where:
@@ -560,7 +560,7 @@ pub fn square_fp6_bls12_381(
     result
 }
 
-/// Inversion in Fp6
+/// Inversion in the degree 6 extension of the BLS12-381 curve
 //
 //  in: (a1 + a2·v + a3·v²) ∈ Fp6, where ai ∈ Fp2
 //  out: (c1 + c2·v + c3·v²) ∈ Fp6, where:

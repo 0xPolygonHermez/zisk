@@ -1,0 +1,54 @@
+# Dockerfile.worker — slim production image for zisk-worker on Kubernetes.
+#
+# Differs from distributed/deploy/docker/Dockerfile.worker (the dev image) by:
+#   - No build stage; expects the binary to be passed in as a build context
+#     under ./bin/zisk-worker. Build outside (CI) and pass the artifact in:
+#         cp target/release/zisk-worker bin/
+#         docker build -f distributed/deploy/k8s/Dockerfile.worker -t zisk-worker:0.18.0 .
+#   - No ziskup, no install.sh, no systemd. The container is the worker.
+#   - Bundle (proving key + toolchain) is NOT baked in. Mount /opt/zisk via
+#     a ReadOnlyMany PVC at runtime — see charts/zisk-worker/values.yaml.
+#
+# Resolves paths via the ZiskPaths resolver (common/src/paths.rs) using the
+# env vars set below. ENTRYPOINT is the worker; the chart passes args via
+# Deployment .spec.containers[].args.
+
+FROM debian:bookworm-slim
+
+# Runtime libs — these are what cargo-zisk + zisk-worker dynamically link
+# against. Without them the binary fails with "cannot open shared object".
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libssl3 \
+        libsodium23 \
+        libomp5 \
+        libgomp1 \
+        libopenmpi3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user for the worker process. UID/GID match the bundle's owner
+# convention (zisk:zisk in --system mode); operators can override at runtime
+# via Pod.spec.securityContext if they store the proving key under a
+# different ownership scheme on their PVC.
+RUN groupadd --system --gid 999 zisk \
+    && useradd  --system --uid 998 --gid zisk --no-create-home \
+                --shell /usr/sbin/nologin --home-dir /var/empty zisk
+
+# Mount points — bundle is ROX (mounted by the chart), cache is RW (emptyDir
+# or per-pod PVC), config is ROX (from a ConfigMap).
+RUN mkdir -p /opt/zisk /var/cache/zisk /etc/zisk \
+    && chown zisk:zisk /var/cache/zisk
+
+COPY --chown=root:root --chmod=0755 bin/zisk-worker /usr/local/bin/zisk-worker
+
+# Resolver paths — match the systemd unit's Environment block (see
+# distributed/deploy/scripts/worker/install.sh). Override per-pod via the
+# Deployment env block if you mount the bundle under a different prefix.
+ENV ZISK_HOME=/opt/zisk \
+    ZISK_CACHE_DIR=/var/cache/zisk
+
+USER zisk
+
+ENTRYPOINT ["/usr/local/bin/zisk-worker"]
+# Default args — chart overrides these. Kept here for `docker run` smoke tests.
+CMD ["--config", "/etc/zisk/worker.toml", "--proving-key", "/opt/zisk/provingKey"]

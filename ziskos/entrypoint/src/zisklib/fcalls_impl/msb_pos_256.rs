@@ -1,3 +1,5 @@
+/// Finds the limb index and bit position of the most significant set bit among `n`
+/// concatenated 256-bit values in `params`. Panics if all values are zero.
 pub fn fcall_msb_pos_256(params: &[u64], results: &mut [u64]) -> i64 {
     let n = params[0] as usize;
 
@@ -8,9 +10,6 @@ pub fn fcall_msb_pos_256(params: &[u64], results: &mut [u64]) -> i64 {
     2
 }
 
-// Q: Do we prefer constant time functions?
-// Finds the most significant bit position among n 256-bit integers
-// some of which may be zero, but not all
 pub fn msb_pos_256(params: &[u64], n: usize) -> (usize, usize) {
     debug_assert!(params.len() >= n * 4, "Not enough data for {} inputs", n);
 
@@ -31,7 +30,6 @@ pub fn msb_pos_256(params: &[u64], n: usize) -> (usize, usize) {
     panic!("Invalid input: all values are zero");
 }
 
-// Q: Do we prefer constant time functions?
 #[rustfmt::skip]
 fn msb_pos(mut x: u64) -> usize {
     let mut pos = 0;
@@ -42,4 +40,181 @@ fn msb_pos(mut x: u64) -> usize {
     if x >= 1 << 2  { x >>= 2;  pos += 2;  }
     if x >= 1 << 1  {           pos += 1;  }
     pos
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_msb_pos_256_1() {
+        let params = [
+            1, // n = 1
+            1, 0, 0, 0, // input
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 0); // limb index
+        assert_eq!(results[1], 0); // bit index
+
+        let params = [
+            1, // n = 1
+            2, 0, 0, 0, // input
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 0); // limb index
+        assert_eq!(results[1], 1); // bit index
+
+        let params = [
+            1, // n = 1
+            1, 1, 0, 0, // input
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 1); // limb index
+        assert_eq!(results[1], 0); // bit index
+
+        let params = [
+            1, // n = 1
+            1, 2, 3, 2, // input
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 3); // limb index
+        assert_eq!(results[1], 1); // bit index
+    }
+
+    #[test]
+    fn test_msb_pos_256_2() {
+        let params = [
+            2, // n = 2
+            0, 0, 0, 0, // input 1
+            1, 0, 0, 0, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 0); // limb index
+        assert_eq!(results[1], 0); // bit index
+
+        let params = [
+            2, // n = 2
+            0x59F2815B16F81798,
+            0x029BFCDB2DCE28D9,
+            0x55A06295CE870B07,
+            0x0000667EF9DCBBAC, // input 1
+            0xd324f4bcf5f4cc87,
+            0x516a1b1053f90907,
+            0x20035c7d81377920,
+            0x001e67a6ef5d2d70, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 3); // limb index
+        assert_eq!(results[1], 52); // bit index
+
+        let params = [
+            2, // n = 2
+            0, 0, 0, 0, // input 1
+            2, 0, 0, 0, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 0); // limb index
+        assert_eq!(results[1], 1); // bit index
+
+        let params = [
+            2, // n = 2
+            0x8000_0000_0000_0000,
+            0,
+            0,
+            0, // input 1
+            2,
+            0,
+            0,
+            0, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 0); // limb index
+        assert_eq!(results[1], 63); // bit index
+
+        let params = [
+            2, // n = 2
+            0x8000_0000_0000_0000,
+            0,
+            0,
+            0, // input 1
+            0,
+            2,
+            0,
+            0, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 1); // limb index
+        assert_eq!(results[1], 1); // bit index
+
+        let params = [
+            2, // n = 2
+            0x8000_0000_0000_0000,
+            0,
+            0,
+            0, // input 1
+            0,
+            0,
+            1,
+            0, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 2); // limb index
+        assert_eq!(results[1], 0); // bit index
+
+        let params = [
+            2, // n = 2
+            0x8000_0000_0000_0000,
+            0,
+            0,
+            0, // input 1
+            0,
+            0,
+            0,
+            1, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 3); // limb index
+        assert_eq!(results[1], 0); // bit index
+
+        let params = [
+            2, // n = 2
+            0xFFFF_FFFF_FFFF_FFFF,
+            0xFFFF_FFFF_FFFF_FFFF,
+            0xFFFF_FFFF_FFFF_FFFF,
+            0xFFFF_FFFF_FFFF_FFFF, // input 1
+            0xFFFF_FFFF_FFFF_FFFF,
+            0xFFFF_FFFF_FFFF_FFFF,
+            0xFFFF_FFFF_FFFF_FFFF,
+            0xFFFF_FFFF_FFFF_FFFF, // input 2
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 3); // limb index
+        assert_eq!(results[1], 63); // bit index
+    }
+
+    #[test]
+    fn test_msb_pos_256_3() {
+        let params = [
+            3, // n = 3
+            0, 0, 0, 2, // input 1
+            0, 0, 0, 0, // input 2
+            0, 0, 2, 0, // input 3
+        ];
+        let mut results = [0u64; 2];
+        fcall_msb_pos_256(&params, &mut results);
+        assert_eq!(results[0], 3); // limb index
+        assert_eq!(results[1], 1); // bit index
+    }
 }

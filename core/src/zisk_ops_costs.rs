@@ -5,14 +5,33 @@ pub const BINARY_ADD_COST: u64 = 25;
 pub const BINARY_E_COST: u64 = 53;
 pub const ARITHA32_COST: u64 = 95;
 pub const ARITHAM32_COST: u64 = 95;
-pub const KECCAK_COST: u64 = 25 * 3022;
-pub const SHA256_COST: u64 = 72 * 121;
-pub const POSEIDON2_COST: u64 = 14 * 75;
+pub const KECCAK_COST: u64 = 25 * 3023;
+pub const SHA256_COST: u64 = 72 * 122;
+pub const POSEIDON_COST: u64 = 14 * 392;
 pub const ARITH_EQ_COST: u64 = 89 * 16;
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 79 * 24;
 pub const ADD256_COST: u64 = 104;
-pub const BLAKE2_COST: u64 = 24 * 205;
+pub const BLAKE2_COST: u64 = 24 * 209;
+
+/*
+    Hash throughput comparison, where cost is clocks per columns:
+
+    +------------+------------------------+-----------------+--------------+----------+----------+
+    | Hash       | Full-op cost           | Msg bytes/block | Cost / byte  | Relative |    BF    |
+    +------------+------------------------+-----------------+--------------+----------+----------+
+    | Poseidon   | 14 x 392 = 5.488       |  96 (nominal)   |     57,2     |   1,0x   |    1     |
+    | SHA2-256   | 72 x 122 = 8.784       |  64             |    137,3     |   2,4x   |    1     |
+    | Blake2b    | 12 x 24 x 209 = 60.192 | 128             |    470,3     |   8,2x   |    1     |
+    | Keccak-256 | 25 x 3023 = 75.575     | 136             |    555,7     |   9,7x   |    1     |
+    +------------+------------------------+-----------------+--------------+----------+----------+
+
+    Notes:
+    - Poseidon bytes are nominal (12 Goldilocks elements x 8 bytes); a Goldilocks element
+    holds ~63.99 bits, so the truly absorbable payload is slightly under 96 bytes.
+    - Blake2b's BLAKE2_COST is the cost of a single round; a full compression is 12 rounds,
+    which is the full-op cost used in the table above.
+*/
 
 // Costs for DMA
 

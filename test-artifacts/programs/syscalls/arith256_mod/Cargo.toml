@@ -1,0 +1,7 @@
+[package]
+name = "arith256_mod"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true

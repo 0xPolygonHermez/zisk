@@ -1,0 +1,17 @@
+apiVersion: v2
+name: zisk-worker
+description: |
+  ZisK distributed proving worker. Connects to a coordinator (typically
+  reachable via cluster DNS) and pulls work off its queue. Scale horizontally
+  via .replicaCount or autoscaling.enabled=true.
+type: application
+version: 0.1.0       # chart version — bump on chart changes
+appVersion: "0.17.0" # zisk-worker version — should match the image tag
+keywords:
+  - zisk
+  - zero-knowledge
+  - prover
+sources:
+  - https://github.com/0xPolygonHermez/zisk
+maintainers:
+  - name: 0xPolygonHermez

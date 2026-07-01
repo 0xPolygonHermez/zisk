@@ -318,6 +318,32 @@ impl MemCounters {
 
         true
     }
+    pub fn init_with_mem_sections(&mut self, mem_sections: &dyn zisk_core::MemDataSection) {
+        let sections = mem_sections.ro_sections().iter().chain(mem_sections.rw_sections().iter());
+        for section in sections {
+            if section.data.is_empty() {
+                continue;
+            }
+            let addr = section.addr as u32;
+            let mut addr_w = MemHelpers::get_addr_w(addr);
+            if MemHelpers::is_dual(addr) {
+                for _value in section.data.iter() {
+                    self.addr
+                        .entry(addr_w)
+                        .and_modify(|count| {
+                            *count = Self::incr_st_counter_aligned(*count, true);
+                        })
+                        .or_insert(ST_INI_TO_WRITE);
+                    addr_w += 1;
+                }
+            } else {
+                for _value in section.data.iter() {
+                    self.addr.entry(addr_w).and_modify(|count| *count += 1).or_insert(1);
+                    addr_w += 1;
+                }
+            }
+        }
+    }
 }
 
 impl Metrics for MemCounters {

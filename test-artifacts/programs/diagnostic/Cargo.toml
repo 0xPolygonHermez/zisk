@@ -1,0 +1,15 @@
+[package]
+name = "diagnostic"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+ziskos.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+default = []
+bit_manipulation_extensions = []
+c_extension = []

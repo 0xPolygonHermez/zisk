@@ -1,6 +1,11 @@
 //! Miller Loop for the pairings over BN254
 
-use crate::zisklib::{eq, fcall_bn254_twist_add_line_coeffs, fcall_bn254_twist_dbl_line_coeffs};
+#[cfg(zisk_guest)]
+use crate::alloc_extern::vec::Vec;
+
+use crate::zisklib::{
+    eq, fcall_bn254_twist_add_line_coeffs, fcall_bn254_twist_dbl_line_coeffs, is_zero,
+};
 
 use super::{
     fp::{inv_fp_bn254, mul_fp_bn254, neg_fp_bn254},
@@ -21,6 +26,10 @@ const LOOP_LENGTH: [i8; 65] = [
 ];
 
 /// Computes the Miller loop of a non-zero point `p` in G1 and a non-zero point `q` in G2
+///
+/// # Soundness
+/// Both points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn miller_loop_bn254(
     p: &[u64; 8],
     q: &[u64; 16],
@@ -59,13 +68,16 @@ pub fn miller_loop_bn254(
         );
 
         // Check that the line is correct
-        assert!(is_tangent_twist_bn254(
-            &r,
-            &lambda,
-            &mu,
-            #[cfg(feature = "hints")]
-            hints,
-        ));
+        assert!(
+            is_tangent_twist_bn254(
+                &r,
+                &lambda,
+                &mu,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            "Line is not tangent to the curve at r"
+        );
 
         // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bn254(
@@ -117,14 +129,17 @@ pub fn miller_loop_bn254(
             );
 
             // Check that the line is correct
-            assert!(is_line_twist_bn254(
-                &r,
-                q_prime,
-                &lambda,
-                &mu,
-                #[cfg(feature = "hints")]
-                hints,
-            ));
+            assert!(
+                is_line_twist_bn254(
+                    &r,
+                    q_prime,
+                    &lambda,
+                    &mu,
+                    #[cfg(feature = "hints")]
+                    hints,
+                ),
+                "Line does not pass through r and q'"
+            );
 
             // Compute f = f · line_{twist(r),twist(q')}
             let l = line_eval_twist_bn254(
@@ -170,14 +185,17 @@ pub fn miller_loop_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    assert!(is_line_twist_bn254(
-        &r,
-        &q_frob,
-        &lambda,
-        &mu,
-        #[cfg(feature = "hints")]
-        hints,
-    ));
+    assert!(
+        is_line_twist_bn254(
+            &r,
+            &q_frob,
+            &lambda,
+            &mu,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        "Line does not pass through r and utf(q)"
+    );
 
     let l = line_eval_twist_bn254(
         &lambda,
@@ -222,14 +240,17 @@ pub fn miller_loop_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    assert!(is_line_twist_bn254(
-        &r,
-        &q_frob2,
-        &lambda,
-        &mu,
-        #[cfg(feature = "hints")]
-        hints
-    ));
+    assert!(
+        is_line_twist_bn254(
+            &r,
+            &q_frob2,
+            &lambda,
+            &mu,
+            #[cfg(feature = "hints")]
+            hints
+        ),
+        "Line does not pass through r and -utf(utf(q))"
+    );
 
     let l = line_eval_twist_bn254(
         &lambda,
@@ -250,6 +271,10 @@ pub fn miller_loop_bn254(
 }
 
 /// Computes the Miller loop for the BN254 curve for a batch of non-zero points `p_i` in G1 and non-zero points `q_i` in G2
+///
+/// # Soundness
+/// All points must be on the corresponding subgroups, non-identity, and have **canonical** coordinates
+/// (`x, y < p`).
 pub fn miller_loop_batch_bn254(
     g1_points: &[[u64; 8]],
     g2_points: &[[u64; 16]],
@@ -306,13 +331,16 @@ pub fn miller_loop_batch_bn254(
             );
 
             // Check that the line is correct
-            assert!(is_tangent_twist_bn254(
-                r,
-                &lambda,
-                &mu,
-                #[cfg(feature = "hints")]
-                hints,
-            ));
+            assert!(
+                is_tangent_twist_bn254(
+                    r,
+                    &lambda,
+                    &mu,
+                    #[cfg(feature = "hints")]
+                    hints,
+                ),
+                "Line is not tangent to the curve at r"
+            );
 
             let xp_prime = &xp_primes[i];
             let yp_prime = &yp_primes[i];
@@ -361,14 +389,17 @@ pub fn miller_loop_batch_bn254(
                 );
 
                 // Check that the line is correct
-                assert!(is_line_twist_bn254(
-                    r,
-                    q_prime,
-                    &lambda,
-                    &mu,
-                    #[cfg(feature = "hints")]
-                    hints,
-                ));
+                assert!(
+                    is_line_twist_bn254(
+                        r,
+                        q_prime,
+                        &lambda,
+                        &mu,
+                        #[cfg(feature = "hints")]
+                        hints,
+                    ),
+                    "Line does not pass through r and q'"
+                );
 
                 // Compute f = f · line_{twist(r),twist(q')}
                 let l = line_eval_twist_bn254(
@@ -420,14 +451,17 @@ pub fn miller_loop_batch_bn254(
             #[cfg(feature = "hints")]
             hints,
         );
-        assert!(is_line_twist_bn254(
-            r,
-            &q_frob,
-            &lambda,
-            &mu,
-            #[cfg(feature = "hints")]
-            hints,
-        ));
+        assert!(
+            is_line_twist_bn254(
+                r,
+                &q_frob,
+                &lambda,
+                &mu,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            "Line does not pass through r and utf(q)"
+        );
 
         let l = line_eval_twist_bn254(
             &lambda,
@@ -471,14 +505,17 @@ pub fn miller_loop_batch_bn254(
             #[cfg(feature = "hints")]
             hints,
         );
-        assert!(is_line_twist_bn254(
-            r,
-            &q_frob2,
-            &lambda,
-            &mu,
-            #[cfg(feature = "hints")]
-            hints,
-        ));
+        assert!(
+            is_line_twist_bn254(
+                r,
+                &q_frob2,
+                &lambda,
+                &mu,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            "Line does not pass through r and -utf(utf(q))"
+        );
 
         let l = line_eval_twist_bn254(
             &lambda,
@@ -518,6 +555,11 @@ fn is_line_twist_bn254(
     mu: &[u64; 8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
+    // Chord (λ,μ) is uniquely determined only when the two points have distinct x
+    if eq(&q1[0..8], &q2[0..8]) {
+        return false;
+    }
+
     // Check if the line passes through q1
     let check_q1 = line_check_twist_bn254(
         q1,
@@ -546,6 +588,13 @@ fn is_tangent_twist_bn254(
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> bool {
     // Check if the line is tangent to the curve at q
+    let x: &[u64; 8] = q[0..8].try_into().unwrap();
+    let y: &[u64; 8] = q[8..16].try_into().unwrap();
+
+    // Tangent (λ,μ) is uniquely determined only when y != 0 (rejects (0,0)/2-torsion)
+    if is_zero(y) {
+        return false;
+    }
 
     // Check if the line passes through q
     let check_q = line_check_twist_bn254(
@@ -556,8 +605,6 @@ fn is_tangent_twist_bn254(
         hints,
     );
     // Check that 2𝜆y = 3x²
-    let x: &[u64; 8] = q[0..8].try_into().unwrap();
-    let y: &[u64; 8] = q[8..16].try_into().unwrap();
     let mut lhs = mul_fp2_bn254(
         lambda,
         y,

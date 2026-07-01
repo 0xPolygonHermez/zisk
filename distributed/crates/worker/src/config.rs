@@ -1,8 +1,8 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use zisk_distributed_common::Environment;
-use zisk_distributed_common::{ComputeCapacity, LoggingConfig, WorkerId};
+use zisk_cluster_common::Environment;
+use zisk_cluster_common::{ComputeCapacity, LoggingConfig, WorkerId};
 
 /// Worker Service Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,20 +82,9 @@ impl WorkerServiceConfig {
         coordinator_url: Option<String>,
         worker_id: Option<String>,
         compute_capacity: Option<u32>,
-        inputs_folder: Option<PathBuf>,
     ) -> Result<Self> {
         // Config file is now optional - if not provided, defaults will be used
         let config = config.or_else(|| std::env::var("ZISK_WORKER_CONFIG_PATH").ok());
-
-        // Check inputs folder exists if provided
-        if let Some(ref path) = inputs_folder {
-            if !path.exists() || !path.is_dir() {
-                anyhow::bail!(
-                    "Inputs folder does not exist or is not a directory: {}",
-                    path.display()
-                );
-            }
-        }
 
         // Generate a random worker ID
         let random_worker_id = format!("{}", uuid::Uuid::new_v4().simple());
@@ -105,7 +94,7 @@ impl WorkerServiceConfig {
             .set_default("worker.compute_capacity.compute_units", 10)?
             .set_default("worker.environment", "development")?
             .set_default("worker.inputs_folder", ".")?
-            .set_default("coordinator.url", zisk_distributed_coordinator::Config::default_url())?
+            .set_default("coordinator.url", zisk_coordinator::Config::default_url())?
             .set_default("connection.reconnect_interval_seconds", 5)?
             .set_default("connection.heartbeat_timeout_seconds", 30)?
             .set_default("logging.level", "info")?
@@ -128,13 +117,6 @@ impl WorkerServiceConfig {
                 builder.set_override("worker.compute_capacity.compute_units", compute_capacity)?;
         }
 
-        if let Some(inputs_folder) = inputs_folder {
-            builder = builder.set_override(
-                "worker.inputs_folder",
-                inputs_folder.to_string_lossy().to_string(),
-            )?;
-        }
-
         let config = builder.build()?;
 
         Ok(config.try_deserialize()?)
@@ -142,51 +124,21 @@ impl WorkerServiceConfig {
 }
 
 /// Configuration for initializing a Prover Service
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct ProverServiceConfigDto {
-    pub elf: PathBuf,
     pub asm: Option<PathBuf>,
-    pub hints: bool,
     pub emulator: bool,
     pub proving_key: Option<PathBuf>,
-    pub asm_port: Option<u16>,
+    pub proving_key_snark: Option<PathBuf>,
     pub unlock_mapped_memory: bool,
     pub asm_out_file: bool,
     pub verbose: u8,
     pub debug: Option<Option<String>>,
-    pub verify_constraints: bool,
-    pub aggregation: bool,
-    pub preallocate: bool,
     pub max_streams: Option<usize>,
     pub number_threads_witness: Option<usize>,
     pub max_witness_stored: Option<usize>,
-    pub shared_tables: bool,
-    pub rma: bool,
     pub minimal_memory: bool,
-}
-
-impl Default for ProverServiceConfigDto {
-    fn default() -> Self {
-        Self {
-            elf: PathBuf::new(),
-            asm: None,
-            hints: false,
-            emulator: false,
-            proving_key: None,
-            asm_port: None,
-            unlock_mapped_memory: false,
-            asm_out_file: false,
-            verbose: 0,
-            debug: None,
-            verify_constraints: false,
-            aggregation: false,
-            preallocate: false,
-            max_streams: None,
-            number_threads_witness: None,
-            max_witness_stored: None,
-            shared_tables: false,
-            rma: true,
-            minimal_memory: false,
-        }
-    }
+    pub gpu: bool,
+    pub plonk: bool,
+    pub preload_plonk: bool,
 }

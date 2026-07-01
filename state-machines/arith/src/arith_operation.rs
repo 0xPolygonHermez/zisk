@@ -13,10 +13,10 @@ pub struct ArithOperation {
     pub op: u8,
     pub input_a: u64,
     pub input_b: u64,
-    pub a: [u64; 4],
-    pub b: [u64; 4],
-    pub c: [u64; 4],
-    pub d: [u64; 4],
+    pub a: [u16; 4],
+    pub b: [u16; 4],
+    pub c: [u16; 4],
+    pub d: [u16; 4],
     pub carry: [i64; 7],
     pub m32: bool,
     pub div: bool,
@@ -31,7 +31,7 @@ pub struct ArithOperation {
     pub range_ab: u8,
     pub range_cd: u8,
     pub div_by_zero: bool,
-    pub div_overflow: bool,
+    pub div_overflow_mul_rz: bool,
 }
 
 /// Provides a default implementation for `ArithOperation`.
@@ -68,8 +68,8 @@ impl fmt::Debug for ArithOperation {
         if self.div_by_zero {
             flags += "div_by_zero "
         };
-        if self.div_overflow {
-            flags += "div_overflow "
+        if self.div_overflow_mul_rz {
+            flags += "div_overflow_mul_rz "
         };
         if self.main_mul {
             flags += "main_mul "
@@ -105,7 +105,7 @@ impl fmt::Debug for ArithOperation {
 
 impl ArithOperation {
     /// Dumps the chunks of a specified value into the provided formatter.
-    fn dump_chunks(&self, f: &mut fmt::Formatter, name: &str, value: &[u64; 4]) -> fmt::Result {
+    fn dump_chunks(&self, f: &mut fmt::Formatter, name: &str, value: &[u16; 4]) -> fmt::Result {
         writeln!(
             f,
             "{0}: [0x{1:X}({1}), 0x{2:X}({2}), 0x{3:X}({3}), 0x{4:X}({4})]",
@@ -132,7 +132,7 @@ impl ArithOperation {
             nr: false,
             sext: false,
             div_by_zero: false,
-            div_overflow: false,
+            div_overflow_mul_rz: false,
             main_mul: false,
             main_div: false,
             signed: false,
@@ -156,7 +156,7 @@ impl ArithOperation {
                 || op == ZiskOp::DivuW.code()
                 || op == ZiskOp::RemuW.code());
 
-        self.div_overflow = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code())
+        self.div_overflow_mul_rz = ((op == ZiskOp::Div.code() || op == ZiskOp::Rem.code())
             && input_a == 0x8000_0000_0000_0000
             && input_b == 0xFFFF_FFFF_FFFF_FFFF)
             || ((op == ZiskOp::DivW.code() || op == ZiskOp::RemW.code())
@@ -254,12 +254,11 @@ impl ArithOperation {
     fn calculate_div(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs64(a);
         let [abs_b, nb] = Self::abs64(b);
-        if abs_b == 0 {
-            0xFFFF_FFFF_FFFF_FFFF
-        } else {
-            let abs_c = abs_a / abs_b;
+        if let Some(abs_c) = abs_a.checked_div(abs_b) {
             let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
             Self::sign64(abs_c, nc == 1)
+        } else {
+            0xFFFF_FFFF_FFFF_FFFF
         }
     }
 
@@ -267,31 +266,22 @@ impl ArithOperation {
     fn calculate_div_w(a: u64, b: u64) -> u64 {
         let [abs_a, na] = Self::abs32(a);
         let [abs_b, nb] = Self::abs32(b);
-        if abs_b == 0 {
-            0xFFFF_FFFF
-        } else {
-            let abs_c = abs_a / abs_b;
+        if let Some(abs_c) = abs_a.checked_div(abs_b) {
             let nc = if na != nb && abs_c != 0 { 1 } else { 0 };
             Self::sign32(abs_c, nc == 1)
+        } else {
+            0xFFFF_FFFF
         }
     }
 
     /// Computes the unsigned division of two 64-bit values.
     fn calculate_divu(a: u64, b: u64) -> u64 {
-        if b == 0 {
-            0xFFFF_FFFF_FFFF_FFFF
-        } else {
-            a / b
-        }
+        a.checked_div(b).unwrap_or(0xFFFF_FFFF_FFFF_FFFF)
     }
 
     /// Computes the unsigned division of two 32-bit values.
     fn calculate_divu_w(a: u64, b: u64) -> u64 {
-        if b == 0 {
-            0xFFFF_FFFF
-        } else {
-            a / b
-        }
+        a.checked_div(b).unwrap_or(0xFFFF_FFFF)
     }
 
     /// Computes the unsigned remainder of two 64-bit values.
@@ -408,24 +398,31 @@ impl ArithOperation {
         match zisk_op {
             ZiskOp::Mulu => {
                 self.main_mul = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
-            ZiskOp::Muluh => {}
+            ZiskOp::Muluh => {
+                self.div_overflow_mul_rz = c == 0 && d == 0;
+            }
             ZiskOp::Mulsuh => {
                 sa = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::Mul => {
                 sa = true;
                 sb = true;
                 self.main_mul = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::Mulh => {
                 sa = true;
                 sb = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::MulW => {
                 self.m32 = true;
                 self.sext = ((a * b) & 0xFFFF_FFFF) & 0x8000_0000 != 0;
                 self.main_mul = true;
+                self.div_overflow_mul_rz = c == 0 && d == 0;
             }
             ZiskOp::Divu => {
                 self.div = true;
@@ -734,7 +731,7 @@ impl ArithOperation {
     }
 
     /// Converts a 64-bit value into its four 16-bit chunks.
-    fn u64_to_chunks(a: u64) -> [u64; 4] {
-        [a & 0xFFFF, (a >> 16) & 0xFFFF, (a >> 32) & 0xFFFF, (a >> 48) & 0xFFFF]
+    fn u64_to_chunks(a: u64) -> [u16; 4] {
+        [a as u16, (a >> 16) as u16, (a >> 32) as u16, (a >> 48) as u16]
     }
 }

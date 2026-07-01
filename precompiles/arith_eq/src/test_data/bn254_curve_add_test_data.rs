@@ -1,5 +1,6 @@
 use super::str_test_data;
 
+#[allow(dead_code)]
 pub fn get_bn254_curve_add_test_data(index: usize) -> Option<([u64; 8], [u64; 8], [u64; 8])> {
     if let Some(sdata) = get_bn254_curve_add_test_str_data(index) {
         let bdata = str_test_data::<6, 8>(index, "bn254_curve_add_test", sdata);
@@ -17,6 +18,7 @@ pub fn get_bn254_curve_add_test_data(index: usize) -> Option<([u64; 8], [u64; 8]
 //     Q = E.random_point();
 //     R = P + Q
 //     print(f"{i} => Some([\"{P[0]}\",\"{P[1]}\",\"{Q[0]}\",\"{Q[1]}\",\"{R[0]}\",\"{R[1]}\"]),");
+#[allow(dead_code)]
 pub fn get_bn254_curve_add_test_str_data(index: usize) -> Option<[&'static str; 6]> {
     match index {
         0 => Some([

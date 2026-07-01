@@ -1,16 +1,65 @@
+# worker.toml — ZisK Worker configuration
+#
+# Copy this file to /etc/zisk/worker.toml and edit to match your environment.
+# All fields are optional unless marked required — defaults are used when omitted.
+#
+# Override order (later entries win):
+#   1. Defaults built into the binary
+#   2. This file
+#   3. ZISK_WORKER__* environment variables (double underscore as separator)
+#   4. CLI flags (--coordinator-url, --compute-capacity, …)
+
+# ── Worker identity ───────────────────────────────────────────────────────────
+
 [worker]
-# worker_id = "my-worker-001"
+# Unique identifier for this worker instance.
+# If unset, a random UUID is generated on each start — set an explicit value
+# when you need stable worker IDs in logs, metrics, or the coordinator dashboard.
+# worker_id = "worker-host1-0"
+
+# Number of compute units this worker contributes to the cluster.
+# The coordinator uses this value to decide how many units of work to assign.
+# Match this to the number of CPU cores (or GPU streams) available for proving.
 compute_capacity.compute_units = 10
+
+# environment: development | production
 environment = "production"
 
+# Directory where the worker writes intermediate input files.
+# Must be writable by the worker process.
+# inputs_folder = "/var/lib/zisk-worker/inputs"
+
+# ── Coordinator connection ────────────────────────────────────────────────────
+
 [coordinator]
+# gRPC URL of the coordinator's worker-facing port.
+# In Docker Compose this is "http://coordinator:50051".
+# For bare-metal, point to the coordinator host's worker port.
 url = "http://127.0.0.1:50051"
 
+# ── Connection behaviour ──────────────────────────────────────────────────────
+
 [connection]
+# Seconds between reconnection attempts when the coordinator is unreachable.
 reconnect_interval_seconds = 5
+
+# Seconds without a heartbeat before the worker considers the connection dead
+# and attempts to reconnect.
 heartbeat_timeout_seconds = 30
 
+# ── Logging ───────────────────────────────────────────────────────────────────
+
 [logging]
+# Minimum log level: trace | debug | info | warn | error
+# RUST_LOG environment variable takes precedence and supports per-module filters.
+# Example: RUST_LOG=zisk_worker=debug,info
 level = "info"
+
+# Output format:
+#   pretty  — human-readable, coloured (recommended for development)
+#   json    — one JSON object per line (recommended for production / log aggregators)
+#   compact — compact single-line format
 format = "pretty"
-file_path = "/var/log/distributed/worker.log"
+
+# Optional: write logs to a file in addition to stdout / journald.
+# file_path = "/var/log/zisk/worker.log"

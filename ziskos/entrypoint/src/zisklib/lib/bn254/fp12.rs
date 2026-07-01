@@ -558,16 +558,18 @@ pub fn exp_fp12_bn254(
 
     let (_, max_bit) = fcall_msb_pos_256(
         &[e, 0, 0, 0],
-        &[0, 0, 0, 0],
         #[cfg(feature = "hints")]
         hints,
     );
+
+    // Bound max_bit before using it as a shift
+    assert!(max_bit < 64, "msb_pos hint out of range");
 
     // Perform the loop, based on the binary representation of e
 
     // We do the first iteration separately
     let e_bit = (e >> max_bit) & 1;
-    assert_eq!(e_bit, 1); // the first received bit should be 1
+    assert_eq!(e_bit, 1, "The most significant bit of the exponent must be 1");
 
     // Start the loop at a
     let mut result = *a;
@@ -599,7 +601,7 @@ pub fn exp_fp12_bn254(
     }
 
     // Check that the reconstructed e is equal to the input e
-    assert_eq!(e_rec, e);
+    assert_eq!(e_rec, e, "Reconstructed e does not match input e");
 
     result
 }

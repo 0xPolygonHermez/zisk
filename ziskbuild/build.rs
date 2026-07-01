@@ -10,13 +10,29 @@ fn main() {
         .unwrap();
     builder.emit().unwrap();
 
-    let disable_distributed =
-        std::env::vars().any(|(k, _)| k == "CARGO_FEATURE_DISABLE_DISTRIBUTED");
-    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
-    let target_arch = std::env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-
-    // Distributed feature is only available on linux x86_64
-    if !disable_distributed && target_os == "linux" && target_arch == "x86_64" {
-        println!("cargo:rustc-cfg=distributed");
-    }
+    // Determine compute mode for version string.
+    // If the cpu-only feature is enabled, always report "cpu".
+    // Otherwise, auto-detect CUDA: check common install paths, CUDA_HOME env var,
+    // or whether `nvcc` is available on PATH.
+    let cpu_only = std::env::vars().any(|(k, _)| k == "CARGO_FEATURE_CPU_ONLY");
+    let compute_mode = if cpu_only {
+        "cpu"
+    } else {
+        // Check for nvcc itself, not just the directory: a stale /usr/local/cuda
+        // (e.g. old samples on macOS) must not flip the label to "gpu" when
+        // proofman-starks-lib-c's detection (which requires nvcc) builds CPU.
+        let has_cuda = std::path::Path::new("/usr/local/cuda/bin/nvcc").exists()
+            || std::env::var("CUDA_HOME").is_ok()
+            || std::process::Command::new("nvcc")
+                .arg("--version")
+                .status()
+                .map(|s| s.success())
+                .unwrap_or(false);
+        if has_cuda {
+            "gpu"
+        } else {
+            "cpu"
+        }
+    };
+    println!("cargo:rustc-env=ZISK_COMPUTE_MODE={compute_mode}");
 }

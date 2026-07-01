@@ -1,0 +1,835 @@
+use std::num::Wrapping;
+
+const M64: u64 = 0xFFFFFFFFFFFFFFFF;
+
+/* Internal instructions */
+
+/// Sets flag to true (and c to 0)
+#[inline(always)]
+pub const fn op_flag(_a: u64, _b: u64) -> (u64, bool) {
+    (0, true)
+}
+
+/// Copies register b into c (and flag to false)
+#[inline(always)]
+pub const fn op_copyb(_a: u64, b: u64) -> (u64, bool) {
+    (b, false)
+}
+
+/* SIGN EXTEND operations for different data widths (i8, i16 and i32) --> i64 --> u64 */
+
+/// Sign extends an i8.
+///
+/// Converts b from a signed 8-bits number in the range [-128, +127] into a signed 64-bit number of
+/// the same value, adding 0xFFFFFFFFFFFFFF00 if negative, and stores the result in c as a u64 (and
+/// sets flag to false)
+#[inline(always)]
+pub const fn op_signextend_b(_a: u64, b: u64) -> (u64, bool) {
+    ((b as i8) as u64, false)
+}
+
+/// Sign extends an i16.
+///
+/// Converts b from a signed 16-bits number in the range [-32768, 32767] into a signed 64-bit number
+/// of the same value, adding 0xFFFFFFFFFFFF0000 if negative, and stores the result in c as a u64
+/// (and sets flag to false)
+#[inline(always)]
+pub const fn op_signextend_h(_a: u64, b: u64) -> (u64, bool) {
+    ((b as i16) as u64, false)
+}
+
+/// Sign extends an i32.
+///
+/// Converts b from a signed 32-bits number in the range [-2147483648, 2147483647] into a signed
+/// 64-bit number of the same value, adding 0xFFFFFFFF00000000 if negative  and stores the result in
+/// c as a u64 (and sets flag to false)
+#[inline(always)]
+pub const fn op_signextend_w(_a: u64, b: u64) -> (u64, bool) {
+    ((b as i32) as u64, false)
+}
+
+/* ADD AND SUB operations for different data widths (i32 and u64) */
+
+/// Adds a and b as 64-bit unsigned values, and stores the result in c (and sets flag to false)
+#[inline(always)]
+pub fn op_add(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a) + Wrapping(b)).0, false)
+}
+
+/// Adds a and b as 32-bit signed values, and stores the result in c (and flag to false)
+#[inline(always)]
+pub fn op_add_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) + Wrapping(b as i32)).0 as u64, false)
+}
+
+/// Subtracts a and b as 64-bit unsigned values, and stores the result in c (and sets flag to false)
+#[inline(always)]
+pub fn op_sub(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a) - Wrapping(b)).0, false)
+}
+
+/// Subtracts a and b as 32-bit signed values, and stores the result in c (and sets flag to false)
+#[inline(always)]
+pub fn op_sub_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) - Wrapping(b as i32)).0 as u64, false)
+}
+
+/* SHIFT operations */
+
+/// Shifts a as a 64-bits unsigned value to the left b mod 64 bits, and stores the result in c (and
+/// sets flag to false)
+#[inline(always)]
+pub const fn op_sll(a: u64, b: u64) -> (u64, bool) {
+    (a << (b & 0x3f), false)
+}
+
+/// Shifts a as a 32-bits unsigned value to the left b mod 32 bits, and stores the result in c (and
+/// sets flag to false)
+#[inline(always)]
+pub fn op_sll_w(a: u64, b: u64) -> (u64, bool) {
+    (((Wrapping(a as u32) << (b & 0x1f) as usize).0 as i32) as u64, false)
+}
+
+/// Shifts a as a 64-bits signed value to the right b mod 64 bits, and stores the result in c (and
+/// sets flag to false)
+#[inline(always)]
+pub const fn op_sra(a: u64, b: u64) -> (u64, bool) {
+    (((a as i64) >> (b & 0x3f)) as u64, false)
+}
+
+/// Shifts a as a 64-bits unsigned value to the right b mod 64 bits, and stores the result in c (and
+/// sets flag to false)
+#[inline(always)]
+pub const fn op_srl(a: u64, b: u64) -> (u64, bool) {
+    (a >> (b & 0x3f), false)
+}
+
+/// Shifts a as a 32-bits signed value to the right b mod 32 bits, and stores the result in c (and
+/// sets flag to false)
+#[inline(always)]
+pub fn op_sra_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) >> (b & 0x1f) as usize).0 as u64, false)
+}
+
+/// Shifts a as a 32-bits unsigned value to the right b mod 32 bits, and stores the result in c (and
+/// sets flag to false)
+#[inline(always)]
+pub fn op_srl_w(a: u64, b: u64) -> (u64, bool) {
+    (((Wrapping(a as u32) >> (b & 0x1f) as usize).0 as i32) as u64, false)
+}
+
+/* COMPARISON operations */
+
+/// If a and b are equal, it returns c=1, flag=true; otherwise it returns c=0, flag=false
+#[inline(always)]
+pub const fn op_eq(a: u64, b: u64) -> (u64, bool) {
+    if a == b {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a and b as 32-bit signed values are equal, as 64-bit unsigned values, it returns c=1,
+/// flag=true; otherwise it returns c=0, flag=false
+#[inline(always)]
+pub const fn op_eq_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) == (b as i32) {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is strictly less than b, as 64-bit unsigned values, it returns c=1, flag=true; otherwise it
+/// returns c=0, flag=false
+#[inline(always)]
+pub const fn op_ltu(a: u64, b: u64) -> (u64, bool) {
+    if a < b {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is strictly less than b, as 64-bit signed values, it returns c=1, flag=true; otherwise it
+/// returns c=0, flag=false
+#[inline(always)]
+pub const fn op_lt(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) < (b as i64) {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is strictly less than b, as 32-bit unsigned values, it returns c=1, flag=true; otherwise it
+/// returns c=0, flag=false
+#[inline(always)]
+pub const fn op_ltu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) < (b as u32) {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is strictly less than b, as 32-bit signed values, it returns c=1, flag=true; otherwise it
+/// returns c=0, flag=false
+#[inline(always)]
+pub const fn op_lt_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) < (b as i32) {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is less than or equal to b, as 64-bit unsigned values, it returns c=1, flag=true; otherwise
+/// it returns c=0, flag=false
+#[inline(always)]
+pub const fn op_leu(a: u64, b: u64) -> (u64, bool) {
+    if a <= b {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is less than or equal to b, as 64-bit signed values, it returns c=1, flag=true; otherwise
+/// it returns c=0, flag=false
+#[inline(always)]
+pub const fn op_le(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) <= (b as i64) {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is less than or equal to b, as 32-bit unsigned values, it returns c=1, flag=true; otherwise
+/// it returns c=0, flag=false
+#[inline(always)]
+pub const fn op_leu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) <= (b as u32) {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/// If a is less than or equal to b, as 32-bit signed values, it returns c=1, flag=true; otherwise
+/// it returns c=0, flag=false
+#[inline(always)]
+pub const fn op_le_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) <= (b as i32) {
+        (1, true)
+    } else {
+        (0, false)
+    }
+}
+
+/* LOGICAL operations */
+
+/// Sets c to a AND b, and flag to false
+#[inline(always)]
+pub const fn op_and(a: u64, b: u64) -> (u64, bool) {
+    (a & b, false)
+}
+
+/// Sets c to a OR b, and flag to false
+#[inline(always)]
+pub const fn op_or(a: u64, b: u64) -> (u64, bool) {
+    (a | b, false)
+}
+
+/// Sets c to a XOR b, and flag to false
+#[inline(always)]
+pub const fn op_xor(a: u64, b: u64) -> (u64, bool) {
+    (a ^ b, false)
+}
+
+/* ARITHMETIC operations: div / mul / rem */
+
+/// Sets c to a x b, as 64-bits unsigned values, and flag to false
+#[inline(always)]
+pub fn op_mulu(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a) * Wrapping(b)).0, false)
+}
+
+/// Sets c to a x b, as 64-bits signed values, and flag to false
+#[inline(always)]
+pub fn op_mul(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i64) * Wrapping(b as i64)).0 as u64, false)
+}
+
+/// Sets c to a x b, as 32-bits signed values, and flag to false
+#[inline(always)]
+pub fn op_mul_w(a: u64, b: u64) -> (u64, bool) {
+    ((Wrapping(a as i32) * Wrapping(b as i32)).0 as u64, false)
+}
+
+/// Sets c to the highest 64-bits of a x b, as 128-bits unsigned values, and flag to false
+#[inline(always)]
+pub const fn op_muluh(a: u64, b: u64) -> (u64, bool) {
+    (((a as u128 * b as u128) >> 64) as u64, false)
+}
+
+/// Sets c to the highest 64-bits of a x b, as 128-bits unsigned values, and flag to false
+#[inline(always)]
+pub const fn op_mulh(a: u64, b: u64) -> (u64, bool) {
+    (((((a as i64) as i128) * ((b as i64) as i128)) >> 64) as u64, false)
+}
+
+/// Sets c to the highest 64-bits of a x b, as 128-bits signed values, and flag to false
+#[inline(always)]
+pub const fn op_mulsuh(a: u64, b: u64) -> (u64, bool) {
+    (((((a as i64) as i128) * (b as i128)) >> 64) as u64, false)
+}
+
+/// Sets c to a / b, as 64-bits unsigned values, and flag to false.
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+#[inline(always)]
+pub const fn op_divu(a: u64, b: u64) -> (u64, bool) {
+    if b == 0 {
+        return (M64, true);
+    }
+
+    (a / b, false)
+}
+
+/// Sets c to a / b, as 64-bits signed values, and flag to false.
+///
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+/// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be -MIN_I64,
+/// which cannot be represented with 64 bits (overflow); it returns c=a and sets flag to false.
+#[inline(always)]
+pub const fn op_div(a: u64, b: u64) -> (u64, bool) {
+    // Handle divide by zero case
+    if b == 0 {
+        return (M64, true);
+    }
+
+    // Handle overflow case: -MIN_I64 cannot be represented in 64 bits, so return a.
+    if (a == 0x8000_0000_0000_0000) && (b as i64 == -1) {
+        return (0x8000_0000_0000_0000, false);
+    }
+
+    ((((a as i64) as i128) / ((b as i64) as i128)) as u64, false)
+}
+
+/// Sets c to a / b, as 32-bits unsigned values, and flag to false.
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+#[inline(always)]
+pub const fn op_divu_w(a: u64, b: u64) -> (u64, bool) {
+    // Handle divide by zero case
+    if b as u32 == 0 {
+        return (M64, true);
+    }
+
+    (((a as u32 / b as u32) as i32) as u64, false)
+}
+
+/// Sets c to a / b, as 32-bits signed values, and flag to false.
+/// If b=0 (divide by zero) it sets c to 2^64 - 1, and sets flag to true.
+/// If a=0x80000000 (MIN_I32) and b=0xFFFFFFFF (-1) it returns 0xffffffff80000000
+/// and sets flag to false.
+#[inline(always)]
+pub const fn op_div_w(a: u64, b: u64) -> (u64, bool) {
+    // Handle divide by zero case
+    if b as i32 == 0 {
+        return (M64, true);
+    }
+
+    // Handle overflow case: DIVW semantics require MIN_I32 / -1 to return MIN_I32 (sign-extended)
+    if a as u32 == 0x8000_0000 && b as i32 == -1 {
+        return (0xFFFFFFFF80000000, false);
+    }
+
+    ((((a as i32) as i64) / ((b as i32) as i64)) as i32 as u64, false)
+}
+
+/// Sets c to a mod b, as 64-bits unsigned values, and flag to false.
+/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
+#[inline(always)]
+pub const fn op_remu(a: u64, b: u64) -> (u64, bool) {
+    // Handle divide by zero case
+    if b == 0 {
+        return (a, true);
+    }
+
+    (a % b, false)
+}
+
+/// Sets c to a mod b, as 64-bits signed values, and flag to false.
+/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
+/// If a=0x8000000000000000 (MIN_I64) and b=0xFFFFFFFFFFFFFFFF (-1) the result should be 0, since
+/// -MIN_I64 mod -1 is 0, and flag is set to false.
+#[inline(always)]
+pub const fn op_rem(a: u64, b: u64) -> (u64, bool) {
+    // Handle divide by zero case
+    if b == 0 {
+        return (a, true);
+    }
+
+    // Handle overflow case: -MIN_I64 cannot be represented in 64 bits, so return 0.
+    if (a == 0x8000_0000_0000_0000) && (b as i64 == -1) {
+        return (0, false);
+    }
+
+    ((((a as i64) as i128) % ((b as i64) as i128)) as u64, false)
+}
+
+/// Sets c to a mod b, as 32-bits unsigned values, and flag to false.
+/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
+#[inline(always)]
+pub const fn op_remu_w(a: u64, b: u64) -> (u64, bool) {
+    // Handle divide by zero case
+    if (b as u32) == 0 {
+        return ((a as i32) as u64, true);
+    }
+
+    ((((a as u32) % (b as u32)) as i32) as u64, false)
+}
+
+/// Sets c to a mod b, as 32-bits signed values, and flag to false.
+/// If b=0 (divide by zero) it sets c to a, and sets flag to true.
+/// If a=0x80000000 (MIN_I32) and b=0xFFFFFFFF (-1) the result should be 0, since
+/// -MIN_I32 mod -1 is 0, and flag is set to false.
+#[inline(always)]
+pub const fn op_rem_w(a: u64, b: u64) -> (u64, bool) {
+    // Handle divide by zero case
+    if (b as i32) == 0 {
+        return ((a as i32) as u64, true);
+    }
+
+    // Handle overflow case: -MIN_I32 cannot be represented in 32 bits, so return 0.
+    if a as u32 == 0x8000_0000 && b as i32 == -1 {
+        return (0, false);
+    }
+
+    ((((a as i32) as i64) % ((b as i32) as i64)) as u64, false)
+}
+
+/* MIN / MAX operations */
+
+/// Sets c to the minimum of a and b as 64-bits unsigned values (and flag to false)
+#[inline(always)]
+pub const fn op_minu(a: u64, b: u64) -> (u64, bool) {
+    if a < b {
+        (a, false)
+    } else {
+        (b, false)
+    }
+}
+
+/// Sets c to the minimum of a and b as 64-bits signed values (and flag to false)
+#[inline(always)]
+pub const fn op_min(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) < (b as i64) {
+        (a, false)
+    } else {
+        (b, false)
+    }
+}
+
+/// Sets c to the minimum of a and b as 32-bits unsigned values (and flag to false)
+#[inline(always)]
+pub const fn op_minu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) < (b as u32) {
+        (a as i32 as i64 as u64, false)
+    } else {
+        (b as i32 as i64 as u64, false)
+    }
+}
+
+/// Sets c to the minimum of a and b as 32-bits signed values (and flag to false)
+#[inline(always)]
+pub const fn op_min_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) < (b as i32) {
+        (a as i32 as i64 as u64, false)
+    } else {
+        (b as i32 as i64 as u64, false)
+    }
+}
+
+/// Sets c to the maximum of a and b as 64-bits unsigned values (and flag to false)
+#[inline(always)]
+pub const fn op_maxu(a: u64, b: u64) -> (u64, bool) {
+    if a > b {
+        (a, false)
+    } else {
+        (b, false)
+    }
+}
+
+/// Sets c to the maximum of a and b as 64-bits signed values (and flag to false)
+#[inline(always)]
+pub const fn op_max(a: u64, b: u64) -> (u64, bool) {
+    if (a as i64) > (b as i64) {
+        (a, false)
+    } else {
+        (b, false)
+    }
+}
+
+/// Sets c to the maximum of a and b as 32-bits unsigned values (and flag to false)
+#[inline(always)]
+pub const fn op_maxu_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as u32) > (b as u32) {
+        (a as i32 as i64 as u64, false)
+    } else {
+        (b as i32 as i64 as u64, false)
+    }
+}
+
+/// Sets c to the maximum of a and b as 32-bits signed values (and flag to false)
+#[inline(always)]
+pub const fn op_max_w(a: u64, b: u64) -> (u64, bool) {
+    if (a as i32) > (b as i32) {
+        (a as i32 as i64 as u64, false)
+    } else {
+        (b as i32 as i64 as u64, false)
+    }
+}
+
+/// Sets c to the value of b, switching endianness of each byte, and flag to false
+#[inline(always)]
+pub const fn op_rev8(_a: u64, b: u64) -> (u64, bool) {
+    (b.swap_bytes(), false)
+}
+
+/// Sets c to the value of b, reversing the bits of each byte, and flag to false
+#[inline(always)]
+pub const fn op_brev8(_a: u64, b: u64) -> (u64, bool) {
+    let mut bytes: [u8; 8] = b.to_le_bytes();
+    let mut i = 0;
+    while i < 8 {
+        bytes[i] = bytes[i].reverse_bits();
+        i += 1;
+    }
+    (u64::from_le_bytes(bytes), false)
+}
+
+/// Sets c to the value a and not(b), and flag to false
+#[inline(always)]
+pub const fn op_andn(a: u64, b: u64) -> (u64, bool) {
+    (a & !b, false)
+}
+
+/// Sets c to the value a or not(b), and flag to false
+#[inline(always)]
+pub const fn op_orn(a: u64, b: u64) -> (u64, bool) {
+    (a | !b, false)
+}
+
+/// Sets c to the value a xnor b, and flag to false
+#[inline(always)]
+pub const fn op_xnor(a: u64, b: u64) -> (u64, bool) {
+    (!(a ^ b), false)
+}
+
+/// Sets c to the value low32(a) | (low32(b) << 32), and flag to false
+#[inline(always)]
+pub const fn op_pack(a: u64, b: u64) -> (u64, bool) {
+    (a & 0xFFFFFFFF | (b & 0xFFFFFFFF) << 32, false)
+}
+
+/// Sets c to the value low8(a) | (low8(b) << 8), and flag to false
+#[inline(always)]
+pub const fn op_pack_h(a: u64, b: u64) -> (u64, bool) {
+    (a & 0xFF | (b & 0xFF) << 8, false)
+}
+
+/// Sets c to the value low16(a) | (low16(b) << 16), sign extended, and flag to false
+#[inline(always)]
+pub const fn op_pack_w(a: u64, b: u64) -> (u64, bool) {
+    (((a & 0xFFFF) | ((b & 0xFFFF) << 16)) as i32 as u64, false)
+}
+
+/// Sets c to the value a rotated left b bits (modulo 64), and flag to false
+#[inline(always)]
+pub const fn op_rol(a: u64, b: u64) -> (u64, bool) {
+    (a.rotate_left((b & 0x3F) as u32), false)
+}
+
+/// Sets c to the value low32(a) rotated left b bits (modulo 32), and flag to false
+#[inline(always)]
+pub const fn op_rol_w(a: u64, b: u64) -> (u64, bool) {
+    (((a & 0xFFFFFFFF) as u32).rotate_left((b & 0x1F) as u32) as i32 as u64, false)
+}
+
+/// Sets c to the value a rotated right b bits (modulo 64), and flag to false
+#[inline(always)]
+pub const fn op_ror(a: u64, b: u64) -> (u64, bool) {
+    (a.rotate_right((b & 0x3F) as u32), false)
+}
+
+/// Sets c to the value low32(a) rotated right b bits (modulo 32), and flag to false
+#[inline(always)]
+pub const fn op_ror_w(a: u64, b: u64) -> (u64, bool) {
+    (((a & 0xFFFFFFFF) as u32).rotate_right((b & 0x1F) as u32) as i32 as u64, false)
+}
+
+/// Sets c to the number of zero bits before the first one bit in a, starting with the most
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_clz(_a: u64, b: u64) -> (u64, bool) {
+    (b.leading_zeros() as u64, false)
+}
+
+/// Sets c to the number of zero bits before the first one bit in a, as u32, starting with the most
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_clz_w(_a: u64, b: u64) -> (u64, bool) {
+    ((b as u32).leading_zeros() as u64, false)
+}
+
+/// Sets c to the number of zero bits before the first one bit in a, starting with the least
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_ctz(_a: u64, b: u64) -> (u64, bool) {
+    (b.trailing_zeros() as u64, false)
+}
+
+/// Sets c to the number of zero bits before the first one bit in a, as u32, starting with the least
+/// significant bit, and flag to false
+#[inline(always)]
+pub const fn op_ctz_w(_a: u64, b: u64) -> (u64, bool) {
+    ((b as u32).trailing_zeros() as u64, false)
+}
+
+/// Sets c to the number of one bits in a, and flag to false
+#[inline(always)]
+pub const fn op_cpop(_a: u64, b: u64) -> (u64, bool) {
+    (b.count_ones() as u64, false)
+}
+
+/// Sets c to the number of one bits in a, as u32, and flag to false
+#[inline(always)]
+pub const fn op_cpop_w(_a: u64, b: u64) -> (u64, bool) {
+    ((b as u32).count_ones() as u64, false)
+}
+
+/// Sets c bytes to 0x00 if the corresponding b byte is zero, 0xFF otherwise, and flag to false
+#[inline(always)]
+pub const fn op_orc_b(_a: u64, b: u64) -> (u64, bool) {
+    let mut result = 0;
+    if (b & 0xFF) != 0 {
+        result |= 0xFF;
+    }
+    if (b & 0xFF00) != 0 {
+        result |= 0xFF00;
+    }
+    if (b & 0xFF0000) != 0 {
+        result |= 0xFF0000;
+    }
+    if (b & 0xFF000000) != 0 {
+        result |= 0xFF000000;
+    }
+    if (b & 0xFF00000000) != 0 {
+        result |= 0xFF00000000;
+    }
+    if (b & 0xFF0000000000) != 0 {
+        result |= 0xFF0000000000;
+    }
+    if (b & 0xFF000000000000) != 0 {
+        result |= 0xFF000000000000;
+    }
+    if (b & 0xFF00000000000000) != 0 {
+        result |= 0xFF00000000000000;
+    }
+    (result, false)
+}
+
+/// Sets c to a, with bit b clear, and flag to false
+#[inline(always)]
+pub const fn op_bclr(a: u64, b: u64) -> (u64, bool) {
+    (a & !(1 << (b & 0x3F)), false)
+}
+
+/// Sets c to bit b of a, and flag to false
+#[inline(always)]
+pub const fn op_bext(a: u64, b: u64) -> (u64, bool) {
+    ((a >> (b & 0x3F)) & 1, false)
+}
+
+/// Sets c to a, with bit b inverted, and flag to false
+#[inline(always)]
+pub const fn op_binv(a: u64, b: u64) -> (u64, bool) {
+    (a ^ (1 << (b & 0x3F)), false)
+}
+
+/// Sets c to a, with bit b set, and flag to false
+#[inline(always)]
+pub const fn op_bset(a: u64, b: u64) -> (u64, bool) {
+    (a | (1 << (b & 0x3F)), false)
+}
+
+/// Sets c to b plus a (modulo 32), and flag to false
+#[inline(always)]
+pub const fn op_add_u_w(a: u64, b: u64) -> (u64, bool) {
+    (b.wrapping_add(a & 0xFFFF_FFFF), false)
+}
+
+/// Sets c to b plus a << 1, and flag to false
+#[inline(always)]
+pub const fn op_sh1add(a: u64, b: u64) -> (u64, bool) {
+    (b.wrapping_add(a << 1), false)
+}
+
+/// Sets c to b plus a (modulo 32) << 1, and flag to false
+#[inline(always)]
+pub const fn op_sh1add_u_w(a: u64, b: u64) -> (u64, bool) {
+    (b.wrapping_add((a & 0xFFFFFFFF) << 1), false)
+}
+
+/// Sets c to b plus a << 2, and flag to false
+#[inline(always)]
+pub const fn op_sh2add(a: u64, b: u64) -> (u64, bool) {
+    (b.wrapping_add(a << 2), false)
+}
+
+/// Sets c to b plus a (modulo 32) << 2, and flag to false
+#[inline(always)]
+pub const fn op_sh2add_u_w(a: u64, b: u64) -> (u64, bool) {
+    (b.wrapping_add((a & 0xFFFFFFFF) << 2), false)
+}
+
+/// Sets c to b plus a << 3, and flag to false
+#[inline(always)]
+pub const fn op_sh3add(a: u64, b: u64) -> (u64, bool) {
+    (b.wrapping_add(a << 3), false)
+}
+
+/// Sets c to b plus a (modulo 32) << 3, and flag to false
+#[inline(always)]
+pub const fn op_sh3add_u_w(a: u64, b: u64) -> (u64, bool) {
+    (b.wrapping_add((a & 0xFFFFFFFF) << 3), false)
+}
+
+/// Sets c to zext.w(a) << (b mod 64), and flag to false
+#[inline(always)]
+pub const fn op_sll_u_w(a: u64, b: u64) -> (u64, bool) {
+    ((a & 0xFFFFFFFF) << (b & 0x3F), false)
+}
+
+/// Sets c to carry-less multiplication of a and b (low part), and flag to false
+#[inline(always)]
+pub const fn op_clmul(a: u64, b: u64) -> (u64, bool) {
+    let mut output: u64 = 0;
+    let mut i = 0;
+    while i < 64 {
+        if (b >> i) & 1 == 1 {
+            output ^= a << i;
+        }
+        i += 1;
+    }
+    (output, false)
+}
+
+/// Sets c to carry-less multiplication of a and b (high part), and flag to false
+#[inline(always)]
+pub const fn op_clmul_h(a: u64, b: u64) -> (u64, bool) {
+    let mut output: u64 = 0;
+    let mut i = 1;
+    while i < 64 {
+        if (b >> i) & 1 == 1 {
+            output ^= a >> (64 - i);
+        }
+        i += 1;
+    }
+    (output, false)
+}
+
+/// Sets c to carry-less multiplication of a and b (reversed), and flag to false
+#[inline(always)]
+pub const fn op_clmul_r(a: u64, b: u64) -> (u64, bool) {
+    let mut output: u64 = 0;
+    let mut i = 0;
+    while i < 64 {
+        if (b >> i) & 1 == 1 {
+            output ^= a >> (63 - i);
+        }
+        i += 1;
+    }
+    (output, false)
+}
+
+/// Sets c to nibble-wise lookup of indices (b) into a vector (a), and flag to false
+#[inline(always)]
+pub const fn op_xperm4(a: u64, b: u64) -> (u64, bool) {
+    // Extract nibbles from a
+    let mut values: [u8; 16] = [0; 16];
+    let mut i = 0;
+    while i < 16 {
+        values[i] = ((a >> (i * 4)) & 0xF) as u8;
+        i += 1;
+    }
+
+    // Extract indices from b
+    let mut indexes: [u8; 16] = [0; 16];
+    i = 0;
+    while i < 16 {
+        indexes[i] = ((b >> (i * 4)) & 0xF) as u8;
+        i += 1;
+    }
+
+    // Perform the lookup
+    let mut output: [u8; 16] = [0; 16];
+    i = 0;
+    while i < 16 {
+        output[i] = values[indexes[i] as usize];
+        i += 1;
+    }
+
+    // Combine the output nibbles back into a u64
+    let mut result: u64 = 0;
+    i = 0;
+    while i < 16 {
+        result |= (output[i] as u64) << (i * 4);
+        i += 1;
+    }
+
+    (result, false)
+}
+
+/// Sets c to byte-wise lookup of indices (b) into a vector (a), and flag to false
+#[inline(always)]
+pub const fn op_xperm8(a: u64, b: u64) -> (u64, bool) {
+    // Extract bytes from a
+    let mut values: [u8; 8] = [0; 8];
+    let mut i = 0;
+    while i < 8 {
+        values[i] = ((a >> (i * 8)) & 0xFF) as u8;
+        i += 1;
+    }
+
+    // Extract indices from b
+    let mut indexes: [u8; 8] = [0; 8];
+    i = 0;
+    while i < 8 {
+        indexes[i] = ((b >> (i * 8)) & 0xFF) as u8;
+        i += 1;
+    }
+
+    // Perform the lookup
+    let mut output: [u8; 8] = [0; 8];
+    i = 0;
+    while i < 8 {
+        if indexes[i] < 8 {
+            output[i] = values[indexes[i] as usize];
+        }
+        i += 1;
+    }
+
+    // Combine the output bytes back into a u64
+    let mut result: u64 = 0;
+    i = 0;
+    while i < 8 {
+        result |= (output[i] as u64) << (i * 8);
+        i += 1;
+    }
+
+    (result, false)
+}

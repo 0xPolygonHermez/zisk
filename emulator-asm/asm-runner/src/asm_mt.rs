@@ -8,7 +8,7 @@ use crate::AsmShmemHeader;
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmMTHeader {
+pub(crate) struct AsmMTHeader {
     pub version: u64,
     pub exit_code: u64,
     pub shmem_allocated_size: u64,
@@ -24,7 +24,7 @@ impl AsmShmemHeader for AsmMTHeader {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct AsmMTChunk {
+pub(crate) struct AsmMTChunk {
     pub pc: u64,
     pub sp: u64,
     pub c: u64,
@@ -46,16 +46,13 @@ impl AsmMTChunk {
         let chunk = unsafe { std::ptr::read(*mapped_ptr) };
         *mapped_ptr = unsafe { mapped_ptr.add(1) };
 
-        // Zero-copy: borrow mem_reads directly from shared memory
+        // Zero-copy: borrow mem_reads directly from shared memory.
         // SAFETY: Caller must ensure shared memory outlives EmuTrace usage
         let mem_reads_ptr = *mapped_ptr as *const u64;
         let mem_reads_len = chunk.mem_reads_size as usize;
-        let mem_reads: Cow<'static, [u64]> = Cow::Borrowed(unsafe {
-            std::mem::transmute::<&[u64], &[u64]>(std::slice::from_raw_parts(
-                mem_reads_ptr,
-                mem_reads_len,
-            ))
-        });
+        let mem_reads: Cow<'static, [u64]> = unsafe {
+            Cow::Borrowed(&*std::ptr::slice_from_raw_parts(mem_reads_ptr, mem_reads_len))
+        };
 
         // Advance the pointer after reading memory reads
         *mapped_ptr = unsafe { (*mapped_ptr as *mut u64).add(mem_reads_len) as *const AsmMTChunk };
@@ -77,21 +74,5 @@ impl AsmMTChunk {
             steps: chunk.steps,
             mem_reads,
         }
-    }
-}
-
-#[repr(C)]
-#[derive(Debug)]
-pub struct AsmInputHeader {
-    pub zero: u64, // Not used
-    pub input_data_size: u64,
-}
-
-impl AsmInputHeader {
-    pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(32);
-        bytes.extend_from_slice(&0u64.to_le_bytes());
-        bytes.extend_from_slice(&self.input_data_size.to_le_bytes());
-        bytes
     }
 }

@@ -13,6 +13,9 @@ ZisK currently supports **Linux x86_64** and **macOS** platforms (see note below
 Ensure the following tools are installed:
 * [Rust](https://www.rust-lang.org/tools/install)
 * [Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git)
+* [Docker](https://docs.docker.com/engine/install/) — required only on **Linux x86_64** to build ZisK from source.
+* To enable GPU support in ZisK, you must have NVIDIA Driver version 525.60.13 or later installed.
+* If you use the `zisk-sdk` crate, you must also have CUDA Toolkit version 12.9 or later installed.
 
 ## Installing Dependencies
 
@@ -52,14 +55,16 @@ brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nloh
     curl https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh  | bash
     ```
 
-2. During the installation, you will be prompted to select a setup option. You can choose from the following:
+2. During installation, ziskup will detect whether CUDA is available on your machine. If so, it will install ZisK binaries with GPU support. Otherwise, you will be prompted to choose between CPU binaries (default) or GPU binaries.
+
+3. Also during the installation, you will be prompted to select a setup option. You can choose from the following:
 
     1. **Install proving key (default)** – Required for generating and verifying proofs.
     2. **Install proving key (no constant tree files)** – Install proving key but without constant tree files generation.
     3. **Install verify key** – Needed only if you want to verify proofs.
     4. **None** – Choose this if you only want to compile programs and execute them using the ZisK emulator.
 
-3. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
+4. Verify the Rust toolchain: (which includes support for the `riscv64ima-zisk-zkvm` compilation target):
     ```bash
     rustup toolchain list
     ```
@@ -71,10 +76,12 @@ brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nloh
     zisk
     ```
 
-4. Verify the `cargo-zisk` CLI tool:
+5. Verify the `cargo-zisk` CLI tool:
     ```bash
     cargo-zisk --version
     ```
+
+    It should show `cargo-zisk X.X.X [gpu]` if the GPU version is installed, or `cargo-zisk X.X.X [cpu]` otherwise
 
 #### Updating ZisK
 
@@ -106,29 +113,28 @@ To install the PLONK proving key (provingKeySnark), run:
     cargo build --release
     ```
 
-    **Note**: If you encounter the following error during compilation on Ubuntu:
-    ```
-    --- stderr
-    /usr/lib/x86_64-linux-gnu/openmpi/include/mpi.h:237:10: fatal error: 'stddef.h' file not found
-    ```
+    **Note**: The build process will automatically detect whether CUDA is available on your machine. If so, it will build the GPU-enabled binaries; otherwise, it will build the CPU version. To force the CPU version, use the `--features cpu-only` flag.
 
-    Follow these steps to resolve it:
+    **Note**: By default, the build process auto-detects the GPU architecture of the host machine. Use the `CUDA_ARCHS` environment variable to control which architectures are compiled:
 
-    1. Locate the `stddef.h` file:
-        ```bash
-        find /usr -name "stddef.h"
-        ```
-    2. Set the environment variables to include the directory where `stddef.h` is located (e.g.):
-        ```bash
-        export C_INCLUDE_PATH=/usr/lib/gcc/x86_64-linux-gnu/13/include
-        export CPLUS_INCLUDE_PATH=$C_INCLUDE_PATH
-        ```
-    3. Try building again
+    ```bash
+    # Single architecture (faster build — e.g. Ada Lovelace sm_89 / RTX 4090)
+    CUDA_ARCHS="89" cargo build --release
+
+    # Multiple architectures (e.g. Ada + Hopper)
+    CUDA_ARCHS="89,90" cargo build --release
+
+    # All major architectures — portable binary for distribution
+    # (sm_80, sm_86, sm_89, sm_90, sm_100, sm_120 + PTX forward compatibility)
+    # Note: this takes significantly longer to compile
+    CUDA_ARCHS="major" cargo build --release
+    ```
 
 3. Copy the tools to `~/.zisk/bin` directory:
     ```bash
     mkdir -p $HOME/.zisk/bin
     cp target/release/cargo-zisk target/release/ziskemu target/release/riscv2zisk target/release/zisk-coordinator target/release/zisk-worker target/release/libziskclib.a $HOME/.zisk/bin
+    cp target/zisk-libs/libziskc.a $HOME/.zisk/bin
     ```
 
 4. Copy required files for assembly rom setup:
@@ -139,7 +145,8 @@ To install the PLONK proving key (provingKeySnark), run:
     mkdir -p $HOME/.zisk/zisk/emulator-asm
     cp -r ./emulator-asm/src $HOME/.zisk/zisk/emulator-asm
     cp ./emulator-asm/Makefile $HOME/.zisk/zisk/emulator-asm
-    cp -r ./lib-c $HOME/.zisk/zisk
+    mkdir -p $HOME/.zisk/zisk/lib-c/c
+    cp -r ./lib-c/c/src $HOME/.zisk/zisk/lib-c/c
     ```
 
 5. Add `~/.zisk/bin` to your system PATH:
@@ -153,7 +160,7 @@ To install the PLONK proving key (provingKeySnark), run:
 
 6. Install the ZisK Rust toolchain:
     ```bash
-    cargo-zisk sdk install-toolchain
+    cargo-zisk toolchain install
     ```
 
     **Note**: This command installs the ZisK Rust toolchain from prebuilt binaries. If you prefer to build the toolchain from source, follow these steps:
@@ -162,7 +169,7 @@ To install the PLONK proving key (provingKeySnark), run:
 
     2. Build and install the Rust ZisK toolchain:
     ```bash
-    cargo-zisk sdk build-toolchain
+    cargo-zisk toolchain build
     ```
 
 7. Verify the installation:
@@ -171,64 +178,80 @@ To install the PLONK proving key (provingKeySnark), run:
     ```
     Confirm that `zisk` appears in the list of installed toolchains.
 
+8. Verify the `cargo-zisk` CLI tool:
+    ```bash
+    cargo-zisk --version
+    ```
+
+    It should show `cargo-zisk X.X.X [gpu]` if the GPU version is built, or `cargo-zisk X.X.X [cpu]` otherwise.
+
 #### Build Setup
 
 Please note that the process can be long, taking approximately 45-60 minutes depending on the machine used.
 
 [NodeJS](https://nodejs.org/en/download) version 20.x or higher is required to build the setup files.
 
-1. Clone the following repositories in the parent folder of the `zisk` folder created in the previous section:
-    ```bash
-    git clone https://github.com/0xPolygonHermez/pil2-compiler.git
-    git clone https://github.com/0xPolygonHermez/pil2-proofman.git
-    git clone https://github.com/0xPolygonHermez/pil2-proofman-js
-    ```
-2. Install packages:
-    ```bash
-    (cd pil2-compiler && npm i)
-    (cd pil2-proofman-js && npm i)
-    ```
-
-3. All subsequent commands must be executed from the `zisk` folder created in the previous section:
+1. All subsequent commands must be executed from the `zisk` folder created in the previous section:
     ```bash
     cd zisk
     ```
 
-4. Generate fixed data:
+2. Generate fixed data:
     ```bash
     cargo run --release --bin arith_frops_fixed_gen
     cargo run --release --bin binary_basic_frops_fixed_gen
     cargo run --release --bin binary_extension_frops_fixed_gen
     ```
 
-5. Compile ZisK PIL:
+3. Compile ZisK PIL:
     ```bash
-    node --max-old-space-size=16384 ../pil2-compiler/src/pil.js pil/zisk.pil -I pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles -o pil/zisk.pilout -u tmp/fixed -O fixed-to-file
+    cargo-zisk proofman-setup compile-pil \
+        --pil pil/zisk.pil \
+        --include "pil,../pil2-proofman/pil2-components/lib/std/pil,state-machines,precompiles" \
+        --output pil/zisk.pilout \
+        --fixed-dir tmp/fixed \
+        --fixed-to-file \
+        --no-proto-fixed-data
     ```
 
     This command will create the `pil/zisk.pilout` file
 
-6. Generate setup data: (this step may take 30-45 minutes):
+4. Generate pil-helpers:
     ```bash
-    node --max-old-space-size=16384 --stack-size=8192 ../pil2-proofman-js/src/main_setup.js -a ./pil/zisk.pilout -b build -t ../pil2-proofman/pil2-components/lib/std/pil -u tmp/fixed -r -s ./state-machines/starkstructs.json
+    cargo run --release --manifest-path "../pil2-proofman/Cargo.toml" -p proofman-cli -- pil-helpers \
+        --pilout pil/zisk.pilout \
+        --path pil/src \
+        -o
     ```
 
-    This command generates the `build/provingKey` directory.
+5. Generate setup files:
+    ```bash
+    cargo-zisk proofman-setup setup \
+        --airout pil/zisk.pilout \
+        --build-dir $HOME/.zisk \
+        --fixed-dir tmp/fixed \
+        --stark-structs state-machines/starkstructs.json \
+        --recursive
+    ```
+
+    This command generates the `$HOME/.zisk/provingKey` directory.
 
     Additionally, to generate the snark wrapper:
 
+    First, download the powers-of-tau file into the parent folder of `zisk`:
     ```bash
-    node  ../pil2-proofman-js/src/main_setup_snark.js -b build -t ../pil2-proofman/pil2-components/lib/std/pil -f -w ../powersOfTau28_hez_final_27.ptau -p ./state-machines/publics.json -n plonk
+    (cd .. && curl -L -O https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau)
     ```
 
-    It is stored under the `build/provingKeySnark` directory.
-    
-
-7. Copy (or move) the `build/provingKey` directory to `$HOME/.zisk` directory:
-
+    Then generate the snark wrapper:
     ```bash
-    cp -R build/provingKey $HOME/.zisk
+    cargo-zisk proofman-setup setup-snark \
+        --build-dir $HOME/.zisk \
+        --publics-info state-machines/publics.json \
+        --powers-of-tau ../powersOfTau28_hez_final_24.ptau
     ```
+
+    It is stored under the `$HOME/.zisk/provingKeySnark` directory.
 
 ## Uninstall Zisk
 

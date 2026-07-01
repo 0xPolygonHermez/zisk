@@ -1,5 +1,6 @@
 use super::str_test_data;
 
+#[allow(dead_code)]
 pub fn get_secp256k1_add_test_data(index: usize) -> Option<([u64; 8], [u64; 8], [u64; 8])> {
     if let Some(sdata) = get_secp256k1_add_test_str_data(index) {
         let bdata = str_test_data::<6, 8>(index, "secp256k1_add_test", sdata);
@@ -9,6 +10,7 @@ pub fn get_secp256k1_add_test_data(index: usize) -> Option<([u64; 8], [u64; 8], 
     }
 }
 
+#[allow(dead_code)]
 pub fn get_secp256k1_add_test_str_data(index: usize) -> Option<[&'static str; 6]> {
     match index {
         0 => Some([

@@ -8,7 +8,7 @@ use super::fp::{
 
 use super::P;
 
-/// Perform the inversion of a non-zero field element in Fp2
+/// Perform the inversion of a NON-ZERO field element in Fp2
 pub fn fcall_bn254_fp2_inv(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a = &params[0..8].try_into().unwrap();

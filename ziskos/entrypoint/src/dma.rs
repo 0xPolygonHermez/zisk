@@ -11,7 +11,7 @@
 /// The caller must ensure the destination is valid and properly aligned.
 
 #[macro_export]
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 macro_rules! ziskos_inputcpy {
     ($dest:expr, $size:literal) => {{
         unsafe {
@@ -53,7 +53,7 @@ macro_rules! ziskos_inputcpy {
 /// The caller must ensure both source and destination are valid and properly aligned,
 /// and that they do not overlap in memory.
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[macro_export]
 macro_rules! ziskos_memcpy {
     ($dst:expr, $src: expr, $size:literal) => {{
@@ -82,6 +82,19 @@ macro_rules! ziskos_memcpy {
             );
         }
     }};
+    (dst_ptr: $dst:expr, $src:expr, $size:literal) => {{
+        unsafe {
+            core::arch::asm!(
+                "csrs {port}, {src}",
+                "addi x0, {dst}, {size}",
+                port = const zisk_definitions::SYSCALL_DMA_MEMCPY_ID,
+                size = const $size,
+                dst = in(reg) $dst,
+                src = in(reg) $src.as_ptr(),
+                options(nostack, preserves_flags),
+            );
+        }
+    }};
     (ptr: $dst:expr, $src:expr, $size:expr) => {{
         unsafe {
             core::arch::asm!(
@@ -89,8 +102,8 @@ macro_rules! ziskos_memcpy {
                 "add x0, {dst}, {size}",
                 port = const zisk_definitions::SYSCALL_DMA_MEMCPY_ID,
                 size = in(reg) $size,
-                dst = in(reg) $dst,      // ya es *mut u8, sin as_mut_ptr()
-                src = in(reg) $src,      // ya es *mut u8, sin as_ptr()
+                dst = in(reg) $dst,      // it is already a *mut u8, sin as_mut_ptr()
+                src = in(reg) $src,      // it is already a *mut u8, sin as_ptr()
                 options(nostack, preserves_flags),
             );
         }
@@ -110,7 +123,7 @@ macro_rules! ziskos_memcpy {
 /// # Safety
 /// The caller must ensure both memory regions are valid and properly aligned.
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[macro_export]
 macro_rules! ziskos_memcmp {
     ($dst:expr, $src: expr, $size:literal) => {{
@@ -160,7 +173,7 @@ macro_rules! ziskos_memcmp {
 /// # Safety
 /// The caller must ensure the destination is valid and properly aligned.
 
-#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(zisk_guest)]
 #[macro_export]
 macro_rules! ziskos_memset {
     ($dst:expr, $value: literal, $size:literal) => {{

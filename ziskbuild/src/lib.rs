@@ -11,6 +11,9 @@ pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),
+    " [",
+    env!("ZISK_COMPUTE_MODE"),
+    "]",
     " (",
     env!("VERGEN_GIT_SHA"),
     " ",
@@ -27,7 +30,7 @@ pub const HELPER_TARGET_SUBDIR: &str = "elf";
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 pub struct BuildArgs {
     #[clap(short = 'F', long)]
-    features: Option<String>,
+    pub features: Option<String>,
 
     #[clap(long)]
     all_features: bool,
@@ -49,6 +52,12 @@ pub struct BuildArgs {
 
     #[clap(long, value_name = "HINTS")]
     pub hints: Option<bool>,
+
+    #[clap(long = "package", value_name = "PACKAGE")]
+    pub packages: Vec<String>,
+
+    #[clap(long = "bin", value_name = "BIN")]
+    pub binaries: Vec<String>,
 }
 
 pub fn build_program(path: &str) {

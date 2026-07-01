@@ -224,17 +224,11 @@ airtemplate Sha256f(const int N = 2**22) {
 
     const expr main_step = clock_map(step_addr, STEP_MAIN, start: 0, end: 17);
 
-    col witness bits(1) in_use_clk_0;
-    in_use_clk_0 * (1 - in_use_clk_0) === 0;
-    (1 - CLK_0) * in_use_clk_0 === 0; // it can only be active when CLK_0 is active
-
     col witness bits(1) in_use;
     in_use * (1 - in_use) === 0;
+
     const expr in_use_active = clock_set(start: 1, end: 17);
     in_use_active * (in_use - 'in_use) === 0; // if activated, it must be activated while in use
-
-    // if in_use_clk_0 is active then so is in_use
-    CLK_0 * (in_use_clk_0 - in_use) === 0;
 
     const expr mem_is_write = clock_set(start: 12, end: 15);
 
@@ -249,6 +243,8 @@ airtemplate Sha256f(const int N = 2**22) {
     );
 
     // --> Constraints to make sure that this coprocessor is called from the main processor
+    col witness bits(1) in_use_clk_0; // 1 at the first clock cycle of the Blake2br operation, 0 otherwise
+    in_use_clk_0 <== CLK_0 * in_use;
 
     proves_operation(op: OP_SHA256F, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
 

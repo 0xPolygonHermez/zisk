@@ -37,6 +37,7 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
         _sctx: &SetupCtx<F>,
         _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         _trace_buffer: Vec<F>,
+        _packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         Ok(None)
     }
@@ -80,10 +81,15 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
     /// A reference to self as `&dyn Any`.
     fn as_any(&self) -> &dyn Any;
 
+    /// Retrieves the statistics type associated with the instance.
+    ///
+    /// # Returns
+    /// A `StatsType` indicating the type of statistics collected by the instance.
     fn stats_type(&self) -> StatsType {
         StatsType::Other
     }
 
+    /// Resets the state of the instance, if applicable.
     fn reset(&self) {}
 }
 
@@ -146,6 +152,7 @@ macro_rules! table_instance {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
+                _packed: bool,
             ) -> ProofmanResult<Option<AirInstance<F>>> {
                 let multiplicity = self.table_sm.detach_multiplicity();
                 self.table_sm.set_calculated();
@@ -255,6 +262,7 @@ macro_rules! table_instance_array {
                 _sctx: &SetupCtx<F>,
                 _collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
                 _trace_buffer: Vec<F>,
+                _packed: bool,
             ) -> ProofmanResult<Option<AirInstance<F>>> {
                 let multiplicities = self.table_sm.detach_multiplicities();
                 self.table_sm.set_calculated();

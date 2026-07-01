@@ -52,8 +52,8 @@ impl DmaInput {
         // Write header
         writeln!(
             file,
-            "{:>8}|{:>10}|{:>10}|{:>2}|{:>18}|{:>8}|{:>14}|{}|{}|{:>10}",
-            "pos", "src", "dst", "op", "encoded", "count_bus", "step", "pre", "post", "loop"
+            "{:>8}|{:>10}|{:>10}|{:>2}|{:>18}|{:>8}|{:>14}|pre|post|{:>10}",
+            "pos", "src", "dst", "op", "encoded", "count_bus", "step", "loop"
         )?;
 
         // Write data rows

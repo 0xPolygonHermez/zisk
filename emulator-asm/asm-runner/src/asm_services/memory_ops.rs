@@ -2,7 +2,7 @@ use crate::asm_services::CMD_MO_RESPONSE_ID;
 
 use super::{FromResponsePayload, RequestData, ResponseData, ToRequestPayload, CMD_MO_REQUEST_ID};
 
-pub struct MemoryOperationsRequest {
+pub(crate) struct MemoryOperationsRequest {
     pub max_steps: u64,
     pub chunk_len: u64,
 }
@@ -13,7 +13,7 @@ impl ToRequestPayload for MemoryOperationsRequest {
     }
 }
 
-pub struct MemoryOperationsResponse {
+pub(crate) struct MemoryOperationsResponse {
     pub result: u8,
     pub allocated_len: u64,
     pub trace_len: u64,

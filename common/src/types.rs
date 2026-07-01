@@ -1,8 +1,4 @@
-use anyhow::Result;
 use std::fmt;
-use std::fs;
-use std::path::Path;
-use std::time::Duration;
 use std::time::Instant;
 
 /// Type representing a chunk identifier.
@@ -10,10 +6,12 @@ use std::time::Instant;
 pub struct ChunkId(pub usize);
 
 impl ChunkId {
+    /// Creates a new `ChunkId` with the given identifier.
     pub const fn new(id: usize) -> Self {
         ChunkId(id)
     }
 
+    /// Returns the underlying `usize` identifier of the `ChunkId`.
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -42,10 +40,12 @@ impl fmt::Display for ChunkId {
 pub struct SegmentId(pub usize);
 
 impl SegmentId {
+    /// Creates a new `SegmentId` with the given identifier.
     pub const fn new(id: usize) -> Self {
         SegmentId(id)
     }
 
+    /// Returns the underlying `usize` identifier of the `SegmentId`.
     pub fn as_usize(&self) -> usize {
         self.0
     }
@@ -69,26 +69,41 @@ impl fmt::Display for SegmentId {
     }
 }
 
+/// Type representing different statistics categories.
 pub enum StatsType {
+    /// Main execution stats.
     Main,
+    /// Memory-related operations and their stats.
     Memory,
+    /// Opcode execution stats.
     Opcodes,
+    /// Precompiled function execution stats.
     Precompiled,
+    /// Table-related operations and their stats.
     Tables,
+    /// Other miscellaneous stats.
     Other,
 }
 
-#[derive(Debug, Default, Clone)]
+/// Struct to hold cost breakdown by different types of operations.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StatsCostPerType {
+    /// Cost associated with the main state machine.
     pub main_cost: u64,
+    /// Cost associated with the non-main state machines (neither main nor precompiled).
     pub opcode_cost: u64,
+    /// Cost associated with memory-related state machines.
     pub memory_cost: u64,
+    /// Cost associated with precompiled state machines.
     pub precompile_cost: u64,
+    /// Cost associated with table-related operations.
     pub tables_cost: u64,
+    /// Cost associated with other miscellaneous operations.
     pub other_cost: u64,
 }
 
 impl StatsCostPerType {
+    /// Calculates the total cost by summing all individual cost categories.
     pub fn total_cost(&self) -> u64 {
         self.main_cost
             + self.opcode_cost
@@ -98,6 +113,7 @@ impl StatsCostPerType {
             + self.other_cost
     }
 
+    /// Adds the given cost to the appropriate category based on the `StatsType`.
     pub fn add_cost(&mut self, stats_type: StatsType, cost: u64) {
         match stats_type {
             StatsType::Main => self.main_cost += cost,
@@ -143,40 +159,69 @@ impl fmt::Display for StatsCostPerType {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+/// Struct to hold timing information for different phases of the Zisk executor.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorTime {
     /// Total executor duration of the entire execution process.
-    pub total_duration: Duration,
+    pub total_duration: u64,
     /// Duration of the execution phase.
-    pub execution_duration: Duration,
+    pub execution_duration: u64,
     /// Duration of the counting and planning phase for main state machines.
-    pub count_and_plan_duration: Duration,
+    pub count_and_plan_duration: u64,
     /// Duration of the counting and planning phase for memory operations from ASM runner.
-    pub count_and_plan_mo_duration: Duration,
+    pub count_and_plan_mo_duration: u64,
     /// Execution duration of the ASM runner.
     pub asm_execution_duration: Option<AsmExecutionInfo>,
 }
 
-#[derive(Debug, Default, Clone)]
+/// Per-AIR planned instance count. Plain `(airgroup_id, air_id, count)` triple so it can
+/// live in `common` (no executor dependency) and cross the wire; the human-readable AIR
+/// name is derived from the ids by the consumer.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AirInstanceCount {
+    /// AIR group ID.
+    pub airgroup_id: usize,
+    /// AIR ID.
+    pub air_id: usize,
+    /// Number of instances.
+    pub count: u64,
+}
+
+/// Struct to hold a summary of the Zisk executor's performance and cost metrics.
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ZiskExecutorSummary {
+    /// Total number of steps executed by the Zisk executor.
     pub steps: u64,
+    /// Timing information for different phases of the Zisk executor.
     pub executor_time: ZiskExecutorTime,
+    /// Cost breakdown by different types of operations.
     pub cost_per_type: StatsCostPerType,
+    /// Per-AIR instance plan. Empty unless produced by a planning executor run.
+    pub plan: Vec<AirInstanceCount>,
 }
 
 impl ZiskExecutorSummary {
+    /// Creates a new `ZiskExecutorSummary` with the given metrics.
     pub fn new(
         executed_steps: u64,
         execution_time: ZiskExecutorTime,
         cost_per_type: StatsCostPerType,
     ) -> Self {
-        Self { steps: executed_steps, executor_time: execution_time, cost_per_type }
+        Self {
+            steps: executed_steps,
+            executor_time: execution_time,
+            cost_per_type,
+            ..Default::default()
+        }
     }
 }
 
+/// Struct to hold detailed timing and chunk information for a specific AIR instance.
 #[derive(Debug, Clone)]
 pub struct Stats {
+    /// AIR group ID.
     pub airgroup_id: usize,
+    /// AIR ID.
     pub air_id: usize,
     /// Collect start time
     pub collect_start_time: Instant,
@@ -265,107 +310,12 @@ impl Stats {
     }
 }
 
-pub trait ElfBinaryLike {
-    fn elf(&self) -> &[u8];
-    fn name(&self) -> &str;
-    fn with_hints(&self) -> bool;
-    fn path(&self) -> Option<String>;
-}
-
-pub struct ElfBinaryFromFile {
-    pub elf: Vec<u8>,
-    pub name: String,
-    pub with_hints: bool,
-    pub path: Option<String>,
-}
-
-impl ElfBinaryFromFile {
-    pub fn new(elf: &Path, with_hints: bool) -> Result<Self> {
-        let elf_bin = fs::read(elf)
-            .map_err(|e| anyhow::anyhow!("Error reading ELF file {}: {}", elf.display(), e))?;
-        Ok(Self {
-            elf: elf_bin,
-            name: elf.file_stem().unwrap().to_str().unwrap().to_string(),
-            with_hints,
-            path: Some(elf.to_str().unwrap().to_string()),
-        })
-    }
-
-    pub fn elf(&self) -> &[u8] {
-        &self.elf
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-
-    pub fn path(&self) -> Option<String> {
-        self.path.clone()
-    }
-}
-
-impl ElfBinaryLike for ElfBinaryFromFile {
-    fn elf(&self) -> &[u8] {
-        &self.elf
-    }
-    fn name(&self) -> &str {
-        &self.name
-    }
-    fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-    fn path(&self) -> Option<String> {
-        self.path.clone()
-    }
-}
-
-pub struct ElfBinary {
-    pub elf: &'static [u8],
-    pub name: &'static str,
-    pub with_hints: bool,
-    pub path: Option<&'static str>,
-}
-
-impl ElfBinary {
-    pub fn elf(&self) -> &[u8] {
-        self.elf
-    }
-
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    pub fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-
-    pub fn path(&self) -> Option<String> {
-        self.path.map(|s| s.to_string())
-    }
-}
-
-impl ElfBinaryLike for ElfBinary {
-    fn elf(&self) -> &[u8] {
-        self.elf
-    }
-    fn name(&self) -> &str {
-        self.name
-    }
-    fn with_hints(&self) -> bool {
-        self.with_hints
-    }
-    fn path(&self) -> Option<String> {
-        self.path.map(|s| s.to_string())
-    }
-}
-
-#[derive(Default, Debug, Clone)]
+/// Struct to hold timing information for assembly execution, including total time and effective MHz.
+#[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AsmExecutionInfo {
+    /// Total time taken for the assembly execution in seconds.
     pub time: f32,
+    /// Effective execution speed in MHz.
     pub mhz: f32,
 }
 

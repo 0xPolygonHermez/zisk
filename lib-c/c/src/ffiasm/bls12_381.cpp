@@ -166,6 +166,9 @@ void BLS12_381_fail() {
     assert(false);
 }
 
+void BLS12_381_longErr() {
+    BLS12_381_fail();
+}
 
 RawBLS12_381::RawBLS12_381() {
     BLS12_381_init();
@@ -212,7 +215,7 @@ void RawBLS12_381::set(Element &r, int value) {
   }
 
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
-      
+
   for (int i=0; i<BLS12_381_N64; i++) r.v[i] = 0;
   mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
   BLS12_381_rawToMontgomery(r.v,r.v);
@@ -242,7 +245,7 @@ void RawBLS12_381::inv(Element &r, const Element &a) {
     for (int i=0; i<BLS12_381_N64; i++) r.v[i] = 0;
     mpz_export((void *)(r.v), NULL, -1, 8, -1, 0, mr);
 
-    BLS12_381_rawMMul(r.v, r.v,BLS12_381_rawR3);
+    BLS12_381_rawMMul(r.v, r.v,BLS12_381_R3.longVal);
     mpz_clear(mr);
 }
 
@@ -294,11 +297,11 @@ int RawBLS12_381::toRprBE(const Element &element, uint8_t *data, int bytes)
 
     mpz_t r;
     mpz_init(r);
-  
+
     toMpz(r, element);
-    
+   
     mpz_export(data, NULL, 1, bytes, 1, 0, r);
-  
+
     return BLS12_381_N64 * 8;
 }
 

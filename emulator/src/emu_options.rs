@@ -2,6 +2,7 @@
 
 use clap::Parser;
 use std::fmt;
+use zisk_common::ProfilingMode;
 use zisk_core::{DEFAULT_MAX_STEPS, DEFAULT_MAX_STEPS_STR, MAX_INPUT_SIZE};
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
@@ -171,6 +172,12 @@ pub struct EmuOptions {
     /// Requires option: --sdk
     #[clap(long, value_name = "WIDTH", default_value = "120")]
     pub sdk_width: usize,
+    /// In mode full emulation, load the data sections into memory, allowing to read them during the
+    /// emulation.  Enabled by default.
+    /// In mode chunk player, do not load the data sections into memory, since memory reads are
+    /// obtained from the minimal traces, not from memory
+    #[clap(long, default_value = "true")]
+    pub with_memory_data: bool,
 }
 
 impl Default for EmuOptions {
@@ -221,6 +228,7 @@ impl Default for EmuOptions {
             compact_names: 160,
             no_compact_names: false,
             sdk_width: 120,
+            with_memory_data: true,
         }
     }
 }
@@ -278,5 +286,26 @@ impl EmuOptions {
             && !self.generate_minimal_traces
             && !self.log_output
             && !self.log_output_riscof
+    }
+
+    pub fn apply_profiling(&mut self, mode: ProfilingMode) {
+        match mode {
+            ProfilingMode::Inline => {
+                self.sdk = true;
+                self.stats = true;
+                self.profile_tags = true;
+            }
+            ProfilingMode::Summary => {
+                self.sdk = true;
+                self.stats = true;
+                self.opcodes = true;
+                self.top_functions = true;
+            }
+            ProfilingMode::Complete => {
+                self.sdk = true;
+                self.stats = true;
+                self.profiler_output = Some("profile.json.gz".to_string());
+            }
+        }
     }
 }

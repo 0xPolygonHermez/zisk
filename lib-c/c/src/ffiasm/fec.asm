@@ -37,11 +37,14 @@
         global Fec_rawSub
         global Fec_rawNeg
         global Fec_rawMMul
+        global Fec_rawMMul1
         global Fec_rawMSquare
         global Fec_rawToMontgomery
         global Fec_rawFromMontgomery
         global Fec_rawIsEq
         global Fec_rawIsZero
+        global Fec_rawShr
+        global Fec_rawShl
         global Fec_rawq
         global Fec_rawR3
 
@@ -49,6 +52,10 @@
         DEFAULT REL
 
         section .text
+
+
+
+
 
 
 
@@ -284,15 +291,12 @@ Fec_long:
         jnc     Fec_longNormal
 Fec_longMontgomery:
 
-        mov  r8, rdi
         sub  rsp, 40
-        mov  rdi, rsp
-        push rdx
-        push r8
-        call Fec_toNormal
+        push rsi
         mov  rsi, rdi
-        pop  rdi
-        pop  rdx
+        mov  rdi, rsp
+        call Fec_toNormal
+        pop  rsi
 
 
 Fec_longNormal:
@@ -6624,6 +6628,7 @@ tmp_107:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+Fec_rawShr:
 rawShr:
         cmp rdx, 0
         je Fec_rawCopy
@@ -6824,6 +6829,7 @@ rawShr_endif3_3:
 ; Modified Registers:
 ;    r8, r9, 10, r11, rax, rcx
 ;;;;;;;;;;;;;;;;;;;;;;
+Fec_rawShl:
 rawShl:
         cmp rdx, 0
         je Fec_rawCopy
@@ -8874,6 +8880,3 @@ R3      dq      0x002bb1e33795f671,0x0000000100000b73,0x0000000000000000,0x00000
 lboMask dq      0xffffffffffffffff
 np      dq      0xd838091dd2253531
 
-
-; Mark stack as non-executable
-section .note.GNU-stack noalloc noexec nowrite progbits

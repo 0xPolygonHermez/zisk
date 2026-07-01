@@ -1,0 +1,18 @@
+apiVersion: 1
+
+# Watch /etc/grafana/dashboards for *.json files and auto-load them.
+# updateIntervalSeconds: 10 → drop a new JSON in the directory and Grafana
+# picks it up within 10s, no restart needed.
+# allowUiUpdates: true → edit dashboards in the UI during dev, then export
+# JSON back into the repo (Share → Export → Save to file).
+providers:
+  - name: zisk
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 10
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: true

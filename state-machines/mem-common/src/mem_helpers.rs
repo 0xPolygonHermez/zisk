@@ -30,6 +30,10 @@ impl MemHelpers {
         )
     }
     #[inline(always)]
+    pub fn mem_steps_belongs_to_same_chunk(step_a: u64, step_b: u64) -> bool {
+        Self::mem_step_to_chunk(step_a) == Self::mem_step_to_chunk(step_b)
+    }
+    #[inline(always)]
     pub fn mem_step_to_main_step(step: u64) -> u64 {
         (step - MEM_STEP_BASE) >> MEM_STEPS_BY_MAIN_STEP_BITS
     }
@@ -143,7 +147,7 @@ impl MemHelpers {
         let offset = Self::get_byte_offset(addr) * 8;
         let mut value = read_values[0] >> offset;
         if is_double {
-            value |= (read_values[1] >> offset) << (64 - offset);
+            value |= read_values[1] << (64 - offset);
         }
         match bytes {
             1 => value & 0xFF,

@@ -1,0 +1,54 @@
+---
+# zisk-worker role defaults.
+# Mirrors distributed/deploy/scripts/worker/defaults.env. Override per host/group.
+
+zisk_worker_user: zisk-worker
+zisk_worker_group: zisk-worker
+zisk_worker_binary_dst: /usr/local/bin/zisk-worker
+zisk_worker_config_dir: /etc/zisk
+zisk_worker_config_dst: "{{ zisk_worker_config_dir }}/worker.toml"
+zisk_worker_work_dir: /var/lib/zisk-worker
+zisk_worker_log_dir: /var/log/zisk-worker
+zisk_worker_unit_file: /etc/systemd/system/zisk-worker.service
+
+# Shared ZisK bundle (toolchain + proving key) populated by ziskup --system.
+# Same group ('zisk') is added as a supplementary group to the service user
+# so the worker can read the bundle.
+zisk_worker_bundle_dir: /opt/zisk
+zisk_worker_zisk_group: zisk
+zisk_worker_proving_key: "{{ zisk_worker_bundle_dir }}/provingKey"
+
+# SNARK proving key. When zisk_worker_with_snark is true, the bundle.yml task
+# tells ziskup to also download provingKeySnark/ alongside the STARK key.
+# zisk_worker_proving_key_snark, if set, is forwarded to the worker as
+# --proving-key-snark; defaults to bundle's location when --with-snark is on.
+zisk_worker_with_snark: false
+zisk_worker_proving_key_snark: ""
+
+# ziskup version + branch used by bundle.yml. Override to pin a specific
+# release, branch, or tag.
+zisk_worker_ziskup_version: ""           # e.g. "0.17.0"; empty = latest
+zisk_worker_deploy_branch: main          # branch to fetch ziskup from
+
+# Source paths on the Ansible control host. Operator must supply these.
+zisk_worker_binary_src: ""           # required: path to pre-built zisk-worker binary
+zisk_worker_config_src: ""           # optional: path to worker.toml; if empty and
+                                     #   target lacks a config, role leaves it absent
+
+# Service-config CLI overrides — leave empty to use the value from worker.toml.
+# emulator and asm are mutually exclusive at the binary; setting both is rejected.
+zisk_worker_coordinator_url: ""      # gRPC URL of the coordinator       (--coordinator-url)
+zisk_worker_id: ""                   # worker identifier                 (--worker-id)
+zisk_worker_compute_capacity: ""     # compute units to advertise        (--compute-capacity)
+zisk_worker_emulator: false          # use prebuilt emulator             (--emulator)
+zisk_worker_asm: ""                  # ASM file path                     (--asm)
+zisk_worker_gpu: false               # run with GPU                      (--gpu)
+zisk_worker_log_level: ""            # trace|debug|info|warn|error       (--log-level)
+
+# MPI configuration. Default: enabled with auto-detect.
+# To run single-process: set zisk_worker_mpi_enabled: false.
+# To override auto-detect: set ALL THREE of *_processes / *_numa_ppr / *_threads.
+zisk_worker_mpi_enabled: true
+zisk_worker_mpi_processes: ""
+zisk_worker_mpi_numa_ppr: ""
+zisk_worker_mpi_threads: ""

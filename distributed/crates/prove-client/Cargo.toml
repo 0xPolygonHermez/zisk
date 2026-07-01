@@ -1,0 +1,21 @@
+[package]
+name = "zisk-prove-client"
+description = "CLI client for submitting jobs to the ZisK coordinator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "zisk-prove-client"
+path = "src/main.rs"
+
+[dependencies]
+zisk-coordinator-client = { workspace = true }
+zisk-coordinator-api = { workspace = true }
+anyhow = { workspace = true }
+clap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+uuid = { workspace = true }

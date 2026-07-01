@@ -1,10 +1,10 @@
-use anyhow::Result;
+use std::error::Error;
 use std::path::PathBuf;
-use zisk_sdk::{include_elf, ElfBinary, ProverClient, ZiskStdin};
+use test_artifacts::ELF_BIG_INPUT;
+use zisk_sdk::{ProverClient, ZiskStdin};
 
-pub const ELF: ElfBinary = include_elf!("big-program-guest");
-
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...");
 
     // Read the input size that was configured during build
@@ -19,28 +19,25 @@ fn main() -> Result<()> {
     let stdin = ZiskStdin::from_file(&input_path)?;
     println!("Input loaded successfully");
 
-    // Create a `ProverClient` method.
-    let client = ProverClient::builder()
-        .asm()
-        .verify_constraints()
-        .proving_key_path_opt(Some("/home/roger/zisk/build/provingKey".into()))
-        .build()
-        .unwrap();
+    let builder = ProverClient::embedded();
+    #[cfg(feature = "gpu")]
+    let builder = builder.gpu();
+    let client = builder.build()?;
 
-    let (pk, _vkey) = client.setup(&ELF)?;
+    client.setup(&ELF_BIG_INPUT).run()?.await?;
 
-    // Execute the program using the `ProverClient.execute` method, without generating a proof.
-    let result = client.execute(&pk, stdin.clone())?;
+    let result = client.execute(&ELF_BIG_INPUT, &stdin).run()?.await?;
 
     println!(
-        "ZisK has executed program with {} cycles in {:?}",
-        result.executor_summary.steps, result.total_duration
+        "ZisK has executed program with {} cycles in {} ms",
+        result.get_execution_steps(),
+        result.get_execution_time()
     );
 
-    println!("Verifying constraints (no proof generation)...");
-    client.verify_constraints(&pk, stdin.clone())?;
+    println!("Generating proof...");
+    client.prove(&ELF_BIG_INPUT, &stdin).run()?.await?;
 
-    println!("\u{2713} VerifyConstraints completed successfully!");
+    println!("\u{2713} Prove completed successfully!");
 
     Ok(())
 }

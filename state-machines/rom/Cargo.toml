@@ -11,18 +11,13 @@ categories = { workspace = true }
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
+riscv2zisk = { workspace = true }
 asm-runner = { workspace = true }
+mem-common = { workspace = true }
 
-fields = { workspace=true }
+fields = { workspace = true }
 proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
-proofman-util = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }
-itertools = { workspace = true }
-
-[features]
-default = []
-gpu = ["packed"]
-packed = []
+thiserror = { workspace = true }

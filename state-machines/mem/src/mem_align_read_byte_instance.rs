@@ -1,7 +1,6 @@
 use crate::{mem_align_byte_sm::MemAlignByteSM, MemAlignCollector};
 use mem_common::MemAlignCheckPoint;
 
-use crate::mem_align_byte_sm::{MemAlignReadByteTraceRowType, MemAlignReadByteTraceType};
 use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
@@ -9,6 +8,7 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
+use zisk_pil::{MemAlignReadByteTrace, MemAlignReadByteTraceRow, MemAlignReadByteTraceRowPacked};
 
 pub struct MemAlignReadByteInstance<F: PrimeField64> {
     /// Instance context
@@ -43,6 +43,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
@@ -55,14 +56,19 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
                 collector.inputs
             })
             .collect();
-        Ok(Some(
+        Ok(Some(if packed {
             self.mem_align_byte_sm
-                .compute_witness::<MemAlignReadByteTraceType<F>, MemAlignReadByteTraceRowType<F>>(
-                    &inputs,
-                    total_rows as usize,
-                    trace_buffer,
-                )?,
-        ))
+                .compute_witness::<
+                    MemAlignReadByteTrace<MemAlignReadByteTraceRowPacked<F>>,
+                    MemAlignReadByteTraceRowPacked<F>,
+                >(&inputs, total_rows as usize, trace_buffer)?
+        } else {
+            self.mem_align_byte_sm
+                .compute_witness::<
+                    MemAlignReadByteTrace<MemAlignReadByteTraceRow<F>>,
+                    MemAlignReadByteTraceRow<F>,
+                >(&inputs, total_rows as usize, trace_buffer)?
+        }))
     }
 
     fn check_point(&self) -> &CheckPoint {

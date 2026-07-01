@@ -19,6 +19,7 @@ use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
 use data_bus::DataBusTrait;
 use fields::PrimeField;
+use riscv2zisk::Riscv2zisk;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -26,7 +27,7 @@ use std::{
 };
 use sysinfo::System;
 use zisk_common::EmuTrace;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
 
 pub trait Emulator {
     fn emulate(
@@ -195,24 +196,34 @@ impl ZiskEmulator {
         options: &EmuOptions,
         num_threads: usize,
     ) -> Result<Vec<EmuTrace>, ZiskEmulatorErr> {
-        let mut minimal_traces = vec![Vec::new(); num_threads];
+        let results: Vec<Result<Vec<EmuTrace>, ZiskEmulatorErr>> = (0..num_threads)
+            .into_par_iter()
+            .map(|thread_id| {
+                let par_emu_options = ParEmuOptions::new(
+                    num_threads,
+                    thread_id,
+                    options.chunk_size.unwrap() as usize,
+                );
 
-        minimal_traces.par_iter_mut().enumerate().for_each(|(thread_id, emu_trace)| {
-            let par_emu_options =
-                ParEmuOptions::new(num_threads, thread_id, options.chunk_size.unwrap() as usize);
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let mut emu = Emu::new(rom);
+                    let trace = emu.par_run(inputs.to_owned(), options, &par_emu_options);
+                    if !emu.terminated() {
+                        return Err(ZiskEmulatorErr::EmulationNoCompleted);
+                    }
+                    Ok(trace)
+                }))
+                .unwrap_or_else(|payload| {
+                    let msg = panic_payload_message(&payload);
+                    Err(ZiskEmulatorErr::Unknown(format!("emulation panicked: {msg}")))
+                })
+            })
+            .collect();
 
-            // Run the emulation
-            let mut emu = Emu::new(rom);
-            let result = emu.par_run(inputs.to_owned(), options, &par_emu_options);
-
-            if !emu.terminated() {
-                panic!("Emulation did not complete");
-                // TODO!
-                // return Err(ZiskEmulatorErr::EmulationNoCompleted);
-            }
-
-            *emu_trace = result;
-        });
+        let mut minimal_traces = Vec::with_capacity(num_threads);
+        for result in results {
+            minimal_traces.push(result?);
+        }
 
         let capacity = minimal_traces.iter().map(|trace| trace.len()).sum::<usize>();
         let mut vec_traces = Vec::with_capacity(capacity);
@@ -237,7 +248,7 @@ impl ZiskEmulator {
         with_mem_ops: bool,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, with_mem_ops);
 
         // Run the emulation
         emu.process_emu_trace(emu_trace, data_bus, with_mem_ops);
@@ -253,7 +264,7 @@ impl ZiskEmulator {
         data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
-        let mut emu = Emu::new(rom);
+        let mut emu = Emu::new_with_memory_data(rom, false);
 
         // Run the emulation
         emu.process_emu_traces(min_traces, chunk_id, data_bus);
@@ -319,23 +330,33 @@ impl Emulator for ZiskEmulator {
         // Build an input data buffer either from the provided inputs path (if provided), or leave
         // it empty
         let mut inputs = Vec::new();
-        if options.inputs.is_some() {
+        if let Some(inputs_path) = &options.inputs {
             // Read inputs data from the provided inputs path
-            let path = PathBuf::from(options.inputs.clone().unwrap());
-            inputs = fs::read(path).expect("Could not read inputs file");
+            let path = PathBuf::from(inputs_path);
+            inputs = fs::read(&path).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not read inputs file '{}': {e}",
+                    path.display()
+                )))
+            })?;
         }
 
         // Build an input data buffer either from the provided inputs path (if provided), or leave
         // it empty
-        if options.legacy_inputs.is_some() {
+        if let Some(legacy_inputs_path) = &options.legacy_inputs {
             if options.inputs.is_some() {
                 return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
                     "Legacy input file and input file options are incompatible",
                 )));
             }
-            // Read inputs data from the provided inputs path
-            let path = PathBuf::from(options.legacy_inputs.clone().unwrap());
-            let file_data = fs::read(path).expect("Could not read inputs file");
+            // Read inputs data from the provided legacy inputs path
+            let path = PathBuf::from(legacy_inputs_path);
+            let file_data = fs::read(&path).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not read legacy inputs file '{}': {e}",
+                    path.display()
+                )))
+            })?;
 
             // Build legacy format: 8 bytes length (native endianness) + file content + padding to multiple of 8
             let file_len = file_data.len() as u64;
@@ -385,5 +406,15 @@ impl Emulator for ZiskEmulator {
                 Self::process_elf_file(elf_filename, &inputs, options, callback)
             }
         }
+    }
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic payload".to_string()
     }
 }

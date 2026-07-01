@@ -239,7 +239,7 @@ impl FrequentOpsHelpers {
     /// - `usize`: The number of operand pairs for this opcode
     pub fn get_top(&self, num: usize) -> Vec<(u8, usize)> {
         let mut list = self.get_list();
-        list.sort_by(|a, b| b.1.cmp(&a.1));
+        list.sort_by_key(|a| std::cmp::Reverse(a.1));
         list.truncate(num);
         list
     }

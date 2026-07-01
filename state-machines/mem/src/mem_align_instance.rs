@@ -8,6 +8,7 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
+use zisk_pil::{MemAlignTraceRow, MemAlignTraceRowPacked};
 
 pub struct MemAlignInstance<F: PrimeField64> {
     /// Instance context
@@ -42,6 +43,7 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let mut total_rows = 0;
         let inputs: Vec<_> = collectors
@@ -54,7 +56,19 @@ impl<F: PrimeField64> Instance<F> for MemAlignInstance<F> {
                 collector.inputs
             })
             .collect();
-        Ok(Some(self.mem_align_sm.compute_witness(&inputs, total_rows as usize, trace_buffer)?))
+        if packed {
+            Ok(Some(self.mem_align_sm.compute_witness::<MemAlignTraceRowPacked<F>>(
+                &inputs,
+                total_rows as usize,
+                trace_buffer,
+            )?))
+        } else {
+            Ok(Some(self.mem_align_sm.compute_witness::<MemAlignTraceRow<F>>(
+                &inputs,
+                total_rows as usize,
+                trace_buffer,
+            )?))
+        }
     }
 
     fn check_point(&self) -> &CheckPoint {

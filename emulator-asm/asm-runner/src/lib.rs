@@ -1,3 +1,21 @@
+//! The `asm-runner` crate provides the core logic for managing the assembly runner process,
+//! including shared memory management, synchronization primitives,
+//! and communication with the C++ side of the emulator.
+//! It defines the main types and functions used by the assembly runner to execute assembly code
+//! and interact with the rest of the emulator.
+
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
+// On non-Linux-x86_64 the ASM runner is a stub shell: the real runners and the
+// shared-memory machinery they drive are `cfg`-gated out, so most of the crate's
+// types/fns have no caller there. Silence the resulting dead-code/unused-import
+// noise off the supported platform; Linux-x86_64 keeps full lint enforcement.
+#![cfg_attr(
+    not(all(target_os = "linux", target_arch = "x86_64")),
+    allow(dead_code, unused_imports)
+)]
+
 extern crate libc;
 
 mod asm_mo;
@@ -29,21 +47,27 @@ mod inputs_shmem;
 mod inputs_shmem_stub;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod multi_shmem;
+mod naming;
 mod shmem_reader;
+mod shmem_sys;
 mod shmem_utils;
 mod shmem_writer;
 
-pub use asm_mo::*;
+// Internal layout/header structs — not part of the public API.
+pub use asm_mo::GpuBufferSource;
+pub(crate) use asm_mo::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_mo_runner::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub use asm_mo_runner_stub::*;
-pub use asm_mt::*;
+pub(crate) use asm_mt::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_mt_runner::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub use asm_mt_runner_stub::*;
-pub use asm_rh::*;
+// `AsmRHData` is public API (read by sm-rom); `AsmRHHeader` is an internal layout struct.
+pub use asm_rh::AsmRHData;
+pub(crate) use asm_rh::AsmRHHeader;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use asm_rh_runner::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
@@ -51,6 +75,7 @@ pub use asm_rh_runner_stub::*;
 pub use asm_runner::*;
 pub use asm_services::*;
 pub use control_shmem::*;
+// `HintsFile` is a public file-based StreamSink alternative to HintsShmem.
 pub use hints_file::*;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub use hints_shmem::*;
@@ -60,11 +85,13 @@ pub use hints_shmem_stub::*;
 pub use inputs_shmem::*;
 #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
 pub use inputs_shmem_stub::*;
+// Low-level shmem primitives + naming — crate-internal, not part of the public API.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub use multi_shmem::*;
-pub use shmem_reader::*;
-pub use shmem_utils::*;
-pub use shmem_writer::*;
+pub(crate) use multi_shmem::*;
+pub(crate) use naming::*;
+pub(crate) use shmem_reader::*;
+pub(crate) use shmem_utils::*;
+pub(crate) use shmem_writer::*;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 pub(crate) const TRACE_INITIAL_SIZE: usize = 0x180000000; // 6GB
@@ -76,93 +103,32 @@ pub(crate) const TRACE_MAX_SIZE: usize = 0x1000000000; // 64GB
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
 
-fn build_name(
-    prefix: &str,
-    port: u16,
-    asm_service: AsmService,
-    local_rank: i32,
-    suffix: &str,
-) -> String {
-    format!(
-        "{}{}_{}_{}",
-        prefix,
-        AsmServices::shmem_prefix(port, local_rank),
-        asm_service.as_str(),
-        suffix
-    )
-}
-
-fn build_name2(prefix: &str, port: u16, local_rank: i32, suffix: &str) -> String {
-    format!("{}{}_{}", prefix, AsmServices::shmem_prefix(port, local_rank), suffix)
-}
-
-fn build_shmem_name(port: u16, asm_service: AsmService, local_rank: i32, suffix: &str) -> String {
-    build_name("", port, asm_service, local_rank, suffix)
-}
-
-fn build_shmem_name2(port: u16, local_rank: i32, suffix: &str) -> String {
-    build_name2("", port, local_rank, suffix)
-}
-
-fn build_sem_name(port: u16, asm_service: AsmService, local_rank: i32, suffix: &str) -> String {
-    build_name("/", port, asm_service, local_rank, suffix)
-}
-
-pub fn shmem_input_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "input")
-}
-
-pub fn shmem_input_avail_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "input_avail")
-}
-
-/// Semaphore name for input availability (per service)
-pub fn sem_input_avail_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "input_avail")
-}
-
-/// Shared memory name for precompile hints data
-pub fn shmem_precompile_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "precompile")
-}
-
-/// Shared memory name for precompile hints data
-pub fn sem_available_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "prec_avail")
-}
-
-/// Shared memory name for precompile hints data
-pub fn sem_read_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "prec_read")
-}
-
-/// Shared memory name for precompile hints data control
-pub fn shmem_control_writer_name(port: u16, local_rank: i32) -> String {
-    build_shmem_name2(port, local_rank, "control_input")
-}
-
-pub fn shmem_control_reader_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_shmem_name(port, asm_service, local_rank, "control_output")
-}
-
-pub fn shmem_output_name(
-    port: u16,
-    asm_service: AsmService,
-    local_rank: i32,
-    suffix: Option<isize>,
-) -> String {
-    if let Some(suffix) = suffix {
-        format!(
-            "{}_{}_output_{}",
-            AsmServices::shmem_prefix(port, local_rank),
-            asm_service.as_str(),
-            suffix
-        )
-    } else {
-        build_shmem_name(port, asm_service, local_rank, "output")
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+pub(crate) fn drain_chunk_done(sem: &mut named_sem::NamedSemaphore) -> u64 {
+    let mut swept = 0;
+    while sem.try_wait().is_ok() {
+        swept += 1;
     }
+    swept
 }
 
-pub fn sem_chunk_done_name(port: u16, asm_service: AsmService, local_rank: i32) -> String {
-    build_sem_name(port, asm_service, local_rank, "chunk_done")
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use named_sem::NamedSemaphore;
+
+    #[test]
+    fn drain_chunk_done_sweeps_all_pending_posts() {
+        let name = format!("/ZISK_unittest_drain_{}", std::process::id());
+        let mut sem = NamedSemaphore::create(&name, 0).unwrap();
+        for _ in 0..3 {
+            sem.post().unwrap();
+        }
+        assert_eq!(drain_chunk_done(&mut sem), 3, "should sweep the 3 pending posts");
+        assert_eq!(drain_chunk_done(&mut sem), 0, "nothing left to sweep");
+
+        let c = std::ffi::CString::new(name).unwrap();
+        unsafe { libc::sem_unlink(c.as_ptr()) };
+    }
 }

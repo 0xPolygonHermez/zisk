@@ -269,7 +269,7 @@ unsafe extern "C" {
     pub fn execute_mem_count_and_plan(mcp: *mut MemCountAndPlan);
 }
 unsafe extern "C" {
-    pub fn save_chunk(chunk_id: u32, chunk_data: *mut MemCountersBusData, chunk_size: u32);
+    pub fn save_chunk_data(chunk_id: u32, chunk_data: *mut MemCountersBusData, chunk_size: u32);
 }
 unsafe extern "C" {
     pub fn add_chunk_mem_count_and_plan(
@@ -293,6 +293,27 @@ unsafe extern "C" {
 unsafe extern "C" {
     pub fn get_mem_segment_count(mcp: *mut MemCountAndPlan, mem_id: u32) -> u32;
 }
+/// Mirrors `cpp/instance_meta.hpp::PagedOffsets` (field order/types must match;
+/// the C++ side carries `static_assert(sizeof(PagedOffsets) == 40)`).
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct PagedOffsets {
+    pub page_starts: *const u32,
+    pub page_single_value: *const u32,
+    pub pages_dense: *const u32,
+    pub num_pages: u32,
+    pub present_count: u32,
+    pub addr_range_slots: u32,
+}
+
+unsafe extern "C" {
+    pub fn get_mem_segment_offset_pages(
+        mcp: *mut MemCountAndPlan,
+        mem_id: u32,
+        segment_id: u32,
+        offsets_base_addr_out: *mut u32,
+    ) -> PagedOffsets;
+}
 unsafe extern "C" {
     pub fn get_mem_segment_check_points(
         mcp: *mut MemCountAndPlan,
@@ -312,6 +333,13 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn get_mem_stats_len(mcp: *mut MemCountAndPlan) -> u64;
+}
+unsafe extern "C" {
+    pub fn inject_gpu_metas_from_pointers(
+        mcp: *mut MemCountAndPlan,
+        gpu_metas: *const ::std::os::raw::c_void,
+        n: u32,
+    ) -> bool;
 }
 unsafe extern "C" {
     pub fn get_mem_stats_ptr(mcp: *mut MemCountAndPlan) -> u64;

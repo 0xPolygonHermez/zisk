@@ -5,6 +5,7 @@ use crate::zisklib::fcalls_impl::utils::{biguint_from_u64_digits, n_u64_digits_f
 
 use super::{NQR, P, P_DIV_4};
 
+/// Computes the square root of a field element in Fp
 pub fn fcall_secp256k1_fp_sqrt(params: &[u64], results: &mut [u64]) -> i64 {
     // Get the input
     let a: &[u64; 4] = &params[0..4].try_into().unwrap();
@@ -40,7 +41,7 @@ pub fn secp256k1_fp_sqrt(a: &[u64; 4], parity: u64, results: &mut [u64]) {
 
     // Flip the sqrt if needed to match the requested parity
     let sqrt_r = n_u64_digits_from_biguint::<4>(&sqrt);
-    let sqrt_parity = (sqrt_r[0] & 1) as u64;
+    let sqrt_parity = sqrt_r[0] & 1;
     if parity != sqrt_parity {
         sqrt = (&*P - &sqrt) % &*P;
     }
@@ -60,6 +61,22 @@ mod tests {
         let b_big = biguint_from_u64_digits(b);
         let ab_big = (a_big * b_big) % &*P;
         n_u64_digits_from_biguint::<4>(&ab_big)
+    }
+
+    #[test]
+    fn test_sqrt_zero() {
+        let x = [0, 0, 0, 0];
+        let parity = 0;
+        let params = [x[0], x[1], x[2], x[3], parity];
+        let expected_sqrt = [0, 0, 0, 0];
+
+        let mut results = [0; 5];
+        fcall_secp256k1_fp_sqrt(&params, &mut results);
+        let has_sqrt = results[0];
+        let sqrt = &results[1..5].try_into().unwrap();
+        assert_eq!(has_sqrt, 1);
+        assert_eq!(sqrt, &expected_sqrt);
+        assert_eq!(secp256k1_fp_mul(sqrt, sqrt), x);
     }
 
     #[test]
@@ -90,6 +107,7 @@ mod tests {
 
     #[test]
     fn test_sqrt() {
+        // First
         let x = [0x643764b2faa1592a, 0x4ac3ab52286f702a, 0x6591d88c833ffd4f, 0xc6fb7a1e514eac26];
         let parity = 0;
         let params = [x[0], x[1], x[2], x[3], parity];
@@ -108,6 +126,62 @@ mod tests {
         let params = [x[0], x[1], x[2], x[3], parity];
         let expected_sqrt =
             [0x5c2d04fd9f0d5e39, 0xc1431b2a9a4ad9b6, 0xb3213f40a36979c6, 0xedc1bdf783beacaa];
+
+        let mut results = [0; 5];
+        fcall_secp256k1_fp_sqrt(&params, &mut results);
+        let has_sqrt = results[0];
+        let sqrt = &results[1..5].try_into().unwrap();
+        assert_eq!(has_sqrt, 1);
+        assert_eq!(sqrt, &expected_sqrt);
+        assert_eq!(secp256k1_fp_mul(sqrt, sqrt), x);
+
+        // Second
+        let x = [0x59F2815B16F81798, 0x029BFCDB2DCE28D9, 0x55A06295CE870B07, 0x0000667EF9DCBBAC];
+        let parity = 0;
+        let params = [x[0], x[1], x[2], x[3], parity];
+        let expected_sqrt =
+            [0x2cdb0b420a0b2fa8, 0xae95e4efac06f6f8, 0xdffca3827ec886df, 0x91e1985910a2d28f];
+
+        let mut results = [0; 5];
+        fcall_secp256k1_fp_sqrt(&params, &mut results);
+        let has_sqrt = results[0];
+        let sqrt = &results[1..5].try_into().unwrap();
+        assert_eq!(has_sqrt, 1);
+        assert_eq!(sqrt, &expected_sqrt);
+        assert_eq!(secp256k1_fp_mul(sqrt, sqrt), x);
+
+        let parity = 1;
+        let params = [x[0], x[1], x[2], x[3], parity];
+        let expected_sqrt =
+            [0xd324f4bcf5f4cc87, 0x516a1b1053f90907, 0x20035c7d81377920, 0x6e1e67a6ef5d2d70];
+
+        let mut results = [0; 5];
+        fcall_secp256k1_fp_sqrt(&params, &mut results);
+        let has_sqrt = results[0];
+        let sqrt = &results[1..5].try_into().unwrap();
+        assert_eq!(has_sqrt, 1);
+        assert_eq!(sqrt, &expected_sqrt);
+        assert_eq!(secp256k1_fp_mul(sqrt, sqrt), x);
+
+        // Third
+        let x = [0xfffffffefffffc2c, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff];
+        let parity = 0;
+        let params = [x[0], x[1], x[2], x[3], parity];
+        let expected_sqrt =
+            [0x7d8d27ae1cd5f852, 0xc61f6d15da14ecd4, 0x233770c2a797962c, 0x0a2d2ba93507f1df];
+
+        let mut results = [0; 5];
+        fcall_secp256k1_fp_sqrt(&params, &mut results);
+        let has_sqrt = results[0];
+        let sqrt = &results[1..5].try_into().unwrap();
+        assert_eq!(has_sqrt, 1);
+        assert_eq!(sqrt, &expected_sqrt);
+        assert_eq!(secp256k1_fp_mul(sqrt, sqrt), x);
+
+        let parity = 1;
+        let params = [x[0], x[1], x[2], x[3], parity];
+        let expected_sqrt =
+            [0x8272d850e32a03dd, 0x39e092ea25eb132b, 0xdcc88f3d586869d3, 0xf5d2d456caf80e20];
 
         let mut results = [0; 5];
         fcall_secp256k1_fp_sqrt(&params, &mut results);
