@@ -61,53 +61,11 @@ pub const STORE_IND: u64 = 2;
 /// c register value is stored stored in register at a constant index
 pub const STORE_REG: u64 = 3;
 
-/// Describes the type of the Zisk opcode.
-///
-/// This type determines how the operation result will be proven.
-/// Internal operations are proven as part of the main state machine itself, given their
-/// simplicity. External operations (rest of types) are proven in their corresponding secondary
-/// state machine.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd)]
-#[repr(u32)]
-pub enum ZiskOperationType {
-    None,
-    Internal,
-    // ZisK Core Operations
-    Arith,
-    Binary,
-    BinaryE,
-    Keccak,
-    Sha256,
-    Poseidon,
-    Blake2,
-    PubOut,
-    ArithEq,
-    ArithEq384,
-    BigInt, // Note: Add new core operations here
-    Dma,    // Note: To add extra params to precompiles calls
-    // ZisK Free Input Operations
-    FcallParam,
-    Fcall,
-    FcallGet,
-    Profile,
-}
-
-pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
-pub const INTERNAL_OP_TYPE_ID: u32 = ZiskOperationType::Internal as u32;
-pub const ARITH_OP_TYPE_ID: u32 = ZiskOperationType::Arith as u32;
-pub const BINARY_OP_TYPE_ID: u32 = ZiskOperationType::Binary as u32;
-pub const BINARY_E_OP_TYPE_ID: u32 = ZiskOperationType::BinaryE as u32;
-pub const KECCAK_OP_TYPE_ID: u32 = ZiskOperationType::Keccak as u32;
-pub const SHA256_OP_TYPE_ID: u32 = ZiskOperationType::Sha256 as u32;
-pub const POSEIDON_OP_TYPE_ID: u32 = ZiskOperationType::Poseidon as u32;
-pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
-pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
-pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
-pub const BIG_INT_OP_TYPE_ID: u32 = ZiskOperationType::BigInt as u32;
-pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
-pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
-pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
-pub const BLAKE2_OP_TYPE_ID: u32 = ZiskOperationType::Blake2 as u32;
+// `ZiskOperationType` (describes how an opcode's result is proven — Internal ops in the
+// main SM, external ops in their secondary SM) + its `*_OP_TYPE_ID` constants live in
+// `zisk_operation_type_table.rs`, pulled in at item position (Phase 0.2a, no behavior
+// change). Declaration order there is ABI (repr(u32) ordinals feed OP_TYPE_ID).
+include!("zisk_operation_type_table.rs");
 
 /// ZisK instruction definition
 ///
