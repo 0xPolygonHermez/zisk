@@ -729,3 +729,946 @@ impl Rvd {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_type_and_name_32_bits() {
+        let mut instruction: u32;
+        let mut result: (&str, &str, u64);
+
+        // ========== OPCODE 3 - Load Instructions ==========
+        instruction = 0x00010003; // lb x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "lb", 1));
+
+        instruction = 0x00011003; // lh x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "lh", 1));
+
+        instruction = 0x00012003; // lw x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "lw", 1));
+
+        instruction = 0x00013003; // ld x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "ld", 1));
+
+        instruction = 0x00014003; // lbu x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "lbu", 1));
+
+        instruction = 0x00015003; // lhu x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "lhu", 1));
+
+        instruction = 0x00016003; // lwu x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "lwu", 1));
+
+        // ========== OPCODE 7 - Floating-point Load ==========
+        instruction = 0x00012007; // flw f0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "flw", 1));
+
+        instruction = 0x00013007; // fld f0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "fld", 1));
+
+        // ========== OPCODE 15 - Fence Instructions ==========
+        instruction = 0x0000000f; // fence
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("F", "fence", 1));
+
+        instruction = 0x0000100f; // fence.i
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("F", "fence.i", 1));
+
+        // ========== OPCODE 19 - Immediate Arithmetic ==========
+        instruction = 0x00010013; // addi x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "addi", 1));
+
+        instruction = 0x00011013; // slli x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "slli", 2));
+
+        instruction = 0x60411013; // sext.b x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "sext.b", 2));
+
+        instruction = 0x60511013; // sext.h x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "sext.h", 2));
+
+        instruction = 0x60011013; // clz x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "clz", 2));
+
+        instruction = 0x60111013; // ctz x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "ctz", 2));
+
+        instruction = 0x60211013; // cpop x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "cpop", 2));
+
+        instruction = 0x28011013; // bseti x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "bseti", 2));
+
+        instruction = 0x48011013; // bclri x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "bclri", 2));
+
+        instruction = 0x68011013; // binvi x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "binvi", 2));
+
+        instruction = 0x00012013; // slti x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "slti", 1));
+
+        instruction = 0x00013013; // sltiu x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "sltiu", 1));
+
+        instruction = 0x00014013; // xori x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "xori", 1));
+
+        instruction = 0x00015013; // srli x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "srli", 2));
+
+        instruction = 0x40015013; // srai x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "srai", 2));
+
+        instruction = 0x48015013; // bexti x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "bexti", 2));
+
+        instruction = 0x60015013; // rori x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "rori", 2));
+
+        instruction = 0x6b815013; // rev8 x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "rev8", 2));
+
+        instruction = 0x68715013; // brev8 x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "brev8", 2));
+
+        instruction = 0x28715013; // orc.b x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "orc.b", 2));
+
+        instruction = 0x00016013; // ori x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "ori", 1));
+
+        instruction = 0x00017013; // andi x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "andi", 1));
+
+        // ========== OPCODE 23 - AUIPC ==========
+        instruction = 0x00000017; // auipc x0, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("U", "auipc", 0));
+
+        // ========== OPCODE 27 - 32-bit Immediate Arithmetic ==========
+        instruction = 0x0001001b; // addiw x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "addiw", 1));
+
+        instruction = 0x6001101b; // clzw x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "clzw", 2));
+
+        instruction = 0x6011101b; // ctzw x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "ctzw", 2));
+
+        instruction = 0x6021101b; // cpopw x0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "cpopw", 2));
+
+        instruction = 0x0801101b; // slli.uw x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "slli.uw", 2));
+
+        instruction = 0x0001101b; // slliw x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "slliw", 2));
+
+        instruction = 0x0001501b; // srliw x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "srliw", 2));
+
+        instruction = 0x4001501b; // sraiw x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "sraiw", 2));
+
+        instruction = 0x6001501b; // roriw x0, x2, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "roriw", 2));
+
+        // ========== OPCODE 35 - Store Instructions ==========
+        instruction = 0x00010023; // sb x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("S", "sb", 1));
+
+        instruction = 0x00011023; // sh x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("S", "sh", 1));
+
+        instruction = 0x00012023; // sw x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("S", "sw", 1));
+
+        instruction = 0x00013023; // sd x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("S", "sd", 1));
+
+        // ========== OPCODE 39 - Floating-point Store ==========
+        instruction = 0x00012027; // fsw f0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("S", "fsw", 1));
+
+        instruction = 0x00013027; // fsd f0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("S", "fsd", 1));
+
+        // ========== OPCODE 47 - Atomic Instructions ==========
+        instruction = 0x1001202f; // lr.w x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "lr.w", 2));
+
+        instruction = 0x1801202f; // sc.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "sc.w", 2));
+
+        instruction = 0x0801202f; // amoswap.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amoswap.w", 2));
+
+        instruction = 0x0001202f; // amoadd.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amoadd.w", 2));
+
+        instruction = 0x2001202f; // amoxor.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amoxor.w", 2));
+
+        instruction = 0x6001202f; // amoand.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amoand.w", 2));
+
+        instruction = 0x4001202f; // amoor.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amoor.w", 2));
+
+        instruction = 0x8001202f; // amomin.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amomin.w", 2));
+
+        instruction = 0xa001202f; // amomax.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amomax.w", 2));
+
+        instruction = 0xc001202f; // amominu.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amominu.w", 2));
+
+        instruction = 0xe001202f; // amomaxu.w x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amomaxu.w", 2));
+
+        instruction = 0x1001302f; // lr.d x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "lr.d", 2));
+
+        instruction = 0x1801302f; // sc.d x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "sc.d", 2));
+
+        instruction = 0x0801302f; // amoswap.d x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amoswap.d", 2));
+
+        instruction = 0x0001302f; // amoadd.d x0, x0, (x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("A", "amoadd.d", 2));
+
+        // ========== OPCODE 51 - Register-Register Arithmetic ==========
+        instruction = 0x003100b3; // add x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "add", 2));
+
+        instruction = 0x023100b3; // mul x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "mul", 2));
+
+        instruction = 0x403100b3; // sub x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sub", 2));
+
+        instruction = 0x003110b3; // sll x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sll", 2));
+
+        instruction = 0x023110b3; // mulh x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "mulh", 2));
+
+        instruction = 0x0a3110b3; // clmul x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "clmul", 2));
+
+        instruction = 0x283110b3; // bset x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "bset", 2));
+
+        instruction = 0x483110b3; // bclr x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "bclr", 2));
+
+        instruction = 0x603110b3; // rol x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "rol", 2));
+
+        instruction = 0x683110b3; // binv x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "binv", 2));
+
+        instruction = 0x003120b3; // slt x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "slt", 2));
+
+        instruction = 0x023120b3; // mulhsu x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "mulhsu", 2));
+
+        instruction = 0x0a3120b3; // clmulr x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "clmulr", 2));
+
+        instruction = 0x203120b3; // sh1add x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sh1add", 2));
+
+        instruction = 0x283120b3; // xperm4 x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "xperm4", 2));
+
+        instruction = 0x003130b3; // sltu x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sltu", 2));
+
+        instruction = 0x023130b3; // mulhu x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "mulhu", 2));
+
+        instruction = 0x0a3130b3; // clmulh x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "clmulh", 2));
+
+        instruction = 0x003140b3; // xor x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "xor", 2));
+
+        instruction = 0x023140b3; // div x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "div", 2));
+
+        instruction = 0x083140b3; // pack x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "pack", 2));
+
+        instruction = 0x0a3140b3; // min x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "min", 2));
+
+        instruction = 0x203140b3; // sh2add x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sh2add", 2));
+
+        instruction = 0x283140b3; // xperm8 x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "xperm8", 2));
+
+        instruction = 0x403140b3; // xnor x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "xnor", 2));
+
+        instruction = 0x003150b3; // srl x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "srl", 2));
+
+        instruction = 0x023150b3; // divu x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "divu", 2));
+
+        instruction = 0x0a3150b3; // minu x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "minu", 2));
+
+        instruction = 0x403150b3; // sra x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sra", 2));
+
+        instruction = 0x483150b3; // bext x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "bext", 2));
+
+        instruction = 0x603150b3; // ror x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "ror", 2));
+
+        instruction = 0x003160b3; // or x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "or", 2));
+
+        instruction = 0x023160b3; // rem x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "rem", 2));
+
+        instruction = 0x0a3160b3; // max x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "max", 2));
+
+        instruction = 0x203160b3; // sh3add x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sh3add", 2));
+
+        instruction = 0x403160b3; // orn x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "orn", 2));
+
+        instruction = 0x003170b3; // and x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "and", 2));
+
+        instruction = 0x023170b3; // remu x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "remu", 2));
+
+        instruction = 0x083170b3; // packh x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "packh", 2));
+
+        instruction = 0x0a3170b3; // maxu x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "maxu", 2));
+
+        instruction = 0x403170b3; // andn x1, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "andn", 2));
+
+        // ========== OPCODE 55 - LUI ==========
+        instruction = 0x00000037; // lui x0, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("U", "lui", 0));
+
+        // ========== OPCODE 59 - 32-bit Register-Register Arithmetic ==========
+        instruction = 0x0031003b; // addw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "addw", 2));
+
+        instruction = 0x0231003b; // mulw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "mulw", 2));
+
+        instruction = 0x0831003b; // add.uw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "add.uw", 2));
+
+        instruction = 0x4031003b; // subw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "subw", 2));
+
+        instruction = 0x0031103b; // sllw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sllw", 2));
+
+        instruction = 0x6031103b; // rolw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "rolw", 2));
+
+        instruction = 0x2031203b; // sh1add.uw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sh1add.uw", 2));
+
+        instruction = 0x0800403b; // zext.h x0, x0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "zext.h", 2));
+
+        instruction = 0x0231403b; // divw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "divw", 2));
+
+        instruction = 0x0831403b; // packw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "packw", 2));
+
+        instruction = 0x2031403b; // sh2add.uw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sh2add.uw", 2));
+
+        instruction = 0x0031503b; // srlw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "srlw", 2));
+
+        instruction = 0x0231503b; // divuw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "divuw", 2));
+
+        instruction = 0x4031503b; // sraw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sraw", 2));
+
+        instruction = 0x6031503b; // rorw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "rorw", 2));
+
+        instruction = 0x0231603b; // remw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "remw", 2));
+
+        instruction = 0x2031603b; // sh3add.uw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "sh3add.uw", 2));
+
+        instruction = 0x0231703b; // remuw x0, x2, x3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "remuw", 2));
+
+        // ========== OPCODE 67, 71, 75, 79 - Floating-point Fused Multiply-Add ==========
+        instruction = 0x00310043; // fmadd.s f0, f2, f3, f0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R4", "fmadd.s", 1));
+
+        instruction = 0x02310043; // fmadd.d f0, f2, f3, f0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R4", "fmadd.d", 1));
+
+        instruction = 0x00310047; // fmsub.s f0, f2, f3, f0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R4", "fmsub.s", 1));
+
+        instruction = 0x0231004b; // fnmsub.d f0, f2, f3, f0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R4", "fnmsub.d", 1));
+
+        instruction = 0x0031004f; // fnmadd.s f0, f2, f3, f0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R4", "fnmadd.s", 1));
+
+        // ========== OPCODE 83 - Floating-point Arithmetic ==========
+        instruction = 0x00310053; // fadd.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fadd.s", 1));
+
+        instruction = 0x02310053; // fadd.d f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fadd.d", 1));
+
+        instruction = 0x08310053; // fsub.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsub.s", 1));
+
+        instruction = 0x0a310053; // fsub.d f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsub.d", 1));
+
+        instruction = 0x10310053; // fmul.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fmul.s", 1));
+
+        instruction = 0x12310053; // fmul.d f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fmul.d", 1));
+
+        instruction = 0x18310053; // fdiv.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fdiv.s", 1));
+
+        instruction = 0x1a310053; // fdiv.d f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fdiv.d", 1));
+
+        instruction = 0x20310053; // fsgnj.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsgnj.s", 2));
+
+        instruction = 0x20311053; // fsgnjn.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsgnjn.s", 2));
+
+        instruction = 0x20312053; // fsgnjx.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsgnjx.s", 2));
+
+        instruction = 0x22310053; // fsgnj.d f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsgnj.d", 2));
+
+        instruction = 0x28310053; // fmin.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fmin.s", 2));
+
+        instruction = 0x28311053; // fmax.s f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fmax.s", 2));
+
+        instruction = 0x2a310053; // fmin.d f0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fmin.d", 2));
+
+        instruction = 0x40110053; // fcvt.s.d f0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.s.d", 2));
+
+        instruction = 0x42010053; // fcvt.d.s f0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.d.s", 2));
+
+        instruction = 0x58010053; // fsqrt.s f0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsqrt.s", 2));
+
+        instruction = 0x5a010053; // fsqrt.d f0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fsqrt.d", 2));
+
+        instruction = 0xa0312053; // feq.s x0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "feq.s", 2));
+
+        instruction = 0xa0311053; // flt.s x0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "flt.s", 2));
+
+        instruction = 0xa0310053; // fle.s x0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fle.s", 2));
+
+        instruction = 0xa2312053; // feq.d x0, f2, f3
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "feq.d", 2));
+
+        instruction = 0xc0010053; // fcvt.w.s x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.w.s", 2));
+
+        instruction = 0xc0110053; // fcvt.wu.s x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.wu.s", 2));
+
+        instruction = 0xc0210053; // fcvt.l.s x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.l.s", 2));
+
+        instruction = 0xc0310053; // fcvt.lu.s x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.lu.s", 2));
+
+        instruction = 0xc2010053; // fcvt.w.d x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.w.d", 2));
+
+        instruction = 0xc2210053; // fcvt.l.d x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.l.d", 2));
+
+        instruction = 0xd0010053; // fcvt.s.w f0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.s.w", 2));
+
+        instruction = 0xd0110053; // fcvt.s.wu f0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.s.wu", 2));
+
+        instruction = 0xd0210053; // fcvt.s.l f0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.s.l", 2));
+
+        instruction = 0xd2010053; // fcvt.d.w f0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.d.w", 2));
+
+        instruction = 0xd2210053; // fcvt.d.l f0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fcvt.d.l", 2));
+
+        instruction = 0xe0010053; // fmv.x.w x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fmv.x.w", 3));
+
+        instruction = 0xe0011053; // fclass.s x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fclass.s", 3));
+
+        instruction = 0xe2010053; // fmv.x.d x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fmv.x.d", 3));
+
+        instruction = 0xe2011053; // fclass.d x0, f2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("R", "fclass.d", 3));
+
+        instruction = 0xf0010053; // fmv.w.x f0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "fmv.w.x", 3));
+
+        instruction = 0xf2010053; // fmv.d.x f0, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "fmv.d.x", 3));
+
+        // ========== OPCODE 99 - Branch Instructions ==========
+        instruction = 0x00310063; // beq x2, x3, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("B", "beq", 1));
+
+        instruction = 0x00311063; // bne x2, x3, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("B", "bne", 1));
+
+        instruction = 0x00314063; // blt x2, x3, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("B", "blt", 1));
+
+        instruction = 0x00315063; // bge x2, x3, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("B", "bge", 1));
+
+        instruction = 0x00316063; // bltu x2, x3, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("B", "bltu", 1));
+
+        instruction = 0x00317063; // bgeu x2, x3, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("B", "bgeu", 1));
+
+        // ========== OPCODE 103 - JALR ==========
+        instruction = 0x00010067; // jalr x0, 0(x2)
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("I", "jalr", 0));
+
+        // ========== OPCODE 111 - JAL ==========
+        instruction = 0x0000006f; // jal x0, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("J", "jal", 0));
+
+        // ========== OPCODE 115 - System Instructions ==========
+        instruction = 0x00000073; // ecall
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "ecall", 2));
+
+        instruction = 0x00100073; // ebreak
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "ebreak", 2));
+
+        instruction = 0x00011073; // csrrw x0, 0x001, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "csrrw", 1));
+
+        instruction = 0x00012073; // csrrs x0, 0x001, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "csrrs", 1));
+
+        instruction = 0x00013073; // csrrc x0, 0x001, x2
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "csrrc", 1));
+
+        instruction = 0x00015073; // csrrwi x0, 0x001, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "csrrwi", 1));
+
+        instruction = 0x00016073; // csrrsi x0, 0x001, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "csrrsi", 1));
+
+        instruction = 0x00017073; // csrrci x0, 0x001, 0
+        result = Rvd::get_type_and_name_32_bits(instruction);
+        assert_eq!(result, ("C", "csrrci", 1));
+    }
+
+    #[test]
+    fn test_get_type_and_name_16_bits() {
+        let mut instruction: u16;
+        let mut result: (&str, &str);
+
+        // ========== OP2 = 0x00 ==========
+        instruction = 0x0000; // reserved all-zero encoding
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CINVALID", "c.reserved"));
+
+        instruction = 0x0004; // c.addi4spn
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CIW", "c.addi4spn"));
+
+        instruction = 0x2000; // c.fld
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CL", "c.fld"));
+
+        instruction = 0x4000; // c.lw
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CL", "c.lw"));
+
+        instruction = 0x6000; // c.ld
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CL", "c.ld"));
+
+        instruction = 0x8000; // reserved
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CINVALID", "c.reserved"));
+
+        instruction = 0xa000; // c.fsd
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CS", "c.fsd"));
+
+        instruction = 0xc000; // c.sw
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CS", "c.sw"));
+
+        instruction = 0xe000; // c.sd
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CS", "c.sd"));
+
+        // ========== OP2 = 0x01 ==========
+        instruction = 0x0001; // c.nop
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.nop"));
+
+        instruction = 0x0081; // c.addi
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.addi"));
+
+        instruction = 0x2001; // c.addiw
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.addiw"));
+
+        instruction = 0x4001; // c.li
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.li"));
+
+        instruction = 0x6101; // c.addi16sp
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.addi16sp"));
+
+        instruction = 0x6181; // c.lui
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.lui"));
+
+        instruction = 0x8001; // c.srli
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CB", "c.srli"));
+
+        instruction = 0x8401; // c.srai
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.srai"));
+
+        instruction = 0x8801; // c.andi
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CB", "c.andi"));
+
+        instruction = 0x8c01; // c.sub
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CA", "c.sub"));
+
+        instruction = 0x8c21; // c.xor
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CA", "c.xor"));
+
+        instruction = 0x8c41; // c.or
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CA", "c.or"));
+
+        instruction = 0x8c61; // c.and
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CA", "c.and"));
+
+        instruction = 0x9c01; // c.subw
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CA", "c.subw"));
+
+        instruction = 0x9c21; // c.addw
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CA", "c.addw"));
+
+        instruction = 0x9c41; // reserved
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CINVALID", "c.reserved"));
+
+        instruction = 0xa001; // c.j
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CJ", "c.j"));
+
+        instruction = 0xc001; // c.beqz
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CB", "c.beqz"));
+
+        instruction = 0xe001; // c.bnez
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CB", "c.bnez"));
+
+        // ========== OP2 = 0x02 ==========
+        instruction = 0x0002; // c.slli
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.slli"));
+
+        instruction = 0x2002; // c.fldsp
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.fldsp"));
+
+        instruction = 0x4002; // c.lwsp
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.lwsp"));
+
+        instruction = 0x6002; // c.ldsp
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.ldsp"));
+
+        instruction = 0x8002; // c.jr
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CR", "c.jr"));
+
+        instruction = 0x8006; // c.mv
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CR", "c.mv"));
+
+        instruction = 0x9002; // c.ebreak
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CI", "c.ebreak"));
+
+        instruction = 0x9082; // c.jalr
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CR", "c.jalr"));
+
+        instruction = 0x9006; // c.add
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CR", "c.add"));
+
+        instruction = 0xa002; // c.fsdsp
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CSS", "c.fsdsp"));
+
+        instruction = 0xc002; // c.swsp
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CSS", "c.swsp"));
+
+        instruction = 0xe002; // c.sdsp
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CSS", "c.sdsp"));
+
+        // ========== Unknown OP2 ==========
+        instruction = 0x0003;
+        result = Rvd::get_type_and_name_16_bits(instruction);
+        assert_eq!(result, ("CINVALID", "c.reserved"));
+    }
+}
