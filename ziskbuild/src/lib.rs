@@ -8,6 +8,7 @@ use build::build_program_internal;
 use clap::Parser;
 
 pub const RUSTUP_TOOLCHAIN_NAME: &str = "zisk";
+pub const ZISK_LINKER_SCRIPT: &[u8] = include_bytes!("../zisk_linker_script.ld");
 
 pub const ZISK_VERSION_MESSAGE: &str = concat!(
     env!("CARGO_PKG_VERSION"),

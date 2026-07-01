@@ -3,6 +3,7 @@ use std::process::{Command, Stdio};
 use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 use zisk_common::io::ZiskStdin;
 use zisk_prover_backend::{GuestProgram, ProfilingMode};
+use zisk_sdk::ZISK_LINKER_SCRIPT;
 
 use crate::common::{detect_project_elf_for_profile, ElfSelectorArgs, Profile};
 
@@ -49,6 +50,22 @@ impl RunCmd {
                 // Build first, then detect the resulting ELF
                 let mut command = Command::new("cargo");
                 command.args(self.cargo_build_args());
+
+                // Generate the linker script from the embedded bytes and write it to a temporary file
+                let linker_script_path = std::env::temp_dir().join("zisk.ld");
+                std::fs::write(&linker_script_path, ZISK_LINKER_SCRIPT)
+                    .context("Failed to write Zisk linker script to temp dir")?;
+
+                // Add linker script flag and zisk_guest cfg to RUSTFLAGS, preserving any existing flags
+                let current_rust_flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+                let rust_flags = format!(
+                    "{current_rust_flags} --cfg zisk_guest -C link-arg=-T{}",
+                    linker_script_path.display()
+                )
+                .trim()
+                .to_string();
+                command.env("RUSTFLAGS", rust_flags);
+
                 command.stdout(Stdio::inherit());
                 command.stderr(Stdio::inherit());
 
