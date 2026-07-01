@@ -312,7 +312,16 @@ patch_cargo_dep() {
     # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
     # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
     # Idempotent: on reruns the git line is already commented, so it no longer matches.
-    ensure sed "${SED_PARAMS[@]}" \
+    local sed_params=("${SED_PARAMS[@]}")
+    if [[ ${#sed_params[@]} -eq 0 ]]; then
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            sed_params=(-i "" -E)
+        else
+            sed_params=(-i -E)
+        fi
+    fi
+
+    ensure sed "${sed_params[@]}" \
         "s~^${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git.*~# &\\
 ${new_line}~" \
         "${cargo_toml}" || return 1
