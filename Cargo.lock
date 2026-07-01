@@ -7699,6 +7699,7 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "rom-setup",
+ "tempfile",
  "vergen-git2",
 ]
 
