@@ -10,9 +10,6 @@ zisk_common::zisk_precompile! {
     num_available = {
         ::zisk_pil::PoseidonTrace::<::zisk_pil::PoseidonTraceRow<F>>::NUM_ROWS / CLOCKS - 1
     },
-    ops = [
-        (OperationPoseidonData, PoseidonInput),
-    ],
 }
 
 #[cfg(test)]

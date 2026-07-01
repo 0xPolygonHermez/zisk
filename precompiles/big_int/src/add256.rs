@@ -7,10 +7,18 @@ use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-use zisk_common::{OperationAdd256Data, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
+use zisk_common::{FromBusPayload, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
 use zisk_pil::{Add256Trace, Add256TraceRowOps};
 
 use super::add256_constants::{PARAM_CHUNKS, START_READ_PARAMS};
+
+/// Bus-payload width for an add256 op: 5-word header + 4 params (addr_a, addr_b,
+/// cin, addr_c) + a (4 words) + b (4 words) + result slot (1) = 18.
+pub const OPERATION_BUS_ADD_256_DATA_SIZE: usize =
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + 4 + 2 * 4 + 1;
+
+/// Fixed-width bus payload for an add256 operation.
+pub type OperationAdd256Data = [u64; OPERATION_BUS_ADD_256_DATA_SIZE];
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -25,8 +33,14 @@ pub struct Add256Input {
     pub b: [u64; 4],
 }
 
+impl FromBusPayload for Add256Input {
+    fn from_bus_payload(payload: &[u64]) -> Self {
+        Self::from(payload.try_into().expect("add256 bus payload must be 18 words"))
+    }
+}
+
 impl Add256Input {
-    pub fn from(values: &OperationAdd256Data<u64>) -> Self {
+    pub fn from(values: &OperationAdd256Data) -> Self {
         Self {
             step_main: values[STEP],
             addr_main: values[B] as u32,

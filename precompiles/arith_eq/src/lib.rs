@@ -23,19 +23,6 @@ zisk_precompile! {
     num_available = {
         ::zisk_pil::ArithEqTrace::<()>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP
     },
-    ops = [
-        (OperationArith256Data        => Arith256,        Arith256Input),
-        (OperationArith256ModData     => Arith256Mod,     Arith256ModInput),
-        (OperationSecp256k1AddData    => Secp256k1Add,    Secp256k1AddInput),
-        (OperationSecp256k1DblData    => Secp256k1Dbl,    Secp256k1DblInput),
-        (OperationBn254CurveAddData   => Bn254CurveAdd,   Bn254CurveAddInput),
-        (OperationBn254CurveDblData   => Bn254CurveDbl,   Bn254CurveDblInput),
-        (OperationBn254ComplexAddData => Bn254ComplexAdd, Bn254ComplexAddInput),
-        (OperationBn254ComplexSubData => Bn254ComplexSub, Bn254ComplexSubInput),
-        (OperationBn254ComplexMulData => Bn254ComplexMul, Bn254ComplexMulInput),
-        (OperationSecp256r1AddData    => Secp256r1Add,    Secp256r1AddInput),
-        (OperationSecp256r1DblData    => Secp256r1Dbl,    Secp256r1DblInput),
-    ],
 }
 
 #[cfg(test)]

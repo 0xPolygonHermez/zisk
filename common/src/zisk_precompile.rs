@@ -12,9 +12,9 @@
 //! ## Two macros: façade + explicit
 //!
 //! [`zisk_precompile!`](crate::zisk_precompile) is the **façade**: 4 declarative parameters
-//! (`name`, `op_type`, `trace`, `num_available`) plus the `ops` list. It
-//! derives every shell name from `$name` and every trace-related type
-//! from `$trace`, then forwards to the explicit form.
+//! (`name`, `op_type`, `trace`, `num_available`). It derives every shell name
+//! from `$name` and every trace-related type from `$trace`, then forwards to
+//! the explicit form.
 //!
 //! [`zisk_precompile_explicit!`] is the **explicit form**: takes every
 //! name spelled out (SM type, input type, trace row + packed, AIR id
@@ -24,20 +24,15 @@
 //! type doesn't follow the `*Row` / `*RowPacked` suffix pattern. All
 //! seven in-tree precompiles use the façade.
 //!
-//! ## Mono-op vs multi-op
+//! ## Bus decode is owned by the input type
 //!
-//! A *mono-op* precompile owns exactly one ZiskOp under its `op_type`
-//! (e.g. `blake2`). A *multi-op* precompile (e.g. `arith_eq`) owns several
-//! ZiskOps that share an AIR. The macro treats mono-op as the degenerate
-//! 1-element case of multi-op. Each entry in the `ops = [...]` list is a
-//! tuple of the form
-//! `(ExtVariant, [EnumVariant =>] SubInputType)`:
-//!
-//! * mono-op (no enum wrapping): `(OperationBlake2Data, Blake2Input)`
-//! * multi-op (enum-wrapped):    `(OperationArith256Data => Arith256, Arith256Input)`
-//!
-//! When the optional `=> EnumVariant` is present, the per-op input gets
-//! wrapped into the aggregate enum named by `input = ...`.
+//! The generated collector converts each bus payload uniformly via
+//! `<$input>::from(&[u64])`, so every precompile's input type owns its own
+//! decode. A *mono-op* precompile (e.g. `blake2`) reads its single layout.
+//! A *multi-op* precompile (e.g. `arith_eq`) implements `from(&[u64])` on its
+//! aggregate input enum, demuxing by the op at `values[OP]` to the matching
+//! sub-input. The macro itself no longer needs a per-op list — adding or
+//! changing ops is entirely a matter of that `From<&[u64]>` impl.
 //!
 //! ## Usage
 //!
@@ -85,16 +80,7 @@ macro_rules! zisk_precompile_explicit {
         trace_row_packed = $trace_row_packed:path,
         air_id_path = $air_id_path:path,
         air_group_id_path = $air_group_id_path:path,
-        num_available = $num_available:expr,
-        ops = [
-            $(
-                (
-                    $ext_variant:ident
-                    $( => $enum_variant:ident )?
-                    , $sub_input:ident
-                )
-            ),* $(,)?
-        ] $(,)?
+        num_available = $num_available:expr $(,)?
     ) => {
         $crate::__zisk_paste! {
             // ============================================================
@@ -380,10 +366,9 @@ macro_rules! zisk_precompile_explicit {
             // ============================================================
             // Collector (witness-gen input gathering)
             //
-            // For each ops entry, pushes the per-op input into `inputs`.
-            // The optional 2nd tuple element (`$enum_variant`) controls
-            // whether the per-op input gets wrapped into an aggregate
-            // enum variant — present for multi-op, absent for mono-op.
+            // Decodes each matching bus payload via `<$input>::from(&[u64])`
+            // and pushes it into `inputs`. The input type owns its layout /
+            // op-demux (see the module docs), so the collector is uniform.
             // ============================================================
             pub struct [<$name Collector>] {
                 inputs: ::std::vec::Vec<$input>,
@@ -425,19 +410,12 @@ macro_rules! zisk_precompile_explicit {
                     let data: $crate::ExtOperationData<u64> =
                         data.try_into().expect("Regular Metrics: Failed to convert data");
 
-                    self.inputs.push(match data {
-                        $(
-                            $crate::ExtOperationData::$ext_variant(bus_data) => {
-                                let __converted = $sub_input::from(&bus_data);
-                                $( let __converted = <$input>::$enum_variant(__converted); )?
-                                __converted
-                            }
-                        )*
-                        _ => panic!(concat!(
-                            stringify!($name),
-                            "Collector: unexpected ExtOperationData variant",
-                        )),
-                    });
+                    // The precompile's input type owns its bus decode via
+                    // `FromBusPayload`: it narrows the payload to its fixed width
+                    // (and, for multi-op precompiles, demuxes by the op at payload[OP]).
+                    self.inputs.push(
+                        <$input as $crate::FromBusPayload>::from_bus_payload(data.payload()),
+                    );
 
                     self.inputs.len() < self.num_operations as usize
                 }
@@ -555,7 +533,7 @@ macro_rules! zisk_precompile_explicit {
 }
 
 /// Façade — declares a precompile's shells using only `name`, `op_type`,
-/// `trace`, and `num_available_field` plus the ops list.
+/// `trace`, and `num_available`.
 ///
 /// Derives the args of [`zisk_precompile_explicit!`] from `$name` and `$trace`:
 ///
@@ -574,16 +552,7 @@ macro_rules! zisk_precompile {
         name = $name:ident,
         op_type = $op_type:ident,
         trace = $trace:ident,
-        num_available = $num_available:expr,
-        ops = [
-            $(
-                (
-                    $ext_variant:ident
-                    $( => $enum_variant:ident )?
-                    , $sub_input:ident
-                )
-            ),* $(,)?
-        ] $(,)?
+        num_available = $num_available:expr $(,)?
     ) => {
         $crate::__zisk_paste! {
             $crate::zisk_precompile_explicit! {
@@ -596,11 +565,6 @@ macro_rules! zisk_precompile {
                 air_id_path = ::zisk_pil::$trace::<()>::AIR_ID,
                 air_group_id_path = ::zisk_pil::$trace::<()>::AIRGROUP_ID,
                 num_available = $num_available,
-                ops = [
-                    $(
-                        ( $ext_variant $( => $enum_variant )? , $sub_input )
-                    ),*
-                ],
             }
         }
     };

@@ -10,9 +10,6 @@ zisk_common::zisk_precompile! {
     op_type = BigInt,
     trace = Add256Trace,
     num_available = ::zisk_pil::Add256Trace::<()>::NUM_ROWS,
-    ops = [
-        (OperationAdd256Data, Add256Input),
-    ],
 }
 
 #[cfg(test)]

@@ -20,14 +20,6 @@ zisk_precompile! {
     num_available = {
         ::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1
     },
-    ops = [
-        (OperationArith384ModData         => Arith384Mod,         Arith384ModInput),
-        (OperationBls12_381CurveAddData   => Bls12_381CurveAdd,   Bls12_381CurveAddInput),
-        (OperationBls12_381CurveDblData   => Bls12_381CurveDbl,   Bls12_381CurveDblInput),
-        (OperationBls12_381ComplexAddData => Bls12_381ComplexAdd, Bls12_381ComplexAddInput),
-        (OperationBls12_381ComplexSubData => Bls12_381ComplexSub, Bls12_381ComplexSubInput),
-        (OperationBls12_381ComplexMulData => Bls12_381ComplexMul, Bls12_381ComplexMulInput),
-    ],
 }
 
 #[cfg(test)]

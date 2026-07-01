@@ -12,9 +12,6 @@ zisk_common::zisk_precompile! {
     num_available = {
         ::zisk_pil::Sha256fTrace::<::zisk_pil::Sha256fTraceRow<F>>::NUM_ROWS / CLOCKS - 1
     },
-    ops = [
-        (OperationSha256Data, Sha256fInput),
-    ],
 }
 
 #[cfg(test)]

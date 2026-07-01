@@ -17,9 +17,6 @@ zisk_common::zisk_precompile! {
         ::zisk_pil::KeccakfTrace::<()>::NUM_ROWS / CLOCKS
             - (::zisk_pil::KeccakfTrace::<()>::NUM_ROWS % CLOCKS != 0) as usize
     },
-    ops = [
-        (OperationKeccakData, KeccakfInput),
-    ],
 }
 
 #[cfg(test)]

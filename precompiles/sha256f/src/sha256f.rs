@@ -7,10 +7,17 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::OperationSha256Data;
+use zisk_common::{FromBusPayload, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowOps};
 
 use super::sha256f_constants::*;
+
+/// Bus-payload width for a sha256f op: 5-word header + 2 indirection addrs
+/// (state, input) + state (4 words) + input (8 words) = 19.
+pub const OPERATION_BUS_SHA256F_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 2 + 4 + 8;
+
+/// Fixed-width bus payload for a sha256f operation.
+pub type OperationSha256Data = [u64; OPERATION_BUS_SHA256F_DATA_SIZE];
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -24,7 +31,7 @@ pub struct Sha256fInput {
 }
 
 impl Sha256fInput {
-    pub fn from(values: &OperationSha256Data<u64>) -> Self {
+    pub fn from(values: &OperationSha256Data) -> Self {
         Self {
             step_main: values[4],
             addr_main: values[3] as u32,
@@ -33,6 +40,12 @@ impl Sha256fInput {
             state: values[7..11].try_into().unwrap(),
             input: values[11..19].try_into().unwrap(),
         }
+    }
+}
+
+impl FromBusPayload for Sha256fInput {
+    fn from_bus_payload(payload: &[u64]) -> Self {
+        Self::from(payload.try_into().expect("sha256f bus payload must be 19 words"))
     }
 }
 

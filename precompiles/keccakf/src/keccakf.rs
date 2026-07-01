@@ -9,12 +9,18 @@ use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use precompiles_helpers::{
     keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
 };
-use zisk_common::OperationKeccakData;
+use zisk_common::{FromBusPayload, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
 
 use super::{keccakf_constants::*, KeccakfTableSM};
 
 use rayon::prelude::*;
+
+/// Bus-payload width for a keccakf op: 5-word header + 25-word state.
+pub const OPERATION_BUS_KECCAKF_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 25;
+
+/// Fixed-width bus payload for a keccakf operation.
+pub type OperationKeccakData = [u64; OPERATION_BUS_KECCAKF_DATA_SIZE];
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -25,12 +31,18 @@ pub struct KeccakfInput {
 }
 
 impl KeccakfInput {
-    pub fn from(values: &OperationKeccakData<u64>) -> Self {
+    pub fn from(values: &OperationKeccakData) -> Self {
         Self {
             step_main: values[4],
             addr_main: values[3] as u32,
             state: values[5..30].try_into().unwrap(),
         }
+    }
+}
+
+impl FromBusPayload for KeccakfInput {
+    fn from_bus_payload(payload: &[u64]) -> Self {
+        Self::from(payload.try_into().expect("keccakf bus payload must be 30 words"))
     }
 }
 

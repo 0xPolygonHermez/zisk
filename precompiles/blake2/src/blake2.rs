@@ -7,10 +7,18 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::OperationBlake2Data;
+use zisk_common::{FromBusPayload, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
 
 use super::blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA};
+
+/// Bus-payload width for a blake2 op: 5-word header + index (1) + 2 indirection
+/// addrs (state, input) + state (16 words) + input (16 words) = 40.
+pub const OPERATION_BUS_BLAKE2_DATA_SIZE: usize =
+    OPERATION_PRECOMPILED_BUS_DATA_SIZE + 1 + 2 + 16 + 16;
+
+/// Fixed-width bus payload for a blake2 operation.
+pub type OperationBlake2Data = [u64; OPERATION_BUS_BLAKE2_DATA_SIZE];
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -25,7 +33,7 @@ pub struct Blake2Input {
 }
 
 impl Blake2Input {
-    pub fn from(values: &OperationBlake2Data<u64>) -> Self {
+    pub fn from(values: &OperationBlake2Data) -> Self {
         Self {
             addr_main: values[3] as u32,
             step_main: values[4],
@@ -35,6 +43,12 @@ impl Blake2Input {
             state: values[8..24].try_into().unwrap(),
             input: values[24..40].try_into().unwrap(),
         }
+    }
+}
+
+impl FromBusPayload for Blake2Input {
+    fn from_bus_payload(payload: &[u64]) -> Self {
+        Self::from(payload.try_into().expect("blake2 bus payload must be 40 words"))
     }
 }
 

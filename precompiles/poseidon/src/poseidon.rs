@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::{OperationPoseidonData, OP};
+use zisk_common::{FromBusPayload, OP, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowOps};
 
@@ -20,6 +20,12 @@ use zisk_pil::{PoseidonTrace, PoseidonTraceRow, PoseidonTraceRowOps};
 /// distinguished here by the `OP` field). The trace layout is shared, but the
 /// fill differs per family: `process_input` computes Poseidon1 vs Poseidon2
 /// round states and writes the `sel_poseidon1` selector into the trace.
+/// Bus-payload width for a poseidon op: 5-word header + 16-word state.
+pub const OPERATION_BUS_POSEIDON_DATA_SIZE: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + 16;
+
+/// Fixed-width bus payload for a poseidon operation.
+pub type OperationPoseidonData = [u64; OPERATION_BUS_POSEIDON_DATA_SIZE];
+
 #[derive(Debug)]
 pub struct PoseidonInput {
     pub step_main: u64,
@@ -28,8 +34,14 @@ pub struct PoseidonInput {
     pub is_poseidon1: bool,
 }
 
+impl FromBusPayload for PoseidonInput {
+    fn from_bus_payload(payload: &[u64]) -> Self {
+        Self::from(payload.try_into().expect("poseidon bus payload must be 21 words"))
+    }
+}
+
 impl PoseidonInput {
-    pub fn from(values: &OperationPoseidonData<u64>) -> Self {
+    pub fn from(values: &OperationPoseidonData) -> Self {
         Self {
             step_main: values[4],
             addr_main: values[3] as u32,
