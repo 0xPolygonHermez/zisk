@@ -51,6 +51,9 @@ indicatif = "0.17.8"
 futures = { workspace = true }
 yansi = "1.0.1"
 tempfile = "3"
+
+[dev-dependencies]
+# Test-only: used by the integration tests in `cli/tests/`.
 assert_cmd = "2"
 predicates = "3"
 

@@ -120,8 +120,11 @@ macro_rules! entrypoint {
         const ZISK_ENTRY: fn() = $path;
 
         mod zkvm_generated_main {
+            // C ABI to match the `extern "C" { fn main() -> i32; }` declaration in
+            // `_zisk_main` that calls this symbol — mixing ABIs on the same symbol
+            // is undefined behavior.
             #[no_mangle]
-            fn main() -> i32 {
+            extern "C" fn main() -> i32 {
                 $crate::zkvm_init();
                 super::ZISK_ENTRY();
                 $crate::zkvm_deinit();
