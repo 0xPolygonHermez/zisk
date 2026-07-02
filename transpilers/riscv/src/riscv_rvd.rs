@@ -1,14 +1,14 @@
 //! RISC-V DECODER (RVD)
 //!
-//! Providing as a unique argument a 32-bits or a 16-bits instruction, the RISC-V decoder returns
-//! the instruction type and name of the instruction, as well as the level of the instruction
-//! (1, 2 or 3) for 32-bits instructions.
+//! Providing as a single argument a 32-bit or a 16-bit instruction, the RISC-V decoder returns
+//! the instruction type and name, as well as the instruction level
+//! (1, 2 or 3) for 32-bit instructions.
 //!
 //! The instruction type is a string, for example: I, S, B, U, J, R, R4, C, CIW, CL, CS, CA, CB or
 //! CJ.  The instruction type is used to parse the instruction operands and immediate values in file
-//! riscv_interpreter.rs.  In tells the interpreters what fields are present in the 32 (or 16) bits
-//! of the instruction, their position and length.  In other words, it tells the interpreter the
-//! meaning of the instruction bits.
+//! riscv_interpreter.rs.  It tells the interpreter what fields are present in the 32-bit (or 16-bit)
+//! instruction, their position and length.  In other words, it tells the interpreter the meaning of
+//! the instruction bits.
 //!
 //! The instruction name is the human-readable name of the instruction, e.g. "addi", "lw",
 //! "c.addi4spn", etc., and it is used to transpile RISC-V to Zisk assembly in file

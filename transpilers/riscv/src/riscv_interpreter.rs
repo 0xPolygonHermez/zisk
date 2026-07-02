@@ -252,24 +252,26 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
         let imm19_12 = (inst & 0xFF000) >> 12;
         let imm20 = (inst & 0x80000000) >> 31;
         i.imm = signext((imm20 << 20) | (imm19_12 << 12) | (imm11 << 11) | (imm10_1 << 1), 21);
+    }
     //
     // A-type: op(rd, rs1, rs2, aq, rl) (atomic memory operation)
     //
     //  31 30 ... 27 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
-    // |  funct5    |aq|  |rl| rs2  |  rs1    | funct3 |   rd    |       opcode       |
+    // |  funct5    |aq|rl|   rs2   |  rs1    | funct3 |   rd    |       opcode       |
     //
-    } else if i.t == *"A" {
+    else if i.t == *"A" {
         i.funct3 = (inst & 0x7000) >> 12;
         i.funct5 = (inst & 0xF8000000) >> 27;
         i.rd = (inst & 0xF80) >> 7;
         i.rs1 = (inst & 0xF8000) >> 15;
         i.rs2 = (inst & 0x1F00000) >> 20;
         i.aq = (inst & 0x4000000) >> 26;
-        i.rl = (inst & 0x2000000) >> 24;
+        i.rl = (inst & 0x2000000) >> 25;
+    }
     //
     // C-type: op(rd, rs1, csr) (system instruction)
     //
-    } else if i.t == *"C" {
+    else if i.t == *"C" {
         i.funct3 = (inst & 0x7000) >> 12;
         if i.funct3 == 0 {
             if inst == 0x00000073 {
@@ -293,10 +295,11 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
             }
             i.csr = (inst & 0xFFF00000) >> 20;
         }
+    }
     //
     // F-type:
     //
-    } else if i.t == *"F" {
+    else if i.t == *"F" {
         i.funct3 = (inst & 0x7000) >> 12;
         if i.funct3 == 0 {
             // Per the unprivileged spec, base impls shall ignore FENCE rs1/rd
@@ -416,7 +419,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             if i.rd == 2 {
                 i.inst = "c.reserved".to_string();
             }
-        } else if inst_name == "c.ldsp" {
+        } else if inst_name == "c.ldsp" || inst_name == "c.fldsp" {
             let imm5 = ((inst >> 12) & 0x1) as u32;
             let imm4_3 = ((inst >> 5) & 0x3) as u32;
             let imm8_6 = ((inst >> 2) & 0x7) as u32;
@@ -424,7 +427,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             if i.rd == 0 {
                 i.inst = "c.reserved".to_string();
             }
-            i.rs1 = 2; // x2 is always the base pointer for LDSP instructions
+            i.rs1 = 2; // x2 is always the base pointer for LDSP/FLDSP instructions
         } else if inst_name == "c.lwsp" {
             let imm5 = ((inst >> 12) & 0x1) as u32;
             let imm4_2 = ((inst >> 4) & 0x7) as u32;
