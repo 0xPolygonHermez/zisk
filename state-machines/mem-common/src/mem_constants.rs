@@ -33,5 +33,6 @@ pub const MAX_MAIN_STEP: u64 = 0x1FFF_FFFF_FFFF_FFFF;
 
 pub const MAX_MEM_ADDR: u64 = 0xFFFF_FFFF;
 
-pub const SEGMENT_ADDR_MAX_RANGE: usize = (1 << 24) - 1;
+pub const SEGMENT_ADDR_MAX_DISTANCE: usize = 1 << 24;
+pub const SEGMENT_ADDR_MAX_RANGE: usize = SEGMENT_ADDR_MAX_DISTANCE - 1;
 pub const SEGMENT_LARGE_ADDR_C_MAX_RANGE: usize = (1 << 16) - 1;
