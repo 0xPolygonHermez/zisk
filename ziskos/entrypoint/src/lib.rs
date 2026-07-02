@@ -1,4 +1,11 @@
 #![cfg_attr(zisk_guest, no_std)]
+// `linkage` is needed for the weak C++ runtime symbols (`__cxa_atexit`,
+// `__cxa_finalize`, `__dso_handle`) declared in `_zisk_main`. The linker-provided
+// init/fini array bounds are declared as *strong* externs (a weak static would be
+// reached through a hidden pointer slot, so `addr_of!` would not yield the section
+// address); standard linkers (GNU ld, LLD) always define those symbols. Guest-only,
+// so native/stable builds of this crate are unaffected.
+#![cfg_attr(zisk_guest, feature(linkage))]
 #![allow(unexpected_cfgs)]
 #![allow(unused_imports)]
 
@@ -59,7 +66,7 @@ pub fn hint_log<S: AsRef<str>>(msg: S) {
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_init")]
 pub extern "C" fn zkvm_init() {
     #[cfg(not(zisk_guest))]
@@ -80,12 +87,18 @@ pub extern "C" fn zkvm_init() {
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_deinit")]
 pub extern "C" fn zkvm_deinit() {
     #[cfg(all(not(zisk_guest), zisk_hints, feature = "user-hints"))]
     {
         crate::hints::close_hints().expect("hints close failed");
+    }
+
+    // End of the staticlib lifecycle: report the isolated allocator's peak usage.
+    #[cfg(all(zisk_guest, zisk_staticlib, feature = "alloc-stats"))]
+    unsafe {
+        crate::alloc::print_max_used_sys_alloc();
     }
 }
 
@@ -107,11 +120,16 @@ macro_rules! entrypoint {
         const ZISK_ENTRY: fn() = $path;
 
         mod zkvm_generated_main {
+            // C ABI to match the `extern "C" { fn main() -> i32; }` declaration in
+            // `_zisk_main` that calls this symbol — mixing ABIs on the same symbol
+            // is undefined behavior.
             #[no_mangle]
-            fn main() {
+            extern "C" fn main() -> i32 {
                 $crate::zkvm_init();
                 super::ZISK_ENTRY();
                 $crate::zkvm_deinit();
+                // Guest entry returns `()`, so a normal completion is success.
+                0
             }
         }
     };
@@ -311,22 +329,30 @@ pub mod ziskos {
           // set the stack pointer
           "la sp, _init_stack_top",
 
-          // "tail-call" to {entry}
+          // Call into Rust. `_zisk_main` returns `main`'s exit code in a0,
+          // which both exit paths below forward to the termination mechanism.
           "call {_zisk_main}",
           "csrr t0, marchid",
           //"li   t1, {_ARCH_ID_ZISK}",
           "li   t1, 0xFFFEEEE",
           "beq t0, t1, 1f",
 
-          // QEmuu exit
-          //"li t0, {_QEMU_EXIT_ADDR}",
-          //"li t1, {_QEMU_EXIT_CODE}",
+          // QEMU exit via the sifive_test device @ 0x100000. Encode the exit
+          // code (a0): 0 => 0x5555 (pass); otherwise (code << 16) | 0x3333.
           "li t0, 0x100000",
+          "beqz a0, 3f",
+          "slli t1, a0, 16",
+          "li   t2, 0x3333",
+          "or   t1, t1, t2",
+          "sw t1, 0(t0)",
+          "j 2f",
+          "3:",
           "li t1, 0x5555",
           "sw t1, 0(t0)",
           "j 2f",
 
-          // Zisk exit
+          // Zisk exit: syscall 93 (exit) takes the exit code in a0, already set
+          // by `_zisk_main`'s return value.
           "1: li   a7, 93",
           "ecall",
 
@@ -348,10 +374,12 @@ pub mod ziskos {
     }
 
     #[no_mangle]
-    unsafe extern "C" fn _zisk_main() {
+    unsafe extern "C" fn _zisk_main() -> i32 {
         {
             extern "C" {
-                fn main();
+                // Standard `int main(void)`: its return value is the program
+                // exit code, propagated to the termination mechanism below.
+                fn main() -> i32;
             }
             #[cfg(any(
                 feature = "zisk-embedded-alloc",
@@ -368,8 +396,114 @@ pub mod ziskos {
             ))]
             crate::alloc::init_sys_alloc();
 
-            main()
+            // Run C++ (and Rust ctor-style) static constructors before main.
+            run_init_array();
+
+            let code = main();
+
+            // Run static destructors after main returns (atexit-registered first,
+            // then `.fini_array`), before `_start` invokes the exit mechanism.
+            run_exit_handlers();
+
+            code
         }
+    }
+
+    // ---- C++ static constructors / destructors (zkvm-standards) -------------
+    //
+    // Run `.init_array` before `main` and the destructors after it returns.
+    // Empty arrays => no-ops, so this is zero-cost for programs without C++ (or
+    // Rust ctor-style) statics. Allocations done by constructors resolve to the
+    // host program's allocator, NOT ziskos's private bump heap (whose symbols are
+    // localized and which is rewound per call) — exactly what persistent statics
+    // need.
+
+    type CtorFn = extern "C" fn();
+
+    // Linker-provided bounds of the constructor/destructor arrays, defined by the
+    // linker script (see linker_script.ld). Declared as zero-length arrays with
+    // *normal* (strong) linkage so that `addr_of!` yields the section address
+    // directly. (An `extern_weak` static is reached through a hidden pointer slot,
+    // so `addr_of!` would not give the array address — it must be a plain symbol.)
+    extern "C" {
+        static __init_array_start: [CtorFn; 0];
+        static __init_array_end: [CtorFn; 0];
+        static __fini_array_start: [CtorFn; 0];
+        static __fini_array_end: [CtorFn; 0];
+    }
+
+    unsafe fn run_init_array() {
+        let mut p = core::ptr::addr_of!(__init_array_start) as *const CtorFn;
+        let end = core::ptr::addr_of!(__init_array_end) as *const CtorFn;
+        // Empty array (no C++/ctor statics) => p == end => no iterations.
+        while p < end {
+            (core::ptr::read(p))();
+            p = p.add(1);
+        }
+    }
+
+    unsafe fn run_fini_array() {
+        let start = core::ptr::addr_of!(__fini_array_start) as *const CtorFn;
+        let mut p = core::ptr::addr_of!(__fini_array_end) as *const CtorFn;
+        // `.fini_array` runs in reverse order; empty => no iterations.
+        while p > start {
+            p = p.sub(1);
+            (core::ptr::read(p))();
+        }
+    }
+
+    // Minimal freestanding C++ exit machinery. The compiler registers static
+    // destructors at construction time via `__cxa_atexit(dtor, obj, &__dso_handle)`
+    // and expects them to run at exit via `__cxa_finalize`. Single-threaded guest,
+    // so a plain fixed-capacity `static mut` table suffices. Weak so a host C++
+    // runtime (e.g. libsupc++), if linked, takes precedence.
+
+    #[no_mangle]
+    #[linkage = "weak"]
+    pub static __dso_handle: u8 = 0;
+
+    const MAX_ATEXIT: usize = 64;
+    static mut ATEXIT_FNS: [(Option<extern "C" fn(*mut u8)>, *mut u8); MAX_ATEXIT] =
+        [(None, core::ptr::null_mut()); MAX_ATEXIT];
+    static mut ATEXIT_LEN: usize = 0;
+
+    #[no_mangle]
+    #[linkage = "weak"]
+    pub unsafe extern "C" fn __cxa_atexit(
+        func: extern "C" fn(*mut u8),
+        arg: *mut u8,
+        _dso: *mut u8,
+    ) -> i32 {
+        if ATEXIT_LEN >= MAX_ATEXIT {
+            return -1;
+        }
+        // Raw-pointer write to avoid taking a reference to the `static mut`.
+        let base =
+            core::ptr::addr_of_mut!(ATEXIT_FNS) as *mut (Option<extern "C" fn(*mut u8)>, *mut u8);
+        core::ptr::write(base.add(ATEXIT_LEN), (Some(func), arg));
+        ATEXIT_LEN += 1;
+        0
+    }
+
+    #[no_mangle]
+    #[linkage = "weak"]
+    pub unsafe extern "C" fn __cxa_finalize(_dso: *mut u8) {
+        // Reverse registration order; idempotent (drains the table), so a second
+        // call (e.g. from `.fini_array`) is a no-op.
+        let base =
+            core::ptr::addr_of!(ATEXIT_FNS) as *const (Option<extern "C" fn(*mut u8)>, *mut u8);
+        while ATEXIT_LEN > 0 {
+            ATEXIT_LEN -= 1;
+            let (func, arg) = core::ptr::read(base.add(ATEXIT_LEN));
+            if let Some(func) = func {
+                func(arg);
+            }
+        }
+    }
+
+    unsafe fn run_exit_handlers() {
+        __cxa_finalize(core::ptr::null_mut());
+        run_fini_array();
     }
 
     #[no_mangle]
@@ -435,7 +569,7 @@ pub mod ziskos {
         unimplemented!("sys_argv");
     }
 
-    pub extern "C" fn sys_print_hex(val: usize, ln: bool) {
+    pub extern "C" fn sys_write_hex(val: usize, ln: bool) {
         let mut buf = [0u8; 19]; // "0x" + 16 hex + \n — stack, no heap
         buf[0] = b'0';
         buf[1] = b'x';
@@ -449,6 +583,30 @@ pub mod ziskos {
             sys_write(1, buf.as_ptr(), buf.len());
         } else {
             sys_write(1, buf.as_ptr(), buf.len() - 1);
+        }
+    }
+
+    pub extern "C" fn sys_write_u64(val: u64, ln: bool) {
+        let mut buf = [0u8; 21]; // 20 digits max u64 + \n — stack, no heap
+        let mut v = val;
+        let mut end = 20usize;
+
+        if v == 0 {
+            buf[19] = b'0';
+            end = 19;
+        } else {
+            while v > 0 {
+                end -= 1;
+                buf[end] = b'0' + (v % 10) as u8;
+                v /= 10;
+            }
+        }
+
+        if ln {
+            buf[20] = b'\n';
+            sys_write(1, buf[end..].as_ptr(), 21 - end);
+        } else {
+            sys_write(1, buf[end..20].as_ptr(), 20 - end);
         }
     }
 

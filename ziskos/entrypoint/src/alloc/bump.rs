@@ -2,6 +2,7 @@ use core::alloc::{GlobalAlloc, Layout};
 
 use crate::alloc::{inline_bump_alloc_aligned, sys_alloc_aligned, sys_alloc_log};
 use crate::ziskos_memcpy;
+use crate::ziskos_memset;
 
 #[global_allocator]
 pub static HEAP: BumpPointerAlloc = BumpPointerAlloc;
@@ -19,7 +20,16 @@ unsafe impl GlobalAlloc for BumpPointerAlloc {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        inline_bump_alloc_aligned(layout.size(), layout.align())
+        let ptr = inline_bump_alloc_aligned(layout.size(), layout.align());
+        // The bump allocator never reuses memory: each call hands out a fresh
+        // region of the heap. In a guest binary that heap is zero-initialized by
+        // the zkVM, so the memory is already zero and no `memset` is needed.
+        // In staticlib mode the heap is a static buffer that `reset_sys_alloc`
+        // rewinds on every host-facing call, so a region may carry stale bytes
+        // from a previous call — there we must zero it explicitly.
+        #[cfg(zisk_staticlib)]
+        ziskos_memset!(ptr: ptr, 0, layout.size());
+        ptr
     }
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         let new_ptr = inline_bump_alloc_aligned(new_size, layout.align());
