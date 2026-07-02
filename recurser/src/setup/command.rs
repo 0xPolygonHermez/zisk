@@ -60,6 +60,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
     // match every other id-deriving layer (SDK builder, worker claimed-id check).
     let manifest_inputs = RecurserManifestInputs::new(
         zisk_vk.clone(),
+        circom_templates.program_vks.clone(),
         circom_templates.normalize.as_ref(),
         &circom_templates.aggregate_publics,
         circom_templates.n_free,

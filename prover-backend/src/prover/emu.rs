@@ -14,8 +14,8 @@ use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
-use riscv2zisk::Riscv2zisk;
 use proofman_verifier::VadcopFinalProof;
+use riscv2zisk::Riscv2zisk;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};

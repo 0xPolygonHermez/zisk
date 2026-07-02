@@ -8,7 +8,7 @@
 use std::sync::{Arc, OnceLock};
 
 use zisk_common::{HashMode, ProgramVK, ZiskPaths};
-use zisk_prover_backend::CircomCircuit;
+use zisk_prover_backend::{CircomCircuit, GuestProgram};
 
 use crate::{Result, SdkError};
 
@@ -83,6 +83,39 @@ fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
     }
 }
 
+/// Derive the 4-limb VK of each allow-listed guest program, in order, with a
+/// duplicate check. Empty input → empty output (the VK-agnostic default), so
+/// callers pay the ELF-reading cost only when they supply an allow-list.
+///
+/// Uses `GuestProgram::vk()` (the default `Poseidon1` hash mode). Duplicates
+/// are rejected: the circuit's membership check (`1 - ∏(1-eq)`) assumes the
+/// baked `programVKs[]` are unique.
+fn derive_program_vks(programs: &[&GuestProgram]) -> Result<Vec<[String; 4]>> {
+    let mut vks: Vec<[String; 4]> = Vec::with_capacity(programs.len());
+    for prog in programs {
+        let pvk = prog.vk().map_err(|e| {
+            SdkError::Recurser(format!("failed to derive VK for program '{}': {e}", prog.name()))
+        })?;
+        let limbs: [u64; 4] = <[u64; 4]>::try_from(pvk.vk.as_slice()).map_err(|_| {
+            SdkError::Recurser(format!(
+                "program VK for '{}' did not decode into 4 u64 limbs",
+                prog.name()
+            ))
+        })?;
+        let limbs_str: [String; 4] = limbs.map(|w| w.to_string());
+        if let Some(prior) = vks.iter().position(|existing| existing == &limbs_str) {
+            return Err(SdkError::Recurser(format!(
+                "duplicate program VK at index {} ('{}'); already registered at index {}",
+                vks.len(),
+                prog.name(),
+                prior,
+            )));
+        }
+        vks.push(limbs_str);
+    }
+    Ok(vks)
+}
+
 /// Client-independent builder for a [`Recurser`] — the proof-folding
 /// sibling of [`GuestProgram`].
 ///
@@ -97,18 +130,36 @@ fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
 ///     .build()?;
 /// client.setup(&recurser).run()?.await?;
 /// ```
-pub struct AggregationProgramBuilder {
+pub struct AggregationProgramBuilder<'a> {
     aggregate: CircomCircuit,
     n_free: usize,
     normalize: Option<CircomCircuit>,
+    /// Optional leaf allow-list. Empty = VK-agnostic (any valid leaf accepted).
+    /// Order is significant (fixes each program's `programVKs[]` index).
+    programs: Vec<&'a GuestProgram>,
 }
 
-impl AggregationProgramBuilder {
+impl<'a> AggregationProgramBuilder<'a> {
     /// `aggregate` is the `AggregatePublics` Circom body: the consistency
     /// constraints between the two folded proofs' publics plus the merge
     /// into the output publics.
     pub fn new(aggregate: impl Into<CircomCircuit>) -> Self {
-        Self { aggregate: aggregate.into(), n_free: 0, normalize: None }
+        Self { aggregate: aggregate.into(), n_free: 0, normalize: None, programs: Vec::new() }
+    }
+
+    /// Optional leaf allow-list (access control). When set, the circuit accepts
+    /// only these guest programs' proofs as raw vadcop_final leaves; a leaf with
+    /// any other programVK is rejected (the proof is unsatisfiable). Omit (or
+    /// pass an empty slice) to accept any valid leaf. Order is significant and
+    /// must stay stable across runs — it is part of the `recurser_id` digest.
+    ///
+    /// Deriving each program's VK reads its ELF, so this makes `build()` heavier
+    /// than the VK-agnostic default; the cost is only paid when an allow-list is
+    /// supplied.
+    #[must_use]
+    pub fn programs(mut self, programs: &[&'a GuestProgram]) -> Self {
+        self.programs = programs.to_vec();
+        self
     }
 
     /// Unified number of free values per side (defaults to 0). On a leaf the
@@ -142,10 +193,16 @@ impl AggregationProgramBuilder {
             .normalize
             .as_ref()
             .map(|c| recurser::NormalizeCircuit { body: c.source().to_string() });
+
+        // Derive the optional leaf allow-list VKs. Only touches ELFs when a
+        // `programs` list was supplied — the VK-agnostic default stays cheap.
+        let program_vks = derive_program_vks(&self.programs)?;
+
         let templates = recurser::CircomTemplates {
             normalize: normalize.clone(),
             aggregate_publics: self.aggregate.source().to_string(),
             n_free: self.n_free,
+            program_vks: program_vks.clone(),
         };
 
         let setup_dir = ZiskPaths::global()
@@ -170,6 +227,7 @@ impl AggregationProgramBuilder {
 
         let inputs = recurser::RecurserManifestInputs::new(
             zisk_vk,
+            program_vks,
             normalize.as_ref(),
             &templates.aggregate_publics,
             templates.n_free,
@@ -273,6 +331,7 @@ mod tests {
                 normalize: None,
                 aggregate_publics: "// body".into(),
                 n_free: 0,
+                program_vks: vec![],
             },
             setup_dir: "/tmp/zisk-test-setup".into(),
             output_dir: "/tmp/zisk-test-output".into(),

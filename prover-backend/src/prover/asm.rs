@@ -16,8 +16,8 @@ use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use riscv2zisk::Riscv2zisk;
 use proofman_verifier::VadcopFinalProof;
+use riscv2zisk::Riscv2zisk;
 use rom_setup::{generate_assembly, get_output_path};
 use std::collections::HashMap;
 use std::path::PathBuf;

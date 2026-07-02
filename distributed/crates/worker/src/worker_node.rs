@@ -1386,6 +1386,17 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         let normalize =
             spec.normalize.as_ref().map(|n| recurser::NormalizeCircuit { body: n.body.clone() });
+        // Proto `ProgramVk { limbs }` → 4-limb array. Pad/truncate defensively;
+        // a wrong length changes the derived id and is caught by the check below.
+        let program_vks: Vec<[String; 4]> = spec
+            .program_vks
+            .iter()
+            .map(|vk| {
+                let mut limbs = vk.limbs.clone();
+                limbs.resize(4, String::from("0"));
+                [limbs[0].clone(), limbs[1].clone(), limbs[2].clone(), limbs[3].clone()]
+            })
+            .collect();
         // The artifact dir is keyed by the *claimed* id; recompute the id from
         // the spec so a mismatched claim can't be served another definition's
         // completed setup (or silently register under the wrong name).
@@ -1393,6 +1404,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .map_err(|e| anyhow!("failed to read local vadcop_final verkey: {e:#}"))?;
         let expected_inputs = recurser::RecurserManifestInputs::new(
             zisk_vk,
+            program_vks.clone(),
             normalize.as_ref(),
             &spec.aggregate_publics_body,
             spec.n_free as usize,
@@ -1419,6 +1431,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     normalize,
                     aggregate_publics: spec.aggregate_publics_body.clone(),
                     n_free: spec.n_free as usize,
+                    program_vks,
                 },
             };
 

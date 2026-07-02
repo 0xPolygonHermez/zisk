@@ -72,7 +72,20 @@ const NORMALIZE_1_FREE_NO_OUTPUTS: &str = r#"template NormalizePublics(nPublics,
 }"#;
 
 fn templates() -> CircomTemplates {
-    CircomTemplates { normalize: None, aggregate_publics: AGGREGATE_0_FREE.to_string(), n_free: 0 }
+    CircomTemplates {
+        normalize: None,
+        aggregate_publics: AGGREGATE_0_FREE.to_string(),
+        n_free: 0,
+        program_vks: vec![],
+    }
+}
+
+/// Two distinct 4-limb program VKs for allow-list tests.
+fn program_vks() -> Vec<[String; 4]> {
+    vec![
+        ["10".into(), "11".into(), "12".into(), "13".into()],
+        ["20".into(), "21".into(), "22".into(), "23".into()],
+    ]
 }
 
 fn empty_stark() -> StarkInputBlocks<'static> {
@@ -160,6 +173,7 @@ fn no_normalize_with_nfree_gt0() {
         normalize: None,
         aggregate_publics: AGGREGATE_1_FREE.to_string(),
         n_free: 1,
+        program_vks: vec![],
     };
 
     let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
@@ -208,6 +222,7 @@ fn with_normalize_and_nfree_gt0() {
         normalize: Some(NormalizeCircuit { body: NORMALIZE_1_FREE.to_string() }),
         aggregate_publics: AGGREGATE_1_FREE.to_string(),
         n_free: 1,
+        program_vks: vec![],
     };
 
     let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
@@ -313,6 +328,7 @@ fn with_normalize_and_nfree_zero() {
         normalize: Some(NormalizeCircuit { body: NORMALIZE_0_FREE.to_string() }),
         aggregate_publics: AGGREGATE_0_FREE.to_string(),
         n_free: 0,
+        program_vks: vec![],
     };
 
     let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
@@ -363,6 +379,7 @@ fn normalize_arity_mismatch_1param_but_nfree1() {
         }),
         aggregate_publics: AGGREGATE_1_FREE.to_string(), // valid: 1-param AggregatePublics(nFreeInputs)
         n_free: 1,
+        program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "arity mismatch (1-param body, n_free=1) must return Err");
@@ -381,6 +398,7 @@ fn normalize_arity_mismatch_2param_but_nfree0() {
         }),
         aggregate_publics: AGGREGATE_0_FREE.to_string(), // valid: 0-param AggregatePublics()
         n_free: 0,
+        program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "arity mismatch (2-param body, n_free=0) must return Err");
@@ -400,6 +418,7 @@ fn normalize_missing_free_outputs_but_nfree_gt0() {
         }),
         aggregate_publics: AGGREGATE_1_FREE.to_string(),
         n_free: 1,
+        program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "NormalizePublics missing free_outputs with n_free>0 must return Err");
@@ -418,6 +437,7 @@ fn aggregate_arity_mismatch_0param_but_nfree1() {
         normalize: None,
         aggregate_publics: AGGREGATE_0_FREE.to_string(), // 0-param body
         n_free: 1,                                       // requires 1 param
+        program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "arity mismatch (aggregate 0-param body, n_free=1) must return Err");
@@ -425,4 +445,74 @@ fn aggregate_arity_mismatch_0param_but_nfree1() {
         matches!(result.unwrap_err(), recurser::RecurserError::InvalidTemplates(_)),
         "error must be InvalidTemplates variant"
     );
+}
+
+// --- Test 6: optional `programs` allow-list (in-circuit access control) ---
+
+/// With a non-empty allow-list, the circuit emits the membership machinery:
+/// the `iszero.circom` include, the `IsEqualVK` helper, a `programVKs[]` array
+/// carrying the baked limbs, per-side `isRegisteredProgram` membership, and the
+/// hard-reject constraint tying it to `isFinal`.
+#[test]
+fn programs_allowlist_emits_membership_and_hard_reject() {
+    let templates = CircomTemplates {
+        normalize: None,
+        aggregate_publics: AGGREGATE_0_FREE.to_string(),
+        n_free: 0,
+        program_vks: program_vks(),
+    };
+
+    let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
+
+    // Guarded include and helper.
+    assert!(out.contains("include \"iszero.circom\";"), "allow-list must include iszero.circom");
+    assert!(out.contains("template IsEqualVK()"), "allow-list must emit the IsEqualVK helper");
+
+    // Baked programVKs array with both members' limbs, in order.
+    assert!(out.contains("var programVKs[2][4] ="), "must size programVKs[n_programs][4]");
+    assert!(out.contains("[10,11,12,13]"), "must bake first program's VK limbs");
+    assert!(out.contains("[20,21,22,23]"), "must bake second program's VK limbs");
+
+    // Membership signals per side.
+    assert!(
+        out.contains("isRegisteredProgramA <== 1 - noMatchA["),
+        "must derive isRegisteredProgramA"
+    );
+    assert!(
+        out.contains("isRegisteredProgramB <== 1 - noMatchB["),
+        "must derive isRegisteredProgramB"
+    );
+    assert!(
+        out.contains("eqA[k] <== IsEqualVK()(programVK_A, programVKs[k])"),
+        "A membership loop"
+    );
+
+    // Hard reject: a claimed leaf must be a registered program.
+    assert!(
+        out.contains("isFinalA * (1 - isRegisteredProgramA) === 0"),
+        "must hard-reject unregistered A leaves"
+    );
+    assert!(
+        out.contains("isFinalB * (1 - isRegisteredProgramB) === 0"),
+        "must hard-reject unregistered B leaves"
+    );
+
+    // The is_vadcop_final flag still drives leaf selection (feature is additive).
+    assert!(out.contains("isFinalA <== a_sv_publics[0]"), "flag still read from slot 0");
+    assert!(
+        out.contains("MultiMux1(4)([programVK_A, rootCVadcopFinalZisk], isFinalA)"),
+        "rootC selection still driven by isFinal, not membership"
+    );
+}
+
+/// The empty allow-list (default) must emit NONE of the membership machinery —
+/// the guard `{% if n_programs > 0 %}` keeps the VK-agnostic circuit clean.
+#[test]
+fn empty_allowlist_omits_membership() {
+    // `templates()` uses an empty program_vks.
+    let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates()).unwrap();
+    assert!(!out.contains("include \"iszero.circom\";"), "no allow-list must not include iszero");
+    assert!(!out.contains("IsEqualVK"), "no allow-list must not emit IsEqualVK");
+    assert!(!out.contains("programVKs["), "no allow-list must not bake programVKs");
+    assert!(!out.contains("isRegisteredProgram"), "no allow-list must not emit membership");
 }

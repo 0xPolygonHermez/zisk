@@ -44,6 +44,11 @@ pub struct CircomTemplates {
     /// Optional single normalize circuit (applies to all leaves).
     pub normalize: Option<NormalizeCircuit>,
     pub aggregate_publics: String,
+    /// Optional leaf allow-list: the 4-limb program VKs baked into the circuit.
+    /// Empty = VK-agnostic (any valid vadcop_final leaf accepted). When
+    /// non-empty, a leaf whose programVK is absent makes the circuit
+    /// unsatisfiable (hard reject). Order fixes each `programVKs[]` index.
+    pub program_vks: Vec<[String; 4]>,
     /// Single unified free-value width per side. It is BOTH the entry template's
     /// (NormalizePublics) free-input width AND the aggregate's free-value width:
     /// NormalizePublics consumes `n_free` free inputs and emits `n_free`
@@ -128,6 +133,8 @@ pub fn gen_recurser(
     ctx.insert("root_c_vadcop_final_zisk", &zisk_vk);
     ctx.insert("aggregate_publics_template", &templates.aggregate_publics);
     ctx.insert("n_free", &n_free);
+    ctx.insert("n_programs", &templates.program_vks.len());
+    ctx.insert("program_vks", &templates.program_vks);
     match &templates.normalize {
         Some(norm) => {
             ctx.insert("normalize", &true);

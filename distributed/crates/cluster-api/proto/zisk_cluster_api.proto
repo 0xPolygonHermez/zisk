@@ -82,10 +82,17 @@ message NormalizeCircuit {
   string body = 1;
 }
 
+// A single 4-limb (Goldilocks) program verification key.
+message ProgramVk {
+  repeated string limbs = 1; // exactly 4 decimal limbs
+}
+
 message AggregationProgramSpec {
-  NormalizeCircuit normalize              = 1;
-  string           aggregate_publics_body = 2;
-  uint64           n_free                 = 3;
+  NormalizeCircuit    normalize              = 1;
+  string              aggregate_publics_body = 2;
+  uint64              n_free                 = 3;
+  // Optional leaf allow-list (empty = VK-agnostic). Order is significant.
+  repeated ProgramVk  program_vks            = 4;
 }
 
 message SetupAggregationProgram {

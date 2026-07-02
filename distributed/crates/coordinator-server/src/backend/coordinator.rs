@@ -294,6 +294,7 @@ impl BackendService for CoordinatorBackend {
                 .map(|n| zisk_cluster_common::NormalizeCircuitDto { body: n.body }),
             aggregate_publics_body: spec.aggregate_publics_body,
             n_free: spec.n_free,
+            program_vks: spec.program_vks,
         };
         self.coordinator
             .register_aggregation_program(recurser_id.clone(), cluster_spec)

@@ -35,6 +35,11 @@ pub struct DomainAggregationProgramSpec {
     pub normalize: Option<DomainNormalizeCircuit>,
     pub aggregate_publics_body: String,
     pub n_free: u64,
+    /// Optional leaf allow-list: 4-limb program VKs baked into the recurser.
+    /// Empty = VK-agnostic. Sent as VKs (not names) because the worker has no
+    /// access to the client's guest ELFs; the worker recomputes `recurser_id`
+    /// from these, so they must match the client's derivation.
+    pub program_vks: Vec<[String; 4]>,
 }
 
 pub struct RegisterAggregationProgramRequestDto {

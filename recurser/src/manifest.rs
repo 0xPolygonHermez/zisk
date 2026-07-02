@@ -31,6 +31,8 @@ pub struct TemplateHashes {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RecurserManifestInputs {
     pub zisk_vk: [String; 4],
+    #[serde(default)]
+    pub program_vks: Vec<[String; 4]>,
     pub templates: TemplateHashes,
 }
 
@@ -47,12 +49,14 @@ impl RecurserManifestInputs {
     /// diverge.
     pub fn new(
         zisk_vk: [String; 4],
+        program_vks: Vec<[String; 4]>,
         normalize: Option<&NormalizeCircuit>,
         aggregate_publics_body: &str,
         n_free: usize,
     ) -> Self {
         Self {
             zisk_vk,
+            program_vks,
             templates: TemplateHashes {
                 normalize: normalize
                     .map(|n| NormalizeHash { template_blake3: blake3_hex(n.body.as_bytes()) }),
@@ -133,52 +137,73 @@ mod tests {
 
     #[test]
     fn id_is_deterministic() {
-        let a = RecurserManifestInputs::new(vk("z"), None, "agg", 0);
-        let b = RecurserManifestInputs::new(vk("z"), None, "agg", 0);
+        let a = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0);
+        let b = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0);
         assert_eq!(a.compute_id(), b.compute_id());
     }
 
     #[test]
     fn id_changes_when_any_input_changes() {
-        let id = RecurserManifestInputs::new(vk("z"), None, "agg", 0).compute_id();
+        let id = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0).compute_id();
 
         // zisk_vk change
-        assert_ne!(id, RecurserManifestInputs::new(vk("Z"), None, "agg", 0).compute_id());
+        assert_ne!(id, RecurserManifestInputs::new(vk("Z"), vec![], None, "agg", 0).compute_id());
         // aggregate body change
-        assert_ne!(id, RecurserManifestInputs::new(vk("z"), None, "AGG", 0).compute_id());
+        assert_ne!(id, RecurserManifestInputs::new(vk("z"), vec![], None, "AGG", 0).compute_id());
         // n_free change
-        assert_ne!(id, RecurserManifestInputs::new(vk("z"), None, "agg", 5).compute_id());
+        assert_ne!(id, RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 5).compute_id());
         // None vs Some
-        assert_ne!(id, RecurserManifestInputs::new(vk("z"), Some(&norm()), "agg", 0).compute_id());
+        assert_ne!(
+            id,
+            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0).compute_id()
+        );
         // normalize body change
         let id_with_norm =
-            RecurserManifestInputs::new(vk("z"), Some(&norm()), "agg", 0).compute_id();
+            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0).compute_id();
         let norm_alt = NormalizeCircuit { body: "// c".into() };
         assert_ne!(
             id_with_norm,
-            RecurserManifestInputs::new(vk("z"), Some(&norm_alt), "agg", 0).compute_id()
+            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm_alt), "agg", 0).compute_id()
         );
     }
 
     #[test]
+    fn id_changes_with_program_allowlist() {
+        let none = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0).compute_id();
+        // Adding an allow-list changes the id.
+        let one = RecurserManifestInputs::new(vk("z"), vec![vk("p")], None, "agg", 0).compute_id();
+        assert_ne!(none, one);
+        // A different allow-list member changes the id.
+        let one_alt =
+            RecurserManifestInputs::new(vk("z"), vec![vk("q")], None, "agg", 0).compute_id();
+        assert_ne!(one, one_alt);
+        // Order is significant.
+        let ab = RecurserManifestInputs::new(vk("z"), vec![vk("p"), vk("q")], None, "agg", 0)
+            .compute_id();
+        let ba = RecurserManifestInputs::new(vk("z"), vec![vk("q"), vk("p")], None, "agg", 0)
+            .compute_id();
+        assert_ne!(ab, ba);
+    }
+
+    #[test]
     fn id_is_64_hex_chars() {
-        let id = RecurserManifestInputs::new(vk("z"), None, "c", 0).compute_id();
+        let id = RecurserManifestInputs::new(vk("z"), vec![], None, "c", 0).compute_id();
         assert_eq!(id.len(), 64);
         assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
     fn n_free_accessor() {
-        let m = RecurserManifestInputs::new(vk("z"), Some(&norm()), "agg", 7);
+        let m = RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 7);
         assert_eq!(m.n_free(), 7);
 
-        let m_no_norm = RecurserManifestInputs::new(vk("z"), None, "agg", 5);
+        let m_no_norm = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 5);
         assert_eq!(m_no_norm.n_free(), 5);
     }
 
     #[test]
     fn manifest_json_roundtrips() {
-        let inputs = RecurserManifestInputs::new(vk("z"), Some(&norm()), "agg", 0);
+        let inputs = RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0);
         let recurser_id = inputs.compute_id();
         let manifest = RecurserManifest { recurser_id: recurser_id.clone(), inputs };
 

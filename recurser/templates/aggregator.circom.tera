@@ -13,6 +13,9 @@ pragma custom_templates;
 
 include "{{ verifier_filename }}";
 include "mux1.circom";
+{% if n_programs > 0 %}
+include "iszero.circom";
+{% endif %}
 include "publics_helpers.circom";
 
 // ZisK's fixed user-publics width — the 64 slots after the 4-limb programVK.
@@ -24,6 +27,24 @@ function ZISK_PUBLICS() {
 
 {{ aggregate_publics_template }}
 
+{% if n_programs > 0 %}
+// Helper: returns 1 iff the two 4-element VKs are element-wise equal, 0 otherwise.
+// Only emitted when a `programs` allow-list is configured.
+template IsEqualVK() {
+    signal input a[4];
+    signal input b[4];
+    signal output {binary} out;
+
+    signal {binary} eq[4];
+    for (var i = 0; i < 4; i++) {
+        eq[i] <== IsZero()(a[i] - b[i]);
+    }
+    signal {binary} eq01 <== eq[0] * eq[1];
+    signal {binary} eq23 <== eq[2] * eq[3];
+    out <== eq01 * eq23;
+}
+
+{% endif %}
 {% if normalize %}
 {{ normalize_body }}
 
@@ -87,6 +108,42 @@ template Main(nPublics) {
     // Self-defending: enforce boolean, don't merely trust the {binary} tag.
     isFinalA * (1 - isFinalA) === 0;
     isFinalB * (1 - isFinalB) === 0;
+
+{% if n_programs > 0 %}
+    // -- Optional leaf allow-list (access control). Baked programVKs the circuit
+    //    will accept as raw vadcop_final leaves; any leaf whose programVK is not
+    //    registered makes the circuit unsatisfiable (hard reject). Aggregated
+    //    proofs (isFinal=0) are unaffected. This is a SEPARATE constraint layered
+    //    on the is_vadcop_final_proof flag, which still drives leaf/aggregated
+    //    selection below.
+    var programVKs[{{ n_programs }}][4] = [{% for vk in program_vks %}[{{ vk[0] }},{{ vk[1] }},{{ vk[2] }},{{ vk[3] }}]{% if not loop.last %},{% endif %}{% endfor %}];
+
+    // Membership: isRegistered = 1 - ∏(1 - eq[k]). The product form (not Σ eq[k])
+    // keeps circom 2.1's {binary} tag alive (addition strips it, multiplication
+    // preserves it), and seeds noMatch[0] from (1 - eq[0]) not a literal 1.
+    // Soundness assumes programVKs[] has no duplicates (enforced upstream).
+    signal {binary} eqA[{{ n_programs }}];
+    signal {binary} eqB[{{ n_programs }}];
+    signal {binary} noMatchA[{{ n_programs }}];
+    signal {binary} noMatchB[{{ n_programs }}];
+    for (var k = 0; k < {{ n_programs }}; k++) {
+        eqA[k] <== IsEqualVK()(programVK_A, programVKs[k]);
+        eqB[k] <== IsEqualVK()(programVK_B, programVKs[k]);
+    }
+    noMatchA[0] <== 1 - eqA[0];
+    noMatchB[0] <== 1 - eqB[0];
+    for (var k = 1; k < {{ n_programs }}; k++) {
+        noMatchA[k] <== noMatchA[k - 1] * (1 - eqA[k]);
+        noMatchB[k] <== noMatchB[k - 1] * (1 - eqB[k]);
+    }
+    signal {binary} isRegisteredProgramA <== 1 - noMatchA[{{ n_programs }} - 1];
+    signal {binary} isRegisteredProgramB <== 1 - noMatchB[{{ n_programs }} - 1];
+
+    // Hard reject: a proof that claims to be a leaf (isFinal=1) MUST have a
+    // registered programVK. Unsatisfiable otherwise.
+    isFinalA * (1 - isRegisteredProgramA) === 0;
+    isFinalB * (1 - isRegisteredProgramB) === 0;
+{% endif %}
 
 {{ assign_stark_inputs_a }}
 {{ assign_stark_inputs_b }}

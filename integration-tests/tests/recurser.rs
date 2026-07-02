@@ -97,9 +97,9 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     // The programmatic builder must derive the same id as the declarative TOML.
     let circuits_dir =
         concat!(env!("CARGO_MANIFEST_DIR"), "/../test-artifacts/programs/aggregations/circuits");
-    let programmatic = AggregationProgramBuilder::new(
-        CircomCircuit::from_path(format!("{circuits_dir}/aggregate_publics.circom"))?,
-    )
+    let programmatic = AggregationProgramBuilder::new(CircomCircuit::from_path(format!(
+        "{circuits_dir}/aggregate_publics.circom"
+    ))?)
     .build()
     .context("programmatic AggregationProgramBuilder build failed")?;
     assert_eq!(

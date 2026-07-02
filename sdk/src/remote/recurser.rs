@@ -28,6 +28,7 @@ impl RemoteClient {
                 .map(|n| DomainNormalizeCircuit { body: n.body.clone() }),
             aggregate_publics_body: agg.templates.aggregate_publics.clone(),
             n_free,
+            program_vks: agg.templates.program_vks.clone(),
         };
 
         let returned = self

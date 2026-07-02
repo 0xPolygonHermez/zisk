@@ -3492,6 +3492,7 @@ mod tests {
             normalize: None,
             aggregate_publics_body: "// body".into(),
             n_free: 0,
+            program_vks: vec![],
         }
     }
 
