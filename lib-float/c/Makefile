@@ -219,7 +219,7 @@ all:
 
 	riscv64-unknown-elf-as $(ZISK_ASM_CFLAGS) src/start.S -o build/start.o
 	riscv64-unknown-elf-gcc $(ZISK_CFLAGS) -c src/main.cpp $(ZISK_INC) -o build/main.o
-	riscv64-unknown-elf-ld --build-id=none -T scripts/link_main.ld build/start.o build/main.o build/libziskfloat.a -o build/ziskfloatmain.elf
+	riscv64-unknown-elf-ld --build-id=none -T scripts/link_float_main_test.ld build/start.o build/main.o build/libziskfloat.a -o build/ziskfloatmain.elf
 	riscv64-unknown-elf-ld --build-id=none -T scripts/link.ld build/libziskfloat.a -o build/ziskfloat.elf
 	riscv64-unknown-elf-strip --strip-unneeded build/ziskfloat.elf
 	cp build/ziskfloat.elf lib/
