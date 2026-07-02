@@ -32,7 +32,7 @@
 //!
 //! See <https://devopedia.org/risc-v-instruction-sets>
 
-use crate::{InstName, InstType};
+use crate::{RiscvInstName, RiscvInstType};
 
 /// RISC-V instruction data
 #[derive(Default, Debug, Clone)]
@@ -44,7 +44,7 @@ pub struct RiscvInstruction {
     pub rvinst: u32,
 
     /// Instruction type
-    pub t: InstType,
+    pub t: RiscvInstType,
 
     /// Instruction mnemonic
     pub funct2: u32,
@@ -57,7 +57,7 @@ pub struct RiscvInstruction {
     pub rs3: u32,
     pub imm: i32,
     pub imme: u32,
-    pub inst: InstName,
+    pub inst: RiscvInstName,
     pub aq: u32,
     pub rl: u32,
     pub csr: u32,
@@ -71,8 +71,8 @@ impl RiscvInstruction {
         Self {
             rvinst,
             rom_address,
-            t: InstType::I,
-            inst: InstName::Addi,
+            t: RiscvInstType::I,
+            inst: RiscvInstName::Addi,
             rd: 0,
             rs1: 0,
             rs2: 0,
@@ -86,8 +86,8 @@ impl RiscvInstruction {
         Self {
             rvinst,
             rom_address,
-            t: InstType::Cinvalid,
-            inst: InstName::CHalt,
+            t: RiscvInstType::Cinvalid,
+            inst: RiscvInstName::CHalt,
             rd: 0,
             rs1: 0,
             rs2: 0,

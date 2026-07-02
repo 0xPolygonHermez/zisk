@@ -2,7 +2,7 @@
 //! instances of ZiskInstBuilder, and accumulates these instances in a hash map as a public
 //! attribute.
 
-use crate::{riscv_interpreter, InstName, RiscvInstruction};
+use crate::{riscv_interpreter, RiscvInstName, RiscvInstruction};
 use zisk_definitions::{
     SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
     SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
@@ -116,7 +116,7 @@ impl Riscv2ZiskContext<'_> {
             //////////////////////////////////
 
             // I.1. Integer Computational (Register-Register)
-            InstName::Add => {
+            RiscvInstName::Add => {
                 if riscv_instruction.rd == 0
                     && self.input_precompile == Some(SYSCALL_DMA_MEMCPY_ID as u32)
                 {
@@ -150,14 +150,14 @@ impl Riscv2ZiskContext<'_> {
                     self.create_register_op(riscv_instruction, "add", 4);
                 }
             }
-            InstName::Sub => self.create_register_op(riscv_instruction, "sub", 4),
-            InstName::Sll => self.create_register_op(riscv_instruction, "sll", 4),
-            InstName::Slt => self.create_register_op(riscv_instruction, "lt", 4),
-            InstName::Sltu => self.create_register_op(riscv_instruction, "ltu", 4),
-            InstName::Xor => self.create_register_op(riscv_instruction, "xor", 4),
-            InstName::Srl => self.create_register_op(riscv_instruction, "srl", 4),
-            InstName::Sra => self.create_register_op(riscv_instruction, "sra", 4),
-            InstName::Or => {
+            RiscvInstName::Sub => self.create_register_op(riscv_instruction, "sub", 4),
+            RiscvInstName::Sll => self.create_register_op(riscv_instruction, "sll", 4),
+            RiscvInstName::Slt => self.create_register_op(riscv_instruction, "lt", 4),
+            RiscvInstName::Sltu => self.create_register_op(riscv_instruction, "ltu", 4),
+            RiscvInstName::Xor => self.create_register_op(riscv_instruction, "xor", 4),
+            RiscvInstName::Srl => self.create_register_op(riscv_instruction, "srl", 4),
+            RiscvInstName::Sra => self.create_register_op(riscv_instruction, "sra", 4),
+            RiscvInstName::Or => {
                 if riscv_instruction.rs1 == 0 {
                     // rd = rs1(0) | rs2 = rs2
                     self.copyb(riscv_instruction, 4, 2);
@@ -168,15 +168,15 @@ impl Riscv2ZiskContext<'_> {
                     self.create_register_op(riscv_instruction, "or", 4);
                 }
             }
-            InstName::And => self.create_register_op(riscv_instruction, "and", 4),
-            InstName::Addw => self.create_register_op(riscv_instruction, "add_w", 4),
-            InstName::Subw => self.create_register_op(riscv_instruction, "sub_w", 4),
-            InstName::Sllw => self.create_register_op(riscv_instruction, "sll_w", 4),
-            InstName::Srlw => self.create_register_op(riscv_instruction, "srl_w", 4),
-            InstName::Sraw => self.create_register_op(riscv_instruction, "sra_w", 4),
+            RiscvInstName::And => self.create_register_op(riscv_instruction, "and", 4),
+            RiscvInstName::Addw => self.create_register_op(riscv_instruction, "add_w", 4),
+            RiscvInstName::Subw => self.create_register_op(riscv_instruction, "sub_w", 4),
+            RiscvInstName::Sllw => self.create_register_op(riscv_instruction, "sll_w", 4),
+            RiscvInstName::Srlw => self.create_register_op(riscv_instruction, "srl_w", 4),
+            RiscvInstName::Sraw => self.create_register_op(riscv_instruction, "sra_w", 4),
 
             // I.2. Integer Computational (Register-Immediate)
-            InstName::Addi => {
+            RiscvInstName::Addi => {
                 if riscv_instruction.rd == 0 {
                     if riscv_instruction.rs1 == 0 && riscv_instruction.rs2 == 0 {
                         // r0 = r0 + imm(0) = 0
@@ -191,16 +191,16 @@ impl Riscv2ZiskContext<'_> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 4);
                 }
             }
-            InstName::Slli => self.immediate_op(riscv_instruction, "sll", 4),
-            InstName::Slti => self.immediate_op(riscv_instruction, "lt", 4),
-            InstName::Sltiu => self.immediate_op(riscv_instruction, "ltu", 4),
-            InstName::Xori => self.immediate_op_or_x0_copyb(riscv_instruction, "xor", 4),
-            InstName::Srli => self.immediate_op(riscv_instruction, "srl", 4),
-            InstName::Srai => self.immediate_op(riscv_instruction, "sra", 4),
-            InstName::Ori => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
-            InstName::Andi => self.immediate_op(riscv_instruction, "and", 4),
-            InstName::Auipc => self.auipc(riscv_instruction, next_instructions),
-            InstName::Addiw => {
+            RiscvInstName::Slli => self.immediate_op(riscv_instruction, "sll", 4),
+            RiscvInstName::Slti => self.immediate_op(riscv_instruction, "lt", 4),
+            RiscvInstName::Sltiu => self.immediate_op(riscv_instruction, "ltu", 4),
+            RiscvInstName::Xori => self.immediate_op_or_x0_copyb(riscv_instruction, "xor", 4),
+            RiscvInstName::Srli => self.immediate_op(riscv_instruction, "srl", 4),
+            RiscvInstName::Srai => self.immediate_op(riscv_instruction, "sra", 4),
+            RiscvInstName::Ori => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
+            RiscvInstName::Andi => self.immediate_op(riscv_instruction, "and", 4),
+            RiscvInstName::Auipc => self.auipc(riscv_instruction, next_instructions),
+            RiscvInstName::Addiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
                     && riscv_instruction.imm == 0
@@ -211,118 +211,122 @@ impl Riscv2ZiskContext<'_> {
                     self.immediate_op(riscv_instruction, "add_w", 4);
                 }
             }
-            InstName::Slliw => self.immediate_op(riscv_instruction, "sll_w", 4),
-            InstName::Srliw => self.immediate_op(riscv_instruction, "srl_w", 4),
-            InstName::Sraiw => self.immediate_op(riscv_instruction, "sra_w", 4),
+            RiscvInstName::Slliw => self.immediate_op(riscv_instruction, "sll_w", 4),
+            RiscvInstName::Srliw => self.immediate_op(riscv_instruction, "srl_w", 4),
+            RiscvInstName::Sraiw => self.immediate_op(riscv_instruction, "sra_w", 4),
 
             // I.3. Control Transfer Instructions
-            InstName::Jalr => self.jalr(riscv_instruction, 4),
-            InstName::Jal => self.jal(riscv_instruction, 4),
-            InstName::Beq => self.create_branch_op(riscv_instruction, "eq", false, 4),
-            InstName::Bne => self.create_branch_op(riscv_instruction, "eq", true, 4),
-            InstName::Blt => self.create_branch_op(riscv_instruction, "lt", false, 4),
-            InstName::Bge => self.create_branch_op(riscv_instruction, "lt", true, 4),
-            InstName::Bltu => self.create_branch_op(riscv_instruction, "ltu", false, 4),
-            InstName::Bgeu => self.create_branch_op(riscv_instruction, "ltu", true, 4),
+            RiscvInstName::Jalr => self.jalr(riscv_instruction, 4),
+            RiscvInstName::Jal => self.jal(riscv_instruction, 4),
+            RiscvInstName::Beq => self.create_branch_op(riscv_instruction, "eq", false, 4),
+            RiscvInstName::Bne => self.create_branch_op(riscv_instruction, "eq", true, 4),
+            RiscvInstName::Blt => self.create_branch_op(riscv_instruction, "lt", false, 4),
+            RiscvInstName::Bge => self.create_branch_op(riscv_instruction, "lt", true, 4),
+            RiscvInstName::Bltu => self.create_branch_op(riscv_instruction, "ltu", false, 4),
+            RiscvInstName::Bgeu => self.create_branch_op(riscv_instruction, "ltu", true, 4),
 
             // I.4. Load and Store Instructions
-            InstName::Lb => self.load_op(riscv_instruction, "signextend_b", 1, 4),
-            InstName::Lbu => self.load_op(riscv_instruction, "copyb", 1, 4),
-            InstName::Lh => self.load_op(riscv_instruction, "signextend_h", 2, 4),
-            InstName::Lhu => self.load_op(riscv_instruction, "copyb", 2, 4),
-            InstName::Lw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
-            InstName::Lwu => self.load_op(riscv_instruction, "copyb", 4, 4),
-            InstName::Ld => self.load_op(riscv_instruction, "copyb", 8, 4),
-            InstName::LrW => self.load_op(riscv_instruction, "signextend_w", 4, 4),
-            InstName::LrD => self.load_op(riscv_instruction, "copyb", 8, 4),
-            InstName::Lui => self.lui(riscv_instruction, 4),
-            InstName::Sb => self.store_op(riscv_instruction, "copyb", 1, 4),
-            InstName::Sh => self.store_op(riscv_instruction, "copyb", 2, 4),
-            InstName::Sw => self.store_op(riscv_instruction, "copyb", 4, 4),
-            InstName::Sd => self.store_op(riscv_instruction, "copyb", 8, 4),
-            InstName::ScW => self.sc_w(riscv_instruction),
-            InstName::ScD => self.sc_d(riscv_instruction),
+            RiscvInstName::Lb => self.load_op(riscv_instruction, "signextend_b", 1, 4),
+            RiscvInstName::Lbu => self.load_op(riscv_instruction, "copyb", 1, 4),
+            RiscvInstName::Lh => self.load_op(riscv_instruction, "signextend_h", 2, 4),
+            RiscvInstName::Lhu => self.load_op(riscv_instruction, "copyb", 2, 4),
+            RiscvInstName::Lw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Lwu => self.load_op(riscv_instruction, "copyb", 4, 4),
+            RiscvInstName::Ld => self.load_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::LrW => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::LrD => self.load_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::Lui => self.lui(riscv_instruction, 4),
+            RiscvInstName::Sb => self.store_op(riscv_instruction, "copyb", 1, 4),
+            RiscvInstName::Sh => self.store_op(riscv_instruction, "copyb", 2, 4),
+            RiscvInstName::Sw => self.store_op(riscv_instruction, "copyb", 4, 4),
+            RiscvInstName::Sd => self.store_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::ScW => self.sc_w(riscv_instruction),
+            RiscvInstName::ScD => self.sc_d(riscv_instruction),
 
             // I.5. Memory Ordering & Fence Instructions
-            InstName::Fence => self.nop(riscv_instruction, 4),
-            InstName::FenceI => self.nop(riscv_instruction, 4),
+            RiscvInstName::Fence => self.nop(riscv_instruction, 4),
+            RiscvInstName::FenceI => self.nop(riscv_instruction, 4),
 
             // I.6 Privileged & System Instructions (Part of I Base)
-            InstName::Ecall => self.ecall(riscv_instruction),
-            InstName::Ebreak => self.nop(riscv_instruction, 4),
-            InstName::Csrrw => self.csrrw(riscv_instruction),
-            InstName::Csrrs => self.csrrs(riscv_instruction, next_instructions),
-            InstName::Csrrc => self.csrrc(riscv_instruction),
-            InstName::Csrrwi => self.csrrwi(riscv_instruction),
-            InstName::Csrrsi => self.csrrsi(riscv_instruction, next_instructions),
-            InstName::Csrrci => self.csrrci(riscv_instruction),
+            RiscvInstName::Ecall => self.ecall(riscv_instruction),
+            RiscvInstName::Ebreak => self.nop(riscv_instruction, 4),
+            RiscvInstName::Csrrw => self.csrrw(riscv_instruction),
+            RiscvInstName::Csrrs => self.csrrs(riscv_instruction, next_instructions),
+            RiscvInstName::Csrrc => self.csrrc(riscv_instruction),
+            RiscvInstName::Csrrwi => self.csrrwi(riscv_instruction),
+            RiscvInstName::Csrrsi => self.csrrsi(riscv_instruction, next_instructions),
+            RiscvInstName::Csrrci => self.csrrci(riscv_instruction),
 
             // M: Integer Multiplication and Division
             /////////////////////////////////////////
-            InstName::Mul => self.create_register_op(riscv_instruction, "mul", 4),
-            InstName::Mulh => self.create_register_op(riscv_instruction, "mulh", 4),
-            InstName::Mulhsu => self.create_register_op(riscv_instruction, "mulsuh", 4),
-            InstName::Mulhu => self.create_register_op(riscv_instruction, "muluh", 4),
-            InstName::Mulw => self.create_register_op(riscv_instruction, "mul_w", 4),
-            InstName::Div => self.create_register_op(riscv_instruction, "div", 4),
-            InstName::Divu => self.create_register_op(riscv_instruction, "divu", 4),
-            InstName::Divw => self.create_register_op(riscv_instruction, "div_w", 4),
-            InstName::Divuw => self.create_register_op(riscv_instruction, "divu_w", 4),
-            InstName::Rem => self.create_register_op(riscv_instruction, "rem", 4),
-            InstName::Remu => self.create_register_op(riscv_instruction, "remu", 4),
-            InstName::Remw => self.create_register_op(riscv_instruction, "rem_w", 4),
-            InstName::Remuw => self.create_register_op(riscv_instruction, "remu_w", 4),
+            RiscvInstName::Mul => self.create_register_op(riscv_instruction, "mul", 4),
+            RiscvInstName::Mulh => self.create_register_op(riscv_instruction, "mulh", 4),
+            RiscvInstName::Mulhsu => self.create_register_op(riscv_instruction, "mulsuh", 4),
+            RiscvInstName::Mulhu => self.create_register_op(riscv_instruction, "muluh", 4),
+            RiscvInstName::Mulw => self.create_register_op(riscv_instruction, "mul_w", 4),
+            RiscvInstName::Div => self.create_register_op(riscv_instruction, "div", 4),
+            RiscvInstName::Divu => self.create_register_op(riscv_instruction, "divu", 4),
+            RiscvInstName::Divw => self.create_register_op(riscv_instruction, "div_w", 4),
+            RiscvInstName::Divuw => self.create_register_op(riscv_instruction, "divu_w", 4),
+            RiscvInstName::Rem => self.create_register_op(riscv_instruction, "rem", 4),
+            RiscvInstName::Remu => self.create_register_op(riscv_instruction, "remu", 4),
+            RiscvInstName::Remw => self.create_register_op(riscv_instruction, "rem_w", 4),
+            RiscvInstName::Remuw => self.create_register_op(riscv_instruction, "remu_w", 4),
 
             // A: Atomic Instructions
             /////////////////////////
-            InstName::AmoswapD => self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8),
-            InstName::AmoaddD => {
+            RiscvInstName::AmoswapD => {
+                self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8)
+            }
+            RiscvInstName::AmoaddD => {
                 self.create_atomic_op(riscv_instruction, "copyb", "add", "copyb", 8)
             }
-            InstName::AmoxorD => {
+            RiscvInstName::AmoxorD => {
                 self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 8)
             }
-            InstName::AmoandD => {
+            RiscvInstName::AmoandD => {
                 self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 8)
             }
-            InstName::AmoorD => self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 8),
-            InstName::AmominD => {
+            RiscvInstName::AmoorD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 8)
+            }
+            RiscvInstName::AmominD => {
                 self.create_atomic_op(riscv_instruction, "copyb", "min", "copyb", 8)
             }
-            InstName::AmomaxD => {
+            RiscvInstName::AmomaxD => {
                 self.create_atomic_op(riscv_instruction, "copyb", "max", "copyb", 8)
             }
-            InstName::AmominuD => {
+            RiscvInstName::AmominuD => {
                 self.create_atomic_op(riscv_instruction, "copyb", "minu", "copyb", 8)
             }
-            InstName::AmomaxuD => {
+            RiscvInstName::AmomaxuD => {
                 self.create_atomic_op(riscv_instruction, "copyb", "maxu", "copyb", 8)
             }
-            InstName::AmoswapW => {
+            RiscvInstName::AmoswapW => {
                 self.create_atomic_swap(riscv_instruction, "signextend_w", "copyb", 4)
             }
-            InstName::AmoaddW => {
+            RiscvInstName::AmoaddW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "add_w", "copyb", 4)
             }
-            InstName::AmoxorW => {
+            RiscvInstName::AmoxorW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "xor", "copyb", 4)
             }
-            InstName::AmoandW => {
+            RiscvInstName::AmoandW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "and", "copyb", 4)
             }
-            InstName::AmoorW => {
+            RiscvInstName::AmoorW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "or", "copyb", 4)
             }
-            InstName::AmominW => {
+            RiscvInstName::AmominW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "min_w", "copyb", 4)
             }
-            InstName::AmomaxW => {
+            RiscvInstName::AmomaxW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "max_w", "copyb", 4)
             }
-            InstName::AmominuW => {
+            RiscvInstName::AmominuW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "minu_w", "copyb", 4)
             }
-            InstName::AmomaxuW => {
+            RiscvInstName::AmomaxuW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "maxu_w", "copyb", 4)
             }
 
@@ -330,16 +334,18 @@ impl Riscv2ZiskContext<'_> {
             //////////////////////////////////////
 
             // C.I.1. Integer Computational (Register-Register)
-            InstName::CMv | InstName::CAdd => self.create_register_op(riscv_instruction, "add", 2),
-            InstName::CSub => self.create_register_op(riscv_instruction, "sub", 2),
-            InstName::CXor => self.create_register_op(riscv_instruction, "xor", 2),
-            InstName::COr => self.create_register_op(riscv_instruction, "or", 2),
-            InstName::CAnd => self.create_register_op(riscv_instruction, "and", 2),
-            InstName::CAddw => self.create_register_op(riscv_instruction, "add_w", 2),
-            InstName::CSubw => self.create_register_op(riscv_instruction, "sub_w", 2),
+            RiscvInstName::CMv | RiscvInstName::CAdd => {
+                self.create_register_op(riscv_instruction, "add", 2)
+            }
+            RiscvInstName::CSub => self.create_register_op(riscv_instruction, "sub", 2),
+            RiscvInstName::CXor => self.create_register_op(riscv_instruction, "xor", 2),
+            RiscvInstName::COr => self.create_register_op(riscv_instruction, "or", 2),
+            RiscvInstName::CAnd => self.create_register_op(riscv_instruction, "and", 2),
+            RiscvInstName::CAddw => self.create_register_op(riscv_instruction, "add_w", 2),
+            RiscvInstName::CSubw => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
-            InstName::CAddi => {
+            RiscvInstName::CAddi => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
                     && riscv_instruction.rs2 == 0
@@ -352,14 +358,14 @@ impl Riscv2ZiskContext<'_> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
                 }
             }
-            InstName::CAddi4spn | InstName::CLi | InstName::CAddi16sp => {
+            RiscvInstName::CAddi4spn | RiscvInstName::CLi | RiscvInstName::CAddi16sp => {
                 self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
             }
-            InstName::CSlli => self.immediate_op(riscv_instruction, "sll", 2),
-            InstName::CSrli => self.immediate_op(riscv_instruction, "srl", 2),
-            InstName::CSrai => self.immediate_op(riscv_instruction, "sra", 2),
-            InstName::CAndi => self.immediate_op(riscv_instruction, "and", 2),
-            InstName::CAddiw => {
+            RiscvInstName::CSlli => self.immediate_op(riscv_instruction, "sll", 2),
+            RiscvInstName::CSrli => self.immediate_op(riscv_instruction, "srl", 2),
+            RiscvInstName::CSrai => self.immediate_op(riscv_instruction, "sra", 2),
+            RiscvInstName::CAndi => self.immediate_op(riscv_instruction, "and", 2),
+            RiscvInstName::CAddiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
                     && riscv_instruction.imm == 0
@@ -372,218 +378,224 @@ impl Riscv2ZiskContext<'_> {
             }
 
             // C.I.3. Control Transfer Instructions
-            InstName::CJr | InstName::CJalr => self.jalr(riscv_instruction, 2),
-            InstName::CJ => self.jal(riscv_instruction, 2),
-            InstName::CBeqz => self.create_branch_op(riscv_instruction, "eq", false, 2),
-            InstName::CBnez => self.create_branch_op(riscv_instruction, "eq", true, 2),
+            RiscvInstName::CJr | RiscvInstName::CJalr => self.jalr(riscv_instruction, 2),
+            RiscvInstName::CJ => self.jal(riscv_instruction, 2),
+            RiscvInstName::CBeqz => self.create_branch_op(riscv_instruction, "eq", false, 2),
+            RiscvInstName::CBnez => self.create_branch_op(riscv_instruction, "eq", true, 2),
 
             // C.I.4. Load and Store Instructions
-            InstName::CLw | InstName::CLwsp => {
+            RiscvInstName::CLw | RiscvInstName::CLwsp => {
                 self.load_op(riscv_instruction, "signextend_w", 4, 2)
             }
-            InstName::CLd | InstName::CLdsp => self.load_op(riscv_instruction, "copyb", 8, 2),
-            InstName::CLui => self.lui(riscv_instruction, 2),
-            InstName::CSw | InstName::CSwsp => self.store_op(riscv_instruction, "copyb", 4, 2),
-            InstName::CSd | InstName::CSdsp => self.store_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CLd | RiscvInstName::CLdsp => {
+                self.load_op(riscv_instruction, "copyb", 8, 2)
+            }
+            RiscvInstName::CLui => self.lui(riscv_instruction, 2),
+            RiscvInstName::CSw | RiscvInstName::CSwsp => {
+                self.store_op(riscv_instruction, "copyb", 4, 2)
+            }
+            RiscvInstName::CSd | RiscvInstName::CSdsp => {
+                self.store_op(riscv_instruction, "copyb", 8, 2)
+            }
 
             // C.I.6.Privileged & System Instructions
-            InstName::CEbreak => self.nop(riscv_instruction, 2),
+            RiscvInstName::CEbreak => self.nop(riscv_instruction, 2),
 
             // C.D: Double-Precision Floating-Point:
             #[cfg(feature = "float")]
-            InstName::CFld => self.load_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFld => self.load_op(riscv_instruction, "copyb", 8, 2),
             #[cfg(feature = "float")]
-            InstName::CFsd => self.store_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFsd => self.store_op(riscv_instruction, "copyb", 8, 2),
             #[cfg(feature = "float")]
-            InstName::CFldsp => self.load_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFldsp => self.load_op(riscv_instruction, "copyb", 8, 2),
             #[cfg(feature = "float")]
-            InstName::CFsdsp => self.store_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFsdsp => self.store_op(riscv_instruction, "copyb", 8, 2),
 
             // C. Other
-            InstName::CNop => self.nop(riscv_instruction, 2),
-            InstName::CReserved => self.halt_with_error(riscv_instruction, 2),
+            RiscvInstName::CNop => self.nop(riscv_instruction, 2),
+            RiscvInstName::CReserved => self.halt_with_error(riscv_instruction, 2),
 
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
             #[cfg(feature = "float")]
-            InstName::Flw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Flw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             #[cfg(feature = "float")]
-            InstName::Fsw => self.store_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Fsw => self.store_op(riscv_instruction, "signextend_w", 4, 4),
             #[cfg(feature = "float")]
-            InstName::FaddS => self.float(riscv_instruction, "fadd.s", 4),
+            RiscvInstName::FaddS => self.float(riscv_instruction, "fadd.s", 4),
             #[cfg(feature = "float")]
-            InstName::FsubS => self.float(riscv_instruction, "fsub.s", 4),
+            RiscvInstName::FsubS => self.float(riscv_instruction, "fsub.s", 4),
             #[cfg(feature = "float")]
-            InstName::FmulS => self.float(riscv_instruction, "fmul.s", 4),
+            RiscvInstName::FmulS => self.float(riscv_instruction, "fmul.s", 4),
             #[cfg(feature = "float")]
-            InstName::FdivS => self.float(riscv_instruction, "fdiv.s", 4),
+            RiscvInstName::FdivS => self.float(riscv_instruction, "fdiv.s", 4),
             #[cfg(feature = "float")]
-            InstName::FsqrtS => self.float(riscv_instruction, "fsqrt.s", 4),
+            RiscvInstName::FsqrtS => self.float(riscv_instruction, "fsqrt.s", 4),
             #[cfg(feature = "float")]
-            InstName::FmaxS => self.float(riscv_instruction, "fmax.s", 4),
+            RiscvInstName::FmaxS => self.float(riscv_instruction, "fmax.s", 4),
             #[cfg(feature = "float")]
-            InstName::FminS => self.float(riscv_instruction, "fmin.s", 4),
+            RiscvInstName::FminS => self.float(riscv_instruction, "fmin.s", 4),
             #[cfg(feature = "float")]
-            InstName::FeqS => self.float(riscv_instruction, "feq.s", 4),
+            RiscvInstName::FeqS => self.float(riscv_instruction, "feq.s", 4),
             #[cfg(feature = "float")]
-            InstName::FleS => self.float(riscv_instruction, "fle.s", 4),
+            RiscvInstName::FleS => self.float(riscv_instruction, "fle.s", 4),
             #[cfg(feature = "float")]
-            InstName::FltS => self.float(riscv_instruction, "flt.s", 4),
+            RiscvInstName::FltS => self.float(riscv_instruction, "flt.s", 4),
             #[cfg(feature = "float")]
-            InstName::FclassS => self.float(riscv_instruction, "fclass.s", 4),
+            RiscvInstName::FclassS => self.float(riscv_instruction, "fclass.s", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtSW => self.float(riscv_instruction, "fcvt.s.w", 4),
+            RiscvInstName::FcvtSW => self.float(riscv_instruction, "fcvt.s.w", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtSWu => self.float(riscv_instruction, "fcvt.s.wu", 4),
+            RiscvInstName::FcvtSWu => self.float(riscv_instruction, "fcvt.s.wu", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtWS => self.float(riscv_instruction, "fcvt.w.s", 4),
+            RiscvInstName::FcvtWS => self.float(riscv_instruction, "fcvt.w.s", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtWuS => self.float(riscv_instruction, "fcvt.wu.s", 4),
+            RiscvInstName::FcvtWuS => self.float(riscv_instruction, "fcvt.wu.s", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtSL => self.float(riscv_instruction, "fcvt.s.l", 4),
+            RiscvInstName::FcvtSL => self.float(riscv_instruction, "fcvt.s.l", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtLS => self.float(riscv_instruction, "fcvt.l.s", 4),
+            RiscvInstName::FcvtLS => self.float(riscv_instruction, "fcvt.l.s", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtSLu => self.float(riscv_instruction, "fcvt.s.lu", 4),
+            RiscvInstName::FcvtSLu => self.float(riscv_instruction, "fcvt.s.lu", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtLuS => self.float(riscv_instruction, "fcvt.lu.s", 4),
+            RiscvInstName::FcvtLuS => self.float(riscv_instruction, "fcvt.lu.s", 4),
             #[cfg(feature = "float")]
-            InstName::FsgnjS => self.float(riscv_instruction, "fsgnj.s", 4),
+            RiscvInstName::FsgnjS => self.float(riscv_instruction, "fsgnj.s", 4),
             #[cfg(feature = "float")]
-            InstName::FsgnjnS => self.float(riscv_instruction, "fsgnjn.s", 4),
+            RiscvInstName::FsgnjnS => self.float(riscv_instruction, "fsgnjn.s", 4),
             #[cfg(feature = "float")]
-            InstName::FsgnjxS => self.float(riscv_instruction, "fsgnjx.s", 4),
+            RiscvInstName::FsgnjxS => self.float(riscv_instruction, "fsgnjx.s", 4),
             #[cfg(feature = "float")]
-            InstName::FmaddS => self.float(riscv_instruction, "fmadd.s", 4),
+            RiscvInstName::FmaddS => self.float(riscv_instruction, "fmadd.s", 4),
             #[cfg(feature = "float")]
-            InstName::FmsubS => self.float(riscv_instruction, "fmsub.s", 4),
+            RiscvInstName::FmsubS => self.float(riscv_instruction, "fmsub.s", 4),
             #[cfg(feature = "float")]
-            InstName::FnmaddS => self.float(riscv_instruction, "fnmadd.s", 4),
+            RiscvInstName::FnmaddS => self.float(riscv_instruction, "fnmadd.s", 4),
             #[cfg(feature = "float")]
-            InstName::FnmsubS => self.float(riscv_instruction, "fnmsub.s", 4),
+            RiscvInstName::FnmsubS => self.float(riscv_instruction, "fnmsub.s", 4),
             #[cfg(feature = "float")]
-            InstName::FmvWX => self.float(riscv_instruction, "fmv.w.x", 4), // TODO: implement natively
+            RiscvInstName::FmvWX => self.float(riscv_instruction, "fmv.w.x", 4), // TODO: implement natively
             #[cfg(feature = "float")]
-            InstName::FmvXW => self.float(riscv_instruction, "fmv.x.w", 4), // TODO: implement natively
+            RiscvInstName::FmvXW => self.float(riscv_instruction, "fmv.x.w", 4), // TODO: implement natively
 
             // D: Double-Precision Floating-Point
             /////////////////////////////////////
             #[cfg(feature = "float")]
-            InstName::Fld => self.load_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::Fld => self.load_op(riscv_instruction, "copyb", 8, 4),
             #[cfg(feature = "float")]
-            InstName::Fsd => self.store_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::Fsd => self.store_op(riscv_instruction, "copyb", 8, 4),
             #[cfg(feature = "float")]
-            InstName::FaddD => self.float(riscv_instruction, "fadd.d", 4),
+            RiscvInstName::FaddD => self.float(riscv_instruction, "fadd.d", 4),
             #[cfg(feature = "float")]
-            InstName::FsubD => self.float(riscv_instruction, "fsub.d", 4),
+            RiscvInstName::FsubD => self.float(riscv_instruction, "fsub.d", 4),
             #[cfg(feature = "float")]
-            InstName::FmulD => self.float(riscv_instruction, "fmul.d", 4),
+            RiscvInstName::FmulD => self.float(riscv_instruction, "fmul.d", 4),
             #[cfg(feature = "float")]
-            InstName::FdivD => self.float(riscv_instruction, "fdiv.d", 4),
+            RiscvInstName::FdivD => self.float(riscv_instruction, "fdiv.d", 4),
             #[cfg(feature = "float")]
-            InstName::FsqrtD => self.float(riscv_instruction, "fsqrt.d", 4),
+            RiscvInstName::FsqrtD => self.float(riscv_instruction, "fsqrt.d", 4),
             #[cfg(feature = "float")]
-            InstName::FmaxD => self.float(riscv_instruction, "fmax.d", 4),
+            RiscvInstName::FmaxD => self.float(riscv_instruction, "fmax.d", 4),
             #[cfg(feature = "float")]
-            InstName::FminD => self.float(riscv_instruction, "fmin.d", 4),
+            RiscvInstName::FminD => self.float(riscv_instruction, "fmin.d", 4),
             #[cfg(feature = "float")]
-            InstName::FeqD => self.float(riscv_instruction, "feq.d", 4),
+            RiscvInstName::FeqD => self.float(riscv_instruction, "feq.d", 4),
             #[cfg(feature = "float")]
-            InstName::FleD => self.float(riscv_instruction, "fle.d", 4),
+            RiscvInstName::FleD => self.float(riscv_instruction, "fle.d", 4),
             #[cfg(feature = "float")]
-            InstName::FltD => self.float(riscv_instruction, "flt.d", 4),
+            RiscvInstName::FltD => self.float(riscv_instruction, "flt.d", 4),
             #[cfg(feature = "float")]
-            InstName::FclassD => self.float(riscv_instruction, "fclass.d", 4),
+            RiscvInstName::FclassD => self.float(riscv_instruction, "fclass.d", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtDS => self.float(riscv_instruction, "fcvt.d.s", 4),
+            RiscvInstName::FcvtDS => self.float(riscv_instruction, "fcvt.d.s", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtDW => self.float(riscv_instruction, "fcvt.d.w", 4),
+            RiscvInstName::FcvtDW => self.float(riscv_instruction, "fcvt.d.w", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtDWu => self.float(riscv_instruction, "fcvt.d.wu", 4),
+            RiscvInstName::FcvtDWu => self.float(riscv_instruction, "fcvt.d.wu", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtSD => self.float(riscv_instruction, "fcvt.s.d", 4),
+            RiscvInstName::FcvtSD => self.float(riscv_instruction, "fcvt.s.d", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtWD => self.float(riscv_instruction, "fcvt.w.d", 4),
+            RiscvInstName::FcvtWD => self.float(riscv_instruction, "fcvt.w.d", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtWuD => self.float(riscv_instruction, "fcvt.wu.d", 4),
+            RiscvInstName::FcvtWuD => self.float(riscv_instruction, "fcvt.wu.d", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtDL => self.float(riscv_instruction, "fcvt.d.l", 4),
+            RiscvInstName::FcvtDL => self.float(riscv_instruction, "fcvt.d.l", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtLD => self.float(riscv_instruction, "fcvt.l.d", 4),
+            RiscvInstName::FcvtLD => self.float(riscv_instruction, "fcvt.l.d", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtDLu => self.float(riscv_instruction, "fcvt.d.lu", 4),
+            RiscvInstName::FcvtDLu => self.float(riscv_instruction, "fcvt.d.lu", 4),
             #[cfg(feature = "float")]
-            InstName::FcvtLuD => self.float(riscv_instruction, "fcvt.lu.d", 4),
+            RiscvInstName::FcvtLuD => self.float(riscv_instruction, "fcvt.lu.d", 4),
             #[cfg(feature = "float")]
-            InstName::FsgnjD => self.float(riscv_instruction, "fsgnj.d", 4),
+            RiscvInstName::FsgnjD => self.float(riscv_instruction, "fsgnj.d", 4),
             #[cfg(feature = "float")]
-            InstName::FsgnjnD => self.float(riscv_instruction, "fsgnjn.d", 4),
+            RiscvInstName::FsgnjnD => self.float(riscv_instruction, "fsgnjn.d", 4),
             #[cfg(feature = "float")]
-            InstName::FsgnjxD => self.float(riscv_instruction, "fsgnjx.d", 4),
+            RiscvInstName::FsgnjxD => self.float(riscv_instruction, "fsgnjx.d", 4),
             #[cfg(feature = "float")]
-            InstName::FmaddD => self.float(riscv_instruction, "fmadd.d", 4),
+            RiscvInstName::FmaddD => self.float(riscv_instruction, "fmadd.d", 4),
             #[cfg(feature = "float")]
-            InstName::FnmaddD => self.float(riscv_instruction, "fnmadd.d", 4),
+            RiscvInstName::FnmaddD => self.float(riscv_instruction, "fnmadd.d", 4),
             #[cfg(feature = "float")]
-            InstName::FmsubD => self.float(riscv_instruction, "fmsub.d", 4),
+            RiscvInstName::FmsubD => self.float(riscv_instruction, "fmsub.d", 4),
             #[cfg(feature = "float")]
-            InstName::FnmsubD => self.float(riscv_instruction, "fnmsub.d", 4),
+            RiscvInstName::FnmsubD => self.float(riscv_instruction, "fnmsub.d", 4),
             #[cfg(feature = "float")]
-            InstName::FmvDX => self.float(riscv_instruction, "fmv.d.x", 4), // TODO: implement natively
+            RiscvInstName::FmvDX => self.float(riscv_instruction, "fmv.d.x", 4), // TODO: implement natively
             #[cfg(feature = "float")]
-            InstName::FmvXD => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
+            RiscvInstName::FmvXD => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
 
             // RISC-V Bit manipulation Extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
 
             // Byte and bit reverse operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Rev8 => {
+            RiscvInstName::Rev8 => {
                 self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1)
             }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Brev8 => {
+            RiscvInstName::Brev8 => {
                 self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1)
             }
 
             // Negate logical operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Andn => self.create_register_op(riscv_instruction, "andn", 4),
+            RiscvInstName::Andn => self.create_register_op(riscv_instruction, "andn", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Orn => self.create_register_op(riscv_instruction, "orn", 4),
+            RiscvInstName::Orn => self.create_register_op(riscv_instruction, "orn", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Xnor => self.create_register_op(riscv_instruction, "xnor", 4),
+            RiscvInstName::Xnor => self.create_register_op(riscv_instruction, "xnor", 4),
 
             // Pack operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Pack => self.create_register_op(riscv_instruction, "pack", 4),
+            RiscvInstName::Pack => self.create_register_op(riscv_instruction, "pack", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Packh => self.create_register_op(riscv_instruction, "pack_h", 4),
+            RiscvInstName::Packh => self.create_register_op(riscv_instruction, "pack_h", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Packw => self.create_register_op(riscv_instruction, "pack_w", 4),
+            RiscvInstName::Packw => self.create_register_op(riscv_instruction, "pack_w", 4),
 
             // Rotate operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Rol => self.create_register_op(riscv_instruction, "rol", 4),
+            RiscvInstName::Rol => self.create_register_op(riscv_instruction, "rol", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Rolw => self.create_register_op(riscv_instruction, "rol_w", 4),
+            RiscvInstName::Rolw => self.create_register_op(riscv_instruction, "rol_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Ror => self.create_register_op(riscv_instruction, "ror", 4),
+            RiscvInstName::Ror => self.create_register_op(riscv_instruction, "ror", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Rorw => self.create_register_op(riscv_instruction, "ror_w", 4),
+            RiscvInstName::Rorw => self.create_register_op(riscv_instruction, "ror_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Rori => self.immediate_op(riscv_instruction, "ror", 4),
+            RiscvInstName::Rori => self.immediate_op(riscv_instruction, "ror", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Roriw => self.immediate_op(riscv_instruction, "ror_w", 4),
+            RiscvInstName::Roriw => self.immediate_op(riscv_instruction, "ror_w", 4),
 
             // Min and max operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Min => self.create_register_op(riscv_instruction, "min", 4),
+            RiscvInstName::Min => self.create_register_op(riscv_instruction, "min", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Minu => self.create_register_op(riscv_instruction, "minu", 4),
+            RiscvInstName::Minu => self.create_register_op(riscv_instruction, "minu", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Max => self.create_register_op(riscv_instruction, "max", 4),
+            RiscvInstName::Max => self.create_register_op(riscv_instruction, "max", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Maxu => self.create_register_op(riscv_instruction, "maxu", 4),
+            RiscvInstName::Maxu => self.create_register_op(riscv_instruction, "maxu", 4),
 
             // Sign-extend / zero-extend operations.
             // These are register-to-register (Zbb) ops, NOT memory loads: they
@@ -591,100 +603,104 @@ impl Riscv2ZiskContext<'_> {
             // register path (signature is (op, inst_size, rs), rs=1 -> rs1).
             // Using load_op here would (wrongly) read memory at rs1 + imm.
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::SextB => {
+            RiscvInstName::SextB => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_b", 4, 1)
             }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::SextH => {
+            RiscvInstName::SextH => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_h", 4, 1)
             }
             // zext.h zero-extends the low 16 bits of rs1: rd = rs1 & 0xFFFF.
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::ZextH => self.zero_extend_h(riscv_instruction, 4),
+            RiscvInstName::ZextH => self.zero_extend_h(riscv_instruction, 4),
 
             // Bit count operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Clz => self.create_single_source_register_op(riscv_instruction, "clz", 4, 1),
+            RiscvInstName::Clz => {
+                self.create_single_source_register_op(riscv_instruction, "clz", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Clzw => {
+            RiscvInstName::Clzw => {
                 self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1)
             }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Ctz => self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1),
+            RiscvInstName::Ctz => {
+                self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Ctzw => {
+            RiscvInstName::Ctzw => {
                 self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1)
             }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Cpop => {
+            RiscvInstName::Cpop => {
                 self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1)
             }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Cpopw => {
+            RiscvInstName::Cpopw => {
                 self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1)
             }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::OrcB => {
+            RiscvInstName::OrcB => {
                 self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1)
             }
 
             // Single bit operations (Zbs)
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Bclr => self.create_register_op(riscv_instruction, "bclr", 4),
+            RiscvInstName::Bclr => self.create_register_op(riscv_instruction, "bclr", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Bclri => self.immediate_op(riscv_instruction, "bclr", 4),
+            RiscvInstName::Bclri => self.immediate_op(riscv_instruction, "bclr", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Bext => self.create_register_op(riscv_instruction, "bext", 4),
+            RiscvInstName::Bext => self.create_register_op(riscv_instruction, "bext", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Bexti => self.immediate_op(riscv_instruction, "bext", 4),
+            RiscvInstName::Bexti => self.immediate_op(riscv_instruction, "bext", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Binv => self.create_register_op(riscv_instruction, "binv", 4),
+            RiscvInstName::Binv => self.create_register_op(riscv_instruction, "binv", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Binvi => self.immediate_op(riscv_instruction, "binv", 4),
+            RiscvInstName::Binvi => self.immediate_op(riscv_instruction, "binv", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Bset => self.create_register_op(riscv_instruction, "bset", 4),
+            RiscvInstName::Bset => self.create_register_op(riscv_instruction, "bset", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
+            RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
 
             // Address generation operations (Zba)
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::AddUw => self.create_register_op(riscv_instruction, "add_u_w", 4),
+            RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Sh1add => self.create_register_op(riscv_instruction, "sh1add", 4),
+            RiscvInstName::Sh1add => self.create_register_op(riscv_instruction, "sh1add", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Sh1addUw => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
+            RiscvInstName::Sh1addUw => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Sh2add => self.create_register_op(riscv_instruction, "sh2add", 4),
+            RiscvInstName::Sh2add => self.create_register_op(riscv_instruction, "sh2add", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Sh2addUw => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
+            RiscvInstName::Sh2addUw => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Sh3add => self.create_register_op(riscv_instruction, "sh3add", 4),
+            RiscvInstName::Sh3add => self.create_register_op(riscv_instruction, "sh3add", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Sh3addUw => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
+            RiscvInstName::Sh3addUw => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::SlliUw => self.immediate_op(riscv_instruction, "sll_u_w", 4),
+            RiscvInstName::SlliUw => self.immediate_op(riscv_instruction, "sll_u_w", 4),
 
             // Carry-less multiplication operations (Zbc)
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Clmul => self.create_register_op(riscv_instruction, "clmul", 4),
+            RiscvInstName::Clmul => self.create_register_op(riscv_instruction, "clmul", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Clmulh => self.create_register_op(riscv_instruction, "clmul_h", 4),
+            RiscvInstName::Clmulh => self.create_register_op(riscv_instruction, "clmul_h", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Clmulr => self.create_register_op(riscv_instruction, "clmul_r", 4),
+            RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmul_r", 4),
 
             // Crossbar permutations operations (Zbkx)
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Xperm4 => self.create_register_op(riscv_instruction, "xperm4", 4),
+            RiscvInstName::Xperm4 => self.create_register_op(riscv_instruction, "xperm4", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Xperm8 => self.create_register_op(riscv_instruction, "xperm8", 4),
+            RiscvInstName::Xperm8 => self.create_register_op(riscv_instruction, "xperm8", 4),
 
             // Special ZisK instructions
             ////////////////////////////
 
             // This instruction ends the emulation with an error and its opcode cannot be proven,
             // i.e. the proof generation would fail
-            InstName::CHalt => self.halt_with_error(riscv_instruction, 2),
-            InstName::Reserved => self.halt_with_error(riscv_instruction, 4),
+            RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 2),
+            RiscvInstName::Reserved => self.halt_with_error(riscv_instruction, 4),
 
             _ => {
                 panic!(
@@ -1074,10 +1090,10 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("ind", i.imm as u64, false);
         zib.op(op).unwrap();
         #[cfg(feature = "float")]
-        let reg_offset: i64 = if i.inst == InstName::Fld
-            || i.inst == InstName::Flw
-            || i.inst == InstName::CFld
-            || i.inst == InstName::CFldsp
+        let reg_offset: i64 = if i.inst == RiscvInstName::Fld
+            || i.inst == RiscvInstName::Flw
+            || i.inst == RiscvInstName::CFld
+            || i.inst == RiscvInstName::CFldsp
         {
             ((FREG_F0 - REG_X0) >> 3) as i64
         } else {
@@ -1100,10 +1116,10 @@ impl Riscv2ZiskContext<'_> {
     pub fn store_op(&mut self, i: &RiscvInstruction, op: &str, w: u64, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
         #[cfg(feature = "float")]
-        let reg_offset: u64 = if i.inst == InstName::Fsd
-            || i.inst == InstName::Fsw
-            || i.inst == InstName::CFsd
-            || i.inst == InstName::CFsdsp
+        let reg_offset: u64 = if i.inst == RiscvInstName::Fsd
+            || i.inst == RiscvInstName::Fsw
+            || i.inst == RiscvInstName::CFsd
+            || i.inst == RiscvInstName::CFsdsp
         {
             (FREG_F0 - REG_X0) >> 3
         } else {
@@ -1204,7 +1220,7 @@ impl Riscv2ZiskContext<'_> {
         // 80000014:    b30080e7              jalr     ra, -1232(ra) # 803c1b40 <_zisk_main>
 
         if !next_instructions.is_empty()
-            && next_instructions[0].inst == InstName::Jalr
+            && next_instructions[0].inst == RiscvInstName::Jalr
             && i.rd != 0
             && next_instructions[0].rs1 == i.rd
             && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
@@ -2284,8 +2300,8 @@ impl Riscv2ZiskContext<'_> {
     ) {
         if i.imme == 2 {
             if next_instructions.len() > 1
-                && next_instructions[0].inst == InstName::Addi
-                && next_instructions[1].inst == InstName::Addi
+                && next_instructions[0].inst == RiscvInstName::Addi
+                && next_instructions[1].inst == RiscvInstName::Addi
             {
                 // xmemset transpilation pattern:
                 //
@@ -2318,7 +2334,7 @@ impl Riscv2ZiskContext<'_> {
                         i.csr, i.rom_address, next_0, next_1);
             }
         } else if i.imme == 0 {
-            if !next_instructions.is_empty() && next_instructions[0].inst == InstName::Addi {
+            if !next_instructions.is_empty() && next_instructions[0].inst == RiscvInstName::Addi {
                 // xmemset transpilation pattern:
                 //
                 //  csrs  0x816, reg(dst)      ===>  xmemset [x0|a0], a0, reg(count), byte ─┐
@@ -2357,7 +2373,7 @@ impl Riscv2ZiskContext<'_> {
         next_instructions: &[RiscvInstruction],
     ) {
         if i.imme == 0 && !next_instructions.is_empty() {
-            if next_instructions[0].inst == InstName::Add {
+            if next_instructions[0].inst == RiscvInstName::Add {
                 // memcpy/memcmp transpilation pattern:
                 //
                 //  csrs  0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM]
@@ -2367,7 +2383,7 @@ impl Riscv2ZiskContext<'_> {
                 self.create_set_precompiles_param_op(i, next_instructions[0].rs2, 4);
                 return;
             }
-            if next_instructions[0].inst == InstName::Addi {
+            if next_instructions[0].inst == RiscvInstName::Addi {
                 // memcpy/memcmp transpilation pattern:
                 //
                 //  csrs  0x81x, reg(src)          ===>  memcxx rd, reg(dst), reg(src), count ─┐
@@ -2399,7 +2415,7 @@ impl Riscv2ZiskContext<'_> {
         next_instructions: &[RiscvInstruction],
     ) {
         if i.imme == 0 && !next_instructions.is_empty() {
-            if next_instructions[0].inst == InstName::Add {
+            if next_instructions[0].inst == RiscvInstName::Add {
                 // inputcpy transpilation pattern:
                 //
                 //  csrs  0x815, reg(count)        ===>  inputcpy rd, reg(dst), reg(count) ─┐
@@ -2420,7 +2436,7 @@ impl Riscv2ZiskContext<'_> {
                 );
                 return;
             }
-            if next_instructions[0].inst == InstName::Addi {
+            if next_instructions[0].inst == RiscvInstName::Addi {
                 // inputcpy transpilation pattern:
                 //
                 //  csrs  0x815, reg(dst)          ===>  inputcpy rd, reg(dst), count ────┐
@@ -2446,7 +2462,7 @@ impl Riscv2ZiskContext<'_> {
         next_instructions: &[RiscvInstruction],
     ) {
         assert!(!next_instructions.is_empty());
-        assert!(next_instructions[0].inst == InstName::Addi);
+        assert!(next_instructions[0].inst == RiscvInstName::Addi);
         assert!(next_instructions[0].rd == 0);
         assert!(next_instructions[0].rs1 == 0);
         // profile transpilation pattern:
