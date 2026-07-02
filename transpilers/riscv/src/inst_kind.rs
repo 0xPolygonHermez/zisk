@@ -4,7 +4,7 @@
 //! so dispatch on instruction format / mnemonic is checked by the compiler.
 //! `as_str()` / `Display` reproduce the canonical mnemonic strings for logging and text output.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum InstType {
     A,
     B,
@@ -21,6 +21,7 @@ pub enum InstType {
     Css,
     F,
     I,
+    #[default]
     Invalid,
     J,
     R,
@@ -58,19 +59,13 @@ impl InstType {
     }
 }
 
-impl Default for InstType {
-    fn default() -> Self {
-        InstType::Invalid
-    }
-}
-
 impl core::fmt::Display for InstType {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum InstName {
     Add,
     AddUw,
@@ -270,6 +265,7 @@ pub enum InstName {
     Remu,
     Remuw,
     Remw,
+    #[default]
     Reserved,
     Rev8,
     Rol,
@@ -569,12 +565,6 @@ impl InstName {
             InstName::Xperm8 => "xperm8",
             InstName::ZextH => "zext.h",
         }
-    }
-}
-
-impl Default for InstName {
-    fn default() -> Self {
-        InstName::Reserved
     }
 }
 
