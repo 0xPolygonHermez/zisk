@@ -1,0 +1,141 @@
+name: Nightly RunPod Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to test"
+        required: true
+        type: string
+
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  runpod-tests:
+    runs-on:
+      group: zisk-gpu
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      DEFAULT_TARGET_BRANCH: ${{ vars.RUNPOD_NIGHTLY_BRANCH }}
+      TEST_CONTAINER: zisk-runpod-test
+
+    steps:
+      - name: Resolve target branch
+        id: branch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target=${{ inputs.target_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=${DEFAULT_TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.branch.outputs.target }}
+
+      - name: Give workspace ownership to container user
+        run: |
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+
+      - name: Start test container
+        run: .github/scripts/start_test_container.sh
+
+      - name: Setup SSH key
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e RUNPOD_SSH_PRIVATE_KEY="${{ secrets.RUNPOD_SSH_PRIVATE_KEY }}" \
+            -- bash -lc '
+              mkdir -p ~/.ssh
+              chmod 700 ~/.ssh
+              printf "%s\n" "$RUNPOD_SSH_PRIVATE_KEY" > ~/.ssh/runpod_ed25519
+              chmod 600 ~/.ssh/runpod_ed25519
+              ssh-keygen -y -f ~/.ssh/runpod_ed25519 > ~/.ssh/runpod_ed25519.pub
+            '
+
+      - name: Install dependencies
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              python3 -m pip install --user requests
+              sudo apt-get update && sudo apt-get install -y pv
+            '
+
+      - name: Build binaries and deploy pods
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
+            -e TARGET_BRANCH="${{ steps.branch.outputs.target }}" \
+            -- bash -lc '
+              cd /workspace/zisk
+
+              # Build the binaries and create the pods concurrently; they are
+              # independent (only deploy_cluster.py needs both).
+              bash tools/runpod-test/build_binaries.sh \
+                --zisk-branch "${TARGET_BRANCH}" &
+              build_pid=$!
+
+              python3 tools/runpod-test/deploy_pods.py \
+                --ssh-key ~/.ssh/runpod_ed25519 &
+              deploy_pid=$!
+
+              build_rc=0
+              deploy_rc=0
+              wait "$build_pid" || build_rc=$?
+              wait "$deploy_pid" || deploy_rc=$?
+
+              echo "build_binaries.sh exit=${build_rc}, deploy_pods.py exit=${deploy_rc}"
+
+              # Any created pods are cleaned up by the always() "Terminate pods" step.
+              if [ "$build_rc" -ne 0 ] || [ "$deploy_rc" -ne 0 ]; then
+                exit 1
+              fi
+            '
+
+      - name: Provision and run cluster
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
+            -- bash -lc '
+              cd /workspace/zisk
+              python3 tools/runpod-test/deploy_cluster.py \
+                --ssh-key ~/.ssh/runpod_ed25519
+            '
+
+      - name: Terminate pods
+        if: always()
+        run: |
+          if docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
+            .github/scripts/docker_exec.sh \
+              -u ziskuser \
+              -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
+              -- bash -lc '
+                cd /workspace/zisk
+                if [ -f pods.json ]; then
+                  python3 tools/runpod-test/terminate_pods.py || true
+                fi
+              '
+          fi
+
+      - name: Stop test container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true

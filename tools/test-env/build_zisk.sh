@@ -19,9 +19,9 @@ main() {
         return 1
     fi
 
-    step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ZISK_BRANCH DISABLE_CLONE_REPO ONLY_CPU || return 1
 
     # pil2-proofman is consumed as the git dependency pinned in the ZisK
     # Cargo.toml / Cargo.lock — it is never cloned or path-patched here.
@@ -56,7 +56,7 @@ main() {
 
     step  "Building ZisK tools..."
     ensure cargo clean || return 1
-    
+
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
     if [[ "${ONLY_CPU}" == "1" ]]; then
