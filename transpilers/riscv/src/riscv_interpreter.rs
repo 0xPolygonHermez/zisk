@@ -139,7 +139,7 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
 
 fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> RiscvInstruction {
     // Get the instruction type and name from the RVD data
-    let (inst_type, inst_name, level) = RiscvDecoder::get_type_and_name_32_bits(inst);
+    let (inst_type, inst_name, level) = RiscvDecoder::decode_32(inst);
 
     // Calculate the ROM address of this instruction
     let rom_address = root_address + (code_index * 2) as u64;
@@ -331,7 +331,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
 
 fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInstruction {
     // This is a 16-bit instruction, so we need to decode it accordingly
-    let (inst_type, inst_name) = RiscvDecoder::get_type_and_name_16_bits(inst);
+    let (inst_type, inst_name) = RiscvDecoder::decode_16(inst);
 
     // Create a RISCV instruction instance to be filled with data from the instruction and from
     // the RVD info data
