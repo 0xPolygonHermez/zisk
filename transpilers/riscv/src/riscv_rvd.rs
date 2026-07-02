@@ -1,5 +1,23 @@
-//! RISC-V RVD
-//! Based on a 16-bits or a 32-bits instruction, it returns the type and name of the instruction
+//! RISC-V DECODER (RVD)
+//!
+//! Providing as a unique argument a 32-bits or a 16-bits instruction, the RISC-V decoder returns
+//! the instruction type and name of the instruction, as well as the level of the instruction
+//! (1, 2 or 3) for 32-bits instructions.
+//!
+//! The instruction type is a string, for example: I, S, B, U, J, R, R4, C, CIW, CL, CS, CA, CB or
+//! CJ.  The instruction type is used to parse the instruction operands and immediate values in file
+//! riscv_interpreter.rs.  In tells the interpreters what fields are present in the 32 (or 16) bits
+//! of the instruction, their position and length.  In other words, it tells the interpreter the
+//! meaning of the instruction bits.
+//!
+//! The instruction name is the human-readable name of the instruction, e.g. "addi", "lw",
+//! "c.addi4spn", etc., and it is used to transpile RISC-V to Zisk assembly in file
+//! riscv2zisk_context.rs.
+//!
+//! For example: add x1, x2, x3 is encoded as a 32-bits instruction 0x003100b3, and after calling
+//! Rvd::get_type_and_name_32_bits(0x003100b3) we get ("R", "add", 2) as a result.  With "R" we can
+//! decode the values of rd, rs1 and rs2, and with "add" we can transpile it to Zisk assembly as
+//! "add x1, x2, x3".
 
 /// RVD structure
 pub struct Rvd {}
@@ -569,7 +587,7 @@ impl Rvd {
                 }
                 0x4 => match (inst >> 10) & 0x3 {
                     0x0 => ("CB", "c.srli"), // Mapped to srli: srli rd′, rd′, shamt
-                    0x1 => ("CI", "c.srai"), // Mapped to srai: srai rd′, rd′, shamt
+                    0x1 => ("CB", "c.srai"), // Mapped to srai: srai rd′, rd′, shamt
                     0x2 => ("CB", "c.andi"), // Mapped to andi: andi rd′, rd′, imm
                     0x3 => match (inst >> 12) & 0x1 {
                         0x0 => match (inst >> 5) & 0x3 {
@@ -1480,7 +1498,7 @@ mod tests {
 
         instruction = 0x8401; // c.srai
         result = Rvd::get_type_and_name_16_bits(instruction);
-        assert_eq!(result, ("CI", "c.srai"));
+        assert_eq!(result, ("CB", "c.srai"));
 
         instruction = 0x8801; // c.andi
         result = Rvd::get_type_and_name_16_bits(instruction);
