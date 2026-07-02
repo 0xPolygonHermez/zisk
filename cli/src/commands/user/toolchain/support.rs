@@ -172,7 +172,10 @@ async fn fetch_matching_tags_rest(client: &Client, major: u64) -> Result<Vec<Str
         .await
         .context("parsing GitHub matching-refs response")?;
 
-    Ok(refs.into_iter().filter_map(|r| r.name.strip_prefix("refs/tags/").map(String::from)).collect())
+    Ok(refs
+        .into_iter()
+        .filter_map(|r| r.name.strip_prefix("refs/tags/").map(String::from))
+        .collect())
 }
 
 /// Build the GitHub release URL for the toolchain tarball.
@@ -198,7 +201,9 @@ pub(crate) async fn get_toolchain_download_url(
                 Err(_) => fetch_matching_tags_rest(client, TOOLCHAIN_MAJOR).await?,
             };
             select_latest_tag(&tags, TOOLCHAIN_MAJOR).with_context(|| {
-                format!("no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain tag found for 0xPolygonHermez/rust")
+                format!(
+                    "no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain tag found for 0xPolygonHermez/rust"
+                )
             })?
         }
     };
