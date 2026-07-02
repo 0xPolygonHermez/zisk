@@ -77,8 +77,8 @@ pub(crate) fn create_command(
     command
         .env_remove("RUSTC")
         .env("RUSTC", rustc_bin.display().to_string())
-        .env_remove("RUSTC_WORKSPACE_WRAPPER")
         .env_remove("RUSTFLAGS")
+        .env_remove("RUSTC_WORKSPACE_WRAPPER")
         .env_remove("CARGO_ENCODED_RUSTFLAGS");
 
     let canonicalized_program_dir =

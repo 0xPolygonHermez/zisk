@@ -22,7 +22,7 @@ use zisk_core::{
     STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
 };
 
-const LOAD_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
+const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -1614,6 +1614,17 @@ impl<'a> Emu<'a> {
                     }
                 }
                 if let Ok(address) = elf.load_from_file(elf_file, &LOAD_SYMBOLS) {
+                    // LOAD_SYMBOLS = [_heap_bottom, _heap_top, ZISK_BUMP_HEAP_POS]:
+                    // address[0]/[1] bound the heap region; address[2] is the
+                    // *address* of the heap-position pointer symbol, not a size.
+                    println!(
+                        "Loaded symbols from ELF file: heap 0x{:x} - 0x{:x} ({} bytes), \
+                         ZISK_BUMP_HEAP_POS @ 0x{:x}",
+                        address[0],
+                        address[1],
+                        address[1].saturating_sub(address[0]),
+                        address[2]
+                    );
                     self.ctx.stats.set_heap_address(address[0], address[1], address[2]);
                 }
                 let mut count = 0;
@@ -1628,6 +1639,11 @@ impl<'a> Emu<'a> {
                         &symbol.name,
                     );
                 }
+
+                // With the call-stack debug feature, dump the ROI list up front so
+                // the ROI indices printed during the trace can be mapped back.
+                #[cfg(feature = "debug_call_stack")]
+                self.ctx.stats.print_rois();
 
                 // Second pass: mark selected ROIs for tracking
                 for symbol in elf.functions() {
@@ -1698,6 +1714,7 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_coverage(options.coverage);
 
         self.ctx.stats.set_legacy_stats(options.legacy_stats);
+        self.ctx.stats.set_trace_steps(options.trace_steps);
         self.ctx.stats.set_sdk(options.sdk);
         self.ctx.stats.set_sdk_opcodes(options.opcodes);
         self.ctx.stats.set_sdk_profile_tags(options.profile_tags);
@@ -1767,8 +1784,10 @@ impl<'a> Emu<'a> {
             return;
         }
 
-        // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats || options.legacy_stats;
+        // Store the stats option into the emulator context. `--trace-steps` runs
+        // the stats path too (that is where the per-instruction trace lives in
+        // `Stats::on_op`), but it does NOT print the stats report (see below).
+        self.ctx.do_stats = options.stats || options.legacy_stats || options.trace_steps;
 
         // While not done
         while !self.ctx.inst_ctx.end {
@@ -1843,8 +1862,9 @@ impl<'a> Emu<'a> {
             );
         }
 
-        // Print stats report
-        if self.ctx.do_stats {
+        // Print stats report (only for real stats; a pure `--trace-steps` run
+        // turns on do_stats just to emit the per-op trace, not the report).
+        if options.stats || options.legacy_stats {
             self.ctx.stats.on_finish(&self.ctx.inst_ctx);
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");

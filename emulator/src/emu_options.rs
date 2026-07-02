@@ -50,6 +50,11 @@ pub struct EmuOptions {
     /// Sets the log step mode
     #[clap(short, long, value_name = "LOG_STEP", default_value = "false")]
     pub log_step: bool,
+    /// Trace every executed instruction (step, pc, opcode, a/b/c, flag, decoded
+    /// instruction) to stdout. Unlike `--log-step` this works in release builds.
+    /// Forces full (non-fast) emulation; redirect stdout to a file for big traces.
+    #[clap(long, value_name = "TRACE_STEPS", default_value = "false")]
+    pub trace_steps: bool,
     /// Log the output to console. This option is set by default to true as a requirement to pass
     /// the riscof GHA tests.  Enabled with `-c`.
     #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "false")]
@@ -193,6 +198,7 @@ impl Default for EmuOptions {
             trace: None,
             verbose: false,
             log_step: false,
+            trace_steps: false,
             log_output: false,
             log_output_riscof: false,
             chunk_size: None,
@@ -253,6 +259,7 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "SDK: {:?}", self.sdk)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
         writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
+        writeln!(f, "TRACE_STEPS: {:?}", self.trace_steps)?;
         writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)?;
         writeln!(f, "READ_SYMBOLS: {:?}", self.read_symbols)?;
         writeln!(f, "TOP_ROI: {:?}", self.top_roi)?;
@@ -280,6 +287,7 @@ impl EmuOptions {
             && (self.print_step.is_none() || (self.print_step.unwrap() == 0))
             && self.trace.is_none()
             && !self.log_step
+            && !self.trace_steps
             && !self.verbose
             && !self.tracerv
             && !self.stats

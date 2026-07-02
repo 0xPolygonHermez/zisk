@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context, Result};
+use std::io::Write;
 use std::process::{Command, Stdio};
-use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_TARGET, ZISK_VERSION_MESSAGE};
+use zisk_build::{HELPER_TARGET_SUBDIR, ZISK_LINKER_SCRIPT, ZISK_TARGET, ZISK_VERSION_MESSAGE};
 
 // Structure representing the 'build' subcommand of cargo.
 #[derive(clap::Args)]
@@ -52,13 +53,28 @@ impl BuildCmd {
         let mut command = Command::new("cargo");
         command.args(self.cargo_args(toolchain_name));
 
-        // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
-        if let Ok(flags) = std::env::var("RUSTFLAGS") {
-            let trimmed = flags.trim();
-            if !trimmed.is_empty() {
-                command.env("RUSTFLAGS", trimmed);
-            }
-        }
+        // Write the linker script to a uniquely-named temp file. A predictable
+        // path (`$TMPDIR/zisk.ld`) can race across concurrent invocations and is
+        // exposed to temp-file symlink attacks. Keep the handle alive until cargo
+        // finishes so the file is not removed while the linker still needs it.
+        let mut linker_script = tempfile::Builder::new()
+            .prefix("zisk-")
+            .suffix(".ld")
+            .tempfile()
+            .context("Failed to create temporary Zisk linker script")?;
+        linker_script
+            .write_all(ZISK_LINKER_SCRIPT)
+            .context("Failed to write Zisk linker script to temp file")?;
+
+        // Add linker script flag and zisk_guest cfg to RUSTFLAGS, preserving any existing flags
+        let current_rust_flags = std::env::var("RUSTFLAGS").unwrap_or_default();
+        let rust_flags = format!(
+            "{current_rust_flags} --cfg zisk_guest -C link-arg=-T{}",
+            linker_script.path().display()
+        )
+        .trim()
+        .to_string();
+        command.env("RUSTFLAGS", rust_flags);
 
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());
