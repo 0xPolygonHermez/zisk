@@ -4,14 +4,14 @@
 
 pub mod inst_kind;
 pub mod riscv2zisk_context;
+pub mod riscv_decoder;
 pub mod riscv_inst;
 pub mod riscv_interpreter;
 pub mod riscv_registers;
-pub mod riscv_rvd;
 
 pub use inst_kind::*;
 pub use riscv2zisk_context::*;
+pub use riscv_decoder::*;
 pub use riscv_inst::*;
 pub use riscv_interpreter::*;
 pub use riscv_registers::*;
-pub use riscv_rvd::*;

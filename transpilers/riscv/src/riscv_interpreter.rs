@@ -1,6 +1,6 @@
 //! Parses a 32-bits RISC-V instruction
 
-use crate::{InstName, InstType, RiscvInstruction, Rvd};
+use crate::{InstName, InstType, RiscvDecoder, RiscvInstruction};
 
 /// Convert 32-bits data chunk that contains a signed integer of a specified size in bits to a
 /// signed integer of 32 bits
@@ -139,7 +139,7 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
 
 fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> RiscvInstruction {
     // Get the instruction type and name from the RVD data
-    let (inst_type, inst_name, level) = Rvd::get_type_and_name_32_bits(inst);
+    let (inst_type, inst_name, level) = RiscvDecoder::get_type_and_name_32_bits(inst);
 
     // Calculate the ROM address of this instruction
     let rom_address = root_address + (code_index * 2) as u64;
@@ -331,7 +331,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
 
 fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInstruction {
     // This is a 16-bit instruction, so we need to decode it accordingly
-    let (inst_type, inst_name) = Rvd::get_type_and_name_16_bits(inst);
+    let (inst_type, inst_name) = RiscvDecoder::get_type_and_name_16_bits(inst);
 
     // Create a RISCV instruction instance to be filled with data from the instruction and from
     // the RVD info data
@@ -484,7 +484,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
         let imm2 = ((inst >> 6) & 0x1) as u32;
         let imm3 = ((inst >> 5) & 0x1) as u32;
         i.imm = ((imm9_6 << 6) | (imm5_4 << 4) | (imm3 << 3) | (imm2 << 2)) as i32;
-        i.rd = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+        i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
         i.rs1 = 2; // x2 is always the source register for CIW instructions
     } else if i.t == InstType::Cl {
         //
@@ -506,8 +506,8 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm7_6 = ((inst >> 5) & 0x3) as u32;
             i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
         }
-        i.rd = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
-        i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+        i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+        i.rs1 = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
     } else if i.t == InstType::Cs {
         //
         // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 |4 3 2 |1 0|
@@ -528,16 +528,16 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm7_6 = ((inst >> 5) & 0x3) as u32;
             i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
         }
-        i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
-        i.rs2 = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+        i.rs1 = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+        i.rs2 = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
     } else if i.t == InstType::Ca {
         //
         // Format Meaning              |15 14 13 12  11 10 |9 8 7   |6 5 |4 3 2 |1 0|
         // CA     Arithmetic           |funct6             |rd'/rs1'|fun2|rs2′  |op |
         //
-        i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+        i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
         i.rs1 = i.rd;
-        i.rs2 = Rvd::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+        i.rs2 = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
     } else if i.t == InstType::Cb {
         //
         // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 4 3 2 |1 0|
@@ -549,7 +549,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm5 = ((inst >> 12) & 0x1) as u32;
             let imm4_0 = ((inst >> 2) & 0x1F) as u32;
             i.imm = signext((imm5 << 5) | imm4_0, 6);
-            i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+            i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
             i.rs1 = i.rd;
             if i.rd == 0 {
                 i.inst = InstName::CReserved;
@@ -558,7 +558,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm5 = ((inst >> 12) & 0x1) as u32;
             let imm4_0 = ((inst >> 2) & 0x1F) as u32;
             i.imm = ((imm5 << 5) | imm4_0) as i32;
-            i.rd = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+            i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
             i.rs1 = i.rd;
             if i.rd == 0 {
                 // This is a hint and must not be executed
@@ -576,7 +576,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
                 | (offset4_3 << 3)
                 | (offset2_1 << 1);
             i.imm = signext(offset, 9);
-            i.rs1 = Rvd::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+            i.rs1 = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
         }
     } else if i.t == InstType::Cj {
         //
