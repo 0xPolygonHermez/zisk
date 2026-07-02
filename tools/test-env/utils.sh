@@ -312,7 +312,10 @@ patch_cargo_dep() {
     # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
     # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
     # Idempotent: on reruns the git line is already commented, so it no longer matches.
-    local sed_params=("${SED_PARAMS[@]}")
+    # Expand SED_PARAMS defensively: `${SED_PARAMS[@]+"${SED_PARAMS[@]}"}` yields
+    # nothing (instead of erroring) when it is unset, so the function is safe under
+    # `set -u`. The fallback below then fills in GNU/BSD defaults.
+    local sed_params=(${SED_PARAMS[@]+"${SED_PARAMS[@]}"})
     if [[ ${#sed_params[@]} -eq 0 ]]; then
         if [[ "$(uname -s)" == "Darwin" ]]; then
             sed_params=(-i "" -E)

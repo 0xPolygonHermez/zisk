@@ -156,8 +156,11 @@ async fn fetch_matching_tags_rest(client: &Client, major: u64) -> Result<Vec<Str
     headers.insert("Accept", HeaderValue::from_static("application/vnd.github+json"));
     add_github_auth(&mut headers);
 
+    // `per_page=100` (the max) because matching-refs paginates at 30 by default:
+    // with the default page we could miss newer `zisk-<major>.*` tags and pick a
+    // non-latest toolchain. 100 covers any realistic number of releases per major.
     let url = format!(
-        "https://api.github.com/repos/0xPolygonHermez/rust/git/matching-refs/tags/zisk-{major}."
+        "https://api.github.com/repos/0xPolygonHermez/rust/git/matching-refs/tags/zisk-{major}.?per_page=100"
     );
 
     let refs: Vec<Ref> = client
