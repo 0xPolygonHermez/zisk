@@ -44,7 +44,7 @@ pub struct RiscvInstruction {
     pub rvinst: u32,
 
     /// Instruction type
-    pub t: RiscvInstType,
+    pub inst_type: RiscvInstType,
 
     /// Instruction mnemonic
     pub funct2: u32,
@@ -57,7 +57,7 @@ pub struct RiscvInstruction {
     pub rs3: u32,
     pub imm: i32,
     pub imme: u32,
-    pub inst: RiscvInstName,
+    pub inst_name: RiscvInstName,
     pub aq: u32,
     pub rl: u32,
     pub csr: u32,
@@ -71,8 +71,8 @@ impl RiscvInstruction {
         Self {
             rvinst,
             rom_address,
-            t: RiscvInstType::I,
-            inst: RiscvInstName::Addi,
+            inst_type: RiscvInstType::I,
+            inst_name: RiscvInstName::Addi,
             rd: 0,
             rs1: 0,
             rs2: 0,
@@ -86,8 +86,8 @@ impl RiscvInstruction {
         Self {
             rvinst,
             rom_address,
-            t: RiscvInstType::Cinvalid,
-            inst: RiscvInstName::CHalt,
+            inst_type: RiscvInstType::Cinvalid,
+            inst_name: RiscvInstName::CHalt,
             rd: 0,
             rs1: 0,
             rs2: 0,
@@ -99,8 +99,8 @@ impl RiscvInstruction {
     /// Creates a human-readable string containing RISCV data fields that are non-zero
     pub fn to_text(&self) -> String {
         let mut s = String::new();
-        s += &("t=".to_string() + self.t.as_str());
-        s += &(" inst=".to_string() + self.inst.as_str());
+        s += &("type=".to_string() + self.inst_type.as_str());
+        s += &(" name=".to_string() + self.inst_name.as_str());
         if self.rvinst != 0 {
             s += &(" rvinst=".to_string() + &self.rvinst.to_string());
         }
