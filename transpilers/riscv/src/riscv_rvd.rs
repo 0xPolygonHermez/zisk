@@ -515,20 +515,8 @@ impl Rvd {
     //     RVC Register Number 000 001 010 011 100 101 110 111
     // Integer Register Number  x8  x9 x10 x11 x12 x13 x14 x15
     pub fn convert_compressed_reg_index(reg: u32) -> u32 {
-        match reg {
-            0 => 8,  // x8
-            1 => 9,  // x9
-            2 => 10, // x10
-            3 => 11, // x11
-            4 => 12, // x12
-            5 => 13, // x13
-            6 => 14, // x14
-            7 => 15, // x15
-            _ => panic!(
-                "Rvd::convert_compressed_reg_index() invalid compressed register index {}",
-                reg
-            ),
-        }
+        debug_assert!(reg < 8);
+        reg + 8
     }
 
     // Source: https://www2.eecs.berkeley.edu/Pubs/TechRpts/2015/EECS-2015-209.pdf
