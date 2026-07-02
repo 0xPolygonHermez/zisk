@@ -276,15 +276,31 @@ impl Riscv2ZiskContext<'_> {
             // A: Atomic Instructions
             /////////////////////////
             InstName::AmoswapD => self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8),
-            InstName::AmoaddD => self.create_atomic_op(riscv_instruction, "copyb", "add", "copyb", 8),
-            InstName::AmoxorD => self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 8),
-            InstName::AmoandD => self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 8),
+            InstName::AmoaddD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "add", "copyb", 8)
+            }
+            InstName::AmoxorD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 8)
+            }
+            InstName::AmoandD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 8)
+            }
             InstName::AmoorD => self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 8),
-            InstName::AmominD => self.create_atomic_op(riscv_instruction, "copyb", "min", "copyb", 8),
-            InstName::AmomaxD => self.create_atomic_op(riscv_instruction, "copyb", "max", "copyb", 8),
-            InstName::AmominuD => self.create_atomic_op(riscv_instruction, "copyb", "minu", "copyb", 8),
-            InstName::AmomaxuD => self.create_atomic_op(riscv_instruction, "copyb", "maxu", "copyb", 8),
-            InstName::AmoswapW => self.create_atomic_swap(riscv_instruction, "signextend_w", "copyb", 4),
+            InstName::AmominD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "min", "copyb", 8)
+            }
+            InstName::AmomaxD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "max", "copyb", 8)
+            }
+            InstName::AmominuD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "minu", "copyb", 8)
+            }
+            InstName::AmomaxuD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "maxu", "copyb", 8)
+            }
+            InstName::AmoswapW => {
+                self.create_atomic_swap(riscv_instruction, "signextend_w", "copyb", 4)
+            }
             InstName::AmoaddW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "add_w", "copyb", 4)
             }
@@ -294,7 +310,9 @@ impl Riscv2ZiskContext<'_> {
             InstName::AmoandW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "and", "copyb", 4)
             }
-            InstName::AmoorW => self.create_atomic_op(riscv_instruction, "signextend_w", "or", "copyb", 4),
+            InstName::AmoorW => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "or", "copyb", 4)
+            }
             InstName::AmominW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "min_w", "copyb", 4)
             }
@@ -360,7 +378,9 @@ impl Riscv2ZiskContext<'_> {
             InstName::CBnez => self.create_branch_op(riscv_instruction, "eq", true, 2),
 
             // C.I.4. Load and Store Instructions
-            InstName::CLw | InstName::CLwsp => self.load_op(riscv_instruction, "signextend_w", 4, 2),
+            InstName::CLw | InstName::CLwsp => {
+                self.load_op(riscv_instruction, "signextend_w", 4, 2)
+            }
             InstName::CLd | InstName::CLdsp => self.load_op(riscv_instruction, "copyb", 8, 2),
             InstName::CLui => self.lui(riscv_instruction, 2),
             InstName::CSw | InstName::CSwsp => self.store_op(riscv_instruction, "copyb", 4, 2),
@@ -517,9 +537,13 @@ impl Riscv2ZiskContext<'_> {
 
             // Byte and bit reverse operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Rev8 => self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1),
+            InstName::Rev8 => {
+                self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Brev8 => self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1),
+            InstName::Brev8 => {
+                self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1)
+            }
 
             // Negate logical operations
             #[cfg(feature = "bit_manipulation_extensions")]
@@ -582,17 +606,27 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "bit_manipulation_extensions")]
             InstName::Clz => self.create_single_source_register_op(riscv_instruction, "clz", 4, 1),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Clzw => self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1),
+            InstName::Clzw => {
+                self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
             InstName::Ctz => self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1),
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Ctzw => self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1),
+            InstName::Ctzw => {
+                self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Cpop => self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1),
+            InstName::Cpop => {
+                self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::Cpopw => self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1),
+            InstName::Cpopw => {
+                self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            InstName::OrcB => self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1),
+            InstName::OrcB => {
+                self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1)
+            }
 
             // Single bit operations (Zbs)
             #[cfg(feature = "bit_manipulation_extensions")]
@@ -1040,12 +1074,15 @@ impl Riscv2ZiskContext<'_> {
         zib.src_b("ind", i.imm as u64, false);
         zib.op(op).unwrap();
         #[cfg(feature = "float")]
-        let reg_offset: i64 =
-            if i.inst == InstName::Fld || i.inst == InstName::Flw || i.inst == InstName::CFld || i.inst == InstName::CFldsp {
-                ((FREG_F0 - REG_X0) >> 3) as i64
-            } else {
-                0
-            };
+        let reg_offset: i64 = if i.inst == InstName::Fld
+            || i.inst == InstName::Flw
+            || i.inst == InstName::CFld
+            || i.inst == InstName::CFldsp
+        {
+            ((FREG_F0 - REG_X0) >> 3) as i64
+        } else {
+            0
+        };
 
         #[cfg(not(feature = "float"))]
         let reg_offset: i64 = 0;
@@ -1063,12 +1100,15 @@ impl Riscv2ZiskContext<'_> {
     pub fn store_op(&mut self, i: &RiscvInstruction, op: &str, w: u64, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
         #[cfg(feature = "float")]
-        let reg_offset: u64 =
-            if i.inst == InstName::Fsd || i.inst == InstName::Fsw || i.inst == InstName::CFsd || i.inst == InstName::CFsdsp {
-                (FREG_F0 - REG_X0) >> 3
-            } else {
-                0
-            };
+        let reg_offset: u64 = if i.inst == InstName::Fsd
+            || i.inst == InstName::Fsw
+            || i.inst == InstName::CFsd
+            || i.inst == InstName::CFsdsp
+        {
+            (FREG_F0 - REG_X0) >> 3
+        } else {
+            0
+        };
         #[cfg(not(feature = "float"))]
         let reg_offset: u64 = 0;
 

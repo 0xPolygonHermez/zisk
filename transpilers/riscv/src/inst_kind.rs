@@ -59,7 +59,9 @@ impl InstType {
 }
 
 impl Default for InstType {
-    fn default() -> Self { InstType::Invalid }
+    fn default() -> Self {
+        InstType::Invalid
+    }
 }
 
 impl core::fmt::Display for InstType {
@@ -571,7 +573,9 @@ impl InstName {
 }
 
 impl Default for InstName {
-    fn default() -> Self { InstName::Reserved }
+    fn default() -> Self {
+        InstName::Reserved
+    }
 }
 
 impl core::fmt::Display for InstName {
