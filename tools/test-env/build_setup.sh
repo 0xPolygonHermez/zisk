@@ -46,6 +46,14 @@ main() {
     [[ "${USE_CACHE_SETUP}" == "1" ]] && build_flags+=(--cache-dir "${OUTPUT_DIR}")
     ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1
 
+    # Generate the per-AIR Q-expression CUDA kernels (.exps.so) as a separate
+    # step rather than via --gen-exps during setup. A --cache-dir hit skips the
+    # setup step entirely, so kernels baked in during setup would be missing (or
+    # host-mismatched) on a hit. Running --gen-exps-only against the populated
+    # provingKey/ makes the output deterministic across cache hits and misses.
+    # The mode self-gates on nvcc (no-op exit 0 when CUDA is absent).
+    ensure "${SCRIPT_DIR}/setup_build.sh" --build-dir build --gen-exps-only --exps-arch major || return 1
+
     step "Copy provingKey directory to \$HOME/.zisk directory..."
     ensure mkdir -p "$HOME/.zisk" || return 1
     ensure rm -rf "$HOME/.zisk/provingKey" || return 1
