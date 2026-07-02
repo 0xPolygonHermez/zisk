@@ -27,7 +27,7 @@ _float_ram_data_size  = 0x10000;   /* 64 KB reserved */
 0xA0010000  ├────────────────────┤
             │ .float_registers   │  64 KB reserved (NOLOAD)
             │  0x10000 bytes     │  _float_registers_start / _end
-0xA001FFFF  └────────────────────┘ ← _heap_top
+0xA001FFFF  └────────────────────┘ 
 0xA0020000  ┌────────────────────┐
             │ .output_data       │  64 KB reserved (NOLOAD)
             │  0x10000 bytes     │  _output_data_start / _end

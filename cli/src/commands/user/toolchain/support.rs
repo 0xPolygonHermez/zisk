@@ -55,6 +55,10 @@ pub(crate) fn is_supported_target() -> bool {
 /// toolchain moves to a new incompatible major.
 const TOOLCHAIN_MAJOR: u64 = 1;
 
+/// Git URL of the ZisK Rust fork, used to list toolchain tags with `git ls-remote`
+/// (git protocol, so no REST API rate limit).
+const TOOLCHAIN_REPO_GIT_URL: &str = "https://github.com/0xPolygonHermez/rust.git";
+
 /// From a list of git tag names, pick the highest `zisk-<major>.x.y` — greatest
 /// minor, then greatest patch. Tags that don't match the exact
 /// `zisk-<major>.<minor>.<patch>` shape (all numeric) are ignored. Returns the
@@ -97,11 +101,50 @@ fn add_github_auth(headers: &mut HeaderMap) {
     }
 }
 
-/// Fetch the tag names under `refs/tags/zisk-<major>.` from `0xPolygonHermez/rust`
-/// via the git matching-refs API. It returns only the ZisK tags of this major
-/// (not the thousands of upstream Rust tags), and we assume each tag has a release
-/// published under the same name.
-async fn fetch_matching_tags(client: &Client, major: u64) -> Result<Vec<String>> {
+/// List the `zisk-<major>.*` tag names of `0xPolygonHermez/rust` with
+/// `git ls-remote` (primary path).
+///
+/// This uses the git smart-HTTP protocol against `github.com`, **not** the REST
+/// API, so it is not subject to the 60 req/h unauthenticated REST rate limit. The
+/// refspec pattern scopes the listing to this major's tags, keeping us clear of
+/// the thousands of upstream Rust tags. We assume each tag has a release published
+/// under the same name.
+///
+/// The literal `.` in the `zisk-<major>.*` glob enforces the boundary, so
+/// `zisk-1.*` never matches `zisk-10.*` (nor the rolling `zisk-1-latest`).
+///
+/// Returns `Err` when `git` is not installed or the command fails, so the caller
+/// can fall back to the REST API.
+fn fetch_matching_tags_git(major: u64) -> Result<Vec<String>> {
+    let pattern = format!("refs/tags/zisk-{major}.*");
+    let output = Command::new("git")
+        .args(["ls-remote", "--tags", "--refs", TOOLCHAIN_REPO_GIT_URL, &pattern])
+        .output()
+        .context("running `git ls-remote` to list toolchain tags")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "`git ls-remote {TOOLCHAIN_REPO_GIT_URL}` failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+
+    // Each line is "<sha>\trefs/tags/<tag>"; keep the bare tag name.
+    let stdout = String::from_utf8(output.stdout).context("`git ls-remote` output is not UTF-8")?;
+    Ok(stdout
+        .lines()
+        .filter_map(|line| line.split('\t').nth(1))
+        .filter_map(|reference| reference.strip_prefix("refs/tags/"))
+        .map(String::from)
+        .collect())
+}
+
+/// List the `zisk-<major>.*` tag names via the GitHub matching-refs REST API
+/// (fallback path, used only when `git` is unavailable).
+///
+/// This hits `api.github.com`, so it is subject to the unauthenticated 60 req/h
+/// per-IP limit (raised to 5000 req/h when `GITHUB_TOKEN`/`GH_TOKEN` is set).
+async fn fetch_matching_tags_rest(client: &Client, major: u64) -> Result<Vec<String>> {
     #[derive(serde::Deserialize)]
     struct Ref {
         #[serde(rename = "ref")]
@@ -113,8 +156,6 @@ async fn fetch_matching_tags(client: &Client, major: u64) -> Result<Vec<String>>
     headers.insert("Accept", HeaderValue::from_static("application/vnd.github+json"));
     add_github_auth(&mut headers);
 
-    // The trailing `.` scopes the prefix to `zisk-<major>.` so `zisk-1.` never
-    // matches `zisk-10.` (or the rolling `zisk-1-latest`, which has no dot).
     let url = format!(
         "https://api.github.com/repos/0xPolygonHermez/rust/git/matching-refs/tags/zisk-{major}."
     );
@@ -131,31 +172,35 @@ async fn fetch_matching_tags(client: &Client, major: u64) -> Result<Vec<String>>
         .await
         .context("parsing GitHub matching-refs response")?;
 
-    // Strip the `refs/tags/` prefix to leave the bare tag names.
-    Ok(refs
-        .into_iter()
-        .filter_map(|r| r.name.strip_prefix("refs/tags/").map(String::from))
-        .collect())
+    Ok(refs.into_iter().filter_map(|r| r.name.strip_prefix("refs/tags/").map(String::from)).collect())
 }
 
 /// Build the GitHub release URL for the toolchain tarball.
 ///
 /// With an explicit `version` the URL points at that exact release. Otherwise we
-/// list the `zisk-<TOOLCHAIN_MAJOR>.*` tags via the matching-refs API and pick the
-/// highest one (rather than `releases/latest`, which could jump to a newer major),
-/// assuming a release exists under the same name.
+/// list the `zisk-<TOOLCHAIN_MAJOR>.*` tags and pick the highest one (rather than
+/// `releases/latest`, which could jump to a newer major), assuming a release
+/// exists under the same name. Tags are listed via `git ls-remote` (no REST rate
+/// limit); if `git` is unavailable we fall back to the REST API.
 pub(crate) async fn get_toolchain_download_url(
     client: &Client,
-    target: &String,
+    target: &str,
     version: &Option<String>,
 ) -> Result<String> {
-    let tag = if let Some(version) = version {
-        version.clone()
-    } else {
-        let tags = fetch_matching_tags(client, TOOLCHAIN_MAJOR).await?;
-        select_latest_tag(&tags, TOOLCHAIN_MAJOR).with_context(|| {
-            format!("no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain tag found for 0xPolygonHermez/rust")
-        })?
+    let tag = match version {
+        Some(version) => version.clone(),
+        None => {
+            // Prefer `git ls-remote` (no REST rate limit). If git is missing or
+            // fails, silently fall back to the REST API — not having git is a
+            // valid setup and shouldn't surface an alarming message to the user.
+            let tags = match fetch_matching_tags_git(TOOLCHAIN_MAJOR) {
+                Ok(tags) => tags,
+                Err(_) => fetch_matching_tags_rest(client, TOOLCHAIN_MAJOR).await?,
+            };
+            select_latest_tag(&tags, TOOLCHAIN_MAJOR).with_context(|| {
+                format!("no `zisk-{TOOLCHAIN_MAJOR}.x.y` toolchain tag found for 0xPolygonHermez/rust")
+            })?
+        }
     };
 
     Ok(format!(
@@ -227,11 +272,12 @@ mod tests {
 
     #[tokio::test]
     async fn download_url_pinned_version() {
-        // The pinned-version branch never touches the network, so any client works.
+        // The pinned-version branch neither runs git nor touches the network, so
+        // any client works.
         let client = Client::new();
         let url = get_toolchain_download_url(
             &client,
-            &"x86_64-unknown-linux-gnu".to_string(),
+            "x86_64-unknown-linux-gnu",
             &Some("v1.2.3".to_string()),
         )
         .await
