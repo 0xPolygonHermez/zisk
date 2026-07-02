@@ -32,6 +32,8 @@
 //!
 //! See <https://devopedia.org/risc-v-instruction-sets>
 
+use crate::{InstName, InstType};
+
 /// RISC-V instruction data
 #[derive(Default, Debug, Clone)]
 pub struct RiscvInstruction {
@@ -42,7 +44,7 @@ pub struct RiscvInstruction {
     pub rvinst: u32,
 
     /// Instruction type
-    pub t: String,
+    pub t: InstType,
 
     /// Instruction mnemonic
     pub funct2: u32,
@@ -55,7 +57,7 @@ pub struct RiscvInstruction {
     pub rs3: u32,
     pub imm: i32,
     pub imme: u32,
-    pub inst: String,
+    pub inst: InstName,
     pub aq: u32,
     pub rl: u32,
     pub csr: u32,
@@ -69,8 +71,8 @@ impl RiscvInstruction {
         Self {
             rvinst,
             rom_address,
-            t: "I".to_string(),
-            inst: "addi".to_string(),
+            t: InstType::I,
+            inst: InstName::Addi,
             rd: 0,
             rs1: 0,
             rs2: 0,
@@ -84,8 +86,8 @@ impl RiscvInstruction {
         Self {
             rvinst,
             rom_address,
-            t: "CINVALID".to_string(),
-            inst: "c.halt".to_string(),
+            t: InstType::Cinvalid,
+            inst: InstName::CHalt,
             rd: 0,
             rs1: 0,
             rs2: 0,
@@ -97,8 +99,8 @@ impl RiscvInstruction {
     /// Creates a human-readable string containing RISCV data fields that are non-zero
     pub fn to_text(&self) -> String {
         let mut s = String::new();
-        s += &("t=".to_string() + &self.t);
-        s += &(" inst=".to_string() + &self.inst);
+        s += &("t=".to_string() + self.t.as_str());
+        s += &(" inst=".to_string() + self.inst.as_str());
         if self.rvinst != 0 {
             s += &(" rvinst=".to_string() + &self.rvinst.to_string());
         }
