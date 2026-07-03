@@ -71,7 +71,8 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -- bash -lc '
-              python3 -m pip install --user requests
+              set -euo pipefail
+              python3 -m pip install --user --break-system-packages requests
               sudo apt-get update && sudo apt-get install -y pv
             '
       - name: Deploy pods
@@ -83,8 +84,10 @@ jobs:
               cd /workspace/zisk
               rm -f /tmp/deploy_pods.rc /tmp/deploy_pods.log
               # Run synchronously so the deployment output is visible inline.
-              python3 tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519
-              echo $? > /tmp/deploy_pods.rc
+              rc=0
+              python3 tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519 || rc=$?
+              echo "$rc" > /tmp/deploy_pods.rc
+              exit "$rc"
             '
 
       - name: Build ZisK
