@@ -9,13 +9,13 @@ on:
         type: string
 
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 1 * * *"
 
 jobs:
   runpod-tests:
     runs-on:
       group: zisk-gpu
-    timeout-minutes: 360
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -74,37 +74,71 @@ jobs:
               python3 -m pip install --user requests
               sudo apt-get update && sudo apt-get install -y pv
             '
-
-      - name: Build binaries and deploy pods
+      - name: Deploy pods (background)
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
-            -e TARGET_BRANCH="${{ steps.branch.outputs.target }}" \
             -- bash -lc '
               cd /workspace/zisk
+              rm -f /tmp/deploy_pods.rc /tmp/deploy_pods.log
+              # Provision the pods in parallel with the ZisK / zec-reth /
+              # ethproofs builds.
+              nohup bash -c "
+                python3 tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519
+                echo \$? > /tmp/deploy_pods.rc
+              " > /tmp/deploy_pods.log 2>&1 &
+              disown
+              echo "deploy_pods.py launched in background (pid $!)"
+            '
 
-              # Build the binaries and create the pods concurrently; they are
-              # independent (only deploy_cluster.py needs both).
-              bash tools/runpod-test/build_binaries.sh \
-                --zisk-branch "${TARGET_BRANCH}" &
-              build_pid=$!
+      - name: Build ZisK
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zisk.sh
+            '
 
-              python3 tools/runpod-test/deploy_pods.py \
-                --ssh-key ~/.ssh/runpod_ed25519 &
-              deploy_pid=$!
+      - name: Build zec-reth ELF
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              # Pass the zisk-eth-client branch explicitly (read from zisk Cargo.toml)
+              export ZISK_ETH_CLIENT_BRANCH="$(sed -nE "s/^[[:space:]]*gha_zisk_eth_client_branch[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" /workspace/zisk/Cargo.toml | head -n1)"
+              echo "Using zisk-eth-client branch: ${ZISK_ETH_CLIENT_BRANCH}"
+              ./build_zec_reth.sh
+            '
 
-              build_rc=0
-              deploy_rc=0
-              wait "$build_pid" || build_rc=$?
-              wait "$deploy_pid" || deploy_rc=$?
+      - name: Build ethproofs binary
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              # Pass the zisk-ethproofs branch explicitly (read from zisk Cargo.toml)
+              export ZISK_ETHPROOFS_BRANCH="$(sed -nE "s/^[[:space:]]*gha_zisk_ethproofs_branch[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" /workspace/zisk/Cargo.toml | head -n1)"
+              echo "Using zisk-ethproofs branch: ${ZISK_ETHPROOFS_BRANCH}"
+              ./build_ethproofs.sh
+            '
 
-              echo "build_binaries.sh exit=${build_rc}, deploy_pods.py exit=${deploy_rc}"
-
-              # Any created pods are cleaned up by the always() "Terminate pods" step.
-              if [ "$build_rc" -ne 0 ] || [ "$deploy_rc" -ne 0 ]; then
-                exit 1
-              fi
+      - name: Wait for pod deployment
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              echo "Waiting for the background deploy_pods.py to finish..."
+              while [ ! -f /tmp/deploy_pods.rc ]; do
+                sleep 5
+              done
+              rc="$(cat /tmp/deploy_pods.rc)"
+              echo "===== deploy_pods.py log ====="
+              cat /tmp/deploy_pods.log || true
+              echo "===== deploy_pods.py exit code: ${rc} ====="
+              exit "${rc}"
             '
 
       - name: Provision and run cluster
@@ -115,8 +149,63 @@ jobs:
             -- bash -lc '
               cd /workspace/zisk
               python3 tools/runpod-test/deploy_cluster.py \
-                --ssh-key ~/.ssh/runpod_ed25519
+                --ssh-key ~/.ssh/runpod_ed25519 \
+                --work-dir "$WORKSPACE_DIR"
             '
+
+      - name: Download pod logs
+        if: always()
+        run: |
+          if docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
+            .github/scripts/docker_exec.sh \
+              -u ziskuser \
+              -- bash -lc '
+                cd /workspace/zisk
+                if [ ! -f pods.json ]; then
+                  echo "pods.json not found; skipping log download"
+                  exit 0
+                fi
+
+                rm -rf pod-logs pod-logs.tar.gz
+                mkdir -p pod-logs
+
+                i=0
+                while IFS=" " read -r ip port user; do
+                  i=$((i + 1))
+                  dest="pod-logs/pod${i}"
+                  mkdir -p "$dest"
+                  echo "Downloading /workspace/logs from pod${i} (${user}@${ip}:${port})..."
+                  # Stream the remote log dir as a gzip tar over a single SSH
+                  # connection (scp runs in SFTP mode here and is unreliable for
+                  # many small files). If the dir is missing the remote returns
+                  # non-zero and we just warn.
+                  if ssh \
+                       -i ~/.ssh/runpod_ed25519 \
+                       -p "$port" \
+                       -o StrictHostKeyChecking=no \
+                       -o UserKnownHostsFile=/dev/null \
+                       -o ConnectTimeout=15 \
+                       "${user}@${ip}" \
+                       "test -d /workspace/logs && tar -C /workspace/logs -czf - ." \
+                     | tar -C "$dest" -xzf - ; then
+                    echo "  pod${i}: logs downloaded"
+                  else
+                    echo "WARN: failed to download logs from pod${i}"
+                  fi
+                done < <(python3 -c "import json; [print(p['publicIp'], p['sshPort'], p.get('sshUser', 'root')) for p in json.load(open('pods.json'))['pods']]")
+
+                tar -czf pod-logs.tar.gz -C pod-logs .
+                echo "Created pod-logs.tar.gz with $i pod folder(s)."
+              '
+          fi
+
+      - name: Upload pod logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pod-logs
+          path: pod-logs.tar.gz
+          if-no-files-found: warn
 
       - name: Terminate pods
         if: always()

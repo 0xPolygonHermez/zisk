@@ -105,7 +105,8 @@ main() {
     [[ -n "${SETUP_HASH:-}" ]] && total_steps=$((total_steps + 1))
 
     step "Loading environment variables..."
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_ADD_DYLIBS SETUP_ARTIFACTS SETUP_HASH || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     ensure cd "${ZISK_REPO}" || return 1

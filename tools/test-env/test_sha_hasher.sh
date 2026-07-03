@@ -25,8 +25,8 @@ main() {
     fi
 
     step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR DISABLE_PROVE ONLY_CPU PROVE_FLAGS || return 1
 
     cd "${WORKSPACE_DIR}"
 

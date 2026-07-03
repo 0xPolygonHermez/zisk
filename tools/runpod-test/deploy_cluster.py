@@ -45,8 +45,8 @@ REMOTE_WORKSPACE_BIN_DIR = "/workspace/bin"
 REGISTRATION_MESSAGE = "Registration accepted: Registration successful"
 REGISTRATION_TIMEOUT_SECONDS = 300
 
-DEFAULT_WORK_DIR = "./work"
-DEFAULT_LOCAL_ZISK_DIR = str(Path(DEFAULT_WORK_DIR) / "zisk" / "dist")
+DEFAULT_WORK_DIR = "/workspace"
+DEFAULT_LOCAL_ZISK_DIR = "~/.zisk"
 DEFAULT_PROVING_KEY = "zisk-provingkey-pre-1.0.0-beta.tar.gz"
 DEFAULT_RPC_HTTP_URL = "http://144.76.59.84:8545"
 DEFAULT_RPC_WS_URL = "ws://144.76.59.84:8546"
@@ -214,10 +214,16 @@ def run_streaming(command: list[str], prefix: str) -> int:
         segments = re.split(rb"\r\n|\r|\n", buffer)
         buffer = segments.pop()
         for segment in segments:
-            print(prefix + segment.decode("utf-8", "replace"), flush=True)
+            text = segment.decode("utf-8", "replace")
+            # Skip blank/whitespace-only lines.
+            if not text.strip():
+                continue
+            print(prefix + text, flush=True)
 
     if buffer:
-        print(prefix + buffer.decode("utf-8", "replace"), flush=True)
+        text = buffer.decode("utf-8", "replace")
+        if text.strip():
+            print(prefix + text, flush=True)
 
     return process.wait()
 
@@ -234,6 +240,7 @@ def build_pod_steps(
     worker_id: int,
     rpc_http_url: str,
     rpc_ws_url: str,
+    run_time: int,
 ) -> list[dict[str, Any]]:
     """Ordered list of steps (each a subprocess argv) to run on one pod."""
     index = target["index"]
@@ -424,10 +431,10 @@ def build_pod_steps(
                     private_key,
                     f"{REMOTE_WORKSPACE_BIN_DIR}/ethproofs-client "
                     "-c http://localhost:7000 "
-                    "--input.folder /workspace/inputs -n rpc "
+                    f"--input.folder {REMOTE_LOG_DIR}/inputs -n rpc --input.keep "
                     f"-g {REMOTE_WORKSPACE_BIN_DIR}/zec-reth "
                     f"--rpc.http-url {rpc_http_url} --rpc.ws-url {rpc_ws_url} "
-                    "--exit-on-error",
+                    f"--run-time {run_time} --exit-on-error --proof.csv {REMOTE_LOG_DIR}/proof.csv",
                 ),
             }
         )
@@ -524,6 +531,15 @@ def main() -> None:
         help=f"ethproofs-client --rpc.ws-url. Default: {DEFAULT_RPC_WS_URL}",
     )
     parser.add_argument(
+        "--run-time",
+        type=int,
+        default=60,
+        help=(
+            "Time (seconds) the test runs, passed to ethproofs-client "
+            "--run-time. Default: 60"
+        ),
+    )
+    parser.add_argument(
         "--ssh-key",
         default=str(Path.home() / ".ssh" / "id_ed25519"),
         help="Private SSH key path. Default: ~/.ssh/id_ed25519",
@@ -596,6 +612,7 @@ def main() -> None:
         worker_id=1,
         rpc_http_url=args.rpc_http_url,
         rpc_ws_url=args.rpc_ws_url,
+        run_time=args.run_time,
     )
     steps2 = build_pod_steps(
         target=target2,
@@ -609,6 +626,7 @@ def main() -> None:
         worker_id=2,
         rpc_http_url=args.rpc_http_url,
         rpc_ws_url=args.rpc_ws_url,
+        run_time=args.run_time,
     )
 
     jobs = [

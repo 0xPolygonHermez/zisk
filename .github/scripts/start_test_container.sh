@@ -34,6 +34,7 @@ docker run -d \
     -v /home/gha/cache-setup:/home/ziskuser/output:rw \
     -e ZISK_GHA=1 \
     -e ZISK_REPO_DIR=/workspace/zisk \
+    -e WORKSPACE_DIR=/workspace \
     -e PROVE_FLAGS=-y \
     -e TERM=xterm \
     "${IMAGE}" \
@@ -48,6 +49,12 @@ if ! docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
     docker inspect "${TEST_CONTAINER}" --format '{{.State.ExitCode}} {{.State.Error}}' || true
     exit 1
 fi
+
+# /workspace is created root-owned by Docker for the bind mount at
+# /workspace/zisk (WORKSPACE_DIR). Make it writable by ziskuser (non-recursive,
+# so the mounted /workspace/zisk keeps its ownership) so the build scripts can
+# clone/build the sibling repos (zisk-ethproofs, zisk-eth-client) there.
+docker exec "${TEST_CONTAINER}" chown ziskuser:ziskuser /workspace
 
 docker exec "${TEST_CONTAINER}" bash -lc '
     echo "PID 1:"

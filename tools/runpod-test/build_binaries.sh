@@ -3,21 +3,18 @@ set -euo pipefail
 # Abort on any command failure with a clear message
 trap 'rc=$?; echo -e "\nERROR: build_binaries.sh failed at line ${LINENO} (exit ${rc})" >&2; exit ${rc}' ERR
 
-# ZISK_BRANCH is required (see --zisk-branch below).
-ZISK_BRANCH=""
 # ZISK_ETHPROOFS_BRANCH and ZEC_BRANCH are read from the zisk Cargo.toml after
 # it is cloned (see load_branches_from_cargo).
 ZISK_ETHPROOFS_BRANCH=""
 ZEC_BRANCH=""
 
 # Directory where the repos are cloned and the binaries are built.
-WORK_DIR="./work"
+WORK_DIR="/workspace"
 
 usage() {
     cat <<EOF
 Usage: $(basename "$0") --zisk-branch BRANCH [--work-dir DIR]
 
-  --zisk-branch BRANCH   ZisK git branch to clone and build (required).
   --work-dir DIR         Directory where repos are cloned and built.
                          Default: ${WORK_DIR}
   -h, --help             Show this help.
@@ -35,12 +32,6 @@ while [[ $# -gt 0 ]]; do
         *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
     esac
 done
-
-if [[ -z "${ZISK_BRANCH}" ]]; then
-    echo "ERROR: --zisk-branch is required." >&2
-    usage
-    exit 1
-fi
 
 # Resolve WORK_DIR to an absolute path (the build steps cd into subdirectories,
 # so a relative path would break after the first cd).
@@ -85,33 +76,6 @@ load_branches_from_cargo() {
     echo "  zisk-eth-client branch: ${ZEC_BRANCH}"
 }
 
-build_zisk() {
-    step "Cloning zisk (${ZISK_BRANCH})"
-    cd "${WORK_DIR}"
-    git clone --single-branch --depth 1 --branch "${ZISK_BRANCH}" \
-        https://github.com/0xPolygonHermez/zisk.git
-
-    step "Building zisk"
-    cd "${WORK_DIR}/zisk"
-    source "${HOME}/.cargo/env"
-    cargo build --release
-
-    step "Copying zisk binaries to ${WORK_DIR}/zisk/dist/bin"
-    mkdir -p "${WORK_DIR}/zisk/dist/bin"
-    cp target/release/cargo-zisk "${WORK_DIR}/zisk/dist/bin"
-    cp target/release/ziskemu "${WORK_DIR}/zisk/dist/bin"
-    cp target/release/zisk-coordinator "${WORK_DIR}/zisk/dist/bin"
-    cp target/release/zisk-worker "${WORK_DIR}/zisk/dist/bin"
-    cp target/release/libziskclib.a "${WORK_DIR}/zisk/dist/bin"
-    cp target/zisk-libs/libziskc.a "${WORK_DIR}/zisk/dist/bin"
-
-    step "Copying emulator-asm files..."
-    mkdir -p "${WORK_DIR}/zisk/dist/zisk/emulator-asm"
-    cp -r ./emulator-asm/src "${WORK_DIR}/zisk/dist/zisk/emulator-asm"
-    cp ./emulator-asm/Makefile "${WORK_DIR}/zisk/dist/zisk/emulator-asm"
-    cp -r ./lib-c "${WORK_DIR}/zisk/dist/zisk"
-}
-
 build_ethproofs() {
     step "Cloning zisk-ethproofs (${ZISK_ETHPROOFS_BRANCH})"
     cd "${WORK_DIR}"
@@ -134,13 +98,12 @@ build_zec() {
     step "Building zec-reth.elf"
     cd "${WORK_DIR}/zisk-eth-client/bin/guests/stateless-validator-reth"
     source "${HOME}/.cargo/env"
-    "${WORK_DIR}/zisk/target/release/cargo-zisk" build --release
+    "${HOME}/.zisk/bin/cargo-zisk" build --release
 }
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-build_zisk
 load_branches_from_cargo
 build_ethproofs
 build_zec

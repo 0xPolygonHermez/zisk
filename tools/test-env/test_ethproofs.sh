@@ -5,11 +5,15 @@ source "./deploy_distributed.sh"
 
 main() {
     current_step=1
-    total_steps=6
+    total_steps=5
+
+    # Directory holding this script (and build_ethproofs.sh); needed because we cd
+    # into WORKSPACE_DIR below and build_ethproofs.sh sources ./utils.sh relative to here.
+    script_dir=$(pwd)
 
     step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ENABLE_HINTS BLOCK_INPUTS_ETHPROOFS BLOCK_INPUTS_ETHPROOFS_HINTS ONLY_CPU || return 1
 
     ensure cd "${WORKSPACE_DIR}" || return 1
 
@@ -22,27 +26,9 @@ main() {
         return 1
     fi
 
-    step "Cloning zisk-ethproofs repository..."
-    if [[ -n "${DISABLE_CLONE_REPO:-}" && "$DISABLE_CLONE_REPO" == "1" ]]; then
-        warn "Skipping cloning zisk-ethproofs repository as DISABLE_CLONE_REPO is set to 1"
-    else
-        # Remove existing directory if it exists
-        rm -rf zisk-ethproofs
-        # Clone zisk-ethproofs repository
-        if [[ -n "${ZISK_ETHPROOFS_BRANCH:-}" ]]; then
-            info "Cloning branch '$ZISK_ETHPROOFS_BRANCH' of zisk-ethproofs..."
-            ensure git clone --branch "$ZISK_ETHPROOFS_BRANCH" --single-branch --depth 1 https://github.com/0xPolygonHermez/zisk-ethproofs.git || return 1
-        else
-            ensure git clone --depth 1 https://github.com/0xPolygonHermez/zisk-ethproofs.git || return 1
-        fi
-    fi
-
-    step "Building zisk-ethproofs..."
-    ensure cd zisk-ethproofs || return 1
-    local cfg_hints=""
-    [[ "${ENABLE_HINTS:-}" == "1" ]] && cfg_hints="RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread'"
-    ensure eval "$cfg_hints cargo build --release" || return 1
-    cd ..
+    step "Building ethproofs-client..."
+    ensure bash -c "cd \"${script_dir}\" && ./build_ethproofs.sh" || return 1
+    ensure cd "${WORKSPACE_DIR}" || return 1
 
     step "Deploying ZisK coordinator and worker services..."
     deploy_distributed || return 1

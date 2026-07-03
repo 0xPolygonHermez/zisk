@@ -6,8 +6,8 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     info "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR DISABLE_PROVE ONLY_CPU MPI_PROCESSES MPI_THREADS PROVE_FLAGS || return 1
 
     PROGRAMS_DIR="$(get_zisk_repo_dir)/test-artifacts/programs"
     ELF_FILE="${PROGRAMS_DIR}/target/elf/riscv64ima-zisk-zkvm-elf/release/diagnostic"

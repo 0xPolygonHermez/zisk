@@ -11,8 +11,8 @@ main() {
     total_steps=5
 
     step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ZISK_ETH_CLIENT_BRANCH DISABLE_CLONE_REPO || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
 
@@ -60,6 +60,7 @@ main() {
 
     step "Building zec-reth ELF..."
     ensure cd "${GUEST_DIR}" || return 1
+    ensure git submodule update --init --recursive || return 1
     ensure cargo-zisk build --release || return 1
     cd "${WORKSPACE_DIR}" || return 1
 

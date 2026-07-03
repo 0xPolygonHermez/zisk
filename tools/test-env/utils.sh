@@ -435,7 +435,7 @@ source "$HOME/.cargo/env"
 # Define directories
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
-WORKSPACE_DIR="${HOME}/workspace"
+WORKSPACE_DIR="${WORKSPACE_DIR:-${HOME}/workspace}"
 OUTPUT_DIR="${HOME}/output"
 
 # Ensure directories exists

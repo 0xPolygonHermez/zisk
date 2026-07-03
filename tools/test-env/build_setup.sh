@@ -32,7 +32,8 @@ main() {
     total_steps=3
 
     step "Loading environment variables..."
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP ONLY_CPU || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     # Export so setup_build.sh (which ships standalone, outside the repo tree)

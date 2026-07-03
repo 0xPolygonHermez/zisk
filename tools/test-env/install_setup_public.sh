@@ -9,8 +9,8 @@ main () {
     total_steps=3
 
     step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_SETUP_FILE || return 1
 
     # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
     if [[ -z "$ZISK_SETUP_FILE" ]]; then
