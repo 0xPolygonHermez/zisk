@@ -46,7 +46,7 @@
 //! `| Contains output data, which is written during`
 //! `| program execution and read during memory finalization`
 //! `|`
-//! `|--------------- AVAILABLE_MEM_ADDR                  (0xa0430000)`
+//! `|--------------- general-purpose RAM                 (0xa0430000)`
 //! `|`
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution.`
@@ -86,7 +86,7 @@
 //! * After the data has been written by the setup process, this data can only be read by the
 //!   program execution, i.e. it becomes a read-only (RO) memory region.
 //!
-//! ## SYS_ADDR / OUTPUT_ADDR / AVAILABLE_MEM_ADDR
+//! ## SYS_ADDR / OUTPUT_ADDR / general-purpose RAM
 //! * This memory section can be written and read by the program execution many times, i.e. it is a
 //!   read-write (RW) memory region.
 //! * The first RW memory region going from `SYS_ADDR` to `OUTPUT_ADDR` is reserved for the system
@@ -95,10 +95,10 @@
 //!   bytes in total.  These registers are the equivalent to the RISC-V registers.
 //! * Any data of exactly 1-byte length written to UART_ADDR will be sent to the standard output of
 //!   the system.
-//! * The second RW memory region going from `OUTPUT_ADDR` to `AVAILABLE_MEM_ADDR` is reserved to
-//!   copy the output data during the program execution.
-//! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
-//!   program execution as general purpose memory.
+//! * The second RW memory region going from `OUTPUT_ADDR` onwards, up to where the general-purpose
+//!   RAM starts, is reserved to copy the output data during the program execution.
+//! * The third RW memory region, the general-purpose RAM that follows the output region, can be
+//!   used during the program execution as general purpose memory.
 
 use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;

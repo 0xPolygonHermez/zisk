@@ -1071,7 +1071,7 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.mem.write(addr, val, 8);
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_write(addr, 8, val);
-                    if trace_changes {
+                    if trace_stack {
                         self.ctx.stats.trace_stack_change(addr, prev, val, self.get_reg(2));
                     }
                 }
@@ -1107,8 +1107,11 @@ impl<'a> Emu<'a> {
                 self.ctx.inst_ctx.mem.write(addr, val, instruction.ind_width);
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_write(addr, instruction.ind_width, val);
-                    if trace_changes {
-                        self.ctx.stats.trace_stack_change(addr, prev, val, self.get_reg(2));
+                    if trace_stack {
+                        // Read back the stored value so the reported `post` reflects
+                        // the width-truncated bytes actually written (ind_width < 8).
+                        let post = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+                        self.ctx.stats.trace_stack_change(addr, prev, post, self.get_reg(2));
                     }
                 }
             }

@@ -35,8 +35,8 @@ _float_ram_data_size         = 0x10000;   /* 64 KB reserved */
              │      (128MB)       │
 0x87FF_FFFF  └────────────────────┘
                        ↑
-                    768 MB
-                       ↓ 
+                    384 MB
+                       ↓
 0xA000_0000  ┌────────────────────┐← _init_stack_bottom
              │                    │
              │   stack ↑ 4MB      │
