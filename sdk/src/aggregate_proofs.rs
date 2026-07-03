@@ -103,25 +103,30 @@ impl<'a, C: Client> AggregateProofsRequest<'a, C> {
     ///
     /// # Free-input layout
     ///
-    /// One free array per side (width `recurser.n_free()`) is passed straight
-    /// through to the backend. Per-side semantics: on a leaf it is the free_in
-    /// (normalized internally into free_out); on an aggregated proof it is the
-    /// free_out (used directly). The array width is the same either way.
+    /// One free array per side (width exactly `recurser.n_free()`) is passed
+    /// straight through to the backend. Per-side semantics: on a leaf it is the
+    /// free_in (normalized internally into free_out); on an aggregated proof it
+    /// is the free_out (used directly). The array width is the same either way.
+    /// A plain `&Proof` converts with an empty array — valid only when
+    /// `n_free == 0`.
     pub fn run(self) -> Result<JobHandle<ProveResult>> {
         // Per-side classification (leaf vs aggregated) is by
         // publics_full()[IS_VADCOP_FINAL_SLOT]: 1 = leaf (array is free_in,
         // normalized into free_out), 0 = aggregated (array is free_out, used
         // directly). The width is the same either way, so the SDK does not
         // branch on it here; the backend's validate_prove_inputs is the real
-        // gate. Both sides carry one array of width up to n_free.
+        // gate. Each side must carry exactly n_free values — the backend fills
+        // the witness buffer positionally with no padding, so any other length
+        // shears rootCRecurserAgg out of place.
         let n_free = self.agg.n_free();
 
         let validate = |side: char, input: &AggregationInput<'_>| -> Result<()> {
             let got = input.free_inputs.len();
-            if got > n_free {
+            if got != n_free {
                 return Err(SdkError::Recurser(format!(
                     "proof_{side} supplies {got} free inputs but the recurser \
-                     consumes at most {n_free}",
+                     consumes exactly {n_free} (a plain &Proof supplies 0; use \
+                     `.with_free_inputs(..)` to attach exactly {n_free})",
                 )));
             }
             Ok(())

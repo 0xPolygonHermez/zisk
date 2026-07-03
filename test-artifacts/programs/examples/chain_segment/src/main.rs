@@ -4,11 +4,12 @@
 //! values: `publics[0] = old`, `publics[1] = new`. A proof therefore attests a
 //! single transition `old -> new`.
 //!
-//! Folding two such proofs with the `chain` example's `AggregatePublics`
-//! (which enforces `a.new == b.old` and emits `[a.old, b.new]`) stitches
-//! contiguous segments into one — `[10,20] + [20,30]` collapses to `[10,30]`.
-//! The remaining publics slots `[2..64)` stay zero (see
-//! `programs/aggregations/chain.toml`).
+//! Folding two such proofs with an `AggregatePublics` that enforces
+//! `a.new == b.old` and emits `[a.old, b.new]` stitches contiguous segments
+//! into one — `[10,20] + [20,30]` collapses to `[10,30]`. The `chain_simple`
+//! example keeps slots `[2..64)` zero; the richer `chain` example fills
+//! `[2..6)` with a NormalizePublics digest and zeroes the rest (see
+//! `programs/aggregations/chain.toml` / `chain_simple.toml`).
 #![no_main]
 ziskos::entrypoint!(main);
 

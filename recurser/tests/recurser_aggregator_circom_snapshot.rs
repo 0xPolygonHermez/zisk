@@ -146,11 +146,15 @@ fn no_normalize_raw_passthrough() {
     assert!(!out.contains("aggFreeA"), "n_free=0 must not emit aggFreeA");
     assert!(!out.contains("aggFreeB"), "n_free=0 must not emit aggFreeB");
 
-    // No old allowlist / membership machinery.
-    assert!(!out.contains("programVKs["), "must not contain programVKs allowlist array");
-    // No VK-membership machinery: the IsEqualVK helper was removed entirely.
-    assert!(!out.contains("IsEqualVK"), "must not contain the removed IsEqualVK helper");
-    assert!(!out.contains("isRegisteredProgram"), "must not contain isRegisteredProgram");
+    // With an empty allow-list (the VK-agnostic default) none of the optional
+    // membership machinery is emitted. See `programs_allowlist_*` for the
+    // non-empty case where IsEqualVK / programVKs / isRegisteredProgram appear.
+    assert!(!out.contains("programVKs["), "empty allow-list must not bake programVKs");
+    assert!(!out.contains("IsEqualVK"), "empty allow-list must not emit IsEqualVK");
+    assert!(
+        !out.contains("isRegisteredProgram"),
+        "empty allow-list must not emit isRegisteredProgram"
+    );
     assert!(!out.contains("normalize_groups"), "must not contain normalize_groups");
 
     // AggregatePublics call: 0-free form uses no param in instantiation.

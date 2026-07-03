@@ -36,8 +36,9 @@ pub enum ProveValidationError {
     InvalidVadcopFinalFlag { side: char, value: u64 },
 
     #[error(
-        "free_inputs_{side}: {got} values supplied but the circuit expects at most \
-         {expected} (oversupply is an error; undersupply is zero-padded)"
+        "free_inputs_{side}: {got} values supplied but the circuit expects exactly {expected}. \
+         The free-input arrays are laid out positionally in the witness buffer ahead of \
+         rootCRecurserAgg, so a wrong length shears every following input"
     )]
     FreeInputsLength { side: char, got: usize, expected: usize },
 }
@@ -53,9 +54,12 @@ pub enum ProveValidationError {
 /// distinction drives runtime semantics but NOT validation: both origins check the
 /// same array against the single `n_free`.
 ///
-/// Free-input rules (per side):
-/// - Undersupply is OK — proofman zero-pads to the circuit's fixed array size.
-/// - Oversupply is an error.
+/// Free-input rule (per side): the array length must equal `n_free` exactly.
+/// The witness (`zkin`) buffer is filled positionally — `proof_a`, `proof_b`,
+/// `freeInputsA`, `freeInputsB`, `rootCRecurserAgg` — and the backend appends
+/// each free array by its supplied length with no padding, so any length other
+/// than `n_free` shifts `rootCRecurserAgg` and shears the witness. Both under-
+/// and oversupply are therefore errors.
 pub fn validate_prove_inputs(
     manifest_inputs: &RecurserManifestInputs,
     proof_a_publics: &[u64],
@@ -90,8 +94,10 @@ fn validate_free_inputs(
     free: &[u64],
     n_free: usize,
 ) -> Result<(), ProveValidationError> {
-    // Oversupply is always an error; undersupply is zero-padded by proofman.
-    if free.len() > n_free {
+    // The backend fills the witness buffer positionally with no padding, so the
+    // free array must be exactly n_free wide — under- and oversupply both shear
+    // the buffer (rootCRecurserAgg follows the two free arrays).
+    if free.len() != n_free {
         return Err(ProveValidationError::FreeInputsLength {
             side,
             got: free.len(),
@@ -115,7 +121,7 @@ mod tests {
         use crate::templates::NormalizeCircuit;
         let zisk_vk = vk_str([100, 101, 102, 103]);
         let normalize = Some(NormalizeCircuit { body: "// norm".into() });
-        RecurserManifestInputs::new(zisk_vk, normalize.as_ref(), "agg", n_free)
+        RecurserManifestInputs::new(zisk_vk, vec![], normalize.as_ref(), "agg", n_free)
     }
 
     /// Build `public_values` with the flag at slot 0 and a 4-limb programVK at [1..5).
@@ -159,7 +165,7 @@ mod tests {
         let m = manifest(3);
         let la = leaf_publics();
         let ab = agg_publics();
-        let (oa, ob) = validate_prove_inputs(&m, &la, &ab, &[1], &[20]).unwrap();
+        let (oa, ob) = validate_prove_inputs(&m, &la, &ab, &[1, 2, 3], &[20, 21, 22]).unwrap();
         assert_eq!(oa, ProofOrigin::Leaf);
         assert_eq!(ob, ProofOrigin::Aggregated);
     }
@@ -219,14 +225,14 @@ mod tests {
     // The old model rejected "normalize free inputs on an aggregated proof".
     // With the unified single array there is no such rule: an aggregated side
     // supplies its free_out through the SAME array, checked against the same
-    // n_free. So a free array within n_free is accepted for an aggregated side.
+    // n_free. So an exactly-n_free-wide array is accepted for an aggregated side.
     #[test]
     fn accepts_free_inputs_on_aggregated_proof() {
         let m = manifest(3);
         let leaf = leaf_publics();
         let agg = agg_publics();
-        // side b is aggregated; a within-width free array is fine.
-        let (oa, ob) = validate_prove_inputs(&m, &leaf, &agg, &[1], &[99]).unwrap();
+        // side b is aggregated; an exactly-n_free-wide free array is fine.
+        let (oa, ob) = validate_prove_inputs(&m, &leaf, &agg, &[1, 2, 3], &[97, 98, 99]).unwrap();
         assert_eq!(oa, ProofOrigin::Leaf);
         assert_eq!(ob, ProofOrigin::Aggregated);
     }
@@ -252,8 +258,8 @@ mod tests {
     fn rejects_oversupplied_free_inputs_b() {
         let m = manifest(3);
         let p = agg_publics();
-        // 4 > n_free=3
-        let err = validate_prove_inputs(&m, &p, &p, &[], &[1, 2, 3, 4]).unwrap_err();
+        // side a is exactly n_free=3; side b oversupplies (4 > 3).
+        let err = validate_prove_inputs(&m, &p, &p, &[1, 2, 3], &[1, 2, 3, 4]).unwrap_err();
         assert!(
             matches!(
                 err,
@@ -263,14 +269,44 @@ mod tests {
         );
     }
 
-    // --- undersupply is OK (zero-padded by proofman) ---
+    // --- undersupply is an error (no padding; a short array shears the witness) ---
 
     #[test]
-    fn accepts_undersupplied_free_inputs() {
+    fn accepts_exact_width_free_inputs() {
         let m = manifest(5);
         let p = leaf_publics();
-        // 1 < n_free=5, 2 < n_free=5 — both fine
-        validate_prove_inputs(&m, &p, &p, &[1], &[10, 11]).unwrap();
+        // Exactly n_free=5 on both sides.
+        validate_prove_inputs(&m, &p, &p, &[1, 2, 3, 4, 5], &[10, 11, 12, 13, 14]).unwrap();
+    }
+
+    #[test]
+    fn rejects_undersupplied_free_inputs_a() {
+        let m = manifest(5);
+        let p = leaf_publics();
+        // 1 < n_free=5 — must be rejected (proofman does not pad).
+        let err = validate_prove_inputs(&m, &p, &p, &[1], &[10, 11, 12, 13, 14]).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ProveValidationError::FreeInputsLength { side: 'a', got: 1, expected: 5 }
+            ),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn rejects_undersupplied_free_inputs_b() {
+        let m = manifest(3);
+        let p = agg_publics();
+        // 2 < n_free=3 on side b.
+        let err = validate_prove_inputs(&m, &p, &p, &[1, 2, 3], &[10, 11]).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                ProveValidationError::FreeInputsLength { side: 'b', got: 2, expected: 3 }
+            ),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

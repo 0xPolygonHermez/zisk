@@ -30,11 +30,13 @@ pub(crate) struct ZiskEmbeddedAggregate {
     #[arg(long = "proof-b")]
     proof_b: PathBuf,
 
-    /// Comma-separated u64s: proof_a's free inputs (leaf only).
+    /// Comma-separated u64s: proof_a's free array. Must be exactly n_free
+    /// values (omit only when the recurser declares n_free = 0).
     #[arg(long = "free-inputs-a")]
     free_inputs_a: Option<String>,
 
-    /// Comma-separated u64s: proof_b's free inputs (leaf only).
+    /// Comma-separated u64s: proof_b's free array. Must be exactly n_free
+    /// values (omit only when the recurser declares n_free = 0).
     #[arg(long = "free-inputs-b")]
     free_inputs_b: Option<String>,
 

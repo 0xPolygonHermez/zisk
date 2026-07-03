@@ -128,9 +128,43 @@ and rootC selection below are only sound for `sel ∈ {0,1}`.
 
 A and B are classified independently.
 
-> There is no `programVKs[]` allowlist, `IsEqualVK` helper,
-> `isRegisteredProgram` signal, or membership check of any kind.
-> `is_vadcop_final_proof` replaces all of that machinery.
+> The `is_vadcop_final_proof` flag is what drives leaf-vs-aggregated selection
+> (rootC, normalize mux, output VK). It is independent of the optional leaf
+> allow-list described in §3a: the flag says *how* to verify a proof; the
+> allow-list (when configured) says *which* leaf programs are permitted.
+
+---
+
+## 3a. Optional leaf allow-list (access control)
+
+By default the recurser is **VK-agnostic**: any valid ZisK vadcop_final leaf is
+accepted. A definition may optionally pin an allow-list of guest programs, and
+then only those programs' proofs are accepted as leaves.
+
+When the allow-list is non-empty the circuit bakes the members' 4-limb
+`programVK`s and enforces membership on every proof that claims to be a leaf
+(`isFinal = 1`); an unregistered leaf makes the circuit unsatisfiable:
+
+```circom
+// Emitted only when `programs` is non-empty (guarded by the n_programs > 0 branch).
+var programVKs[n_programs][4] = [ ... baked limbs ... ];
+
+signal {binary} isRegisteredProgramA <== 1 - noMatchA[n_programs - 1];  // 1 - ∏(1 - eq[k])
+signal {binary} isRegisteredProgramB <== 1 - noMatchB[n_programs - 1];
+
+// A claimed leaf MUST be a registered program (aggregated proofs, isFinal=0, are unaffected).
+isFinalA * (1 - isRegisteredProgramA) === 0;
+isFinalB * (1 - isRegisteredProgramB) === 0;
+```
+
+Membership uses an `IsEqualVK()` helper (element-wise limb equality via
+`IsZero`) and the product form `1 - ∏(1 - eq[k])` so circom 2.1's `{binary}`
+tag survives. Soundness assumes the baked `programVKs[]` have no duplicates —
+the SDK/CLI enforce uniqueness when deriving them.
+
+The allow-list is committed into `recurser_id` (§10) and its order is
+significant. An empty allow-list emits none of this machinery (byte-identical
+to the VK-agnostic baseline).
 
 ---
 
@@ -239,6 +273,15 @@ aggFreeX[i] <== isFinalX * normFreeOutX[i] + (1 - isFinalX) * freeInputsX[i];
 proofman API carries one array per side (`free_inputs_a`, `free_inputs_b`), each
 `n_free` wide — no concatenation or splitting.
 
+> ⚠ **Exact width, no padding.** Each free array must be supplied at exactly
+> `n_free` values (0 when `n_free == 0`). The backend fills the witness buffer
+> positionally — `proof_a`, `proof_b`, `freeInputsA`, `freeInputsB`,
+> `rootCRecurserAgg` — appending each free array by its supplied length with no
+> zero-padding. A wrong length shifts `rootCRecurserAgg` and shears the witness,
+> so both under- and oversupply are rejected up front (`validate_prove_inputs`,
+> and the SDK's `aggregate_proofs`). A plain `&Proof` supplies an empty array,
+> valid only when `n_free == 0`; otherwise use `.with_free_inputs(..)`.
+
 ---
 
 ## 6. AggregatePublics (required)
@@ -282,7 +325,9 @@ must be driven.
 
 An inherit-from-A example lives at
 [tests/fixtures/aggregate_publics.circom](../tests/fixtures/aggregate_publics.circom);
-a full chain-fold example (stitch constraint + zero-filled tail) at
+a minimal chain-fold (stitch constraint + zero-filled tail, `n_free = 0`) at
+[test-artifacts/programs/aggregations/circuits/aggregate_publics_simple.circom](../../test-artifacts/programs/aggregations/circuits/aggregate_publics_simple.circom);
+and a richer chain-fold (stitch + a NormalizePublics digest check, `n_free = 1`) at
 [test-artifacts/programs/aggregations/circuits/aggregate_publics.circom](../../test-artifacts/programs/aggregations/circuits/aggregate_publics.circom).
 
 ---
@@ -334,8 +379,9 @@ for (var i = 0; i < 4; i++) {
 
 `bothAggregated` is 1 iff both inputs are aggregated. When it's 0 the
 constraint is vacuously satisfied. When it's 1, element-wise equality
-is enforced. This check uses direct limb equality — no `IsEqualVK`
-helper (that was removed along with the VK-allowlist machinery).
+is enforced. This check uses direct limb equality inline; it is distinct
+from the optional allow-list's `IsEqualVK` helper (§3a), which is only
+emitted when a `programs` list is configured.
 
 ---
 
@@ -377,16 +423,20 @@ The `recurser_id` is a content-addressed blake3 hash of:
 
 ```
 hash(zisk_vk,
-     optional_normalize { blake3(body), n_free_inputs },
-     aggregate { blake3(body), n_free_inputs })
+     program_vks[]  (the optional leaf allow-list, in order; empty when VK-agnostic),
+     optional_normalize { blake3(body) },
+     aggregate { blake3(body) },
+     n_free)
 ```
 
-No `program_vks` or guest allowlist is committed into the id. Any ZisK
-proof is accepted; the recurser is identified purely by its circuits
-(normalize body + aggregate body + their free-input counts) plus the
-shared vadcop_final VK. Identical inputs always resolve to the same id;
-any change produces a fresh one. The id is computed automatically and
-logged at startup; there is no manual override.
+The recurser is identified by its circuits (normalize body + aggregate body +
+the shared free-input count `n_free`), the shared vadcop_final VK, and its
+optional leaf allow-list (§3a). Because `program_vks` is committed, two
+otherwise-identical setups that differ only in their allow-list resolve to
+*different* ids and separate on-disk directories; the empty allow-list is the
+VK-agnostic default. Order within the allow-list is significant. Identical
+inputs always resolve to the same id; any change produces a fresh one. The id
+is computed automatically and logged at startup; there is no manual override.
 
 ---
 
@@ -443,21 +493,33 @@ the same `cargo build`. `build_program` in the host's build.rs discovers
 `programs/aggregations/<name>.toml`, validates it, and generates the
 builder expression behind [`load_aggregation_program!`].
 
+All keys are flat (kebab-case); there is no `[normalize]` table. Unknown keys
+are rejected.
+
 ```toml
 # programs/aggregations/chain.toml — circuits beside it
-programs = ["chain_segment"]            # guest names for the build step (ELFs + zisk_vk)
+
+# Required: the AggregatePublics circom body.
 aggregate-publics = "circuits/aggregate_publics.circom"
 
-# Optional single normalize, applied to all leaves.
-# Remove this table entirely to skip normalization.
-[normalize]
-template = "circuits/normalize.circom"   # defines `template NormalizePublics(nPublics[, nFreeInputs])`
+# Optional: single free-value width per side (default 0). Both NormalizePublics
+# and AggregatePublics must declare the matching arity (§5, §6).
 free-inputs = 1
+
+# Optional: single normalize circom body, applied to all leaves. Defines
+# `template NormalizePublics(nPublics[, nFreeInputs])`. Omit the key to skip.
+normalize-publics = "circuits/normalize.circom"
+
+# Optional: leaf allow-list (§3a). Guest program names, resolved against the
+# guest workspace to derive their VKs. Absent/empty = VK-agnostic. Order is
+# significant and is committed into recurser_id.
+programs = ["chain_segment"]
 ```
 
-`programs = [...]` lists guests for the build step (to produce ELFs and
-derive `zisk_vk`). It is NOT committed into `recurser_id` and NOT emitted
-as a circuit allowlist.
+`programs = [...]` doubles as the build step's guest list (to produce ELFs and
+derive each member's `zisk_vk`) **and** the leaf allow-list. It IS committed
+into `recurser_id` and IS emitted as the in-circuit membership check (§3a). Omit
+it (or leave it empty) for the VK-agnostic default.
 
 ### The setup (machine-time)
 

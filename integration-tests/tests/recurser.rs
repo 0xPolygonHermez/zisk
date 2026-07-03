@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use test_artifacts::{AGG_CHAIN, ELF_CHAIN_SEGMENT};
 use zisk_sdk::{
     AggregationInput, AggregationProgramBuilder, CircomCircuit, EmbeddedClient,
-    EmbeddedClientBuilder, GuestProgram, JobHandle, ProveResult, ProverClient, Recurser,
+    EmbeddedClientBuilder, GuestProgram, JobHandle, ProofExt, ProveResult, ProverClient, Recurser,
     RemoteClient, SetupTarget, UploadTarget, ZiskStdin,
 };
 
@@ -97,9 +97,14 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     // The programmatic builder must derive the same id as the declarative TOML.
     let circuits_dir =
         concat!(env!("CARGO_MANIFEST_DIR"), "/../test-artifacts/programs/aggregations/circuits");
+    // Mirror chain.toml exactly: one free input per side + the normalize hook.
+    // A mismatch here would change the derived recurser_id and fail the assert
+    // below.
     let programmatic = AggregationProgramBuilder::new(CircomCircuit::from_path(format!(
         "{circuits_dir}/aggregate_publics.circom"
     ))?)
+    .free_inputs(1)
+    .normalize(CircomCircuit::from_path(format!("{circuits_dir}/normalize.circom"))?)
     .build()
     .context("programmatic AggregationProgramBuilder build failed")?;
     assert_eq!(
@@ -159,10 +164,11 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     assert_eq!((pubs_a[0], pubs_a[1]), (10, 20), "leaf publics must round-trip");
     assert_eq!((pubs_d[0], pubs_d[1]), (40, 50), "leaf publics must round-trip");
 
-    // Level 1: two leaf+leaf folds. The recurser takes no free inputs, so the
-    // proofs are passed plain.
+    // Level 1: two leaf+leaf folds. The recurser takes one free input per side;
+    // every leaf hashes [1, 2, 3, free_inputs[0]] in NormalizePublics, so both
+    // sides must supply the same free value (4) to agree on the digest.
     let ab = client
-        .aggregate_proofs(agg, &pa, &pb)
+        .aggregate_proofs(agg, pa.with_free_inputs(vec![4]), pb.with_free_inputs(vec![4]))
         .map_err(|e| anyhow!("submit recurser prove ab failed: {e}"))?
         .await
         .map_err(|e| anyhow!("recurser prove ab [10,20]+[20,30] failed: {e}"))?
@@ -170,7 +176,7 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
         .clone();
 
     let cd = client
-        .aggregate_proofs(agg, &pc, &pd)
+        .aggregate_proofs(agg, pc.with_free_inputs(vec![4]), pd.with_free_inputs(vec![4]))
         .map_err(|e| anyhow!("submit recurser prove cd failed: {e}"))?
         .await
         .map_err(|e| anyhow!("recurser prove cd [30,40]+[40,50] failed: {e}"))?
@@ -183,11 +189,15 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     assert_eq!((pubs_ab[0], pubs_ab[1]), (10, 30), "leaf+leaf must merge to [a.old, b.new]");
     assert_eq!((pubs_cd[0], pubs_cd[1]), (30, 50), "leaf+leaf must merge to [a.old, b.new]");
 
-    // The aggregate circuit zero-fills slots [2, 64), so the merged publics keep
-    // the well-formed all-zero tail their inputs had (essential: an aggregated
-    // proof is fed straight back into the next fold level).
-    assert_eq!(&pubs_ab[2..6], &[0u64; 4], "merged tail must stay zero");
-    assert_eq!(&pubs_cd[2..6], &[0u64; 4], "merged tail must stay zero");
+    // Slots [2..6) carry the Poseidon digest NormalizePublics derived from
+    // [1, 2, 3, 4]; both leaves hash the identical tuple, so AggregatePublics's
+    // A==B digest check passes and the shared digest propagates. Both folds see
+    // the same tuple, so ab and cd carry the same digest.
+    assert_eq!(&pubs_ab[2..6], &pubs_cd[2..6], "both folds derive the same digest");
+    assert_ne!(&pubs_ab[2..6], &[0u64; 4], "digest slots must be populated, not zero");
+    // Slots [6..64) zero-fill and stay well-formed for the next fold level.
+    assert_eq!(&pubs_ab[6..64], &[0u64; 58], "tail past the digest must stay zero");
+    assert_eq!(&pubs_cd[6..64], &[0u64; 58], "tail past the digest must stay zero");
 
     // A leaf+leaf fold stamps the aggregator's own VK as the chain identity (§6 row 1).
     assert_eq!(ab.get_program_vk().vk, agg_vk, "ab chain identity must be rootCRecurserAgg");
@@ -196,8 +206,10 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     // Level 2: agg+agg fold. AggregatePublics sees 30==30; §7 forces ab.VK==cd.VK
     // (both rootCRecurserAgg, so it passes). This is the strongest single
     // assertion that the VK-first layout is correct end-to-end.
+    // Both inputs are aggregated, so their free arrays are the propagated
+    // free_out (identity-passed through normalize) — still [4] on each side.
     let root = client
-        .aggregate_proofs(agg, &ab, &cd)
+        .aggregate_proofs(agg, ab.with_free_inputs(vec![4]), cd.with_free_inputs(vec![4]))
         .map_err(|e| anyhow!("submit recurser prove root failed: {e}"))?
         .await
         .map_err(|e| anyhow!("recurser prove root ab+cd failed: {e}"))?
@@ -211,7 +223,10 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
         agg_vk,
         "chain identity must propagate unchanged up the tree"
     );
-    assert_eq!(&pubs_root[2..6], &[0u64; 4], "tail must stay zero to the root");
+    // The shared digest survives the agg+agg fold (ab.digest == cd.digest); the
+    // tail past it stays zero to the root.
+    assert_eq!(&pubs_root[2..6], &pubs_ab[2..6], "digest must propagate to the root");
+    assert_eq!(&pubs_root[6..64], &[0u64; 58], "tail past the digest must stay zero to the root");
 
     // Opt-in: persist the root VadcopFinal proof so it can be fed into a
     // separate PLONK wrap. Set ZISK_TEST_SAVE_ROOT_PROOF=/path/to/root.bin.
@@ -226,8 +241,10 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     // rejected by the AggregatePublics stitch constraint — a clean `Err` out of
     // witness generation, not a process abort. On remote the same failure comes
     // back as a failed job through the JobHandle.
-    let broken =
-        client.aggregate_proofs(agg, &pa, &pc).context("submit broken-chain recurser prove")?.await;
+    let broken = client
+        .aggregate_proofs(agg, pa.with_free_inputs(vec![4]), pc.with_free_inputs(vec![4]))
+        .context("submit broken-chain recurser prove")?
+        .await;
     assert!(
         broken.is_err(),
         "folding [10,20]+[30,40] must fail the AggregatePublics stitch, got Ok"

@@ -86,9 +86,10 @@ where
 /// it is the free_out fed directly to `AggregatePublics`. Both cases share the
 /// same `n_free` width.
 ///
-/// Undersupply is OK (proofman zero-pads to the fixed circuit array size).
-/// Oversupply is an error. The arrays are passed straight through to proofman's
-/// 2-array API as `free_inputs_a`/`free_inputs_b`.
+/// Each array must be exactly `n_free` wide: the arrays are passed straight
+/// through to proofman's 2-array API as `free_inputs_a`/`free_inputs_b`, which
+/// appends each by its supplied length with no padding — a wrong length shifts
+/// `rootCRecurserAgg` in the witness buffer and shears the proof.
 pub struct ProveRecurserAggregatorOptions<'a> {
     pub registered: &'a RegisteredRecurser,
     pub proof_a: &'a VadcopFinalProof,
@@ -140,9 +141,9 @@ where
         format_origin(origin_b),
     );
 
-    // The single per-side free arrays pass straight through to proofman, which
-    // zero-pads each to the fixed `n_free` circuit array size. proofman fills
-    // the zkin free region as `[free_a | free_b]`.
+    // The single per-side free arrays (validated to be exactly `n_free` wide)
+    // pass straight through to proofman, which fills the zkin free region
+    // positionally as `[free_a | free_b]` ahead of rootCRecurserAgg.
     tracing::info!("Proving recurser '{}'", registered.recurser_id());
     let out = proofman
         .prove_recurser_aggregator(

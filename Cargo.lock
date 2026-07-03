@@ -1125,7 +1125,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "colored",
- "fields 1.0.0-beta",
+ "fields",
  "futures",
  "hex",
  "indicatif",
@@ -1757,8 +1757,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "num-bigint",
  "num-traits",
 ]
@@ -2192,7 +2193,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields 1.0.0-beta",
+ "fields",
  "mem-common",
  "named-sem",
  "paste",
@@ -2228,6 +2229,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2285,16 +2287,6 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
-]
-
-[[package]]
-name = "fields"
-version = "1.0.0-beta"
-dependencies = [
- "cfg-if",
- "num-bigint",
- "paste",
- "serde",
 ]
 
 [[package]]
@@ -3494,7 +3486,7 @@ name = "mem-common"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields 1.0.0-beta",
+ "fields",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -4099,9 +4091,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "colored",
- "fields 1.0.0-beta",
+ "fields",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -4118,11 +4111,12 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "anyhow",
  "clap",
  "exps-codegen",
- "fields 1.0.0-beta",
+ "fields",
  "indexmap 2.14.0",
  "mpi",
  "pilout",
@@ -4144,6 +4138,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4260,7 +4255,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields 1.0.0-beta",
+ "fields",
  "lazy_static",
  "lib-c",
  "num-bigint",
@@ -4289,7 +4284,7 @@ version = "1.0.0-beta"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
- "fields 1.0.0-beta",
+ "fields",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -4314,7 +4309,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "lib-c",
  "pil-std-lib",
  "precompiles-common",
@@ -4332,7 +4327,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4349,7 +4344,7 @@ dependencies = [
 name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -4367,7 +4362,7 @@ name = "precomp-keccakf"
 version = "1.0.0-beta"
 dependencies = [
  "circuit",
- "fields 1.0.0-beta",
+ "fields",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -4387,7 +4382,7 @@ dependencies = [
 name = "precomp-poseidon"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4404,7 +4399,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4421,7 +4416,7 @@ dependencies = [
 name = "precompiles-common"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -4554,6 +4549,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "bincode",
  "blake3",
@@ -4563,7 +4559,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields 1.0.0-beta",
+ "fields",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4574,7 +4570,7 @@ dependencies = [
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier 1.0.0-beta",
+ "proofman-verifier",
  "rayon",
  "serde",
  "serde_json",
@@ -4587,6 +4583,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "bincode",
  "borsh",
@@ -4595,7 +4592,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields 1.0.0-beta",
+ "fields",
  "lazy_static",
  "libc",
  "libloading",
@@ -4617,8 +4614,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4629,6 +4627,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4638,6 +4637,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4646,6 +4646,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "bincode",
  "colored",
@@ -4656,23 +4657,12 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-dependencies = [
- "bincode",
- "fields 1.0.0-beta",
- "num-traits",
- "rayon",
- "serde",
- "tracing",
-]
-
-[[package]]
-name = "proofman-verifier"
-version = "1.0.0-beta"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "bincode",
- "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "fields",
  "num-traits",
+ "rayon",
  "serde",
  "tracing",
 ]
@@ -5090,11 +5080,11 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "blake3",
- "fields 1.0.0-beta",
+ "fields",
  "pil2-stark-setup",
  "pilout",
  "proofman",
- "proofman-verifier 1.0.0-beta",
+ "proofman-verifier",
  "serde",
  "serde_json",
  "stark-recurser",
@@ -5294,7 +5284,7 @@ version = "1.0.0-beta"
 dependencies = [
  "anyhow",
  "blake3",
- "fields 1.0.0-beta",
+ "fields",
  "proofman-common",
  "riscv2zisk",
  "sm-rom",
@@ -6029,7 +6019,7 @@ dependencies = [
 name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -6045,7 +6035,7 @@ dependencies = [
 name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -6062,7 +6052,7 @@ name = "sm-frequent-ops"
 version = "1.0.0-beta"
 dependencies = [
  "clap",
- "fields 1.0.0-beta",
+ "fields",
  "proofman-common",
  "static_assertions",
  "zisk-core",
@@ -6072,7 +6062,7 @@ dependencies = [
 name = "sm-main"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -6090,7 +6080,7 @@ name = "sm-mem"
 version = "1.0.0-beta"
 dependencies = [
  "env",
- "fields 1.0.0-beta",
+ "fields",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -6107,7 +6097,7 @@ name = "sm-rom"
 version = "1.0.0-beta"
 dependencies = [
  "asm-runner",
- "fields 1.0.0-beta",
+ "fields",
  "mem-common",
  "proofman-common",
  "rayon",
@@ -6154,9 +6144,10 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "anyhow",
- "fields 1.0.0-beta",
+ "fields",
  "indexmap 2.14.0",
  "num-bigint",
  "num-traits",
@@ -7639,9 +7630,10 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta#24f0a4fec770a075de16cc2e11608f8d550810de"
 dependencies = [
  "colored",
- "fields 1.0.0-beta",
+ "fields",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7879,12 +7871,12 @@ dependencies = [
  "bincode",
  "clap",
  "dirs",
- "fields 1.0.0-beta",
+ "fields",
  "num-bigint",
  "paste",
  "proofman",
  "proofman-common",
- "proofman-verifier 1.0.0-beta",
+ "proofman-verifier",
  "serde",
  "serde_json",
  "sha2",
@@ -7995,7 +7987,7 @@ name = "zisk-core"
 version = "1.0.0-beta"
 dependencies = [
  "elf",
- "fields 1.0.0-beta",
+ "fields",
  "lib-c",
  "lib-float",
  "paste",
@@ -8015,7 +8007,7 @@ version = "1.0.0-beta"
 name = "zisk-pil"
 version = "1.0.0-beta"
 dependencies = [
- "fields 1.0.0-beta",
+ "fields",
  "proofman-common",
  "proofman-macros",
  "serde",
@@ -8058,12 +8050,12 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields 1.0.0-beta",
+ "fields",
  "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",
- "proofman-verifier 1.0.0-beta",
+ "proofman-verifier",
  "recurser",
  "riscv2zisk",
  "rom-setup",
@@ -8082,10 +8074,10 @@ name = "zisk-sdk"
 version = "1.0.0-beta"
 dependencies = [
  "bincode",
- "fields 1.0.0-beta",
+ "fields",
  "proofman",
  "proofman-common",
- "proofman-verifier 1.0.0-beta",
+ "proofman-verifier",
  "rayon",
  "recurser",
  "rom-setup",
@@ -8120,7 +8112,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.0.0-beta"
 dependencies = [
- "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "proofman-verifier",
 ]
 
 [[package]]
@@ -8135,10 +8127,10 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields 1.0.0-beta",
+ "fields",
  "proofman",
  "proofman-common",
- "proofman-verifier 1.0.0-beta",
+ "proofman-verifier",
  "rayon",
  "recurser",
  "rom-setup",
@@ -8174,7 +8166,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields 1.0.0-beta",
+ "fields",
  "flate2",
  "mem-common",
  "memmap2",
@@ -8216,7 +8208,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Frecurser-1.0.0-beta)",
+ "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -8249,7 +8241,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields 1.0.0-beta",
+ "fields",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
