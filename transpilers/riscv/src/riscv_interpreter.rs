@@ -274,7 +274,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
             } else if inst == 0x00100073 {
                 i.inst_name = RiscvInstName::Ebreak;
             } else {
-                i.inst_name = RiscvInstName::Ecall;
+                i.inst_name = RiscvInstName::Reserved;
             }
         } else {
             // CSR instructions have the following format:
