@@ -84,8 +84,12 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          NOT populated (the reused pilout may not match the
                          computed input hash).
   --gen-exps             Generate + compile per-AIR Q-expression CUDA kernels
-                         (.exps.so) at the end of setup. Off by default; no-op
-                         if nvcc is not on PATH. Also settable via GEN_EXPS=1.
+                         (.exps.so) as a step of the build, after setup. Off by
+                         default; no-op if nvcc is not on PATH. Also settable via
+                         GEN_EXPS=1. With --cache-dir the kernels are baked into
+                         provingKey/ before it is cached, so a later cache hit
+                         reuses them instead of rebuilding — pass --exps-arch
+                         major (portable across GPUs) when populating the cache.
   --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
                          --gen-exps-only). Default: auto (detects the host GPU).
                          Also settable via EXPS_ARCH env var.
@@ -118,6 +122,9 @@ BUILD_DIR="build"
 CACHE_DIR=""
 CACHE_HIT=0
 CACHE_ENTRY=""
+# Set to 1 when a cache hit's provingKey has no kernels (stale cache) and we must
+# regenerate them once to keep the hit path's output identical to a miss.
+GEN_EXPS_ON_HIT=0
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
@@ -227,6 +234,22 @@ run_pil_helpers() {
       --pilout pil/zisk.pilout \
       --path pil/src \
       -o
+}
+
+# Generate + compile the per-AIR Q-expression CUDA kernels (.exps.so) into
+# <build-dir>/provingKey/. No-op (exit 0) when nvcc is absent. Called from the
+# build path so the kernels land in provingKey/ *before* it is copied into the
+# cache — a subsequent cache hit then reuses them instead of regenerating.
+run_gen_exps() {
+  if ! command -v nvcc >/dev/null 2>&1; then
+    echo "==> gen-exps (SKIPPED — nvcc not on PATH)" >&2
+    return
+  fi
+  echo "==> proofman-setup gen-exps (arch: $EXPS_ARCH)"
+  cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
+    --proving-key "$BUILD_DIR/provingKey" \
+    --arch "$EXPS_ARCH" \
+    ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
 }
 
 # ----- mode dispatch ---------------------------------------------------------
@@ -343,6 +366,17 @@ case "$MODE" in
       else
         echo "==> cache miss: $CACHE_ENTRY (will build, then populate)"
       fi
+      # gen-exps kernels are baked into the provingKey during the miss build (see
+      # below) and cached alongside it. With --exps-arch major they carry SASS +
+      # forward-PTX for every major arch, so a cached copy is host-independent and
+      # reusable as-is. On a cache hit we therefore reuse the cached .exps.so
+      # instead of regenerating them — UNLESS the cache predates kernel-caching
+      # and has none, in which case we (re)generate below to keep hit == miss.
+      if [ "$CACHE_HIT" -eq 1 ] && [ "$GEN_EXPS" -eq 1 ] \
+         && ! find "$BUILD_DIR/provingKey" -name '*.exps.so' -print -quit | grep -q .; then
+        echo "==> cache hit lacks .exps.so kernels — generating once (stale cache)"
+        GEN_EXPS_ON_HIT=1
+      fi
     fi
     ;;
 
@@ -364,11 +398,6 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   setup_jobs_flags=()
   [ -n "$RECURSIVE_JOBS_ARG" ] && setup_jobs_flags+=(--recursive-jobs "$RECURSIVE_JOBS_ARG")
   [ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
-  # Only forward --gen-exps when nvcc is actually present, so GEN_EXPS=1 on a
-  # non-CUDA host is the documented no-op rather than invoking extra setup logic.
-  if [ "$GEN_EXPS" -eq 1 ] && command -v nvcc >/dev/null 2>&1; then
-    setup_jobs_flags+=(--gen-exps --exps-arch "$EXPS_ARCH")
-  fi
 
   rm -rf "$BUILD_DIR/provingKey"
   cargo run --release --bin cargo-zisk-dev -- proofman-setup setup \
@@ -380,11 +409,29 @@ if [ "$CACHE_HIT" -eq 0 ]; then
     ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
     ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}
 
+  # gen-exps runs as a separate step (not --gen-exps during setup) so the .exps.so
+  # kernels land in provingKey/ *before* it is cached below. With --exps-arch major
+  # they are host-independent, so a later cache hit reuses them verbatim instead of
+  # rebuilding — which is the whole point of the cache.
+  if [ "$GEN_EXPS" -eq 1 ]; then
+    run_gen_exps
+  fi
+
   # Populate the local cache with the freshly built provingKey, keyed by the
   # input hash. --skip-compile-pil reuses a prior pilout that may not match the
   # computed hash, so don't poison the cache in that case.
   if [ -n "$CACHE_DIR" ] && [ $SKIP_COMPILE_PIL -eq 0 ]; then
     echo "==> caching provingKey to $CACHE_ENTRY"
+    rm -rf "$CACHE_ENTRY"
+    mkdir -p "$CACHE_ENTRY"
+    cp -R "$BUILD_DIR/provingKey" "$CACHE_ENTRY/provingKey"
+  fi
+elif [ "$GEN_EXPS_ON_HIT" -eq 1 ]; then
+  # Stale cache (populated before kernels were cached): generate once and refresh
+  # the cache entry so the next hit reuses them.
+  run_gen_exps
+  if [ -n "$CACHE_DIR" ]; then
+    echo "==> refreshing cached provingKey with kernels at $CACHE_ENTRY"
     rm -rf "$CACHE_ENTRY"
     mkdir -p "$CACHE_ENTRY"
     cp -R "$BUILD_DIR/provingKey" "$CACHE_ENTRY/provingKey"
