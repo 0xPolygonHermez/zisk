@@ -12,7 +12,7 @@ on:
     - cron: "0 1 * * *"
 
 jobs:
-  runpod-tests:
+  runpod-test:
     runs-on:
       group: zisk-gpu
     timeout-minutes: 120
@@ -71,8 +71,9 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -- bash -lc '
-              python3 -m pip install --user requests
-              sudo apt-get update && sudo apt-get install -y pv
+              set -euo pipefail
+              sudo apt-get update
+              sudo apt-get install -y python3-requests pv
             '
       - name: Deploy pods (background)
         run: |
@@ -83,9 +84,10 @@ jobs:
               cd /workspace/zisk
               rm -f /tmp/deploy_pods.rc /tmp/deploy_pods.log
               # Provision the pods in parallel with the ZisK / zec-reth /
-              # ethproofs builds.
+              # ethproofs builds. python3 -u so the log file (tailed later by
+              # "Wait for pod deployment") is written unbuffered.
               nohup bash -c "
-                python3 tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519
+                python3 -u tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519
                 echo \$? > /tmp/deploy_pods.rc
               " > /tmp/deploy_pods.log 2>&1 &
               disown
@@ -150,7 +152,8 @@ jobs:
               cd /workspace/zisk
               python3 tools/runpod-test/deploy_cluster.py \
                 --ssh-key ~/.ssh/runpod_ed25519 \
-                --work-dir "$WORKSPACE_DIR"
+                --work-dir "$WORKSPACE_DIR" \
+                --run-time 10
             '
 
       - name: Download pod logs
@@ -180,6 +183,7 @@ jobs:
                   # many small files). If the dir is missing the remote returns
                   # non-zero and we just warn.
                   if ssh \
+                       -n \
                        -i ~/.ssh/runpod_ed25519 \
                        -p "$port" \
                        -o StrictHostKeyChecking=no \
@@ -192,7 +196,7 @@ jobs:
                   else
                     echo "WARN: failed to download logs from pod${i}"
                   fi
-                done < <(python3 -c "import json; [print(p['publicIp'], p['sshPort'], p.get('sshUser', 'root')) for p in json.load(open('pods.json'))['pods']]")
+                done < <(python3 -c "import json; [print(p[\"publicIp\"], p[\"sshPort\"], p.get(\"sshUser\", \"root\")) for p in json.load(open(\"pods.json\"))[\"pods\"]]")
 
                 tar -czf pod-logs.tar.gz -C pod-logs .
                 echo "Created pod-logs.tar.gz with $i pod folder(s)."
