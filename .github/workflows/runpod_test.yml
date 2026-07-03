@@ -12,7 +12,7 @@ on:
     - cron: "0 1 * * *"
 
 jobs:
-  runpod-tests:
+  runpod-test:
     runs-on:
       group: zisk-gpu
     timeout-minutes: 120
@@ -183,6 +183,7 @@ jobs:
                   # many small files). If the dir is missing the remote returns
                   # non-zero and we just warn.
                   if ssh \
+                       -n \
                        -i ~/.ssh/runpod_ed25519 \
                        -p "$port" \
                        -o StrictHostKeyChecking=no \
