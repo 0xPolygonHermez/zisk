@@ -76,6 +76,10 @@ struct Cli {
     #[clap(short = 't', long)]
     pub max_streams: Option<usize>,
 
+    /// Maximum number of per-GPU recursive (aggregation) streams
+    #[clap(long)]
+    pub max_recursive_streams: Option<usize>,
+
     #[clap(short = 'n', long)]
     pub number_threads_witness: Option<usize>,
 
@@ -125,6 +129,7 @@ async fn main() -> Result<()> {
         verbose: cli.verbose,
         debug: cli.debug.clone(),
         max_streams: cli.max_streams,
+        max_recursive_streams: cli.max_recursive_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         minimal_memory: cli.minimal_memory,
