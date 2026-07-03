@@ -1,6 +1,6 @@
 //! RISC-V instruction structure and parser.  
-//! The riscv_interpreter function accepts a buffer of bytes (a slice of u8), parses it according to
-//! the RISC-V spec, and generates a vector of RiscvInstruction's
+//! The riscv_interpreter function accepts a buffer of u16 (a slice), parses it according to
+//! the RISC-V spec, and generates a vector of RiscvInst's
 
 pub mod riscv2zisk_context;
 pub mod riscv_decoder;

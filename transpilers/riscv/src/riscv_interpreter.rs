@@ -1,4 +1,4 @@
-//! Parses a 32-bits RISC-V instruction
+//! Parses a 32-bits and 16-bits RISC-V instruction
 
 use crate::{RiscvDecoder, RiscvInst, RiscvInstName, RiscvInstType};
 
@@ -14,8 +14,8 @@ fn signext(v: u32, size: u32) -> i32 {
     }
 }
 
-/// Interprets a buffer of 32-bits RICSV instructions into a vector of decoded RISCV instructions
-/// split by field
+/// Interprets a buffer of 16-bits RISCV instructions, or 32-bits RISCV instructions taking 2 chunks
+/// of 16-bits, into a vector of decoded RISCV instructions split by field
 pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
     let mut insts = Vec::<RiscvInst>::new();
     //let mut interleaved_insts = Vec::<RiscvInst>::new();
