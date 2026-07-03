@@ -1336,8 +1336,7 @@ impl ZiskRom2Asm {
 
         // Instruction label
         *code += "\n";
-        let mut instruction_comment = instruction.to_text();
-        instruction_comment.remove(0);
+        let instruction_comment = instruction.to_text();
         *code += &format!("pc_{:x}: {}\n", ctx.pc, ctx.comment(instruction_comment));
 
         // Self::push_internal_registers(ctx, code, false);
