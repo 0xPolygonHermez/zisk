@@ -5,6 +5,7 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
+use riscv::RiscVRegisters;
 use sm_arith::ArithFrops;
 use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 use std::{
@@ -12,7 +13,6 @@ use std::{
     fs::File,
     io::{BufWriter, IsTerminal, Write},
 };
-use riscv::RiscVRegisters;
 use zisk_core::{
     zisk_ops::{OpStats, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
@@ -676,7 +676,7 @@ impl Stats {
         if self.trace_steps
             || ((self.trace_from.is_some() || self.trace_to.is_some())
                 && self.costs.steps >= self.trace_from.unwrap_or(0)
-                && self.trace_to.is_none_or(|to| self.costs.steps <= to))
+                && self.trace_to.map_or(true, |to| self.costs.steps <= to))
         {
             println!("### S:{} PC {:x}: {}", self.costs.steps, inst_ctx.pc, instruction.verbose);
         }
@@ -1453,9 +1453,7 @@ impl Stats {
             return;
         }
         let name = RiscVRegisters::name_from_usize(reg).unwrap_or("?");
-        println!(
-            "    reg x{reg} ({name}): {prev} (0x{prev:x}) => {new} (0x{new:x})"
-        );
+        println!("    reg x{reg} ({name}): {prev} (0x{prev:x}) => {new} (0x{new:x})");
     }
 
     /// Print a stack write as `abs_addr [sp+/-off]: prev (0xhex) => post (0xhex)`.
@@ -1466,11 +1464,8 @@ impl Stats {
             return;
         }
         let off = addr as i64 - sp as i64;
-        let rel =
-            if off >= 0 { format!("sp+0x{off:x}") } else { format!("sp-0x{:x}", -off) };
-        println!(
-            "    stack 0x{addr:x} [{rel}]: {prev} (0x{prev:x}) => {new} (0x{new:x})"
-        );
+        let rel = if off >= 0 { format!("sp+0x{off:x}") } else { format!("sp-0x{:x}", -off) };
+        println!("    stack 0x{addr:x} [{rel}]: {prev} (0x{prev:x}) => {new} (0x{new:x})");
     }
     pub fn set_sdk(&mut self, value: bool) {
         self.sdk = value;

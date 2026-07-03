@@ -1030,7 +1030,7 @@ impl<'a> Emu<'a> {
         let step = self.ctx.inst_ctx.step;
         let trace_changes = (self.ctx.trace_from.is_some() || self.ctx.trace_to.is_some())
             && step >= self.ctx.trace_from.unwrap_or(0)
-            && self.ctx.trace_to.is_none_or(|to| step <= to);
+            && self.ctx.trace_to.map_or(true, |to| step <= to);
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {

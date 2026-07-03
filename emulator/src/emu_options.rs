@@ -324,7 +324,7 @@ impl EmuOptions {
     pub fn trace_changes_at(&self, step: u64) -> bool {
         self.trace_changes_enabled()
             && step >= self.trace_from.unwrap_or(0)
-            && self.trace_to.is_none_or(|to| step <= to)
+            && self.trace_to.map_or(true, |to| step <= to)
     }
 
     pub fn apply_profiling(&mut self, mode: ProfilingMode) {
