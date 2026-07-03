@@ -1,11 +1,11 @@
 use crate::{
     command::create_command, utils::cargo_rerun_if_changed, BuildArgs, HELPER_TARGET_SUBDIR,
-    ZISK_LINKER_SCRIPT, ZISK_TARGET,
+    ZISK_TARGET,
 };
 use cargo_metadata::camino::Utf8PathBuf;
 use rom_setup::{assembly_files_exist, gen_assembly, get_assembly_file_paths, get_output_path};
 use std::{
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader},
     path::PathBuf,
     process::{exit, Command, Stdio},
     thread,
@@ -56,7 +56,7 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
         execute_build_program(&default_args, Some(program_dir.to_path_buf()))
     };
     if let Err(err) = path_output {
-        panic!("Failed to build ZisK program: {err}.");
+        panic!("Failed to build ZisK program: {err:#}.");
     }
 }
 
@@ -85,30 +85,11 @@ pub fn execute_build_program(
     // Get the command corresponding to Docker or local build.
     let mut cmd = create_command(args, &program_dir, &program_metadata)?;
 
-    // Zisk linker script injection
-
-    // Write the linker script to a uniquely-named temp file. A predictable
-    // path (`$TMPDIR/zisk.ld`) can race across concurrent invocations and is
-    // exposed to temp-file symlink attacks. Keep the handle alive until cargo
-    // finishes so the file is not removed while the linker still needs it.
-    let mut linker_script = tempfile::Builder::new()
-        .prefix("zisk-")
-        .suffix(".ld")
-        .tempfile()
-        .context("Failed to create temporary Zisk linker script")?;
-    linker_script
-        .write_all(ZISK_LINKER_SCRIPT)
-        .context("Failed to write Zisk linker script to temp file")?;
-
-    // Add linker script flag and zisk_guest cfg to RUSTFLAGS, preserving any existing flags
-    let current_rust_flags = std::env::var("RUSTFLAGS").unwrap_or_default();
-    let rust_flags = format!(
-        "{current_rust_flags} --cfg zisk_guest -C link-arg=-T{}",
-        linker_script.path().display()
-    )
-    .trim()
-    .to_string();
-    cmd.env("RUSTFLAGS", rust_flags);
+    // Guest rustflags + linker script; keep the temp file alive until cargo
+    // finishes. Env rustflags are NOT inherited: in this build-script context
+    // they are the host build's flags, injected by the outer cargo.
+    let _linker_script =
+        crate::apply_guest_rustflags(&mut cmd, Some(program_dir.as_std_path()), false)?;
 
     let target_elf_paths = generate_elf_paths(&program_metadata, Some(args))?;
 
