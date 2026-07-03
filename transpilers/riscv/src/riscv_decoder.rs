@@ -13,7 +13,7 @@
 //! The instruction name is a RiscvInstName enum variant identifying the instruction mnemonic, e.g.
 //! addi, lw, c.addi4spn, etc., and it is used to transpile RISC-V to Zisk assembly in file
 //! riscv2zisk_context.rs.  Both enums expose `as_str()`/`Display` yielding the canonical mnemonic
-//! string (used for logging and `RiscvInstruction::to_text`).
+//! string (used for logging and `RiscvInst::to_text`).
 //!
 //! For example: add x1, x2, x3 is encoded as a 32-bit instruction 0x003100b3, and after calling
 //! RiscvDecoder::decode_32(0x003100b3) we get (RiscvInstType::R, RiscvInstName::Add, 2) as a result.  With "R" we can

@@ -322,7 +322,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
     let (inst_type, inst_name) = RiscvDecoder::decode_16(inst);
 
     // Create a RISCV instruction instance to be filled with data from the instruction and from
-    // the RVD info data
+    // the RISCV decoder metadata
     // Copy the original RISCV 32-bit instruction
     // Copy the instruction type
     let rom_address = root_address + (code_index * 2) as u64;
