@@ -19,6 +19,9 @@
 #                      pil/src/pil_helpers/traces.rs. No setup.
 #   --compressed-final re-run only vadcop_final_compressed on top of an existing
 #                      <build-dir>/provingKey/<name>/vadcop_final/.
+#   --gen-exps-only    (re)generate per-AIR Q-expression CUDA kernels (.exps.so)
+#                      on top of an existing <build-dir>/provingKey/, without
+#                      re-running setup. No-op if nvcc is not on PATH.
 #   --stats            run frops + compile-pil + proofman-setup stats.
 #
 # pil-helpers (pil/src/pil_helpers/traces.rs) is regenerated as the last step
@@ -43,11 +46,20 @@
 
 set -euo pipefail
 
+# Ensure nvcc is reachable for the --gen-exps / --gen-exps-only codegen. The
+# setup binary probes for a bare `nvcc` on PATH; some hosts install CUDA under
+# /usr/local/cuda/bin without adding it to PATH, which would silently skip
+# expression-kernel codegen. Prepend it only when nvcc isn't already found and
+# the CUDA bin dir exists, so this is a no-op on hosts that need neither.
+if ! command -v nvcc >/dev/null 2>&1 && [[ -x /usr/local/cuda/bin/nvcc ]]; then
+    export PATH="/usr/local/cuda/bin:${PATH}"
+fi
+
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil] [-v|-vv|--verbose]
-         [--compile-pil | --no-aggregation | --snark | --compressed-final | --stats | --print-hash]
+         [--skip-compile-pil] [--gen-exps] [--exps-arch SPEC] [-v|-vv|--verbose]
+         [--compile-pil | --no-aggregation | --snark | --compressed-final | --gen-exps-only | --stats | --print-hash]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
                          output and by --snark / --compressed-final as input.
@@ -71,6 +83,12 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          Faster local iteration. With --cache-dir, the cache is
                          NOT populated (the reused pilout may not match the
                          computed input hash).
+  --gen-exps             Generate + compile per-AIR Q-expression CUDA kernels
+                         (.exps.so) at the end of setup. Off by default; no-op
+                         if nvcc is not on PATH. Also settable via GEN_EXPS=1.
+  --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
+                         --gen-exps-only). Default: auto (detects the host GPU).
+                         Also settable via EXPS_ARCH env var.
   --compile-pil          Run only frops + compile-pil + pil-helpers regen
                          (writes pil/zisk.pilout and pil/src/pil_helpers/).
                          No setup.
@@ -80,6 +98,11 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          build it locally (./tools/setup/build-setup.sh) first.
   --compressed-final     Re-run only vadcop_final_compressed on top of an
                          existing <build-dir>/provingKey/<name>/vadcop_final/.
+  --gen-exps-only        (Re)generate per-AIR Q-expression CUDA kernels
+                         (.exps.so) on an existing <build-dir>/provingKey/,
+                         without re-running setup. Errors out if that directory
+                         is missing. No-op if nvcc is not on PATH. (Distinct from
+                         the --gen-exps flag, which runs it during a full setup.)
   --stats                Run proofman-setup stats.
   --print-hash           Print the build-input sha256 (the cache key) and exit.
                          Runs frops generation but no compile-pil / setup.
@@ -90,7 +113,7 @@ EOF
   exit 1
 }
 
-MODE="build"   # build | no_aggregation | snark | compressed_final | stats | compile_pil | print_hash
+MODE="build"   # build | no_aggregation | snark | compressed_final | gen_exps_only | stats | compile_pil | print_hash
 BUILD_DIR="build"
 CACHE_DIR=""
 CACHE_HIT=0
@@ -101,10 +124,16 @@ SETUP_JOBS_ARG="${SETUP_JOBS:-}"
 HASH="${HASH:-Poseidon1}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
+# Opt-in: generate + compile per-AIR Q-expression CUDA kernels (.exps.so) during
+# setup. Off by default (matches the setup CLI). No-op if nvcc is not on PATH.
+GEN_EXPS="${GEN_EXPS:-0}"
+# CUDA arch spec forwarded to gen-exps (both the --gen-exps flag and the
+# --gen-exps-only mode). auto detects the host GPU.
+EXPS_ARCH="${EXPS_ARCH:-auto}"
 
 set_mode() {
   if [ "$MODE" != "build" ]; then
-    echo "error: only one of --compile-pil, --no-aggregation, --snark, --compressed-final, --stats, --print-hash may be passed" >&2
+    echo "error: only one of --compile-pil, --no-aggregation, --snark, --compressed-final, --gen-exps-only, --stats, --print-hash may be passed" >&2
     exit 1
   fi
   MODE="$1"
@@ -118,12 +147,15 @@ while [ $# -gt 0 ]; do
     --setup-jobs)        SETUP_JOBS_ARG="$2";     shift 2 ;;
     --hash)              HASH="$2";               shift 2 ;;
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
+    --gen-exps)          GEN_EXPS=1;              shift ;;
+    --exps-arch)         EXPS_ARCH="$2";          shift 2 ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
     --compile-pil)       set_mode compile_pil;       shift ;;
     --no-aggregation)    set_mode no_aggregation;    shift ;;
     --snark)             set_mode snark;             shift ;;
     --compressed-final)  set_mode compressed_final;  shift ;;
+    --gen-exps-only)     set_mode gen_exps_only;     shift ;;
     --stats)             set_mode stats;             shift ;;
     --print-hash)        set_mode print_hash;        shift ;;
     -h|--help)         usage ;;
@@ -260,6 +292,22 @@ case "$MODE" in
     exit 0
     ;;
 
+  gen_exps_only)
+    [ -d "$BUILD_DIR/provingKey" ] || { echo "$BUILD_DIR/provingKey not found — run setup first" >&2; exit 1; }
+    if ! command -v nvcc >/dev/null 2>&1; then
+      echo "nvcc not found on PATH — skipping gen-exps (no-op)" >&2
+      exit 0
+    fi
+    echo "==> proofman-setup gen-exps (arch: $EXPS_ARCH)"
+    cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
+      --proving-key "$BUILD_DIR/provingKey" \
+      --arch "$EXPS_ARCH" \
+      ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
+    echo "done. .exps.so kernels regenerated under $BUILD_DIR/provingKey/"
+    echo "to repackage the updated provingKey/: (cd tools/test-env && ./upload_setup.sh)"
+    exit 0
+    ;;
+
   print_hash)
     # Keep stdout clean: only compute_input_hash's 64-hex line goes to stdout
     # (its own progress already goes to stderr). frops generation is noisy, so
@@ -316,6 +364,11 @@ if [ "$CACHE_HIT" -eq 0 ]; then
   setup_jobs_flags=()
   [ -n "$RECURSIVE_JOBS_ARG" ] && setup_jobs_flags+=(--recursive-jobs "$RECURSIVE_JOBS_ARG")
   [ -n "$SETUP_JOBS_ARG" ]     && setup_jobs_flags+=(--setup-jobs "$SETUP_JOBS_ARG")
+  # Only forward --gen-exps when nvcc is actually present, so GEN_EXPS=1 on a
+  # non-CUDA host is the documented no-op rather than invoking extra setup logic.
+  if [ "$GEN_EXPS" -eq 1 ] && command -v nvcc >/dev/null 2>&1; then
+    setup_jobs_flags+=(--gen-exps --exps-arch "$EXPS_ARCH")
+  fi
 
   rm -rf "$BUILD_DIR/provingKey"
   cargo run --release --bin cargo-zisk-dev -- proofman-setup setup \

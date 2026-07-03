@@ -135,6 +135,7 @@ pub struct ProverServiceConfigDto {
     pub verbose: u8,
     pub debug: Option<Option<String>>,
     pub max_streams: Option<usize>,
+    pub max_recursive_streams: Option<usize>,
     pub number_threads_witness: Option<usize>,
     pub max_witness_stored: Option<usize>,
     pub minimal_memory: bool,

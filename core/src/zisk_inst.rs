@@ -271,6 +271,7 @@ impl ZiskInst {
         if let Some(next_internal_inst) = self.next_internal_inst {
             s += &format!(" next_internal_inst=0x{:x}", next_internal_inst);
         }
+        s.remove(0); // remove first space
         s
     }
 

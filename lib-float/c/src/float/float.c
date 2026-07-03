@@ -323,7 +323,7 @@ void _zisk_float (void)
 
                     break;
                 }
-                default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 67 inst=0x{inst:x}"),
+                default:
                     FLOAT_ASSERT(false);
                     break;
             }
@@ -510,7 +510,7 @@ void _zisk_float (void)
                     fregs[rd] = result;
                     break;
                 }
-                default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 71 inst=0x{inst:x}"),
+                default:
                     FLOAT_ASSERT(false);
                     break;
             }
@@ -718,7 +718,7 @@ void _zisk_float (void)
                     fregs[rd] = result;
                     break;
                 }
-                default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 75 inst=0x{inst:x}"),
+                default:
                     FLOAT_ASSERT(false);
                     break;
             }
@@ -935,7 +935,7 @@ void _zisk_float (void)
 
                     break;
                 }
-                default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 79 inst=0x{inst:x}"),
+                default:
                     FLOAT_ASSERT(false);
                     break;
             }
@@ -1399,7 +1399,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=16 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1452,7 +1452,7 @@ void _zisk_float (void)
                             
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=17 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1552,7 +1552,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=20 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1648,7 +1648,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=21 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1686,7 +1686,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=32 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1744,7 +1744,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=33 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1792,7 +1792,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=44 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1840,7 +1840,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=45 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1884,7 +1884,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: // => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=80 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -1928,7 +1928,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=81 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2062,7 +2062,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=96 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2196,7 +2196,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=97 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2264,7 +2264,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: //=> panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=104 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2332,7 +2332,7 @@ void _zisk_float (void)
 
                             break;
                         }
-                        default: // => panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=105 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2353,7 +2353,7 @@ void _zisk_float (void)
 
                                     break;
                                 }
-                                default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                default:
                                     FLOAT_ASSERT(false);
                                     break;
                             }
@@ -2413,13 +2413,13 @@ void _zisk_float (void)
 
                                     break;
                                 }
-                                default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                default:
                                     FLOAT_ASSERT(false);
                                     break;
                             }
                             break;
                         }
-                        default: //_ => panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=112 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2440,7 +2440,7 @@ void _zisk_float (void)
 
                                     break;
                                 }
-                                default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=112 funct3=0 inst=0x{inst:x}"),
+                                default:
                                     FLOAT_ASSERT(false);
                                     break;
                             }
@@ -2501,13 +2501,13 @@ void _zisk_float (void)
 
                                     break;
                                 }
-                                default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=113 funct3=0 inst=0x{inst:x}"),
+                                default:
                                     FLOAT_ASSERT(false);
                                     break;
                             }
                             break;
                         }
-                        default: // panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=112 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2528,13 +2528,13 @@ void _zisk_float (void)
 
                                     break;
                                 }
-                                default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=120 funct3=0 inst=0x{inst:x}"),
+                                default:
                                     FLOAT_ASSERT(false);
                                     break;
                             }
                             break;
                         }
-                        default: // panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=120 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
@@ -2555,19 +2555,19 @@ void _zisk_float (void)
 
                                     break;
                                 }
-                                default: // panic!("Rvd::get_type_and_name_32_bits() invalid rm for opcode 83 funct7=121 funct3=0 inst=0x{inst:x}"),
+                                default:
                                     FLOAT_ASSERT(false);
                                     break;
                             }
                             break;
                         }
-                        default: // panic!("Rvd::get_type_and_name_32_bits() invalid funct3 for opcode 83 funct7=121 inst=0x{inst:x}"),
+                        default:
                             FLOAT_ASSERT(false);
                             break;
                     }
                     break;
                 }
-                default: // panic!("Rvd::get_type_and_name_32_bits() invalid funct7 for opcode 83 inst=0x{inst:x}"),
+                default:
                     FLOAT_ASSERT(false);
                     break;
             }
