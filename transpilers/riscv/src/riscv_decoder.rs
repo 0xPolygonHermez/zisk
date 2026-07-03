@@ -4,13 +4,13 @@
 //! the instruction type and name, as well as the instruction level
 //! (0, 1, 2 or 3) for 32-bit instructions.
 //!
-//! The instruction type is an [`RiscvInstType`] enum variant, for example: I, S, B, U, J, R, R4, C, CIW,
-//! CL, CS, CA, CB or CJ.  The instruction type is used to parse the instruction operands and
+//! The instruction type is a RiscvInstType enum variant, for example: I, S, B, U, J, R, R4, C,
+//! CIW, CL, CS, CA, CB or CJ.  The instruction type is used to parse the instruction operands and
 //! immediate values in file riscv_interpreter.rs.  It tells the interpreter what fields are present
 //! in the 32-bit (or 16-bit) instruction, their position and length.  In other words, it tells the
 //! interpreter the meaning of the instruction bits.
 //!
-//! The instruction name is an [`RiscvInstName`] enum variant identifying the instruction mnemonic, e.g.
+//! The instruction name is a RiscvInstName enum variant identifying the instruction mnemonic, e.g.
 //! addi, lw, c.addi4spn, etc., and it is used to transpile RISC-V to Zisk assembly in file
 //! riscv2zisk_context.rs.  Both enums expose `as_str()`/`Display` yielding the canonical mnemonic
 //! string (used for logging and `RiscvInstruction::to_text`).
@@ -22,10 +22,10 @@
 
 use crate::{RiscvInstName, RiscvInstType};
 
-/// RVD structure
+/// Stateless RISC-V instruction decoder.
 pub struct RiscvDecoder {}
 
-/// RVD implementation
+/// Decoder implementation.
 impl RiscvDecoder {
     pub fn decode_32(inst: u32) -> (RiscvInstType, RiscvInstName, u64) {
         match inst & 0x7F {
@@ -518,7 +518,11 @@ impl RiscvDecoder {
     //     RVC Register Number 000 001 010 011 100 101 110 111
     // Integer Register Number  x8  x9 x10 x11 x12 x13 x14 x15
     pub fn convert_compressed_reg_index(reg: u32) -> u32 {
-        assert!(reg < 8);
+        assert!(
+            reg < 8,
+            "RiscvDecoder::convert_compressed_reg_index() invalid compressed register index {}",
+            reg
+        );
         reg + 8
     }
 
