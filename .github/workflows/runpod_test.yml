@@ -85,7 +85,10 @@ jobs:
               rm -f /tmp/deploy_pods.rc /tmp/deploy_pods.log
               # Run synchronously so the deployment output is visible inline.
               rc=0
-              python3 tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519 || rc=$?
+              # Run under a pseudo-TTY (script) so output is line-buffered and
+              # streams to the step log in real time instead of all at once at
+              # the end (docker exec runs without -t here).
+              script -qec "python3 -u tools/runpod-test/deploy_pods.py --ssh-key $HOME/.ssh/runpod_ed25519" /dev/null || rc=$?
               echo "$rc" > /tmp/deploy_pods.rc
               exit "$rc"
             '
@@ -148,7 +151,8 @@ jobs:
               cd /workspace/zisk
               python3 tools/runpod-test/deploy_cluster.py \
                 --ssh-key ~/.ssh/runpod_ed25519 \
-                --work-dir "$WORKSPACE_DIR"
+                --work-dir "$WORKSPACE_DIR" \
+                --run-time 10
             '
 
       - name: Download pod logs
@@ -190,7 +194,7 @@ jobs:
                   else
                     echo "WARN: failed to download logs from pod${i}"
                   fi
-                done < <(python3 -c "import json; [print(p['publicIp'], p['sshPort'], p.get('sshUser', 'root')) for p in json.load(open('pods.json'))['pods']]")
+                done < <(python3 -c "import json; [print(p[\"publicIp\"], p[\"sshPort\"], p.get(\"sshUser\", \"root\")) for p in json.load(open(\"pods.json\"))[\"pods\"]]")
 
                 tar -czf pod-logs.tar.gz -C pod-logs .
                 echo "Created pod-logs.tar.gz with $i pod folder(s)."

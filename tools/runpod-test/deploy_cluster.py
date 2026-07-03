@@ -423,18 +423,28 @@ def build_pod_steps(
     )
 
     if is_coord:
+        ethproofs_cmd = (
+            f"{REMOTE_WORKSPACE_BIN_DIR}/ethproofs-client "
+            "-c http://localhost:7000 "
+            f"--input.folder {REMOTE_LOG_DIR}/inputs -n rpc --input.keep "
+            f"-g {REMOTE_WORKSPACE_BIN_DIR}/zec-reth "
+            f"--rpc.http-url {rpc_http_url} --rpc.ws-url {rpc_ws_url} "
+            f"--run-time {run_time} --exit-on-error "
+            f"--proof.csv {REMOTE_LOG_DIR}/proof.csv"
+        )
+        ethproofs_log = f"{REMOTE_LOG_DIR}/pod{index}-ethproofs-client.log"
         steps.append(
             {
                 "desc": "Run ethproofs-client (foreground, streaming logs)",
+                # tee saves the output to REMOTE_LOG_DIR while still streaming it
+                # over SSH to this script's console. pipefail keeps the pipeline's
+                # exit code as ethproofs-client's (not tee's), so --exit-on-error
+                # failures still propagate.
                 "cmd": ssh_argv(
                     target,
                     private_key,
-                    f"{REMOTE_WORKSPACE_BIN_DIR}/ethproofs-client "
-                    "-c http://localhost:7000 "
-                    f"--input.folder {REMOTE_LOG_DIR}/inputs -n rpc --input.keep "
-                    f"-g {REMOTE_WORKSPACE_BIN_DIR}/zec-reth "
-                    f"--rpc.http-url {rpc_http_url} --rpc.ws-url {rpc_ws_url} "
-                    f"--run-time {run_time} --exit-on-error --proof.csv {REMOTE_LOG_DIR}/proof.csv",
+                    "bash -c 'set -o pipefail; "
+                    f"{ethproofs_cmd} 2>&1 | tee {ethproofs_log}'",
                 ),
             }
         )
