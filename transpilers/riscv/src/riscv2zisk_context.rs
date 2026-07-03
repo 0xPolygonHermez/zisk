@@ -702,6 +702,7 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 2),
             RiscvInstName::Reserved => self.halt_with_error(riscv_instruction, 4),
 
+            #[cfg(not(feature = "bit_manipulation_extensions"))]
             _ => {
                 panic!(
                     "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst_name={}",
