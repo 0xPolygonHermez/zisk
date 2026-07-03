@@ -47,6 +47,9 @@ pub struct RiscvInstruction {
     pub inst_type: RiscvInstType,
 
     /// Instruction mnemonic
+    pub inst_name: RiscvInstName,
+
+    // Instruction fields
     pub funct2: u32,
     pub funct3: u32,
     pub funct5: u32,
@@ -57,7 +60,6 @@ pub struct RiscvInstruction {
     pub rs3: u32,
     pub imm: i32,
     pub imme: u32,
-    pub inst_name: RiscvInstName,
     pub aq: u32,
     pub rl: u32,
     pub csr: u32,

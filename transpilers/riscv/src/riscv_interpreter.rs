@@ -138,7 +138,7 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
 }
 
 fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> RiscvInstruction {
-    // Get the instruction type and name from the RVD data
+    // Get the instruction type, instruction name and level from the RiscvDecoder data
     let (inst_type, inst_name, level) = RiscvDecoder::decode_32(inst);
 
     // Calculate the ROM address of this instruction
