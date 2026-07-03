@@ -153,7 +153,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
         i.rs1 = (inst & 0xF8000) >> 15;
         i.imm = signext((inst & 0xFFF00000) >> 20, 12);
         if level == 2 {
-            i.funct7 = (inst & 0xFC000000) >> 26;
+            i.funct6 = (inst & 0xFC000000) >> 26;
             i.imm &= 0x3F;
         }
     }

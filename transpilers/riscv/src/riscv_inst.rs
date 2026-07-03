@@ -53,6 +53,7 @@ pub struct RiscvInst {
     pub funct2: u32,
     pub funct3: u32,
     pub funct5: u32,
+    pub funct6: u32,
     pub funct7: u32,
     pub rd: u32,
     pub rs1: u32,
@@ -100,50 +101,77 @@ impl RiscvInst {
 
     /// Creates a human-readable string containing RISCV data fields that are non-zero
     pub fn to_text(&self) -> String {
-        let mut s = String::new();
-        s += &("type=".to_string() + self.inst_type.as_str());
-        s += &(" name=".to_string() + self.inst_name.as_str());
+        // Preallocate a string with a reasonable capacity to avoid multiple allocations
+        let mut s = String::with_capacity(256);
+
+        // Add instruction type
+        s.push_str("type=");
+        s.push_str(self.inst_type.as_str());
+
+        // Add instruction name
+        s.push_str(" name=");
+        s.push_str(self.inst_name.as_str());
+
+        // Add instruction fields if they are non-zero
         if self.rvinst != 0 {
-            s += &(" rvinst=".to_string() + &self.rvinst.to_string());
+            s.push_str(" rvinst=");
+            s.push_str(&self.rvinst.to_string());
         }
         if self.funct3 != 0 {
-            s += &(" funct3=".to_string() + &self.funct3.to_string());
+            s.push_str(" funct3=");
+            s.push_str(&self.funct3.to_string());
         }
         if self.funct5 != 0 {
-            s += &(" funct5=".to_string() + &self.funct5.to_string());
+            s.push_str(" funct5=");
+            s.push_str(&self.funct5.to_string());
+        }
+        if self.funct6 != 0 {
+            s.push_str(" funct6=");
+            s.push_str(&self.funct6.to_string());
         }
         if self.funct7 != 0 {
-            s += &(" funct7=".to_string() + &self.funct7.to_string());
+            s.push_str(" funct7=");
+            s.push_str(&self.funct7.to_string());
         }
         if self.rd != 0 {
-            s += &(" rd=".to_string() + &self.rd.to_string());
+            s.push_str(" rd=");
+            s.push_str(&self.rd.to_string());
         }
         if self.rs1 != 0 {
-            s += &(" rs1=".to_string() + &self.rs1.to_string());
+            s.push_str(" rs1=");
+            s.push_str(&self.rs1.to_string());
         }
         if self.rs2 != 0 {
-            s += &(" rs2=".to_string() + &self.rs2.to_string());
+            s.push_str(" rs2=");
+            s.push_str(&self.rs2.to_string());
         }
         if self.imm != 0 {
-            s += &(" imm=".to_string() + &self.imm.to_string());
+            s.push_str(" imm=");
+            s.push_str(&self.imm.to_string());
         }
         if self.imme != 0 {
-            s += &(" imme=".to_string() + &self.imme.to_string());
+            s.push_str(" imme=");
+            s.push_str(&self.imme.to_string());
         }
         if self.aq != 0 {
-            s += &(" aq=".to_string() + &self.aq.to_string());
+            s.push_str(" aq=");
+            s.push_str(&self.aq.to_string());
         }
         if self.rl != 0 {
-            s += &(" rl=".to_string() + &self.rl.to_string());
+            s.push_str(" rl=");
+            s.push_str(&self.rl.to_string());
         }
         if self.csr != 0 {
-            s += &(" csr=".to_string() + &self.csr.to_string());
+            s.push_str(" csr=");
+            s.push_str(&self.csr.to_string());
         }
         if self.pred != 0 {
-            s += &(" pred=".to_string() + &self.pred.to_string());
+            s.push_str(" pred=");
+            s.push_str(&self.pred.to_string());
         }
         if self.succ != 0 {
-            s += &(" succ=".to_string() + &self.succ.to_string());
+            s.push_str(" succ=");
+            s.push_str(&self.succ.to_string());
         }
         s
     }
