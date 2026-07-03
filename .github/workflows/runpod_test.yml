@@ -74,7 +74,7 @@ jobs:
               python3 -m pip install --user requests
               sudo apt-get update && sudo apt-get install -y pv
             '
-      - name: Deploy pods (background)
+      - name: Deploy pods
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
@@ -82,14 +82,9 @@ jobs:
             -- bash -lc '
               cd /workspace/zisk
               rm -f /tmp/deploy_pods.rc /tmp/deploy_pods.log
-              # Provision the pods in parallel with the ZisK / zec-reth /
-              # ethproofs builds.
-              nohup bash -c "
-                python3 tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519
-                echo \$? > /tmp/deploy_pods.rc
-              " > /tmp/deploy_pods.log 2>&1 &
-              disown
-              echo "deploy_pods.py launched in background (pid $!)"
+              # Run synchronously so the deployment output is visible inline.
+              python3 tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519
+              echo $? > /tmp/deploy_pods.rc
             '
 
       - name: Build ZisK
