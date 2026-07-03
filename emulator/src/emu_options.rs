@@ -55,6 +55,18 @@ pub struct EmuOptions {
     /// Forces full (non-fast) emulation; redirect stdout to a file for big traces.
     #[clap(long, value_name = "TRACE_STEPS", default_value = "false")]
     pub trace_steps: bool,
+    /// First step of the change-trace window. Within the window (see `--trace-to`)
+    /// each executed instruction is printed followed by every register and stack
+    /// write it caused, as `prev (0xhex) => post (0xhex)`. Register writes show the
+    /// register name; stack writes are RAM writes in the range [RAM_ADDR, SYS_ADDR)
+    /// and also show the absolute address and its offset relative to sp (x2). Forces
+    /// full, non-fast emulation. Defaults to 0 when only `--trace-to` is given.
+    #[clap(long, value_name = "TRACE_FROM_STEP")]
+    pub trace_from: Option<u64>,
+    /// Last step (inclusive) of the change-trace window (see `--trace-from`).
+    /// Defaults to unbounded (until the end) when only `--trace-from` is given.
+    #[clap(long, value_name = "TRACE_TO_STEP")]
+    pub trace_to: Option<u64>,
     /// Log the output to console. This option is set by default to true as a requirement to pass
     /// the riscof GHA tests.  Enabled with `-c`.
     #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "false")]
@@ -199,6 +211,8 @@ impl Default for EmuOptions {
             verbose: false,
             log_step: false,
             trace_steps: false,
+            trace_from: None,
+            trace_to: None,
             log_output: false,
             log_output_riscof: false,
             chunk_size: None,
@@ -260,6 +274,8 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
         writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
         writeln!(f, "TRACE_STEPS: {:?}", self.trace_steps)?;
+        writeln!(f, "TRACE_FROM: {:?}", self.trace_from)?;
+        writeln!(f, "TRACE_TO: {:?}", self.trace_to)?;
         writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)?;
         writeln!(f, "READ_SYMBOLS: {:?}", self.read_symbols)?;
         writeln!(f, "TOP_ROI: {:?}", self.top_roi)?;
@@ -288,12 +304,27 @@ impl EmuOptions {
             && self.trace.is_none()
             && !self.log_step
             && !self.trace_steps
+            && self.trace_from.is_none()
+            && self.trace_to.is_none()
             && !self.verbose
             && !self.tracerv
             && !self.stats
             && !self.generate_minimal_traces
             && !self.log_output
             && !self.log_output_riscof
+    }
+
+    /// True if a change-trace window was requested (via `--trace-from`/`--trace-to`).
+    pub fn trace_changes_enabled(&self) -> bool {
+        self.trace_from.is_some() || self.trace_to.is_some()
+    }
+
+    /// True if the given step falls inside the requested change-trace window.
+    /// `--trace-from` defaults to 0 and `--trace-to` to unbounded.
+    pub fn trace_changes_at(&self, step: u64) -> bool {
+        self.trace_changes_enabled()
+            && step >= self.trace_from.unwrap_or(0)
+            && self.trace_to.is_none_or(|to| step <= to)
     }
 
     pub fn apply_profiling(&mut self, mode: ProfilingMode) {

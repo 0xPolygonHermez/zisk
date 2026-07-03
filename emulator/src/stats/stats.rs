@@ -12,10 +12,11 @@ use std::{
     fs::File,
     io::{BufWriter, IsTerminal, Write},
 };
+use riscv::RiscVRegisters;
 use zisk_core::{
     zisk_ops::{OpStats, ZiskOp},
-    InstContext, ZiskInst, ZiskOperationType, ZiskRom, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
-    ROM_ENTRY_SIZE, ROM_EXIT, SRC_IMM, SRC_REG,
+    InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
+    ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, SRC_IMM, SRC_REG, SYS_ADDR,
 };
 
 use zisk_definitions::{
@@ -136,6 +137,12 @@ pub struct Stats {
     /// When set, `on_op` prints a per-instruction execution trace (ziskemu's
     /// `--trace-steps`).
     trace_steps: bool,
+    /// Change-trace window [trace_from, trace_to]: within it, register and stack
+    /// writes are printed right after each instruction trace line (ziskemu's
+    /// `--trace-from` / `--trace-to`). `trace_from` defaults to 0, `trace_to` to
+    /// unbounded.
+    trace_from: Option<u64>,
+    trace_to: Option<u64>,
     #[cfg(feature = "handle_stdout")]
     stdout_data: String,
     #[cfg(feature = "handle_stdout")]
@@ -208,6 +215,8 @@ impl Default for Stats {
             profile_stack: Vec::new(),
             current_variable_cost: 0,
             trace_steps: false,
+            trace_from: None,
+            trace_to: None,
             profiler_output: "profile.json.gz".to_string(),
             #[cfg(feature = "handle_stdout")]
             stdout_data: String::with_capacity(256),
@@ -660,8 +669,15 @@ impl Stats {
     }
     /// Called every time an operation is executed, if statistics are enabled
     pub fn on_op(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
-        // Per-instruction execution trace, enabled by ziskemu's `--trace-steps`.
-        if self.trace_steps {
+        // Per-instruction execution trace, enabled by ziskemu's `--trace-steps`, or
+        // by `--trace-changes` from the requested step onwards (so that each change
+        // block is preceded by its instruction). At this point `self.costs.steps` is
+        // the current step (it is incremented below).
+        if self.trace_steps
+            || ((self.trace_from.is_some() || self.trace_to.is_some())
+                && self.costs.steps >= self.trace_from.unwrap_or(0)
+                && self.trace_to.is_none_or(|to| self.costs.steps <= to))
+        {
             println!("### S:{} PC {:x}: {}", self.costs.steps, inst_ctx.pc, instruction.verbose);
         }
         let pc = inst_ctx.pc;
@@ -1423,6 +1439,38 @@ impl Stats {
     }
     pub fn set_trace_steps(&mut self, value: bool) {
         self.trace_steps = value;
+    }
+    pub fn set_trace_changes(&mut self, from: Option<u64>, to: Option<u64>) {
+        self.trace_from = from;
+        self.trace_to = to;
+    }
+
+    /// Print a register write as `reg name: prev (0xhex) => post (0xhex)`.
+    /// Called from `store_c` right after the register is updated, only when change
+    /// tracing is active. No-op when the value did not actually change.
+    pub fn trace_register_change(&self, reg: usize, prev: u64, new: u64) {
+        if prev == new {
+            return;
+        }
+        let name = RiscVRegisters::name_from_usize(reg).unwrap_or("?");
+        println!(
+            "    reg x{reg} ({name}): {prev} (0x{prev:x}) => {new} (0x{new:x})"
+        );
+    }
+
+    /// Print a stack write as `abs_addr [sp+/-off]: prev (0xhex) => post (0xhex)`.
+    /// A "stack" write is any RAM write in the range [RAM_ADDR, SYS_ADDR); writes
+    /// outside that range are ignored. `sp` is the current value of register x2.
+    pub fn trace_stack_change(&self, addr: u64, prev: u64, new: u64, sp: u64) {
+        if !(RAM_ADDR..SYS_ADDR).contains(&addr) {
+            return;
+        }
+        let off = addr as i64 - sp as i64;
+        let rel =
+            if off >= 0 { format!("sp+0x{off:x}") } else { format!("sp-0x{:x}", -off) };
+        println!(
+            "    stack 0x{addr:x} [{rel}]: {prev} (0x{prev:x}) => {new} (0x{new:x})"
+        );
     }
     pub fn set_sdk(&mut self, value: bool) {
         self.sdk = value;
