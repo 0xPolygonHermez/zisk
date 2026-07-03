@@ -36,7 +36,7 @@ use crate::{RiscvInstName, RiscvInstType};
 
 /// RISC-V instruction data
 #[derive(Default, Debug, Clone)]
-pub struct RiscvInstruction {
+pub struct RiscvInst {
     /// Instruction ROM address, i.e. program counter value
     pub rom_address: u64,
 
@@ -67,7 +67,7 @@ pub struct RiscvInstruction {
     pub succ: u32,
 }
 
-impl RiscvInstruction {
+impl RiscvInst {
     /// Creates a NOP instruction (ADDI x0, x0, 0)
     pub fn nop(rvinst: u32, rom_address: u64) -> Self {
         Self {

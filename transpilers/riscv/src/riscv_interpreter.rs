@@ -1,6 +1,6 @@
 //! Parses a 32-bits RISC-V instruction
 
-use crate::{RiscvDecoder, RiscvInstName, RiscvInstType, RiscvInstruction};
+use crate::{RiscvDecoder, RiscvInst, RiscvInstName, RiscvInstType};
 
 /// Convert 32-bits data chunk that contains a signed integer of a specified size in bits to a
 /// signed integer of 32 bits
@@ -16,9 +16,9 @@ fn signext(v: u32, size: u32) -> i32 {
 
 /// Interprets a buffer of 32-bits RICSV instructions into a vector of decoded RISCV instructions
 /// split by field
-pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction> {
-    let mut insts = Vec::<RiscvInstruction>::new();
-    //let mut interleaved_insts = Vec::<RiscvInstruction>::new();
+pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
+    let mut insts = Vec::<RiscvInst>::new();
+    //let mut interleaved_insts = Vec::<RiscvInst>::new();
 
     // code_len is the length of the input code buffer,
     // which can contain both 16-bit and 32-bit instructions
@@ -47,27 +47,18 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
             if code_index == code_len {
                 // This is the last 16 bits in the code buffer, so this must be a 16-bits invalid
                 // instruction, so we must HALT
-                insts.push(RiscvInstruction::c_halt(
-                    0,
-                    rom_address + (instruction_code_index * 2) as u64,
-                ));
+                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
                 break;
             }
             let inst = code[code_index];
             if inst == 0 {
                 // Both 16 bits instructions are zero, so this is a 32-bits nop
                 code_index += 1;
-                insts.push(RiscvInstruction::nop(
-                    0,
-                    rom_address + (instruction_code_index * 2) as u64,
-                ));
+                insts.push(RiscvInst::nop(0, rom_address + (instruction_code_index * 2) as u64));
             } else {
                 // The first 16 bits are zero, but the second 16 bits are not zero, so this is a
                 // 16-bits invalid instruction, so we must HALT
-                insts.push(RiscvInstruction::c_halt(
-                    0,
-                    rom_address + (instruction_code_index * 2) as u64,
-                ));
+                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
             }
             continue;
         }
@@ -137,7 +128,7 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInstruction
     insts
 }
 
-fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> RiscvInstruction {
+fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> RiscvInst {
     // Get the instruction type, instruction name and level from the RiscvDecoder data
     let (inst_type, inst_name, level) = RiscvDecoder::decode_32(inst);
 
@@ -146,8 +137,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
 
     // Create a RISCV instruction instance with the known fields to be filled with data
     // from the instruction based on its format type
-    let mut i =
-        RiscvInstruction { rom_address, rvinst: inst, inst_type, inst_name, ..Default::default() };
+    let mut i = RiscvInst { rom_address, rvinst: inst, inst_type, inst_name, ..Default::default() };
 
     // Decode the rest of instruction fields based on the instruction type
 
@@ -327,7 +317,7 @@ fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> 
     i
 }
 
-fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInstruction {
+fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInst {
     // This is a 16-bit instruction, so we need to decode it accordingly
     let (inst_type, inst_name) = RiscvDecoder::decode_16(inst);
 
@@ -336,13 +326,8 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
     // Copy the original RISCV 32-bit instruction
     // Copy the instruction type
     let rom_address = root_address + (code_index * 2) as u64;
-    let mut i = RiscvInstruction {
-        rom_address,
-        rvinst: inst as u32,
-        inst_type,
-        inst_name,
-        ..Default::default()
-    };
+    let mut i =
+        RiscvInst { rom_address, rvinst: inst as u32, inst_type, inst_name, ..Default::default() };
 
     // Decode the rest of instruction fields based on the instruction type
 
