@@ -69,7 +69,14 @@ main() {
         BUILD_FEATURES="--features $(IFS=,; echo "${FEATURES[*]}")"
     fi
 
-    ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES}
+    # Build the CUDA kernels for the current GPU's major compute capability,
+    # unless this is a CPU-only build.
+    CUDA_ENV=()
+    if [[ "${ONLY_CPU}" != "1" ]]; then
+        CUDA_ENV=(env CUDA_ARCHS="major")
+    fi
+
+    ensure "${CUDA_ENV[@]}" cargo build --release --target ${TARGET} ${BUILD_FEATURES}
 
     step "Copying binaries to ${ZISK_BIN_DIR}..."
     mkdir -p "${ZISK_BIN_DIR}"
