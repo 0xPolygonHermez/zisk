@@ -603,7 +603,7 @@ impl<F: PrimeField64> MemSM<F> {
         let mut step = 0;
         let mem_op_count = mem_ops.len();
         let mut last_row_idx = 0;
-        let mut previous_segment_addr = previous_segment.addr - (segment_id == 0) as u32;
+        let previous_segment_addr = previous_segment.addr - (segment_id == 0) as u32;
 
         // The address with offset 0 is the halo address, but point of view of continuations halo doesn't
         // implies a addr_changes, for this reason init current_offsets[0] with OFFSET_USE_FLAG

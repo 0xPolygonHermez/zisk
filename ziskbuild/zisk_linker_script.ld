@@ -100,6 +100,7 @@ SECTIONS
   /* reserved space for stack data */
   .stack_data (NOLOAD): {
   PROVIDE(_stack_start = .);
+  PROVIDE(_init_stack_bottom = .); # alias for the start of the reserved stack region
   . = . + _stack_size;
   PROVIDE(_init_stack_top = .); # reserve 4M bytes for the initialisation stack
   } >ram AT>ram :stack_data
