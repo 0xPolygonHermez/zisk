@@ -670,9 +670,9 @@ impl Stats {
     /// Called every time an operation is executed, if statistics are enabled
     pub fn on_op(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
         // Per-instruction execution trace, enabled by ziskemu's `--trace-steps`, or
-        // by `--trace-changes` from the requested step onwards (so that each change
-        // block is preceded by its instruction). At this point `self.costs.steps` is
-        // the current step (it is incremented below).
+        // by the change-trace window (`--trace-from` / `--trace-to`) from the requested
+        // step onwards (so that each change block is preceded by its instruction). At
+        // this point `self.costs.steps` is the current step (it is incremented below).
         if self.trace_steps
             || ((self.trace_from.is_some() || self.trace_to.is_some())
                 && self.costs.steps >= self.trace_from.unwrap_or(0)
