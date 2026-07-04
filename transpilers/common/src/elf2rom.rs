@@ -117,8 +117,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     }
 
     // Normalize RW data sections for ROM-data initialization: trim zero padding,
-    // merge sections that collide once expanded to 32-byte blocks, and carve out the
-    // largest internal all-zero regions (see normalize_rw_data_sections).
+    // merge sections that collide once expanded to 32-byte blocks, and carve out
+    // every internal all-zero region >= 1 KiB (see normalize_rw_data_sections).
     rw_data = normalize_rw_data_sections(rw_data);
 
     for section in &mut rw_data {
