@@ -122,7 +122,7 @@ pub const SYS_SIZE: u64 = 0x10000;
 /// First output RW memory address
 pub const OUTPUT_ADDR: u64 = SYS_ADDR + SYS_SIZE;
 /// Size of the output RW memory
-pub const OUTPUT_MAX_SIZE: u64 = 0x10000; // 64K
+pub const OUTPUT_MAX_SIZE: u64 = 0x20000; // 128K
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Size of the BIOS instruction area
