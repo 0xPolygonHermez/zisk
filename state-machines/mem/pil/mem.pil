@@ -357,8 +357,9 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
         (1 - addr_changes) * (addr - previous_addr) === 0;
     } else {
 
-        // In this case we don't need to substract one, as happends on immutable memory, because the step of first
-        // previous segment is 0 and first possible step is greater than 0.
+        // The first row must be "different" to force `address_change`. For this reason, we subtract 
+        // one from `previous_segment_addr` which in the first segment is equal to the first address 
+        // of the memory area.
 
         const expr air.previous_addr = SEGMENT_L1 * (previous_segment_addr - is_first_segment - 'addr) + 'addr;
         const expr delta_addr = addr - previous_addr;
