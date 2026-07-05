@@ -1,0 +1,21 @@
+[package]
+name = "frops-analyzer"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "frops-analyzer"
+path = "src/main.rs"
+
+[dependencies]
+zisk-core = { workspace = true }
+sm-arith = { workspace = true }
+sm-binary = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rayon = { workspace = true }

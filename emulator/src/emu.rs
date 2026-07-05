@@ -1827,6 +1827,7 @@ impl<'a> Emu<'a> {
         self.ctx.do_stats = options.stats
             || options.legacy_stats
             || options.trace_steps
+            || options.store_op_output.is_some()
             || options.trace_changes_enabled();
 
         // While not done
@@ -1954,7 +1955,8 @@ impl<'a> Emu<'a> {
         self.ctx.trace.start_state.pc = ROM_ENTRY;
 
         // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats || options.legacy_stats;
+        self.ctx.do_stats =
+            options.stats || options.legacy_stats || options.store_op_output.is_some();
 
         // Set emulation mode
         self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
@@ -2015,7 +2017,8 @@ impl<'a> Emu<'a> {
         self.ctx.trace.start_state.pc = ROM_ENTRY;
 
         // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats || options.legacy_stats;
+        self.ctx.do_stats =
+            options.stats || options.legacy_stats || options.store_op_output.is_some();
 
         // Set emulation mode
         self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
