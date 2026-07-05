@@ -429,6 +429,7 @@ def build_pod_steps(
             f"--input.folder {REMOTE_LOG_DIR}/inputs -n rpc --input.keep "
             f"-g {REMOTE_WORKSPACE_BIN_DIR}/zec-reth "
             f"--rpc.http-url {rpc_http_url} --rpc.ws-url {rpc_ws_url} "
+            f"--hints.debug --hints.debug-folder {REMOTE_LOG_DIR}/hints "
             f"--run-time {run_time} --exit-on-error "
             f"--proof.csv {REMOTE_LOG_DIR}/proof.csv"
         )

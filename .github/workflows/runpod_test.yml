@@ -152,8 +152,7 @@ jobs:
               cd /workspace/zisk
               python3 tools/runpod-test/deploy_cluster.py \
                 --ssh-key ~/.ssh/runpod_ed25519 \
-                --work-dir "$WORKSPACE_DIR" \
-                --run-time 10
+                --work-dir "$WORKSPACE_DIR"
             '
 
       - name: Download pod logs
