@@ -17,7 +17,7 @@
 #define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
 #define RAM_ADDR          (uint64_t)0xA0000000
 #define RAM_SIZE          (uint64_t)0x20000000 // 512MB
-#define SYS_ADDR          (RAM_ADDR)
+#define SYS_ADDR          (uint64_t)0xA0400000
 #define SYS_SIZE          (uint64_t)0x10000
 #define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 

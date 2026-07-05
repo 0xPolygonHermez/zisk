@@ -114,10 +114,53 @@ pub fn zkvm_init_socket(
     crate::hints::init_hints_socket(socket_path, debug_file, write_flush_threshold, ready)
 }
 
+/// Normalizes a guest entry-point's return value into a process exit code, so that
+/// [`entrypoint!`] accepts both `fn()` and `fn() -> i32` from a single macro arm.
+/// `macro_rules!` cannot branch on the entry's signature (macros expand before type
+/// checking), so the return type is resolved through this trait instead — the same
+/// role `std::process::Termination` plays for `fn main`.
+pub trait ZiskTermination {
+    fn to_exit_code(self) -> i32;
+}
+
+impl ZiskTermination for () {
+    #[inline]
+    fn to_exit_code(self) -> i32 {
+        // A plain `()` return is a successful completion.
+        0
+    }
+}
+
+impl ZiskTermination for i32 {
+    #[inline]
+    fn to_exit_code(self) -> i32 {
+        self
+    }
+}
+
+impl<T: ZiskTermination, E> ZiskTermination for Result<T, E> {
+    /// `Ok` delegates to the inner value's exit code; `Err` reports failure as `1`.
+    /// The error is intentionally not printed here (that would couple the trait to a
+    /// target-specific writer); log it inside the entry point before returning if a
+    /// diagnostic is needed.
+    #[inline]
+    fn to_exit_code(self) -> i32 {
+        match self {
+            Ok(value) => value.to_exit_code(),
+            Err(_) => 1,
+        }
+    }
+}
+
 #[macro_export]
 macro_rules! entrypoint {
     ($path:path) => {
-        const ZISK_ENTRY: fn() = $path;
+        // Defined in the caller's module so `$path` resolves in the same scope. It
+        // accepts an entry of type `fn()` or `fn() -> i32` — anything whose return
+        // value implements `ZiskTermination` — and normalizes it to an exit code.
+        fn __zisk_entry() -> i32 {
+            $crate::ZiskTermination::to_exit_code($path())
+        }
 
         mod zkvm_generated_main {
             // C ABI to match the `extern "C" { fn main() -> i32; }` declaration in
@@ -126,10 +169,9 @@ macro_rules! entrypoint {
             #[no_mangle]
             extern "C" fn main() -> i32 {
                 $crate::zkvm_init();
-                super::ZISK_ENTRY();
+                let code = super::__zisk_entry();
                 $crate::zkvm_deinit();
-                // Guest entry returns `()`, so a normal completion is success.
-                0
+                code
             }
         }
     };

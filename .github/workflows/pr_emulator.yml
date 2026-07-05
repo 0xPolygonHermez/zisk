@@ -38,10 +38,22 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Resolve zisk-testvectors branch
+        id: testvectors_branch
+        run: |
+          branch=$(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.metadata.gha_zisk_testvectors_branch // ""')
+          if [ -z "$branch" ] || [ "$branch" = "null" ]; then
+            branch="main"
+          fi
+          echo "Using zisk-testvectors branch: $branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
       - name: Checkout zisk-testvectors repo
         uses: actions/checkout@v4
         with:
           repository: 0xPolygonHermez/zisk-testvectors
+          ref: ${{ steps.testvectors_branch.outputs.branch }}
           path: zisk-testvectors
 
       - name: Install dependencies
@@ -77,10 +89,22 @@ jobs:
   #     - name: Checkout sources
   #       uses: actions/checkout@v4
 
+  #     - name: Resolve zisk-testvectors branch
+  #       id: testvectors_branch
+  #       run: |
+  #         branch=$(cargo metadata --no-deps --format-version 1 \
+  #           | jq -r '.metadata.gha_zisk_testvectors_branch // ""')
+  #         if [ -z "$branch" ] || [ "$branch" = "null" ]; then
+  #           branch="main"
+  #         fi
+  #         echo "Using zisk-testvectors branch: $branch"
+  #         echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
   #     - name: Checkout zisk-testvectors repo
   #       uses: actions/checkout@v4
   #       with:
   #         repository: 0xPolygonHermez/zisk-testvectors
+  #         ref: ${{ steps.testvectors_branch.outputs.branch }}
   #         path: zisk-testvectors
 
   #     - name: Install dependencies

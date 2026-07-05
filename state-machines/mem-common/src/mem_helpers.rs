@@ -1,6 +1,6 @@
 use crate::{
     MEMORY_LOAD_OP, MEMORY_STORE_OP, MEM_ADDR_ALIGN_MASK, MEM_BYTES_BITS, MEM_STEPS_BY_MAIN_STEP,
-    MEM_STEPS_BY_MAIN_STEP_BITS, MEM_STEP_BASE, RAM_W_ADDR_INIT,
+    MEM_STEPS_BY_MAIN_STEP_BITS, MEM_STEP_BASE,
 };
 use zisk_common::ChunkId;
 use zisk_core::{CHUNK_SIZE_BITS, RAM_ADDR, RAM_SIZE};
@@ -156,12 +156,6 @@ impl MemHelpers {
             8 => value,
             _ => panic!("Invalid bytes value"),
         }
-    }
-    pub fn register_to_addr(register: u8) -> u32 {
-        ((RAM_ADDR + register as u64) * 8) as u32
-    }
-    pub fn register_to_addr_w(register: u8) -> u32 {
-        RAM_W_ADDR_INIT + register as u32
     }
     #[inline(always)]
     pub fn mem_load(
