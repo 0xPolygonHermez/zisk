@@ -38,146 +38,166 @@ impl BinaryExtensionFrops {
     pub fn build_table(&mut self) {
         // op sll
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 4096 && b < 64
-        for a in 0..4096 {
-            for b in 0..64 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 4096 && b < 64
+            for a in 0..4096 {
+                for b in 0..64 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 4096 && a < 0x11000 && (a & 7) == 0 && b < 64
-        for a in (0x1000..0x11000).step_by(8) {
-            for b in 0..64 {
-                ops.push([a, b]);
+            // mid_box: a >= 4096 && a < 0x11000 && (a & 7) == 0 && b < 64
+            for a in (0x1000..0x11000).step_by(8) {
+                for b in 0..64 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x100F001 && a < 0x1011001 && (a & 7) == 1 && b >= 31 && b < 57
-        for a in (0x100F001..0x1011001).step_by(8) {
-            for b in 0x1F..0x39 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x100F001 && a < 0x1011001 && (a & 7) == 1 && b >= 31 && b < 57
+            for a in (0x100F001..0x1011001).step_by(8) {
+                for b in 0x1F..0x39 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0xFFFFFFFFFEFEF007 && a < 0xFFFFFFFFFEFF0007 && (a & 7) == 7 && b == 32
-        for a in (0xFFFFFFFFFEFEF007..0xFFFFFFFFFEFF0007).step_by(8) {
-            for b in 0x20..0x21 {
-                ops.push([a, b]);
+            // mid_box: a >= 0xFFFFFFFFFEFEF007 && a < 0xFFFFFFFFFEFF0007 && (a & 7) == 7 && b == 32
+            for a in (0xFFFFFFFFFEFEF007..0xFFFFFFFFFEFF0007).step_by(8) {
+                for b in 0x20..0x21 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_SLL, &mut ops, true);
+            self.table.add_ops(OP_SLL, &mut ops, true);
         }
         // op srl
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 4096 && b < 64
-        for a in 0..4096 {
-            for b in 0..64 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 4096 && b < 64
+            for a in 0..4096 {
+                for b in 0..64 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 4096 && a < 20480 && b < 64
-        for a in 0x1000..0x5000 {
-            for b in 0..64 {
-                ops.push([a, b]);
+            // mid_box: a >= 4096 && a < 20480 && b < 64
+            for a in 0x1000..0x5000 {
+                for b in 0..64 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58
-        for a in (0xC51C9669EAED000..0xC51C9669EAEE000).step_by(8) {
-            for b in 0x3A..0x3B {
-                ops.push([a, b]);
+            // mid_box: a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58
+            for a in (0xC51C9669EAED000..0xC51C9669EAEE000).step_by(8) {
+                for b in 0x3A..0x3B {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4
-        for a in 0x4444444444440000..0x4444444444445000 {
-            for b in 0x4..0x5 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4
+            for a in 0x4444444444440000..0x4444444444445000 {
+                for b in 0x4..0x5 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_SRL, &mut ops, true);
+            self.table.add_ops(OP_SRL, &mut ops, true);
         }
         // op sra
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // mid_box: a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 56
-        for a in (0x100000000000000..0x100000000001000).step_by(8) {
-            for b in 0x38..0x39 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // mid_box: a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 56
+            for a in (0x100000000000000..0x100000000001000).step_by(8) {
+                for b in 0x38..0x39 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x6000000000000000 && a < 0x6000000000001000 && (a & 7) == 0 && b == 56
-        for a in (0x6000000000000000..0x6000000000001000).step_by(8) {
-            for b in 0x38..0x39 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x6000000000000000 && a < 0x6000000000001000 && (a & 7) == 0 && b == 56
+            for a in (0x6000000000000000..0x6000000000001000).step_by(8) {
+                for b in 0x38..0x39 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x6100000000000000 && a < 0x6100000000001000 && (a & 7) == 0 && b == 56
-        for a in (0x6100000000000000..0x6100000000001000).step_by(8) {
-            for b in 0x38..0x39 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x6100000000000000 && a < 0x6100000000001000 && (a & 7) == 0 && b == 56
+            for a in (0x6100000000000000..0x6100000000001000).step_by(8) {
+                for b in 0x38..0x39 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x9000000000000000 && a < 0x9000000000001000 && (a & 7) == 0 && b == 56
-        for a in (0x9000000000000000..0x9000000000001000).step_by(8) {
-            for b in 0x38..0x39 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x9000000000000000 && a < 0x9000000000001000 && (a & 7) == 0 && b == 56
+            for a in (0x9000000000000000..0x9000000000001000).step_by(8) {
+                for b in 0x38..0x39 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_SRA, &mut ops, true);
+            self.table.add_ops(OP_SRA, &mut ops, true);
         }
         // op srl_w
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 531 && b < 32
-        for a in 0..531 {
-            for b in 0..32 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 531 && b < 32
+            for a in 0..531 {
+                for b in 0..32 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0xFFFFA007 && a < 0x100000007 && (a & 7) == 7 && b == 24
-        for a in (0xFFFFA007..0x100000007).step_by(8) {
-            for b in 0x18..0x19 {
-                ops.push([a, b]);
+            // mid_box: a >= 0xFFFFA007 && a < 0x100000007 && (a & 7) == 7 && b == 24
+            for a in (0xFFFFA007..0x100000007).step_by(8) {
+                for b in 0x18..0x19 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x11020000000000 && a < 0x11020000001000 && (a & 7) == 0 && b == 24
-        for a in (0x11020000000000..0x11020000001000).step_by(8) {
-            for b in 0x18..0x19 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x11020000000000 && a < 0x11020000001000 && (a & 7) == 0 && b == 24
+            for a in (0x11020000000000..0x11020000001000).step_by(8) {
+                for b in 0x18..0x19 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x1102000000000000 && a < 0x1102000000001000 && (a & 7) == 0 && b == 24
-        for a in (0x1102000000000000..0x1102000000001000).step_by(8) {
-            for b in 0x18..0x19 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x1102000000000000 && a < 0x1102000000001000 && (a & 7) == 0 && b == 24
+            for a in (0x1102000000000000..0x1102000000001000).step_by(8) {
+                for b in 0x18..0x19 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_SRLW, &mut ops, true);
+            self.table.add_ops(OP_SRLW, &mut ops, true);
         }
         // op sra_w
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 37 && b < 32
-        for a in 0..37 {
-            for b in 0..32 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 37 && b < 32
+            for a in 0..37 {
+                for b in 0..32 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // high_box: a >= 0xFFFFFFFFFFFFFF08 && b < 32
-        for a in 0xFFFFFFFFFFFFFF08..=u64::MAX {
-            for b in 0..32 {
-                ops.push([a, b]);
+            // high_box: a >= 0xFFFFFFFFFFFFFF08 && b < 32
+            for a in 0xFFFFFFFFFFFFFF08..=u64::MAX {
+                for b in 0..32 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_SRAW, &mut ops, true);
+            self.table.add_ops(OP_SRAW, &mut ops, true);
         }
     }
 
     #[inline(always)]
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
-            OP_SLL => a < 4096 && b < 64 || a >= 4096 && a < 0x11000 && (a & 7) == 0 && b < 64 || a >= 0x100F001 && a < 0x1011001 && (a & 7) == 1 && b >= 31 && b < 57 || a >= 0xFFFFFFFFFEFEF007 && a < 0xFFFFFFFFFEFF0007 && (a & 7) == 7 && b == 32,
-            OP_SRL => a < 4096 && b < 64 || a >= 4096 && a < 20480 && b < 64 || a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58 || a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4,
-            OP_SRA => a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 56 || a >= 0x6000000000000000 && a < 0x6000000000001000 && (a & 7) == 0 && b == 56 || a >= 0x6100000000000000 && a < 0x6100000000001000 && (a & 7) == 0 && b == 56 || a >= 0x9000000000000000 && a < 0x9000000000001000 && (a & 7) == 0 && b == 56,
-            OP_SRLW => a < 531 && b < 32 || a >= 0xFFFFA007 && a < 0x100000007 && (a & 7) == 7 && b == 24 || a >= 0x11020000000000 && a < 0x11020000001000 && (a & 7) == 0 && b == 24 || a >= 0x1102000000000000 && a < 0x1102000000001000 && (a & 7) == 0 && b == 24,
+            OP_SLL => {
+                a < 4096 && b < 64
+                    || a >= 4096 && a < 0x11000 && (a & 7) == 0 && b < 64
+                    || a >= 0x100F001 && a < 0x1011001 && (a & 7) == 1 && b >= 31 && b < 57
+                    || a >= 0xFFFFFFFFFEFEF007 && a < 0xFFFFFFFFFEFF0007 && (a & 7) == 7 && b == 32
+            }
+            OP_SRL => {
+                a < 4096 && b < 64
+                    || a >= 4096 && a < 20480 && b < 64
+                    || a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58
+                    || a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4
+            }
+            OP_SRA => {
+                a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 56
+                    || a >= 0x6000000000000000 && a < 0x6000000000001000 && (a & 7) == 0 && b == 56
+                    || a >= 0x6100000000000000 && a < 0x6100000000001000 && (a & 7) == 0 && b == 56
+                    || a >= 0x9000000000000000 && a < 0x9000000000001000 && (a & 7) == 0 && b == 56
+            }
+            OP_SRLW => {
+                a < 531 && b < 32
+                    || a >= 0xFFFFA007 && a < 0x100000007 && (a & 7) == 7 && b == 24
+                    || a >= 0x11020000000000 && a < 0x11020000001000 && (a & 7) == 0 && b == 24
+                    || a >= 0x1102000000000000 && a < 0x1102000000001000 && (a & 7) == 0 && b == 24
+            }
             OP_SRAW => a < 37 && b < 32 || a >= 0xFFFFFFFFFFFFFF08 && b < 32,
             _ => false,
         }
@@ -193,7 +213,11 @@ impl BinaryExtensionFrops {
                     (((a - 0x1000) / 8) * 64 + b) as usize + 262144
                 } else if a >= 0x100F001 && a < 0x1011001 && (a & 7) == 1 && b >= 31 && b < 57 {
                     (((a - 0x100F001) / 8) * 26 + (b - 0x1F)) as usize + 786432
-                } else if a >= 0xFFFFFFFFFEFEF007 && a < 0xFFFFFFFFFEFF0007 && (a & 7) == 7 && b == 32 {
+                } else if a >= 0xFFFFFFFFFEFEF007
+                    && a < 0xFFFFFFFFFEFF0007
+                    && (a & 7) == 7
+                    && b == 32
+                {
                     ((a - 0xFFFFFFFFFEFEF007) / 8) as usize + 813056
                 } else {
                     Self::NO_FROPS
@@ -204,7 +228,8 @@ impl BinaryExtensionFrops {
                     (a * 64 + b) as usize
                 } else if a >= 4096 && a < 20480 && b < 64 {
                     ((a - 0x1000) * 64 + b) as usize + 262144
-                } else if a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58 {
+                } else if a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58
+                {
                     ((a - 0xC51C9669EAED000) / 8) as usize + 1310720
                 } else if a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4 {
                     (a - 0x4444444444440000) as usize + 1311232
@@ -215,11 +240,23 @@ impl BinaryExtensionFrops {
             OP_SRA => {
                 if a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 56 {
                     ((a - 0x100000000000000) / 8) as usize
-                } else if a >= 0x6000000000000000 && a < 0x6000000000001000 && (a & 7) == 0 && b == 56 {
+                } else if a >= 0x6000000000000000
+                    && a < 0x6000000000001000
+                    && (a & 7) == 0
+                    && b == 56
+                {
                     ((a - 0x6000000000000000) / 8) as usize + 512
-                } else if a >= 0x6100000000000000 && a < 0x6100000000001000 && (a & 7) == 0 && b == 56 {
+                } else if a >= 0x6100000000000000
+                    && a < 0x6100000000001000
+                    && (a & 7) == 0
+                    && b == 56
+                {
                     ((a - 0x6100000000000000) / 8) as usize + 1024
-                } else if a >= 0x9000000000000000 && a < 0x9000000000001000 && (a & 7) == 0 && b == 56 {
+                } else if a >= 0x9000000000000000
+                    && a < 0x9000000000001000
+                    && (a & 7) == 0
+                    && b == 56
+                {
                     ((a - 0x9000000000000000) / 8) as usize + 1536
                 } else {
                     Self::NO_FROPS
@@ -232,7 +269,11 @@ impl BinaryExtensionFrops {
                     ((a - 0xFFFFA007) / 8) as usize + 16992
                 } else if a >= 0x11020000000000 && a < 0x11020000001000 && (a & 7) == 0 && b == 24 {
                     ((a - 0x11020000000000) / 8) as usize + 20064
-                } else if a >= 0x1102000000000000 && a < 0x1102000000001000 && (a & 7) == 0 && b == 24 {
+                } else if a >= 0x1102000000000000
+                    && a < 0x1102000000001000
+                    && (a & 7) == 0
+                    && b == 24
+                {
                     ((a - 0x1102000000000000) / 8) as usize + 20576
                 } else {
                     Self::NO_FROPS

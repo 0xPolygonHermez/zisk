@@ -37,79 +37,86 @@ impl ArithFrops {
     pub fn build_table(&mut self) {
         // op muluh
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 540 && b < 652
-        for a in 0..540 {
-            for b in 0..652 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 540 && b < 652
+            for a in 0..540 {
+                for b in 0..652 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-        for a in (0xFFFFF000..0x100001000).step_by(8) {
-            for b in 0..19 {
-                ops.push([a, b]);
+            // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+            for a in (0xFFFFF000..0x100001000).step_by(8) {
+                for b in 0..19 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_MULUH, &mut ops, true);
+            self.table.add_ops(OP_MULUH, &mut ops, true);
         }
         // op mul
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 635 && b < 731
-        for a in 0..635 {
-            for b in 0..731 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 635 && b < 731
+            for a in 0..635 {
+                for b in 0..731 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-        for a in (0xFFFFF000..0x100001000).step_by(8) {
-            for b in 0..19 {
-                ops.push([a, b]);
+            // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+            for a in (0xFFFFF000..0x100001000).step_by(8) {
+                for b in 0..19 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
-        for a in (0x7FFFFFF001..0x8000001001).step_by(8) {
-            for b in 0x7FD..0x7FE {
-                ops.push([a, b]);
+            // mid_box: a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
+            for a in (0x7FFFFFF001..0x8000001001).step_by(8) {
+                for b in 0x7FD..0x7FE {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
-        for a in 0x3FE8000000000..0x3FE8000001000 {
-            for b in 0x7FD..0x7FE {
-                ops.push([a, b]);
+            // mid_box: a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
+            for a in 0x3FE8000000000..0x3FE8000001000 {
+                for b in 0x7FD..0x7FE {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_MUL, &mut ops, true);
+            self.table.add_ops(OP_MUL, &mut ops, true);
         }
         // op divu
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 2402 && b < 513
-        for a in 0..2402 {
-            for b in 0..513 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 2402 && b < 513
+            for a in 0..2402 {
+                for b in 0..513 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_DIVU, &mut ops, true);
+            self.table.add_ops(OP_DIVU, &mut ops, true);
         }
         // op remu
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 3 && b < 3
-        for a in 0..3 {
-            for b in 0..3 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 3 && b < 3
+            for a in 0..3 {
+                for b in 0..3 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_REMU, &mut ops, true);
+            self.table.add_ops(OP_REMU, &mut ops, true);
         }
     }
 
     #[inline(always)]
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
-            OP_MULUH => a < 540 && b < 652 || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19,
-            OP_MUL => a < 635 && b < 731 || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 || a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045 || a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045,
+            OP_MULUH => {
+                a < 540 && b < 652 || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+            }
+            OP_MUL => {
+                a < 635 && b < 731
+                    || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+                    || a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
+                    || a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
+            }
             OP_DIVU => a < 2402 && b < 513,
             OP_REMU => a < 3 && b < 3,
             _ => false,

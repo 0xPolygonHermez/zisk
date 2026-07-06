@@ -339,7 +339,9 @@ fn mid_box_groups(agg: &OpAgg) -> Vec<Vec<Candidate>> {
             for pg in &pages[start..=end] {
                 let bc: u64 = page_bs
                     .get(&pg.page)
-                    .map(|v| v.iter().filter(|(b, _)| *b >= b_lo && *b < b_hi).map(|(_, c)| c).sum())
+                    .map(|v| {
+                        v.iter().filter(|(b, _)| *b >= b_lo && *b < b_hi).map(|(_, c)| c).sum()
+                    })
                     .unwrap_or(0);
                 hits_dense += bc;
                 let ptot: u64 = pg.a_rem.iter().sum();
