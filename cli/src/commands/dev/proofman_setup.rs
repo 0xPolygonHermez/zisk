@@ -2,6 +2,7 @@ use anyhow::Result;
 use zisk_build::ZISK_VERSION_MESSAGE;
 
 mod compile_pil;
+mod gen_exps;
 mod rebuild_witness_libs;
 mod setup;
 mod setup_compressed_final;
@@ -10,6 +11,7 @@ mod setup_snark;
 mod stats;
 
 pub(crate) use compile_pil::ZiskProofmanCompilePil;
+pub(crate) use gen_exps::ZiskProofmanGenExps;
 pub(crate) use rebuild_witness_libs::ZiskProofmanRebuildWitnessLibs;
 pub(crate) use setup::ZiskProofmanSetupSetup;
 pub(crate) use setup_compressed_final::ZiskProofmanSetupCompressedFinal;
@@ -41,6 +43,9 @@ pub(crate) enum ZiskProofmanSetupCommand {
     /// Rebuild every witness library (.so/.dylib) in an existing provingKey
     /// without re-running the full setup pipeline.
     RebuildWitnessLibs(ZiskProofmanRebuildWitnessLibs),
+    /// Generate per-AIR Q-expression CUDA kernels (.exps.so) for an existing
+    /// provingKey without re-running the full setup pipeline.
+    GenExps(ZiskProofmanGenExps),
     /// Compile a `.pil` source into a `.pilout` via the JS pil2-compiler.
     CompilePil(ZiskProofmanCompilePil),
 }
@@ -58,6 +63,7 @@ impl ProofmanSetupCmd {
             ZiskProofmanSetupCommand::SetupCompressedFinal(cmd) => cmd.run(),
             ZiskProofmanSetupCommand::SetupRecursiveTest(cmd) => cmd.run(),
             ZiskProofmanSetupCommand::RebuildWitnessLibs(cmd) => cmd.run(),
+            ZiskProofmanSetupCommand::GenExps(cmd) => cmd.run(),
             ZiskProofmanSetupCommand::CompilePil(cmd) => cmd.run(),
         }
     }

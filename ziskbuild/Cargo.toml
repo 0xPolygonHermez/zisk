@@ -10,9 +10,11 @@ categories.workspace = true
 [dependencies]
 clap = { workspace = true }
 cargo_metadata = "0.23.0"
+cargo-config2 = "0.1"
 anyhow = { workspace = true }
 rom-setup = { workspace = true }
 blake3 = { workspace = true }
+tempfile = "3"
 
 [build-dependencies]
 vergen-git2.workspace = true

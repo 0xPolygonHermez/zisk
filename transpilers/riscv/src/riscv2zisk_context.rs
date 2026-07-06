@@ -2,7 +2,7 @@
 //! instances of ZiskInstBuilder, and accumulates these instances in a hash map as a public
 //! attribute.
 
-use crate::{riscv_interpreter, RiscvInstruction};
+use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
     SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
     SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
@@ -105,18 +105,14 @@ impl Riscv2ZiskContext<'_> {
     /// # Parameters
     /// * `riscv_instruction` - The current instruction to convert
     /// * `next_instructions` - Slice of the remaining instructions after the current one
-    pub fn convert(
-        &mut self,
-        riscv_instruction: &RiscvInstruction,
-        next_instructions: &[RiscvInstruction],
-    ) {
+    pub fn convert(&mut self, riscv_instruction: &RiscvInst, next_instructions: &[RiscvInst]) {
         // ZisK supports the IMAC RISC-V instruction set
-        match riscv_instruction.inst.as_str() {
+        match riscv_instruction.inst_name {
             // I: Base Integer Instruction Set
             //////////////////////////////////
 
             // I.1. Integer Computational (Register-Register)
-            "add" => {
+            RiscvInstName::Add => {
                 if riscv_instruction.rd == 0
                     && self.input_precompile == Some(SYSCALL_DMA_MEMCPY_ID as u32)
                 {
@@ -150,14 +146,14 @@ impl Riscv2ZiskContext<'_> {
                     self.create_register_op(riscv_instruction, "add", 4);
                 }
             }
-            "sub" => self.create_register_op(riscv_instruction, "sub", 4),
-            "sll" => self.create_register_op(riscv_instruction, "sll", 4),
-            "slt" => self.create_register_op(riscv_instruction, "lt", 4),
-            "sltu" => self.create_register_op(riscv_instruction, "ltu", 4),
-            "xor" => self.create_register_op(riscv_instruction, "xor", 4),
-            "srl" => self.create_register_op(riscv_instruction, "srl", 4),
-            "sra" => self.create_register_op(riscv_instruction, "sra", 4),
-            "or" => {
+            RiscvInstName::Sub => self.create_register_op(riscv_instruction, "sub", 4),
+            RiscvInstName::Sll => self.create_register_op(riscv_instruction, "sll", 4),
+            RiscvInstName::Slt => self.create_register_op(riscv_instruction, "lt", 4),
+            RiscvInstName::Sltu => self.create_register_op(riscv_instruction, "ltu", 4),
+            RiscvInstName::Xor => self.create_register_op(riscv_instruction, "xor", 4),
+            RiscvInstName::Srl => self.create_register_op(riscv_instruction, "srl", 4),
+            RiscvInstName::Sra => self.create_register_op(riscv_instruction, "sra", 4),
+            RiscvInstName::Or => {
                 if riscv_instruction.rs1 == 0 {
                     // rd = rs1(0) | rs2 = rs2
                     self.copyb(riscv_instruction, 4, 2);
@@ -168,15 +164,15 @@ impl Riscv2ZiskContext<'_> {
                     self.create_register_op(riscv_instruction, "or", 4);
                 }
             }
-            "and" => self.create_register_op(riscv_instruction, "and", 4),
-            "addw" => self.create_register_op(riscv_instruction, "add_w", 4),
-            "subw" => self.create_register_op(riscv_instruction, "sub_w", 4),
-            "sllw" => self.create_register_op(riscv_instruction, "sll_w", 4),
-            "srlw" => self.create_register_op(riscv_instruction, "srl_w", 4),
-            "sraw" => self.create_register_op(riscv_instruction, "sra_w", 4),
+            RiscvInstName::And => self.create_register_op(riscv_instruction, "and", 4),
+            RiscvInstName::Addw => self.create_register_op(riscv_instruction, "add_w", 4),
+            RiscvInstName::Subw => self.create_register_op(riscv_instruction, "sub_w", 4),
+            RiscvInstName::Sllw => self.create_register_op(riscv_instruction, "sll_w", 4),
+            RiscvInstName::Srlw => self.create_register_op(riscv_instruction, "srl_w", 4),
+            RiscvInstName::Sraw => self.create_register_op(riscv_instruction, "sra_w", 4),
 
             // I.2. Integer Computational (Register-Immediate)
-            "addi" => {
+            RiscvInstName::Addi => {
                 if riscv_instruction.rd == 0 {
                     if riscv_instruction.rs1 == 0 && riscv_instruction.rs2 == 0 {
                         // r0 = r0 + imm(0) = 0
@@ -191,16 +187,16 @@ impl Riscv2ZiskContext<'_> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 4);
                 }
             }
-            "slli" => self.immediate_op(riscv_instruction, "sll", 4),
-            "slti" => self.immediate_op(riscv_instruction, "lt", 4),
-            "sltiu" => self.immediate_op(riscv_instruction, "ltu", 4),
-            "xori" => self.immediate_op_or_x0_copyb(riscv_instruction, "xor", 4),
-            "srli" => self.immediate_op(riscv_instruction, "srl", 4),
-            "srai" => self.immediate_op(riscv_instruction, "sra", 4),
-            "ori" => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
-            "andi" => self.immediate_op(riscv_instruction, "and", 4),
-            "auipc" => self.auipc(riscv_instruction, next_instructions),
-            "addiw" => {
+            RiscvInstName::Slli => self.immediate_op(riscv_instruction, "sll", 4),
+            RiscvInstName::Slti => self.immediate_op(riscv_instruction, "lt", 4),
+            RiscvInstName::Sltiu => self.immediate_op(riscv_instruction, "ltu", 4),
+            RiscvInstName::Xori => self.immediate_op_or_x0_copyb(riscv_instruction, "xor", 4),
+            RiscvInstName::Srli => self.immediate_op(riscv_instruction, "srl", 4),
+            RiscvInstName::Srai => self.immediate_op(riscv_instruction, "sra", 4),
+            RiscvInstName::Ori => self.immediate_op_or_x0_copyb(riscv_instruction, "or", 4),
+            RiscvInstName::Andi => self.immediate_op(riscv_instruction, "and", 4),
+            RiscvInstName::Auipc => self.auipc(riscv_instruction, next_instructions),
+            RiscvInstName::Addiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
                     && riscv_instruction.imm == 0
@@ -211,100 +207,122 @@ impl Riscv2ZiskContext<'_> {
                     self.immediate_op(riscv_instruction, "add_w", 4);
                 }
             }
-            "slliw" => self.immediate_op(riscv_instruction, "sll_w", 4),
-            "srliw" => self.immediate_op(riscv_instruction, "srl_w", 4),
-            "sraiw" => self.immediate_op(riscv_instruction, "sra_w", 4),
+            RiscvInstName::Slliw => self.immediate_op(riscv_instruction, "sll_w", 4),
+            RiscvInstName::Srliw => self.immediate_op(riscv_instruction, "srl_w", 4),
+            RiscvInstName::Sraiw => self.immediate_op(riscv_instruction, "sra_w", 4),
 
             // I.3. Control Transfer Instructions
-            "jalr" => self.jalr(riscv_instruction, 4),
-            "jal" => self.jal(riscv_instruction, 4),
-            "beq" => self.create_branch_op(riscv_instruction, "eq", false, 4),
-            "bne" => self.create_branch_op(riscv_instruction, "eq", true, 4),
-            "blt" => self.create_branch_op(riscv_instruction, "lt", false, 4),
-            "bge" => self.create_branch_op(riscv_instruction, "lt", true, 4),
-            "bltu" => self.create_branch_op(riscv_instruction, "ltu", false, 4),
-            "bgeu" => self.create_branch_op(riscv_instruction, "ltu", true, 4),
+            RiscvInstName::Jalr => self.jalr(riscv_instruction, 4),
+            RiscvInstName::Jal => self.jal(riscv_instruction, 4),
+            RiscvInstName::Beq => self.create_branch_op(riscv_instruction, "eq", false, 4),
+            RiscvInstName::Bne => self.create_branch_op(riscv_instruction, "eq", true, 4),
+            RiscvInstName::Blt => self.create_branch_op(riscv_instruction, "lt", false, 4),
+            RiscvInstName::Bge => self.create_branch_op(riscv_instruction, "lt", true, 4),
+            RiscvInstName::Bltu => self.create_branch_op(riscv_instruction, "ltu", false, 4),
+            RiscvInstName::Bgeu => self.create_branch_op(riscv_instruction, "ltu", true, 4),
 
             // I.4. Load and Store Instructions
-            "lb" => self.load_op(riscv_instruction, "signextend_b", 1, 4),
-            "lbu" => self.load_op(riscv_instruction, "copyb", 1, 4),
-            "lh" => self.load_op(riscv_instruction, "signextend_h", 2, 4),
-            "lhu" => self.load_op(riscv_instruction, "copyb", 2, 4),
-            "lw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
-            "lwu" => self.load_op(riscv_instruction, "copyb", 4, 4),
-            "ld" => self.load_op(riscv_instruction, "copyb", 8, 4),
-            "lr.w" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
-            "lr.d" => self.load_op(riscv_instruction, "copyb", 8, 4),
-            "lui" => self.lui(riscv_instruction, 4),
-            "sb" => self.store_op(riscv_instruction, "copyb", 1, 4),
-            "sh" => self.store_op(riscv_instruction, "copyb", 2, 4),
-            "sw" => self.store_op(riscv_instruction, "copyb", 4, 4),
-            "sd" => self.store_op(riscv_instruction, "copyb", 8, 4),
-            "sc.w" => self.sc_w(riscv_instruction),
-            "sc.d" => self.sc_d(riscv_instruction),
+            RiscvInstName::Lb => self.load_op(riscv_instruction, "signextend_b", 1, 4),
+            RiscvInstName::Lbu => self.load_op(riscv_instruction, "copyb", 1, 4),
+            RiscvInstName::Lh => self.load_op(riscv_instruction, "signextend_h", 2, 4),
+            RiscvInstName::Lhu => self.load_op(riscv_instruction, "copyb", 2, 4),
+            RiscvInstName::Lw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Lwu => self.load_op(riscv_instruction, "copyb", 4, 4),
+            RiscvInstName::Ld => self.load_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::LrW => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::LrD => self.load_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::Lui => self.lui(riscv_instruction, 4),
+            RiscvInstName::Sb => self.store_op(riscv_instruction, "copyb", 1, 4),
+            RiscvInstName::Sh => self.store_op(riscv_instruction, "copyb", 2, 4),
+            RiscvInstName::Sw => self.store_op(riscv_instruction, "copyb", 4, 4),
+            RiscvInstName::Sd => self.store_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::ScW => self.sc_w(riscv_instruction),
+            RiscvInstName::ScD => self.sc_d(riscv_instruction),
 
             // I.5. Memory Ordering & Fence Instructions
-            "fence" => self.nop(riscv_instruction, 4),
-            "fence.i" => self.nop(riscv_instruction, 4),
+            RiscvInstName::Fence => self.nop(riscv_instruction, 4),
+            RiscvInstName::FenceI => self.nop(riscv_instruction, 4),
 
             // I.6 Privileged & System Instructions (Part of I Base)
-            "ecall" => self.ecall(riscv_instruction),
-            "ebreak" => self.nop(riscv_instruction, 4),
-            "csrrw" => self.csrrw(riscv_instruction),
-            "csrrs" => self.csrrs(riscv_instruction, next_instructions),
-            "csrrc" => self.csrrc(riscv_instruction),
-            "csrrwi" => self.csrrwi(riscv_instruction),
-            "csrrsi" => self.csrrsi(riscv_instruction, next_instructions),
-            "csrrci" => self.csrrci(riscv_instruction),
+            RiscvInstName::Ecall => self.ecall(riscv_instruction),
+            RiscvInstName::Ebreak => self.nop(riscv_instruction, 4),
+            RiscvInstName::Csrrw => self.csrrw(riscv_instruction),
+            RiscvInstName::Csrrs => self.csrrs(riscv_instruction, next_instructions),
+            RiscvInstName::Csrrc => self.csrrc(riscv_instruction),
+            RiscvInstName::Csrrwi => self.csrrwi(riscv_instruction),
+            RiscvInstName::Csrrsi => self.csrrsi(riscv_instruction, next_instructions),
+            RiscvInstName::Csrrci => self.csrrci(riscv_instruction),
 
             // M: Integer Multiplication and Division
             /////////////////////////////////////////
-            "mul" => self.create_register_op(riscv_instruction, "mul", 4),
-            "mulh" => self.create_register_op(riscv_instruction, "mulh", 4),
-            "mulhsu" => self.create_register_op(riscv_instruction, "mulsuh", 4),
-            "mulhu" => self.create_register_op(riscv_instruction, "muluh", 4),
-            "mulw" => self.create_register_op(riscv_instruction, "mul_w", 4),
-            "div" => self.create_register_op(riscv_instruction, "div", 4),
-            "divu" => self.create_register_op(riscv_instruction, "divu", 4),
-            "divw" => self.create_register_op(riscv_instruction, "div_w", 4),
-            "divuw" => self.create_register_op(riscv_instruction, "divu_w", 4),
-            "rem" => self.create_register_op(riscv_instruction, "rem", 4),
-            "remu" => self.create_register_op(riscv_instruction, "remu", 4),
-            "remw" => self.create_register_op(riscv_instruction, "rem_w", 4),
-            "remuw" => self.create_register_op(riscv_instruction, "remu_w", 4),
+            RiscvInstName::Mul => self.create_register_op(riscv_instruction, "mul", 4),
+            RiscvInstName::Mulh => self.create_register_op(riscv_instruction, "mulh", 4),
+            RiscvInstName::Mulhsu => self.create_register_op(riscv_instruction, "mulsuh", 4),
+            RiscvInstName::Mulhu => self.create_register_op(riscv_instruction, "muluh", 4),
+            RiscvInstName::Mulw => self.create_register_op(riscv_instruction, "mul_w", 4),
+            RiscvInstName::Div => self.create_register_op(riscv_instruction, "div", 4),
+            RiscvInstName::Divu => self.create_register_op(riscv_instruction, "divu", 4),
+            RiscvInstName::Divw => self.create_register_op(riscv_instruction, "div_w", 4),
+            RiscvInstName::Divuw => self.create_register_op(riscv_instruction, "divu_w", 4),
+            RiscvInstName::Rem => self.create_register_op(riscv_instruction, "rem", 4),
+            RiscvInstName::Remu => self.create_register_op(riscv_instruction, "remu", 4),
+            RiscvInstName::Remw => self.create_register_op(riscv_instruction, "rem_w", 4),
+            RiscvInstName::Remuw => self.create_register_op(riscv_instruction, "remu_w", 4),
 
             // A: Atomic Instructions
             /////////////////////////
-            "amoswap.d" => self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8),
-            "amoadd.d" => self.create_atomic_op(riscv_instruction, "copyb", "add", "copyb", 8),
-            "amoxor.d" => self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 8),
-            "amoand.d" => self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 8),
-            "amoor.d" => self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 8),
-            "amomin.d" => self.create_atomic_op(riscv_instruction, "copyb", "min", "copyb", 8),
-            "amomax.d" => self.create_atomic_op(riscv_instruction, "copyb", "max", "copyb", 8),
-            "amominu.d" => self.create_atomic_op(riscv_instruction, "copyb", "minu", "copyb", 8),
-            "amomaxu.d" => self.create_atomic_op(riscv_instruction, "copyb", "maxu", "copyb", 8),
-            "amoswap.w" => self.create_atomic_swap(riscv_instruction, "signextend_w", "copyb", 4),
-            "amoadd.w" => {
+            RiscvInstName::AmoswapD => {
+                self.create_atomic_swap(riscv_instruction, "copyb", "copyb", 8)
+            }
+            RiscvInstName::AmoaddD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "add", "copyb", 8)
+            }
+            RiscvInstName::AmoxorD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "xor", "copyb", 8)
+            }
+            RiscvInstName::AmoandD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "and", "copyb", 8)
+            }
+            RiscvInstName::AmoorD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "or", "copyb", 8)
+            }
+            RiscvInstName::AmominD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "min", "copyb", 8)
+            }
+            RiscvInstName::AmomaxD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "max", "copyb", 8)
+            }
+            RiscvInstName::AmominuD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "minu", "copyb", 8)
+            }
+            RiscvInstName::AmomaxuD => {
+                self.create_atomic_op(riscv_instruction, "copyb", "maxu", "copyb", 8)
+            }
+            RiscvInstName::AmoswapW => {
+                self.create_atomic_swap(riscv_instruction, "signextend_w", "copyb", 4)
+            }
+            RiscvInstName::AmoaddW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "add_w", "copyb", 4)
             }
-            "amoxor.w" => {
+            RiscvInstName::AmoxorW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "xor", "copyb", 4)
             }
-            "amoand.w" => {
+            RiscvInstName::AmoandW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "and", "copyb", 4)
             }
-            "amoor.w" => self.create_atomic_op(riscv_instruction, "signextend_w", "or", "copyb", 4),
-            "amomin.w" => {
+            RiscvInstName::AmoorW => {
+                self.create_atomic_op(riscv_instruction, "signextend_w", "or", "copyb", 4)
+            }
+            RiscvInstName::AmominW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "min_w", "copyb", 4)
             }
-            "amomax.w" => {
+            RiscvInstName::AmomaxW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "max_w", "copyb", 4)
             }
-            "amominu.w" => {
+            RiscvInstName::AmominuW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "minu_w", "copyb", 4)
             }
-            "amomaxu.w" => {
+            RiscvInstName::AmomaxuW => {
                 self.create_atomic_op(riscv_instruction, "signextend_w", "maxu_w", "copyb", 4)
             }
 
@@ -312,16 +330,18 @@ impl Riscv2ZiskContext<'_> {
             //////////////////////////////////////
 
             // C.I.1. Integer Computational (Register-Register)
-            "c.mv" | "c.add" => self.create_register_op(riscv_instruction, "add", 2),
-            "c.sub" => self.create_register_op(riscv_instruction, "sub", 2),
-            "c.xor" => self.create_register_op(riscv_instruction, "xor", 2),
-            "c.or" => self.create_register_op(riscv_instruction, "or", 2),
-            "c.and" => self.create_register_op(riscv_instruction, "and", 2),
-            "c.addw" => self.create_register_op(riscv_instruction, "add_w", 2),
-            "c.subw" => self.create_register_op(riscv_instruction, "sub_w", 2),
+            RiscvInstName::CMv | RiscvInstName::CAdd => {
+                self.create_register_op(riscv_instruction, "add", 2)
+            }
+            RiscvInstName::CSub => self.create_register_op(riscv_instruction, "sub", 2),
+            RiscvInstName::CXor => self.create_register_op(riscv_instruction, "xor", 2),
+            RiscvInstName::COr => self.create_register_op(riscv_instruction, "or", 2),
+            RiscvInstName::CAnd => self.create_register_op(riscv_instruction, "and", 2),
+            RiscvInstName::CAddw => self.create_register_op(riscv_instruction, "add_w", 2),
+            RiscvInstName::CSubw => self.create_register_op(riscv_instruction, "sub_w", 2),
 
             // C.I.2. Integer Computational (Register-Immediate)
-            "c.addi" => {
+            RiscvInstName::CAddi => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
                     && riscv_instruction.rs2 == 0
@@ -334,14 +354,14 @@ impl Riscv2ZiskContext<'_> {
                     self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
                 }
             }
-            "c.addi4spn" | "c.li" | "c.addi16sp" => {
+            RiscvInstName::CAddi4spn | RiscvInstName::CLi | RiscvInstName::CAddi16sp => {
                 self.immediate_op_or_x0_copyb(riscv_instruction, "add", 2);
             }
-            "c.slli" => self.immediate_op(riscv_instruction, "sll", 2),
-            "c.srli" => self.immediate_op(riscv_instruction, "srl", 2),
-            "c.srai" => self.immediate_op(riscv_instruction, "sra", 2),
-            "c.andi" => self.immediate_op(riscv_instruction, "and", 2),
-            "c.addiw" => {
+            RiscvInstName::CSlli => self.immediate_op(riscv_instruction, "sll", 2),
+            RiscvInstName::CSrli => self.immediate_op(riscv_instruction, "srl", 2),
+            RiscvInstName::CSrai => self.immediate_op(riscv_instruction, "sra", 2),
+            RiscvInstName::CAndi => self.immediate_op(riscv_instruction, "and", 2),
+            RiscvInstName::CAddiw => {
                 if riscv_instruction.rd == 0
                     && riscv_instruction.rs1 == 0
                     && riscv_instruction.imm == 0
@@ -354,212 +374,224 @@ impl Riscv2ZiskContext<'_> {
             }
 
             // C.I.3. Control Transfer Instructions
-            "c.jr" | "c.jalr" => self.jalr(riscv_instruction, 2),
-            "c.j" => self.jal(riscv_instruction, 2),
-            "c.beqz" => self.create_branch_op(riscv_instruction, "eq", false, 2),
-            "c.bne" | "c.bnez" => self.create_branch_op(riscv_instruction, "eq", true, 2),
+            RiscvInstName::CJr | RiscvInstName::CJalr => self.jalr(riscv_instruction, 2),
+            RiscvInstName::CJ => self.jal(riscv_instruction, 2),
+            RiscvInstName::CBeqz => self.create_branch_op(riscv_instruction, "eq", false, 2),
+            RiscvInstName::CBnez => self.create_branch_op(riscv_instruction, "eq", true, 2),
 
             // C.I.4. Load and Store Instructions
-            "c.lw" | "c.lwsp" => self.load_op(riscv_instruction, "signextend_w", 4, 2),
-            "c.ld" | "c.ldsp" => self.load_op(riscv_instruction, "copyb", 8, 2),
-            "c.lui" => self.lui(riscv_instruction, 2),
-            "c.sw" | "c.swsp" => self.store_op(riscv_instruction, "copyb", 4, 2),
-            "c.sd" | "c.sdsp" => self.store_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CLw | RiscvInstName::CLwsp => {
+                self.load_op(riscv_instruction, "signextend_w", 4, 2)
+            }
+            RiscvInstName::CLd | RiscvInstName::CLdsp => {
+                self.load_op(riscv_instruction, "copyb", 8, 2)
+            }
+            RiscvInstName::CLui => self.lui(riscv_instruction, 2),
+            RiscvInstName::CSw | RiscvInstName::CSwsp => {
+                self.store_op(riscv_instruction, "copyb", 4, 2)
+            }
+            RiscvInstName::CSd | RiscvInstName::CSdsp => {
+                self.store_op(riscv_instruction, "copyb", 8, 2)
+            }
 
             // C.I.6.Privileged & System Instructions
-            "c.ebreak" => self.nop(riscv_instruction, 2),
+            RiscvInstName::CEbreak => self.nop(riscv_instruction, 2),
 
             // C.D: Double-Precision Floating-Point:
             #[cfg(feature = "float")]
-            "c.fld" => self.load_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFld => self.load_op(riscv_instruction, "copyb", 8, 2),
             #[cfg(feature = "float")]
-            "c.fsd" => self.store_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFsd => self.store_op(riscv_instruction, "copyb", 8, 2),
             #[cfg(feature = "float")]
-            "c.fldsp" => self.load_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFldsp => self.load_op(riscv_instruction, "copyb", 8, 2),
             #[cfg(feature = "float")]
-            "c.fsdsp" => self.store_op(riscv_instruction, "copyb", 8, 2),
+            RiscvInstName::CFsdsp => self.store_op(riscv_instruction, "copyb", 8, 2),
 
             // C. Other
-            "c.nop" => self.nop(riscv_instruction, 2),
-            "c.reserved" => self.halt_with_error(riscv_instruction, 2),
+            RiscvInstName::CNop => self.nop(riscv_instruction, 2),
+            RiscvInstName::CReserved => self.halt_with_error(riscv_instruction, 2),
 
             // F: Single-Precision Floating-Point
             /////////////////////////////////////
             #[cfg(feature = "float")]
-            "flw" => self.load_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Flw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             #[cfg(feature = "float")]
-            "fsw" => self.store_op(riscv_instruction, "signextend_w", 4, 4),
+            RiscvInstName::Fsw => self.store_op(riscv_instruction, "signextend_w", 4, 4),
             #[cfg(feature = "float")]
-            "fadd.s" => self.float(riscv_instruction, "fadd.s", 4),
+            RiscvInstName::FaddS => self.float(riscv_instruction, "fadd.s", 4),
             #[cfg(feature = "float")]
-            "fsub.s" => self.float(riscv_instruction, "fsub.s", 4),
+            RiscvInstName::FsubS => self.float(riscv_instruction, "fsub.s", 4),
             #[cfg(feature = "float")]
-            "fmul.s" => self.float(riscv_instruction, "fmul.s", 4),
+            RiscvInstName::FmulS => self.float(riscv_instruction, "fmul.s", 4),
             #[cfg(feature = "float")]
-            "fdiv.s" => self.float(riscv_instruction, "fdiv.s", 4),
+            RiscvInstName::FdivS => self.float(riscv_instruction, "fdiv.s", 4),
             #[cfg(feature = "float")]
-            "fsqrt.s" => self.float(riscv_instruction, "fsqrt.s", 4),
+            RiscvInstName::FsqrtS => self.float(riscv_instruction, "fsqrt.s", 4),
             #[cfg(feature = "float")]
-            "fmax.s" => self.float(riscv_instruction, "fmax.s", 4),
+            RiscvInstName::FmaxS => self.float(riscv_instruction, "fmax.s", 4),
             #[cfg(feature = "float")]
-            "fmin.s" => self.float(riscv_instruction, "fmin.s", 4),
+            RiscvInstName::FminS => self.float(riscv_instruction, "fmin.s", 4),
             #[cfg(feature = "float")]
-            "feq.s" => self.float(riscv_instruction, "feq.s", 4),
+            RiscvInstName::FeqS => self.float(riscv_instruction, "feq.s", 4),
             #[cfg(feature = "float")]
-            "fle.s" => self.float(riscv_instruction, "fle.s", 4),
+            RiscvInstName::FleS => self.float(riscv_instruction, "fle.s", 4),
             #[cfg(feature = "float")]
-            "flt.s" => self.float(riscv_instruction, "flt.s", 4),
+            RiscvInstName::FltS => self.float(riscv_instruction, "flt.s", 4),
             #[cfg(feature = "float")]
-            "fclass.s" => self.float(riscv_instruction, "fclass.s", 4),
+            RiscvInstName::FclassS => self.float(riscv_instruction, "fclass.s", 4),
             #[cfg(feature = "float")]
-            "fcvt.s.w" => self.float(riscv_instruction, "fcvt.s.w", 4),
+            RiscvInstName::FcvtSW => self.float(riscv_instruction, "fcvt.s.w", 4),
             #[cfg(feature = "float")]
-            "fcvt.s.wu" => self.float(riscv_instruction, "fcvt.s.wu", 4),
+            RiscvInstName::FcvtSWu => self.float(riscv_instruction, "fcvt.s.wu", 4),
             #[cfg(feature = "float")]
-            "fcvt.w.s" => self.float(riscv_instruction, "fcvt.w.s", 4),
+            RiscvInstName::FcvtWS => self.float(riscv_instruction, "fcvt.w.s", 4),
             #[cfg(feature = "float")]
-            "fcvt.wu.s" => self.float(riscv_instruction, "fcvt.wu.s", 4),
+            RiscvInstName::FcvtWuS => self.float(riscv_instruction, "fcvt.wu.s", 4),
             #[cfg(feature = "float")]
-            "fcvt.s.l" => self.float(riscv_instruction, "fcvt.s.l", 4),
+            RiscvInstName::FcvtSL => self.float(riscv_instruction, "fcvt.s.l", 4),
             #[cfg(feature = "float")]
-            "fcvt.l.s" => self.float(riscv_instruction, "fcvt.l.s", 4),
+            RiscvInstName::FcvtLS => self.float(riscv_instruction, "fcvt.l.s", 4),
             #[cfg(feature = "float")]
-            "fcvt.s.lu" => self.float(riscv_instruction, "fcvt.s.lu", 4),
+            RiscvInstName::FcvtSLu => self.float(riscv_instruction, "fcvt.s.lu", 4),
             #[cfg(feature = "float")]
-            "fcvt.lu.s" => self.float(riscv_instruction, "fcvt.lu.s", 4),
+            RiscvInstName::FcvtLuS => self.float(riscv_instruction, "fcvt.lu.s", 4),
             #[cfg(feature = "float")]
-            "fsgnj.s" => self.float(riscv_instruction, "fsgnj.s", 4),
+            RiscvInstName::FsgnjS => self.float(riscv_instruction, "fsgnj.s", 4),
             #[cfg(feature = "float")]
-            "fsgnjn.s" => self.float(riscv_instruction, "fsgnjn.s", 4),
+            RiscvInstName::FsgnjnS => self.float(riscv_instruction, "fsgnjn.s", 4),
             #[cfg(feature = "float")]
-            "fsgnjx.s" => self.float(riscv_instruction, "fsgnjx.s", 4),
+            RiscvInstName::FsgnjxS => self.float(riscv_instruction, "fsgnjx.s", 4),
             #[cfg(feature = "float")]
-            "fmadd.s" => self.float(riscv_instruction, "fmadd.s", 4),
+            RiscvInstName::FmaddS => self.float(riscv_instruction, "fmadd.s", 4),
             #[cfg(feature = "float")]
-            "fmsub.s" => self.float(riscv_instruction, "fmsub.s", 4),
+            RiscvInstName::FmsubS => self.float(riscv_instruction, "fmsub.s", 4),
             #[cfg(feature = "float")]
-            "fnmadd.s" => self.float(riscv_instruction, "fnmadd.s", 4),
+            RiscvInstName::FnmaddS => self.float(riscv_instruction, "fnmadd.s", 4),
             #[cfg(feature = "float")]
-            "fnmsub.s" => self.float(riscv_instruction, "fnmsub.s", 4),
+            RiscvInstName::FnmsubS => self.float(riscv_instruction, "fnmsub.s", 4),
             #[cfg(feature = "float")]
-            "fmv.w.x" => self.float(riscv_instruction, "fmv.w.x", 4), // TODO: implement natively
+            RiscvInstName::FmvWX => self.float(riscv_instruction, "fmv.w.x", 4), // TODO: implement natively
             #[cfg(feature = "float")]
-            "fmv.x.w" => self.float(riscv_instruction, "fmv.x.w", 4), // TODO: implement natively
+            RiscvInstName::FmvXW => self.float(riscv_instruction, "fmv.x.w", 4), // TODO: implement natively
 
             // D: Double-Precision Floating-Point
             /////////////////////////////////////
             #[cfg(feature = "float")]
-            "fld" => self.load_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::Fld => self.load_op(riscv_instruction, "copyb", 8, 4),
             #[cfg(feature = "float")]
-            "fsd" => self.store_op(riscv_instruction, "copyb", 8, 4),
+            RiscvInstName::Fsd => self.store_op(riscv_instruction, "copyb", 8, 4),
             #[cfg(feature = "float")]
-            "fadd.d" => self.float(riscv_instruction, "fadd.d", 4),
+            RiscvInstName::FaddD => self.float(riscv_instruction, "fadd.d", 4),
             #[cfg(feature = "float")]
-            "fsub.d" => self.float(riscv_instruction, "fsub.d", 4),
+            RiscvInstName::FsubD => self.float(riscv_instruction, "fsub.d", 4),
             #[cfg(feature = "float")]
-            "fmul.d" => self.float(riscv_instruction, "fmul.d", 4),
+            RiscvInstName::FmulD => self.float(riscv_instruction, "fmul.d", 4),
             #[cfg(feature = "float")]
-            "fdiv.d" => self.float(riscv_instruction, "fdiv.d", 4),
+            RiscvInstName::FdivD => self.float(riscv_instruction, "fdiv.d", 4),
             #[cfg(feature = "float")]
-            "fsqrt.d" => self.float(riscv_instruction, "fsqrt.d", 4),
+            RiscvInstName::FsqrtD => self.float(riscv_instruction, "fsqrt.d", 4),
             #[cfg(feature = "float")]
-            "fmax.d" => self.float(riscv_instruction, "fmax.d", 4),
+            RiscvInstName::FmaxD => self.float(riscv_instruction, "fmax.d", 4),
             #[cfg(feature = "float")]
-            "fmin.d" => self.float(riscv_instruction, "fmin.d", 4),
+            RiscvInstName::FminD => self.float(riscv_instruction, "fmin.d", 4),
             #[cfg(feature = "float")]
-            "feq.d" => self.float(riscv_instruction, "feq.d", 4),
+            RiscvInstName::FeqD => self.float(riscv_instruction, "feq.d", 4),
             #[cfg(feature = "float")]
-            "fle.d" => self.float(riscv_instruction, "fle.d", 4),
+            RiscvInstName::FleD => self.float(riscv_instruction, "fle.d", 4),
             #[cfg(feature = "float")]
-            "flt.d" => self.float(riscv_instruction, "flt.d", 4),
+            RiscvInstName::FltD => self.float(riscv_instruction, "flt.d", 4),
             #[cfg(feature = "float")]
-            "fclass.d" => self.float(riscv_instruction, "fclass.d", 4),
+            RiscvInstName::FclassD => self.float(riscv_instruction, "fclass.d", 4),
             #[cfg(feature = "float")]
-            "fcvt.d.s" => self.float(riscv_instruction, "fcvt.d.s", 4),
+            RiscvInstName::FcvtDS => self.float(riscv_instruction, "fcvt.d.s", 4),
             #[cfg(feature = "float")]
-            "fcvt.d.w" => self.float(riscv_instruction, "fcvt.d.w", 4),
+            RiscvInstName::FcvtDW => self.float(riscv_instruction, "fcvt.d.w", 4),
             #[cfg(feature = "float")]
-            "fcvt.d.wu" => self.float(riscv_instruction, "fcvt.d.wu", 4),
+            RiscvInstName::FcvtDWu => self.float(riscv_instruction, "fcvt.d.wu", 4),
             #[cfg(feature = "float")]
-            "fcvt.s.d" => self.float(riscv_instruction, "fcvt.s.d", 4),
+            RiscvInstName::FcvtSD => self.float(riscv_instruction, "fcvt.s.d", 4),
             #[cfg(feature = "float")]
-            "fcvt.w.d" => self.float(riscv_instruction, "fcvt.w.d", 4),
+            RiscvInstName::FcvtWD => self.float(riscv_instruction, "fcvt.w.d", 4),
             #[cfg(feature = "float")]
-            "fcvt.wu.d" => self.float(riscv_instruction, "fcvt.wu.d", 4),
+            RiscvInstName::FcvtWuD => self.float(riscv_instruction, "fcvt.wu.d", 4),
             #[cfg(feature = "float")]
-            "fcvt.d.l" => self.float(riscv_instruction, "fcvt.d.l", 4),
+            RiscvInstName::FcvtDL => self.float(riscv_instruction, "fcvt.d.l", 4),
             #[cfg(feature = "float")]
-            "fcvt.l.d" => self.float(riscv_instruction, "fcvt.l.d", 4),
+            RiscvInstName::FcvtLD => self.float(riscv_instruction, "fcvt.l.d", 4),
             #[cfg(feature = "float")]
-            "fcvt.d.lu" => self.float(riscv_instruction, "fcvt.d.lu", 4),
+            RiscvInstName::FcvtDLu => self.float(riscv_instruction, "fcvt.d.lu", 4),
             #[cfg(feature = "float")]
-            "fcvt.lu.d" => self.float(riscv_instruction, "fcvt.lu.d", 4),
+            RiscvInstName::FcvtLuD => self.float(riscv_instruction, "fcvt.lu.d", 4),
             #[cfg(feature = "float")]
-            "fsgnj.d" => self.float(riscv_instruction, "fsgnj.d", 4),
+            RiscvInstName::FsgnjD => self.float(riscv_instruction, "fsgnj.d", 4),
             #[cfg(feature = "float")]
-            "fsgnjn.d" => self.float(riscv_instruction, "fsgnjn.d", 4),
+            RiscvInstName::FsgnjnD => self.float(riscv_instruction, "fsgnjn.d", 4),
             #[cfg(feature = "float")]
-            "fsgnjx.d" => self.float(riscv_instruction, "fsgnjx.d", 4),
+            RiscvInstName::FsgnjxD => self.float(riscv_instruction, "fsgnjx.d", 4),
             #[cfg(feature = "float")]
-            "fmadd.d" => self.float(riscv_instruction, "fmadd.d", 4),
+            RiscvInstName::FmaddD => self.float(riscv_instruction, "fmadd.d", 4),
             #[cfg(feature = "float")]
-            "fnmadd.d" => self.float(riscv_instruction, "fnmadd.d", 4),
+            RiscvInstName::FnmaddD => self.float(riscv_instruction, "fnmadd.d", 4),
             #[cfg(feature = "float")]
-            "fmsub.d" => self.float(riscv_instruction, "fmsub.d", 4),
+            RiscvInstName::FmsubD => self.float(riscv_instruction, "fmsub.d", 4),
             #[cfg(feature = "float")]
-            "fnmsub.d" => self.float(riscv_instruction, "fnmsub.d", 4),
+            RiscvInstName::FnmsubD => self.float(riscv_instruction, "fnmsub.d", 4),
             #[cfg(feature = "float")]
-            "fmv.d.x" => self.float(riscv_instruction, "fmv.d.x", 4), // TODO: implement natively
+            RiscvInstName::FmvDX => self.float(riscv_instruction, "fmv.d.x", 4), // TODO: implement natively
             #[cfg(feature = "float")]
-            "fmv.x.d" => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
+            RiscvInstName::FmvXD => self.float(riscv_instruction, "fmv.x.d", 4), // TODO: implement natively
 
             // RISC-V Bit manipulation Extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
 
             // Byte and bit reverse operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            "rev8" => self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1),
+            RiscvInstName::Rev8 => {
+                self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "brev8" => self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1),
+            RiscvInstName::Brev8 => {
+                self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1)
+            }
 
             // Negate logical operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            "andn" => self.create_register_op(riscv_instruction, "andn", 4),
+            RiscvInstName::Andn => self.create_register_op(riscv_instruction, "andn", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "orn" => self.create_register_op(riscv_instruction, "orn", 4),
+            RiscvInstName::Orn => self.create_register_op(riscv_instruction, "orn", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "xnor" => self.create_register_op(riscv_instruction, "xnor", 4),
+            RiscvInstName::Xnor => self.create_register_op(riscv_instruction, "xnor", 4),
 
             // Pack operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            "pack" => self.create_register_op(riscv_instruction, "pack", 4),
+            RiscvInstName::Pack => self.create_register_op(riscv_instruction, "pack", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "packh" => self.create_register_op(riscv_instruction, "pack_h", 4),
+            RiscvInstName::Packh => self.create_register_op(riscv_instruction, "pack_h", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "packw" => self.create_register_op(riscv_instruction, "pack_w", 4),
+            RiscvInstName::Packw => self.create_register_op(riscv_instruction, "pack_w", 4),
 
             // Rotate operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            "rol" => self.create_register_op(riscv_instruction, "rol", 4),
+            RiscvInstName::Rol => self.create_register_op(riscv_instruction, "rol", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "rolw" => self.create_register_op(riscv_instruction, "rol_w", 4),
+            RiscvInstName::Rolw => self.create_register_op(riscv_instruction, "rol_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "ror" => self.create_register_op(riscv_instruction, "ror", 4),
+            RiscvInstName::Ror => self.create_register_op(riscv_instruction, "ror", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "rorw" => self.create_register_op(riscv_instruction, "ror_w", 4),
+            RiscvInstName::Rorw => self.create_register_op(riscv_instruction, "ror_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "rori" => self.immediate_op(riscv_instruction, "ror", 4),
+            RiscvInstName::Rori => self.immediate_op(riscv_instruction, "ror", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "roriw" => self.immediate_op(riscv_instruction, "ror_w", 4),
+            RiscvInstName::Roriw => self.immediate_op(riscv_instruction, "ror_w", 4),
 
             // Min and max operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            "min" => self.create_register_op(riscv_instruction, "min", 4),
+            RiscvInstName::Min => self.create_register_op(riscv_instruction, "min", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "minu" => self.create_register_op(riscv_instruction, "minu", 4),
+            RiscvInstName::Minu => self.create_register_op(riscv_instruction, "minu", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "max" => self.create_register_op(riscv_instruction, "max", 4),
+            RiscvInstName::Max => self.create_register_op(riscv_instruction, "max", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "maxu" => self.create_register_op(riscv_instruction, "maxu", 4),
+            RiscvInstName::Maxu => self.create_register_op(riscv_instruction, "maxu", 4),
 
             // Sign-extend / zero-extend operations.
             // These are register-to-register (Zbb) ops, NOT memory loads: they
@@ -567,95 +599,110 @@ impl Riscv2ZiskContext<'_> {
             // register path (signature is (op, inst_size, rs), rs=1 -> rs1).
             // Using load_op here would (wrongly) read memory at rs1 + imm.
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sext.b" => {
+            RiscvInstName::SextB => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_b", 4, 1)
             }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sext.h" => {
+            RiscvInstName::SextH => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_h", 4, 1)
             }
             // zext.h zero-extends the low 16 bits of rs1: rd = rs1 & 0xFFFF.
             #[cfg(feature = "bit_manipulation_extensions")]
-            "zext.h" => self.zero_extend_h(riscv_instruction, 4),
+            RiscvInstName::ZextH => self.zero_extend_h(riscv_instruction, 4),
 
             // Bit count operations
             #[cfg(feature = "bit_manipulation_extensions")]
-            "clz" => self.create_single_source_register_op(riscv_instruction, "clz", 4, 1),
+            RiscvInstName::Clz => {
+                self.create_single_source_register_op(riscv_instruction, "clz", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "clzw" => self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1),
+            RiscvInstName::Clzw => {
+                self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "ctz" => self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1),
+            RiscvInstName::Ctz => {
+                self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "ctzw" => self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1),
+            RiscvInstName::Ctzw => {
+                self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "cpop" => self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1),
+            RiscvInstName::Cpop => {
+                self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "cpopw" => self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1),
+            RiscvInstName::Cpopw => {
+                self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1)
+            }
             #[cfg(feature = "bit_manipulation_extensions")]
-            "orc.b" => self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1),
+            RiscvInstName::OrcB => {
+                self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1)
+            }
 
             // Single bit operations (Zbs)
             #[cfg(feature = "bit_manipulation_extensions")]
-            "bclr" => self.create_register_op(riscv_instruction, "bclr", 4),
+            RiscvInstName::Bclr => self.create_register_op(riscv_instruction, "bclr", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "bclri" => self.immediate_op(riscv_instruction, "bclr", 4),
+            RiscvInstName::Bclri => self.immediate_op(riscv_instruction, "bclr", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "bext" => self.create_register_op(riscv_instruction, "bext", 4),
+            RiscvInstName::Bext => self.create_register_op(riscv_instruction, "bext", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "bexti" => self.immediate_op(riscv_instruction, "bext", 4),
+            RiscvInstName::Bexti => self.immediate_op(riscv_instruction, "bext", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "binv" => self.create_register_op(riscv_instruction, "binv", 4),
+            RiscvInstName::Binv => self.create_register_op(riscv_instruction, "binv", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "binvi" => self.immediate_op(riscv_instruction, "binv", 4),
+            RiscvInstName::Binvi => self.immediate_op(riscv_instruction, "binv", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "bset" => self.create_register_op(riscv_instruction, "bset", 4),
+            RiscvInstName::Bset => self.create_register_op(riscv_instruction, "bset", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "bseti" => self.immediate_op(riscv_instruction, "bset", 4),
+            RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
 
             // Address generation operations (Zba)
             #[cfg(feature = "bit_manipulation_extensions")]
-            "add.uw" => self.create_register_op(riscv_instruction, "add_u_w", 4),
+            RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sh1add" => self.create_register_op(riscv_instruction, "sh1add", 4),
+            RiscvInstName::Sh1add => self.create_register_op(riscv_instruction, "sh1add", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sh1add.uw" => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
+            RiscvInstName::Sh1addUw => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sh2add" => self.create_register_op(riscv_instruction, "sh2add", 4),
+            RiscvInstName::Sh2add => self.create_register_op(riscv_instruction, "sh2add", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sh2add.uw" => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
+            RiscvInstName::Sh2addUw => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sh3add" => self.create_register_op(riscv_instruction, "sh3add", 4),
+            RiscvInstName::Sh3add => self.create_register_op(riscv_instruction, "sh3add", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "sh3add.uw" => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
+            RiscvInstName::Sh3addUw => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "slli.uw" => self.immediate_op(riscv_instruction, "sll_u_w", 4),
+            RiscvInstName::SlliUw => self.immediate_op(riscv_instruction, "sll_u_w", 4),
 
             // Carry-less multiplication operations (Zbc)
             #[cfg(feature = "bit_manipulation_extensions")]
-            "clmul" => self.create_register_op(riscv_instruction, "clmul", 4),
+            RiscvInstName::Clmul => self.create_register_op(riscv_instruction, "clmul", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "clmulh" => self.create_register_op(riscv_instruction, "clmul_h", 4),
+            RiscvInstName::Clmulh => self.create_register_op(riscv_instruction, "clmul_h", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "clmulr" => self.create_register_op(riscv_instruction, "clmul_r", 4),
+            RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmul_r", 4),
 
             // Crossbar permutations operations (Zbkx)
             #[cfg(feature = "bit_manipulation_extensions")]
-            "xperm4" => self.create_register_op(riscv_instruction, "xperm4", 4),
+            RiscvInstName::Xperm4 => self.create_register_op(riscv_instruction, "xperm4", 4),
             #[cfg(feature = "bit_manipulation_extensions")]
-            "xperm8" => self.create_register_op(riscv_instruction, "xperm8", 4),
+            RiscvInstName::Xperm8 => self.create_register_op(riscv_instruction, "xperm8", 4),
 
             // Special ZisK instructions
             ////////////////////////////
 
             // This instruction ends the emulation with an error and its opcode cannot be proven,
             // i.e. the proof generation would fail
-            "c.halt" => self.halt_with_error(riscv_instruction, 2),
-            "reserved" => self.halt_with_error(riscv_instruction, 4),
+            RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 2),
+            RiscvInstName::Reserved => self.halt_with_error(riscv_instruction, 4),
 
+            #[cfg(not(feature = "bit_manipulation_extensions"))]
             _ => {
                 panic!(
-                    "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst={}",
-                    riscv_instruction.inst
+                    "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst_name={}",
+                    riscv_instruction.inst_name
                 )
             }
         }
@@ -674,14 +721,7 @@ impl Riscv2ZiskContext<'_> {
 
     /// Creates a set of Zisk operations that implement a RISC-V atomic operation,
     /// i.e. a load-modify-store operation
-    pub fn create_atomic_op(
-        &mut self,
-        i: &RiscvInstruction,
-        loadf: &str,
-        op: &str,
-        storef: &str,
-        w: u64,
-    ) {
+    pub fn create_atomic_op(&mut self, i: &RiscvInst, loadf: &str, op: &str, storef: &str, w: u64) {
         let rom_address = i.rom_address;
         if (i.rd != i.rs1) && (i.rd != i.rs2) {
             // Get internal odd addresses of the instructions to be able to use them in the jump
@@ -689,7 +729,7 @@ impl Riscv2ZiskContext<'_> {
             let internal_address_1 = self.rom.get_internal_address();
             let internal_address_2 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
@@ -698,7 +738,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.set_next_internal_address(internal_address_1);
                 let jump_address = internal_address_1 as i64 - rom_address as i64;
                 zib.j(jump_address, jump_address);
-                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
+                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst_name, i.rs1, i.rs2, i.rd));
                 zib.build(self.rom);
             }
             {
@@ -731,7 +771,7 @@ impl Riscv2ZiskContext<'_> {
             let internal_address_2 = self.rom.get_internal_address();
             let internal_address_3 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
@@ -740,7 +780,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.set_next_internal_address(internal_address_1);
                 let jump_address = internal_address_1 as i64 - rom_address as i64;
                 zib.j(jump_address, jump_address);
-                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
+                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst_name, i.rs1, i.rs2, i.rd));
                 zib.build(self.rom);
             }
             {
@@ -791,14 +831,14 @@ impl Riscv2ZiskContext<'_> {
     //    copyb_d(0, [%tmp1]) -> [%rd], j(pc+2, pc+2)
 
     /// Creates a set of Zisk operations that implement a RISC-V atomic swap operation
-    pub fn create_atomic_swap(&mut self, i: &RiscvInstruction, loadf: &str, storef: &str, w: u64) {
+    pub fn create_atomic_swap(&mut self, i: &RiscvInst, loadf: &str, storef: &str, w: u64) {
         let rom_address = i.rom_address;
         if (i.rd != i.rs1) && (i.rd != i.rs2) {
             // Get internal odd addresses of the instructions to be able to use them in the jump
             // offsets of the created instructions, as they are not necessarily in sequential order
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
@@ -807,7 +847,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.set_next_internal_address(internal_address_1);
                 let jump_address = internal_address_1 as i64 - rom_address as i64;
                 zib.j(jump_address, jump_address);
-                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
+                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst_name, i.rs1, i.rs2, i.rd));
                 zib.build(self.rom);
             }
             {
@@ -826,7 +866,7 @@ impl Riscv2ZiskContext<'_> {
             let internal_address_1 = self.rom.get_internal_address();
             let internal_address_2 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.ind_width(w);
                 zib.src_b("ind", 0, false);
@@ -835,7 +875,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.set_next_internal_address(internal_address_1);
                 let jump_address = internal_address_1 as i64 - rom_address as i64;
                 zib.j(jump_address, jump_address);
-                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rs1, i.rs2, i.rd));
+                zib.verbose(&format!("{} r{}, r{}, r{}", i.inst_name, i.rs1, i.rs2, i.rd));
                 zib.build(self.rom);
             }
             {
@@ -868,15 +908,15 @@ impl Riscv2ZiskContext<'_> {
     /// Creates a Zisk operation that implements a RISC-V register operation, i.e. an operation that
     /// loads both input parameters a and b from their respective registers,
     /// and stores the result c into a register
-    pub fn create_register_op(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
+    pub fn create_register_op(&mut self, i: &RiscvInst, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64, false);
         zib.op(op).unwrap();
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&format!("{} r{}, r{}, r{}", i.inst, i.rd, i.rs1, i.rs2));
+        zib.verbose(&format!("{} r{}, r{}, r{}", i.inst_name, i.rd, i.rs1, i.rs2));
         zib.build(self.rom);
     }
 
@@ -886,7 +926,7 @@ impl Riscv2ZiskContext<'_> {
     /// NOTE: How extended static param not it's used set it to zero (jmp_offset1)
     pub fn create_precompiled_op(
         &mut self,
-        i: &RiscvInstruction,
+        i: &RiscvInst,
         op: &str,
         rs1: u32,
         rs2: u32,
@@ -895,7 +935,7 @@ impl Riscv2ZiskContext<'_> {
         // inst_size == 8 used for special cases where take arguments of precompiled of
         // next instruction but no need to read again
         assert!(inst_size == 2 || inst_size == 4 || inst_size == 8);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", rs1 as u64, false);
         zib.src_b("reg", rs2 as u64, false);
         zib.op(op).unwrap();
@@ -903,7 +943,7 @@ impl Riscv2ZiskContext<'_> {
         zib.j(0, inst_size as i64);
         zib.verbose(&format!(
             "{} r{}, r{}, r{} => {op} r{}, r{rs1}, r{rs2}",
-            i.inst, i.rd, i.rs1, i.rs2, i.rd
+            i.inst_name, i.rd, i.rs1, i.rs2, i.rd
         ));
         zib.build(self.rom);
     }
@@ -914,7 +954,7 @@ impl Riscv2ZiskContext<'_> {
     #[allow(clippy::too_many_arguments)]
     pub fn create_extended_precompiles_op(
         &mut self,
-        i: &RiscvInstruction,
+        i: &RiscvInst,
         op: &str,
         rs1: u32,
         rs2: u64,
@@ -926,7 +966,7 @@ impl Riscv2ZiskContext<'_> {
         // inst_size == 8 used for special cases where take arguments of precompiled of
         // next instruction but no need to read again
         assert!(inst_size == 2 || inst_size == 4 || inst_size == 8 || inst_size == 12);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", rs1 as u64, false);
         if is_rs2_an_imm {
             zib.src_b("imm", rs2, false);
@@ -938,7 +978,7 @@ impl Riscv2ZiskContext<'_> {
         zib.j(extended_arg, inst_size as i64);
         zib.verbose(&format!(
             "{} r{}, r{}, r{} (precompiled {op} r{rd},r{rs1},r{rs2},{extended_arg} + jmp +{inst_size})",
-            i.inst,
+            i.inst_name,
             i.rd,
             i.rs1,
             i.rs2,
@@ -948,20 +988,15 @@ impl Riscv2ZiskContext<'_> {
 
     /// Creates a Zisk operation that implements a RISC-V precompiles set extra param this
     /// operation store in fixed address the value.
-    pub fn create_set_precompiles_param_op(
-        &mut self,
-        i: &RiscvInstruction,
-        rs1: u32,
-        inst_size: u64,
-    ) {
+    pub fn create_set_precompiles_param_op(&mut self, i: &RiscvInst, rs1: u32, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("reg", rs1 as u64, false);
         zib.op("copyb").unwrap();
         zib.store("mem", EXTRA_PARAMS_ADDR as i64, false, false);
         zib.j(0, inst_size as i64);
-        zib.verbose(&format!("sd r{}, (0x{}) (param 0x{:03X})", rs1, EXTRA_PARAMS_ADDR, i.csr));
+        zib.verbose(&format!("sd r{}, (0x{:X}) (param 0x{:03X})", rs1, EXTRA_PARAMS_ADDR, i.csr));
         zib.build(self.rom);
         self.output_precompile = Some(i.csr);
         self.output_precompile_reg = Some(i.rs1);
@@ -973,12 +1008,12 @@ impl Riscv2ZiskContext<'_> {
     /// Creates a Zisk operation that implements a RISC-V branch operation, i.e. an operation that
     /// jumps to another operation, or continues the normal execution, based on a condition
     /// specifies by the operation
-    pub fn create_branch_op(&mut self, i: &RiscvInstruction, op: &str, neg: bool, inst_size: u64) {
+    pub fn create_branch_op(&mut self, i: &RiscvInst, op: &str, neg: bool, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64, false);
-        zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rs1, i.rs2, i.imm));
+        zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst_name, i.rs1, i.rs2, i.imm));
         zib.op(op).unwrap();
         if neg {
             zib.j(inst_size as i64, i.imm as i64);
@@ -990,40 +1025,40 @@ impl Riscv2ZiskContext<'_> {
 
     /// Creates a Zisk flag operation that simply sets the flag to true and continues the execution
     /// to the next operation
-    pub fn hint(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    pub fn hint(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("imm", i.imm as u64, false);
         zib.op("flag").unwrap();
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&i.inst.to_string());
+        zib.verbose(&i.inst_name.to_string());
         zib.build(self.rom);
     }
 
     /// Creates a Zisk flag operation that simply sets the flag to true and continues the execution
     /// to the next operation
-    pub fn nop(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    pub fn nop(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);
         zib.op("flag").unwrap();
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&i.inst.to_string());
+        zib.verbose(&i.inst_name.to_string());
         zib.build(self.rom);
     }
 
     /// Creates a Zisk operation that simply sets the error to true and halts the execution
-    pub fn halt_with_error(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    pub fn halt_with_error(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);
         zib.op("halt").unwrap();
         zib.j(inst_size as i64, inst_size as i64);
         zib.end();
-        zib.verbose(&i.inst.to_string());
+        zib.verbose(&i.inst_name.to_string());
         zib.build(self.rom);
     }
 
@@ -1032,26 +1067,29 @@ impl Riscv2ZiskContext<'_> {
 
     /// Creates a Zisk operation that loads a value from memory using the specified operation
     /// and stores the result in a register
-    pub fn load_op(&mut self, i: &RiscvInstruction, op: &str, w: u64, inst_size: u64) {
+    pub fn load_op(&mut self, i: &RiscvInst, op: &str, w: u64, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.ind_width(w);
         zib.src_b("ind", i.imm as u64, false);
         zib.op(op).unwrap();
         #[cfg(feature = "float")]
-        let reg_offset: i64 =
-            if i.inst == "fld" || i.inst == "flw" || i.inst == "c.fld" || i.inst == "c.fldsp" {
-                ((FREG_F0 - REG_X0) >> 3) as i64
-            } else {
-                0
-            };
+        let reg_offset: i64 = if i.inst_name == RiscvInstName::Fld
+            || i.inst_name == RiscvInstName::Flw
+            || i.inst_name == RiscvInstName::CFld
+            || i.inst_name == RiscvInstName::CFldsp
+        {
+            ((FREG_F0 - REG_X0) >> 3) as i64
+        } else {
+            0
+        };
 
         #[cfg(not(feature = "float"))]
         let reg_offset: i64 = 0;
         zib.store("reg", i.rd as i64 + reg_offset, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rd, i.imm, i.rs1));
+        zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst_name, i.rd, i.imm, i.rs1));
         zib.build(self.rom);
     }
 
@@ -1060,26 +1098,29 @@ impl Riscv2ZiskContext<'_> {
 
     /// Creates a Zisk operation that loads a value from register using the specified operation
     /// and stores the result in memory
-    pub fn store_op(&mut self, i: &RiscvInstruction, op: &str, w: u64, inst_size: u64) {
+    pub fn store_op(&mut self, i: &RiscvInst, op: &str, w: u64, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
         #[cfg(feature = "float")]
-        let reg_offset: u64 =
-            if i.inst == "fsd" || i.inst == "fsw" || i.inst == "c.fsd" || i.inst == "c.fsdsp" {
-                (FREG_F0 - REG_X0) >> 3
-            } else {
-                0
-            };
+        let reg_offset: u64 = if i.inst_name == RiscvInstName::Fsd
+            || i.inst_name == RiscvInstName::Fsw
+            || i.inst_name == RiscvInstName::CFsd
+            || i.inst_name == RiscvInstName::CFsdsp
+        {
+            (FREG_F0 - REG_X0) >> 3
+        } else {
+            0
+        };
         #[cfg(not(feature = "float"))]
         let reg_offset: u64 = 0;
 
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("reg", i.rs2 as u64 + reg_offset, false);
         zib.op(op).unwrap();
         zib.ind_width(w);
         zib.store("ind", i.imm as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst, i.rs2, i.imm, i.rs1));
+        zib.verbose(&format!("{} r{}, 0x{:x}(r{})", i.inst_name, i.rs2, i.imm, i.rs1));
         zib.build(self.rom);
     }
 
@@ -1088,29 +1129,29 @@ impl Riscv2ZiskContext<'_> {
 
     /// Creates a Zisk operation that loads a constant value using the specified operation and
     /// stores the result in a register
-    pub fn immediate_op(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
+    pub fn immediate_op(&mut self, i: &RiscvInst, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("imm", i.imm as u64, false);
         zib.op(op).unwrap();
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
+        zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst_name, i.rd, i.rs1, i.imm));
         zib.build(self.rom);
     }
 
     /// Creates a Zisk operation implementing `zext.h rd, rs1` (Zbb): zero-extends
     /// the low 16 bits of rs1 into rd, i.e. `and(rs1, 0xFFFF) -> rd`.
-    pub fn zero_extend_h(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    pub fn zero_extend_h(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("imm", 0xFFFF, false);
         zib.op("and").unwrap();
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
-        zib.verbose(&format!("{} r{}, r{}", i.inst, i.rd, i.rs1));
+        zib.verbose(&format!("{} r{}, r{}", i.inst_name, i.rd, i.rs1));
         zib.build(self.rom);
     }
 
@@ -1120,31 +1161,31 @@ impl Riscv2ZiskContext<'_> {
     /// Creates a Zisk operation that loads a constant value using the specified operation and
     /// stores the result in a register, if rs1 is x0, operation is replaced by copyb, only could
     /// be use on operations that op(x0, imm) == imm (e.g. add, or, xor)
-    pub fn immediate_op_or_x0_copyb(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
+    pub fn immediate_op_or_x0_copyb(&mut self, i: &RiscvInst, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", i.rs1 as u64, false);
         zib.src_b("imm", i.imm as u64, false);
         if i.rs1 == 0 {
             zib.op("copyb").unwrap();
-            zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
+            zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst_name, i.rd, i.rs1, i.imm));
         } else {
             zib.op(op).unwrap();
-            zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst, i.rd, i.rs1, i.imm));
+            zib.verbose(&format!("{} r{}, r{}, 0x{:x}", i.inst_name, i.rd, i.rs1, i.imm));
         }
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.build(self.rom);
     }
 
-    pub fn copyb(&mut self, i: &RiscvInstruction, inst_size: u64, rs: u64) {
+    pub fn copyb(&mut self, i: &RiscvInst, inst_size: u64, rs: u64) {
         assert!(inst_size == 2 || inst_size == 4);
         assert!(rs == 1 || rs == 2);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
         zib.op("copyb").unwrap();
-        zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst, i.rd, i.rs1, i.imm));
+        zib.verbose(&format!("{} r{}, r{}, 0x{:x} => copyb", i.inst_name, i.rd, i.rs1, i.imm));
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.build(self.rom);
@@ -1152,7 +1193,7 @@ impl Riscv2ZiskContext<'_> {
 
     // auipc rd, upimm
     //     c = pc+upimm<<12 -> [%rd]
-    pub fn auipc(&mut self, i: &RiscvInstruction, next_instructions: &[RiscvInstruction]) {
+    pub fn auipc(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         // If the auipc is immediately followed by a jalr that uses the value of rd, we can directly
         // store the result of auipc in the register and statically jump to the target of auipc,
         // without needing to compute the target of auipc in the Zisk code and store it in rd, and
@@ -1164,14 +1205,14 @@ impl Riscv2ZiskContext<'_> {
         // 80000014:    b30080e7              jalr     ra, -1232(ra) # 803c1b40 <_zisk_main>
 
         if !next_instructions.is_empty()
-            && next_instructions[0].inst == "jalr"
+            && next_instructions[0].inst_name == RiscvInstName::Jalr
             && i.rd != 0
             && next_instructions[0].rs1 == i.rd
             && (next_instructions[0].rd == i.rd || next_instructions[0].rd == 0)
         {
             // return_pc = pc + len(auipc) + len(jalr)
             // jump_pc = pc + auipc_imm + jalr_imm
-            let current_inst_size = if i.inst.starts_with("c.") { 2 } else { 4 };
+            let current_inst_size = if i.inst_name.as_str().starts_with("c.") { 2 } else { 4 };
             let next_inst_size = 4;
             let return_pc = i.rom_address + current_inst_size as u64 + next_inst_size as u64;
             let auipc_result = i.rom_address as i64 + (i.imm as i64); // already shifted << 12 at decoding time
@@ -1182,7 +1223,8 @@ impl Riscv2ZiskContext<'_> {
             );
 
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
 
                 // auipc part: write auipc result to rd, unless jalr also writes rd (link), in which case rd gets return_pc
                 zib.src_a("imm", 0, false);
@@ -1205,7 +1247,7 @@ impl Riscv2ZiskContext<'_> {
             return;
         }
 
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", (i.rom_address as i64 + (i.imm as i64)) as u64, false);
         zib.op("copyb").unwrap();
@@ -1219,12 +1261,12 @@ impl Riscv2ZiskContext<'_> {
     //    copyb_d([%rs1], [%rs2]) -> [a]
     //    copyb_d(0,0) -> [%rd]
     /// Implements the RISC-V store-conditional instruction of a 32-bits value
-    pub fn sc_w(&mut self, i: &RiscvInstruction) {
+    pub fn sc_w(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd > 0 {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", i.rs2 as u64, false);
                 zib.op("copyb").unwrap();
@@ -1249,7 +1291,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.build(self.rom);
             }
         } else {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", i.rs2 as u64, false);
             zib.op("copyb").unwrap();
@@ -1264,12 +1306,12 @@ impl Riscv2ZiskContext<'_> {
     //    copyb([%rs1], [%rs2]) -> [a]
     //    copyb(0,0) -> [%rd]
     /// Implements the RISC-V store-conditional instruction of a 64-bits value
-    pub fn sc_d(&mut self, i: &RiscvInstruction) {
+    pub fn sc_d(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd > 0 {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", i.rs2 as u64, false);
                 zib.op("copyb").unwrap();
@@ -1293,7 +1335,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.build(self.rom);
             }
         } else {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", i.rs2 as u64, false);
             zib.op("copyb").unwrap();
@@ -1307,9 +1349,9 @@ impl Riscv2ZiskContext<'_> {
     // lui rd, imm
     //      copyb_b(0, imm) -> [rd]
     /// Implementes the RISC-V load-upper-immediate instruction to load a 32-bits constant
-    pub fn lui(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    pub fn lui(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", i.imm as u64, false);
         zib.op("copyb").unwrap();
@@ -1322,7 +1364,7 @@ impl Riscv2ZiskContext<'_> {
     //     jalr rd, rs1, imm
     //          copyb_d(0, [%rs1]), j(c + imm) -> [rd]
     /// Implements the RISC-V jump-and-link-register inconditional jump instruction
-    pub fn jalr(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    pub fn jalr(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
         let rom_address = i.rom_address;
 
@@ -1355,7 +1397,7 @@ impl Riscv2ZiskContext<'_> {
         // For imm even, (rs1 + imm) & ~1 is equivalent to (rs1 & ~1) + imm,
         // so we save 1 zisk instruction
         if (i.imm % 2) == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", JALR_MASK, false);
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("and").unwrap();
@@ -1367,7 +1409,7 @@ impl Riscv2ZiskContext<'_> {
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", i.imm as u64, false);
                 zib.src_b("reg", i.rs1 as u64, false);
                 zib.op("add").unwrap();
@@ -1396,9 +1438,9 @@ impl Riscv2ZiskContext<'_> {
     //    jal rd, label
     //          flag(0,0), j(pc + imm) -> [rd]
     /// Implements the RISC-V jump-and-link inconditional jump instruction
-    pub fn jal(&mut self, i: &RiscvInstruction, inst_size: u64) {
+    pub fn jal(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("imm", 0, false);
         zib.op("flag").unwrap();
@@ -1409,8 +1451,8 @@ impl Riscv2ZiskContext<'_> {
     }
 
     /// Makes a system call
-    pub fn ecall(&mut self, i: &RiscvInstruction) {
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+    pub fn ecall(&mut self, i: &RiscvInst) {
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         // If the float feature is enabled, we use the MTVEC register as the address to jump to for
         // the ecall.
@@ -1459,23 +1501,27 @@ impl Riscv2ZiskContext<'_> {
     /// bits, then writes it to integer register rd. The initial value in rs1 is written to the CSR.
     /// If rd=x0, then the instruction shall not read the CSR and shall not cause any of the side
     /// effects that might occur on a CSR read.
-    pub fn csrrw(&mut self, i: &RiscvInstruction) {
+    pub fn csrrw(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd == i.rs1 {
             if i.rd == 0 {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.j(4, 4);
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd=rs1=0", i.inst, i.rd, i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, r{} #rd=rs1=0",
+                    i.inst_name, i.rd, i.csr, i.rs1
+                ));
                 zib.build(self.rom);
             } else {
                 let internal_address_1 = self.rom.get_internal_address();
                 let internal_address_2 = self.rom.get_internal_address();
                 {
-                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    let mut zib =
+                        ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_a("imm", 0, false);
                     zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                     zib.op("copyb").unwrap();
@@ -1496,7 +1542,7 @@ impl Riscv2ZiskContext<'_> {
                     zib.j(jump_address, jump_address);
                     zib.verbose(&format!(
                         "internal 1 {} r{}, 0x{:x}, r{} #rd=rs1!=0",
-                        i.inst, i.rd, i.csr, i.rs1
+                        i.inst_name, i.rd, i.csr, i.rs1
                     ));
                     zib.build(self.rom);
                 }
@@ -1513,18 +1559,21 @@ impl Riscv2ZiskContext<'_> {
                 }
             }
         } else if i.rd == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("copyb").unwrap();
             zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
             zib.j(4, 4);
-            zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rs1!=rd=0", i.inst, i.rd, i.csr, i.rs1));
+            zib.verbose(&format!(
+                "{} r{}, 0x{:x}, r{} #rs1!=rd=0",
+                i.inst_name, i.rd, i.csr, i.rs1
+            ));
             zib.build(self.rom);
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
@@ -1534,7 +1583,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.j(jump_address, jump_address);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} #rs1!=rd && rd!=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.build(self.rom);
             }
@@ -1578,23 +1627,27 @@ impl Riscv2ZiskContext<'_> {
     /// in integer register rs1 is treated as a bit mask that specifies bit positions to be set in
     /// the CSR. Any bit that is high in rs1 will cause the corresponding bit to be set in the CSR,
     /// if that CSR bit is writable.
-    pub fn csrrs(&mut self, i: &RiscvInstruction, next_instructions: &[RiscvInstruction]) {
+    pub fn csrrs(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         let rom_address = i.rom_address;
         if i.rd == i.rs1 {
             if i.rd == 0 {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
                 zib.j(4, 4);
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, r{} ## rd=rs=0",
+                    i.inst_name, i.rd, i.csr, i.rs1
+                ));
                 zib.build(self.rom);
             } else {
                 let internal_address_1 = self.rom.get_internal_address();
                 let internal_address_2 = self.rom.get_internal_address();
                 {
-                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    let mut zib =
+                        ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_a("imm", 0, false);
                     zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                     zib.op("copyb").unwrap();
@@ -1604,7 +1657,7 @@ impl Riscv2ZiskContext<'_> {
                     zib.j(jump_address, jump_address);
                     zib.verbose(&format!(
                         "{} r{}, 0x{:x}, r{} # rd=rs!=0",
-                        i.inst, i.rd, i.csr, i.rs1
+                        i.inst_name, i.rd, i.csr, i.rs1
                     ));
                     zib.build(self.rom);
                 }
@@ -1672,7 +1725,8 @@ impl Riscv2ZiskContext<'_> {
                 | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_SECP256R1_DBL_ID
                 | SYSCALL_BLAKE2B_ROUND_ID => {
-                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    let mut zib =
+                        ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_b("reg", i.rs1 as u64, false);
                     let precompiled =
                         CSR_PRECOMPILED[i.csr as usize - CSR_PRECOMPILED_ADDR_START as usize];
@@ -1685,7 +1739,8 @@ impl Riscv2ZiskContext<'_> {
                     zib.build(self.rom);
                 }
                 CSR_FCALL_PARAM_ADDR_START..=CSR_FCALL_PARAM_ADDR_END => {
-                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    let mut zib =
+                        ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_b("reg", i.rs1 as u64, false);
                     let words = CSR_FCALL_PARAM_OFFSET_TO_WORDS
                         [i.csr as usize - CSR_FCALL_PARAM_ADDR_START as usize];
@@ -1699,21 +1754,22 @@ impl Riscv2ZiskContext<'_> {
                     zib.build(self.rom);
                 }
                 _ => {
-                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    let mut zib =
+                        ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_b("reg", i.rs1 as u64, false);
                     zib.src_a("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                     zib.op("or").unwrap();
                     zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                     zib.verbose(&format!(
                         "{} r{}, 0x{:x}, r{} # rs!=rd=0",
-                        i.inst, i.rd, i.csr, i.rs1
+                        i.inst_name, i.rd, i.csr, i.rs1
                     ));
                     zib.j(4, 4);
                     zib.build(self.rom);
                 }
             }
         } else if i.rs1 == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
             if i.csr == CSR_FCALL_GET_ADDR as u32 {
                 zib.src_b("mem", INPUT_ADDR, false);
@@ -1725,13 +1781,16 @@ impl Riscv2ZiskContext<'_> {
             } else {
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs=0", i.inst, i.rd, i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, r{} #rd!=rs=0",
+                    i.inst_name, i.rd, i.csr, i.rs1
+                ));
             }
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
             zib.build(self.rom);
         } else if i.csr == SYSCALL_ADD256_ID as u32 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("add256").unwrap();
@@ -1742,7 +1801,7 @@ impl Riscv2ZiskContext<'_> {
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
@@ -1750,7 +1809,10 @@ impl Riscv2ZiskContext<'_> {
                 zib.set_next_internal_address(internal_address_1);
                 let jump_address = internal_address_1 as i64 - i.rom_address as i64;
                 zib.j(jump_address, jump_address);
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs!=0", i.inst, i.rd, i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, r{} #rd!=rs!=0",
+                    i.inst_name, i.rd, i.csr, i.rs1
+                ));
                 zib.build(self.rom);
             }
             {
@@ -1797,23 +1859,27 @@ impl Riscv2ZiskContext<'_> {
     /// in integer register rs1 is treated as a bit mask that specifies bit positions to be cleared
     /// in the CSR. Any bit that is high in rs1 will cause the corresponding bit to be cleared in
     /// the CSR, if that CSR bit is writable.
-    pub fn csrrc(&mut self, i: &RiscvInstruction) {
+    pub fn csrrc(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd == i.rs1 {
             if i.rd == 0 {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.j(4, 4);
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} ## rd=rs=0", i.inst, i.rd, i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, r{} ## rd=rs=0",
+                    i.inst_name, i.rd, i.csr, i.rs1
+                ));
                 zib.build(self.rom);
             } else {
                 let internal_address_1 = self.rom.get_internal_address();
                 let internal_address_2 = self.rom.get_internal_address();
                 let internal_address_3 = self.rom.get_internal_address();
                 {
-                    let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                    let mut zib =
+                        ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_a("imm", 0, false);
                     zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                     zib.op("copyb").unwrap();
@@ -1823,7 +1889,7 @@ impl Riscv2ZiskContext<'_> {
                     zib.j(jump_address, jump_address);
                     zib.verbose(&format!(
                         "{} r{}, 0x{:x}, r{} # rd=rs!=0",
-                        i.inst, i.rd, i.csr, i.rs1
+                        i.inst_name, i.rd, i.csr, i.rs1
                     ));
                     zib.build(self.rom);
                 }
@@ -1865,14 +1931,17 @@ impl Riscv2ZiskContext<'_> {
         } else if i.rd == 0 {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", M64, false);
                 zib.src_b("reg", i.rs1 as u64, false);
                 zib.op("xor").unwrap();
                 zib.set_next_internal_address(internal_address_1);
                 let jump_address = internal_address_1 as i64 - i.rom_address as i64;
                 zib.j(jump_address, jump_address);
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rs!=rd=0", i.inst, i.rd, i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, r{} # rs!=rd=0",
+                    i.inst_name, i.rd, i.csr, i.rs1
+                ));
                 zib.build(self.rom);
             }
             {
@@ -1885,24 +1954,24 @@ impl Riscv2ZiskContext<'_> {
                 zib.j(jump_address, jump_address);
                 zib.verbose(&format!(
                     "internal 1 {} r{}, 0x{:x}, r{} # rs!=rd=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.build(self.rom);
             }
         } else if i.rs1 == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
             zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
             zib.op("copyb").unwrap();
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
-            zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs=0", i.inst, i.rd, i.csr, i.rs1));
+            zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs=0", i.inst_name, i.rd, i.csr, i.rs1));
             zib.build(self.rom);
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             let internal_address_2 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
@@ -1910,7 +1979,10 @@ impl Riscv2ZiskContext<'_> {
                 zib.set_next_internal_address(internal_address_1);
                 let jump_address = internal_address_1 as i64 - i.rom_address as i64;
                 zib.j(jump_address, jump_address);
-                zib.verbose(&format!("{} r{}, 0x{:x}, r{} #rd!=rs!=0", i.inst, i.rd, i.csr, i.rs1));
+                zib.verbose(&format!(
+                    "{} r{}, 0x{:x}, r{} #rd!=rs!=0",
+                    i.inst_name, i.rd, i.csr, i.rs1
+                ));
                 zib.build(self.rom);
             }
             {
@@ -1953,10 +2025,10 @@ impl Riscv2ZiskContext<'_> {
     /// except they update the CSR using an XLEN-bit value obtained by zero-extending a 5-bit
     /// unsigned immediate (`uimm[4:0]`) field encoded in the rs1 field instead of a value from an
     /// integer register.
-    pub fn csrrwi(&mut self, i: &RiscvInstruction) {
+    pub fn csrrwi(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
 
             if (CSR_FCALL_ADDR_START as u32..=CSR_FCALL_ADDR_END as u32).contains(&i.csr) {
                 let func_id = ((i.csr as u64 - CSR_FCALL_ADDR_START as u64) << 5) + i.imme as u64;
@@ -1975,7 +2047,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, 0x{:x} #rd = 0",
-                    i.inst, i.rd, i.csr, i.imme
+                    i.inst_name, i.rd, i.csr, i.imme
                 ));
             }
             zib.j(4, 4);
@@ -1983,7 +2055,7 @@ impl Riscv2ZiskContext<'_> {
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
@@ -1993,7 +2065,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.j(jump_address, jump_address);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, 0x{:x} #rd != 0",
-                    i.inst, i.rd, i.csr, i.imme
+                    i.inst_name, i.rd, i.csr, i.imme
                 ));
                 zib.build(self.rom);
             }
@@ -2028,20 +2100,20 @@ impl Riscv2ZiskContext<'_> {
             }
         }
     */
-    pub fn csrrsi(&mut self, i: &RiscvInstruction, next_instructions: &[RiscvInstruction]) {
+    pub fn csrrsi(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         let rom_address = i.rom_address;
         if i.rd == 0 {
             if i.csr == SYSCALL_DMA_MEMSET_ID as u32 {
                 self.transpile_dma_memset_pattern(i, next_instructions);
             } else if i.imme == 0 {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd=0 imm=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.build(self.rom);
             } else {
@@ -2053,23 +2125,26 @@ impl Riscv2ZiskContext<'_> {
                 zib.j(4, 4);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd=0 imm!=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.build(self.rom);
             }
         } else if i.imme == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
             zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
             zib.op("copyb").unwrap();
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
-            zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rd!=0 imm=0", i.inst, i.rd, i.csr, i.rs1));
+            zib.verbose(&format!(
+                "{} r{}, 0x{:x}, r{} # rd!=0 imm=0",
+                i.inst_name, i.rd, i.csr, i.rs1
+            ));
             zib.build(self.rom);
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
@@ -2079,7 +2154,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.j(jump_address, jump_address);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd!=0 imm!=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.build(self.rom);
             }
@@ -2114,18 +2189,18 @@ impl Riscv2ZiskContext<'_> {
             }
         }
     */
-    pub fn csrrci(&mut self, i: &RiscvInstruction) {
+    pub fn csrrci(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd == 0 {
             if i.imme == 0 {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
                 zib.op("copyb").unwrap();
                 zib.j(4, 4);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd=0 imm=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.build(self.rom);
             } else {
@@ -2136,24 +2211,27 @@ impl Riscv2ZiskContext<'_> {
                 zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd=0 imm!=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.j(4, 4);
                 zib.build(self.rom);
             }
         } else if i.imme == 0 {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
             zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
             zib.op("copyb").unwrap();
             zib.store("reg", i.rd as i64, false, false);
             zib.j(4, 4);
-            zib.verbose(&format!("{} r{}, 0x{:x}, r{} # rd!=0 imm=0", i.inst, i.rd, i.csr, i.rs1));
+            zib.verbose(&format!(
+                "{} r{}, 0x{:x}, r{} # rd!=0 imm=0",
+                i.inst_name, i.rd, i.csr, i.rs1
+            ));
             zib.build(self.rom);
         } else {
             let internal_address_1 = self.rom.get_internal_address();
             {
-                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+                let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                 zib.src_a("mem", 0, false);
                 zib.src_b("mem", CSR_ADDR + (i.csr * 8) as u64, false);
                 zib.op("copyb").unwrap();
@@ -2163,7 +2241,7 @@ impl Riscv2ZiskContext<'_> {
                 zib.j(jump_address, jump_address);
                 zib.verbose(&format!(
                     "{} r{}, 0x{:x}, r{} # rd!=0 imm!=0",
-                    i.inst, i.rd, i.csr, i.rs1
+                    i.inst_name, i.rd, i.csr, i.rs1
                 ));
                 zib.build(self.rom);
             }
@@ -2181,7 +2259,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    // pub fn read_cycle_counter(&mut self, i: &RiscvInstruction) {
+    // pub fn read_cycle_counter(&mut self, i: &RiscvInst) {
     //     if i.rd == 0 {
     //         self.nop(i, 4);
     //     } else {
@@ -2190,7 +2268,7 @@ impl Riscv2ZiskContext<'_> {
     //         zib.src_b("imm", 0, false);
     //         zib.op("or").unwrap();
     //         zib.store("mem", CSR_ADDR as i64 + (i.csr * 8) as i64, false, false);
-    //         zib.verbose(&format!("{} r{}, 0x{:x}, r{}", i.inst, i.rd, i.csr, i.rs1));
+    //         zib.verbose(&format!("{} r{}, 0x{:x}, r{}", i.inst_name, i.rd, i.csr, i.rs1));
     //         zib.j(4, 4);
     //         zib.build();
     //         self.insts.insert(self.s, zib);
@@ -2201,13 +2279,13 @@ impl Riscv2ZiskContext<'_> {
     /// Implements a float or double function, for both 16-bit and 32-bit instruction sizes.
     /// Implemented via integer operations
     #[cfg(feature = "float")]
-    pub fn float(&mut self, i: &RiscvInstruction, op: &str, inst_size: u64) {
+    pub fn float(&mut self, i: &RiscvInst, op: &str, inst_size: u64) {
         assert!(inst_size == 2 || inst_size == 4);
         let rom_address = i.rom_address;
         let internal_address_1 = self.rom.get_internal_address();
         // Copy the raw RISC-V instruction to the FREG_INST register
         {
-            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst.clone());
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
             zib.src_b("imm", i.rvinst as u64, false);
             zib.op("copyb").unwrap();
@@ -2237,15 +2315,11 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    fn transpile_dma_memset_pattern(
-        &mut self,
-        i: &RiscvInstruction,
-        next_instructions: &[RiscvInstruction],
-    ) {
+    fn transpile_dma_memset_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         if i.imme == 2 {
             if next_instructions.len() > 1
-                && next_instructions[0].inst == "addi"
-                && next_instructions[1].inst == "addi"
+                && next_instructions[0].inst_name == RiscvInstName::Addi
+                && next_instructions[1].inst_name == RiscvInstName::Addi
             {
                 // xmemset transpilation pattern:
                 //
@@ -2270,15 +2344,19 @@ impl Riscv2ZiskContext<'_> {
                     12,
                 );
             } else {
-                let next_0 = next_instructions.first().map(|inst| inst.inst.as_str()).unwrap_or("");
-                let next_1 = next_instructions.get(1).map(|inst| inst.inst.as_str()).unwrap_or("");
+                let next_0 =
+                    next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+                let next_1 =
+                    next_instructions.get(1).map(|inst| inst.inst_name.as_str()).unwrap_or("");
                 panic!(
                         "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as xmemset with two \
                         consecutive addi (next[0]:{} next[1]:{})",
                         i.csr, i.rom_address, next_0, next_1);
             }
         } else if i.imme == 0 {
-            if !next_instructions.is_empty() && next_instructions[0].inst == "addi" {
+            if !next_instructions.is_empty()
+                && next_instructions[0].inst_name == RiscvInstName::Addi
+            {
                 // xmemset transpilation pattern:
                 //
                 //  csrs  0x816, reg(dst)      ===>  xmemset [x0|a0], a0, reg(count), byte ─┐
@@ -2301,7 +2379,8 @@ impl Riscv2ZiskContext<'_> {
                     8,
                 );
             } else {
-                let next_0 = next_instructions.first().map(|inst| inst.inst.as_str()).unwrap_or("");
+                let next_0 =
+                    next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
                 panic!(
                         "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as xmemset with a \
                         consecutive addi (next[0]:{})",
@@ -2313,21 +2392,21 @@ impl Riscv2ZiskContext<'_> {
 
     fn transpile_dma_memcpy_memcmp_pattern(
         &mut self,
-        i: &RiscvInstruction,
-        next_instructions: &[RiscvInstruction],
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
     ) {
         if i.imme == 0 && !next_instructions.is_empty() {
-            if next_instructions[0].inst == "add" {
+            if next_instructions[0].inst_name == RiscvInstName::Add {
                 // memcpy/memcmp transpilation pattern:
                 //
                 //  csrs  0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM]
-                //  addi  rd, reg(dst), reg(count)       memcxx rd, reg(dst), reg(src)
+                //  add   rd, reg(dst), reg(count)       memcxx rd, reg(dst), reg(src)
                 //  ..........                           ..........
 
                 self.create_set_precompiles_param_op(i, next_instructions[0].rs2, 4);
                 return;
             }
-            if next_instructions[0].inst == "addi" {
+            if next_instructions[0].inst_name == RiscvInstName::Addi {
                 // memcpy/memcmp transpilation pattern:
                 //
                 //  csrs  0x81x, reg(src)          ===>  memcxx rd, reg(dst), reg(src), count ─┐
@@ -2346,20 +2425,16 @@ impl Riscv2ZiskContext<'_> {
                 return;
             }
         }
-        let next_0 = next_instructions.first().map(|inst| inst.inst.as_str()).unwrap_or("");
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as memcpy/memcmp with a \
                         consecutive addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
-    fn transpile_dma_inputcpy_pattern(
-        &mut self,
-        i: &RiscvInstruction,
-        next_instructions: &[RiscvInstruction],
-    ) {
+    fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         if i.imme == 0 && !next_instructions.is_empty() {
-            if next_instructions[0].inst == "add" {
+            if next_instructions[0].inst_name == RiscvInstName::Add {
                 // inputcpy transpilation pattern:
                 //
                 //  csrs  0x815, reg(count)        ===>  inputcpy rd, reg(dst), reg(count) ─┐
@@ -2380,7 +2455,7 @@ impl Riscv2ZiskContext<'_> {
                 );
                 return;
             }
-            if next_instructions[0].inst == "addi" {
+            if next_instructions[0].inst_name == RiscvInstName::Addi {
                 // inputcpy transpilation pattern:
                 //
                 //  csrs  0x815, reg(dst)          ===>  inputcpy rd, reg(dst), count ────┐
@@ -2393,20 +2468,16 @@ impl Riscv2ZiskContext<'_> {
                 return;
             }
         }
-        let next_0 = next_instructions.first().map(|inst| inst.inst.as_str()).unwrap_or("");
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as inputcpy with a \
                         consecutive addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
-    fn transpile_profile_pattern(
-        &mut self,
-        i: &RiscvInstruction,
-        next_instructions: &[RiscvInstruction],
-    ) {
+    fn transpile_profile_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         assert!(!next_instructions.is_empty());
-        assert!(next_instructions[0].inst == "addi");
+        assert!(next_instructions[0].inst_name == RiscvInstName::Addi);
         assert!(next_instructions[0].rd == 0);
         assert!(next_instructions[0].rs1 == 0);
         // profile transpilation pattern:
@@ -2421,18 +2492,23 @@ impl Riscv2ZiskContext<'_> {
 
     pub fn create_single_source_register_op(
         &mut self,
-        i: &RiscvInstruction,
+        i: &RiscvInst,
         op: &str,
         inst_size: u64,
         rs: u64,
     ) {
         assert!(inst_size == 2 || inst_size == 4);
         assert!(rs == 1 || rs == 2);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst.clone());
+        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("imm", 0, false);
         zib.src_b("reg", if rs == 1 { i.rs1 } else { i.rs2 } as u64, false);
         zib.op(op).unwrap();
-        zib.verbose(&format!("{} r{}, r{}", i.inst, i.rd, if rs == 1 { i.rs1 } else { i.rs2 }));
+        zib.verbose(&format!(
+            "{} r{}, r{}",
+            i.inst_name.as_str(),
+            i.rd,
+            if rs == 1 { i.rs1 } else { i.rs2 }
+        ));
         zib.store("reg", i.rd as i64, false, false);
         zib.j(inst_size as i64, inst_size as i64);
         zib.build(self.rom);

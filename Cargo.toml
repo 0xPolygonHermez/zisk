@@ -10,6 +10,8 @@ categories = ["cryptography"]
 gha_zisk_ethproofs_branch = "develop-0.10.0"
 gha_zisk_eth_client_branch = "develop-0.10.0"
 gha_zisk_template_branch = "pre-develop-1.0.0-beta"
+gha_zisk_testvectors_branch = "zisk-1.0.0"
+gha_pil2_compiler_branch = "develop-0.12.0"
 
 [workspace]
 members = [
@@ -55,6 +57,7 @@ members = [
   "common",
   "stream",
   "tools/circuit",
+  "tools/frops-analyzer",
   "distributed/crates/coordinator",
   "distributed/crates/coordinator-server",
   "distributed/crates/coordinator-api",

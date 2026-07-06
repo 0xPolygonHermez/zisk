@@ -18,11 +18,11 @@ use zisk_common::{EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
-    FREG_RA, FREG_X0, OUTPUT_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    FREG_RA, FREG_X0, OUTPUT_ADDR, RAM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, SYS_ADDR,
 };
 
-const LOAD_SYMBOLS: [&str; 3] = ["_kernel_heap_bottom", "_kernel_heap_top", "ZISK_BUMP_HEAP_POS"];
+const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -1023,6 +1023,14 @@ impl<'a> Emu<'a> {
     /// Store the 'c' register value based on the storage specified by the current instruction
     #[inline(always)]
     pub fn store_c(&mut self, instruction: &ZiskInst) {
+        // Register/stack change tracing (ziskemu's `--trace-from`/`--trace-to`) is
+        // active inside the requested step window. It reads the previous value before
+        // the write so it can report `prev => post`; kept out of the hot path when not
+        // tracing.
+        let step = self.ctx.inst_ctx.step;
+        let trace_changes = (self.ctx.trace_from.is_some() || self.ctx.trace_to.is_some())
+            && step >= self.ctx.trace_from.unwrap_or(0)
+            && self.ctx.trace_to.map_or(true, |to| step <= to);
         match instruction.store {
             STORE_NONE => {}
             STORE_REG => {
@@ -1030,13 +1038,16 @@ impl<'a> Emu<'a> {
                     println!("instruction ALERT 0 {instruction:?}");
                 }
 
-                self.set_reg(
-                    instruction.store_offset as usize,
-                    self.get_value_to_store(instruction),
-                );
+                let reg = instruction.store_offset as usize;
+                let new = self.get_value_to_store(instruction);
+                let prev = if trace_changes { self.get_reg(reg) } else { 0 };
+                self.set_reg(reg, new);
 
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_register_write(instruction.store_offset as usize);
+                    self.ctx.stats.on_register_write(reg);
+                    if trace_changes {
+                        self.ctx.stats.trace_register_change(reg, prev, new);
+                    }
                 }
             }
             STORE_MEM => {
@@ -1051,10 +1062,18 @@ impl<'a> Emu<'a> {
                 debug_assert!(addr >= 0);
                 let addr = addr as u64;
 
+                // Only read the previous value for stack writes (the only ones
+                // reported); reading elsewhere could hit an unmapped section.
+                let trace_stack = trace_changes && (RAM_ADDR..SYS_ADDR).contains(&addr);
+                let prev = if trace_stack { self.ctx.inst_ctx.mem.read(addr, 8) } else { 0 };
+
                 // get it from memory
                 self.ctx.inst_ctx.mem.write(addr, val, 8);
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_write(addr, 8, val);
+                    if trace_stack {
+                        self.ctx.stats.trace_stack_change(addr, prev, val, self.get_reg(2));
+                    }
                 }
             }
             STORE_IND => {
@@ -1075,10 +1094,25 @@ impl<'a> Emu<'a> {
                 debug_assert!(addr >= 0, "addr is negative: addr={addr}=0x{addr:x}");
                 let addr = addr as u64;
 
+                // Only read the previous value for stack writes (the only ones
+                // reported); reading elsewhere could hit an unmapped section.
+                let trace_stack = trace_changes && (RAM_ADDR..SYS_ADDR).contains(&addr);
+                let prev = if trace_stack {
+                    self.ctx.inst_ctx.mem.read(addr, instruction.ind_width)
+                } else {
+                    0
+                };
+
                 // Get it from memory
                 self.ctx.inst_ctx.mem.write(addr, val, instruction.ind_width);
                 if self.ctx.do_stats {
                     self.ctx.stats.on_memory_write(addr, instruction.ind_width, val);
+                    if trace_stack {
+                        // Read back the stored value so the reported `post` reflects
+                        // the width-truncated bytes actually written (ind_width < 8).
+                        let post = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+                        self.ctx.stats.trace_stack_change(addr, prev, post, self.get_reg(2));
+                    }
                 }
             }
             _ => panic!(
@@ -1614,6 +1648,17 @@ impl<'a> Emu<'a> {
                     }
                 }
                 if let Ok(address) = elf.load_from_file(elf_file, &LOAD_SYMBOLS) {
+                    // LOAD_SYMBOLS = [_heap_bottom, _heap_top, ZISK_BUMP_HEAP_POS]:
+                    // address[0]/[1] bound the heap region; address[2] is the
+                    // *address* of the heap-position pointer symbol, not a size.
+                    println!(
+                        "Loaded symbols from ELF file: heap 0x{:x} - 0x{:x} ({} bytes), \
+                         ZISK_BUMP_HEAP_POS @ 0x{:x}",
+                        address[0],
+                        address[1],
+                        address[1].saturating_sub(address[0]),
+                        address[2]
+                    );
                     self.ctx.stats.set_heap_address(address[0], address[1], address[2]);
                 }
                 let mut count = 0;
@@ -1628,6 +1673,11 @@ impl<'a> Emu<'a> {
                         &symbol.name,
                     );
                 }
+
+                // With the call-stack debug feature, dump the ROI list up front so
+                // the ROI indices printed during the trace can be mapped back.
+                #[cfg(feature = "debug_call_stack")]
+                self.ctx.stats.print_rois();
 
                 // Second pass: mark selected ROIs for tracking
                 for symbol in elf.functions() {
@@ -1698,6 +1748,10 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_coverage(options.coverage);
 
         self.ctx.stats.set_legacy_stats(options.legacy_stats);
+        self.ctx.stats.set_trace_steps(options.trace_steps);
+        self.ctx.stats.set_trace_changes(options.trace_from, options.trace_to);
+        self.ctx.trace_from = options.trace_from;
+        self.ctx.trace_to = options.trace_to;
         self.ctx.stats.set_sdk(options.sdk);
         self.ctx.stats.set_sdk_opcodes(options.opcodes);
         self.ctx.stats.set_sdk_profile_tags(options.profile_tags);
@@ -1767,8 +1821,14 @@ impl<'a> Emu<'a> {
             return;
         }
 
-        // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats || options.legacy_stats;
+        // Store the stats option into the emulator context. `--trace-steps` runs
+        // the stats path too (that is where the per-instruction trace lives in
+        // `Stats::on_op`), but it does NOT print the stats report (see below).
+        self.ctx.do_stats = options.stats
+            || options.legacy_stats
+            || options.trace_steps
+            || options.store_op_output.is_some()
+            || options.trace_changes_enabled();
 
         // While not done
         while !self.ctx.inst_ctx.end {
@@ -1843,8 +1903,9 @@ impl<'a> Emu<'a> {
             );
         }
 
-        // Print stats report
-        if self.ctx.do_stats {
+        // Print stats report (only for real stats; a pure `--trace-steps` run
+        // turns on do_stats just to emit the per-op trace, not the report).
+        if options.stats || options.legacy_stats {
             self.ctx.stats.on_finish(&self.ctx.inst_ctx);
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");
@@ -1894,7 +1955,8 @@ impl<'a> Emu<'a> {
         self.ctx.trace.start_state.pc = ROM_ENTRY;
 
         // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats || options.legacy_stats;
+        self.ctx.do_stats =
+            options.stats || options.legacy_stats || options.store_op_output.is_some();
 
         // Set emulation mode
         self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;
@@ -1955,7 +2017,8 @@ impl<'a> Emu<'a> {
         self.ctx.trace.start_state.pc = ROM_ENTRY;
 
         // Store the stats option into the emulator context
-        self.ctx.do_stats = options.stats || options.legacy_stats;
+        self.ctx.do_stats =
+            options.stats || options.legacy_stats || options.store_op_output.is_some();
 
         // Set emulation mode
         self.ctx.inst_ctx.emulation_mode = EmulationMode::GenerateMemReads;

@@ -1,7 +1,10 @@
 //! ELF file extraction utilities for separating ELF parsing from ZiskRom population
 
 use elf::{
-    abi::{SHF_ALLOC, SHF_EXECINSTR, SHF_WRITE, SHT_NOBITS, SHT_PROGBITS},
+    abi::{
+        SHF_ALLOC, SHF_EXECINSTR, SHF_WRITE, SHT_FINI_ARRAY, SHT_INIT_ARRAY, SHT_NOBITS,
+        SHT_PREINIT_ARRAY, SHT_PROGBITS,
+    },
     endian::AnyEndian,
     ElfBytes,
 };
@@ -64,7 +67,16 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
             }
 
             // Handle different section types
-            let data = if sh.sh_type == SHT_PROGBITS {
+            //
+            // INIT/FINI/PREINIT_ARRAY sections hold file-backed data (arrays of
+            // C++ static ctor/dtor function pointers) just like PROGBITS, so they
+            // must be loaded into memory too — otherwise the runtime reads null
+            // pointers from `.init_array` and jumps to address 0.
+            let data = if sh.sh_type == SHT_PROGBITS
+                || sh.sh_type == SHT_INIT_ARRAY
+                || sh.sh_type == SHT_FINI_ARRAY
+                || sh.sh_type == SHT_PREINIT_ARRAY
+            {
                 let (raw, _) = elf.section_data(&sh)?;
                 let mut data = raw.to_vec();
                 // Word-align by padding with zeros (trimming would remove valid data)
@@ -90,9 +102,17 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
                 continue;
             };
 
-            // Categorize the section based on its flags
+            // Categorize the section based on its flags.
+            //
+            // INIT/FINI/PREINIT_ARRAY sections carry `SHF_WRITE` by ABI (for
+            // dynamic-relocation of their pointers), but in ZisK's static
+            // (`RelocModel::Static`) image their contents are link-time constants
+            // placed in ROM, so treat them as read-only — otherwise the
+            // writable-in-ROM guard below would reject them.
+            let is_array =
+                matches!(sh.sh_type, SHT_INIT_ARRAY | SHT_FINI_ARRAY | SHT_PREINIT_ARRAY);
             let is_exec = (sh.sh_flags & SHF_EXECINSTR as u64) != 0;
-            let is_write = (sh.sh_flags & SHF_WRITE as u64) != 0;
+            let is_write = (sh.sh_flags & SHF_WRITE as u64) != 0 && !is_array;
             let in_ram =
                 sh.sh_addr >= RAM_START_ADDR && sh.sh_addr + data.len() as u64 <= RAM_END_ADDR;
 
@@ -121,51 +141,14 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
     Ok(out)
 }
 
-/// Helper function to merge adjacent data sections
-///
-///   Example: If you have:
-///  - Section A: addr=0x1000, data=[1,2,3,4] (ends at 0x1004)
-///  - Section B: addr=0x1004, data=[5,6,7,8] (starts at 0x1004)
-///
-///  They merge into:
-///  - Single section: addr=0x1000, data=[1,2,3,4,5,6,7,8]
-pub fn merge_adjacent_data_sections(mut sections: Vec<DataSection>) -> Vec<DataSection> {
-    if sections.is_empty() {
-        return Vec::new();
-    }
-
-    // Sort by address
-    sections.sort_by_key(|s| s.addr);
-
-    let mut iter = sections.into_iter();
-    let mut current = iter.next().unwrap();
-    let mut merged = Vec::new();
-
-    for section in iter {
-        // Check if this section is adjacent to the current one
-        if current.addr + current.data.len() as u64 == section.addr {
-            // Merge by extending the data
-            current.data.extend(section.data);
-        } else {
-            // Not adjacent, save current and start a new one
-            merged.push(std::mem::replace(&mut current, section));
-        }
-    }
-
-    merged.push(current);
-
-    merged
-}
-
 /// Byte alignment each RO section's length is padded to (the ROM-init row format).
 const RO_SECTION_ALIGN: u64 = 32;
 
 /// Merge read-only data sections and pad each to a multiple of `RO_SECTION_ALIGN`.
 ///
-/// Unlike `merge_adjacent_data_sections`, this also coalesces sections that the
-/// padding would otherwise make overlap (the inter-section gap is zero-filled),
-/// so no RO address gets two ROM-init entries — which `rom_data.pil` rejects on an
-/// honest run.
+/// This also coalesces sections that the padding would otherwise make overlap (the
+/// inter-section gap is zero-filled), so no RO address gets two ROM-init entries —
+/// which `rom_data.pil` rejects on an honest run.
 pub fn merge_ro_sections(mut sections: Vec<DataSection>) -> Result<Vec<DataSection>, String> {
     if sections.is_empty() {
         return Ok(Vec::new());
@@ -236,134 +219,6 @@ pub fn get_symbol_addresses_from_bytes(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_merge_adjacent_empty() {
-        let sections = vec![];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 0);
-    }
-
-    #[test]
-    fn test_merge_adjacent_single_section() {
-        let sections = vec![DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] }];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4]);
-    }
-
-    #[test]
-    fn test_merge_adjacent_two_adjacent_sections() {
-        let sections = vec![
-            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
-            DataSection { addr: 0x1004, data: vec![5, 6, 7, 8] },
-        ];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-    }
-
-    #[test]
-    fn test_merge_adjacent_two_non_adjacent_sections() {
-        let sections = vec![
-            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
-            DataSection { addr: 0x2000, data: vec![5, 6, 7, 8] },
-        ];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4]);
-        assert_eq!(result[1].addr, 0x2000);
-        assert_eq!(result[1].data, vec![5, 6, 7, 8]);
-    }
-
-    #[test]
-    fn test_merge_adjacent_multiple_adjacent_sections() {
-        let sections = vec![
-            DataSection { addr: 0x1000, data: vec![1, 2] },
-            DataSection { addr: 0x1002, data: vec![3, 4] },
-            DataSection { addr: 0x1004, data: vec![5, 6] },
-        ];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4, 5, 6]);
-    }
-
-    #[test]
-    fn test_merge_adjacent_out_of_order_sections() {
-        // Sections provided out of order should still merge correctly
-        let sections = vec![
-            DataSection { addr: 0x1004, data: vec![5, 6, 7, 8] },
-            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
-        ];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4, 5, 6, 7, 8]);
-    }
-
-    #[test]
-    fn test_merge_adjacent_mixed_adjacent_and_gaps() {
-        let sections = vec![
-            DataSection { addr: 0x1000, data: vec![1, 2] },
-            DataSection { addr: 0x1002, data: vec![3, 4] },
-            DataSection { addr: 0x2000, data: vec![5, 6] },
-            DataSection { addr: 0x2002, data: vec![7, 8] },
-            DataSection { addr: 0x3000, data: vec![9, 10] },
-        ];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 3);
-        // First merged group
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4]);
-        // Second merged group
-        assert_eq!(result[1].addr, 0x2000);
-        assert_eq!(result[1].data, vec![5, 6, 7, 8]);
-        // Third standalone section
-        assert_eq!(result[2].addr, 0x3000);
-        assert_eq!(result[2].data, vec![9, 10]);
-    }
-
-    #[test]
-    fn test_merge_adjacent_with_gap_of_one_byte() {
-        // Sections with even 1 byte gap should NOT merge
-        let sections = vec![
-            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
-            DataSection {
-                addr: 0x1005, // Gap of 1 byte
-                data: vec![5, 6, 7, 8],
-            },
-        ];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4]);
-        assert_eq!(result[1].addr, 0x1005);
-        assert_eq!(result[1].data, vec![5, 6, 7, 8]);
-    }
-
-    #[test]
-    fn test_merge_adjacent_overlapping_sections() {
-        // Overlapping sections should NOT merge (they stay separate)
-        // TODO: Should not be possible, but this test explicitly
-        // TODO states the behaviour for if it did happen.
-        let sections = vec![
-            DataSection { addr: 0x1000, data: vec![1, 2, 3, 4] },
-            DataSection {
-                addr: 0x1003, // Overlaps by 1 byte
-                data: vec![5, 6, 7, 8],
-            },
-        ];
-        let result = merge_adjacent_data_sections(sections);
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].addr, 0x1000);
-        assert_eq!(result[0].data, vec![1, 2, 3, 4]);
-        assert_eq!(result[1].addr, 0x1003);
-        assert_eq!(result[1].data, vec![5, 6, 7, 8]);
-    }
 
     #[test]
     fn test_merge_ro_empty() {

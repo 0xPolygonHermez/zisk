@@ -14,8 +14,9 @@ main() {
 
     info "Building diagnostic ELF..."
     cd "${PROGRAMS_DIR}" || return 1
-    ensure env CARGO_TARGET_DIR="${PROGRAMS_DIR}/target/elf" \
-        cargo +zisk build --release -p diagnostic --target riscv64ima-zisk-zkvm-elf || return 1
+
+    # cargo-zisk injects the Zisk linker script and preserves config.toml rustflags.
+    ensure cargo-zisk build --release -p diagnostic || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
     DIAGNOSTIC_INPUTS_SINGLE="empty"

@@ -304,6 +304,63 @@ resolve_proofman_dir() {
     return 1
 }
 
+# patch_cargo_dep: Repoint a git dependency in a Cargo.toml to a local path.
+# Comments out the existing `<crate> = { git = ... }` line and inserts (idempotently)
+# a `<crate> = { path = "<local_path>" }` entry right after it.
+# Relies on the SED_PARAMS global set up by the caller.
+# Usage: patch_cargo_dep <cargo_toml> <crate_name> <local_path>
+patch_cargo_dep() {
+    local cargo_toml="$1"
+    local crate="$2"
+    local dep_path="$3"
+
+    if [[ ! -f "${cargo_toml}" ]]; then
+        err "Cargo.toml not found: ${cargo_toml}"
+        return 1
+    fi
+    if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
+        err "Local path for '${crate}' not found: ${dep_path}/Cargo.toml. Make sure the ZisK repo is available."
+        return 1
+    fi
+
+    # Escape regex-special characters in the crate name for sed/grep patterns.
+    local crate_re
+    crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
+
+    local new_line="${crate} = { path = \"${dep_path}\" }"
+
+    # Comment out the git dependency line and add a local path entry right below it, in a
+    # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
+    # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
+    # Idempotent: on reruns the git line is already commented, so it no longer matches.
+    # Expand SED_PARAMS defensively: `${SED_PARAMS[@]+"${SED_PARAMS[@]}"}` yields
+    # nothing (instead of erroring) when it is unset, so the function is safe under
+    # `set -u`. The fallback below then fills in GNU/BSD defaults.
+    local sed_params=(${SED_PARAMS[@]+"${SED_PARAMS[@]}"})
+    if [[ ${#sed_params[@]} -eq 0 ]]; then
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            sed_params=(-i "" -E)
+        else
+            sed_params=(-i -E)
+        fi
+    fi
+
+    ensure sed "${sed_params[@]}" \
+        "s~^${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git.*~# &\\
+${new_line}~" \
+        "${cargo_toml}" || return 1
+
+    # Verify the patch was applied correctly.
+    if ! grep -qE "^#[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}"; then
+        err "Failed to comment '${crate} = { git = ... }' line in ${cargo_toml}"
+        return 1
+    fi
+    if ! grep -qF "${new_line}" "${cargo_toml}"; then
+        err "Failed to add ${crate} path entry pointing to ${dep_path} in ${cargo_toml}"
+        return 1
+    fi
+}
+
 # format_duration_ms: format milliseconds to HH:MM:SS.mmm
 format_duration_ms() {
     local ms=$1

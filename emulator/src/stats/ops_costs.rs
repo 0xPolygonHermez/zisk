@@ -68,11 +68,15 @@ impl OpsCosts {
     }
     pub fn add_fixed_cost_op(&mut self, op_code: u8) {
         if let Some((index, fixed_cost)) = TABLE.table[op_code as usize] {
-            if fixed_cost > 0 {
-                if !self.is_compact() {
-                    self.count_and_cost[index].0 += 1;
-                    self.count_and_cost[index].1 += fixed_cost;
-                }
+            // PubOut has a fixed cost of 0 but must still be counted, so that the
+            // aggregate counts (total_count()) stay consistent with the per-opcode
+            // count_and_cost table below.
+            let counted = fixed_cost > 0 || op_code == ZiskOp::PubOut.code();
+            if counted && !self.is_compact() {
+                self.count_and_cost[index].0 += 1;
+                self.count_and_cost[index].1 += fixed_cost;
+            }
+            if counted {
                 if index >= TABLE.base_count {
                     self.precompiled_cost += fixed_cost;
                     self.precompiled_count += 1;

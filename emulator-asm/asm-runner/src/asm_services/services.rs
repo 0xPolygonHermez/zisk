@@ -102,6 +102,10 @@ impl AsmService {
         command.arg("--shm_prefix").arg(shm_prefix);
         command.arg("--sem_prefix").arg(sem_prefix);
 
+        if options.unlock_mapped_memory {
+            command.arg("-u");
+        }
+
         if options.verbose {
             command.arg("-v");
         }

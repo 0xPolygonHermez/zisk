@@ -82,6 +82,28 @@ user-hints = [
   "dep:tokio",
 ]
 inputcpy = []
+# Enabled by `ziskos-staticlib` (libziskos.a). Signals that ziskos is being
+# compiled into a static archive linked against a host application (C or Rust).
+# Surfaced as the `zisk_staticlib` cfg by build.rs.
+#
+# It carries NO allocator dependency, so the default self-contained bump
+# allocator is used (`alloc/bump.rs`): its `#[global_allocator]` shim
+# (`__rust_alloc` & friends) routes to `inline_bump_alloc_aligned`, keeping the
+# set of allocator symbols closed and known so the staticlib post-build step can
+# localize them (STB_LOCAL) and isolate ziskos's heap from the host allocator.
+#
+# The `zisk_staticlib` cfg additionally switches the bump heap region (see
+# `alloc/alloc.rs`) from the linker-provided `_heap_*` symbols — which the
+# host's linker script may not define — to a static buffer compiled into the
+# archive, so ziskos owns a private heap fully isolated from the host's memory.
+staticlib = []
+# Track the peak bytes used by the staticlib's isolated bump allocator. Enabled
+# from `ziskos-staticlib` via its own `alloc-stats` feature. The `wrap_export!`
+# wrappers call `update_max_used_sys_alloc` after each call, and `zkvm_deinit`
+# prints the peak. Only meaningful together with `staticlib`, so it enables it
+# (the stats code is gated on the `zisk_staticlib` cfg and would be a silent
+# no-op otherwise).
+alloc-stats = ["staticlib"]
 zisk-custom-alloc = []
 zisk-embedded-alloc = ["zisk-embedded-dlmalloc-alloc"]
 zisk-embedded-dlmalloc-alloc = [
@@ -101,6 +123,7 @@ serial_test = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(zisk_staticlib)',
   'cfg(zisk_hints)',
   'cfg(zisk_hints_metrics)',
   'cfg(zisk_hints_debug)',
