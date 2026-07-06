@@ -49,7 +49,7 @@ This will run the Docker container and open the ZisK test menu inside the contai
 
 6. **Upload setup**
    Packages the setup artifacts (`.tar.gz` + `.md5`) from the files generated in option **3. Build setup from source** (it requires `build/provingKey`): the proving key and verify key always, plus the circom circuits (`zisk-circuits`) and snark proving key (`zisk-provingkey-plonk`) when present in `build/`. When the macOS dylibs from option **4. Build dylib files (macOS)** are provided, they are merged into the proving key before packing.
-   The setup input hash is computed via `setup_hash.sh`; if the bucket already holds that hash the upload is skipped (unless forced). The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally, and are uploaded to `gs://zisk-setup` (requires `gcloud` auth).
+   The setup input hash is computed via `setup_build.sh --print-hash`; if the bucket already holds that hash the upload is skipped (unless forced). The artifacts are stored in the `${HOME}/output` directory inside the container, which is mapped to the `./output` folder on the host, making them available externally, and are uploaded to `gs://zisk-setup` (requires `gcloud` auth).
 
 7. **Install ZisK from binaries**
    Installs ZisK from binaries using the latest official release via `ziskup`.

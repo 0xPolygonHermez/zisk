@@ -2,8 +2,8 @@
 #
 # Package and upload the ZisK setup to gs://zisk-setup. The setup must be built
 # beforehand (build_setup.sh) — this script requires build/provingKey, computes
-# the setup hash via setup_hash.sh, and skips the upload when the bucket already
-# holds that hash. The hash is published as the <name>.hash sidecar.
+# the setup hash via `setup_build.sh --print-hash`, and skips the upload when the
+# bucket already holds that hash. The hash is published as the <name>.hash sidecar.
 #
 # Artifacts (<VER> = SETUP_VERSION):
 #   provingKey/                            -> zisk-provingkey-<VER>.tar.gz       (+ .md5)
@@ -98,9 +98,11 @@ main() {
     # The setup must already be built (by build_setup.sh).
     [[ -d build/provingKey ]] || { err "build/provingKey not found — run build_setup.sh first"; return 1; }
 
-    # Compute the setup hash and gate on the bucket.
+    # Compute the setup hash and gate on the bucket. --print-hash runs frops +
+    # compute_input_hash only (no compile-pil / setup) and prints the 64-hex hash
+    # as its sole stdout line, so the same hasher that keyed the build is reused.
     info "Computing setup hash..."
-    SETUP_HASH="$("${SCRIPT_DIR}/setup_hash.sh")" || return 1
+    SETUP_HASH="$("${SCRIPT_DIR}/setup_build.sh" --print-hash --build-dir build)" || return 1
     [[ -n "${SETUP_HASH}" ]] || { err "failed to compute setup hash"; return 1; }
     info "Setup hash: ${SETUP_HASH}"
 
