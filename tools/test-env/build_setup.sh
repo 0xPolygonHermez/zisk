@@ -117,6 +117,7 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     local build_dir="build"
+    local local_hash=""
     current_step=1
     total_steps=2   # computing hash + building setup
     [[ "${INCLUDE_SNARK}" == "1" ]] && total_steps=$((total_steps + 1))
@@ -131,98 +132,29 @@ main() {
     export ZISK_REPO_DIR="${ZISK_REPO}"
     ensure cd "${ZISK_REPO}" || return 1
 
-    PROOFMAN_DIR="${PROOFMAN_DIR:-$(resolve_proofman_dir)}" || return 1
-    export PROOFMAN_DIR   # honored if preset; also lets setup_hash.sh reuse it
-    info "Proofman dir: $PROOFMAN_DIR"
+    build_flags=(--build-dir build --gen-exps --exps-arch major)
+    [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)
+    [[ "${USE_CACHE_SETUP}" == "1" ]] && build_flags+=(--cache-dir "${OUTPUT_DIR}")
 
-    VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ZISK_REPO/Cargo.toml")"
-    INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
-
-    local recursive_flag=(--recursive)
-    local mode_label="setup (recursive)"
-    if [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]]; then
-        recursive_flag=()
-        mode_label="setup (no aggregation)"
+    [[ -n "${PIL2_COMPILER_BRANCH}" ]] && build_flags+=(--pil2-compiler-branch "${PIL2_COMPILER_BRANCH}")
+    # setup_build.sh (build / no-aggregation) emits the input hash as its final
+    # stdout line. tee streams the build output to the terminal while we keep a
+    # copy to read that last line from; PIPESTATUS[0] carries setup_build.sh's
+    # real exit status (no pipefail here, so tail's status would otherwise mask it).
+    local setup_log; setup_log="$(mktemp)"
+    "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" | tee "$setup_log"
+    if [[ "${PIPESTATUS[0]}" -ne 0 ]]; then
+        rm -f "$setup_log"
+        err "setup_build.sh failed"
+        return 1
     fi
-    info "Version: $VERSION  mode: $mode_label"
-
-    # setup_hash.sh generates the frops fixed data and returns the setup hash.
-    step "Computing setup hash..."
-    local local_hash
-    local_hash="$("$SCRIPT_DIR/setup_hash.sh")" || return 1
-    info "Local setup hash: $local_hash"
-
-    # Local artifact cache lookup
-    local cache_hit=0 gen_exps_on_hit=0 cache_entry=""
-    if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
-        local short_hash cache_key
-        # Mode is part of the key: the input hash doesn't encode -r, so a recursive
-        # and a no-aggregation build must not collide.
-        short_hash="${local_hash:0:4}${local_hash: -4}"
-        cache_key="$short_hash"
-        [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && cache_key="${short_hash}-no-aggregation"
-        cache_entry="${OUTPUT_DIR}/${PLATFORM}/${cache_key}"
-
-        if [[ -d "$cache_entry/provingKey" ]]; then
-            ensure rm -rf "$build_dir/provingKey" || return 1
-            ensure mkdir -p "$build_dir" || return 1
-            ensure cp -R "$cache_entry/provingKey" "$build_dir/provingKey" || return 1
-            cache_hit=1
-        fi
-
-        # gen-exps kernels are baked into the provingKey during the miss build (see
-        # below) and cached alongside it. With --exps-arch major they carry SASS +
-        # forward-PTX for every major arch, so a cached copy is host-independent and
-        # reusable as-is. On a cache hit we therefore reuse the cached .exps.so
-        # instead of regenerating them — UNLESS the cache predates kernel-caching
-        # and has none, in which case we (re)generate below to keep hit == miss.
-        if [ "$cache_hit" -eq 1 ] \
-            && ! find "$BUILD_DIR/provingKey" -name '*.exps.so' -print -quit | grep -q .; then
-            info "Cache hit lacks .exps.so kernels, generating once (stale cache)"
-            gen_exps_on_hit=1
-        fi
-    fi
-
-    step "Building setup..."
-    if [[ "$cache_hit" -eq 0 ]]; then
-        info "Compiling zisk.pil..."
-        run_compile_pil || return 1
-
-        info "Generating pil-helpers..."
-        run_pil_helpers || return 1
-
-        info "Building proving key ($mode_label)..."
-        local jobs_flags=()
-        [[ -n "${RECURSIVE_JOBS}" ]] && jobs_flags+=(--recursive-jobs "${RECURSIVE_JOBS}")
-        [[ -n "${SETUP_JOBS}" ]]     && jobs_flags+=(--setup-jobs "${SETUP_JOBS}")
-
-        ensure rm -rf "$build_dir/provingKey" || return 1
-        ensure cargo run --release --bin cargo-zisk-dev -- proofman-setup setup \
-            --airout pil/zisk.pilout \
-            --build-dir "$build_dir" \
-            --fixed-dir tmp/fixed \
-            --stark-structs state-machines/starkstructs.json \
-            --hash "$HASH" \
-            "${recursive_flag[@]}" \
-            "${jobs_flags[@]}" || return 1
-
-        run_gen_exps || return 1
-
-        cache_proving_key "$build_dir" "$cache_entry" || return 1
-    else
-        info "Setup cache hit: $cache_entry, skipping build setup"
-
-        if [[ "$gen_exps_on_hit" -eq 1 ]]; then
-            info "Generating .exps.so kernels for cache hit (stale cache)"
-            run_gen_exps || return 1
-
-            cache_proving_key "$build_dir" "$cache_entry" || return 1
-        fi
-    fi
+    local_hash="$(tail -n1 "$setup_log")"
+    rm -f "$setup_log"
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
         step "Building snark setup..."
-        run_setup_snark "$build_dir" || return 1
+        build_flags=(--build-dir build --snark)
+        ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1
     fi
 
     if [[ "${DYLIB_INPUT_FILES}" == "1" ]]; then
