@@ -99,13 +99,21 @@ compute_input_hash() (
     [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; exit 1; }
   done
 
-  # The package.json dependency value, e.g.
-  #   "pil2-compiler": "https://github.com/.../pil2-compiler.git#v0.9.0"
-  # Extracted with sed (no jq); identical to what jq -r '.dependencies."pil2-compiler"'
-  # returned, so the cache key is unchanged.
-  pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
-  [ -n "$pil2_compiler_version" ] || \
-    { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+  # The pil2-compiler version that will actually compile the PIL. A zisk-side
+  # override in pil/Cargo.toml ([package.metadata.zisk] pil2-compiler) wins over
+  # proofman's own package.json — so it must feed the cache key, else two builds
+  # with different overrides would collide on the same key. When no override is
+  # set the value falls back to proofman's package.json, keeping the key
+  # identical to before. Extracted with sed (no jq).
+  local pil2_compiler_version pil2_compiler_override
+  pil2_compiler_override="$(sed -nE 's/^[[:space:]]*pil2-compiler[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT_DIR/pil/Cargo.toml" 2>/dev/null | head -n1)"
+  if [ -n "$pil2_compiler_override" ]; then
+    pil2_compiler_version="$pil2_compiler_override"
+  else
+    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
+    [ -n "$pil2_compiler_version" ] || \
+      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+  fi
 
   # pil2-stark-setup is a transitive dep, not a workspace member. Prefer its
   # source straight from Cargo.lock: for a git dep that's a stable

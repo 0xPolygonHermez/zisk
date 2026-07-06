@@ -192,6 +192,55 @@ cd "$ROOT_DIR"
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
+# ----- optional zisk-driven pil2-compiler override ---------------------------
+# By default the compiler version is whatever pil2-proofman pins in its own
+# package.json (the pil2-stark-setup crate installs it). If pil/Cargo.toml
+# declares [package.metadata.zisk] pil2-compiler, install that version into a
+# dedicated node_modules and point the compiler at it via PIL2C_EXEC, which the
+# crate honors ahead of every other resolution path. No-op when unset.
+apply_zisk_compiler_override() {
+  local manifest="$ROOT_DIR/pil/Cargo.toml"
+  [ -f "$manifest" ] || return 0
+
+  # TOML: pil2-compiler = "https://.../pil2-compiler.git#v0.11.0" (commented ⇒ no match)
+  local override
+  override="$(sed -nE 's/^[[:space:]]*pil2-compiler[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$manifest" | head -n1)"
+  [ -n "$override" ] || return 0
+
+  command -v npm >/dev/null || { echo "npm not on PATH (needed for the pil/Cargo.toml pil2-compiler override)" >&2; exit 1; }
+
+  # Install into a dedicated dir so we never mutate proofman's checkout. The dir
+  # is keyed by the override value, so switching versions gets a clean install.
+  local dir="$ROOT_DIR/tmp/pil2-compiler-override"
+  local pkg="$dir/package.json"
+  local pil2c="$dir/node_modules/.bin/pil2com"
+  mkdir -p "$dir"
+  # No trailing newline: $(cat) strips trailing newlines in command substitution,
+  # so the freshness compare below must match a newline-free manifest or it would
+  # reinstall on every run.
+  local want
+  printf -v want '{\n  "private": true,\n  "dependencies": { "pil2-compiler": "%s" }\n}' "$override"
+
+  # Reinstall when the pinned version changed (manifest differs) OR the probe is
+  # missing (never installed / interrupted install). -f follows the symlink npm
+  # creates, matching the Rust resolver's is_file() check. Skip otherwise — a
+  # warm dir must not require npm, so a --cache-dir hit never shells into node.
+  if [ "$(cat "$pkg" 2>/dev/null)" != "$want" ] || [ ! -f "$pil2c" ]; then
+    printf '%s' "$want" > "$pkg"
+    rm -f "$dir/package-lock.json"   # a stale lockfile would pin the old version
+    echo "==> installing zisk-pinned pil2-compiler ($override) in $dir" >&2
+    (cd "$dir" && npm install)
+  fi
+
+  # npm links .bin/pil2com to src/pil.js. The Rust resolver accepts PIL2C_EXEC
+  # only if it is_file() (follows the link), so require a resolvable target — a
+  # dangling link would be silently ignored and fall back to proofman's version.
+  [ -f "$pil2c" ] \
+    || { echo "pil2com missing or dangling at $pil2c after npm install (override $override)" >&2; exit 1; }
+  export PIL2C_EXEC="$pil2c"
+  echo "==> using zisk-pinned pil2-compiler: PIL2C_EXEC=$pil2c" >&2
+}
+
 echo "version: $VERSION  mode: $MODE" >&2
 
 run_compile_pil() {
@@ -200,6 +249,11 @@ run_compile_pil() {
     echo "==> compile-pil (SKIPPED — reusing pil/zisk.pilout and existing pil_helpers)"
     return
   fi
+  # Lazy: only the compiling paths need pil2com, so apply the override here rather
+  # than at top level. This keeps --print-hash / --snark / --compressed-final /
+  # --gen-exps-only and a --cache-dir hit (which return before reaching here) from
+  # triggering a network npm install they don't need.
+  apply_zisk_compiler_override
   echo "==> compile-pil"
   # --no-proto-fixed-data keeps fixed-column values out of the pilout protobuf
   # (they live on disk under tmp/fixed/ via --fixed-dir + --fixed-to-file). Avoids
