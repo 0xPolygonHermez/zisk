@@ -68,6 +68,17 @@ run_setup_snark() {
         --powers-of-tau "$ptau_path" || return 1
 }
 
+# Generate the per-AIR Q-expression CUDA kernels (.exps.so) into <build-dir>/provingKey/.
+run_gen_exps() {
+  if ! command -v nvcc >/dev/null 2>&1; then
+    err "gen-exps skipped, nvcc not found" >&2; return 1;
+  fi
+  info "Proofman setup gen-exps (arch: major)"
+  cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
+    --proving-key "$BUILD_DIR/provingKey" \
+    --arch major
+}
+
 # Copy the inputs needed to compile the macOS dylib files into
 # build_dir/dylib_input, preserving the provingKey/ provingKeySnark/ layout.
 copy_dylib_input() {
@@ -86,6 +97,20 @@ copy_dylib_input() {
               done
       done
     ) || return 1
+}
+
+# Copy the freshly built provingKey into the local artifact cache (only when
+# USE_CACHE_SETUP=1) so later runs with the same setup hash can reuse it.
+cache_proving_key() {
+    local build_dir="$1"
+    local cache_entry="$2"
+
+    [[ "${USE_CACHE_SETUP}" == "1" ]] || return 0
+
+    info "Caching provingKey to $cache_entry"
+    ensure rm -rf "$cache_entry" || return 1
+    ensure mkdir -p "$cache_entry" || return 1
+    ensure cp -R "$build_dir/provingKey" "$cache_entry/provingKey" || return 1
 }
 
 main() {
@@ -128,7 +153,7 @@ main() {
     info "Local setup hash: $local_hash"
 
     # Local artifact cache lookup
-    local cache_hit=0 cache_entry=""
+    local cache_hit=0 gen_exps_on_hit=0 cache_entry=""
     if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
         local short_hash cache_key
         # Mode is part of the key: the input hash doesn't encode -r, so a recursive
@@ -143,6 +168,18 @@ main() {
             ensure mkdir -p "$build_dir" || return 1
             ensure cp -R "$cache_entry/provingKey" "$build_dir/provingKey" || return 1
             cache_hit=1
+        fi
+
+        # gen-exps kernels are baked into the provingKey during the miss build (see
+        # below) and cached alongside it. With --exps-arch major they carry SASS +
+        # forward-PTX for every major arch, so a cached copy is host-independent and
+        # reusable as-is. On a cache hit we therefore reuse the cached .exps.so
+        # instead of regenerating them — UNLESS the cache predates kernel-caching
+        # and has none, in which case we (re)generate below to keep hit == miss.
+        if [ "$cache_hit" -eq 1 ] \
+            && ! find "$BUILD_DIR/provingKey" -name '*.exps.so' -print -quit | grep -q .; then
+            info "Cache hit lacks .exps.so kernels, generating once (stale cache)"
+            gen_exps_on_hit=1
         fi
     fi
 
@@ -169,14 +206,18 @@ main() {
             "${recursive_flag[@]}" \
             "${jobs_flags[@]}" || return 1
 
-        if [[ "${USE_CACHE_SETUP}" == "1" ]]; then
-            info "Caching provingKey to $cache_entry"
-            ensure rm -rf "$cache_entry" || return 1
-            ensure mkdir -p "$cache_entry" || return 1
-            ensure cp -R "$build_dir/provingKey" "$cache_entry/provingKey" || return 1
-        fi
+        run_gen_exps || return 1
+
+        cache_proving_key "$build_dir" "$cache_entry" || return 1
     else
         info "Setup cache hit: $cache_entry, skipping build setup"
+
+        if [[ "$gen_exps_on_hit" -eq 1 ]]; then
+            info "Generating .exps.so kernels for cache hit (stale cache)"
+            run_gen_exps || return 1
+
+            cache_proving_key "$build_dir" "$cache_entry" || return 1
+        fi
     fi
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
