@@ -41,18 +41,16 @@ main() {
     ensure cd "${ZISK_REPO}" || return 1
 
     step "Building setup (delegating to tools/test-env/setup_build.sh)..."
-    build_flags=(--build-dir build)
+    # Generate the per-AIR Q-expression CUDA kernels (.exps.so) with the portable
+    # `major` arch (SASS + forward-PTX for every major arch), so they are
+    # host-independent. setup_build.sh runs gen-exps as a step of the build and
+    # bakes the kernels into provingKey/ *before* it populates the --cache-dir
+    # cache — so a later cache hit reuses the cached kernels instead of rebuilding
+    # them. gen-exps self-gates on nvcc (no-op when CUDA is absent).
+    build_flags=(--build-dir build --gen-exps --exps-arch major)
     [[ "${DISABLE_RECURSIVE_SETUP}" == "1" ]] && build_flags+=(--no-aggregation)
     [[ "${USE_CACHE_SETUP}" == "1" ]] && build_flags+=(--cache-dir "${OUTPUT_DIR}")
     ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1
-
-    # Generate the per-AIR Q-expression CUDA kernels (.exps.so) as a separate
-    # step rather than via --gen-exps during setup. A --cache-dir hit skips the
-    # setup step entirely, so kernels baked in during setup would be missing (or
-    # host-mismatched) on a hit. Running --gen-exps-only against the populated
-    # provingKey/ makes the output deterministic across cache hits and misses.
-    # The mode self-gates on nvcc (no-op exit 0 when CUDA is absent).
-    ensure "${SCRIPT_DIR}/setup_build.sh" --build-dir build --gen-exps-only --exps-arch major || return 1
 
     step "Copy provingKey directory to \$HOME/.zisk directory..."
     ensure mkdir -p "$HOME/.zisk" || return 1
