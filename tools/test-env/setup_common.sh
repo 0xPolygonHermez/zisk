@@ -31,6 +31,36 @@ sha256_hex() {
   fi | awk '{print $1}'
 }
 
+# read_zisk_pil2_compiler_override: print the zisk-pinned pil2-compiler value from
+# pil/Cargo.toml's [package.metadata.zisk] table, or nothing when unset/commented.
+# Single source of truth for the effective override: both the cache key
+# (compute_input_hash) and the installer (apply_zisk_compiler_override in
+# setup_build.sh) call this, so they can never disagree on what is pinned.
+#
+# awk tracks the current TOML table so a `pil2-compiler = "..."` line in any other
+# section (e.g. a real [dependencies] entry) is NOT mistaken for the override.
+# Returns 0 with the value on stdout, 0 with empty stdout when there is no
+# override, and non-zero only when the manifest exists but cannot be read (so a
+# permission error surfaces instead of being silently treated as "no override").
+read_zisk_pil2_compiler_override() {
+  local manifest="$ROOT_DIR/pil/Cargo.toml"
+  [ -f "$manifest" ] || return 0          # no manifest => no override, not an error
+  [ -r "$manifest" ] || return 1          # present but unreadable => surface it
+  awk '
+    /^[[:space:]]*#/                              { next }              # skip comments
+    /^[[:space:]]*\[/ {                                                 # table header
+      section = $0
+      sub(/^[[:space:]]*\[[[:space:]]*/, "", section)
+      sub(/[[:space:]]*\].*$/, "", section)
+      next
+    }
+    section == "package.metadata.zisk" &&
+      /^[[:space:]]*pil2-compiler[[:space:]]*=/ {
+      if (match($0, /"[^"]*"/)) { print substr($0, RSTART+1, RLENGTH-2); exit }
+    }
+  ' "$manifest"
+}
+
 # Resolve the pil2-proofman checkout — always whatever cargo actually compiled
 # into cargo-zisk, so this script can never drift from the build. `cargo metadata`
 # reports proofman's on-disk manifest_path regardless of how it's depended on:
@@ -104,9 +134,12 @@ compute_input_hash() (
   # proofman's own package.json — so it must feed the cache key, else two builds
   # with different overrides would collide on the same key. When no override is
   # set the value falls back to proofman's package.json, keeping the key
-  # identical to before. Extracted with sed (no jq).
+  # identical to before. read_zisk_pil2_compiler_override is the single parser
+  # shared with the installer (setup_build.sh), so the key and the installed
+  # compiler can never disagree on what is pinned.
   local pil2_compiler_version pil2_compiler_override
-  pil2_compiler_override="$(sed -nE 's/^[[:space:]]*pil2-compiler[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$ROOT_DIR/pil/Cargo.toml" 2>/dev/null | head -n1)"
+  pil2_compiler_override="$(read_zisk_pil2_compiler_override)" \
+    || { echo "pil/Cargo.toml exists but could not be read for the pil2-compiler override" >&2; exit 1; }
   if [ -n "$pil2_compiler_override" ]; then
     pil2_compiler_version="$pil2_compiler_override"
   else

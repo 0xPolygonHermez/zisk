@@ -95,7 +95,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
   --no-aggregation       Setup without -r.
   --snark                Run setup-snark on top of an existing
                          <build-dir>/provingKey/. Errors out if missing —
-                         build it locally (./tools/setup/build-setup.sh) first.
+                         build it locally (./setup_build.sh --build-dir DIR) first.
   --compressed-final     Re-run only vadcop_final_compressed on top of an
                          existing <build-dir>/provingKey/<name>/vadcop_final/.
   --gen-exps-only        (Re)generate per-AIR Q-expression CUDA kernels
@@ -199,15 +199,13 @@ cd "$ROOT_DIR"
 # dedicated node_modules and point the compiler at it via PIL2C_EXEC, which the
 # crate honors ahead of every other resolution path. No-op when unset.
 apply_zisk_compiler_override() {
-  local manifest="$ROOT_DIR/pil/Cargo.toml"
-  [ -f "$manifest" ] || return 0
-
-  # TOML: pil2-compiler = "https://.../pil2-compiler.git#v0.11.0" (commented ⇒ no match)
+  # read_zisk_pil2_compiler_override (setup_common.sh) is the single, section-aware
+  # parser shared with the cache key, so the installed compiler and the hashed
+  # version can never disagree. Empty => no override; non-zero => unreadable manifest.
   local override
-  override="$(sed -nE 's/^[[:space:]]*pil2-compiler[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$manifest" | head -n1)"
+  override="$(read_zisk_pil2_compiler_override)" \
+    || { echo "pil/Cargo.toml exists but could not be read for the pil2-compiler override" >&2; exit 1; }
   [ -n "$override" ] || return 0
-
-  command -v npm >/dev/null || { echo "npm not on PATH (needed for the pil/Cargo.toml pil2-compiler override)" >&2; exit 1; }
 
   # Install into a dedicated dir so we never mutate proofman's checkout. The dir
   # is keyed by a hash of the override value, so switching versions gets a clean
@@ -216,18 +214,16 @@ apply_zisk_compiler_override() {
   local pkg="$dir/package.json"
   local pil2c="$dir/node_modules/.bin/pil2com"
   mkdir -p "$dir"
-  # No trailing newline: $(cat) strips trailing newlines in command substitution,
-  # so the freshness compare below must match a newline-free manifest or it would
-  # reinstall on every run.
-  local want
-  printf -v want '{\n  "private": true,\n  "dependencies": { "pil2-compiler": "%s" }\n}' "$override"
 
-  # Reinstall when the pinned version changed (manifest differs) OR the probe is
-  # missing (never installed / interrupted install). -f follows the symlink npm
-  # creates, matching the Rust resolver's is_file() check. Skip otherwise — a
-  # warm dir must not require npm, so a --cache-dir hit never shells into node.
-  if [ "$(cat "$pkg" 2>/dev/null)" != "$want" ] || [ ! -f "$pil2c" ]; then
-    printf '%s' "$want" > "$pkg"
+  # The dir is version-specific (hashed by $override), so the only reason to
+  # (re)install is a missing/dangling probe — never installed, or an interrupted
+  # install. -f follows the symlink npm creates, matching the Rust resolver's
+  # is_file() check. A warm dir needs no npm, so a --cache-dir hit never shells
+  # into node.
+  if [ ! -f "$pil2c" ]; then
+    # npm is only needed when we actually install; a warm dir must not require it.
+    command -v npm >/dev/null || { echo "npm not on PATH (needed to install the pil/Cargo.toml pil2-compiler override $override)" >&2; exit 1; }
+    printf '{\n  "private": true,\n  "dependencies": { "pil2-compiler": "%s" }\n}' "$override" > "$pkg"
     rm -f "$dir/package-lock.json"   # a stale lockfile would pin the old version
     echo "==> installing zisk-pinned pil2-compiler ($override) in $dir" >&2
     (cd "$dir" && npm install)
@@ -311,7 +307,7 @@ case "$MODE" in
   snark)
     if [ ! -d "$BUILD_DIR/provingKey" ]; then
       echo "missing $BUILD_DIR/provingKey/ — populate it first:" >&2
-      echo "  ./tools/setup/build-setup.sh --build-dir $BUILD_DIR    # build locally" >&2
+      echo "  ./setup_build.sh --build-dir $BUILD_DIR    # build locally (from tools/test-env)" >&2
       exit 1
     fi
     echo "using existing $BUILD_DIR/provingKey/"
