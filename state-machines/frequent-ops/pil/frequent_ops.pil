@@ -4,7 +4,6 @@ require "opids.pil"
 airtemplate FrequentOps(int N = 0, int RC = 2, const string bin_file = "../src/frequent_ops_fixed.bin", 
                         const int table_id = -1) {
                             
-    println("Hello");
     #pragma extern_fixed_file `${bin_file}`
 
     col witness multiplicity;

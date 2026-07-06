@@ -71,11 +71,13 @@ impl Region {
     /// tests below.
     #[allow(dead_code)]
     pub fn contains(&self, a: u64, b: u64) -> bool {
-        let a_in_range =
-            a >= self.a_lo && (self.a_to_max() || (a as u128) < self.a_lo as u128 + self.a_span());
+        if a < self.a_lo {
+            return false; // guard the subtraction below (would underflow for strided regions)
+        }
+        let a_in_range = self.a_to_max() || (a as u128) < self.a_lo as u128 + self.a_span();
         let a_aligned = self.a_stride == 1 || (a - self.a_lo) % self.a_stride == 0;
         let b_ok = b >= self.b_lo && (self.b_to_max() || b < self.b_lo + self.b_count);
-        a_in_range && a >= self.a_lo && a_aligned && b_ok
+        a_in_range && a_aligned && b_ok
     }
 
     /// Relative offset of `(a, b)` inside this box (row-major over `b`). Caller must ensure
@@ -509,7 +511,7 @@ mod tests {
         assert!(!r.contains(a_lo + 1, 0)); // misaligned
         assert!(!r.contains(a_lo + 32, 0)); // out of range
         assert_eq!(r.offset(a_lo, 0), 0);
-        assert_eq!(r.offset(a_lo + 8, 1), 1 * 2 + 1);
+        assert_eq!(r.offset(a_lo + 8, 1), 2 + 1); // index 1 * b_count 2 + b 1
         assert_eq!(r.offset(a_lo + 24, 0), 3 * 2);
     }
 
