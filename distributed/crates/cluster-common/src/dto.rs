@@ -105,6 +105,8 @@ pub struct AggregationProgramSpecDto {
     pub normalize: Option<NormalizeCircuitDto>,
     pub aggregate_publics_body: String,
     pub n_free: u64,
+    /// Publics slots the aggregation populates; the rest are generator-zero-filled.
+    pub n_publics_agg: u64,
     /// Optional leaf allow-list: 4-limb program VKs (empty = VK-agnostic).
     /// Order is significant; part of the `recurser_id` the worker recomputes.
     pub program_vks: Vec<[String; 4]>,

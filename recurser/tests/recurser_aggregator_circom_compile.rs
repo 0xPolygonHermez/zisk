@@ -22,45 +22,8 @@ use std::process::Command;
 
 use recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, NormalizeCircuit};
 
-/// A leaf's user-publics passthrough (n_free = 0).
-const AGGREGATE_0_FREE: &str = r#"template AggregatePublics() {
-    signal input a_publics[ZISK_PUBLICS()];
-    signal input b_publics[ZISK_PUBLICS()];
-    signal output aggregated_publics[ZISK_PUBLICS()];
-    for (var i = 0; i < ZISK_PUBLICS(); i++) {
-        _ <== b_publics[i];
-        aggregated_publics[i] <== a_publics[i];
-    }
-}"#;
-
-const AGGREGATE_1_FREE: &str = r#"template AggregatePublics(nFreeInputs) {
-    signal input a_publics[ZISK_PUBLICS()];
-    signal input b_publics[ZISK_PUBLICS()];
-    signal input free_inputs_a[nFreeInputs];
-    signal input free_inputs_b[nFreeInputs];
-    signal output aggregated_publics[ZISK_PUBLICS()];
-    for (var i = 0; i < ZISK_PUBLICS(); i++) {
-        _ <== b_publics[i];
-        aggregated_publics[i] <== a_publics[i];
-    }
-    for (var i = 0; i < nFreeInputs; i++) {
-        _ <== free_inputs_a[i];
-        _ <== free_inputs_b[i];
-    }
-}"#;
-
-const NORMALIZE_1_FREE: &str = r#"template NormalizePublics(nPublics, nFreeInputs) {
-    signal input publics[nPublics];
-    signal input free_inputs[nFreeInputs];
-    signal output recurser_publics[nPublics];
-    signal output free_outputs[nFreeInputs];
-    for (var i = 0; i < nFreeInputs; i++) {
-        free_outputs[i] <== free_inputs[i];
-    }
-    for (var i = 0; i < nPublics; i++) {
-        recurser_publics[i] <== publics[i];
-    }
-}"#;
+mod common;
+use common::{AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_1_FREE};
 
 /// The include filename the aggregator emits (`include "<verifier_filename>"`).
 const STUB_VERIFIER_FILENAME: &str = "stub_verifier.circom";
@@ -209,6 +172,7 @@ fn aggregator_circom_compiles_all_branches() {
             normalize,
             aggregate_publics: aggregate.to_string(),
             n_free,
+            n_publics_agg: recurser::templates::ZISK_PUBLICS,
             program_vks: vks,
         };
         assert_compiles(label, &templates);

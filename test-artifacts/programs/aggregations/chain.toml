@@ -1,3 +1,4 @@
 aggregate-publics = "circuits/aggregate_publics.circom"
 free-inputs = 1
+n-publics-agg = 6
 normalize-publics = "circuits/normalize.circom"

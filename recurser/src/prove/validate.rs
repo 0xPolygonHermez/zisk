@@ -122,7 +122,7 @@ mod tests {
         use crate::templates::NormalizeCircuit;
         let zisk_vk = vk_str([100, 101, 102, 103]);
         let normalize = Some(NormalizeCircuit { body: "// norm".into() });
-        RecurserManifestInputs::new(zisk_vk, vec![], normalize.as_ref(), "agg", n_free)
+        RecurserManifestInputs::new(zisk_vk, vec![], normalize.as_ref(), "agg", n_free, 6)
     }
 
     /// Build `public_values` with the flag at slot 0 and a 4-limb programVK at [1..5).

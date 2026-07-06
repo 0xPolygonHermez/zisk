@@ -1,81 +1,17 @@
 use recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, NormalizeCircuit};
 
-// Minimal AggregatePublics bodies for use in tests. AggregatePublics sizes its
-// arrays via ZISK_PUBLICS() (no nPublics param): 0 params when n_free=0, 1
-// param (nFreeInputs) when n_free>0 — matching the tera's `AggregatePublics()`
-// / `AggregatePublics(n)` instantiation.
-
-const AGGREGATE_0_FREE: &str = r#"template AggregatePublics() {
-    signal input a_publics[ZISK_PUBLICS()];
-    signal input b_publics[ZISK_PUBLICS()];
-    signal output aggregated_publics[ZISK_PUBLICS()];
-    for (var i = 0; i < ZISK_PUBLICS(); i++) {
-        _ <== b_publics[i];
-        aggregated_publics[i] <== a_publics[i];
-    }
-}"#;
-
-// AggregatePublics with free-value width (1 param: nFreeInputs).
-const AGGREGATE_1_FREE: &str = r#"template AggregatePublics(nFreeInputs) {
-    signal input a_publics[ZISK_PUBLICS()];
-    signal input b_publics[ZISK_PUBLICS()];
-    signal input free_inputs_a[nFreeInputs];
-    signal input free_inputs_b[nFreeInputs];
-    signal output aggregated_publics[ZISK_PUBLICS()];
-    for (var i = 0; i < ZISK_PUBLICS(); i++) {
-        _ <== b_publics[i];
-        aggregated_publics[i] <== a_publics[i];
-    }
-    for (var i = 0; i < nFreeInputs; i++) {
-        _ <== free_inputs_a[i];
-        _ <== free_inputs_b[i];
-    }
-}"#;
-
-// Minimal NormalizePublics bodies.
-// n_free=0 -> 1 param (nPublics), no free_outputs required.
-const NORMALIZE_0_FREE: &str = r#"template NormalizePublics(nPublics) {
-    signal input publics[nPublics];
-    signal output recurser_publics[nPublics];
-    for (var i = 0; i < nPublics; i++) {
-        recurser_publics[i] <== publics[i];
-    }
-}"#;
-
-// n_free>0 -> 2 params (nPublics, nFreeInputs) AND must emit `free_outputs`
-// (new contract: NormalizePublics produces the free values that feed AggregatePublics).
-const NORMALIZE_1_FREE: &str = r#"template NormalizePublics(nPublics, nFreeInputs) {
-    signal input publics[nPublics];
-    signal input free_inputs[nFreeInputs];
-    signal output recurser_publics[nPublics];
-    signal output free_outputs[nFreeInputs];
-    for (var i = 0; i < nFreeInputs; i++) {
-        free_outputs[i] <== free_inputs[i];
-    }
-    for (var i = 0; i < nPublics; i++) {
-        recurser_publics[i] <== publics[i];
-    }
-}"#;
-
-// n_free>0 body that is MISSING `free_outputs` — used to exercise the
-// declares_free_outputs rejection. Correct arity (2 params), wrong contract.
-const NORMALIZE_1_FREE_NO_OUTPUTS: &str = r#"template NormalizePublics(nPublics, nFreeInputs) {
-    signal input publics[nPublics];
-    signal input free_inputs[nFreeInputs];
-    signal output recurser_publics[nPublics];
-    for (var i = 0; i < nFreeInputs; i++) {
-        _ <== free_inputs[i];
-    }
-    for (var i = 0; i < nPublics; i++) {
-        recurser_publics[i] <== publics[i];
-    }
-}"#;
+mod common;
+use common::{
+    AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_0_FREE, NORMALIZE_1_FREE,
+    NORMALIZE_1_FREE_NO_OUTPUTS,
+};
 
 fn templates() -> CircomTemplates {
     CircomTemplates {
         normalize: None,
         aggregate_publics: AGGREGATE_0_FREE.to_string(),
         n_free: 0,
+        n_publics_agg: 6,
         program_vks: vec![],
     }
 }
@@ -158,10 +94,10 @@ fn no_normalize_raw_passthrough() {
     );
     assert!(!out.contains("normalize_groups"), "must not contain normalize_groups");
 
-    // AggregatePublics call: 0-free form uses no param in instantiation.
+    // AggregatePublics call: 0-free form passes only nPublicsAgg.
     assert!(
-        out.contains("AggregatePublics()(ziskPublicsA, ziskPublicsB)"),
-        "0-free AggregatePublics must use no-arg instantiation"
+        out.contains("AggregatePublics(N_PUBLICS_AGG)(ziskPublicsA, ziskPublicsB)"),
+        "0-free AggregatePublics must be instantiated with nPublicsAgg"
     );
 
     // VK match when both aggregated.
@@ -178,6 +114,7 @@ fn no_normalize_with_nfree_gt0() {
         normalize: None,
         aggregate_publics: AGGREGATE_1_FREE.to_string(),
         n_free: 1,
+        n_publics_agg: 6,
         program_vks: vec![],
     };
 
@@ -207,8 +144,8 @@ fn no_normalize_with_nfree_gt0() {
 
     // 1-free AggregatePublics instantiation with both free arrays.
     assert!(
-        out.contains("AggregatePublics(1)("),
-        "n_free=1 AggregatePublics must use 1-arg instantiation"
+        out.contains("AggregatePublics(1, N_PUBLICS_AGG)("),
+        "n_free=1 AggregatePublics must be instantiated with (nFreeInputs, nPublicsAgg)"
     );
     assert!(
         out.contains("ziskPublicsA, ziskPublicsB, aggFreeA, aggFreeB"),
@@ -227,15 +164,16 @@ fn with_normalize_and_nfree_gt0() {
         normalize: Some(NormalizeCircuit { body: NORMALIZE_1_FREE.to_string() }),
         aggregate_publics: AGGREGATE_1_FREE.to_string(),
         n_free: 1,
+        n_publics_agg: 6,
         program_vks: vec![],
     };
 
     let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
 
-    // 2-arg NormalizePublics instantiation (n_free=1).
+    // 1-arg NormalizePublics instantiation (n_free=1).
     assert!(
-        out.contains("NormalizePublics(nPublics, 1)"),
-        "n_free=1 normalize must use 2-arg NormalizePublics instantiation"
+        out.contains("NormalizePublics(1)"),
+        "n_free=1 normalize must use 1-arg NormalizePublics instantiation"
     );
 
     // NormalizePublics returns free_outputs, captured into normFreeOutX.
@@ -308,14 +246,14 @@ fn with_normalize_and_nfree_gt0() {
 
     // Injected normalize body is present verbatim.
     assert!(
-        out.contains("template NormalizePublics(nPublics, nFreeInputs)"),
+        out.contains("template NormalizePublics(nFreeInputs)"),
         "injected normalize body must appear in output"
     );
 
     // 1-free AggregatePublics instantiation receiving the muxed free values.
     assert!(
-        out.contains("AggregatePublics(1)("),
-        "n_free=1 AggregatePublics must use 1-arg instantiation"
+        out.contains("AggregatePublics(1, N_PUBLICS_AGG)("),
+        "n_free=1 AggregatePublics must be instantiated with (nFreeInputs, nPublicsAgg)"
     );
     assert!(
         out.contains("ziskPublicsA, ziskPublicsB, aggFreeA, aggFreeB"),
@@ -333,15 +271,16 @@ fn with_normalize_and_nfree_zero() {
         normalize: Some(NormalizeCircuit { body: NORMALIZE_0_FREE.to_string() }),
         aggregate_publics: AGGREGATE_0_FREE.to_string(),
         n_free: 0,
+        n_publics_agg: 6,
         program_vks: vec![],
     };
 
     let out = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates).unwrap();
 
-    // 1-arg NormalizePublics instantiation (n_free=0).
+    // No-arg NormalizePublics instantiation (n_free=0).
     assert!(
-        out.contains("NormalizePublics(nPublics)("),
-        "n_free=0 normalize must use 1-arg NormalizePublics instantiation"
+        out.contains("NormalizePublics()("),
+        "n_free=0 normalize must use no-arg NormalizePublics instantiation"
     );
 
     // No free-input signal declarations and no free-value machinery.
@@ -362,28 +301,29 @@ fn with_normalize_and_nfree_zero() {
 
     // Injected normalize body present.
     assert!(
-        out.contains("template NormalizePublics(nPublics)"),
+        out.contains("template NormalizePublics()"),
         "injected normalize body must appear in output"
     );
 
-    // No-arg AggregatePublics instantiation.
+    // 0-free AggregatePublics instantiation passes only nPublicsAgg.
     assert!(
-        out.contains("AggregatePublics()(ziskPublicsA, ziskPublicsB)"),
-        "0-free AggregatePublics must use no-arg instantiation"
+        out.contains("AggregatePublics(N_PUBLICS_AGG)(ziskPublicsA, ziskPublicsB)"),
+        "0-free AggregatePublics must be instantiated with nPublicsAgg"
     );
 }
 
 // --- Test 5: arity-mismatch and contract errors ---
 
-/// A NormalizePublics body with 1 param but n_free=1 (requires 2 params) must error.
+/// A NormalizePublics body with 0 params but n_free=1 (requires 1 param) must error.
 #[test]
 fn normalize_arity_mismatch_1param_but_nfree1() {
     let templates = CircomTemplates {
         normalize: Some(NormalizeCircuit {
-            body: NORMALIZE_0_FREE.to_string(), // 1-param body; n_free=1 needs NormalizePublics(nPublics, nFree)
+            body: NORMALIZE_0_FREE.to_string(), // 0-param body; n_free=1 needs NormalizePublics(nFreeInputs)
         }),
-        aggregate_publics: AGGREGATE_1_FREE.to_string(), // valid: 1-param AggregatePublics(nFreeInputs)
+        aggregate_publics: AGGREGATE_1_FREE.to_string(), // valid: 2-param AggregatePublics(nFreeInputs, nPublicsAgg)
         n_free: 1,
+        n_publics_agg: 6,
         program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
@@ -394,15 +334,16 @@ fn normalize_arity_mismatch_1param_but_nfree1() {
     );
 }
 
-/// A NormalizePublics body with 2 params but n_free=0 (requires 1 param) must error.
+/// A NormalizePublics body with 1 param but n_free=0 (requires 0 params) must error.
 #[test]
 fn normalize_arity_mismatch_2param_but_nfree0() {
     let templates = CircomTemplates {
         normalize: Some(NormalizeCircuit {
-            body: NORMALIZE_1_FREE.to_string(), // 2-param body; n_free=0 needs NormalizePublics(nPublics)
+            body: NORMALIZE_1_FREE.to_string(), // 1-param body; n_free=0 needs NormalizePublics()
         }),
-        aggregate_publics: AGGREGATE_0_FREE.to_string(), // valid: 0-param AggregatePublics()
+        aggregate_publics: AGGREGATE_0_FREE.to_string(), // valid: 1-param AggregatePublics(nPublicsAgg)
         n_free: 0,
+        n_publics_agg: 6,
         program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
@@ -423,6 +364,7 @@ fn normalize_missing_free_outputs_but_nfree_gt0() {
         }),
         aggregate_publics: AGGREGATE_1_FREE.to_string(),
         n_free: 1,
+        n_publics_agg: 6,
         program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
@@ -433,15 +375,16 @@ fn normalize_missing_free_outputs_but_nfree_gt0() {
     );
 }
 
-/// An AggregatePublics body with 0 params but n_free=1 (requires 1 param) must error.
-/// AggregatePublics has no leading nPublics param, so n_free=1 needs exactly one
-/// param (nFreeInputs); the 0-param body is a mismatch.
+/// An AggregatePublics body with 1 param (nPublicsAgg) but n_free=1 (requires 2:
+/// nFreeInputs + nPublicsAgg) must error. AggregatePublics carries a leading
+/// nPublicsAgg param, so n_free=1 needs exactly two params; the 1-param body is a mismatch.
 #[test]
 fn aggregate_arity_mismatch_0param_but_nfree1() {
     let templates = CircomTemplates {
         normalize: None,
-        aggregate_publics: AGGREGATE_0_FREE.to_string(), // 0-param body
-        n_free: 1,                                       // requires 1 param
+        aggregate_publics: AGGREGATE_0_FREE.to_string(), // 1-param body (nPublicsAgg only)
+        n_free: 1,                                       // requires 2 params
+        n_publics_agg: 6,
         program_vks: vec![],
     };
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
@@ -464,6 +407,7 @@ fn programs_allowlist_emits_membership_and_hard_reject() {
         normalize: None,
         aggregate_publics: AGGREGATE_0_FREE.to_string(),
         n_free: 0,
+        n_publics_agg: 6,
         program_vks: program_vks(),
     };
 

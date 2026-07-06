@@ -138,20 +138,20 @@ template Main(nPublics) {
     //    ziskPublicsX = isFinalX * normX + (1 - isFinalX) * rawX.
 {% if n_free > 0 %}
     // NormalizePublics emits recurser_publics + free_outputs (§5).
-    component normACmp = NormalizePublics(nPublics, {{ n_free }});
+    component normACmp = NormalizePublics({{ n_free }});
     normACmp.publics <== aPublics;
     normACmp.free_inputs <== freeInputsA;
     signal normA[nPublics] <== normACmp.recurser_publics;
     signal normFreeOutA[{{ n_free }}] <== normACmp.free_outputs;
 
-    component normBCmp = NormalizePublics(nPublics, {{ n_free }});
+    component normBCmp = NormalizePublics({{ n_free }});
     normBCmp.publics <== bPublics;
     normBCmp.free_inputs <== freeInputsB;
     signal normB[nPublics] <== normBCmp.recurser_publics;
     signal normFreeOutB[{{ n_free }}] <== normBCmp.free_outputs;
 {% else %}
-    signal normA[nPublics] <== NormalizePublics(nPublics)(aPublics);
-    signal normB[nPublics] <== NormalizePublics(nPublics)(bPublics);
+    signal normA[nPublics] <== NormalizePublics()(aPublics);
+    signal normB[nPublics] <== NormalizePublics()(bPublics);
 {% endif %}
     signal ziskPublicsA[nPublics];
     signal ziskPublicsB[nPublics];
@@ -199,19 +199,21 @@ template Main(nPublics) {
 {% endif %}
 {% endif %}
 
-    // -- Consistency + aggregation. AggregatePublics asserts the stitching
-    //    constraints and produces the merged publics; it also receives both
-    //    sides' free values (§6).
+    // -- Consistency + aggregation (§6). AggregatePublics outputs only the used
+    //    slots; the generator zero-fills the [N_PUBLICS_AGG, nPublics) tail.
+    var N_PUBLICS_AGG = {{ n_publics_agg }};
 {% if n_free > 0 %}
-    signal aggPublics[nPublics] <== AggregatePublics({{ n_free }})(
+    signal aggPublics[N_PUBLICS_AGG] <== AggregatePublics({{ n_free }}, N_PUBLICS_AGG)(
         ziskPublicsA, ziskPublicsB, aggFreeA, aggFreeB);
 {% else %}
-    signal aggPublics[nPublics] <== AggregatePublics()(ziskPublicsA, ziskPublicsB);
+    signal aggPublics[N_PUBLICS_AGG] <== AggregatePublics(N_PUBLICS_AGG)(ziskPublicsA, ziskPublicsB);
 {% endif %}
 
-    // Re-emit user publics at [PUBLICS_BASE..).
-    for (var i = 0; i < nPublics; i++) {
+    for (var i = 0; i < N_PUBLICS_AGG; i++) {
         aggregatedPublics[PUBLICS_BASE + i] <== aggPublics[i];
+    }
+    for (var i = N_PUBLICS_AGG; i < nPublics; i++) {
+        aggregatedPublics[PUBLICS_BASE + i] <== 0;
     }
 
     // -- When both proofs are aggregated, their programVKs must match.

@@ -1,8 +1,8 @@
 // Example NormalizePublics — identity passthrough.
-template NormalizePublics(nPublics, nFreeInputs) {
-    signal input publics[nPublics];
+template NormalizePublics(nFreeInputs) {
+    signal input publics[ZISK_PUBLICS()];
     signal input free_inputs[nFreeInputs];
-    signal output recurser_publics[nPublics];
+    signal output recurser_publics[ZISK_PUBLICS()];
     signal output free_outputs[nFreeInputs];
 
     // Identity: free inputs pass straight through as free outputs.
@@ -10,7 +10,7 @@ template NormalizePublics(nPublics, nFreeInputs) {
         free_outputs[i] <== free_inputs[i];
     }
 
-    for (var i = 0; i < nPublics; i++) {
+    for (var i = 0; i < ZISK_PUBLICS(); i++) {
         recurser_publics[i] <== publics[i];
     }
 }

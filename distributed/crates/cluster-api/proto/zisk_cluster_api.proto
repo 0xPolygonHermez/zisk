@@ -93,6 +93,8 @@ message AggregationProgramSpec {
   uint64              n_free                 = 3;
   // Optional leaf allow-list (empty = VK-agnostic). Order is significant.
   repeated ProgramVk  program_vks            = 4;
+  // Publics slots the aggregation populates; the rest are generator-zero-filled.
+  uint64              n_publics_agg           = 5;
 }
 
 message SetupAggregationProgram {

@@ -64,6 +64,7 @@ impl From<DomainAggregationProgramSpec> for AggregationProgramSpec {
             normalize: s.normalize.map(|n| NormalizeCircuit { body: n.body }),
             aggregate_publics_body: s.aggregate_publics_body,
             n_free: s.n_free,
+            n_publics_agg: s.n_publics_agg,
             program_vks: s
                 .program_vks
                 .into_iter()
@@ -79,6 +80,7 @@ impl From<AggregationProgramSpec> for DomainAggregationProgramSpec {
             normalize: s.normalize.map(|n| DomainNormalizeCircuit { body: n.body }),
             aggregate_publics_body: s.aggregate_publics_body,
             n_free: s.n_free,
+            n_publics_agg: s.n_publics_agg,
             program_vks: s.program_vks.into_iter().map(program_vk_from_proto).collect(),
         }
     }

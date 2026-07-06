@@ -23,6 +23,10 @@ pub struct TemplateHashes {
     /// Single unified free-input width per side, shared by NormalizePublics
     /// and AggregatePublics.
     pub n_free: usize,
+    /// Number of publics slots the aggregation populates; the rest are
+    /// generator-zero-filled. Part of the id so a used-width change forces a
+    /// fresh setup.
+    pub n_publics_agg: usize,
 }
 
 /// Everything the `recurser_id` is derived from. The id is a blake3 of the
@@ -53,6 +57,7 @@ impl RecurserManifestInputs {
         normalize: Option<&NormalizeCircuit>,
         aggregate_publics_body: &str,
         n_free: usize,
+        n_publics_agg: usize,
     ) -> Self {
         Self {
             zisk_vk,
@@ -62,6 +67,7 @@ impl RecurserManifestInputs {
                     .map(|n| NormalizeHash { template_blake3: blake3_hex(n.body.as_bytes()) }),
                 aggregate_publics_blake3: blake3_hex(aggregate_publics_body.as_bytes()),
                 n_free,
+                n_publics_agg,
             },
         }
     }
@@ -137,73 +143,88 @@ mod tests {
 
     #[test]
     fn id_is_deterministic() {
-        let a = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0);
-        let b = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0);
+        let a = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0, 6);
+        let b = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0, 6);
         assert_eq!(a.compute_id(), b.compute_id());
     }
 
     #[test]
     fn id_changes_when_any_input_changes() {
-        let id = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0).compute_id();
+        let id = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0, 6).compute_id();
 
         // zisk_vk change
-        assert_ne!(id, RecurserManifestInputs::new(vk("Z"), vec![], None, "agg", 0).compute_id());
+        assert_ne!(
+            id,
+            RecurserManifestInputs::new(vk("Z"), vec![], None, "agg", 0, 6).compute_id()
+        );
         // aggregate body change
-        assert_ne!(id, RecurserManifestInputs::new(vk("z"), vec![], None, "AGG", 0).compute_id());
+        assert_ne!(
+            id,
+            RecurserManifestInputs::new(vk("z"), vec![], None, "AGG", 0, 6).compute_id()
+        );
         // n_free change
-        assert_ne!(id, RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 5).compute_id());
+        assert_ne!(
+            id,
+            RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 5, 6).compute_id()
+        );
+        // n_publics_agg change
+        assert_ne!(
+            id,
+            RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0, 7).compute_id()
+        );
         // None vs Some
         assert_ne!(
             id,
-            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0).compute_id()
+            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0, 6).compute_id()
         );
         // normalize body change
         let id_with_norm =
-            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0).compute_id();
+            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0, 6).compute_id();
         let norm_alt = NormalizeCircuit { body: "// c".into() };
         assert_ne!(
             id_with_norm,
-            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm_alt), "agg", 0).compute_id()
+            RecurserManifestInputs::new(vk("z"), vec![], Some(&norm_alt), "agg", 0, 6).compute_id()
         );
     }
 
     #[test]
     fn id_changes_with_program_allowlist() {
-        let none = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0).compute_id();
+        let none = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 0, 6).compute_id();
         // Adding an allow-list changes the id.
-        let one = RecurserManifestInputs::new(vk("z"), vec![vk("p")], None, "agg", 0).compute_id();
+        let one =
+            RecurserManifestInputs::new(vk("z"), vec![vk("p")], None, "agg", 0, 6).compute_id();
         assert_ne!(none, one);
         // A different allow-list member changes the id.
         let one_alt =
-            RecurserManifestInputs::new(vk("z"), vec![vk("q")], None, "agg", 0).compute_id();
+            RecurserManifestInputs::new(vk("z"), vec![vk("q")], None, "agg", 0, 6).compute_id();
         assert_ne!(one, one_alt);
         // Order is significant.
-        let ab = RecurserManifestInputs::new(vk("z"), vec![vk("p"), vk("q")], None, "agg", 0)
+        let ab = RecurserManifestInputs::new(vk("z"), vec![vk("p"), vk("q")], None, "agg", 0, 6)
             .compute_id();
-        let ba = RecurserManifestInputs::new(vk("z"), vec![vk("q"), vk("p")], None, "agg", 0)
+        let ba = RecurserManifestInputs::new(vk("z"), vec![vk("q"), vk("p")], None, "agg", 0, 6)
             .compute_id();
         assert_ne!(ab, ba);
     }
 
     #[test]
     fn id_is_64_hex_chars() {
-        let id = RecurserManifestInputs::new(vk("z"), vec![], None, "c", 0).compute_id();
+        let id = RecurserManifestInputs::new(vk("z"), vec![], None, "c", 0, 6).compute_id();
         assert_eq!(id.len(), 64);
         assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
     #[test]
     fn n_free_accessor() {
-        let m = RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 7);
+        let m = RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 7, 6);
         assert_eq!(m.n_free(), 7);
 
-        let m_no_norm = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 5);
+        let m_no_norm = RecurserManifestInputs::new(vk("z"), vec![], None, "agg", 5, 6);
         assert_eq!(m_no_norm.n_free(), 5);
     }
 
     #[test]
     fn manifest_json_roundtrips() {
-        let inputs = RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0);
+        let inputs = RecurserManifestInputs::new(vk("z"), vec![], Some(&norm()), "agg", 0, 6);
         let recurser_id = inputs.compute_id();
         let manifest = RecurserManifest { recurser_id: recurser_id.clone(), inputs };
 

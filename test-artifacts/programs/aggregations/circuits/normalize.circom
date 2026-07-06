@@ -7,7 +7,7 @@
 // field elements in publics slots [2, 3, 4, 5].
 //
 // The first two slots [0, 1] are the chain endpoints [old, new] and pass
-// through untouched; slots [6, nPublics) also pass through (they stay zero).
+// through untouched; slots [6, ZISK_PUBLICS()) also pass through (they stay zero).
 //
 // `freeInputs[0]` is supplied at prove time (`.with_free_inputs(vec![4])`), so
 // the hashed tuple is [1, 2, 3, 4]. Both leaves hash the identical tuple, so
@@ -25,10 +25,10 @@
 // `Poseidon1_8` is already in scope — the generated verifier includes
 // `hash/poseidon1/pow.circom`, which includes `poseidon8.circom`.
 
-template NormalizePublics(nPublics, nFreeInputs) {
-    signal input publics[nPublics];
+template NormalizePublics(nFreeInputs) {
+    signal input publics[ZISK_PUBLICS()];
     signal input free_inputs[nFreeInputs];
-    signal output recurser_publics[nPublics];
+    signal output recurser_publics[ZISK_PUBLICS()];
     signal output free_outputs[nFreeInputs];
 
     // Free values pass straight through as free outputs (identity), so an
@@ -57,7 +57,7 @@ template NormalizePublics(nPublics, nFreeInputs) {
     for (var i = 0; i < 4; i++) {
         recurser_publics[i + 2] <== digest[i];
     }
-    for (var i = 6; i < nPublics; i++) {
+    for (var i = 6; i < ZISK_PUBLICS(); i++) {
         recurser_publics[i] <== publics[i];
     }
 

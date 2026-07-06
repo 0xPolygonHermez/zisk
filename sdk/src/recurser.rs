@@ -124,7 +124,7 @@ fn derive_program_vks(programs: &[&GuestProgram]) -> Result<Vec<[String; 4]>> {
 /// hand when the circuits are only known at runtime.
 ///
 /// ```ignore
-/// let recurser = AggregationProgramBuilder::new(load_circuit!("aggregate.circom"))
+/// let recurser = AggregationProgramBuilder::new(load_circuit!("aggregate.circom"), 6)
 ///     .normalize(load_circuit!("normalize.circom"))
 ///     .free_inputs(1)
 ///     .build()?;
@@ -133,6 +133,10 @@ fn derive_program_vks(programs: &[&GuestProgram]) -> Result<Vec<[String; 4]>> {
 pub struct AggregationProgramBuilder<'a> {
     aggregate: CircomCircuit,
     n_free: usize,
+    /// Number of publics slots the aggregation populates (required, set at
+    /// [`new`](Self::new)). `AggregatePublics` outputs a `n_publics_agg`-wide
+    /// array; the generator zero-fills the remaining tail.
+    n_publics_agg: usize,
     normalize: Option<CircomCircuit>,
     /// Optional leaf allow-list. Empty = VK-agnostic (any valid leaf accepted).
     /// Order is significant (fixes each program's `programVKs[]` index).
@@ -143,8 +147,20 @@ impl<'a> AggregationProgramBuilder<'a> {
     /// `aggregate` is the `AggregatePublics` Circom body: the consistency
     /// constraints between the two folded proofs' publics plus the merge
     /// into the output publics.
-    pub fn new(aggregate: impl Into<CircomCircuit>) -> Self {
-        Self { aggregate: aggregate.into(), n_free: 0, normalize: None, programs: Vec::new() }
+    ///
+    /// `n_publics_agg` is the number of publics slots the aggregation populates:
+    /// `AggregatePublics` outputs a `n_publics_agg`-wide array (slots
+    /// `[0, n_publics_agg)`) and the recurser scaffolding zero-fills the remaining
+    /// `[n_publics_agg, ZISK_PUBLICS())` tail, so the circuit never writes a
+    /// padding loop. Must be in `1..=ZISK_PUBLICS()` (checked at [`build`](Self::build)).
+    pub fn new(aggregate: impl Into<CircomCircuit>, n_publics_agg: usize) -> Self {
+        Self {
+            aggregate: aggregate.into(),
+            n_free: 0,
+            n_publics_agg,
+            normalize: None,
+            programs: Vec::new(),
+        }
     }
 
     /// Optional leaf allow-list (access control). When set, the circuit accepts
@@ -189,6 +205,16 @@ impl<'a> AggregationProgramBuilder<'a> {
             expect_template_decl(circuit, "NormalizePublics")?;
         }
 
+        // Range-check here so a bad width fails at the client boundary rather
+        // than deep in setup after `recurser_id` is already computed/registered.
+        let n_publics_agg = self.n_publics_agg;
+        let max_publics = recurser::templates::ZISK_PUBLICS;
+        if n_publics_agg == 0 || n_publics_agg > max_publics {
+            return Err(SdkError::Recurser(format!(
+                "n_publics_agg must be in 1..={max_publics}, got {n_publics_agg}"
+            )));
+        }
+
         let normalize = self
             .normalize
             .as_ref()
@@ -202,6 +228,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             normalize: normalize.clone(),
             aggregate_publics: self.aggregate.source().to_string(),
             n_free: self.n_free,
+            n_publics_agg,
             program_vks: program_vks.clone(),
         };
 
@@ -231,6 +258,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             normalize.as_ref(),
             &templates.aggregate_publics,
             templates.n_free,
+            templates.n_publics_agg,
         );
         let recurser_id = inputs.compute_id();
 
@@ -331,6 +359,7 @@ mod tests {
                 normalize: None,
                 aggregate_publics: "// body".into(),
                 n_free: 0,
+                n_publics_agg: 6,
                 program_vks: vec![],
             },
             setup_dir: "/tmp/zisk-test-setup".into(),

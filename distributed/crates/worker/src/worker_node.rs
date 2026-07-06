@@ -1408,6 +1408,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             normalize.as_ref(),
             &spec.aggregate_publics_body,
             spec.n_free as usize,
+            spec.n_publics_agg as usize,
         );
         let expected_id = expected_inputs.compute_id();
         if expected_id != setup.recurser_id {
@@ -1431,6 +1432,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     normalize,
                     aggregate_publics: spec.aggregate_publics_body.clone(),
                     n_free: spec.n_free as usize,
+                    n_publics_agg: spec.n_publics_agg as usize,
                     program_vks,
                 },
             };

@@ -96,11 +96,14 @@ returns 64 so that `AggregatePublics` can size its arrays without taking
 > hash. This aggregator (the fold layer) reads slot 0 to classify leaf vs
 > aggregated.
 
-> ⚠ **Zero-pad unused slots.** The user publics array is always 64 long.
-> If your app uses fewer than 64 publics, leftover slots must be zero in
-> every leaf proof — otherwise arbitrary values propagate unchecked. Either
-> zero-pad in the producer, or add `a_publics[i] === 0` / `b_publics[i] === 0`
-> constraints in your `AggregatePublics` body (§6).
+> **Unused output slots are zero-filled for you.** The user publics array is
+> always 64 long, but `AggregatePublics` outputs only the `n-publics-agg` slots
+> your app uses; the scaffolding zero-fills the `[n-publics-agg, 64)` tail on the
+> fold *output* (§6), so those slots can't carry arbitrary values up the tree —
+> no producer zero-padding or manual output `=== 0` required. Note this covers
+> outputs only: the *inputs* `a_publics` / `b_publics` are still full 64-wide and
+> unconstrained in the tail, so if your body reads an input slot `>= n-publics-agg`
+> (e.g. into a stitch constraint), constrain it yourself.
 
 ---
 
@@ -216,10 +219,14 @@ the no-normalize baseline.
 
 The template signature depends on the single declared free-input count `n_free`:
 
-- `n_free == 0` → `template NormalizePublics(nPublics)`, called as
-  `NormalizePublics(nPublics)(aPublics)` — no free inputs or outputs.
-- `n_free > 0` → `template NormalizePublics(nPublics, nFreeInputs)`, which
+- `n_free == 0` → `template NormalizePublics()`, called as
+  `NormalizePublics()(aPublics)` — no free inputs or outputs.
+- `n_free > 0` → `template NormalizePublics(nFreeInputs)`, which
   MUST emit a `free_outputs[nFreeInputs]` output (see below).
+
+Publics arrays are sized via `ZISK_PUBLICS()` (a file-scope function the
+generator emits), so `NormalizePublics` takes no publics-width param —
+matching `AggregatePublics` (§6).
 
 The generator asserts the user-authored body's `template NormalizePublics(...)` arity
 matches the declared count at build time (`InvalidTemplates` error on mismatch), and
@@ -228,10 +235,10 @@ matches the declared count at build time (`InvalidTemplates` error on mismatch),
 ### The circuit body (n_free > 0 example)
 
 ```circom
-template NormalizePublics(nPublics, nFreeInputs) {
-    signal input publics[nPublics];
+template NormalizePublics(nFreeInputs) {
+    signal input publics[ZISK_PUBLICS()];
     signal input free_inputs[nFreeInputs];
-    signal output recurser_publics[nPublics];
+    signal output recurser_publics[ZISK_PUBLICS()];
     signal output free_outputs[nFreeInputs];
 
     // ... your derivation logic ...
@@ -239,7 +246,7 @@ template NormalizePublics(nPublics, nFreeInputs) {
 ```
 
 The body can do anything Circom supports — hashes, decompositions,
-derived values. `recurser_publics` is `nPublics` wide (same as input);
+derived values. `recurser_publics` is `ZISK_PUBLICS()` wide (same as input);
 `free_outputs` is `n_free` wide and feeds `AggregatePublics` (§6).
 
 > ⚠ **No `===` constraints in `NormalizePublics`.** The circuit runs on
@@ -289,10 +296,15 @@ proofman API carries one array per side (`free_inputs_a`, `free_inputs_b`), each
 
 ## 6. AggregatePublics (required)
 
-Combines A's and B's post-normalize `ziskPublicsX[nPublics]` arrays into
-one same-size output. The width is ZisK's fixed 64 user-publics slots,
-exposed by `ZISK_PUBLICS()`. Each output slot is some function of the
-matching slots in A and B.
+Combines A's and B's post-normalize `ziskPublicsX` arrays into the output.
+Inputs are ZisK's fixed 64 user-publics slots, exposed by `ZISK_PUBLICS()`.
+The **output** is only `nPublicsAgg` wide — the number of slots the
+aggregation actually populates, set by the recurser's required
+`n-publics-agg` config and threaded in as the trailing template
+parameter. The scaffolding zero-fills the remaining
+`[nPublicsAgg, ZISK_PUBLICS())` tail **outside** this template, so the
+body never writes a padding loop and a prover cannot inject values into unused
+slots. Each output slot is some function of the matching slots in A and B.
 
 This is also where stitching constraints between A's and B's publics live
 — e.g. "A's `endBlock` equals B's `startBlock`". A failed constraint
@@ -300,18 +312,21 @@ aborts the fold.
 
 ### Conditional template signature
 
-- `n_free == 0` → `template AggregatePublics()`, called as
-  `AggregatePublics()(ziskPublicsA, ziskPublicsB)` — no free-input arrays.
-- `n_free > 0` → `template AggregatePublics(nFreeInputs)`, called with
-  `aggFreeA` / `aggFreeB` (the muxed free values).
+`nPublicsAgg` is always the trailing param; `nFreeInputs` precedes it
+only when `n_free > 0`:
+
+- `n_free == 0` → `template AggregatePublics(nPublicsAgg)`, called as
+  `AggregatePublics(nPublicsAgg)(ziskPublicsA, ziskPublicsB)`.
+- `n_free > 0` → `template AggregatePublics(nFreeInputs, nPublicsAgg)`,
+  called with `aggFreeA` / `aggFreeB` (the muxed free values) too.
 
 The generator asserts arity matches at build time.
 
 ### Required template body (n_free > 0 example)
 
 ```circom
-template AggregatePublics(nFreeInputs) {
-    signal output aggregated_publics[ZISK_PUBLICS()];
+template AggregatePublics(nFreeInputs, nPublicsAgg) {
+    signal output aggregated_publics[nPublicsAgg];
     signal input a_publics[ZISK_PUBLICS()];
     signal input b_publics[ZISK_PUBLICS()];
     signal input free_inputs_a[nFreeInputs];
@@ -321,14 +336,15 @@ template AggregatePublics(nFreeInputs) {
 }
 ```
 
-`ZISK_PUBLICS()` is defined by the scaffolding above the injected body,
-so it is not a template parameter. Inputs bind positionally to the
-aggregator's call in the order listed. Every slot of `aggregated_publics`
-must be driven.
+`ZISK_PUBLICS()` is defined by the scaffolding above the injected body, so the
+input width is not a template parameter; the output width `nPublicsAgg`
+is passed in by the generator. Inputs bind positionally to the aggregator's
+call in the order listed. Every slot of the `nPublicsAgg`-wide
+`aggregated_publics` must be driven (the tail beyond it is generator-owned).
 
 An inherit-from-A example lives at
 [tests/fixtures/aggregate_publics.circom](../tests/fixtures/aggregate_publics.circom);
-a minimal chain-fold (stitch constraint + zero-filled tail, `n_free = 0`) at
+a minimal chain-fold (stitch constraint only, `n_free = 0`, `n-publics-agg = 2`) at
 [test-artifacts/programs/aggregations/circuits/aggregate_publics_simple.circom](../../test-artifacts/programs/aggregations/circuits/aggregate_publics_simple.circom);
 and a richer chain-fold (stitch + a NormalizePublics digest check, `n_free = 1`) at
 [test-artifacts/programs/aggregations/circuits/aggregate_publics.circom](../../test-artifacts/programs/aggregations/circuits/aggregate_publics.circom).
@@ -507,12 +523,17 @@ are rejected.
 # Required: the AggregatePublics circom body.
 aggregate-publics = "circuits/aggregate_publics.circom"
 
+# Required: number of publics slots the aggregation populates. AggregatePublics
+# outputs an `n-publics-agg`-wide array; the scaffolding zero-fills the
+# rest of the 64-slot buffer (§6). Must be in 1..=64.
+n-publics-agg = 6
+
 # Optional: single free-value width per side (default 0). Both NormalizePublics
 # and AggregatePublics must declare the matching arity (§5, §6).
 free-inputs = 1
 
 # Optional: single normalize circom body, applied to all leaves. Defines
-# `template NormalizePublics(nPublics[, nFreeInputs])`. Omit the key to skip.
+# `template NormalizePublics([nFreeInputs])`. Omit the key to skip.
 normalize-publics = "circuits/normalize.circom"
 
 # Optional: leaf allow-list (§3a). Guest program names, resolved against the

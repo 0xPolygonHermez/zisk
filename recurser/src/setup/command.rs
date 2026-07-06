@@ -64,6 +64,7 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
         circom_templates.normalize.as_ref(),
         &circom_templates.aggregate_publics,
         circom_templates.n_free,
+        circom_templates.n_publics_agg,
     );
     let recurser_id = manifest_inputs.compute_id();
     tracing::info!("Recurser id: {}", recurser_id);

@@ -32,10 +32,13 @@ pub(crate) fn resolve_recurser(aggregation: &Path) -> Result<Recurser> {
     let (definition, _circuit_paths) = resolve_aggregation(&definition_path, elf_map.as_deref())
         .with_context(|| format!("aggregation definition {}", aggregation.display()))?;
 
-    let mut builder = AggregationProgramBuilder::new(CircomCircuit::from_source(
-        format!("{}-aggregate_publics", definition.name),
-        definition.aggregate_publics_body.clone(),
-    ))
+    let mut builder = AggregationProgramBuilder::new(
+        CircomCircuit::from_source(
+            format!("{}-aggregate_publics", definition.name),
+            definition.aggregate_publics_body.clone(),
+        ),
+        definition.n_publics_agg,
+    )
     .free_inputs(definition.n_free);
     if let Some(norm) = &definition.normalize {
         builder = builder.normalize(CircomCircuit::from_source(

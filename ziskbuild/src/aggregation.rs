@@ -22,6 +22,10 @@ struct AggregationToml {
     /// the normalize + aggregate circuits.
     #[serde(default)]
     free_inputs: usize,
+    /// Number of publics slots the aggregation populates (required).
+    /// `AggregatePublics` outputs a `n-publics-agg`-wide array; the recurser
+    /// scaffolding zero-fills the rest of the ZISK_PUBLICS() buffer.
+    n_publics_agg: usize,
 }
 
 /// Fully-resolved definition: circuit bodies inlined, allow-list ELFs pinned.
@@ -32,6 +36,7 @@ pub struct ResolvedAggregation {
     pub programs: Vec<ResolvedProgram>,
     pub aggregate_publics_body: String,
     pub n_free: usize,
+    pub n_publics_agg: usize,
     pub normalize: Option<ResolvedNormalize>,
 }
 
@@ -239,6 +244,18 @@ pub fn resolve_aggregation(
     let (aggregate_path, aggregate_publics_body) = read_circuit(&def.aggregate_publics)?;
     expect_template_decl(&aggregate_publics_body, "AggregatePublics", &aggregate_path)?;
 
+    // Range-check `n-publics-agg` here, at the config boundary with file context,
+    // rather than deferring to `gen_recurser` at setup time. ZISK_PUBLICS is the
+    // fixed 64-slot user-publics width (see zisk_verifier::ZISK_PUBLICS).
+    const ZISK_PUBLICS: usize = 64;
+    if def.n_publics_agg == 0 || def.n_publics_agg > ZISK_PUBLICS {
+        bail!(
+            "{}: `n-publics-agg` must be in 1..={ZISK_PUBLICS}, got {}",
+            toml_path.display(),
+            def.n_publics_agg
+        );
+    }
+
     let (normalize_path, normalize_resolved) =
         normalize.map(|(p, r)| (Some(p), Some(r))).unwrap_or((None, None));
     Ok((
@@ -247,6 +264,7 @@ pub fn resolve_aggregation(
             programs,
             aggregate_publics_body,
             n_free: def.free_inputs,
+            n_publics_agg: def.n_publics_agg,
             normalize: normalize_resolved,
         },
         ResolvedCircuitPaths { aggregate: aggregate_path, normalize: normalize_path },
@@ -308,6 +326,7 @@ fn codegen(
         format!("{}/aggregate_publics", resolved.name),
         aggregate_path.display().to_string(),
     );
+    let _ = writeln!(out, "        {}usize,", resolved.n_publics_agg);
     let _ = writeln!(out, "    )");
     if resolved.n_free > 0 {
         let _ = writeln!(out, "    .free_inputs({}usize)", resolved.n_free);

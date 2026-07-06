@@ -44,7 +44,7 @@ const _: () = assert!(
 /// The optional single normalization circuit applied to every leaf.
 #[derive(Debug, Clone)]
 pub struct NormalizeCircuit {
-    /// Circom body: `template NormalizePublics(nPublics[, nFreeInputs])`.
+    /// Circom body: `template NormalizePublics([nFreeInputs])`.
     pub body: String,
 }
 
@@ -67,6 +67,12 @@ pub struct CircomTemplates {
     /// NormalizePublics consumes `n_free` free inputs and emits `n_free`
     /// free outputs, which feed AggregatePublics.
     pub n_free: usize,
+    /// Number of publics slots the aggregation actually populates. `AggregatePublics`
+    /// outputs a `n_publics_agg`-wide array (slots `[0, n_publics_agg)`); the generator
+    /// zero-fills the remaining `[n_publics_agg, ZISK_PUBLICS())` tail outside the
+    /// user template, so authors never write a padding loop. Must be in
+    /// `1..=ZISK_PUBLICS()`.
+    pub n_publics_agg: usize,
 }
 
 impl CircomTemplates {
@@ -79,16 +85,17 @@ impl CircomTemplates {
 /// Assert the user circom body declares `template <template>(...)` with the
 /// arity the recurser scaffolding instantiates it with:
 ///
-/// - `NormalizePublics` takes a leading `nPublics` param, plus `nFreeInputs`
-///   when `n_free > 0`: `NormalizePublics(nPublics)` or
-///   `NormalizePublics(nPublics, nFreeInputs)`. With `n_free > 0` it MUST also
-///   emit a `free_outputs` output (the free values that feed AggregatePublics).
-/// - `AggregatePublics` sizes its publics arrays via `ZISK_PUBLICS()`, so it
-///   has NO `nPublics` param — only `nFreeInputs` when `n_free > 0`:
-///   `AggregatePublics()` or `AggregatePublics(nFreeInputs)`.
+/// - `NormalizePublics` sizes its publics arrays via `ZISK_PUBLICS()`, so it
+///   takes NO publics-width param — only `nFreeInputs` when `n_free > 0`:
+///   `NormalizePublics()` or `NormalizePublics(nFreeInputs)`. With `n_free > 0`
+///   it MUST also emit a `free_outputs` output (the free values that feed
+///   AggregatePublics).
+/// - `AggregatePublics` outputs only the used slots, so it takes a leading
+///   `nPublicsAgg` param, plus `nFreeInputs` when `n_free > 0`:
+///   `AggregatePublics(nPublicsAgg)` or `AggregatePublics(nFreeInputs, nPublicsAgg)`.
 ///
-/// The tera instantiations (`NormalizePublics(nPublics[, n])`,
-/// `AggregatePublics([n])`) are the contract these counts mirror.
+/// The tera instantiations (`NormalizePublics([n])`,
+/// `AggregatePublics([n,] nPublicsAgg)`) are the contract these counts mirror.
 pub fn expect_template_arity(body: &str, template: &str, n_free: usize) -> Result<()> {
     let needle = format!("template {template}(");
     let start = body.find(&needle).ok_or_else(|| {
@@ -100,7 +107,9 @@ pub fn expect_template_arity(body: &str, template: &str, n_free: usize) -> Resul
     })?;
     let params: Vec<&str> =
         after[..close].split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
-    let base_params = if template == "NormalizePublics" { 1 } else { 0 };
+    // AggregatePublics carries a leading `nPublicsAgg` param; NormalizePublics
+    // sizes off ZISK_PUBLICS() and takes no publics-width param.
+    let base_params = if template == "AggregatePublics" { 1 } else { 0 };
     let expected = base_params + if n_free > 0 { 1 } else { 0 };
     if params.len() != expected {
         return Err(RecurserError::InvalidTemplates(format!(
@@ -133,6 +142,13 @@ pub fn gen_recurser(
     templates: &CircomTemplates,
 ) -> Result<String> {
     let n_free = templates.n_free();
+    let n_publics_agg = templates.n_publics_agg;
+
+    if n_publics_agg == 0 || n_publics_agg > ZISK_PUBLICS {
+        return Err(RecurserError::InvalidTemplates(format!(
+            "n_publics_agg must be in 1..={ZISK_PUBLICS}, got {n_publics_agg}"
+        )));
+    }
 
     expect_template_arity(&templates.aggregate_publics, "AggregatePublics", n_free)?;
     if let Some(norm) = &templates.normalize {
@@ -146,6 +162,7 @@ pub fn gen_recurser(
     ctx.insert("aggregate_publics_template", &templates.aggregate_publics);
     ctx.insert("n_free", &n_free);
     ctx.insert("zisk_publics", &ZISK_PUBLICS);
+    ctx.insert("n_publics_agg", &n_publics_agg);
     ctx.insert("n_programs", &templates.program_vks.len());
     ctx.insert("program_vks", &templates.program_vks);
     match &templates.normalize {

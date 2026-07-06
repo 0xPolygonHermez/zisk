@@ -118,9 +118,10 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     // Mirror chain.toml exactly: one free input per side + the normalize hook.
     // A mismatch here would change the derived recurser_id and fail the assert
     // below.
-    let programmatic = AggregationProgramBuilder::new(CircomCircuit::from_path(format!(
-        "{circuits_dir}/aggregate_publics.circom"
-    ))?)
+    let programmatic = AggregationProgramBuilder::new(
+        CircomCircuit::from_path(format!("{circuits_dir}/aggregate_publics.circom"))?,
+        6, // mirror chain.toml's `n-publics-agg = 6`
+    )
     .free_inputs(1)
     .normalize(CircomCircuit::from_path(format!("{circuits_dir}/normalize.circom"))?)
     .build()
