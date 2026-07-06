@@ -25,60 +25,6 @@ source "${SCRIPT_DIR}/utils.sh"
 
 HASH="${HASH:-Poseidon1}"
 
-# Compile pil/zisk.pil into pil/zisk.pilout
-run_compile_pil() {
-    ensure cargo run --release --bin cargo-zisk-dev -- proofman-setup compile-pil \
-        --pil pil/zisk.pil \
-        --include "$INCLUDE_PATHS" \
-        --output pil/zisk.pilout \
-        --fixed-dir tmp/fixed \
-        --fixed-to-file \
-        --no-proto-fixed-data || return 1
-}
-
-# Regenerate pil/src/pil_helpers/ from the compiled pilout
-run_pil_helpers() {
-    ensure cargo run --release --manifest-path "$PROOFMAN_DIR/Cargo.toml" --bin proofman-cli -- \
-        pil-helpers \
-            --pilout pil/zisk.pilout \
-            --path pil/src \
-            -o || return 1
-}
-
-# Build the snark setup (provingKeySnark/) on top of an existing build/provingKey.
-run_setup_snark() {
-    local build_dir="$1"
-
-    [ -d "$build_dir/provingKey" ] || { err "$build_dir/provingKey not found — build the proving key first"; return 1; }
-
-    local publics_info="state-machines/publics.json"
-    [ -f "$publics_info" ] || { err "Missing $publics_info — final.circom needs the publics layout"; return 1; }
-
-    # Powers-of-tau: download (~18 GB) to PTAU_PATH from PTAU_URL if not present.
-    local ptau_path="${PTAU_PATH:-../powersOfTau28_hez_final_24.ptau}"
-    local ptau_url="${PTAU_URL:-https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau}"
-    if [ ! -f "$ptau_path" ]; then
-        info "Downloading powers-of-tau (~18 GB) to $ptau_path..."
-        ensure curl -fL -o "$ptau_path" "$ptau_url" || return 1
-    fi
-
-    ensure cargo run --release --bin cargo-zisk-dev -- proofman-setup setup-snark \
-        --build-dir "$build_dir" \
-        --publics-info "$publics_info" \
-        --powers-of-tau "$ptau_path" || return 1
-}
-
-# Generate the per-AIR Q-expression CUDA kernels (.exps.so) into <build-dir>/provingKey/.
-run_gen_exps() {
-  if ! command -v nvcc >/dev/null 2>&1; then
-    err "gen-exps skipped, nvcc not found" >&2; return 1;
-  fi
-  info "Proofman setup gen-exps (arch: major)"
-  cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
-    --proving-key "$BUILD_DIR/provingKey" \
-    --arch major
-}
-
 # Copy the inputs needed to compile the macOS dylib files into
 # build_dir/dylib_input, preserving the provingKey/ provingKeySnark/ layout.
 copy_dylib_input() {
