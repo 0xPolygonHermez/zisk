@@ -2,12 +2,11 @@ use anyhow::{bail, Context, Result};
 use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman::ProofMan;
 use proofman_verifier::VadcopFinalProof;
+use zisk_verifier::PROGRAM_VK_LEN;
 
 use super::validate::{validate_prove_inputs, ProofOrigin};
 use crate::artifacts::RecurserArtifacts;
 use crate::manifest::RecurserManifest;
-
-const PROGRAM_VK_LEN: usize = 4;
 
 #[derive(Clone)]
 pub struct RegisteredRecurser {
@@ -71,7 +70,10 @@ where
 
     proofman
         .register_recurser_setup(recurser_id, &artifacts.setup_stem())
-        .map_err(|e| anyhow::anyhow!("register_recurser_setup failed: {e}"))?;
+        // Preserve the ProofmanError source chain (Io/Library/Json etc.);
+        // `{e}` would flatten it to the top-level message only.
+        .map_err(anyhow::Error::new)
+        .context("register_recurser_setup failed")?;
 
     Ok(RegisteredRecurser { recurser_id: recurser_id.to_string(), manifest, verkey })
 }
@@ -141,9 +143,8 @@ where
         format_origin(origin_b),
     );
 
-    // The single per-side free arrays (validated to be exactly `n_free` wide)
-    // pass straight through to proofman, which fills the zkin free region
-    // positionally as `[free_a | free_b]` ahead of rootCRecurserAgg.
+    // Free arrays pass straight through; proofman fills the zkin free region
+    // positionally ahead of rootCRecurserAgg (contract on the struct doc).
     tracing::info!("Proving recurser '{}'", registered.recurser_id());
     let out = proofman
         .prove_recurser_aggregator(
@@ -154,7 +155,8 @@ where
             opts.free_b,
             &root_c,
         )
-        .map_err(|e| anyhow::anyhow!("prove_recurser_aggregator failed: {e}"))?;
+        .map_err(anyhow::Error::new)
+        .context("prove_recurser_aggregator failed")?;
     Ok(out)
 }
 

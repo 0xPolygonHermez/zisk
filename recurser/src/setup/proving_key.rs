@@ -123,7 +123,9 @@ pub fn gen_recurser_setup(
             &stark_inputs,
             config.circom_templates,
         )
-        .map_err(|e| anyhow::anyhow!("gen_recurser failed: {e}"))?;
+        // Preserve the RecurserError source (tera/serde) rather than `{e}`.
+        .map_err(anyhow::Error::new)
+        .context("gen_recurser failed")?;
         fs::write(&circom_out, &circom_src).context("Failed to write recurser circom")?;
     }
 
@@ -159,9 +161,13 @@ pub fn gen_recurser_setup(
         fs::copy(&dat_src, &dat_dst)?;
     }
 
+    // Fail loudly on a non-UTF-8 artifacts dir rather than passing "" (which
+    // would silently misdirect the witness-library build to the cwd).
+    let files_dir_str =
+        files_dir.to_str().context("recurser artifacts dir path is not valid UTF-8")?;
     witness_tracker.run_witness_library_generation(
         config.output_dir,
-        files_dir.to_str().unwrap_or(""),
+        files_dir_str,
         template,
         template,
         config.circom_helpers_dir,
@@ -231,7 +237,10 @@ pub fn gen_recurser_setup(
     .context("compile_pil failed for recurser")?;
 
     let pilout_proxy = PilOutProxy::new(pilout_path.to_str().unwrap())
-        .map_err(|e| anyhow::anyhow!("Failed to load recurser pilout: {e}"))?;
+        // Preserve the boxed error's source chain; `{e}` would flatten it to
+        // the top message only.
+        .map_err(anyhow::Error::from_boxed)
+        .context("Failed to load recurser pilout")?;
     let pilout = &pilout_proxy.pilout;
     if pilout.air_groups.is_empty() || pilout.air_groups[0].airs.is_empty() {
         bail!("recurser pilout has no AIR groups: {:?}", pilout_path);

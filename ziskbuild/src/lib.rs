@@ -108,6 +108,13 @@ pub struct BuildArgs {
     pub binaries: Vec<String>,
 }
 
+impl BuildArgs {
+    pub fn release(mut self, release: bool) -> Self {
+        self.release = release;
+        self
+    }
+}
+
 /// Rustflags environment for compiling a Zisk guest: the flags
 /// `.cargo/config.toml` declares for the guest target (resolved from
 /// `program_dir`, defaulting to the current directory) plus `--cfg zisk_guest`

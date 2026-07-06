@@ -1,12 +1,11 @@
 use thiserror::Error;
+use zisk_verifier::PROGRAM_VK_LEN;
 
 use crate::manifest::RecurserManifestInputs;
 use crate::templates::IS_VADCOP_FINAL_SLOT;
 
 /// Layout of a vadcop_final `public_values` blob:
 /// `[is_vadcop_final_proof(1)][program_vk(4)][user_publics(64)]`.
-/// See `zisk/common/src/proof.rs` and `recurser/src/templates.rs`.
-const PROGRAM_VK_LEN: usize = 4;
 /// First index of the programVK in public_values (after the is_vadcop_final slot).
 const VK_BASE: usize = IS_VADCOP_FINAL_SLOT + 1;
 /// Minimum public_values length: slot 0 flag + 4-limb programVK.
@@ -79,6 +78,10 @@ pub fn validate_prove_inputs(
 }
 
 fn classify_proof(side: char, publics: &[u64]) -> Result<ProofOrigin, ProveValidationError> {
+    // Lower-bound only (flag + 4-limb VK = MIN_PUBLICS_LEN): host validation
+    // just needs the flag to classify leaf/aggregated and the VK to route
+    // rootC. The full 64 user-publics width (OUTPUT_LEN = 69) is enforced
+    // in-circuit by AggregatePublics, not here.
     if publics.len() < MIN_PUBLICS_LEN {
         return Err(ProveValidationError::PublicsTooShort { side, got: publics.len() });
     }
@@ -94,9 +97,7 @@ fn validate_free_inputs(
     free: &[u64],
     n_free: usize,
 ) -> Result<(), ProveValidationError> {
-    // The backend fills the witness buffer positionally with no padding, so the
-    // free array must be exactly n_free wide — under- and oversupply both shear
-    // the buffer (rootCRecurserAgg follows the two free arrays).
+    // Exactly n_free — no padding (positional buffer; see fn doc above).
     if free.len() != n_free {
         return Err(ProveValidationError::FreeInputsLength {
             side,
@@ -220,12 +221,8 @@ mod tests {
         );
     }
 
-    // --- single free array respected against n_free regardless of origin ---
-    //
-    // The old model rejected "normalize free inputs on an aggregated proof".
-    // With the unified single array there is no such rule: an aggregated side
-    // supplies its free_out through the SAME array, checked against the same
-    // n_free. So an exactly-n_free-wide array is accepted for an aggregated side.
+    // An aggregated side supplies its free_out through the SAME array, checked
+    // against the same n_free — so an exactly-n_free array is accepted.
     #[test]
     fn accepts_free_inputs_on_aggregated_proof() {
         let m = manifest(3);

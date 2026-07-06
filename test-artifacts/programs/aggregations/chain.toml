@@ -1,11 +1,3 @@
 aggregate-publics = "circuits/aggregate_publics.circom"
-
-# One free value per side, supplied at fold time (`.with_free_inputs(vec![4])`).
-# On a leaf it feeds NormalizePublics; on an aggregated proof it is the
-# accumulated free_out fed straight to AggregatePublics.
 free-inputs = 1
-
-# Optional normalization applied to every leaf before aggregation. This example
-# hashes [1, 2, 3, free_inputs[0]] into publics slots [2..6) so the aggregate
-# can assert the two leaves agree on the derived digest.
 normalize-publics = "circuits/normalize.circom"

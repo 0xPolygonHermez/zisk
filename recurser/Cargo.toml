@@ -20,5 +20,6 @@ pilout = { workspace = true }
 stark-recurser = { workspace = true }
 proofman = { workspace = true }
 proofman-verifier = { workspace = true }
+zisk-verifier = { workspace = true }
 fields = { workspace = true }
 tracing = { workspace = true }

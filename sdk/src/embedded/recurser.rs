@@ -123,7 +123,7 @@ fn run_setup_aggregation_program_blocking(
         .build()
         .map_err(SdkError::backend)?;
     pool.install(|| run_setup_recurser_aggregator(&opts))
-        .map_err(|e| SdkError::Recurser(format!("setup failed: {e}")))?;
+        .map_err(|e| SdkError::Recurser(format!("setup failed: {e:#}")))?;
 
     // Register the freshly-generated setup with proofman so it can prove.
     prover

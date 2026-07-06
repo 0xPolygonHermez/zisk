@@ -122,8 +122,9 @@ fn no_normalize_raw_passthrough() {
     assert!(out.contains("var VK_BASE = 1;"), "VK_BASE must be 1");
     assert!(out.contains("var PUBLICS_BASE = VK_BASE + PROGRAM_VK_LEN;"), "PUBLICS_BASE defined");
 
-    // Slot 0 of output forced to 0.
-    assert!(out.contains("aggregatedPublics[0] === 0"), "slot 0 must be forced to 0");
+    // Slot 0 of output assigned to 0 (must be `<==`, not `===`: the signal is
+    // otherwise never driven and circom rejects a constraint on it — T3001).
+    assert!(out.contains("aggregatedPublics[0] <== 0"), "slot 0 must be assigned 0");
 
     // Raw passthrough: ziskPublicsA/B assigned directly from aPublics/bPublics.
     assert!(out.contains("ziskPublicsA[i] <== aPublics[i];"), "no-normalize must pass A raw");

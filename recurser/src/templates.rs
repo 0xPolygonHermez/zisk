@@ -28,6 +28,19 @@ pub struct StarkInputBlocks<'a> {
 /// layers, so it never reaches the flag-free publics.json / on-chain hash.
 pub const IS_VADCOP_FINAL_SLOT: usize = 0;
 
+/// ZisK's fixed user-publics width (64), from the canonical `zisk-verifier`
+/// constants. Re-exported so callers can size the recurser layout without a
+/// second dependency.
+pub use zisk_verifier::ZISK_PUBLICS;
+
+// aggregator.circom.tera hardcodes VK_BASE = 1, assuming the flag sits in
+// slot 0; a nonzero value would alias a programVK/user-publics slot. Pin the
+// coupling so retuning the const fails the build.
+const _: () = assert!(
+    IS_VADCOP_FINAL_SLOT == 0,
+    "aggregator.circom.tera hardcodes VK_BASE = 1; IS_VADCOP_FINAL_SLOT must be 0"
+);
+
 /// The optional single normalization circuit applied to every leaf.
 #[derive(Debug, Clone)]
 pub struct NormalizeCircuit {
@@ -87,7 +100,6 @@ pub fn expect_template_arity(body: &str, template: &str, n_free: usize) -> Resul
     })?;
     let params: Vec<&str> =
         after[..close].split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
-    // NormalizePublics carries a leading `nPublics`; AggregatePublics does not.
     let base_params = if template == "NormalizePublics" { 1 } else { 0 };
     let expected = base_params + if n_free > 0 { 1 } else { 0 };
     if params.len() != expected {
@@ -96,7 +108,7 @@ pub fn expect_template_arity(body: &str, template: &str, n_free: usize) -> Resul
             params.len()
         )));
     }
-    // New contract: NormalizePublics with free inputs MUST emit `free_outputs`.
+    // n_free > 0 requires a `free_outputs` output (it feeds AggregatePublics).
     if template == "NormalizePublics" && n_free > 0 && !declares_free_outputs(body) {
         return Err(RecurserError::InvalidTemplates(format!(
             "`{template}` with n_free={n_free} must declare `signal output free_outputs[...]`"
@@ -133,6 +145,7 @@ pub fn gen_recurser(
     ctx.insert("root_c_vadcop_final_zisk", &zisk_vk);
     ctx.insert("aggregate_publics_template", &templates.aggregate_publics);
     ctx.insert("n_free", &n_free);
+    ctx.insert("zisk_publics", &ZISK_PUBLICS);
     ctx.insert("n_programs", &templates.program_vks.len());
     ctx.insert("program_vks", &templates.program_vks);
     match &templates.normalize {

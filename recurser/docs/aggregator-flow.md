@@ -198,9 +198,12 @@ member subsets. Aggregated proofs pass through raw.
 | leaf | 1 | `NormalizePublics` output |
 | aggregated | 0 | raw publics (unchanged) |
 
-The mux (when normalize is configured):
+The mux (when normalize is configured), shown here in its algebraically-equivalent
+inline form — the generated circuit splits it into `selNorm`/`selRaw` intermediate
+signals (circom 2.1 forbids nonlinear terms in a single `<==`):
 
 ```circom
+// conceptual; generated form uses selNormA/selRawA intermediates
 ziskPublicsA[i] <== isFinalA * normA[i] + (1 - isFinalA) * aPublics[i];
 ziskPublicsB[i] <== isFinalB * normB[i] + (1 - isFinalB) * bPublics[i];
 ```
@@ -352,6 +355,8 @@ signal selectAVK <== 1 - isFinalA;                // A aggregated    → A.progr
 signal selectBVK <== isFinalA * (1 - isFinalB);   // A leaf, B agg   → B.programVK
 
 for (var i = 0; i < 4; i++) {
+    // conceptual; generated form uses aggTerm/aTerm/bTerm intermediates
+    // (circom 2.1 forbids the selector*value products inside one `<==`)
     aggregatedPublics[VK_BASE + i] <==
         selectAgg * rootCRecurserAgg[i]
       + selectAVK * programVK_A[i]
@@ -533,8 +538,11 @@ to `~/.zisk/recurser/<recurser-id>`.
 | Flag | Required | Description |
 |---|---|---|
 | `--aggregation` | yes | The definition TOML under `<programs>/aggregations/` |
-| `--release` | no | Resolve guest ELFs from release profile |
 | `--proving-key` | no | Path to a precomputed proving key |
+
+On the `--aggregation` path there is no profile flag: allow-list guest ELFs are
+auto-detected (release profile first, then debug), so either build satisfies the
+setup. `--release` only governs ELF resolution on the non-aggregation setup path.
 
 ### Rust API (SDK)
 

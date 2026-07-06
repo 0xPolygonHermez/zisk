@@ -4,8 +4,8 @@ use anyhow::{anyhow, Context, Result};
 use test_artifacts::{AGG_CHAIN, ELF_CHAIN_SEGMENT};
 use zisk_sdk::{
     AggregationInput, AggregationProgramBuilder, CircomCircuit, EmbeddedClient,
-    EmbeddedClientBuilder, GuestProgram, JobHandle, ProofExt, ProveResult, ProverClient, Recurser,
-    RemoteClient, SetupTarget, UploadTarget, ZiskStdin,
+    EmbeddedClientBuilder, GuestProgram, JobHandle, Proof, ProofExt, ProofKind, ProveResult,
+    ProverClient, Recurser, RemoteClient, SetupTarget, UploadTarget, ZiskStdin,
 };
 
 /// Embedded and remote clients expose the same inherent surface but share no
@@ -47,6 +47,19 @@ impl TestClient {
             eprintln!("[recurser] using ZISK_TEST_PROVING_KEY={}", pk.display());
             builder = builder.proving_key(pk);
         }
+        // The SNARK wrapper is only initialized when the client is built for PLONK.
+        // Enable it up front when the test will wrap to PLONK, otherwise `wrap_plonk`
+        // fails with "Snark wrapper is not initialized". Off by default (heavy BN128
+        // setup + `provingKeySnark` artifacts). Optionally point at a custom snark
+        // proving key with ZISK_TEST_PROVING_KEY_PLONK.
+        if std::env::var_os("ZISK_TEST_PLONK").is_some() {
+            eprintln!("[recurser] ZISK_TEST_PLONK set — building client with PLONK/snark wrapper");
+            builder = builder.plonk();
+            if let Some(pk) = std::env::var_os("ZISK_TEST_PROVING_KEY_PLONK").map(PathBuf::from) {
+                eprintln!("[recurser] using ZISK_TEST_PROVING_KEY_PLONK={}", pk.display());
+                builder = builder.proving_key_plonk(pk);
+            }
+        }
         Ok(Self::Embedded(builder.build().context("failed to build EmbeddedClient")?))
     }
 
@@ -74,6 +87,11 @@ impl TestClient {
         input_b: impl Into<AggregationInput<'a>>,
     ) -> Result<JobHandle<ProveResult>> {
         with_client!(self, c => Ok(c.aggregate_proofs(agg, input_a, input_b).run()?))
+    }
+
+    /// Wrap a VadcopFinal proof into a PLONK/SNARK proof.
+    fn wrap_plonk<'a>(&'a self, proof: &'a Proof) -> Result<JobHandle<ProveResult>> {
+        with_client!(self, c => Ok(c.wrap_proof(proof, ProofKind::Plonk).run()?))
     }
 }
 
@@ -227,6 +245,34 @@ async fn test_recurser_aggregator_chain_full_tree() -> Result<()> {
     // tail past it stays zero to the root.
     assert_eq!(&pubs_root[2..6], &pubs_ab[2..6], "digest must propagate to the root");
     assert_eq!(&pubs_root[6..64], &[0u64; 58], "tail past the digest must stay zero to the root");
+
+    // Opt-in: wrap the root VadcopFinal proof into a PLONK/SNARK proof and verify
+    // it end-to-end. Gated behind ZISK_TEST_PLONK because SNARK proving is heavy
+    // (BN128) and needs the `provingKeySnark` artifacts, so it's off by default.
+    if std::env::var_os("ZISK_TEST_PLONK").is_some() {
+        eprintln!("[recurser] ZISK_TEST_PLONK set — wrapping root proof to PLONK and verifying");
+        let plonk = client
+            .wrap_plonk(&root)
+            .map_err(|e| anyhow!("submit PLONK wrap failed: {e}"))?
+            .await
+            .map_err(|e| anyhow!("PLONK wrap failed: {e}"))?
+            .get_proof()
+            .clone();
+
+        assert_eq!(plonk.kind(), ProofKind::Plonk, "wrapped proof must be a PLONK proof");
+        // The PLONK proof must commit the same real publics as the root: [10, 50]
+        // at the head of the flag-free public vector.
+        let plonk_pubs = plonk.get_publics().public_u64();
+        assert_eq!(
+            (plonk_pubs[0], plonk_pubs[1]),
+            (10, 50),
+            "PLONK proof must carry the collapsed chain publics [10, 50]"
+        );
+
+        // The whole point: the SNARK proof must verify.
+        plonk.verify().context("PLONK proof verification failed")?;
+        eprintln!("[recurser] PLONK proof verified OK");
+    }
 
     // Opt-in: persist the root VadcopFinal proof so it can be fed into a
     // separate PLONK wrap. Set ZISK_TEST_SAVE_ROOT_PROOF=/path/to/root.bin.

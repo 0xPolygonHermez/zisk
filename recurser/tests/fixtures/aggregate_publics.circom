@@ -8,6 +8,13 @@
 // so declare them in that exact order. freeInputs are available here so a
 // hash-style public can be checked against its preimage and re-hashed; this
 // example just drains them.
+//
+// SOUNDNESS — unused publics: the recurser is publics-agnostic; it propagates
+// all 64 slots and never zeroes an app's unused tail. This example inherits all
+// 64 from A, which is only safe if the app uses all 64 (or zero-pads them in the
+// producer). If your app uses fewer, constrain the unused slots to 0 here
+// (`a_publics[i] === 0`) — otherwise a prover injects arbitrary values that flow
+// up the fold tree unchecked. See docs/aggregator-flow.md §2.
 template AggregatePublics(nFreeInputs) {
     signal output aggregated_publics[ZISK_PUBLICS()];
     signal input a_publics[ZISK_PUBLICS()];

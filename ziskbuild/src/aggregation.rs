@@ -60,9 +60,15 @@ pub(crate) fn process_aggregations(programs_dir: &Path) -> Result<()> {
     println!("cargo:rerun-if-changed={}", agg_dir.display());
 
     // The guests were just built in this pass; resolve the (name → ELF) map so
-    // any allow-list can pin its members. Guests built for the host profile.
+    // any allow-list can pin its members. Prefer the host profile, but fall back
+    // to the other profile: a guest may be built only for debug even during a
+    // release host build (allow-list guests are opt-in test fixtures, not always
+    // built for every profile). Mirrors the CLI's release-then-debug resolution
+    // in `recurser_common::resolve_recurser`. `resolve_aggregation` reads the ELF
+    // bytes, so a map entry pointing at a nonexistent profile path would hard-fail
+    // an unrelated host build.
     let release = std::env::var("PROFILE").map(|p| p == "release").unwrap_or(false);
-    let elf_map = guest_elf_map(programs_dir, release)?;
+    let elf_map = pick_existing_elf_map(programs_dir, release)?;
 
     let out_dir = PathBuf::from(std::env::var("OUT_DIR").context("OUT_DIR is not set")?)
         .join("zisk_aggregations");
@@ -113,6 +119,33 @@ impl ResolvedCircuitPaths {
     fn circuit_paths(&self) -> impl Iterator<Item = &PathBuf> {
         std::iter::once(&self.aggregate).chain(self.normalize.iter())
     }
+}
+
+/// Name → ELF map preferring `release`, per-entry falling back to the other
+/// profile when the preferred profile's ELF file does not exist on disk. Guests
+/// are built lazily/per-profile, so an allow-list fixture may only exist for
+/// debug even during a release host build; without this, `resolve_aggregation`'s
+/// `fs::read` would hard-fail the whole host build on a missing profile ELF.
+fn pick_existing_elf_map(programs_dir: &Path, release: bool) -> Result<Vec<(String, Utf8PathBuf)>> {
+    let preferred = guest_elf_map(programs_dir, release)?;
+    // The other profile's paths for the same program names, for fallback.
+    let fallback = guest_elf_map(programs_dir, !release).unwrap_or_default();
+    Ok(preferred
+        .into_iter()
+        .map(|(name, path)| {
+            if path.exists() {
+                return (name, path);
+            }
+            if let Some((_, alt)) = fallback.iter().find(|(n, _)| *n == name) {
+                if alt.exists() {
+                    return (name, alt.clone());
+                }
+            }
+            // Neither profile exists yet; keep the preferred path so the eventual
+            // `fs::read` error names the expected (host-profile) location.
+            (name, path)
+        })
+        .collect())
 }
 
 /// Name → ELF map for the guest programs under `programs_dir`, without

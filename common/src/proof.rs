@@ -8,7 +8,9 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-pub use zisk_verifier::{PROGRAM_VK_LEN, ZISK_PUBLICS};
+pub use zisk_verifier::{
+    program_publics, IS_VADCOP_FINAL_PROOF, PROGRAM_VK_LEN, VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS,
+};
 
 use crate::HashMode;
 
@@ -49,6 +51,10 @@ impl ProgramVK {
     /// Build from the first `PROGRAM_VK_LEN` u64 elements of a publics blob,
     /// recording the [`HashMode`] the verkey was produced under.
     pub fn new_from_publics_with_mode(publics: &[u64], hash_mode: HashMode) -> Self {
+        // Strip the recursion-layer `is_vadcop_final_proof` flag (present on a
+        // full 69-wide vadcop_final publics vector) so the VK is read from the
+        // flag-free `[vk | inputs]` view rather than `[flag | vk | inputs]`.
+        let publics = program_publics(publics);
         assert!(
             publics.len() >= PROGRAM_VK_LEN,
             "Not enough u64 publics to extract program VK (expected at least {})",
@@ -66,6 +72,87 @@ impl ProgramVK {
     /// Creates a new `ProgramVK` instance with an empty verification key (filled with zeros).
     pub fn new_empty() -> Self {
         Self { vk: vec![0u64; PROGRAM_VK_LEN], hash_mode: HashMode::default() }
+    }
+}
+
+/// Which flavor of Vadcop proof a [`ProofBody::Vadcop`] holds. This is the axis
+/// that used to be a `minimal: bool`, split out so the `is_vadcop_final_proof`
+/// public flag (present at index 0 of a full-width publics vector) has a single,
+/// unambiguous value per variant instead of being guessed from the vector length:
+///
+/// | Variant    | publics layout                    | flag @0 |
+/// |------------|-----------------------------------|---------|
+/// | `Final`    | `[flag=1 \| vk(4) \| inputs(64)]` (69) | 1 (raw ZisK leaf) |
+/// | `Recurser` | `[flag=0 \| vk(4) \| inputs(64)]` (69) | 0 (aggregator output) |
+/// | `Minimal`  | `[vk(4) \| inputs(64)]` (68)          | none (compressed strips it) |
+#[derive(Default, Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VadcopKind {
+    /// Raw ZisK vadcop_final proof — a recursion-tree leaf. Flag = 1.
+    #[default]
+    Final,
+    /// Output of a recurser fold (aggregated proof). Same wire shape as `Final`
+    /// but the flag is 0. Kept distinct so re-verification / re-folding stamps
+    /// the correct flag value.
+    Recurser,
+    /// Minimal (compressed) proof: the `final_compressed` circuit strips the flag,
+    /// so its publics are the flag-free `[vk | inputs]`.
+    Minimal,
+}
+
+impl VadcopKind {
+    /// The `is_vadcop_final_proof` value at public index 0, or `None` when the
+    /// flavor carries no flag (minimal/compressed).
+    pub fn flag(self) -> Option<u64> {
+        match self {
+            VadcopKind::Final => Some(IS_VADCOP_FINAL_PROOF),
+            // An aggregator output forces the flag to 0 (see the recurser circuit).
+            VadcopKind::Recurser => Some(0),
+            VadcopKind::Minimal => None,
+        }
+    }
+
+    /// Whether this is the minimal (compressed) proof — the STARK verifier and
+    /// setup lookups that previously took a `minimal: bool` use this.
+    pub fn is_minimal(self) -> bool {
+        matches!(self, VadcopKind::Minimal)
+    }
+
+    /// Classify a RAW publics vector as it arrives from the prover/wire (before
+    /// normalization): `Minimal` when flag-free (`PROGRAM_N_PUBLICS`, 68), else
+    /// `Final`/`Recurser` by the `is_vadcop_final_proof` flag at index 0 (69).
+    /// Falls back to `Final` for unexpected lengths (callers assert elsewhere).
+    /// Used at ingest to capture the flag before it is stripped from
+    /// `publics_full`.
+    pub fn from_publics_full(publics_full: &[u64]) -> Self {
+        if publics_full.len() == VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS {
+            if publics_full[0] == 0 {
+                VadcopKind::Recurser
+            } else {
+                VadcopKind::Final
+            }
+        } else if publics_full.len() == PROGRAM_VK_LEN + ZISK_PUBLICS {
+            VadcopKind::Minimal
+        } else {
+            VadcopKind::Final
+        }
+    }
+
+    /// Build the STARK public vector for this proof from the canonical flag-free
+    /// `publics_full` (`[program_vk | inputs]`): re-adds the
+    /// `is_vadcop_final_proof` flag at index 0 for `Final`/`Recurser`, and
+    /// returns the flag-free publics unchanged for `Minimal`. This is the exact
+    /// vector the STARK verifier / next-layer witness commits to (full u64
+    /// width), and the inverse of the ingest strip.
+    pub fn stark_publics(self, publics_full: &[u64]) -> Vec<u64> {
+        match self.flag() {
+            Some(flag) => {
+                let mut v = Vec::with_capacity(VADCOP_FINAL_FLAG_LEN + publics_full.len());
+                v.push(flag);
+                v.extend_from_slice(publics_full);
+                v
+            }
+            None => publics_full.to_vec(),
+        }
     }
 }
 
@@ -240,6 +327,9 @@ impl PublicValues {
     /// Build from the full proof publics u64 blob: `[program_vk(4)][publics(ZISK_PUBLICS)]`.
     /// Each public u64 is truncated to its low 32 bits (matching `public_u64()`).
     pub fn new_from_u64(publics: &[u64]) -> Self {
+        // Accept either the flag-free app view (`[vk | inputs]`, 68) or a full
+        // vadcop_final vector (`[flag | vk | inputs]`, 69); strip the flag first.
+        let publics = program_publics(publics);
         assert!(
             publics.len() == ZISK_PUBLICS + PROGRAM_VK_LEN,
             "Expected {} u64 publics, got {}",
@@ -401,6 +491,8 @@ impl PublicValues {
 /// `Num2Bits(64)` (LSB-first) bits is exactly the value's little-endian bytes
 /// once SHA-256 reads them MSB-first per byte.
 pub fn snark_inputs_bytes(publics_full: &[u64]) -> Vec<u8> {
+    // Strip the recursion-layer flag so `inputs` is read from the flag-free view.
+    let publics_full = program_publics(publics_full);
     assert!(
         publics_full.len() >= PROGRAM_VK_LEN + ZISK_PUBLICS,
         "publics_full too short for snark inputs"
@@ -427,6 +519,10 @@ pub fn snark_inputs_bytes(publics_full: &[u64]) -> Vec<u8> {
 ///     in (`rootc`) rather than derived from `publics_full`.
 pub fn snark_publics_hash(publics_full: &[u64], rootc: &[u64]) -> Vec<u8> {
     assert!(rootc.len() >= PROGRAM_VK_LEN, "rootc too short for snark hash");
+    // Defensive: normalize to the flag-free `[vk | inputs]` view. Stored
+    // `publics_full` is already flag-free, but a raw vadcop_final vector (69,
+    // flag @0) would otherwise shift rom_root/inputs by one.
+    let publics_full = program_publics(publics_full);
     let program_vk = &publics_full[..PROGRAM_VK_LEN];
 
     let mut preimage = Vec::with_capacity((2 * PROGRAM_VK_LEN + ZISK_PUBLICS) * 8);
@@ -463,11 +559,16 @@ pub enum ProofBody {
         proof: Vec<u64>,
         /// ZisK verification key.
         zisk_vk: Vec<u64>,
-        /// Whether this is a minimal (compressed) proof.
-        minimal: bool,
+        /// Which vadcop flavor this is (Final / Recurser / Minimal). Owns the
+        /// `is_vadcop_final_proof` flag value (1 / 0 / none); the flag is NOT
+        /// stored in `publics_full` — STARK paths re-add it via
+        /// [`VadcopKind::stark_publics`].
+        kind: VadcopKind,
         /// Hash family the proof was generated with.
         hash: String,
-        /// Full-width `[program_vk(4)][user(ZISK_PUBLICS)]` publics.
+        /// Canonical flag-free program publics `[program_vk(4) | inputs(64)]`
+        /// (always 68), at full u64 width. The recursion-layer
+        /// `is_vadcop_final_proof` flag lives in `kind`, not here.
         publics_full: Vec<u64>,
     },
     /// A Plonk proof for on-chain verification.
@@ -493,7 +594,7 @@ impl Default for ProofBody {
         ProofBody::Vadcop {
             proof: Vec::new(),
             zisk_vk: vec![0u64; PROGRAM_VK_LEN],
-            minimal: false,
+            kind: VadcopKind::Final,
             hash: String::new(),
             publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
         }
@@ -559,6 +660,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
     /// to the values stored in the proof.
     pub fn verify(self) -> Result<()> {
         let derived_publics = self.proof_with_values.publics();
+        let has_override = self.override_publics.is_some() || self.override_program_vk.is_some();
         let publics = self.override_publics.unwrap_or(&derived_publics);
         let program_vk = self.override_program_vk.unwrap_or(&self.proof_with_values.program_vk);
 
@@ -613,8 +715,8 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 })?;
                 Ok(())
             }
-            ProofBody::Vadcop { proof, zisk_vk, minimal, hash, .. } => {
-                let minimal = *minimal;
+            ProofBody::Vadcop { proof, zisk_vk, kind, hash, publics_full } => {
+                let kind = *kind;
 
                 if program_vk.hash_mode.as_str() != hash {
                     return Err(CommonError::InvalidProof(format!(
@@ -624,7 +726,7 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 }
 
                 let v = verifier(hash);
-                let expected_len = if minimal {
+                let expected_len = if kind.is_minimal() {
                     v.expected_vadcop_final_compressed_proof_bytes()
                 } else {
                     v.expected_vadcop_final_proof_bytes()
@@ -638,12 +740,33 @@ impl<'a> ZiskVerifyBuilder<'a> {
                     )));
                 }
 
-                let mut pubs_u64 = program_vk.vk.clone();
-                pubs_u64.extend(publics.public_u64());
+                // The STARK verifier's Fiat-Shamir transcript is over the full
+                // `[flag? | program_vk | inputs]` at FULL u64 width. With no
+                // override, `kind.stark_publics(publics_full)` re-adds the flag to
+                // the canonical flag-free publics without truncation — the correct
+                // committed vector, including a recurser proof's >2^32 publics.
+                // With an override, reconstruct from the (u32) `PublicValues` view
+                // + overridden VK; that path is inherently u32-lossy and is meant
+                // for standard proofs whose publics fit in 32 bits.
+                let pubs_u64 = if has_override {
+                    let mut v = Vec::with_capacity(
+                        kind.flag().map_or(0, |_| VADCOP_FINAL_FLAG_LEN)
+                            + program_vk.vk.len()
+                            + ZISK_PUBLICS,
+                    );
+                    if let Some(flag) = kind.flag() {
+                        v.push(flag);
+                    }
+                    v.extend_from_slice(&program_vk.vk);
+                    v.extend(publics.public_u64());
+                    v
+                } else {
+                    kind.stark_publics(publics_full)
+                };
                 let vadcop_final_proof =
-                    VadcopFinalProof::new(proof.clone(), pubs_u64, minimal, hash.clone());
+                    VadcopFinalProof::new(proof.clone(), pubs_u64, kind.is_minimal(), hash.clone());
 
-                let is_valid = if minimal {
+                let is_valid = if kind.is_minimal() {
                     v.verify_vadcop_final_compressed(&vadcop_final_proof, zisk_vk)
                 } else {
                     v.verify_vadcop_final(&vadcop_final_proof, zisk_vk)
@@ -691,8 +814,8 @@ impl Proof {
     /// Derive the `ProofKind` from the body discriminant.
     pub fn kind(&self) -> ProofKind {
         match &self.body {
-            ProofBody::Vadcop { minimal: true, .. } => ProofKind::VadcopFinalMinimal,
-            ProofBody::Vadcop { minimal: false, .. } => ProofKind::VadcopFinal,
+            ProofBody::Vadcop { kind: VadcopKind::Minimal, .. } => ProofKind::VadcopFinalMinimal,
+            ProofBody::Vadcop { .. } => ProofKind::VadcopFinal,
             ProofBody::Plonk { .. } => ProofKind::Plonk,
         }
     }
@@ -746,15 +869,15 @@ impl Proof {
     /// Extract a `VadcopFinalProof` from the proof body.
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.body {
-            ProofBody::Vadcop { proof, minimal, hash, publics_full, .. } => {
-                // The full-width publics are the recursion source of truth: the
-                // next fold re-verifies against the exact field elements the
-                // proof committed to (the u32 view would drop high bits and
-                // break re-verification).
+            ProofBody::Vadcop { proof, kind, hash, publics_full, .. } => {
+                // The STARK layer commits to the full-width publics INCLUDING the
+                // is_vadcop_final_proof flag; `kind.stark_publics` re-adds it to
+                // the canonical flag-free `publics_full` (full u64 width — the
+                // truncated u32 view would break re-verification).
                 Ok(VadcopFinalProof::new(
                     proof.clone(),
-                    publics_full.clone(),
-                    *minimal,
+                    kind.stark_publics(publics_full),
+                    kind.is_minimal(),
                     hash.clone(),
                 ))
             }
@@ -767,7 +890,7 @@ impl Proof {
     /// Get the proof data as a vector of u64 values.
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
         match &self.body {
-            ProofBody::Vadcop { proof, zisk_vk, minimal, .. } => {
+            ProofBody::Vadcop { proof, zisk_vk, kind, publics_full, .. } => {
                 if self.program_vk.vk.len() != PROGRAM_VK_LEN {
                     return Err(CommonError::InvalidProof(format!(
                         "Invalid program_vk length: expected {}, got {}",
@@ -783,15 +906,19 @@ impl Proof {
                     )));
                 }
 
-                let publics = self.publics().public_u64();
-                let n_publics = self.program_vk.vk.len() + publics.len();
+                // The serialized STARK public vector must carry the
+                // is_vadcop_final_proof flag (its Fiat-Shamir transcript is over
+                // the full [flag? | vk | inputs]); `kind.stark_publics` re-adds it
+                // to the canonical flag-free `publics_full`, at full u64 width (no
+                // u32 truncation). Minimal proofs stay flag-free (68).
+                let stark_publics = kind.stark_publics(publics_full);
+                let n_publics = stark_publics.len();
 
-                // Format: [minimal(1)][n_publics(1)][program_vk][publics][proof][zisk_vk]
+                // Format: [minimal(1)][n_publics(1)][flag?|vk|inputs][proof][zisk_vk]
                 let mut words = Vec::with_capacity(2 + n_publics + proof.len() + zisk_vk.len());
-                words.push(*minimal as u64);
+                words.push(kind.is_minimal() as u64);
                 words.push(n_publics as u64);
-                words.extend_from_slice(&self.program_vk.vk);
-                words.extend(publics);
+                words.extend_from_slice(&stark_publics);
                 words.extend_from_slice(proof);
                 words.extend_from_slice(zisk_vk);
 
@@ -864,15 +991,27 @@ impl Proof {
         let program_vk =
             ProgramVK::new_from_publics_with_mode(&vadcop_proof.public_values, hash_mode);
 
+        // Classify by the raw publics, then normalize ONCE to the flag-free
+        // `[vk | inputs]` view. A minimal proof is already flag-free; a
+        // Final/Recurser proof carries the `is_vadcop_final_proof` flag at index
+        // 0, which is captured in `kind` and stripped from stored `publics_full`.
+        let kind = if minimal {
+            VadcopKind::Minimal
+        } else {
+            VadcopKind::from_publics_full(&vadcop_proof.public_values)
+        };
+        let publics_full = program_publics(&vadcop_proof.public_values).to_vec();
+
         Ok(Self {
             body: ProofBody::Vadcop {
                 proof: vadcop_proof.proof,
                 zisk_vk,
-                minimal,
+                kind,
                 hash,
-                // Full-width publics are the source of truth; the u32 view is
-                // derived on demand via `Proof::publics`.
-                publics_full: vadcop_proof.public_values,
+                // Canonical flag-free `[program_vk(4) | inputs(64)]` (68), full
+                // u64 width. The flag lives in `kind`; STARK/serialization paths
+                // re-add it via `kind.flag()`.
+                publics_full,
             },
             program_vk,
         })
@@ -939,7 +1078,7 @@ mod tests {
             ProofBody::Vadcop {
                 proof: vec![],
                 zisk_vk: vec![0u64; PROGRAM_VK_LEN],
-                minimal: true,
+                kind: VadcopKind::Minimal,
                 hash: "Poseidon2".to_string(),
                 publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
@@ -956,7 +1095,7 @@ mod tests {
             ProofBody::Vadcop {
                 proof: vec![],
                 zisk_vk: vec![0u64; PROGRAM_VK_LEN],
-                minimal: false,
+                kind: VadcopKind::Final,
                 hash: "Poseidon2".to_string(),
                 publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
@@ -974,7 +1113,7 @@ mod tests {
             ProofBody::Vadcop {
                 proof: vec![1, 2, 3, 4],
                 zisk_vk: vec![10, 20, 30, 40],
-                minimal: true,
+                kind: VadcopKind::Minimal,
                 hash: "Poseidon2".to_string(),
                 publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
@@ -987,10 +1126,10 @@ mod tests {
 
         assert_eq!(loaded.kind(), ProofKind::VadcopFinalMinimal);
         match loaded.body {
-            ProofBody::Vadcop { proof, zisk_vk, minimal, hash, .. } => {
+            ProofBody::Vadcop { proof, zisk_vk, kind, hash, .. } => {
                 assert_eq!(proof, vec![1, 2, 3, 4]);
                 assert_eq!(zisk_vk, vec![10, 20, 30, 40]);
-                assert!(minimal);
+                assert_eq!(kind, VadcopKind::Minimal);
                 assert_eq!(hash, "Poseidon2");
             }
             ProofBody::Plonk { .. } => panic!("expected Vadcop body after roundtrip"),
@@ -1004,7 +1143,7 @@ mod tests {
             ProofBody::Vadcop {
                 proof: vec![],
                 zisk_vk: vec![],
-                minimal: false,
+                kind: VadcopKind::Final,
                 hash: "Poseidon2".to_string(),
                 publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },
@@ -1017,7 +1156,7 @@ mod tests {
             ProofBody::Vadcop {
                 proof: vec![1],
                 zisk_vk: vec![],
-                minimal: true,
+                kind: VadcopKind::Minimal,
                 hash: "Poseidon2".to_string(),
                 publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
             },

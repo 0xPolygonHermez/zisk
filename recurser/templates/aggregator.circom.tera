@@ -1,13 +1,6 @@
-{# ZisK's fixed user-publics width (the 64 slots after the 4-limb programVK).
-   Single source of truth for the literal baked into the generated circuit:
-   the `Main(...)` instantiation below and the `ZISK_PUBLICS()` function the
-   AggregatePublics body sizes its arrays from. #}
-{% set zisk_publics = 64 %}
-{# Reserved public slot carrying is_vadcop_final_proof (1 = raw ZisK vadcop_final
-   leaf, 0 = aggregator output). Slot 0, before rom_root / programVK — the
-   vadcop_final circuit emits it as a `signal output` (ordered ahead of the
-   input publics). It lives only in this fold layer; final_compressed /
-   recursion_final strip it before the flag-free publics.json / on-chain hash. #}
+{# `zisk_publics` (64) comes from the Rust context (templates::ZISK_PUBLICS is
+   the single source of truth). Slot 0 = is_vadcop_final_proof (1=leaf,
+   0=aggregator output); stripped in later layers. See docs/aggregator-flow.md §2. #}
 pragma circom 2.1.0;
 pragma custom_templates;
 
@@ -18,9 +11,8 @@ include "iszero.circom";
 {% endif %}
 include "publics_helpers.circom";
 
-// ZisK's fixed user-publics width — the 64 slots after the 4-limb programVK.
-// Circom has no const/global-var, so this function is the shared named
-// constant: AggregatePublics sizes its publics arrays as `[ZISK_PUBLICS()]`.
+// Shared named constant (circom has no const/global): AggregatePublics sizes
+// its publics arrays as `[ZISK_PUBLICS()]`.
 function ZISK_PUBLICS() {
     return {{ zisk_publics }};
 }
@@ -28,8 +20,7 @@ function ZISK_PUBLICS() {
 {{ aggregate_publics_template }}
 
 {% if n_programs > 0 %}
-// Helper: returns 1 iff the two 4-element VKs are element-wise equal, 0 otherwise.
-// Only emitted when a `programs` allow-list is configured.
+// 1 iff the two 4-limb VKs are equal (allow-list membership, §3a).
 template IsEqualVK() {
     signal input a[4];
     signal input b[4];
@@ -50,34 +41,22 @@ template IsEqualVK() {
 
 {% endif %}
 template Main(nPublics) {
-    // Fold-layer publics layout (one slot wider than the SNARK-layer publics.json,
-    // which is flag-free):
-    //   [0]                                     is_vadcop_final_proof (flag: 1=leaf, 0=aggregated)
-    //   [VK_BASE .. VK_BASE+PROGRAM_VK_LEN)     programVK (the `rom_root`, verificationKey=true)
-    //   [PUBLICS_BASE .. PUBLICS_BASE+nPublics)  the nPublics user inputs
-    // Flag is FIRST (slot 0), then VK, then user inputs. The inner StarkVerifier
-    // consumes a_sv_publics[i] in this order, and our output re-emits the same
-    // layout so it re-verifies one fold up.
-    //
-    // OUTPUT_LEN = PUBLICS_BASE + nPublics covers all slots including slot 0.
+    // Fold-layer publics: [0]=flag, VK at [VK_BASE..), user inputs at
+    // [PUBLICS_BASE..) — see docs/aggregator-flow.md §2. The output re-emits the
+    // same layout so it re-verifies one fold up.
     var PROGRAM_VK_LEN = 4;
     var VK_BASE = 1;
     var PUBLICS_BASE = VK_BASE + PROGRAM_VK_LEN;  // = 5
     var OUTPUT_LEN = PUBLICS_BASE + nPublics;
 
-    signal output is_vadcop_final_proof <== 0;  // reserved output slot, always 0 for aggregator output
+    // Full contiguous output buffer; slot 0 is the is_vadcop_final flag,
+    // assigned below (not a separate output signal).
     signal output aggregatedPublics[OUTPUT_LEN];
 
-    // Proofman fills the witness buffer (zkin) positionally, so input
-    // declaration order is a contract with `generate_recurser_aggregator_proof`:
-    //   stark_inputs_A, stark_inputs_B, freeInputsA, freeInputsB, rootCRecurserAgg.
-    // ONE free-value array per side (n_free). Per-side runtime semantics:
-    //   LEAF  (isFinalX=1): freeInputsX is a free INPUT -> NormalizePublics -> free_outputs.
-    //   AGGREGATED (isFinalX=0): freeInputsX is ALREADY a free OUTPUT (accumulation
-    //     values from a prior fold) and feeds AggregatePublics directly.
-    // The free-value mux (aggFreeX) below picks the source, mirroring the publics mux.
-    // Signals are declared BY SIDE (all of A complete, then all of B), matching
-    // the proofman per-side flat buffer layout. Reordering shears the witness silently.
+    // Proofman fills the witness buffer (zkin) positionally, so declaration
+    // order is a hard contract: stark_inputs_A, stark_inputs_B, freeInputsA,
+    // freeInputsB, rootCRecurserAgg — declared BY SIDE (all A, then all B).
+    // Reordering shears the witness silently. (Free-value semantics: §5.)
 {{ define_stark_inputs_a }}
 
 {{ define_stark_inputs_b }}
@@ -93,7 +72,7 @@ template Main(nPublics) {
 
     var rootCVadcopFinalZisk[4] = [{% for v in root_c_vadcop_final_zisk %}{{ v }}{% if not loop.last %},{% endif %}{% endfor %}];
 
-    // -- Extract programVK from each proof's publics (slots [VK_BASE..VK_BASE+PROGRAM_VK_LEN)).
+    // -- Extract each proof's programVK.
     signal programVK_A[4];
     signal programVK_B[4];
     for (var i = 0; i < 4; i++) {
@@ -101,8 +80,7 @@ template Main(nPublics) {
         programVK_B[i] <== b_sv_publics[VK_BASE + i];
     }
 
-    // -- is_vadcop_final_proof selector (reserved slot, outside nPublics):
-    //    1 = raw ZisK vadcop_final leaf, 0 = a proof this aggregator produced.
+    // -- is_vadcop_final_proof selector (reserved slot 0).
     signal {binary} isFinalA <== a_sv_publics[{{ is_vadcop_final_slot }}];
     signal {binary} isFinalB <== b_sv_publics[{{ is_vadcop_final_slot }}];
     // Self-defending: enforce boolean, don't merely trust the {binary} tag.
@@ -110,12 +88,8 @@ template Main(nPublics) {
     isFinalB * (1 - isFinalB) === 0;
 
 {% if n_programs > 0 %}
-    // -- Optional leaf allow-list (access control). Baked programVKs the circuit
-    //    will accept as raw vadcop_final leaves; any leaf whose programVK is not
-    //    registered makes the circuit unsatisfiable (hard reject). Aggregated
-    //    proofs (isFinal=0) are unaffected. This is a SEPARATE constraint layered
-    //    on the is_vadcop_final_proof flag, which still drives leaf/aggregated
-    //    selection below.
+    // -- Optional leaf allow-list (§3a): a leaf whose programVK is absent makes
+    //    the circuit unsatisfiable. Aggregated proofs (isFinal=0) are unaffected.
     var programVKs[{{ n_programs }}][4] = [{% for vk in program_vks %}[{{ vk[0] }},{{ vk[1] }},{{ vk[2] }},{{ vk[3] }}]{% if not loop.last %},{% endif %}{% endfor %}];
 
     // Membership: isRegistered = 1 - ∏(1 - eq[k]). The product form (not Σ eq[k])
@@ -139,8 +113,7 @@ template Main(nPublics) {
     signal {binary} isRegisteredProgramA <== 1 - noMatchA[{{ n_programs }} - 1];
     signal {binary} isRegisteredProgramB <== 1 - noMatchB[{{ n_programs }} - 1];
 
-    // Hard reject: a proof that claims to be a leaf (isFinal=1) MUST have a
-    // registered programVK. Unsatisfiable otherwise.
+    // Claimed leaf must be registered (else unsatisfiable).
     isFinalA * (1 - isRegisteredProgramA) === 0;
     isFinalB * (1 - isRegisteredProgramB) === 0;
 {% endif %}
@@ -152,8 +125,7 @@ template Main(nPublics) {
     vA.rootC <== MultiMux1(4)([programVK_A, rootCVadcopFinalZisk], isFinalA);
     vB.rootC <== MultiMux1(4)([programVK_B, rootCVadcopFinalZisk], isFinalB);
 
-    // -- Strip the flag and VK from each proof's publics (the nPublics user entries
-    //    live at slots [PUBLICS_BASE..PUBLICS_BASE+nPublics)).
+    // -- User publics live at [PUBLICS_BASE..).
     signal aPublics[nPublics];
     signal bPublics[nPublics];
     for (var i = 0; i < nPublics; i++) {
@@ -165,8 +137,7 @@ template Main(nPublics) {
     // -- Optional NormalizePublics runs on every leaf; aggregated proofs pass raw.
     //    ziskPublicsX = isFinalX * normX + (1 - isFinalX) * rawX.
 {% if n_free > 0 %}
-    // NormalizePublics emits BOTH recurser_publics AND free_outputs. The free
-    // outputs feed the free-value mux below (leaf side) / aggregate directly.
+    // NormalizePublics emits recurser_publics + free_outputs (§5).
     component normACmp = NormalizePublics(nPublics, {{ n_free }});
     normACmp.publics <== aPublics;
     normACmp.free_inputs <== freeInputsA;
@@ -197,9 +168,7 @@ template Main(nPublics) {
         ziskPublicsB[i] <== selNormB[i] + selRawB[i];
     }
 {% if n_free > 0 %}
-    // -- Free-value mux, parallel to the publics mux:
-    //      leaf (isFinalX=1) -> normalize's free_outputs;
-    //      aggregated (isFinalX=0) -> freeInputsX (already a free_output from a prior fold).
+    // -- Free-value mux, parallel to the publics mux (§5).
     signal aggFreeA[{{ n_free }}];
     signal aggFreeB[{{ n_free }}];
     signal selFreeNormA[{{ n_free }}];
@@ -230,10 +199,9 @@ template Main(nPublics) {
 {% endif %}
 {% endif %}
 
-    // -- Consistency + aggregation (VK-agnostic). AggregatePublics both asserts
-    //    the user's consistency constraints and produces the merged publics. It
-    //    also receives both sides' free values so a hash-style public can be
-    //    checked against its preimage, the preimages recombined, and re-hashed.
+    // -- Consistency + aggregation. AggregatePublics asserts the stitching
+    //    constraints and produces the merged publics; it also receives both
+    //    sides' free values (§6).
 {% if n_free > 0 %}
     signal aggPublics[nPublics] <== AggregatePublics({{ n_free }})(
         ziskPublicsA, ziskPublicsB, aggFreeA, aggFreeB);
@@ -241,7 +209,7 @@ template Main(nPublics) {
     signal aggPublics[nPublics] <== AggregatePublics()(ziskPublicsA, ziskPublicsB);
 {% endif %}
 
-    // Re-emit in the same flag-first layout: user publics at [PUBLICS_BASE..PUBLICS_BASE+nPublics).
+    // Re-emit user publics at [PUBLICS_BASE..).
     for (var i = 0; i < nPublics; i++) {
         aggregatedPublics[PUBLICS_BASE + i] <== aggPublics[i];
     }
@@ -270,9 +238,9 @@ template Main(nPublics) {
         aggregatedPublics[VK_BASE + i] <== aggTerm[i] + aTerm[i] + bTerm[i];
     }
 
-    // -- Force the reserved output slot to 0: a proof this aggregator produces
-    //    is, by definition, NOT a raw vadcop_final leaf.
-    aggregatedPublics[{{ is_vadcop_final_slot }}] === 0;
+    // -- Slot 0 = 0: an aggregator output is never a raw vadcop_final leaf.
+    //    Must be `<==` (assign), not `===`: the signal is otherwise undriven.
+    aggregatedPublics[{{ is_vadcop_final_slot }}] <== 0;
 }
 
 component main = Main({{ zisk_publics }});

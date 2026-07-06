@@ -29,8 +29,8 @@ use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
-    HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
-    PROGRAM_VK_LEN,
+    program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
+    PublicValues, VadcopKind, PROGRAM_VK_LEN,
 };
 
 pub(crate) struct ProverBackend {
@@ -449,9 +449,15 @@ impl ProverBackend {
                     body: ProofBody::Vadcop {
                         proof: p.proof,
                         zisk_vk: vadcop_vk_u64,
-                        minimal,
+                        // A freshly proven leaf is a raw vadcop_final proof
+                        // (Final, flag=1) or its compressed form (Minimal).
+                        // Recurser (aggregated) proofs come from the fold path.
+                        kind: if minimal { VadcopKind::Minimal } else { VadcopKind::Final },
                         hash: self.hash()?,
-                        publics_full: p.public_values,
+                        // Store the canonical flag-free view; proofman's raw
+                        // publics carry the is_vadcop_final_proof flag at index 0
+                        // for non-minimal proofs (captured in `kind` above).
+                        publics_full: program_publics(&p.public_values).to_vec(),
                     },
                 },
             )),
@@ -481,7 +487,7 @@ impl ProverBackend {
             body: ProofBody::Vadcop {
                 proof: minimal_proof.proof.clone(),
                 zisk_vk: self.get_vadcop_vk(true)?,
-                minimal: true,
+                kind: VadcopKind::Minimal,
                 hash,
                 publics_full: minimal_proof.public_values,
             },
@@ -502,7 +508,9 @@ impl ProverBackend {
         let vadcop_final_proof =
             VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, self.hash()?);
 
-        let proof_verkey = &publics_full[..PROGRAM_VK_LEN];
+        // Read the program VK from the flag-free view (a full vadcop_final
+        // publics vector carries the `is_vadcop_final_proof` flag at index 0).
+        let proof_verkey = &program_publics(publics_full)[..PROGRAM_VK_LEN];
         let snark_proof = self
             .snark_wrapper
             .as_ref()
@@ -530,10 +538,13 @@ impl ProverBackend {
                     plonk_vkey,
                 }),
                 publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
-                publics_full: vadcop_final_proof.public_values.clone(),
-                // This wrap path stamps the proof's own program VK as rootC
-                // (verkey_override = Some(publics_full[..PROGRAM_VK_LEN])).
-                rootc: vadcop_final_proof.public_values[..PROGRAM_VK_LEN].to_vec(),
+                // Store the canonical flag-free view (the input vadcop_final
+                // publics carry the is_vadcop_final_proof flag at index 0).
+                publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
+                // This wrap path stamps the proof's own program VK as rootC, read
+                // from the same flag-free view.
+                rootc: program_publics(&vadcop_final_proof.public_values)[..PROGRAM_VK_LEN]
+                    .to_vec(),
             },
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
