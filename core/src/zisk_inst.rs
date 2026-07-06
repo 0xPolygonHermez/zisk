@@ -151,6 +151,7 @@ pub struct ZiskInst {
     pub riscv_inst: Option<String>,
     pub index: u64, // internal field used for tracking the instruction creation order in the ROM
     pub next_internal_inst: Option<u64>, // connection to next internal odd instruction, if any
+    pub external_ref_addr: Option<u64>, // external address of the instruction, if any
 }
 
 /// Default constructor
@@ -191,6 +192,7 @@ impl Default for ZiskInst {
             riscv_inst: None,
             index: 0,
             next_internal_inst: None,
+            external_ref_addr: None,
         }
     }
 }
