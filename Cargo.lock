@@ -2276,6 +2276,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "frops-analyzer"
+version = "1.0.0-alpha"
+dependencies = [
+ "clap",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sm-arith",
+ "sm-binary",
+ "zisk-core",
+]
+
+[[package]]
 name = "fs_extra"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
