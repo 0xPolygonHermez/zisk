@@ -203,18 +203,6 @@ fn subsample(n: usize, cap: usize) -> Vec<usize> {
     idx
 }
 
-/// Largest power-of-two stride `s in {8,4,2}` such that every mid-region address agrees on the low
-/// `log2(s)` bits, with the common remainder. Returns `(1, 0)` when alignment is mixed.
-fn detect_stride(and: u64, or: u64) -> (u64, u64) {
-    for k in (1..=3).rev() {
-        let mask = (1u64 << k) - 1;
-        if (and & mask) == (or & mask) {
-            return (1 << k, and & mask);
-        }
-    }
-    (1, 0)
-}
-
 /// Pareto frontier of low rectangles `[0, A) x [0, B)`, over observed coordinates via a compressed 2D
 /// prefix sum. Corners are subsampled when there are many distinct values, to bound the search.
 fn low_rect_frontier(agg: &OpAgg, low_cap: u64) -> Vec<Candidate> {
@@ -287,8 +275,7 @@ fn low_rect_frontier(agg: &OpAgg, low_cap: u64) -> Vec<Candidate> {
 struct MidPageView {
     page: u64,
     max_b: u64,
-    a_and: u64,
-    a_or: u64,
+    a_rem: [u64; 8],
 }
 
 /// Address-range groups from the mid-region histogram. Each contiguous run of pages is split into its
@@ -303,7 +290,7 @@ fn mid_box_groups(agg: &OpAgg) -> Vec<Vec<Candidate>> {
     let mut pages: Vec<MidPageView> = agg
         .mid
         .iter()
-        .map(|(&p, v)| MidPageView { page: p, max_b: v.max_b, a_and: v.a_and, a_or: v.a_or })
+        .map(|(&p, v)| MidPageView { page: p, max_b: v.max_b, a_rem: v.a_rem })
         .collect();
     pages.sort_by_key(|x| x.page);
 
@@ -343,38 +330,58 @@ fn mid_box_groups(agg: &OpAgg) -> Vec<Vec<Candidate>> {
             if b_total < floor {
                 continue;
             }
+            let b_count = b_hi - b_lo;
             let mut opts: Vec<Candidate> = Vec::new();
-            let mut and = u64::MAX;
-            let mut or = 0u64;
-            let mut hits = 0u64;
+            let mut hits_dense = 0u64;
+            // aln[r] ≈ b-cluster hits whose `a & 7 == r`, accumulated over the run prefix (per-page
+            // independence between the `a`-alignment and the `b` value).
+            let mut aln = [0f64; 8];
             for pg in &pages[start..=end] {
-                if let Some(v) = page_bs.get(&pg.page) {
-                    for &(b, c) in v {
-                        if b >= b_lo && b < b_hi {
-                            hits += c;
-                        }
+                let bc: u64 = page_bs
+                    .get(&pg.page)
+                    .map(|v| v.iter().filter(|(b, _)| *b >= b_lo && *b < b_hi).map(|(_, c)| c).sum())
+                    .unwrap_or(0);
+                hits_dense += bc;
+                let ptot: u64 = pg.a_rem.iter().sum();
+                if bc > 0 && ptot > 0 {
+                    for (slot, &rem) in aln.iter_mut().zip(pg.a_rem.iter()) {
+                        *slot += bc as f64 * rem as f64 / ptot as f64;
                     }
                 }
-                and &= pg.a_and;
-                or |= pg.a_or;
-                let (stride, rem) = detect_stride(and, or);
-                let a_lo = page_lo + rem;
                 let a_hi = (pg.page + 1) << PAGE_SHIFT;
-                if a_hi > HIGH_FROM || a_hi <= a_lo {
+                if a_hi > HIGH_FROM {
                     break;
                 }
-                let a_count = (a_hi - a_lo).div_ceil(stride);
-                opts.push(Candidate {
-                    region: Region {
-                        a_lo,
-                        a_count,
-                        a_stride: stride,
-                        b_lo,
-                        b_count: b_hi - b_lo,
-                        kind: RegionKind::MidBox,
-                    },
-                    hits,
-                });
+                let mut push = |a_lo: u64, stride: u64, hits: u64| {
+                    if hits == 0 || a_hi <= a_lo {
+                        return;
+                    }
+                    opts.push(Candidate {
+                        region: Region {
+                            a_lo,
+                            a_count: (a_hi - a_lo).div_ceil(stride),
+                            a_stride: stride,
+                            b_lo,
+                            b_count,
+                            kind: RegionKind::MidBox,
+                        },
+                        hits,
+                    });
+                };
+                // Dense box (stride 1) and strided variants (mod 4 / mod 8), always offered — the
+                // Pareto frontier + knapsack pick whichever gives the most hits per row.
+                push(page_lo, 1, hits_dense);
+                for s in [4usize, 8usize] {
+                    let (mut best_r, mut best_h) = (0usize, 0f64);
+                    for r in 0..s {
+                        let h: f64 = (r..8).step_by(s).map(|j| aln[j]).sum();
+                        if h > best_h {
+                            best_h = h;
+                            best_r = r;
+                        }
+                    }
+                    push(page_lo + best_r as u64, s as u64, best_h.round() as u64);
+                }
             }
             groups.push(pareto(opts));
         }
@@ -513,15 +520,5 @@ mod tests {
         assert_eq!(r.offset(a_lo, 0), 0);
         assert_eq!(r.offset(a_lo + 8, 1), 2 + 1); // index 1 * b_count 2 + b 1
         assert_eq!(r.offset(a_lo + 24, 0), 3 * 2);
-    }
-
-    #[test]
-    fn detect_stride_works() {
-        // all 8-aligned -> stride 8, rem 0
-        assert_eq!(detect_stride(0xA0100000, 0xA0100FF8), (8, 0));
-        // mixed low bit -> stride 1
-        assert_eq!(detect_stride(0xA0100000, 0xA0100FF9), (1, 0));
-        // 4-aligned with remainder 0 (bit2 differs) -> stride 4
-        assert_eq!(detect_stride(0x1000, 0x1004), (4, 0));
     }
 }

@@ -66,10 +66,9 @@ pub struct OpAgg {
 pub struct MidPage {
     pub count: u64,
     pub max_b: u64,
-    /// Bitwise AND / OR of `a` within this page, used to detect the cluster's low-bit alignment
-    /// (stride) — computed per page/cluster, not globally per op.
-    pub a_and: u64,
-    pub a_or: u64,
+    /// Histogram of `a & 7` over this page, so strided (mod 4/8) candidate boxes can be evaluated
+    /// even when the page mixes alignments (not only uniformly-aligned clusters).
+    pub a_rem: [u64; 8],
 }
 
 impl OpAgg {
@@ -100,15 +99,9 @@ impl OpAgg {
             let page = a >> PAGE_SHIFT;
             if self.mid.contains_key(&page) || self.mid.len() < MID_CAP_ENTRIES {
                 let e = self.mid.entry(page).or_default();
-                if e.count == 0 {
-                    e.a_and = a;
-                    e.a_or = a;
-                } else {
-                    e.a_and &= a;
-                    e.a_or |= a;
-                }
                 e.count += 1;
                 e.max_b = e.max_b.max(b);
+                e.a_rem[(a & 7) as usize] += 1;
                 // Joint (page, b) for b-splitting (bounded; spills only lose b resolution).
                 if self.mid_pb.contains_key(&(page, b)) || self.mid_pb.len() < MID_PB_CAP_ENTRIES {
                     *self.mid_pb.entry((page, b)).or_default() += 1;
