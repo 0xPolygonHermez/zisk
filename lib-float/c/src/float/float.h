@@ -10,7 +10,7 @@ extern "C" {
 #define uint64_t unsigned long long
 
 // System address where the floating-point registers are mapped
-#define SYS_ADDR 0xa0000000
+#define SYS_ADDR 0xA0400000
 #define REG_FIRST SYS_ADDR
 #define FREG_FIRST (SYS_ADDR + 0x1000)
 #define FREG_F0 FREG_FIRST
