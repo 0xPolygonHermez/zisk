@@ -69,8 +69,8 @@ Zbkx — crossbar permutation
 //     rol_w: 6 instructions
 //     ror: 5 instructions
 //     ror_w: 6 instructions
-//     rot8: 13 instructions
-//     brot8: 15 instructions
+//     rev8: 13 instructions
+//     brev8: 15 instructions
 //     pack: 4 instructions
 //     pack_h: 4 instructions
 //     pack_w: 4 instructions
@@ -1055,7 +1055,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implement rot8: switch endianness of a 64-bit register (i.e. reverse the order of the bytes)
+    /// Implement rev8: switch endianness of a 64-bit register (i.e. reverse the order of the bytes)
     //
     // M1 = 0x00FF00FF00FF00FF
     // M2 = 0x0000FFFF0000FFFF
@@ -1072,8 +1072,8 @@ impl Riscv2ZiskContext<'_> {
     // stage 2: srli, and, and, slli, or → 5
     // stage 3: srli, slli, or → 3
     //
-    pub fn rot8(&mut self, i: &RiscvInst) {
-        // Define constants for the masks used in the rot8 implementation
+    pub fn rev8(&mut self, i: &RiscvInst) {
+        // Define constants for the masks used in the rev8 implementation
         const M1: u64 = 0x00FF00FF00FF00FF;
         const M2: u64 = 0x0000FFFF0000FFFF;
 
@@ -1278,7 +1278,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements brot8, which reverses the order of the bits of every byte in a 64-bit register
+    /// Implements brev8, which reverses the order of the bits of every byte in a 64-bit register
     //
     // m1 = 0x5555555555555555   # 0x55 per byte — swap adjacent bits
     // m2 = 0x3333333333333333   # 0x33 per byte — swap adjacent bit-pairs
@@ -1290,8 +1290,8 @@ impl Riscv2ZiskContext<'_> {
     //
     // ALU op count (RV64I, excluding constant loads): each stage is srli, and, and, slli, or → 5, so 15 instructions. Also the log-optimum (log₂8 = 3 stages).
     //
-    pub fn brot8(&mut self, i: &RiscvInst) {
-        // Define constants for the masks used in the brot8 implementation
+    pub fn brev8(&mut self, i: &RiscvInst) {
+        // Define constants for the masks used in the brev8 implementation
         const M1: u64 = 0x5555555555555555;
         const M2: u64 = 0x3333333333333333;
         const M4: u64 = 0x0F0F0F0F0F0F0F0F;
