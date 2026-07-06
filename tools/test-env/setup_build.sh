@@ -210,8 +210,9 @@ apply_zisk_compiler_override() {
   command -v npm >/dev/null || { echo "npm not on PATH (needed for the pil/Cargo.toml pil2-compiler override)" >&2; exit 1; }
 
   # Install into a dedicated dir so we never mutate proofman's checkout. The dir
-  # is keyed by the override value, so switching versions gets a clean install.
-  local dir="$ROOT_DIR/tmp/pil2-compiler-override"
+  # is keyed by a hash of the override value, so switching versions gets a clean
+  # install and each version keeps its own warm node_modules (no clobbering).
+  local dir="$ROOT_DIR/tmp/pil2-compiler-override/$(printf '%s' "$override" | sha256_hex)"
   local pkg="$dir/package.json"
   local pil2c="$dir/node_modules/.bin/pil2com"
   mkdir -p "$dir"
