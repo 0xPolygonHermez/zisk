@@ -21,5 +21,6 @@ lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-bit_manipulation_extensions = []
+b_native = []
+b_soft = []
 float = ["transpilers-common/float"]

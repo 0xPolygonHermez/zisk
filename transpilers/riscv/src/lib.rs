@@ -19,3 +19,6 @@ pub use riscv_inst_name::*;
 pub use riscv_inst_type::*;
 pub use riscv_interpreter::*;
 pub use riscv_registers::*;
+
+#[cfg(all(feature = "b_native", feature = "b_soft"))]
+compile_error!("features `b_native` and `b_soft` are mutually exclusive");

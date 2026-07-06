@@ -18,4 +18,5 @@ zisk-sdk = { path = "../sdk" }
 
 [features]
 default = []
-bit_manipulation_extensions = []
+b_native = []
+b_soft = []

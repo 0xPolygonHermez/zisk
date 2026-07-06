@@ -13,9 +13,14 @@ fn main() -> Result<()> {
     // Collect enabled features from the environment
     let mut features = Vec::new();
 
-    // Check for bit_manipulation_extensions feature
-    if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok() {
-        features.push("bit_manipulation_extensions");
+    // Check for b_native feature
+    if env::var("CARGO_FEATURE_B_NATIVE").is_ok() {
+        features.push("b_native");
+    }
+
+    // Check for b_soft feature
+    if env::var("CARGO_FEATURE_B_SOFT").is_ok() {
+        features.push("b_soft");
     }
 
     let mut build_args = BuildArgs::default();

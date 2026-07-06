@@ -17,4 +17,5 @@ lib-float = { workspace = true, optional = true }
 [features]
 default = []
 float = ["dep:lib-float", "lib-float/float"]
-bit_manipulation_extensions = []
+b_native = []
+b_soft = []

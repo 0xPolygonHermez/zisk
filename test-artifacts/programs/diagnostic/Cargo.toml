@@ -11,5 +11,6 @@ workspace = true
 
 [features]
 default = []
-bit_manipulation_extensions = []
+b_native = []
+b_soft = []
 c_extension = []
