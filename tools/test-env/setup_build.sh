@@ -13,7 +13,7 @@
 #   --no-aggregation   run setup without -r.
 #   --snark            run setup-snark on top of an existing
 #                      <build-dir>/provingKey/. Errors out if that directory
-#                      is missing — populate it first with build-setup.sh
+#                      is missing — populate it first with setup_build.sh
 #                      (no flag).
 #   --compile-pil      run only frops + compile-pil + regenerate
 #                      pil/src/pil_helpers/traces.rs. No setup.
@@ -192,46 +192,35 @@ cd "$ROOT_DIR"
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
-# ----- optional zisk-driven pil2-compiler override ---------------------------
-# By default the compiler version is whatever pil2-proofman pins in its own
-# package.json (the pil2-stark-setup crate installs it). If pil/Cargo.toml
-# declares [package.metadata.zisk] pil2-compiler, install that version into a
-# dedicated node_modules and point the compiler at it via PIL2C_EXEC, which the
-# crate honors ahead of every other resolution path. No-op when unset.
+# If [workspace.metadata] pil2_compiler_branch is set in Cargo.toml, install that
+# pil2-compiler and point the compiler at it via PIL2C_EXEC (which the
+# pil2-stark-setup crate honors first). No-op when unset; then proofman's own
+# pinned version is used.
 apply_zisk_compiler_override() {
-  # read_zisk_pil2_compiler_override (setup_common.sh) is the single, section-aware
-  # parser shared with the cache key, so the installed compiler and the hashed
-  # version can never disagree. Empty => no override; non-zero => unreadable manifest.
   local override
   override="$(read_zisk_pil2_compiler_override)" \
-    || { echo "pil/Cargo.toml exists but could not be read for the pil2-compiler override" >&2; exit 1; }
+    || { echo "cargo metadata failed while reading pil2_compiler_branch from Cargo.toml" >&2; exit 1; }
   [ -n "$override" ] || return 0
 
-  # Install into a dedicated dir so we never mutate proofman's checkout. The dir
-  # is keyed by a hash of the override value, so switching versions gets a clean
-  # install and each version keeps its own warm node_modules (no clobbering).
+  # Dedicated per-version dir (hashed by $override) so we never touch proofman's
+  # checkout and switching versions can't clobber a warm install.
   local dir="$ROOT_DIR/tmp/pil2-compiler-override/$(printf '%s' "$override" | sha256_hex)"
   local pkg="$dir/package.json"
   local pil2c="$dir/node_modules/.bin/pil2com"
   mkdir -p "$dir"
 
-  # The dir is version-specific (hashed by $override), so the only reason to
-  # (re)install is a missing/dangling probe — never installed, or an interrupted
-  # install. -f follows the symlink npm creates, matching the Rust resolver's
-  # is_file() check. A warm dir needs no npm, so a --cache-dir hit never shells
-  # into node.
+  # (Re)install only when the probe is missing/dangling — a warm dir must not
+  # need npm, so a --cache-dir hit never shells into node. -f follows the symlink.
   if [ ! -f "$pil2c" ]; then
-    # npm is only needed when we actually install; a warm dir must not require it.
-    command -v npm >/dev/null || { echo "npm not on PATH (needed to install the pil/Cargo.toml pil2-compiler override $override)" >&2; exit 1; }
+    command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler override $override)" >&2; exit 1; }
     printf '{\n  "private": true,\n  "dependencies": { "pil2-compiler": "%s" }\n}' "$override" > "$pkg"
-    rm -f "$dir/package-lock.json"   # a stale lockfile would pin the old version
+    rm -f "$dir/package-lock.json"   # stale lockfile would pin the old version
     echo "==> installing zisk-pinned pil2-compiler ($override) in $dir" >&2
     (cd "$dir" && npm install)
   fi
 
-  # npm links .bin/pil2com to src/pil.js. The Rust resolver accepts PIL2C_EXEC
-  # only if it is_file() (follows the link), so require a resolvable target — a
-  # dangling link would be silently ignored and fall back to proofman's version.
+  # -f matches the Rust resolver's is_file(); a dangling link would be silently
+  # ignored, falling back to proofman's version, so fail loudly instead.
   [ -f "$pil2c" ] \
     || { echo "pil2com missing or dangling at $pil2c after npm install (override $override)" >&2; exit 1; }
   export PIL2C_EXEC="$pil2c"

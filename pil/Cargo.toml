@@ -7,9 +7,6 @@ keywords = { workspace = true }
 repository = { workspace = true }
 categories = { workspace = true }
 
-# [package.metadata.zisk]
-# pil2-compiler = "https://github.com/0xPolygonHermez/pil2-compiler.git#develop-0.12.0"
-
 [dependencies]
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
