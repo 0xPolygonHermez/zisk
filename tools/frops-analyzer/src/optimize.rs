@@ -173,8 +173,10 @@ pub fn optimize(agg: &Aggregator, cfg: Config) -> Proposal {
         let marg = d_part as u128 * s_part as u128 * weight_u; // table cost of new partitions
         let opens_region = inc.level == 0;
         let take = if opens_region {
-            // A new region adds a comparison; require it to pay for its rows at full cost.
-            inc.d_gain > weight_u * inc.d_rows as u128
+            // A new region adds a comparison; require it to pay for its rows at full cost (justifying
+            // the comparison) AND to cover the padded partition cost actually charged (`marg`), so the
+            // step is area-positive under the same padded model used when growing a region.
+            inc.d_gain > weight_u * inc.d_rows as u128 && inc.d_gain > marg
         } else {
             // Growing an existing region: free inside a paid partition, else must pay the partition.
             inc.d_gain > marg

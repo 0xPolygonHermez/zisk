@@ -13,7 +13,7 @@ const OP_SRLW: u8 = ZiskOp::SrlW.code();
 const OP_SRAW: u8 = ZiskOp::SraW.code();
 
 const OP_TABLE_OFFSETS_START: usize = 33;
-const OP_TABLE_OFFSETS: [usize; 6] = [0, 813568, 2145280, 0, 2147328, 2168416];
+const OP_TABLE_OFFSETS: [usize; 6] = [0, 813568, 1144320, 0, 1146368, 1171008];
 
 #[derive(Debug, Clone)]
 pub struct BinaryExtensionFrops {
@@ -74,12 +74,6 @@ impl BinaryExtensionFrops {
                     ops.push([a, b]);
                 }
             }
-            // mid_box: a >= 4096 && a < 20480 && b < 64
-            for a in 0x1000..0x5000 {
-                for b in 0..64 {
-                    ops.push([a, b]);
-                }
-            }
             // mid_box: a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58
             for a in (0xC51C9669EAED000..0xC51C9669EAEE000).step_by(8) {
                 for b in 0x3A..0x3B {
@@ -89,6 +83,12 @@ impl BinaryExtensionFrops {
             // mid_box: a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4
             for a in 0x4444444444440000..0x4444444444445000 {
                 for b in 0x4..0x5 {
+                    ops.push([a, b]);
+                }
+            }
+            // mid_box: a >= 0xAAAAAAAAAAAA8000 && a < 0xAAAAAAAAAAAAB000 && (a & 7) == 0 && b >= 2 && b < 33
+            for a in (0xAAAAAAAAAAAA8000..0xAAAAAAAAAAAAB000).step_by(8) {
+                for b in 0x2..0x21 {
                     ops.push([a, b]);
                 }
             }
@@ -126,8 +126,8 @@ impl BinaryExtensionFrops {
         // op srl_w
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 531 && b < 32
-            for a in 0..531 {
+            // low_rect: a < 642 && b < 32
+            for a in 0..642 {
                 for b in 0..32 {
                     ops.push([a, b]);
                 }
@@ -155,14 +155,8 @@ impl BinaryExtensionFrops {
         // op sra_w
         {
             let mut ops: Vec<[u64; 2]> = Vec::new();
-            // low_rect: a < 37 && b < 32
-            for a in 0..37 {
-                for b in 0..32 {
-                    ops.push([a, b]);
-                }
-            }
-            // high_box: a >= 0xFFFFFFFFFFFFFF08 && b < 32
-            for a in 0xFFFFFFFFFFFFFF08..=u64::MAX {
+            // low_rect: a < 24 && b < 32
+            for a in 0..24 {
                 for b in 0..32 {
                     ops.push([a, b]);
                 }
@@ -182,9 +176,13 @@ impl BinaryExtensionFrops {
             }
             OP_SRL => {
                 a < 4096 && b < 64
-                    || a >= 4096 && a < 20480 && b < 64
                     || a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58
                     || a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4
+                    || a >= 0xAAAAAAAAAAAA8000
+                        && a < 0xAAAAAAAAAAAAB000
+                        && (a & 7) == 0
+                        && b >= 2
+                        && b < 33
             }
             OP_SRA => {
                 a >= 0x100000000000000 && a < 0x100000000001000 && (a & 7) == 0 && b == 56
@@ -193,12 +191,12 @@ impl BinaryExtensionFrops {
                     || a >= 0x9000000000000000 && a < 0x9000000000001000 && (a & 7) == 0 && b == 56
             }
             OP_SRLW => {
-                a < 531 && b < 32
+                a < 642 && b < 32
                     || a >= 0xFFFFA007 && a < 0x100000007 && (a & 7) == 7 && b == 24
                     || a >= 0x11020000000000 && a < 0x11020000001000 && (a & 7) == 0 && b == 24
                     || a >= 0x1102000000000000 && a < 0x1102000000001000 && (a & 7) == 0 && b == 24
             }
-            OP_SRAW => a < 37 && b < 32 || a >= 0xFFFFFFFFFFFFFF08 && b < 32,
+            OP_SRAW => a < 24 && b < 32,
             _ => false,
         }
     }
@@ -226,13 +224,18 @@ impl BinaryExtensionFrops {
             OP_SRL => {
                 if a < 4096 && b < 64 {
                     (a * 64 + b) as usize
-                } else if a >= 4096 && a < 20480 && b < 64 {
-                    ((a - 0x1000) * 64 + b) as usize + 262144
                 } else if a >= 0xC51C9669EAED000 && a < 0xC51C9669EAEE000 && (a & 7) == 0 && b == 58
                 {
-                    ((a - 0xC51C9669EAED000) / 8) as usize + 1310720
+                    ((a - 0xC51C9669EAED000) / 8) as usize + 262144
                 } else if a >= 0x4444444444440000 && a < 0x4444444444445000 && b == 4 {
-                    (a - 0x4444444444440000) as usize + 1311232
+                    (a - 0x4444444444440000) as usize + 262656
+                } else if a >= 0xAAAAAAAAAAAA8000
+                    && a < 0xAAAAAAAAAAAAB000
+                    && (a & 7) == 0
+                    && b >= 2
+                    && b < 33
+                {
+                    (((a - 0xAAAAAAAAAAAA8000) / 8) * 31 + (b - 0x2)) as usize + 283136
                 } else {
                     Self::NO_FROPS
                 }
@@ -263,27 +266,25 @@ impl BinaryExtensionFrops {
                 }
             }
             OP_SRLW => {
-                if a < 531 && b < 32 {
+                if a < 642 && b < 32 {
                     (a * 32 + b) as usize
                 } else if a >= 0xFFFFA007 && a < 0x100000007 && (a & 7) == 7 && b == 24 {
-                    ((a - 0xFFFFA007) / 8) as usize + 16992
+                    ((a - 0xFFFFA007) / 8) as usize + 20544
                 } else if a >= 0x11020000000000 && a < 0x11020000001000 && (a & 7) == 0 && b == 24 {
-                    ((a - 0x11020000000000) / 8) as usize + 20064
+                    ((a - 0x11020000000000) / 8) as usize + 23616
                 } else if a >= 0x1102000000000000
                     && a < 0x1102000000001000
                     && (a & 7) == 0
                     && b == 24
                 {
-                    ((a - 0x1102000000000000) / 8) as usize + 20576
+                    ((a - 0x1102000000000000) / 8) as usize + 24128
                 } else {
                     Self::NO_FROPS
                 }
             }
             OP_SRAW => {
-                if a < 37 && b < 32 {
+                if a < 24 && b < 32 {
                     (a * 32 + b) as usize
-                } else if a >= 0xFFFFFFFFFFFFFF08 && b < 32 {
-                    ((a - 0xFFFFFFFFFFFFFF08) * 32 + b) as usize + 1184
                 } else {
                     Self::NO_FROPS
                 }

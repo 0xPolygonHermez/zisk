@@ -58,6 +58,11 @@ pub struct OpAgg {
     /// Occurrences that fell outside every tracked bucket (large `b`, spilled keys, etc.).
     pub other: u64,
     pub truncated: bool,
+    /// Set when the joint `(page, b)` map hit its cap: the occurrence is still counted in the page
+    /// total (`mid`), so coverage stays conservative, but its `b` value could not be tracked, so
+    /// b-splitting for this op runs at reduced resolution. Distinct from `truncated` (which routes
+    /// occurrences to `other`); flagged so reports can tell b-clustering was degraded.
+    pub mid_pb_truncated: bool,
     /// Occurrences the *current* FROPS implementation would cover (for comparison).
     pub current_covered: u64,
 }
@@ -102,9 +107,12 @@ impl OpAgg {
                 e.count += 1;
                 e.max_b = e.max_b.max(b);
                 e.a_rem[(a & 7) as usize] += 1;
-                // Joint (page, b) for b-splitting (bounded; spills only lose b resolution).
+                // Joint (page, b) for b-splitting (bounded; spills only lose b resolution, the page
+                // total above still counts the occurrence, so no count is dropped).
                 if self.mid_pb.contains_key(&(page, b)) || self.mid_pb.len() < MID_PB_CAP_ENTRIES {
                     *self.mid_pb.entry((page, b)).or_default() += 1;
+                } else {
+                    self.mid_pb_truncated = true;
                 }
             } else {
                 self.other += 1;

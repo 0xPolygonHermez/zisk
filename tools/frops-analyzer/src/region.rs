@@ -222,17 +222,22 @@ fn low_rect_frontier(agg: &OpAgg, low_cap: u64) -> Vec<Candidate> {
         a_vals.extend(aset);
         b_vals.extend(bset);
     }
-    let na = a_vals.len();
-    let nb = b_vals.len();
-    let a_idx: std::collections::HashMap<u64, usize> =
-        a_vals.iter().enumerate().map(|(i, &v)| (v, i)).collect();
-    let b_idx: std::collections::HashMap<u64, usize> =
-        b_vals.iter().enumerate().map(|(i, &v)| (v, i)).collect();
+
+    // Reduce each axis to at most MAX_DIM representative thresholds *before* allocating the grid, so
+    // memory is bounded by MAX_DIM^2 regardless of `low_cap` (a large `--low-cap` could otherwise make
+    // `na * nb` overflow / OOM even though `agg.low` is capped). Candidate boxes are prefixes anchored
+    // at 0, so an entry with value `v` belongs to the first representative `>= v`; cumulative sums over
+    // the reduced grid then give exact hit counts for every `[0, repr] x [0, repr]` corner.
+    const MAX_DIM: usize = 600;
+    let ra: Vec<u64> = subsample(a_vals.len(), MAX_DIM).iter().map(|&i| a_vals[i]).collect();
+    let rb: Vec<u64> = subsample(b_vals.len(), MAX_DIM).iter().map(|&i| b_vals[i]).collect();
+    let na = ra.len();
+    let nb = rb.len();
 
     let mut grid = vec![0u64; na * nb];
     for (&key, &cnt) in &agg.low {
-        let i = a_idx[&(key / low_cap)];
-        let j = b_idx[&(key % low_cap)];
+        let i = ra.partition_point(|&x| x < key / low_cap);
+        let j = rb.partition_point(|&x| x < key % low_cap);
         grid[i * nb + j] += cnt;
     }
     let mut cum = vec![0u64; na * nb];
@@ -246,15 +251,11 @@ fn low_rect_frontier(agg: &OpAgg, low_cap: u64) -> Vec<Candidate> {
         }
     }
 
-    // Subsample corners to keep the candidate set bounded for large low_cap.
-    const MAX_DIM: usize = 600;
-    let ai = subsample(na, MAX_DIM);
-    let bj = subsample(nb, MAX_DIM);
-    let mut cands = Vec::with_capacity(ai.len() * bj.len());
-    for &i in &ai {
-        let a_hi = a_vals[i] + 1;
-        for &j in &bj {
-            let b_hi = b_vals[j] + 1;
+    let mut cands = Vec::with_capacity(na * nb);
+    for i in 0..na {
+        let a_hi = ra[i] + 1;
+        for j in 0..nb {
+            let b_hi = rb[j] + 1;
             let hits = cum[i * nb + j];
             cands.push(Candidate {
                 region: Region {

@@ -12,7 +12,8 @@ use crate::optimize::{Areas, Proposal};
 pub fn write_reports(agg: &Aggregator, prop: &Proposal, dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
     let json = build_json(agg, prop);
-    fs::write(dir.join("proposal.json"), serde_json::to_string_pretty(&json).unwrap())?;
+    let pretty = serde_json::to_string_pretty(&json).map_err(std::io::Error::other)?;
+    fs::write(dir.join("proposal.json"), pretty)?;
     fs::write(dir.join("report.md"), build_md(agg, prop))?;
     Ok(())
 }
@@ -59,6 +60,7 @@ fn build_json(agg: &Aggregator, prop: &Proposal) -> serde_json::Value {
                 })
                 .collect();
             let current_covered = prop.current_covered.get(&code).copied().unwrap_or(0);
+            let ag = agg.ops.get(&code);
             json!({
                 "code": format!("{code:#04x}"),
                 "name": info.name,
@@ -70,6 +72,11 @@ fn build_json(agg: &Aggregator, prop: &Proposal) -> serde_json::Value {
                 "coverage_pct": pct(covered, total),
                 "current_covered": current_covered,
                 "current_coverage_pct": pct(current_covered, total),
+                // Histogram fidelity flags: `truncated` means some occurrences spilled to `other`
+                // (a bounded map hit its cap); `b_resolution_reduced` means b-splitting ran at
+                // reduced resolution (the (page,b) map spilled, counts preserved in the page total).
+                "truncated": ag.map(|a| a.truncated).unwrap_or(false),
+                "b_resolution_reduced": ag.map(|a| a.mid_pb_truncated).unwrap_or(false),
                 "regions": regions,
             })
         })
