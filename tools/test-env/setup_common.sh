@@ -31,14 +31,15 @@ sha256_hex() {
   fi | awk '{print $1}'
 }
 
-# Print the pil2-compiler git URL#ref from [workspace.metadata] pil2_compiler_branch
-# in the root Cargo.toml, or nothing when unset. Shared by the cache key and the
-# installer so they can't disagree; a cargo failure returns non-zero.
+# Print the pil2-compiler git URL#ref, or nothing when no branch is set. The
+# branch is PIL2_COMPILER_BRANCH (set by --pil2-compiler-branch) if given, else
+# gha_pil2_compiler_branch from the root Cargo.toml. Shared by the cache key and
+# the installer so they can't disagree.
 PIL2_COMPILER_REPO="https://github.com/0xPolygonHermez/pil2-compiler.git"
 read_zisk_pil2_compiler_override() {
-  local branch
-  branch="$(cargo metadata --format-version 1 --no-deps 2>/dev/null \
-    | jq -r '.metadata.pil2_compiler_branch // empty')" || return 1
+  local branch="${PIL2_COMPILER_BRANCH:-}"
+  [ -n "$branch" ] || branch="$(cargo metadata --format-version 1 --no-deps 2>/dev/null \
+    | jq -r '.metadata.gha_pil2_compiler_branch // empty')"
   [ -n "$branch" ] || return 0
   printf '%s#%s\n' "$PIL2_COMPILER_REPO" "$branch"
 }
@@ -111,14 +112,12 @@ compute_input_hash() (
     [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; exit 1; }
   done
 
-  # The pil2-compiler version that will actually compile the PIL. The zisk-side
-  # pil2_compiler_branch override (root [workspace.metadata]) wins over
-  # proofman's own package.json, so it must feed the cache key or two builds with
-  # different overrides would collide. When unset, falls back to proofman's value,
-  # keeping the key identical to before. Shared resolver with the installer.
+  # The pil2-compiler version that will actually compile the PIL. The override
+  # wins over proofman's own package.json, so it must feed the cache key or two
+  # builds with different overrides would collide. Falls back to proofman's value
+  # when there is no override. Shared resolver with the installer.
   local pil2_compiler_version pil2_compiler_override
-  pil2_compiler_override="$(read_zisk_pil2_compiler_override)" \
-    || { echo "cargo metadata failed while reading pil2_compiler_branch from Cargo.toml" >&2; exit 1; }
+  pil2_compiler_override="$(read_zisk_pil2_compiler_override)"
   if [ -n "$pil2_compiler_override" ]; then
     pil2_compiler_version="$pil2_compiler_override"
   else

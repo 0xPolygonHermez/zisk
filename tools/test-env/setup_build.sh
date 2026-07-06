@@ -36,7 +36,8 @@
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
 #   - state-machines/starkstructs.json
 #   - the three *_fixed.bin files written by the frops generators
-#   - pil2-compiler dep ref from ${PROOFMAN_DIR}/package.json
+#   - pil2-compiler ref: the branch override if set, else the dep ref from
+#     ${PROOFMAN_DIR}/package.json
 #   - pil2-stark-setup ref: its git source string from Cargo.lock, or — when
 #     proofman is a local path dep — a content key from the local checkout
 #
@@ -58,7 +59,8 @@ fi
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil] [--gen-exps] [--exps-arch SPEC] [-v|-vv|--verbose]
+         [--skip-compile-pil] [--gen-exps] [--exps-arch SPEC] [--pil2-compiler-branch BRANCH]
+         [-v|-vv|--verbose]
          [--compile-pil | --no-aggregation | --snark | --compressed-final | --gen-exps-only | --stats | --print-hash]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
@@ -89,6 +91,11 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
   --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
                          --gen-exps-only). Default: auto (detects the host GPU).
                          Also settable via EXPS_ARCH env var.
+  --pil2-compiler-branch BRANCH
+                         pil2-compiler branch to compile the PIL with. Defaults
+                         to gha_pil2_compiler_branch in Cargo.toml; unset there
+                         too => proofman's own pinned version. Also settable via
+                         PIL2_COMPILER_BRANCH env var.
   --compile-pil          Run only frops + compile-pil + pil-helpers regen
                          (writes pil/zisk.pilout and pil/src/pil_helpers/).
                          No setup.
@@ -130,6 +137,9 @@ GEN_EXPS="${GEN_EXPS:-0}"
 # CUDA arch spec forwarded to gen-exps (both the --gen-exps flag and the
 # --gen-exps-only mode). auto detects the host GPU.
 EXPS_ARCH="${EXPS_ARCH:-auto}"
+# pil2-compiler branch override (--pil2-compiler-branch). Empty here => the
+# resolver falls back to gha_pil2_compiler_branch in Cargo.toml.
+PIL2_COMPILER_BRANCH="${PIL2_COMPILER_BRANCH:-}"
 
 set_mode() {
   if [ "$MODE" != "build" ]; then
@@ -149,6 +159,7 @@ while [ $# -gt 0 ]; do
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
     --gen-exps)          GEN_EXPS=1;              shift ;;
     --exps-arch)         EXPS_ARCH="$2";          shift 2 ;;
+    --pil2-compiler-branch) PIL2_COMPILER_BRANCH="$2"; shift 2 ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
     --compile-pil)       set_mode compile_pil;       shift ;;
@@ -192,14 +203,12 @@ cd "$ROOT_DIR"
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
-# If [workspace.metadata] pil2_compiler_branch is set in Cargo.toml, install that
-# pil2-compiler and point the compiler at it via PIL2C_EXEC (which the
-# pil2-stark-setup crate honors first). No-op when unset; then proofman's own
-# pinned version is used.
+# Install the resolved pil2-compiler override and point the compiler at it via
+# PIL2C_EXEC (which the pil2-stark-setup crate honors first). No-op when there is
+# no override; then proofman's own pinned version is used.
 apply_zisk_compiler_override() {
   local override
-  override="$(read_zisk_pil2_compiler_override)" \
-    || { echo "cargo metadata failed while reading pil2_compiler_branch from Cargo.toml" >&2; exit 1; }
+  override="$(read_zisk_pil2_compiler_override)"
   [ -n "$override" ] || return 0
 
   # Dedicated per-version dir (hashed by $override) so we never touch proofman's
