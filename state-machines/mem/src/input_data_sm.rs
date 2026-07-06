@@ -10,7 +10,9 @@ use std::{
 use zisk_sm_mem_common::MemHelpers;
 
 use crate::{MemInput, MemModule, MemPreviousSegment};
-use zisk_sm_mem_common::{MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_RANGE};
+use zisk_sm_mem_common::{
+    MemModuleSegmentCheckPoint, MEM_BYTES_BITS, SEGMENT_ADDR_MAX_DISTANCE, SEGMENT_ADDR_MAX_RANGE,
+};
 
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -194,8 +196,8 @@ impl<F: PrimeField64> InputDataSM<F> {
                 break;
             }
 
-            if distance > SEGMENT_ADDR_MAX_RANGE as u32 {
-                let mut internal_reads = (distance - 1) / SEGMENT_ADDR_MAX_RANGE as u32;
+            if distance > SEGMENT_ADDR_MAX_DISTANCE as u32 {
+                let mut internal_reads = (distance - 1) / SEGMENT_ADDR_MAX_DISTANCE as u32;
 
                 let incomplete = (i + internal_reads as usize) >= num_rows;
                 if incomplete {
@@ -203,7 +205,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                 }
 
                 trace[i].set_addr_changes(true);
-                last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
+                last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
                 max_range_distance_count += 1;
                 trace[i].set_addr(last_addr);
 
@@ -211,6 +213,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                 last_step = 0;
                 trace[i].set_step(0);
                 trace[i].set_sel(false);
+                trace[i].set_is_free_read(false);
 
                 // setting value to zero, is not relevant for internal reads
                 last_value = 0;
@@ -219,7 +222,7 @@ impl<F: PrimeField64> InputDataSM<F> {
 
                 for _j in 1..internal_reads {
                     trace[i] = trace[i - 1];
-                    last_addr += SEGMENT_ADDR_MAX_RANGE as u32;
+                    last_addr += SEGMENT_ADDR_MAX_DISTANCE as u32;
                     max_range_distance_count += 1;
                     trace[i].set_addr(last_addr);
 

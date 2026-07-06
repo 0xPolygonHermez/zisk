@@ -10,6 +10,7 @@ categories = ["cryptography"]
 gha_zisk_ethproofs_branch = "develop-0.10.0"
 gha_zisk_eth_client_branch = "develop-0.10.0"
 gha_zisk_template_branch = "pre-develop-1.0.0-beta"
+gha_zisk_testvectors_branch = "zisk-1.0.0"
 
 [workspace]
 members = [
@@ -54,6 +55,7 @@ members = [
   "common",
   "stream",
   "tools/circuit",
+  "tools/frops-analyzer",
   "distributed/crates/coordinator",
   "distributed/crates/coordinator-server",
   "distributed/crates/coordinator-api",
@@ -134,15 +136,15 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = 
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.0.0-beta" }
 
 # Proofman git
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", default-features = false, version = "1.0.0-beta" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
-pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
-proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
-proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.0-beta" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", default-features = false, version = "1.0.1-alpha" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
+pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
+proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.0.1-alpha" }
 
 # Proofman crates.io (enable once pil2-proofman is published; use instead of the path/git blocks)
 # proofman = { version = "1.0.0-beta" }
@@ -253,3 +255,9 @@ tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 signal-hook = "0.4"
 signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
 criterion = { version = "0.8", features = ["html_reports"] }
+
+# Mirror pil2-proofman's mpi patch: a dependency's [patch] is ignored when ZisK
+# is the workspace root, so replicate it here so `mpi` resolves to the same
+# rsmpi rev proofman expects (fixes the registry mpi 0.8.1 binding issues).
+[patch.crates-io]
+mpi = { git = "https://github.com/rsmpi/rsmpi", rev = "fa1dc36cb9918fa4dc3a9626bc18c523d2b280a6" }

@@ -111,6 +111,10 @@ pub(crate) struct ProveCmd {
     #[arg(short = 't', long, hide = true)]
     max_streams: Option<usize>,
 
+    /// Maximum number of per-GPU recursive (aggregation) streams for proving
+    #[arg(short = 'r', long, hide = true)]
+    max_recursive_streams: Option<usize>,
+
     /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
     number_threads_witness: Option<usize>,
@@ -186,6 +190,9 @@ impl ProveCmd {
         }
         if let Some(max) = self.max_streams {
             prover_options = prover_options.max_streams(max);
+        }
+        if let Some(max) = self.max_recursive_streams {
+            prover_options = prover_options.max_recursive_streams(max);
         }
 
         // ASM-specific options (only used if not emulator)

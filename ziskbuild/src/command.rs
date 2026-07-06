@@ -46,40 +46,9 @@ pub(crate) fn create_command(
     //     return Err(anyhow!("Cargo run command failed with status {}", status));
     // }
 
-    let rustc_bin = {
-        let output = Command::new("rustc")
-            .env("RUSTUP_TOOLCHAIN", crate::RUSTUP_TOOLCHAIN_NAME)
-            .arg("--print")
-            .arg("sysroot")
-            .output()
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "ZisK toolchain '{}' is not installed or rustup is not available.\n\
-                     Run `cargo zisk toolchain install` to install it.",
-                    crate::RUSTUP_TOOLCHAIN_NAME
-                )
-            })?;
+    let rustc_bin = zisk_rustc()?;
 
-        if !output.status.success() {
-            anyhow::bail!(
-                "ZisK toolchain '{}' is not installed.\n\
-                 Run `cargo zisk toolchain install` to install it.",
-                crate::RUSTUP_TOOLCHAIN_NAME
-            );
-        }
-
-        let stdout_string =
-            String::from_utf8(output.stdout).context("Can't parse rustc --print sysroot stdout")?;
-
-        PathBuf::from(stdout_string.trim()).join("bin/rustc")
-    };
-
-    command
-        .env_remove("RUSTC")
-        .env("RUSTC", rustc_bin.display().to_string())
-        .env_remove("RUSTC_WORKSPACE_WRAPPER")
-        .env_remove("RUSTFLAGS")
-        .env_remove("CARGO_ENCODED_RUSTFLAGS");
+    command.env("RUSTC", rustc_bin.display().to_string()).env_remove("RUSTC_WORKSPACE_WRAPPER");
 
     let canonicalized_program_dir =
         program_dir.canonicalize().context("Failed to canonicalize program directory")?;
@@ -89,4 +58,44 @@ pub(crate) fn create_command(
     command.env("CARGO_TARGET_DIR", program_metadata.target_directory.join(HELPER_TARGET_SUBDIR));
 
     Ok(command)
+}
+
+/// Path to the ZisK toolchain's rustc (`<sysroot>/bin/rustc`) — the only rustc
+/// that can load the custom guest target spec. Cached: both `create_command`
+/// and `guest_rustflags` need it, and the sysroot cannot change mid-process.
+pub(crate) fn zisk_rustc() -> Result<PathBuf> {
+    static ZISK_RUSTC: std::sync::OnceLock<std::result::Result<PathBuf, String>> =
+        std::sync::OnceLock::new();
+    ZISK_RUSTC
+        .get_or_init(|| zisk_rustc_lookup().map_err(|err| format!("{err:#}")))
+        .clone()
+        .map_err(|err| anyhow::anyhow!(err))
+}
+
+fn zisk_rustc_lookup() -> Result<PathBuf> {
+    let output = Command::new("rustc")
+        .env("RUSTUP_TOOLCHAIN", crate::RUSTUP_TOOLCHAIN_NAME)
+        .arg("--print")
+        .arg("sysroot")
+        .output()
+        .map_err(|_| {
+            anyhow::anyhow!(
+                "ZisK toolchain '{}' is not installed or rustup is not available.\n\
+                 Run `cargo zisk toolchain install` to install it.",
+                crate::RUSTUP_TOOLCHAIN_NAME
+            )
+        })?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "ZisK toolchain '{}' is not installed.\n\
+             Run `cargo zisk toolchain install` to install it.",
+            crate::RUSTUP_TOOLCHAIN_NAME
+        );
+    }
+
+    let stdout_string =
+        String::from_utf8(output.stdout).context("Can't parse rustc --print sysroot stdout")?;
+
+    Ok(PathBuf::from(stdout_string.trim()).join("bin/rustc"))
 }

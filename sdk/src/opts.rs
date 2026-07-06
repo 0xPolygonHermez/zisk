@@ -29,6 +29,9 @@ pub struct EmbeddedOpts {
 
     /// Maximum number of parallel streams during proving.
     pub max_streams: Option<usize>,
+
+    /// Maximum number of per-GPU recursive (aggregation) streams during proving.
+    pub max_recursive_streams: Option<usize>,
 }
 
 impl EmbeddedOpts {
@@ -81,6 +84,13 @@ impl EmbeddedOpts {
         self
     }
 
+    /// Set the maximum number of per-GPU recursive (aggregation) streams during proving.
+    #[must_use]
+    pub fn max_recursive_streams(mut self, max: usize) -> Self {
+        self.max_recursive_streams = Some(max);
+        self
+    }
+
     pub(crate) fn into_backend_opts(self, gpu: bool) -> BackendProverOpts {
         let mut opts = BackendProverOpts::default().aggregation(true);
 
@@ -114,6 +124,10 @@ impl EmbeddedOpts {
 
         if let Some(max) = self.max_streams {
             opts = opts.max_streams(max);
+        }
+
+        if let Some(max) = self.max_recursive_streams {
+            opts = opts.max_recursive_streams(max);
         }
 
         opts

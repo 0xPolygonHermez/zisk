@@ -37,14 +37,7 @@ const char * gen_method_acronym(GenMethod method)
         case Fast: return "FT";
         case MinimalTrace: return "MT";
         case RomHistogram: return "RH";
-        case MainTrace: return "MA";
-        case ChunksOnly: return "CO";
-        //case BusOp: return "bus-op";
-        case Zip: return "ZP";
         case MemOp: return "MO";
-        case ChunkPlayerMTCollectMem: return "CPM";
-        case MemReads: return "MR";
-        case ChunkPlayerMemReadsCollectMain: return "CPMCM";
         default: return "?";
     }
 }
@@ -229,73 +222,6 @@ void process_request(const uint64_t * request, uint64_t * response, bool * bRese
             }
             break;
         }
-        case TYPE_MA_REQUEST:
-        {
-#ifdef DEBUG
-            if (verbose) asm_printf("MAIN TRACE received\n");
-#endif
-            if (gen_method == MainTrace)
-            {
-                set_max_steps(request[1]);
-                set_chunk_size(request[2]);
-
-                server_run();
-
-                server_reset_fast();
-
-                response[0] = TYPE_MA_RESPONSE;
-                response[1] = MEM_END ? 0 : 1;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
-                response[4] = 0;
-
-                *bReset = true;
-            }
-            else
-            {
-                response[0] = TYPE_MA_RESPONSE;
-                response[1] = 1;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
-                response[4] = 0;
-            }
-            break;
-        }
-        case TYPE_CM_REQUEST:
-        {
-#ifdef DEBUG
-            if (verbose) asm_printf("COLLECT MEMORY received\n");
-#endif
-            if (gen_method == ChunkPlayerMTCollectMem)
-            {
-                set_max_steps(request[1]);
-                set_chunk_size(request[2]);
-                chunk_player_address = request[3];
-                uint64_t * pChunk = (uint64_t *)chunk_player_address;
-                print_pc_counter = pChunk[3];
-
-                server_run();
-
-                server_reset_fast();
-
-                response[0] = TYPE_CM_RESPONSE;
-                response[1] = 0;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
-                response[4] = 0;
-
-                *bReset = true;
-            }
-            else
-            {
-                response[0] = TYPE_CM_RESPONSE;
-                response[1] = 1;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
-                response[4] = 0;
-            }
-            break;
-        }
         case TYPE_FA_REQUEST:
         {
 #ifdef DEBUG
@@ -324,73 +250,6 @@ void process_request(const uint64_t * request, uint64_t * response, bool * bRese
                 response[1] = 1;
                 response[2] = 0;
                 response[3] = 0;
-                response[4] = 0;
-            }
-            break;
-        }
-        case TYPE_MR_REQUEST:
-        {
-#ifdef DEBUG
-            if (verbose) asm_printf("MEMORY READS received\n");
-#endif
-            if (gen_method == MemReads)
-            {
-                set_max_steps(request[1]);
-                set_chunk_size(request[2]);
-
-                server_run();
-
-                server_reset_fast();
-
-                response[0] = TYPE_MR_RESPONSE;
-                response[1] = MEM_END ? 0 : 1;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
-                response[4] = 0;
-
-                *bReset = true;
-            }
-            else
-            {
-                response[0] = TYPE_MR_RESPONSE;
-                response[1] = 1;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
-                response[4] = 0;
-            }
-            break;
-        }
-        case TYPE_CA_REQUEST:
-        {
-#ifdef DEBUG
-            if (verbose) asm_printf("COLLECT MAIN received\n");
-#endif
-            if (gen_method == ChunkPlayerMemReadsCollectMain)
-            {
-                set_max_steps(request[1]);
-                set_chunk_size(request[2]);
-                chunk_player_address = request[3];
-                uint64_t * pChunk = (uint64_t *)chunk_player_address;
-                print_pc_counter = pChunk[3];
-
-                server_run();
-
-                server_reset_fast();
-
-                response[0] = TYPE_CA_RESPONSE;
-                response[1] = 0;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
-                response[4] = 0;
-
-                *bReset = true;
-            }
-            else
-            {
-                response[0] = TYPE_CA_RESPONSE;
-                response[1] = 1;
-                response[2] = trace_size;
-                response[3] = trace_used_size;
                 response[4] = 0;
             }
             break;

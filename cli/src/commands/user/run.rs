@@ -49,6 +49,12 @@ impl RunCmd {
                 // Build first, then detect the resulting ELF
                 let mut command = Command::new("cargo");
                 command.args(self.cargo_build_args());
+
+                // Guest rustflags + linker script; keep the temp file alive
+                // until cargo finishes. Env rustflags are inherited: they are
+                // user-exported in a direct CLI invocation.
+                let _linker_script = zisk_build::apply_guest_rustflags(&mut command, None, true)?;
+
                 command.stdout(Stdio::inherit());
                 command.stderr(Stdio::inherit());
 

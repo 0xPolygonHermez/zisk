@@ -58,7 +58,7 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
         execute_build_program(&default_args, Some(program_dir.to_path_buf()))
     };
     if let Err(err) = path_output {
-        panic!("Failed to build ZisK program: {err}.");
+        panic!("Failed to build ZisK program: {err:#}.");
     }
 }
 
@@ -85,7 +85,13 @@ pub fn execute_build_program(
     let program_metadata = program_metadata_cmd.manifest_path(program_metadata_file).exec()?;
 
     // Get the command corresponding to Docker or local build.
-    let cmd = create_command(args, &program_dir, &program_metadata)?;
+    let mut cmd = create_command(args, &program_dir, &program_metadata)?;
+
+    // Guest rustflags + linker script; keep the temp file alive until cargo
+    // finishes. Env rustflags are NOT inherited: in this build-script context
+    // they are the host build's flags, injected by the outer cargo.
+    let _linker_script =
+        crate::apply_guest_rustflags(&mut cmd, Some(program_dir.as_std_path()), false)?;
 
     let target_elf_paths = generate_elf_paths(&program_metadata, Some(args))?;
 

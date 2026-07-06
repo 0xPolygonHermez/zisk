@@ -35,16 +35,9 @@ fn main() {
         "--gen=0" => zisk_core::AsmGenerationMethod::AsmFast,
         "--gen=1" => zisk_core::AsmGenerationMethod::AsmMinimalTraces,
         "--gen=2" => zisk_core::AsmGenerationMethod::AsmRomHistogram,
-        "--gen=3" => zisk_core::AsmGenerationMethod::AsmMainTrace,
-        "--gen=4" => zisk_core::AsmGenerationMethod::AsmChunks,
-        //"--gen=5" => zisk_core::AsmGenerationMethod::AsmBusOp,
-        "--gen=6" => zisk_core::AsmGenerationMethod::AsmZip,
         "--gen=7" => zisk_core::AsmGenerationMethod::AsmMemOp,
-        "--gen=8" => zisk_core::AsmGenerationMethod::AsmChunkPlayerMTCollectMem,
-        "--gen=9" => zisk_core::AsmGenerationMethod::AsmMemReads,
-        "--gen=10" => zisk_core::AsmGenerationMethod::AsmChunkPlayerMemReadsCollectMain,
         _ => {
-            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =3 (main trace), =4 (chunks), =5 (bus op), =6 (zip), =7 (mem op), =8 (min trace chunk player), =9 (mem reads), =10 (mem reads chunk player).");
+            eprintln!("Invalid generation method. Use --gen=0 (fast), =1 (minimal trace), =2 (rom histogram), =7 (mem op).");
             process::exit(1);
         }
     };

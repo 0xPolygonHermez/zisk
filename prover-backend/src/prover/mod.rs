@@ -93,6 +93,7 @@ pub struct BackendProverOpts {
     pub(crate) max_witness_stored: Option<usize>,
     pub(crate) number_threads_witness: Option<usize>,
     pub(crate) max_streams: Option<usize>,
+    pub(crate) max_recursive_streams: Option<usize>,
 
     // ASM-specific options
     pub(crate) asm_options: AsmOptions,
@@ -117,6 +118,7 @@ impl Default for BackendProverOpts {
             max_witness_stored: None,
             number_threads_witness: None,
             max_streams: None,
+            max_recursive_streams: None,
             asm_options: AsmOptions::default(),
         }
     }
@@ -135,6 +137,16 @@ impl BackendProverOpts {
         }
         if let Some(max_streams) = self.max_streams {
             options.with_max_number_streams(max_streams);
+        }
+        // Recursive streams only matter when aggregation runs; proofman ignores
+        // this value otherwise (see set_device_buffers' `if aggregation` guard).
+        // Mirror the no_aggregation() condition below so the options stay
+        // self-consistent.
+        let aggregation_enabled = self.aggregation && !self.verify_constraints;
+        if let Some(max_recursive_streams) =
+            self.max_recursive_streams.filter(|_| aggregation_enabled)
+        {
+            options.with_max_number_recursive_streams(max_recursive_streams);
         }
 
         if self.gpu {
@@ -264,6 +276,11 @@ impl BackendProverOpts {
 
     pub fn max_streams(mut self, max: usize) -> Self {
         self.max_streams = Some(max);
+        self
+    }
+
+    pub fn max_recursive_streams(mut self, max: usize) -> Self {
+        self.max_recursive_streams = Some(max);
         self
     }
 

@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "8ada3a280a9af7a09fbf614eab1706090d85c3e2da3a39941857d4c778022ddc";
+pub const PILOUT_HASH: &str = "e6ce1bcc1970586d925f2e1cef405fe864f03c69487c6b9ae8d01b7794fc851d";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -489,18 +489,18 @@ trace_row!(DmaPrePostInputCpyTraceRow<F> {
 pub type DmaPrePostInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 31>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 23], column: [F; 64], __L1__: F,
+ UID: [F; 22], column: [F; 59], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 23],
+ multiplicity:[F; 22],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- UID: [F; 8], column: [F; 64], __L1__: F,
+ UID: [F; 8], column: [F; 63], __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 33>;
 
@@ -872,4 +872,43 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
         num_packed_words: 5,
         unpack_info: &[36, 29, 3, 4, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32],
     }),
+];
+
+/// Display name for every `(airgroup_id, air_id)` pair, derived directly from the
+/// PILOUT. Lets code resolve an AIR name without a loaded setup/`GlobalInfo`.
+pub const AIR_NAMES: &[(usize, usize, &str)] = &[
+    (0, 0, "Main"),
+    (0, 1, "Rom"),
+    (0, 2, "Mem"),
+    (0, 3, "InputData"),
+    (0, 4, "RomData"),
+    (0, 5, "MemAlign"),
+    (0, 6, "MemAlignByte"),
+    (0, 7, "MemAlignReadByte"),
+    (0, 8, "MemAlignWriteByte"),
+    (0, 9, "Arith"),
+    (0, 10, "Binary"),
+    (0, 11, "BinaryAdd"),
+    (0, 12, "BinaryExtension"),
+    (0, 13, "Add256"),
+    (0, 14, "ArithEq"),
+    (0, 15, "ArithEq384"),
+    (0, 16, "Keccakf"),
+    (0, 17, "Sha256f"),
+    (0, 18, "Poseidon"),
+    (0, 19, "Blake2br"),
+    (0, 20, "Dma"),
+    (0, 21, "DmaMemCpy"),
+    (0, 22, "DmaInputCpy"),
+    (0, 23, "Dma64Aligned"),
+    (0, 24, "Dma64AlignedInputCpy"),
+    (0, 25, "Dma64AlignedMemSet"),
+    (0, 26, "Dma64AlignedMem"),
+    (0, 27, "Dma64AlignedMemCpy"),
+    (0, 28, "DmaUnaligned"),
+    (0, 29, "DmaPrePost"),
+    (0, 30, "DmaPrePostMemCpy"),
+    (0, 31, "DmaPrePostInputCpy"),
+    (0, 32, "VirtualTableZisk0"),
+    (0, 33, "VirtualTableZisk1"),
 ];

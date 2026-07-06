@@ -15,6 +15,12 @@ crate-type = ["staticlib"]
 [features]
 default = ["panic-handler"]
 panic-handler = []
+# Track and report the isolated allocator's peak usage: each wrapper folds the
+# heap usage into a running maximum, and `zkvm_deinit` prints it.
+alloc-stats = ["ziskos/alloc-stats"]
 
 [dependencies]
-ziskos = { workspace = true }
+ziskos = { workspace = true, features = ["staticlib"] }
+# Needed only to name the C-ABI types in the exported wrapper signatures
+# (see the `wrap_export!` macro in src/lib.rs).
+zisk-zkvm-interface = { workspace = true }

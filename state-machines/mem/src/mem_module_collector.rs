@@ -107,7 +107,7 @@ impl MemModuleCollector {
     fn discard_align_addr(&mut self, addr_w: u32) -> bool {
         // Check if the address is out of the range of the current checkpoint, or
         // out of memory area.
-        addr_w < self.aligned_min_addr || addr_w > self.filter_max_addr
+        addr_w < self.aligned_min_addr || addr_w > self.aligned_max_addr
     }
 
     #[inline(always)]

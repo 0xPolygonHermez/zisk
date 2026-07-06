@@ -23,7 +23,7 @@ use zisk_zkvm_interface::{
     zkvm_status_ZKVM_EFAIL as ZKVM_EFAIL, zkvm_status_ZKVM_EOK as ZKVM_EOK,
 };
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_keccak256")]
 pub unsafe extern "C" fn zkvm_keccak256(
     data: *const u8,
@@ -41,7 +41,7 @@ pub unsafe extern "C" fn zkvm_keccak256(
     ZKVM_EOK
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_sha256")]
 pub unsafe extern "C" fn zkvm_sha256(
     data: *const u8,
@@ -86,7 +86,7 @@ pub unsafe extern "C" fn zkvm_sha256(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_ripemd160")]
 pub unsafe extern "C" fn zkvm_ripemd160(
     data: *const u8,
@@ -127,7 +127,7 @@ pub unsafe extern "C" fn zkvm_ripemd160(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_modexp")]
 pub unsafe extern "C" fn zkvm_modexp(
     base: *const u8,
@@ -181,7 +181,7 @@ pub unsafe extern "C" fn zkvm_modexp(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bn254_g1_add")]
 pub unsafe extern "C" fn zkvm_bn254_g1_add(
     p1: *const zkvm_bn254_g1_point,
@@ -254,7 +254,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bn254_g1_mul")]
 pub unsafe extern "C" fn zkvm_bn254_g1_mul(
     point: *const zkvm_bn254_g1_point,
@@ -327,7 +327,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bn254_pairing")]
 pub unsafe extern "C" fn zkvm_bn254_pairing(
     pairs: *const zkvm_bn254_pairing_pair,
@@ -396,7 +396,7 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_blake2f")]
 pub unsafe extern "C" fn zkvm_blake2f(
     rounds: u32,
@@ -461,7 +461,7 @@ pub unsafe extern "C" fn zkvm_blake2f(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_kzg_point_eval")]
 pub unsafe extern "C" fn zkvm_kzg_point_eval(
     commitment: *const zkvm_kzg_commitment,
@@ -530,7 +530,7 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bls12_g1_add")]
 pub unsafe extern "C" fn zkvm_bls12_g1_add(
     p1: *const zkvm_bls12_381_g1_point,
@@ -606,7 +606,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_add(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bls12_g1_msm")]
 pub unsafe extern "C" fn zkvm_bls12_g1_msm(
     pairs: *const zkvm_bls12_381_g1_msm_pair,
@@ -675,7 +675,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bls12_g2_add")]
 pub unsafe extern "C" fn zkvm_bls12_g2_add(
     p1: *const zkvm_bls12_381_g2_point,
@@ -751,7 +751,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_add(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bls12_g2_msm")]
 pub unsafe extern "C" fn zkvm_bls12_g2_msm(
     pairs: *const zkvm_bls12_381_g2_msm_pair,
@@ -820,7 +820,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bls12_pairing")]
 pub unsafe extern "C" fn zkvm_bls12_pairing(
     pairs: *const zkvm_bls12_381_pairing_pair,
@@ -889,7 +889,7 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bls12_map_fp_to_g1")]
 pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
     field_element: *const zkvm_bls12_381_fp,
@@ -952,7 +952,7 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_bls12_map_fp2_to_g2")]
 pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
     field_element: *const zkvm_bls12_381_fp2,
@@ -1015,7 +1015,7 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_secp256r1_verify")]
 pub unsafe extern "C" fn zkvm_secp256r1_verify(
     msg: *const zkvm_secp256r1_hash,
@@ -1081,7 +1081,7 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_secp256k1_verify")]
 pub unsafe extern "C" fn zkvm_secp256k1_verify(
     msg: *const zkvm_secp256k1_hash,
@@ -1145,7 +1145,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
     }
 }
 
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_zkvm_secp256k1_ecrecover")]
 pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
     msg: *const zkvm_secp256k1_hash,

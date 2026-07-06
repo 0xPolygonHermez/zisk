@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define EXTRA_PARAMETER_ADDR 0xA0000F00
+#define EXTRA_PARAMETER_ADDR 0xA0400F00
 
 class TestDmaMem {
 protected:

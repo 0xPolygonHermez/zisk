@@ -87,8 +87,11 @@ impl ZiskInstallToolchain {
                 // Download the toolchain.
                 let rt = tokio::runtime::Runtime::new()?;
 
-                let toolchain_download_url =
-                    rt.block_on(get_toolchain_download_url(&target, &self.toolchain_version));
+                let toolchain_download_url = rt.block_on(get_toolchain_download_url(
+                    &client,
+                    &target,
+                    &self.toolchain_version,
+                ))?;
 
                 let mut file = fs::File::create(&toolchain_archive_path)?;
                 rt.block_on(download_file(&client, toolchain_download_url.as_str(), &mut file))
