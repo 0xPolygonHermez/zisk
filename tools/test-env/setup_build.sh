@@ -13,7 +13,7 @@
 #   --no-aggregation   run setup without -r.
 #   --snark            run setup-snark on top of an existing
 #                      <build-dir>/provingKey/. Errors out if that directory
-#                      is missing — populate it first with build-setup.sh
+#                      is missing — populate it first with setup_build.sh
 #                      (no flag).
 #   --compile-pil      run only frops + compile-pil + regenerate
 #                      pil/src/pil_helpers/traces.rs. No setup.
@@ -36,7 +36,8 @@
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
 #   - state-machines/starkstructs.json
 #   - the three *_fixed.bin files written by the frops generators
-#   - pil2-compiler dep ref from ${PROOFMAN_DIR}/package.json
+#   - pil2-compiler ref: the branch override if set, else the dep ref from
+#     ${PROOFMAN_DIR}/package.json
 #   - pil2-stark-setup ref: its git source string from Cargo.lock, or — when
 #     proofman is a local path dep — a content key from the local checkout
 #
@@ -58,7 +59,8 @@ fi
 usage() {
   cat <<EOF >&2
 usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs N]
-         [--skip-compile-pil] [--gen-exps] [--exps-arch SPEC] [-v|-vv|--verbose]
+         [--skip-compile-pil] [--gen-exps] [--exps-arch SPEC] [--pil2-compiler-branch BRANCH]
+         [-v|-vv|--verbose]
          [--compile-pil | --no-aggregation | --snark | --compressed-final | --gen-exps-only | --stats | --print-hash]
 
   --build-dir DIR        Build directory. Default: build/. Used by setup as
@@ -93,13 +95,18 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
   --exps-arch SPEC       CUDA arch forwarded to gen-exps (both --gen-exps and
                          --gen-exps-only). Default: auto (detects the host GPU).
                          Also settable via EXPS_ARCH env var.
+  --pil2-compiler-branch BRANCH
+                         pil2-compiler branch to compile the PIL with. Defaults
+                         to gha_pil2_compiler_branch in Cargo.toml; unset there
+                         too => proofman's own pinned version. Also settable via
+                         PIL2_COMPILER_BRANCH env var.
   --compile-pil          Run only frops + compile-pil + pil-helpers regen
                          (writes pil/zisk.pilout and pil/src/pil_helpers/).
                          No setup.
   --no-aggregation       Setup without -r.
   --snark                Run setup-snark on top of an existing
                          <build-dir>/provingKey/. Errors out if missing —
-                         build it locally (./tools/setup/build-setup.sh) first.
+                         build it locally (./setup_build.sh --build-dir DIR) first.
   --compressed-final     Re-run only vadcop_final_compressed on top of an
                          existing <build-dir>/provingKey/<name>/vadcop_final/.
   --gen-exps-only        (Re)generate per-AIR Q-expression CUDA kernels
@@ -137,6 +144,9 @@ GEN_EXPS="${GEN_EXPS:-0}"
 # CUDA arch spec forwarded to gen-exps (both the --gen-exps flag and the
 # --gen-exps-only mode). auto detects the host GPU.
 EXPS_ARCH="${EXPS_ARCH:-auto}"
+# pil2-compiler branch override (--pil2-compiler-branch). Empty here => the
+# resolver falls back to gha_pil2_compiler_branch in Cargo.toml.
+PIL2_COMPILER_BRANCH="${PIL2_COMPILER_BRANCH:-}"
 
 set_mode() {
   if [ "$MODE" != "build" ]; then
@@ -156,6 +166,7 @@ while [ $# -gt 0 ]; do
     --skip-compile-pil)  SKIP_COMPILE_PIL=1;      shift ;;
     --gen-exps)          GEN_EXPS=1;              shift ;;
     --exps-arch)         EXPS_ARCH="$2";          shift 2 ;;
+    --pil2-compiler-branch) PIL2_COMPILER_BRANCH="$2"; shift 2 ;;
     -v|--verbose)        VERBOSE_COUNT=$((VERBOSE_COUNT + 1)); shift ;;
     -vv)                 VERBOSE_COUNT=$((VERBOSE_COUNT + 2)); shift ;;
     --compile-pil)       set_mode compile_pil;       shift ;;
@@ -199,6 +210,39 @@ cd "$ROOT_DIR"
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
+# Install the resolved pil2-compiler override and point the compiler at it via
+# PIL2C_EXEC (which the pil2-stark-setup crate honors first). No-op when there is
+# no override; then proofman's own pinned version is used.
+apply_zisk_compiler_override() {
+  local override
+  override="$(read_zisk_pil2_compiler_override)"
+  [ -n "$override" ] || return 0
+
+  # Dedicated per-version dir (hashed by $override) so we never touch proofman's
+  # checkout and switching versions can't clobber a warm install.
+  local dir="$ROOT_DIR/tmp/pil2-compiler-override/$(printf '%s' "$override" | sha256_hex)"
+  local pkg="$dir/package.json"
+  local pil2c="$dir/node_modules/.bin/pil2com"
+  mkdir -p "$dir"
+
+  # (Re)install only when the probe is missing/dangling — a warm dir must not
+  # need npm, so a --cache-dir hit never shells into node. -f follows the symlink.
+  if [ ! -f "$pil2c" ]; then
+    command -v npm >/dev/null || { echo "npm not on PATH (needed to install pil2-compiler override $override)" >&2; exit 1; }
+    printf '{\n  "private": true,\n  "dependencies": { "pil2-compiler": "%s" }\n}' "$override" > "$pkg"
+    rm -f "$dir/package-lock.json"   # stale lockfile would pin the old version
+    echo "==> installing zisk-pinned pil2-compiler ($override) in $dir" >&2
+    (cd "$dir" && npm install)
+  fi
+
+  # -f matches the Rust resolver's is_file(); a dangling link would be silently
+  # ignored, falling back to proofman's version, so fail loudly instead.
+  [ -f "$pil2c" ] \
+    || { echo "pil2com missing or dangling at $pil2c after npm install (override $override)" >&2; exit 1; }
+  export PIL2C_EXEC="$pil2c"
+  echo "==> using zisk-pinned pil2-compiler: PIL2C_EXEC=$pil2c" >&2
+}
+
 echo "version: $VERSION  mode: $MODE" >&2
 
 run_compile_pil() {
@@ -207,6 +251,11 @@ run_compile_pil() {
     echo "==> compile-pil (SKIPPED — reusing pil/zisk.pilout and existing pil_helpers)"
     return
   fi
+  # Lazy: only the compiling paths need pil2com, so apply the override here rather
+  # than at top level. This keeps --print-hash / --snark / --compressed-final /
+  # --gen-exps-only and a --cache-dir hit (which return before reaching here) from
+  # triggering a network npm install they don't need.
+  apply_zisk_compiler_override
   echo "==> compile-pil"
   # --no-proto-fixed-data keeps fixed-column values out of the pilout protobuf
   # (they live on disk under tmp/fixed/ via --fixed-dir + --fixed-to-file). Avoids
@@ -279,7 +328,7 @@ case "$MODE" in
   snark)
     if [ ! -d "$BUILD_DIR/provingKey" ]; then
       echo "missing $BUILD_DIR/provingKey/ — populate it first:" >&2
-      echo "  ./tools/setup/build-setup.sh --build-dir $BUILD_DIR    # build locally" >&2
+      echo "  ./setup_build.sh --build-dir $BUILD_DIR    # build locally (from tools/test-env)" >&2
       exit 1
     fi
     echo "using existing $BUILD_DIR/provingKey/"
