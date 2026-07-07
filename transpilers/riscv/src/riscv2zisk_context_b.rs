@@ -4428,131 +4428,301 @@ impl Riscv2ZiskContext<'_> {
     // (accumulator).  rd is written only at the end so it may safely alias rs1 or rs2.
     //
     pub fn xperm8(&mut self, i: &RiscvInst) {
+        // The first instruction is at rom_address, the rest are internal addresses
         let rom_address = i.rom_address;
 
+        // Calculate the number of ZisK instructions needed for xperm8
         const N: usize = 1 + 8 * 11 + 1; // 90
-        let mut ia = [0u64; N - 1];
-        for k in 0..(N - 1) {
-            ia[k] = self.rom.get_internal_address();
-        }
-        // Address of instruction k: rom_address for k==0, else ia[k-1].
-        let addr = |k: usize| if k == 0 { rom_address } else { ia[k - 1] };
 
+        // Address of instruction k: rom_address for k==0, else internal address
+        let mut addr = [0u64; N];
         for k in 0..N {
-            let this = addr(k);
-            let mut zib = ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string());
+            addr[k] = if k == 0 { rom_address } else { self.rom.get_internal_address() };
+        }
+        let mut addr_index = 0;
 
-            if k == 0 {
-                // reg34 = 0  (accumulator; copyb stores src_b into c)
-                zib.src_a("imm", 0, false);
-                zib.src_b("imm", 0, false);
-                zib.op("copyb").unwrap();
-                zib.store("reg", 34, false, false);
-            } else if k == N - 1 {
-                // rd = reg34  (copyb stores src_b into c)
-                zib.src_a("imm", 0, false);
-                zib.src_b("reg", 34, false);
-                zib.op("copyb").unwrap();
-                zib.store("reg", i.rd as i64, false, false);
-            } else {
-                let g = k - 1;
-                let j = (g / 11) as u64; // output byte 0..7
-                match g % 11 {
-                    0 => {
-                        // reg32 = rs2 >> (8*j)   (idx in low byte, garbage above)
-                        zib.src_a("reg", i.rs2 as u64, false);
-                        zib.src_b("imm", 8 * j, false);
-                        zib.op("srl").unwrap();
-                        zib.store("reg", 32, false, false);
-                    }
-                    1 => {
-                        // reg33 = reg32 & 0xF8   (0 iff idx < 8)
-                        zib.src_a("reg", 32, false);
-                        zib.src_b("imm", 0xF8, false);
-                        zib.op("and").unwrap();
-                        zib.store("reg", 33, false, false);
-                    }
-                    2 => {
-                        // reg33 = reg33 - 1
-                        zib.src_a("reg", 33, false);
-                        zib.src_b("imm", 1, false);
-                        zib.op("sub").unwrap();
-                        zib.store("reg", 33, false, false);
-                    }
-                    3 => {
-                        // reg33 = reg33 sra 63   → all-ones iff idx < 8, else 0
-                        zib.src_a("reg", 33, false);
-                        zib.src_b("imm", 63, false);
-                        zib.op("sra").unwrap();
-                        zib.store("reg", 33, false, false);
-                    }
-                    4 => {
-                        // reg32 = reg32 & 0x7    (low 3 bits of idx)
-                        zib.src_a("reg", 32, false);
-                        zib.src_b("imm", 0x7, false);
-                        zib.op("and").unwrap();
-                        zib.store("reg", 32, false, false);
-                    }
-                    5 => {
-                        // reg32 = reg32 << 3     → 8*(idx & 7), a valid shift amount 0..56
-                        zib.src_a("reg", 32, false);
-                        zib.src_b("imm", 3, false);
-                        zib.op("sll").unwrap();
-                        zib.store("reg", 32, false, false);
-                    }
-                    6 => {
-                        // reg32 = rs1 >> reg32   (data-dependent shift)
-                        zib.src_a("reg", i.rs1 as u64, false);
-                        zib.src_b("reg", 32, false);
-                        zib.op("srl").unwrap();
-                        zib.store("reg", 32, false, false);
-                    }
-                    7 => {
-                        // reg32 = reg32 & 0xFF   → selected byte
-                        zib.src_a("reg", 32, false);
-                        zib.src_b("imm", 0xFF, false);
-                        zib.op("and").unwrap();
-                        zib.store("reg", 32, false, false);
-                    }
-                    8 => {
-                        // reg32 = reg32 & reg33  → zero if idx out of range
-                        zib.src_a("reg", 32, false);
-                        zib.src_b("reg", 33, false);
-                        zib.op("and").unwrap();
-                        zib.store("reg", 32, false, false);
-                    }
-                    9 => {
-                        // reg32 = reg32 << (8*j) → place into output byte j
-                        zib.src_a("reg", 32, false);
-                        zib.src_b("imm", 8 * j, false);
-                        zib.op("sll").unwrap();
-                        zib.store("reg", 32, false, false);
-                    }
-                    _ => {
-                        // reg34 = reg34 | reg32  (accumulate; rd written only at the end)
-                        zib.src_a("reg", 34, false);
-                        zib.src_b("reg", 32, false);
-                        zib.op("or").unwrap();
-                        zib.store("reg", 34, false, false);
-                    }
-                }
-            }
-
-            let next = if k + 1 < N { addr(k + 1) } else { rom_address + 4 };
-            if k + 1 < N {
-                zib.set_next_internal_address(next);
-            }
-            let jump_address = next as i64 - this as i64;
+        // reg34 = 0 (accumulator; copyb stores src_b into c)
+        {
+            let mut zib =
+                ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+            zib.src_a("imm", 0, false);
+            zib.src_b("imm", 0, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", 34, false, false);
+            zib.set_next_internal_address(addr[addr_index + 1]);
+            let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!(
-                "{} r{}, r{}, r{} {}/{}",
-                i.inst_name,
-                i.rd,
-                i.rs1,
-                i.rs2,
-                k + 1,
-                N
-            ));
+            zib.verbose(&format!("{} r{}, r{} {}/{}", i.inst_name, i.rd, i.rs1, addr_index + 1, N));
+            zib.build(self.rom);
+            addr_index += 1;
+        }
+
+        for j in 0..8 {
+            // reg32 = rs2 >> (8*j)   (idx in low byte, garbage above)
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", i.rs2 as u64, false);
+                zib.src_b("imm", 8 * j, false);
+                zib.op("srl").unwrap();
+                zib.store("reg", 32, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg33 = reg32 & 0xF8   (0 iff idx < 8)
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 32, false);
+                zib.src_b("imm", 0xF8, false);
+                zib.op("and").unwrap();
+                zib.store("reg", 33, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg33 = reg33 - 1
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 33, false);
+                zib.src_b("imm", 1, false);
+                zib.op("sub").unwrap();
+                zib.store("reg", 33, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg33 = reg33 sra 63   → all-ones iff idx < 8, else 0
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 33, false);
+                zib.src_b("imm", 63, false);
+                zib.op("sra").unwrap();
+                zib.store("reg", 33, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg32 = reg32 & 0x7    (low 3 bits of idx)
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 32, false);
+                zib.src_b("imm", 0x7, false);
+                zib.op("and").unwrap();
+                zib.store("reg", 32, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg32 = reg32 << 3     → 8*(idx & 7), a valid shift amount 0..56
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 32, false);
+                zib.src_b("imm", 3, false);
+                zib.op("sll").unwrap();
+                zib.store("reg", 32, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg32 = rs1 >> reg32   (data-dependent shift)
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", i.rs1 as u64, false);
+                zib.src_b("reg", 32, false);
+                zib.op("srl").unwrap();
+                zib.store("reg", 32, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg32 = reg32 & 0xFF   → selected byte
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 32, false);
+                zib.src_b("imm", 0xFF, false);
+                zib.op("and").unwrap();
+                zib.store("reg", 32, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg32 = reg32 & reg33  → zero if idx out of range
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 32, false);
+                zib.src_b("reg", 33, false);
+                zib.op("and").unwrap();
+                zib.store("reg", 32, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg32 = reg32 << (8*j) → place into output byte j
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 32, false);
+                zib.src_b("imm", 8 * j, false);
+                zib.op("sll").unwrap();
+                zib.store("reg", 32, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+
+            // reg34 = reg34 | reg32  (accumulate; rd written only at the end)
+            {
+                let mut zib =
+                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                zib.src_a("reg", 34, false);
+                zib.src_b("reg", 32, false);
+                zib.op("or").unwrap();
+                zib.store("reg", 34, false, false);
+                zib.set_next_internal_address(addr[addr_index + 1]);
+                let jump_address = addr[addr_index + 1] as i64 - addr[addr_index] as i64;
+                zib.j(jump_address, jump_address);
+                zib.verbose(&format!(
+                    "{} r{}, r{} {}/{}",
+                    i.inst_name,
+                    i.rd,
+                    i.rs1,
+                    addr_index + 1,
+                    N
+                ));
+                zib.build(self.rom);
+                addr_index += 1;
+            }
+        }
+
+        // rd = reg34 (copyb stores src_b into c)
+        {
+            let mut zib =
+                ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", 34, false);
+            zib.op("copyb").unwrap();
+            zib.store("reg", i.rd as i64, false, false);
+            let jump_address = rom_address as i64 + 4 - addr[addr_index] as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!("{} r{}, r{} {}/{}", i.inst_name, i.rd, i.rs1, addr_index + 1, N));
             zib.build(self.rom);
         }
     }
