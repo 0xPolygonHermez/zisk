@@ -13,7 +13,6 @@ pub mod riscv_interpreter;
 pub mod riscv_registers;
 
 pub use riscv2zisk_context::*;
-//pub use riscv2zisk_context_b::*;
 pub use riscv_decoder::*;
 pub use riscv_inst::*;
 pub use riscv_inst_name::*;
