@@ -872,14 +872,14 @@ fn binvi() {
     // Use RISCV inline assembly to ensure ZisK instruction is called
     unsafe {
         std::arch::asm!(
-            "binvi {result}, {input1}, 0",
+            "binvi {result}, {input1}, 4",
             result = out(reg) c,
             input1 = in(reg) a,
         );
     }
 
     // Check result is as expected
-    assert_eq!(c, 0xFFFFFFFFFFFFFFFE);
+    assert_eq!(c, 0xFFFFFFFFFFFFFFEF);
 }
 
 fn bset(input_a: u64, input_b: u64, expected_c: u64) {

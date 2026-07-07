@@ -605,11 +605,11 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "b_native")]
             RiscvInstName::Rori => self.immediate_op(riscv_instruction, "ror", 4),
             #[cfg(feature = "b_soft")]
-            RiscvInstName::Rori => self.ror(riscv_instruction),
+            RiscvInstName::Rori => self.rori(riscv_instruction),
             #[cfg(feature = "b_native")]
             RiscvInstName::Roriw => self.immediate_op(riscv_instruction, "ror_w", 4),
             #[cfg(feature = "b_soft")]
-            RiscvInstName::Roriw => self.ror_w(riscv_instruction),
+            RiscvInstName::Roriw => self.rori_w(riscv_instruction),
 
             // Min and max operations
             #[cfg(any(feature = "b_native", feature = "b_soft"))]
@@ -690,7 +690,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "b_native")]
             RiscvInstName::Bclri => self.immediate_op(riscv_instruction, "bclr", 4),
             #[cfg(feature = "b_soft")]
-            RiscvInstName::Bclri => self.bclr(riscv_instruction),
+            RiscvInstName::Bclri => self.bclri(riscv_instruction),
             #[cfg(feature = "b_native")]
             RiscvInstName::Bext => self.create_register_op(riscv_instruction, "bext", 4),
             #[cfg(feature = "b_soft")]
@@ -698,7 +698,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "b_native")]
             RiscvInstName::Bexti => self.immediate_op(riscv_instruction, "bext", 4),
             #[cfg(feature = "b_soft")]
-            RiscvInstName::Bexti => self.bext(riscv_instruction),
+            RiscvInstName::Bexti => self.bexti(riscv_instruction),
             #[cfg(feature = "b_native")]
             RiscvInstName::Binv => self.create_register_op(riscv_instruction, "binv", 4),
             #[cfg(feature = "b_soft")]
@@ -706,7 +706,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "b_native")]
             RiscvInstName::Binvi => self.immediate_op(riscv_instruction, "binv", 4),
             #[cfg(feature = "b_soft")]
-            RiscvInstName::Binvi => self.binv(riscv_instruction),
+            RiscvInstName::Binvi => self.binvi(riscv_instruction),
             #[cfg(feature = "b_native")]
             RiscvInstName::Bset => self.create_register_op(riscv_instruction, "bset", 4),
             #[cfg(feature = "b_soft")]
@@ -714,7 +714,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "b_native")]
             RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
             #[cfg(feature = "b_soft")]
-            RiscvInstName::Bseti => self.bset(riscv_instruction),
+            RiscvInstName::Bseti => self.bseti(riscv_instruction),
 
             // Address generation operations (Zba)
             #[cfg(feature = "b_native")]
@@ -748,7 +748,7 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(feature = "b_native")]
             RiscvInstName::SlliUw => self.immediate_op(riscv_instruction, "sll_u_w", 4),
             #[cfg(feature = "b_soft")]
-            RiscvInstName::SlliUw => self.sll_u_w(riscv_instruction),
+            RiscvInstName::SlliUw => self.sll_u_w(riscv_instruction, true),
 
             // Carry-less multiplication operations (Zbc)
             #[cfg(feature = "b_native")]
@@ -782,8 +782,8 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 2),
             RiscvInstName::Reserved => self.halt_with_error(riscv_instruction, 4),
 
-            // Skip if none of these features are enabled, otherwise the compiler will complain
-            // about unreachable code
+            // Skip if any B features is enabled and float is also enabled; otherwise the compiler
+            // will complain about unreachable code
             #[cfg(not(all(any(feature = "b_native", feature = "b_soft"), feature = "float")))]
             _ => {
                 panic!(
