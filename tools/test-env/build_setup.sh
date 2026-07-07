@@ -45,20 +45,6 @@ copy_dylib_input() {
     ) || return 1
 }
 
-# Copy the freshly built provingKey into the local artifact cache (only when
-# USE_CACHE_SETUP=1) so later runs with the same setup hash can reuse it.
-cache_proving_key() {
-    local build_dir="$1"
-    local cache_entry="$2"
-
-    [[ "${USE_CACHE_SETUP}" == "1" ]] || return 0
-
-    info "Caching provingKey to $cache_entry"
-    ensure rm -rf "$cache_entry" || return 1
-    ensure mkdir -p "$cache_entry" || return 1
-    ensure cp -R "$build_dir/provingKey" "$cache_entry/provingKey" || return 1
-}
-
 main() {
     info "▶️  Running $(basename "$0") script..."
 
