@@ -66,13 +66,71 @@ Notes:
 - To just compile-check the host without building the guest (fast iteration):
   `SKIP_GUEST_BUILD=1 cargo check -p recurser-l2-host`.
 
+### Running the same steps from the CLI
+
+`cargo run` does this in-process, but the recurser also has a `cargo-zisk` CLI
+path that reads the *same* `l2.toml` — `resolve_recurser` derives the identical
+`recurser_id`, so a setup done either way is found by the other. The three leaves
+attest these contiguous ranges ([`common/src/lib.rs`](common/src/lib.rs)):
+
+| Segment | `[start, end)` | `oldGlobalExitRoot` (pre-state) | `globalExitRoot` (post-state) |
+|---------|----------------|---------------------------------|-------------------------------|
+| A | `[100, 200)` | root at block 100 | root at block 200 |
+| B | `[200, 300)` | root at block 200 | root at block 300 |
+| C | `[300, 400)` | root at block 300 | root at block 400 |
+
+The stitch is what makes the fold sound: A's post-state (at 200) is exactly B's
+pre-state (at 200), so `A.endBlock == B.startBlock` and `A.globalExitRoot ==
+B.oldGlobalExitRoot`. Fold all three and you get one proof for `[100, 400)`.
+
+Each leaf input is the 256-byte ABI encoding of a `BlocksInfoStruct`, not
+something you'd hand-type. The `gen-inputs` helper binary writes them to
+`a.bin` / `b.bin` / `c.bin`.
+
+Run from this example dir (paths are relative to the toml), using the
+`cargo-zisk` built from this repo:
+
+```bash
+export CARGO_ZISK="$(git rev-parse --show-toplevel)/target/release/cargo-zisk"
+cd examples/recurser/l2
+
+# 1. Build the guest ELFs (zkVM target) via the host's build.rs → build_program,
+#    which the allow-list needs. The guests are isolated workspaces, so building
+#    the host is the way to build them.
+cargo build --release -p recurser-l2-host
+ELF=guest/target/elf/riscv64ima-zisk-zkvm-elf/release/recurser_l2_guest
+
+# 2. Write the leaf inputs (a.bin/b.bin/c.bin) with the exact ABI bytes each
+#    segment encodes to. The workspace target dir is examples/target.
+cargo run --release -p recurser-l2-host --bin gen-inputs
+
+# 3. Set up the recurser.
+$CARGO_ZISK setup --aggregation guest/aggregations/l2.toml
+
+# 4. Prove each leaf.
+$CARGO_ZISK prove -e "$ELF" -i file://a.bin -o a.proof
+$CARGO_ZISK prove -e "$ELF" -i file://b.bin -o b.proof
+$CARGO_ZISK prove -e "$ELF" -i file://c.bin -o c.proof
+
+# 5. Fold A + B, then AB + C. n_free = 0, so no --free-inputs at all.
+$CARGO_ZISK aggregate --aggregation guest/aggregations/l2.toml \
+  --proof-a a.proof --proof-b b.proof --output ab.proof
+$CARGO_ZISK aggregate --aggregation guest/aggregations/l2.toml \
+  --proof-a ab.proof --proof-b c.proof --output abc.proof
+```
+
+`abc.proof` now carries the collapsed `[100, 400)` publics. The host adds what
+the CLI doesn't: it **decodes** the folded publics back into a `BlocksInfoStruct`
+and runs the **rejection checks** — a non-contiguous fold (`a.proof + c.proof`,
+skipping B) and a foreign-guest proof both error.
+
 ## What the pieces are
 
 | Path | Role |
 |------|------|
 | [`guest/`](guest/src/main.rs) | Minimal leaf: reads the ABI-encoded struct on stdin and commits it verbatim as publics. No computation — the point is the fold. |
 | [`foreign/`](foreign/src/main.rs) | A *different* guest (different programVK), used to show the allow-list rejecting a leaf it doesn't permit. |
-| [`common/`](common/src/lib.rs) | The `sol!` `BlocksInfoStruct` + the field→slot map, shared by guest and host. |
+| [`common/`](common/src/lib.rs) | The `sol!` `BlocksInfoStruct`, the field→slot map, and `segment()` (the leaf values), shared by guest, host, and `gen-inputs`. |
 | [`guest/aggregations/l2.toml`](guest/aggregations/l2.toml) | The aggregation definition: allow-list, `n-publics-agg = 64`, and the aggregate circuit. |
 | [`guest/aggregations/circuits/aggregate.circom`](guest/aggregations/circuits/aggregate.circom) | `AggregatePublics`: checks contiguity and merges the two ranges. |
 | [`host/`](host/src/main.rs) | Proves the three segments, folds them, decodes the collapsed publics, and checks the two rejection cases. |

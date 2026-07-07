@@ -3,6 +3,15 @@ name = "recurser-hash-host"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "recurser-hash-host"
+path = "src/main.rs"
+
+# Dumps the leaf inputs to files for the README's CLI walkthrough.
+[[bin]]
+name = "gen-inputs"
+path = "src/bin/gen_inputs.rs"
+
 [dependencies]
 recurser-hash-common = { path = "../common" }
 zisk-sdk = { workspace = true }

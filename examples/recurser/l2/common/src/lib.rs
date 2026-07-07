@@ -37,3 +37,27 @@ pub const SLOT_OLD_ACCOUNT_ROOT: usize = 56;
 
 /// Populated publics slots = the aggregation's `n-publics-agg` (all 64).
 pub const N_PUBLICS_AGG: usize = 64;
+
+/// A segment for `[start, end)`. Roots snapshot state at a boundary, so one
+/// segment's post-state (at `end`) equals the next's pre-state (at `start`).
+/// Shared by the host and the `gen-inputs` binary so both pick identical values.
+pub fn segment(start: u64, end: u64) -> BlocksInfoStruct {
+    let state = |kind: u8, block: u64| -> [u8; 32] {
+        let mut r = [0u8; 32];
+        r[0] = kind;
+        r[24..32].copy_from_slice(&block.to_be_bytes());
+        r
+    };
+    BlocksInfoStruct {
+        startBlock: alloy_sol_types::private::U256::from(start),
+        endBlock: alloy_sol_types::private::U256::from(end),
+        // post-state (at `end`)
+        globalExitRoot: state(1, end).into(),
+        accountRoot: state(2, end).into(),
+        depositRoot: state(3, end).into(),
+        priorityExitRoot: state(4, end).into(),
+        // pre-state (at `start`)
+        oldGlobalExitRoot: alloy_sol_types::private::U256::from_be_bytes(state(1, start)),
+        oldAccountRoot: alloy_sol_types::private::U256::from_be_bytes(state(2, start)),
+    }
+}

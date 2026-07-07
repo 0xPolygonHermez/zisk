@@ -34,3 +34,13 @@ pub fn add_vecs(a: &[u64; RATE], b: &[u64; RATE]) -> [u64; RATE] {
         (Goldilocks::from_u64(a[i]) + Goldilocks::from_u64(b[i])).as_canonical_u64()
     })
 }
+
+/// The three leaf secret vectors the example uses, so the host and the
+/// `gen-inputs` binary pick identical values.
+pub fn secret_vectors() -> [[u64; RATE]; 3] {
+    [
+        core::array::from_fn(|i| (i as u64) + 1),    // va: 1..12
+        core::array::from_fn(|i| (i as u64) + 100),  // vb: 100..111
+        core::array::from_fn(|i| (i as u64) + 1000), // vc: 1000..1011
+    ]
+}

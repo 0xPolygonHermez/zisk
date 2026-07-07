@@ -7,7 +7,7 @@
 use std::error::Error;
 
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use recurser_hash_common::{add_vecs, field_from_limbs, hash12, DIGEST, RATE};
+use recurser_hash_common::{add_vecs, field_from_limbs, hash12, secret_vectors, DIGEST, RATE};
 use zisk_sdk::{
     load_aggregation_program, load_program, AggregationProgram, GuestProgram, ProofExt,
     ProverClient, ZiskStdin,
@@ -50,10 +50,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client.setup(&LEAF).run()?.await?;
     client.setup(&*AGG_HASH).run()?.await?;
 
-    // Three leaves with distinct secret vectors.
-    let va: [u64; RATE] = std::array::from_fn(|i| (i as u64) + 1); //  1..12
-    let vb: [u64; RATE] = std::array::from_fn(|i| (i as u64) + 100); // 100..111
-    let vc: [u64; RATE] = std::array::from_fn(|i| (i as u64) + 1000); // 1000..1011
+    // Three leaves with distinct secret vectors (shared with `gen-inputs`).
+    let [va, vb, vc] = secret_vectors();
 
     let pa = prove_leaf(&client, &va).await?;
     let pb = prove_leaf(&client, &vb).await?;
