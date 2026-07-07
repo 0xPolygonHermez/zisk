@@ -26,7 +26,7 @@ main() {
 
     step "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR DISABLE_PROVE ONLY_CPU PROVE_FLAGS || return 1
+    load_env ZISK_REPO_DIR ZISK_TEMPLATE_BRANCH DISABLE_PROVE ONLY_CPU PROVE_FLAGS || return 1
 
     cd "${WORKSPACE_DIR}"
 
