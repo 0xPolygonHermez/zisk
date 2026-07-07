@@ -7,6 +7,11 @@ on:
         description: "Branch to test"
         required: true
         type: string
+      disable_mpi:
+        description: "Disable MPI"
+        required: false
+        type: boolean
+        default: false
 
   schedule:
     - cron: "0 1 * * *"
@@ -144,15 +149,19 @@ jobs:
             '
 
       - name: Provision and run cluster
+        env:
+          DISABLE_MPI_FLAG: ${{ github.event_name == 'workflow_dispatch' && inputs.disable_mpi && '--disable-mpi' || '' }}
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
+            -e DISABLE_MPI_FLAG="${DISABLE_MPI_FLAG}" \
             -- bash -lc '
               cd /workspace/zisk
               python3 tools/runpod-test/deploy_cluster.py \
                 --ssh-key ~/.ssh/runpod_ed25519 \
-                --work-dir "$WORKSPACE_DIR"
+                --work-dir "$WORKSPACE_DIR" \
+                $DISABLE_MPI_FLAG
             '
 
       - name: Download pod logs

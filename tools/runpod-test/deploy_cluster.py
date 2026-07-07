@@ -241,6 +241,7 @@ def build_pod_steps(
     rpc_http_url: str,
     rpc_ws_url: str,
     run_time: int,
+    disable_mpi: bool,
 ) -> list[dict[str, Any]]:
     """Ordered list of steps (each a subprocess argv) to run on one pod."""
     index = target["index"]
@@ -369,30 +370,48 @@ def build_pod_steps(
         }
     )
 
-    steps.append(
-        {
-            "desc": f"Start zisk-worker under mpirun (tmux: worker) -> {coord_host}:{coord_port}",
-            "cmd": ssh_argv(
-                target,
-                private_key,
-                # Source mpi_params.sh (copied to /workspace/bin) to export
-                # MPI_NP / MPI_PPR / MPI_RAYON_NUM_THREADS, then launch the worker
-                # under mpirun inside bash -c. The \$MPI_* are escaped so the outer
-                # login shell leaves them untouched — they expand only in the inner
-                # bash, after the source. $HOME still expands in the login shell.
-                # --allow-run-as-root is required because pods run as root.
-                "tmux new-session -d -s worker "
-                f"\"bash -c 'source {REMOTE_WORKSPACE_BIN_DIR}/mpi_params.sh && "
-                "mpirun --allow-run-as-root -np \\$MPI_NP "
-                "-map-by ppr:\\$MPI_PPR:numa --bind-to numa "
-                "-x RAYON_NUM_THREADS=\\$MPI_RAYON_NUM_THREADS "
-                f"{REMOTE_BIN_DIR}/zisk-worker -c http://{coord_host}:{coord_port} "
-                f"--worker-id {worker_id} -k {REMOTE_PROVING_KEY_DIR} "
-                "--unlock-mapped-memory --gpu "
-                f"2>&1 | tee {REMOTE_LOG_DIR}/pod{index}-worker.log'\"",
-            ),
-        }
+    worker_cmd = (
+        f"{REMOTE_BIN_DIR}/zisk-worker -c http://{coord_host}:{coord_port} "
+        f"--worker-id {worker_id} -k {REMOTE_PROVING_KEY_DIR} "
+        "--unlock-mapped-memory --gpu "
+        f"2>&1 | tee {REMOTE_LOG_DIR}/pod{index}-worker.log"
     )
+    if disable_mpi:
+        # Run zisk-worker directly, without mpirun / mpi_params.sh.
+        steps.append(
+            {
+                "desc": f"Start zisk-worker (tmux: worker) -> {coord_host}:{coord_port}",
+                "cmd": ssh_argv(
+                    target,
+                    private_key,
+                    "tmux new-session -d -s worker "
+                    f"\"bash -c '{worker_cmd}'\"",
+                ),
+            }
+        )
+    else:
+        steps.append(
+            {
+                "desc": f"Start zisk-worker under mpirun (tmux: worker) -> {coord_host}:{coord_port}",
+                "cmd": ssh_argv(
+                    target,
+                    private_key,
+                    # Source mpi_params.sh (copied to /workspace/bin) to export
+                    # MPI_NP / MPI_PPR / MPI_RAYON_NUM_THREADS, then launch the
+                    # worker under mpirun inside bash -c. The \$MPI_* are escaped
+                    # so the outer login shell leaves them untouched — they expand
+                    # only in the inner bash, after the source. $HOME still expands
+                    # in the login shell. --allow-run-as-root is required because
+                    # pods run as root.
+                    "tmux new-session -d -s worker "
+                    f"\"bash -c 'source {REMOTE_WORKSPACE_BIN_DIR}/mpi_params.sh && "
+                    "mpirun --allow-run-as-root -np \\$MPI_NP "
+                    "-map-by ppr:\\$MPI_PPR:numa --bind-to numa "
+                    "-x RAYON_NUM_THREADS=\\$MPI_RAYON_NUM_THREADS "
+                    f"{worker_cmd}'\"",
+                ),
+            }
+        )
 
     # Wait until this pod's worker has registered with the coordinator (watch its
     # log for a line containing the registration message, up to the timeout).
@@ -556,6 +575,13 @@ def main() -> None:
         help="Private SSH key path. Default: ~/.ssh/id_ed25519",
     )
     parser.add_argument(
+        "--disable-mpi",
+        action="store_true",
+        help=(
+            "Run zisk-worker without mpi"
+        ),
+    )
+    parser.add_argument(
         "--keep-on-error",
         action="store_true",
         help=(
@@ -624,6 +650,7 @@ def main() -> None:
         rpc_http_url=args.rpc_http_url,
         rpc_ws_url=args.rpc_ws_url,
         run_time=args.run_time,
+        disable_mpi=args.disable_mpi,
     )
     steps2 = build_pod_steps(
         target=target2,
@@ -638,6 +665,7 @@ def main() -> None:
         rpc_http_url=args.rpc_http_url,
         rpc_ws_url=args.rpc_ws_url,
         run_time=args.run_time,
+        disable_mpi=args.disable_mpi,
     )
 
     jobs = [
