@@ -1571,8 +1571,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 14];
-        for i in 0..14 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..14 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // reg32 = rs1 >> 1
@@ -1811,8 +1811,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 3];
-        for i in 0..3 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..3 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // reg32 = rs1 & 0xFFFFFFFF
@@ -1886,8 +1886,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 3];
-        for i in 0..3 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..3 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // reg32 = rs1 & 0xFF
@@ -1962,8 +1962,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 4];
-        for i in 0..4 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..4 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // reg32 = rs1 & 0xFFFF
@@ -2061,8 +2061,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 24];
-        for i in 0..24 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..24 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // reg32 = rs1 >> 1
@@ -2469,8 +2469,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 14];
-        for i in 0..14 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..14 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // r32 = rs1 - 1
@@ -2725,8 +2725,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 23];
-        for i in 0..23 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..23 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // rd = rs1 & 0x00000000FFFFFFFF
@@ -3113,8 +3113,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 15];
-        for i in 0..15 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..15 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // rd = rs1 | 0x0000000100000000
