@@ -1,4 +1,4 @@
-//! Provides Riscv2ZiskContest software implementations to implement B-extension instructions using
+//! Provides Riscv2ZiskContext software implementations to implement B-extension instructions using
 //! a set of native ZisK instructions.
 
 use crate::{Riscv2ZiskContext, RiscvInst};
@@ -10,7 +10,7 @@ use zisk_core::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, F
 
 /*
 
-RISC-V B extensions.  Some instructions appear is multiple extensions, but they are only implemented
+RISC-V B extensions.  Some instructions appear in multiple extensions, but they are only implemented
 once in ZisK.
 
 Zba — address generation (accelerates array indexing via shift-add)
@@ -879,7 +879,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Imlements rol_w, which rotates the first source register modulo 32 left by the second source
+    /// Implements rol_w, which rotates the first source register modulo 32 left by the second source
     /// register
     /// TODO: optimize using sll_w and srl_w, so no mask is needed
     pub fn rol_w(&mut self, i: &RiscvInst) {
@@ -995,7 +995,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Imlements ror, which rotates the first source register right by the second source register
+    /// Implements ror, which rotates the first source register right by the second source register
     pub fn ror(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
         let rom_address = i.rom_address;
@@ -1078,7 +1078,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Imlements rori, which rotates the first source register right by the immediate
+    /// Implements rori, which rotates the first source register right by the immediate
     pub fn rori(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
         let rom_address = i.rom_address;
@@ -1129,7 +1129,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Imlements ror_w, which rotates the first source register modulo 32 right by the second
+    /// Implements ror_w, which rotates the first source register modulo 32 right by the second
     /// source register
     //
     // TODO: optimize using sll_w and srl_w, so no mask is needed
