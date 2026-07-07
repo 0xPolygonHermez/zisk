@@ -1366,7 +1366,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[0]);
             let jump_address = internal_address[0] as i64 - i.rom_address as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 1/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 1/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1381,7 +1381,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[1]);
             let jump_address = internal_address[1] as i64 - internal_address[0] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 2/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 2/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1396,7 +1396,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[2]);
             let jump_address = internal_address[2] as i64 - internal_address[1] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 3/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 3/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1411,7 +1411,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[3]);
             let jump_address = internal_address[3] as i64 - internal_address[2] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 4/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 4/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1426,7 +1426,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[4]);
             let jump_address = internal_address[4] as i64 - internal_address[3] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 5/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 5/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1441,7 +1441,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[5]);
             let jump_address = internal_address[5] as i64 - internal_address[4] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 6/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 6/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1456,7 +1456,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[6]);
             let jump_address = internal_address[6] as i64 - internal_address[5] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 7/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 7/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1471,7 +1471,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[7]);
             let jump_address = internal_address[7] as i64 - internal_address[6] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 8/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 8/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1486,7 +1486,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[8]);
             let jump_address = internal_address[8] as i64 - internal_address[7] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 9/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 9/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1501,7 +1501,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[9]);
             let jump_address = internal_address[9] as i64 - internal_address[8] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 10/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 10/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1516,7 +1516,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[10]);
             let jump_address = internal_address[10] as i64 - internal_address[9] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 11/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 11/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1531,7 +1531,7 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address[11]);
             let jump_address = internal_address[11] as i64 - internal_address[10] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 12/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 12/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
 
@@ -1545,7 +1545,7 @@ impl Riscv2ZiskContext<'_> {
             zib.store("reg", i.rd as i64, false, false);
             let jump_address = rom_address as i64 + 4 - internal_address[11] as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{} 13/14", i.inst_name, i.rd, i.rs1));
+            zib.verbose(&format!("{} r{}, r{} 13/13", i.inst_name, i.rd, i.rs1));
             zib.build(self.rom);
         }
     }
