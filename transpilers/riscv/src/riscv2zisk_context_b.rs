@@ -5,9 +5,6 @@ use crate::{Riscv2ZiskContext, RiscvInst};
 
 use zisk_core::ZiskInstBuilder;
 
-#[cfg(feature = "float")]
-use zisk_core::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, FREG_X0, REG_X0};
-
 /*
 
 RISC-V B extensions.  Some instructions appear in multiple extensions, but they are only implemented
