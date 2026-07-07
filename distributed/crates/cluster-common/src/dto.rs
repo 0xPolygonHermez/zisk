@@ -91,6 +91,64 @@ pub enum CoordinatorMessageDto {
     StreamData(StreamDataDto),
     SetupProgram(SetupProgramDto),
     InputStreamData(InputStreamDataDto),
+    SetupAggregationProgram(SetupAggregationProgramDto),
+    RunAggregateProofs(RunAggregateProofsDto),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NormalizeCircuitDto {
+    pub body: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AggregationProgramSpecDto {
+    pub normalize: Option<NormalizeCircuitDto>,
+    pub aggregate_publics_body: String,
+    pub n_free: u64,
+    /// Publics slots the aggregation populates; the rest are generator-zero-filled.
+    pub n_publics_agg: u64,
+    /// Optional leaf allow-list: 4-limb program VKs (empty = VK-agnostic).
+    /// Order is significant; part of the `recurser_id` the worker recomputes.
+    pub program_vks: Vec<[String; 4]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupAggregationProgramDto {
+    pub job_id: String,
+    pub recurser_id: String,
+    pub spec: AggregationProgramSpecDto,
+}
+
+#[derive(Debug, Clone)]
+pub struct RunAggregateProofsDto {
+    pub job_id: String,
+    pub recurser_id: String,
+    /// bincode-serialized VadcopFinalProof.
+    pub proof_a: Vec<u8>,
+    pub proof_b: Vec<u8>,
+    pub free_inputs_a: Vec<u64>,
+    pub free_inputs_b: Vec<u64>,
+    pub root_c_recurser_agg: Option<[u64; 4]>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SetupAggregationProgramAckDto {
+    pub job_id: String,
+    pub worker_id: WorkerId,
+    pub recurser_id: String,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub vk: Vec<u8>,
+    pub hash_mode: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct RunAggregateProofsAckDto {
+    pub job_id: String,
+    pub worker_id: WorkerId,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub proof: Vec<u8>,
 }
 
 pub struct InputStreamDataDto {

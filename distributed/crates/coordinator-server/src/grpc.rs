@@ -20,7 +20,9 @@ use crate::errors::ApiError;
 use crate::handler::CoordinatorHandler;
 use crate::proto::zisk_coordinator_api_server::ZiskCoordinatorApi;
 use crate::proto::*;
-use zisk_coordinator_api::dto::RegisterGuestProgramRequestDto;
+use zisk_coordinator_api::dto::{
+    RegisterAggregationProgramRequestDto, RegisterGuestProgramRequestDto,
+};
 
 const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 5;
 const WAIT_TIMEOUT_MIN_SECS: u32 = 1;
@@ -101,6 +103,26 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         };
 
         Self::log_call("RegisterGuestProgram", start, result.as_ref().map(|_| ()));
+        result
+    }
+
+    #[instrument(level = "debug", skip(self, request))]
+    async fn register_aggregation_program(
+        &self,
+        request: Request<RegisterAggregationProgramRequest>,
+    ) -> Result<Response<RegisterAggregationProgramResponse>, Status> {
+        let start = Instant::now();
+        let req: RegisterAggregationProgramRequestDto =
+            request.into_inner().try_into().map_err(|e: String| Status::invalid_argument(e))?;
+
+        let result = self
+            .handler
+            .register_aggregation_program(req)
+            .await
+            .map(|dto| Response::new(dto.into()))
+            .map_err(Status::from);
+
+        Self::log_call("RegisterAggregationProgram", start, result.as_ref().map(|_| ()));
         result
     }
 

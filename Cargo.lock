@@ -1645,18 +1645,18 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.5.15"
+version = "0.5.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82b8f8f868b36967f9606790d1903570de9ceaf870a7bf9fbbd3016d636a2cb2"
+checksum = "d85363c37faeca707aef026efa9f3b34d077bce547e48f770770625c6013679e"
 dependencies = [
  "crossbeam-utils",
 ]
 
 [[package]]
 name = "crossbeam-deque"
-version = "0.8.6"
+version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
+checksum = "5181e0de7b61eb03a81e347d6dd8797bae9da5146707b51077e2d71a54ec0ceb"
 dependencies = [
  "crossbeam-epoch",
  "crossbeam-utils",
@@ -1664,27 +1664,27 @@ dependencies = [
 
 [[package]]
 name = "crossbeam-epoch"
-version = "0.9.18"
+version = "0.9.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+checksum = "2d6914041f254d6e9176c01941b21115dcfb7089e55135a35411081bd106ef3f"
 dependencies = [
  "crossbeam-utils",
 ]
 
 [[package]]
 name = "crossbeam-queue"
-version = "0.3.12"
+version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f58bbc28f91df819d0aa2a2c00cd19754769c2fad90579b3592b1c9ba7a3115"
+checksum = "803d13fb3b09d88be9f4dbc29062c66b19bf7170867ceb746d2a8689bf6c7a26"
 dependencies = [
  "crossbeam-utils",
 ]
 
 [[package]]
 name = "crossbeam-utils"
-version = "0.8.21"
+version = "0.8.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+checksum = "61803da095bee82a81bb1a452ecc25d3b2f1416d1897eb86430c6159ef717c17"
 
 [[package]]
 name = "crunchy"
@@ -1757,7 +1757,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "fields",
  "num-bigint",
@@ -2229,7 +2229,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2292,7 +2292,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2372,7 +2372,7 @@ dependencies = [
 
 [[package]]
 name = "frops-analyzer"
-version = "1.0.0-alpha"
+version = "1.0.0-beta"
 dependencies = [
  "clap",
  "rayon",
@@ -4091,7 +4091,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "colored",
  "fields",
@@ -4111,7 +4111,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "anyhow",
  "clap",
@@ -4138,7 +4138,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4549,7 +4549,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "bincode",
  "blake3",
@@ -4583,7 +4583,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "bincode",
  "borsh",
@@ -4614,7 +4614,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "fields",
  "itoa",
@@ -4627,7 +4627,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4637,7 +4637,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4646,7 +4646,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "bincode",
  "colored",
@@ -4657,7 +4657,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "bincode",
  "fields",
@@ -5072,6 +5072,26 @@ dependencies = [
  "time",
  "x509-parser",
  "yasna",
+]
+
+[[package]]
+name = "recurser"
+version = "1.0.0-beta"
+dependencies = [
+ "anyhow",
+ "blake3",
+ "fields",
+ "pil2-stark-setup",
+ "pilout",
+ "proofman",
+ "proofman-verifier",
+ "serde",
+ "serde_json",
+ "stark-recurser",
+ "tera",
+ "thiserror 2.0.18",
+ "tracing",
+ "zisk-verifier",
 ]
 
 [[package]]
@@ -5509,9 +5529,9 @@ dependencies = [
 
 [[package]]
 name = "rustversion"
-version = "1.0.22"
+version = "1.0.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rusty-fork"
@@ -6125,7 +6145,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "anyhow",
  "fields",
@@ -6564,6 +6584,21 @@ dependencies = [
 
 [[package]]
 name = "toml"
+version = "0.9.12+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
+dependencies = [
+ "indexmap 2.14.0",
+ "serde_core",
+ "serde_spanned 1.1.1",
+ "toml_datetime 0.7.5+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 0.7.15",
+]
+
+[[package]]
+name = "toml"
 version = "1.1.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "81f3d15e84cbcd896376e6730314d59fb5a87f31e4b038454184435cd57defee"
@@ -6582,6 +6617,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "22cddaf88f4fbc13c51aebbf5f8eceb5c7c5a9da2ac40a13519eb5b0a0e8f11c"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "toml_datetime"
+version = "0.7.5+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
+dependencies = [
+ "serde_core",
 ]
 
 [[package]]
@@ -6633,6 +6677,12 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+
+[[package]]
+name = "toml_writer"
+version = "1.1.1+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "tonic"
@@ -7581,7 +7631,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#32e0758da898254faeac08c97c8114fb822ae63b"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.0.0-beta#26db2e398471a6c22a9f4f44cd82e7d02e7db35b"
 dependencies = [
  "colored",
  "fields",
@@ -7677,18 +7727,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.52"
+version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce1022995ff5ff5d841ad7d994facc23098cd40152f2c1d11cd607c6f530653f"
+checksum = "75726053136156d419e285b9b7eddaaea9e3fea6ce32eed44a89901f0bd98de1"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.52"
+version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1ae7f38b72ec2a254e2b87ef277cf2cd4fb97cbebf944faa6f33354da0867930"
+checksum = "4714fd92cf900833d49538023a9b3915155210801d1c1169eba513b2addefd71"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7779,7 +7829,9 @@ dependencies = [
  "cargo_metadata",
  "clap",
  "rom-setup",
+ "serde",
  "tempfile",
+ "toml 0.9.12+spec-1.1.0",
  "vergen-git2",
 ]
 
@@ -7821,6 +7873,7 @@ dependencies = [
  "clap",
  "dirs",
  "fields",
+ "num-bigint",
  "paste",
  "proofman",
  "proofman-common",
@@ -8004,6 +8057,7 @@ dependencies = [
  "proofman-common",
  "proofman-util",
  "proofman-verifier",
+ "recurser",
  "riscv2zisk",
  "rom-setup",
  "serde",
@@ -8021,12 +8075,19 @@ name = "zisk-sdk"
 version = "1.0.0-beta"
 dependencies = [
  "bincode",
+ "fields",
+ "proofman",
  "proofman-common",
+ "proofman-verifier",
+ "rayon",
+ "recurser",
  "rom-setup",
  "serde",
+ "serde_json",
  "test-artifacts",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "uuid",
  "zisk-build",
  "zisk-common",
@@ -8060,14 +8121,20 @@ name = "zisk-worker"
 version = "1.0.0-beta"
 dependencies = [
  "anyhow",
+ "asm-runner",
  "bincode",
  "borsh",
  "chrono",
  "clap",
  "colored",
  "config",
+ "fields",
  "proofman",
  "proofman-common",
+ "proofman-verifier",
+ "rayon",
+ "recurser",
+ "rom-setup",
  "serde",
  "time",
  "tokio",
@@ -8076,10 +8143,12 @@ dependencies = [
  "tracing",
  "uuid",
  "vergen-git2",
+ "witness",
  "zisk-cluster-api",
  "zisk-cluster-common",
  "zisk-common",
  "zisk-coordinator",
+ "zisk-pil",
  "zisk-prover-backend",
 ]
 

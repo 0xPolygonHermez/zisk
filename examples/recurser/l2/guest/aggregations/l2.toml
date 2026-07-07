@@ -1,0 +1,3 @@
+programs = ["recurser_l2_guest"]
+aggregate-publics = "circuits/aggregate.circom"
+n-publics-agg = 64

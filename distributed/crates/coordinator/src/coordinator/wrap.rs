@@ -26,7 +26,7 @@ impl Coordinator {
         // prevents two concurrent launch_wrap calls from double-booking.
         let job_id = JobId::new();
         let worker_id =
-            self.workers_pool.try_reserve_single_ready_for(&job_id, JobPhase::Aggregate).await?;
+            self.workers_pool.try_reserve_single_ready_for(&job_id, JobPhase::Recurse).await?;
 
         let mut job = Job::new(
             job_id.clone(),
@@ -43,7 +43,7 @@ impl Coordinator {
             false,
             ProofKind::VadcopFinal,
         );
-        job.change_state(JobState::Running(JobPhase::Aggregate)); // reuse Aggregate phase as wrap phase
+        job.change_state(JobState::Running(JobPhase::Recurse)); // reuse Aggregate phase as wrap phase
 
         let job_arc = Arc::new(RwLock::new(job));
         self.jobs.write().await.insert(job_id.clone(), job_arc);
@@ -126,7 +126,7 @@ impl Coordinator {
         crate::metrics::record_job_terminal(
             crate::metrics::OUTCOME_SUCCESS,
             &job.workers,
-            job.phase_start_time(&JobPhase::Aggregate),
+            job.phase_start_time(&JobPhase::Recurse),
         );
 
         tracing::info!("[Wrap] Job {} completed successfully", job_id);
