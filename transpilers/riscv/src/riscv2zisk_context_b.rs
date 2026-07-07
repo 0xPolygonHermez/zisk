@@ -753,8 +753,8 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sll_u_w, which shifts the first source register modulo 32 by the second source
-    /// register
+    /// Implements sll_u_w, which zero-extends rs1[31:0] and shifts it left by the provided shamt
+    /// (on RV64, the effective shift amount is the low 6 bits: 0..63)
     pub fn sll_u_w(&mut self, i: &RiscvInst, is_imm: bool) {
         // Get addresses of the required instructions to implement this function
         let rom_address = i.rom_address;
