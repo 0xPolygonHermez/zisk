@@ -3,11 +3,10 @@ use std::sync::Arc;
 use fields::PrimeField64;
 
 use crate::{dma_trace, DmaUnalignedInput};
-use pil_std_lib::Std;
 use precompiles_helpers::DmaInfo;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::SegmentId;
+use zisk_common::{SegmentId, StdProvider};
 use zisk_pil::{
     DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps, DUAL_RANGE_BYTE_ID,
 };
@@ -23,21 +22,21 @@ pub struct DmaUnalignedPrevSegment {
 }
 
 /// The `DmaUnalignedSM` struct encapsulates the logic of the DmaUnaligned State Machine.
-pub struct DmaUnalignedSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+pub struct DmaUnalignedSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    pub std: Arc<STD>,
 
     /// Range checks ID's
     range_16_bits_id: usize,
     dual_range_byte_id: usize,
 }
 
-impl<F: PrimeField64> DmaUnalignedSM<F> {
+impl<STD: StdProvider> DmaUnalignedSM<STD> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `DmaUnalignedSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             dual_range_byte_id: std
@@ -55,7 +54,7 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_input<R: DmaUnalignedTraceRowOps<F>>(
+    pub fn process_input<F: PrimeField64, R: DmaUnalignedTraceRowOps<F>>(
         &self,
         input: &DmaUnalignedInput,
         trace: &mut [R],
@@ -177,7 +176,10 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_empty_slice<R: DmaUnalignedTraceRowOps<F>>(&self, trace: &mut R) {
+    pub fn process_empty_slice<F: PrimeField64, R: DmaUnalignedTraceRowOps<F>>(
+        &self,
+        trace: &mut R,
+    ) {
         trace.set_seq_end(true);
         trace.set_previous_seq_end(true);
     }
@@ -190,7 +192,7 @@ impl<F: PrimeField64> DmaUnalignedSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: DmaUnalignedTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: DmaUnalignedTraceRowOps<F>>(
         &self,
         inputs: &[Vec<DmaUnalignedInput>],
         segment_id: SegmentId,

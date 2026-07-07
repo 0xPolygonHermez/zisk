@@ -6,10 +6,10 @@ use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
+use zisk_common::StdProvider;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryAirValues, BinaryTrace, BinaryTraceRowOps};
 
@@ -17,23 +17,23 @@ const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 const SIGN_BYTE: u8 = 0x80;
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
-pub struct BinaryBasicSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+pub struct BinaryBasicSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     /// The table ID for the Binary Basic State Machine
     table_id: usize,
 }
 
-impl<F: PrimeField64> BinaryBasicSM<F> {
+impl<STD: StdProvider> BinaryBasicSM<STD> {
     /// Creates a new Binary Basic State Machine instance.
     ///
     /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `std` - Standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryBasicSM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(BinaryBasicTableSM::TABLE_ID).expect("Failed to get range ID");
@@ -139,7 +139,10 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// # Returns
     /// A `BinaryTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<R: BinaryTraceRowOps<F>>(&self, input: &BinaryInput) -> R {
+    pub fn process_slice<F: PrimeField64, R: BinaryTraceRowOps<F>>(
+        &self,
+        input: &BinaryInput,
+    ) -> R {
         // Create an empty trace
         let mut row: R = R::default();
 
@@ -849,7 +852,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// The trace layout (packed/non-packed) is determined by `R`, fixed at construction.
-    pub fn compute_witness<R: BinaryTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: BinaryTraceRowOps<F>>(
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
@@ -877,7 +880,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
         }
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, row)| {
-                *row = self.process_slice::<R>(&inputs[i][j]);
+                *row = self.process_slice::<F, R>(&inputs[i][j]);
             });
         });
 

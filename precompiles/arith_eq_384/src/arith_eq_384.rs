@@ -2,10 +2,10 @@ use fields::PrimeField64;
 use rayon::prelude::*;
 use std::sync::Arc;
 
-use pil_std_lib::Std;
 use precomp_arith_eq::ArithEqLtTableSM;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
+use zisk_common::StdProvider;
 use zisk_pil::{ArithEq384Trace, ArithEq384TraceRowOps};
 
 use crate::{
@@ -15,14 +15,14 @@ use crate::{
 };
 
 /// The `ArithEq384SM` struct encapsulates the logic of the ArithEq384 State Machine.
-pub struct ArithEq384SM<F: PrimeField64> {
+pub struct ArithEq384SM<STD: StdProvider> {
     /// Number of available arith384s in the trace.
     pub num_available_ops: usize,
 
     num_non_usable_rows: usize,
 
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    pub std: Arc<STD>,
 
     /// The table ID for the Keccakf Table State Machine
     table_id: usize,
@@ -44,12 +44,12 @@ struct ArithEq384StepAddr {
     addr_ind: [u32; 5],
 }
 
-impl<F: PrimeField64> ArithEq384SM<F> {
+impl<STD: StdProvider> ArithEq384SM<STD> {
     /// Creates a new ArithEq384 State Machine instance.
     ///
     /// # Returns
     /// A new `ArithEq384SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Compute some useful values
         let num_available_ops = ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1;
         let num_non_usable_rows = ArithEq384Trace::<()>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
@@ -90,7 +90,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             ArithEq384Input::Bls12_381ComplexMul(_) => X3_LT_FLAG | Y3_LT_FLAG,
         }
     }
-    fn expand_addr_step_on_trace<R: ArithEq384TraceRowOps<F>>(
+    fn expand_addr_step_on_trace<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         data: &ArithEq384StepAddr,
         trace: &mut [R],
     ) {
@@ -110,7 +110,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         }
     }
 
-    fn process_arith384_mod<R: ArithEq384TraceRowOps<F>>(
+    fn process_arith384_mod<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Arith384ModInput,
         trace: &mut [R],
@@ -140,7 +140,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_curve_add<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_curve_add<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Bls12_381CurveAddInput,
         trace: &mut [R],
@@ -164,7 +164,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_curve_dbl<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_curve_dbl<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Bls12_381CurveDblInput,
         trace: &mut [R],
@@ -188,7 +188,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_complex_add<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_complex_add<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Bls12_381ComplexAddInput,
         trace: &mut [R],
@@ -212,7 +212,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_complex_sub<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_complex_sub<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Bls12_381ComplexSubInput,
         trace: &mut [R],
@@ -236,7 +236,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         );
     }
 
-    fn process_bls12_381_complex_mul<R: ArithEq384TraceRowOps<F>>(
+    fn process_bls12_381_complex_mul<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         input: &Bls12_381ComplexMulInput,
         trace: &mut [R],
@@ -261,7 +261,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     }
 
     #[inline(always)]
-    fn to_ranged_field(&self, value: i64, range_id: usize) -> u64 {
+    fn to_ranged_field<F: PrimeField64>(&self, value: i64, range_id: usize) -> u64 {
         self.std.range_check_one(range_id, value);
         if value >= 0 {
             value as u64
@@ -272,7 +272,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     const FIRST_CLOCK: u8 = 0;
     const LAST_CLOCK: u8 = ARITH_EQ_384_ROWS_BY_OP as u8 - 1;
 
-    fn expand_data_on_trace<R: ArithEq384TraceRowOps<F>>(
+    fn expand_data_on_trace<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         data: &executors::ArithEq384Data,
         trace: &mut [R],
@@ -291,8 +291,9 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             for j in 0..3 {
                 // first position without carry
                 let carry_0 = if i == 0 { 0 } else { data.cout[i * 2 - 1][j] };
-                carry_values[j][0] = self.to_ranged_field(carry_0, self.carry_range_id);
-                carry_values[j][1] = self.to_ranged_field(data.cout[i * 2][j], self.carry_range_id);
+                carry_values[j][0] = self.to_ranged_field::<F>(carry_0, self.carry_range_id);
+                carry_values[j][1] =
+                    self.to_ranged_field::<F>(data.cout[i * 2][j], self.carry_range_id);
             }
             trace[i].set_all_carry(&carry_values);
             let q_range_id = if i == ARITH_EQ_384_ROWS_BY_OP - 1 {
@@ -300,16 +301,16 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             } else {
                 self.chunk_range_id
             };
-            trace[i].set_x1(self.to_ranged_field(data.x1[i], self.chunk_range_id) as u16);
-            trace[i].set_y1(self.to_ranged_field(data.y1[i], self.chunk_range_id) as u16);
-            trace[i].set_x2(self.to_ranged_field(data.x2[i], self.chunk_range_id) as u16);
-            trace[i].set_y2(self.to_ranged_field(data.y2[i], self.chunk_range_id) as u16);
-            trace[i].set_x3(self.to_ranged_field(data.x3[i], self.chunk_range_id) as u16);
-            trace[i].set_y3(self.to_ranged_field(data.y3[i], self.chunk_range_id) as u16);
-            trace[i].set_q0(self.to_ranged_field(data.q0[i], q_range_id) as u32);
-            trace[i].set_q1(self.to_ranged_field(data.q1[i], q_range_id) as u32);
-            trace[i].set_q2(self.to_ranged_field(data.q2[i], q_range_id) as u32);
-            trace[i].set_s(self.to_ranged_field(data.s[i], self.chunk_range_id) as u32);
+            trace[i].set_x1(self.to_ranged_field::<F>(data.x1[i], self.chunk_range_id) as u16);
+            trace[i].set_y1(self.to_ranged_field::<F>(data.y1[i], self.chunk_range_id) as u16);
+            trace[i].set_x2(self.to_ranged_field::<F>(data.x2[i], self.chunk_range_id) as u16);
+            trace[i].set_y2(self.to_ranged_field::<F>(data.y2[i], self.chunk_range_id) as u16);
+            trace[i].set_x3(self.to_ranged_field::<F>(data.x3[i], self.chunk_range_id) as u16);
+            trace[i].set_y3(self.to_ranged_field::<F>(data.y3[i], self.chunk_range_id) as u16);
+            trace[i].set_q0(self.to_ranged_field::<F>(data.q0[i], q_range_id) as u32);
+            trace[i].set_q1(self.to_ranged_field::<F>(data.q1[i], q_range_id) as u32);
+            trace[i].set_q2(self.to_ranged_field::<F>(data.q2[i], q_range_id) as u32);
+            trace[i].set_s(self.to_ranged_field::<F>(data.s[i], self.chunk_range_id) as u32);
 
             // TODO Range check
             // Compute sel_op arrays
@@ -404,7 +405,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: ArithEq384TraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: ArithEq384TraceRowOps<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEq384Input>],

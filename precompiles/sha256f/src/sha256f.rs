@@ -4,11 +4,10 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::OperationSha256Data;
-use zisk_pil::{Sha256fTrace, Sha256fTraceRow, Sha256fTraceRowOps};
+use zisk_common::{OperationSha256Data, StdProvider};
+use zisk_pil::{Sha256fTrace, Sha256fTraceRowOps};
 
 use super::sha256f_constants::*;
 
@@ -37,9 +36,9 @@ impl Sha256fInput {
 }
 
 /// The `Sha256fSM` struct encapsulates the logic of the Sha256f State Machine.
-pub struct Sha256fSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+pub struct Sha256fSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    pub std: Arc<STD>,
 
     /// Number of available sha256fs in the trace.
     pub num_available_sha256fs: usize,
@@ -51,15 +50,15 @@ pub struct Sha256fSM<F: PrimeField64> {
     e_range_id: usize,
 }
 
-impl<F: PrimeField64> Sha256fSM<F> {
+impl<STD: StdProvider> Sha256fSM<STD> {
     /// Creates a new Sha256f State Machine instance.
     ///
     /// # Returns
     /// A new `Sha256fSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_sha256fs = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS / CLOCKS - 1;
-        let num_non_usable_rows = Sha256fTrace::<Sha256fTraceRow<F>>::NUM_ROWS % CLOCKS;
+        let num_available_sha256fs = Sha256fTrace::<()>::NUM_ROWS / CLOCKS - 1;
+        let num_non_usable_rows = Sha256fTrace::<()>::NUM_ROWS % CLOCKS;
 
         let a_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
         let e_range_id = std.get_range_id(0, (1 << 3) - 1, None).expect("Failed to get range ID");
@@ -75,7 +74,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input<R: Sha256fTraceRowOps<F>>(
+    pub fn process_input<F: PrimeField64, R: Sha256fTraceRowOps<F>>(
         &self,
         input: &Sha256fInput,
         trace: &mut [R],
@@ -362,7 +361,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Sha256fTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: Sha256fTraceRowOps<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<Sha256fInput>],
@@ -416,7 +415,7 @@ impl<F: PrimeField64> Sha256fSM<F> {
             .map(|(index, trace)| {
                 let input_index = inputs_indexes[index];
                 let input = &inputs[input_index.0][input_index.1];
-                self.process_input::<R>(input, trace)
+                self.process_input::<F, R>(input, trace)
             })
             .collect();
 

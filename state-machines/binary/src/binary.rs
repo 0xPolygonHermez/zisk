@@ -14,35 +14,36 @@ use crate::{
     BinaryExtensionInstance, BinaryExtensionSM, BinaryPlanner,
 };
 use fields::PrimeField64;
-use pil_std_lib::Std;
-use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner};
+use zisk_common::{
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner, StdProvider,
+};
 use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
 
 /// The `BinarySM` struct represents the Binary State Machine,
 /// managing basic, extension and specific add binary operations.
 #[allow(dead_code)]
-pub struct BinarySM<F: PrimeField64> {
+pub struct BinarySM<STD: StdProvider> {
     /// Binary Basic state machine
-    binary_basic_sm: Arc<BinaryBasicSM<F>>,
+    binary_basic_sm: Arc<BinaryBasicSM<STD>>,
 
     /// Binary Extension state machine
-    binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+    binary_extension_sm: Arc<BinaryExtensionSM<STD>>,
 
     /// Binary Add state machine (optimal only for addition)
-    binary_add_sm: Arc<BinaryAddSM<F>>,
+    binary_add_sm: Arc<BinaryAddSM<STD>>,
 
-    std: Arc<Std<F>>,
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64> BinarySM<F> {
+impl<STD: StdProvider> BinarySM<STD> {
     /// Creates a new instance of the `BinarySM` state machine.
     ///
     /// # Arguments
-    /// * `std` - PIL2 standard library utilities.
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinarySM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let binary_basic_sm = BinaryBasicSM::new(std.clone());
 
         let binary_extension_sm = BinaryExtensionSM::new(std.clone());
@@ -53,7 +54,7 @@ impl<F: PrimeField64> BinarySM<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentPlanBuilder<F> for BinarySM<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentPlanBuilder<F> for BinarySM<STD> {
     type Counter = BinaryCounter;
 
     fn counter(_is_asm_emulator: bool) -> Self::Counter {
@@ -65,7 +66,7 @@ impl<F: PrimeField64> ComponentPlanBuilder<F> for BinarySM<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentBuilder<F> for BinarySM<STD> {
     /// Builds an instance for binary operations.
     ///
     /// # Arguments

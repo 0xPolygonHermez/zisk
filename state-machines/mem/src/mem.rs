@@ -7,25 +7,26 @@ use crate::{
 };
 use fields::PrimeField64;
 use mem_common::MemCounters;
-use pil_std_lib::Std;
 use proofman_common::ProofCtx;
-use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
+use zisk_common::{
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner, StdProvider,
+};
 use zisk_pil::{
     InputDataTrace, MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace,
     MemAlignWriteByteTrace, MemTrace, RomDataTrace, ZiskProofValues,
 };
 
-pub struct Mem<F: PrimeField64> {
+pub struct Mem<STD: StdProvider> {
     // Secondary State machines
-    mem_sm: Arc<MemSM<F>>,
-    mem_align_sm: Arc<MemAlignSM<F>>,
-    mem_align_byte_sm: Arc<MemAlignByteSM<F>>,
-    input_data_sm: Arc<InputDataSM<F>>,
-    rom_data_sm: Arc<RomDataSM<F>>,
+    mem_sm: Arc<MemSM<STD>>,
+    mem_align_sm: Arc<MemAlignSM<STD>>,
+    mem_align_byte_sm: Arc<MemAlignByteSM<STD>>,
+    input_data_sm: Arc<InputDataSM<STD>>,
+    rom_data_sm: Arc<RomDataSM<STD>>,
 }
 
-impl<F: PrimeField64> Mem<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<STD: StdProvider> Mem<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let mem_align_sm = MemAlignSM::new(std.clone());
         let mem_sm = MemSM::new(std.clone());
         let input_data_sm = InputDataSM::new(std.clone());
@@ -36,7 +37,7 @@ impl<F: PrimeField64> Mem<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentPlanBuilder<F> for Mem<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentPlanBuilder<F> for Mem<STD> {
     type Counter = MemCounters;
 
     fn counter(_is_asm_emulator: bool) -> Self::Counter {
@@ -54,7 +55,7 @@ impl<F: PrimeField64> ComponentPlanBuilder<F> for Mem<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentBuilder<F> for Mem<STD> {
     fn configure_instances(&self, pctx: &ProofCtx<F>, plannings: &[Plan]) {
         let enable_input_data = plannings.iter().any(|p| p.air_id == InputDataTrace::<()>::AIR_ID);
         let enable_rom_data = plannings.iter().any(|p| p.air_id == RomDataTrace::<()>::AIR_ID);

@@ -9,10 +9,9 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use zisk_common::{
-    BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo,
-    Planner,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, InstanceInfo, Planner,
+    StdProvider,
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ArithTrace;
@@ -21,31 +20,31 @@ use crate::{ArithCounterInputGen, ArithFullInstance, ArithFullSM, ArithPlanner};
 
 /// The `ArithSM` struct represents the Arithmetic State Machine, which
 /// is a proxy machine to manage state machines involved in arithmetic operations.
-pub struct ArithSM<F: PrimeField64> {
+pub struct ArithSM<STD: StdProvider> {
     /// Arith Full state machine
-    arith_full_sm: Arc<ArithFullSM<F>>,
+    arith_full_sm: Arc<ArithFullSM<STD>>,
 
     /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64> ArithSM<F> {
+impl<STD: StdProvider> ArithSM<STD> {
     /// Creates a new instance of the `ArithSM` state machine.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithSM` containing initialized sub-state machines.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let arith_full_sm = ArithFullSM::new(std.clone());
 
         Arc::new(Self { arith_full_sm, std })
     }
 }
 
-impl<F: PrimeField64> ComponentPlanBuilder<F> for ArithSM<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentPlanBuilder<F> for ArithSM<STD> {
     type Counter = ArithCounterInputGen;
 
     fn counter(_is_asm_emulator: bool) -> Self::Counter {
-        ArithCounterInputGen::new(BusDeviceMode::Counter)
+        ArithCounterInputGen::for_counter_phase()
     }
 
     fn planner(_is_asm_emulator: bool) -> Box<dyn Planner> {
@@ -58,7 +57,7 @@ impl<F: PrimeField64> ComponentPlanBuilder<F> for ArithSM<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for ArithSM<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentBuilder<F> for ArithSM<STD> {
     /// Builds an instance of the Arithmetic state machine.
     ///
     /// # Arguments

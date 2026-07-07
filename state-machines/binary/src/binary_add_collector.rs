@@ -2,17 +2,15 @@
 
 use crate::BinaryBasicFrops;
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, StdProvider, A, B, OP,
     OPERATION_BUS_ID,
 };
 use zisk_core::zisk_ops::ZiskOp;
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
 use std::sync::Arc;
 
 /// The `BinaryAddCollector` struct represents an input collector for binary add operations.
-pub struct BinaryAddCollector<F: PrimeField64> {
+pub struct BinaryAddCollector<STD: StdProvider> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<[u64; 2]>,
 
@@ -25,11 +23,11 @@ pub struct BinaryAddCollector<F: PrimeField64> {
     /// The table ID for the Binary Add FROPS
     frops_table_id: usize,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64> BinaryAddCollector<F> {
+impl<STD: StdProvider> BinaryAddCollector<STD> {
     /// Creates a new `BinaryAddCollector`.
     ///
     /// # Arguments
@@ -42,7 +40,7 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
-        std: Arc<Std<F>>,
+        std: Arc<STD>,
     ) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
@@ -107,7 +105,7 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
     }
 }
 
-impl<F: PrimeField64> BusDevice<u64> for BinaryAddCollector<F> {
+impl<STD: StdProvider> BusDevice<u64> for BinaryAddCollector<STD> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use fields::PrimeField64;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use rayon::{
@@ -17,6 +16,7 @@ use zisk_pil::{
 
 use crate::{dma_trace, DmaPrePostInput, DmaPrePostModule, DmaPrePostRom};
 use precompiles_helpers::DmaInfo;
+use zisk_common::StdProvider;
 
 // Type aliases to simplify complex types
 type MultTable = Vec<Vec<u64>>;
@@ -24,9 +24,9 @@ type PrePostAndByteCmpTables = (MultTable, MultTable);
 type GlobalMultiplicities = (PrePostAndByteCmpTables, MultTable);
 
 /// The `DmaPrePostSM` struct encapsulates the logic of the DmaPrePost State Machine.
-pub struct DmaPrePostSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+pub struct DmaPrePostSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    pub std: Arc<STD>,
 
     /// Range checks ID's
     pre_post_table_id: usize,
@@ -38,12 +38,12 @@ pub struct DmaPrePostSM<F: PrimeField64> {
     dual_range_byte_id: usize,
 }
 
-impl<F: PrimeField64> DmaPrePostSM<F> {
+impl<STD: StdProvider> DmaPrePostSM<STD> {
     /// Creates a new Dma State Machine instance.
     ///
     /// # Returns
     /// A new `DmaPrePostSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         Arc::new(Self {
             std: std.clone(),
             dual_range_byte_id: std
@@ -64,7 +64,7 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
     /// * `trace` - A mutable reference to the Dma trace.
     /// * `input` - The operation data to process.
     #[inline(always)]
-    pub fn process_slice<R: DmaPrePostTraceRowOps<F>>(
+    pub fn process_slice<F: PrimeField64, R: DmaPrePostTraceRowOps<F>>(
         &self,
         input: &DmaPrePostInput,
         trace: &mut R,
@@ -295,7 +295,7 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
 
         pre_post_table_mul[table_row] += 1;
     }
-    fn compute_witness_inner<R: DmaPrePostTraceRowOps<F> + Copy + Send>(
+    fn compute_witness_inner<F: PrimeField64, R: DmaPrePostTraceRowOps<F> + Copy + Send>(
         &self,
         inputs: &[Vec<DmaPrePostInput>],
         trace_buffer: Vec<F>,
@@ -440,7 +440,7 @@ impl<F: PrimeField64> DmaPrePostSM<F> {
         Ok(AirInstance::new_from_trace(from_trace))
     }
 }
-impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostSM<F> {
+impl<F: PrimeField64, STD: StdProvider> DmaPrePostModule<F> for DmaPrePostSM<STD> {
     fn get_name(&self) -> &'static str {
         "dma_pre_post"
     }
@@ -451,9 +451,9 @@ impl<F: PrimeField64> DmaPrePostModule<F> for DmaPrePostSM<F> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_inner::<DmaPrePostTraceRowPacked<F>>(inputs, trace_buffer)
+            self.compute_witness_inner::<F, DmaPrePostTraceRowPacked<F>>(inputs, trace_buffer)
         } else {
-            self.compute_witness_inner::<DmaPrePostTraceRow<F>>(inputs, trace_buffer)
+            self.compute_witness_inner::<F, DmaPrePostTraceRow<F>>(inputs, trace_buffer)
         }
     }
 }

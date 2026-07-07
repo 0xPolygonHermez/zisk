@@ -24,7 +24,7 @@ use std::{
 };
 use tracing::error;
 use zisk_common::{
-    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
+    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats, StdProvider,
 };
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
@@ -37,15 +37,19 @@ use asm_runner::AsmRunnerRH;
 /// [`crate::ChunkCollectorStore::inner`].
 type CollectorSlots = Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>;
 
+/// One per-chunk collector data bus, taken exactly once by the worker
+/// that processes that chunk (hence `Mutex<Option<_>>`).
+type ChunkBusSlot<STD> = Mutex<Option<StaticDataBusCollect<PayloadType, STD>>>;
+
 /// Borrowed context handed to each rayon worker. Bundles the 14
 /// references the chunk-processing loop needs so signatures stay
 /// readable. Constructed once per `collect()` call.
-struct WorkerCtx<'a, F: PrimeField64> {
+struct WorkerCtx<'a, F: PrimeField64, STD: StdProvider> {
     // ── Work feed ──
     next_chunk: &'a AtomicUsize,
     ordered_chunks: &'a [usize],
     chunks_to_execute: &'a [Vec<usize>],
-    data_buses: &'a [Mutex<Option<StaticDataBusCollect<PayloadType, F>>>],
+    data_buses: &'a [ChunkBusSlot<STD>],
 
     // ── Inputs ──
     zisk_rom: &'a ZiskRom,
@@ -76,17 +80,17 @@ fn push_error(errors: &Mutex<Vec<String>>, message: String) {
     }
 }
 
-pub struct ChunkDataCollector<F: PrimeField64> {
+pub struct ChunkDataCollector<STD: StdProvider> {
     /// State machine bundle for building data buses.
-    sm_bundle: Arc<StaticSMBundle<F>>,
+    sm_bundle: Arc<StaticSMBundle<STD>>,
 }
 
-impl<F: PrimeField64> ChunkDataCollector<F> {
+impl<STD: StdProvider> ChunkDataCollector<STD> {
     /// Creates a new `ChunkDataCollector`.
     ///
     /// # Arguments
     /// * `sm_bundle` - State machine bundle.
-    pub fn new(sm_bundle: Arc<StaticSMBundle<F>>) -> Self {
+    pub fn new(sm_bundle: Arc<StaticSMBundle<STD>>) -> Self {
         Self { sm_bundle }
     }
 
@@ -108,7 +112,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// Tuple of `(chunks_to_execute, global_id_chunks)` where:
     /// - `chunks_to_execute[chunk_id]` = list of global_ids that need this chunk
     /// - `global_id_chunks[global_id]` = list of chunk_ids this instance needs
-    pub fn compute_chunks_to_execute(
+    pub fn compute_chunks_to_execute<F: PrimeField64>(
         &self,
         min_traces: &[EmuTrace],
         secn_instances: &HashMap<usize, &dyn Instance<F>>,
@@ -203,10 +207,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// * `state` - Execution state for storing collectors.
     /// * `global_id` - Global ID of the instance.
     /// * `instance` - The secondary instance to collect for.
-    pub fn collect_single(
+    pub fn collect_single<F: PrimeField64>(
         &self,
         pctx: &ProofCtx<F>,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, STD>,
         global_id: usize,
         instance: &dyn Instance<F>,
     ) -> ExecutorResult<()> {
@@ -225,10 +229,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// * `pctx` - Proof context.
     /// * `state` - Execution state for storing collectors.
     /// * `secn_instances` - Map of global ID to secondary instances.
-    pub fn collect(
+    pub fn collect<F: PrimeField64>(
         &self,
         pctx: &ProofCtx<F>,
-        state: &ExecutionState<F>,
+        state: &ExecutionState<F, STD>,
         secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> ExecutorResult<()> {
         let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
@@ -359,7 +363,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// counter; takes each chunk's data bus exactly once (subsequent
     /// stealers see `None` and skip); processes via
     /// [`Self::process_one_chunk`].
-    fn worker_loop(ctx: &WorkerCtx<'_, F>) {
+    fn worker_loop<F: PrimeField64>(ctx: &WorkerCtx<'_, F, STD>) {
         loop {
             let next_chunk_id = ctx.next_chunk.fetch_add(1, Ordering::Relaxed);
             if next_chunk_id >= ctx.ordered_chunks.len() {
@@ -392,10 +396,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// bus, drain device entries into per-instance collector slots,
     /// advance witness-ready counters. On an instance's final chunk,
     /// records witness stats via [`Self::record_completion_stats`].
-    fn process_one_chunk(
+    fn process_one_chunk<F: PrimeField64>(
         chunk_id: usize,
-        mut data_bus: StaticDataBusCollect<PayloadType, F>,
-        ctx: &WorkerCtx<'_, F>,
+        mut data_bus: StaticDataBusCollect<PayloadType, STD>,
+        ctx: &WorkerCtx<'_, F, STD>,
     ) {
         // Mark collection start time for each affected instance, and
         // remember which globals this chunk feeds so we can advance
@@ -483,7 +487,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// reads the recorded start time, computes elapsed duration, and
     /// publishes per-witness stats. Each error path delegates to
     /// [`push_error`] so a failure here cannot abort other workers.
-    fn record_completion_stats(global_id: usize, global_id_idx: usize, ctx: &WorkerCtx<'_, F>) {
+    fn record_completion_stats<F: PrimeField64>(
+        global_id: usize,
+        global_id_idx: usize,
+        ctx: &WorkerCtx<'_, F, STD>,
+    ) {
         let Some(collect_start_time) = ctx.collect_start_times[global_id_idx].load() else {
             push_error(ctx.errors, format!("collect_start_time not set for global_id {global_id}"));
             return;

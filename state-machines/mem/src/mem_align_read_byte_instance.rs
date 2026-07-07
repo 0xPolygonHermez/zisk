@@ -6,22 +6,22 @@ use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, StdProvider,
 };
 use zisk_pil::{MemAlignReadByteTrace, MemAlignReadByteTraceRow, MemAlignReadByteTraceRowPacked};
 
-pub struct MemAlignReadByteInstance<F: PrimeField64> {
+pub struct MemAlignReadByteInstance<STD: StdProvider> {
     /// Instance context
     ictx: InstanceCtx,
 
     /// Checkpoint data for this memory align instance.
     checkpoint: HashMap<ChunkId, MemAlignCheckPoint>,
 
-    mem_align_byte_sm: Arc<MemAlignByteSM<F>>,
+    mem_align_byte_sm: Arc<MemAlignByteSM<STD>>,
 }
 
-impl<F: PrimeField64> MemAlignReadByteInstance<F> {
-    pub fn new(mem_align_sm: Arc<MemAlignByteSM<F>>, mut ictx: InstanceCtx) -> Self {
+impl<STD: StdProvider> MemAlignReadByteInstance<STD> {
+    pub fn new(mem_align_sm: Arc<MemAlignByteSM<STD>>, mut ictx: InstanceCtx) -> Self {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let checkpoint = *meta
@@ -36,7 +36,7 @@ impl<F: PrimeField64> MemAlignReadByteInstance<F> {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
+impl<F: PrimeField64, STD: StdProvider> Instance<F> for MemAlignReadByteInstance<STD> {
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,
@@ -58,13 +58,13 @@ impl<F: PrimeField64> Instance<F> for MemAlignReadByteInstance<F> {
             .collect();
         Ok(Some(if packed {
             self.mem_align_byte_sm
-                .compute_witness::<
+                .compute_witness::<F,
                     MemAlignReadByteTrace<MemAlignReadByteTraceRowPacked<F>>,
                     MemAlignReadByteTraceRowPacked<F>,
                 >(&inputs, total_rows as usize, trace_buffer)?
         } else {
             self.mem_align_byte_sm
-                .compute_witness::<
+                .compute_witness::<F,
                     MemAlignReadByteTrace<MemAlignReadByteTraceRow<F>>,
                     MemAlignReadByteTraceRow<F>,
                 >(&inputs, total_rows as usize, trace_buffer)?

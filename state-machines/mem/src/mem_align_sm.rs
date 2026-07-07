@@ -4,11 +4,11 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
+use zisk_common::StdProvider;
 use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps};
 
 const RC: usize = 2;
@@ -36,9 +36,9 @@ const ALLOWED_WIDTHS: [u8; 4] = [1, 2, 4, 8];
 const DEFAULT_OFFSET: u8 = 0;
 const DEFAULT_WIDTH: u8 = 8;
 
-pub struct MemAlignSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
+pub struct MemAlignSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     #[cfg(feature = "debug_mem_align")]
     num_computed_rows: Mutex<usize>,
@@ -59,8 +59,8 @@ macro_rules! debug_info {
     };
 }
 
-impl<F: PrimeField64> MemAlignSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<STD: StdProvider> MemAlignSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");
@@ -76,7 +76,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         })
     }
 
-    pub fn prove_mem_align_op<R: MemAlignTraceRowOps<F>>(
+    pub fn prove_mem_align_op<F: PrimeField64, R: MemAlignTraceRowOps<F>>(
         &self,
         input: &MemAlignInput,
         trace: &mut [R],
@@ -128,7 +128,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneRead, offset, width);
 
                 // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
+                MemAlignRomSM::get_rows(self.std.as_ref(), self.table_id, next_pc, op_size);
 
                 let mut read_row: R = Default::default();
                 read_row.set_step(step);
@@ -247,7 +247,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::OneWrite, offset, width);
 
                 // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
+                MemAlignRomSM::get_rows(self.std.as_ref(), self.table_id, next_pc, op_size);
 
                 // Compute the write value
                 let value_write = {
@@ -426,7 +426,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoReads, offset, width);
 
                 // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
+                MemAlignRomSM::get_rows(self.std.as_ref(), self.table_id, next_pc, op_size);
 
                 let mut first_read_row: R = Default::default();
                 first_read_row.set_step(step);
@@ -625,7 +625,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                     MemAlignRomSM::calculate_next_pc_and_op_size(MemOp::TwoWrites, offset, width);
 
                 // Update the row multiplicity of the operation
-                MemAlignRomSM::get_rows(&self.std, self.table_id, next_pc, op_size);
+                MemAlignRomSM::get_rows(self.std.as_ref(), self.table_id, next_pc, op_size);
 
                 // RWVWR
                 let mut first_read_row: R = Default::default();
@@ -835,7 +835,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         ((value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK) as u8
     }
 
-    pub fn compute_witness<R: MemAlignTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: MemAlignTraceRowOps<F>>(
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,

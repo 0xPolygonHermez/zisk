@@ -3,30 +3,30 @@
 //! This state machine processes binary-related operations.
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use std::sync::Arc;
+use zisk_common::StdProvider;
 use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRowOps};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
-pub struct BinaryAddSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+pub struct BinaryAddSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
     range_id: usize,
 }
 
-impl<F: PrimeField64> BinaryAddSM<F> {
+impl<STD: StdProvider> BinaryAddSM<STD> {
     /// Creates a new BinaryAdd State Machine instance.
     ///
-    /// # Arguments/// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
-    ///   Machine.
+    /// # Arguments
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// A new `BinaryAddSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
 
         // Create the BinaryAdd state machine
@@ -42,7 +42,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     /// # Returns
     /// A `BinaryAddTraceRow` representing the operation's result.
     #[inline(always)]
-    pub fn process_slice<R: BinaryAddTraceRowOps<F>>(
+    pub fn process_slice<F: PrimeField64, R: BinaryAddTraceRowOps<F>>(
         &self,
         row: &mut R,
         input: &[u64; 2],
@@ -98,7 +98,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: BinaryAddTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: BinaryAddTraceRowOps<F>>(
         &self,
         inputs: &[Vec<[u64; 2]>],
         trace_buffer: Vec<F>,
@@ -127,7 +127,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             .zip(add_trace.buffer.par_iter_mut())
             .zip(range_checks.par_iter_mut())
             .for_each(|((input, trace_row), range_check)| {
-                let checks = self.process_slice::<R>(trace_row, input);
+                let checks = self.process_slice::<F, R>(trace_row, input);
                 *range_check = checks;
             });
 

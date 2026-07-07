@@ -102,9 +102,9 @@ impl EmulatorRust {
                 let mut data_bus = if minimal_trace.is_first() {
                     let mem_sections: &dyn MemDataSection =
                         zisk_rom as &dyn zisk_core::MemDataSection;
-                    StaticDataBus::<_, F>::build(false, Some(mem_sections))
+                    StaticDataBus::<_>::build::<F>(false, Some(mem_sections))
                 } else {
-                    StaticDataBus::<_, F>::build(false, None)
+                    StaticDataBus::<_>::build::<F>(false, None)
                 };
 
                 ZiskEmulator::process_emu_trace::<F, _, _>(

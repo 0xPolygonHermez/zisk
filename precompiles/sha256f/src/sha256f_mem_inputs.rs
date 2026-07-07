@@ -1,12 +1,11 @@
-use fields::PrimeField64;
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
-use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_common::{StdProvider, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 use zisk_core::sha256f;
 
 use crate::Sha256fSM;
 
-impl<F: PrimeField64> PrecompileMemInputs for Sha256fSM<F> {
+impl<STD: StdProvider> PrecompileMemInputs for Sha256fSM<STD> {
     fn generate<P: MemProcessor>(
         addr_main: u32,
         step_main: u64,

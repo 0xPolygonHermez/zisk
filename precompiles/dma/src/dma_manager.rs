@@ -1,10 +1,9 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::ProofCtx;
 use zisk_common::{
-    BusDeviceMode, ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner,
+    ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner, StdProvider,
 };
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
@@ -23,28 +22,28 @@ use crate::{
 /// The `DmaManager` struct represents the Dma manager,
 /// which is responsible for managing the Dma state machine and its table state machine.
 #[allow(dead_code)]
-pub struct DmaManager<F: PrimeField64> {
+pub struct DmaManager<STD: StdProvider> {
     /// Dma state machine
-    dma_sm: Arc<DmaSM<F>>,
-    dma_memcpy_sm: Arc<DmaMemCpySM<F>>,
-    dma_inputcpy_sm: Arc<DmaInputCpySM<F>>,
-    dma_pre_post_sm: Arc<DmaPrePostSM<F>>,
-    dma_pre_post_memcpy_sm: Arc<DmaPrePostMemCpySM<F>>,
-    dma_pre_post_inputcpy_sm: Arc<DmaPrePostInputCpySM<F>>,
-    dma_64_aligned_sm: Arc<Dma64AlignedSM<F>>,
-    dma_64_aligned_mem_sm: Arc<Dma64AlignedMemSM<F>>,
-    dma_64_aligned_memcpy_sm: Arc<Dma64AlignedMemCpySM<F>>,
-    dma_64_aligned_memset_sm: Arc<Dma64AlignedMemSetSM<F>>,
-    dma_64_aligned_inputcpy_sm: Arc<Dma64AlignedInputCpySM<F>>,
-    dma_unaligned_sm: Arc<DmaUnalignedSM<F>>,
+    dma_sm: Arc<DmaSM<STD>>,
+    dma_memcpy_sm: Arc<DmaMemCpySM<STD>>,
+    dma_inputcpy_sm: Arc<DmaInputCpySM<STD>>,
+    dma_pre_post_sm: Arc<DmaPrePostSM<STD>>,
+    dma_pre_post_memcpy_sm: Arc<DmaPrePostMemCpySM<STD>>,
+    dma_pre_post_inputcpy_sm: Arc<DmaPrePostInputCpySM<STD>>,
+    dma_64_aligned_sm: Arc<Dma64AlignedSM<STD>>,
+    dma_64_aligned_mem_sm: Arc<Dma64AlignedMemSM<STD>>,
+    dma_64_aligned_memcpy_sm: Arc<Dma64AlignedMemCpySM<STD>>,
+    dma_64_aligned_memset_sm: Arc<Dma64AlignedMemSetSM<STD>>,
+    dma_64_aligned_inputcpy_sm: Arc<Dma64AlignedInputCpySM<STD>>,
+    dma_unaligned_sm: Arc<DmaUnalignedSM<STD>>,
 }
 
-impl<F: PrimeField64> DmaManager<F> {
+impl<STD: StdProvider> DmaManager<STD> {
     /// Creates a new instance of `DmaManager`.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `DmaManager`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let dma_sm = DmaSM::new(std.clone());
         let dma_memcpy_sm = DmaMemCpySM::new(std.clone());
         let dma_inputcpy_sm = DmaInputCpySM::new(std.clone());
@@ -75,12 +74,11 @@ impl<F: PrimeField64> DmaManager<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentPlanBuilder<F> for DmaManager<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentPlanBuilder<F> for DmaManager<STD> {
     type Counter = DmaCounterInputGen;
 
     fn counter(is_asm_emulator: bool) -> Self::Counter {
-        let mode = if is_asm_emulator { BusDeviceMode::CounterAsm } else { BusDeviceMode::Counter };
-        DmaCounterInputGen::new(mode)
+        DmaCounterInputGen::for_counter_phase(is_asm_emulator)
     }
 
     fn planner(_is_asm_emulator: bool) -> Box<dyn Planner> {
@@ -88,7 +86,7 @@ impl<F: PrimeField64> ComponentPlanBuilder<F> for DmaManager<F> {
     }
 }
 
-impl<F: PrimeField64> ComponentBuilder<F> for DmaManager<F> {
+impl<F: PrimeField64, STD: StdProvider> ComponentBuilder<F> for DmaManager<STD> {
     /// Builds an inputs data collector for Dma operations.
     ///
     /// # Arguments

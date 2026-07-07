@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use rayon::prelude::*;
+use zisk_common::StdProvider;
 
 use crate::MemAlignInput;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -298,9 +298,9 @@ impl<F: PrimeField64, R: MemAlignWriteByteTraceRowOps<F>>
 const OFFSET_MASK: u32 = 0x07;
 const OFFSET_BITS: u32 = 3;
 
-pub struct MemAlignByteSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
+pub struct MemAlignByteSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     /// The table ID for the Mem Align ROM State Machine
     table_dual_byte_id: usize,
@@ -309,8 +309,8 @@ pub struct MemAlignByteSM<F: PrimeField64> {
     table_8b_id: usize,
 }
 
-impl<F: PrimeField64> MemAlignByteSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<STD: StdProvider> MemAlignByteSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the table ID
         Arc::new(Self {
             std: std.clone(),
@@ -322,7 +322,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
         })
     }
 
-    pub fn compute_witness<T, R: MemAlignByteRow<F, T>>(
+    pub fn compute_witness<F: PrimeField64, T, R: MemAlignByteRow<F, T>>(
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
@@ -394,7 +394,7 @@ impl<F: PrimeField64> MemAlignByteSM<F> {
 
     /// Common logic for computing witness that can be shared across different trace types
     #[allow(clippy::too_many_arguments)]
-    fn compute_row_witness<T, R: MemAlignByteRow<F, T>>(
+    fn compute_row_witness<F: PrimeField64, T, R: MemAlignByteRow<F, T>>(
         &self,
         input: &MemAlignInput,
         irow: usize,

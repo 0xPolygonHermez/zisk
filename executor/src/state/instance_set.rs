@@ -5,18 +5,18 @@ use std::sync::{PoisonError, RwLock};
 
 use fields::PrimeField64;
 use sm_main::MainInstance;
-use zisk_common::Instance;
+use zisk_common::{Instance, StdProvider};
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
-pub struct InstanceSet<F: PrimeField64> {
+pub struct InstanceSet<F: PrimeField64, STD: StdProvider> {
     /// Main state machine instances, indexed by their global ID.
-    pub main_instances: RwLock<HashMap<usize, MainInstance<F>>>,
+    pub main_instances: RwLock<HashMap<usize, MainInstance<STD>>>,
 
     /// Secondary state machine instances, indexed by their global ID.
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
 }
 
-impl<F: PrimeField64> InstanceSet<F> {
+impl<F: PrimeField64, STD: StdProvider> InstanceSet<F, STD> {
     /// Construct an empty set.
     pub fn new() -> Self {
         Self {
@@ -42,7 +42,7 @@ impl<F: PrimeField64> InstanceSet<F> {
     }
 }
 
-impl<F: PrimeField64> Default for InstanceSet<F> {
+impl<F: PrimeField64, STD: StdProvider> Default for InstanceSet<F, STD> {
     fn default() -> Self {
         Self::new()
     }
@@ -52,24 +52,26 @@ impl<F: PrimeField64> Default for InstanceSet<F> {
 mod tests {
     use super::*;
     use fields::Goldilocks;
+    use zisk_common::NoopStdProvider;
 
     type F = Goldilocks;
+    type Std = NoopStdProvider;
 
     #[test]
     fn new_is_empty() {
-        let set: InstanceSet<F> = InstanceSet::new();
+        let set: InstanceSet<F, Std> = InstanceSet::new();
         assert!(set.is_empty());
     }
 
     #[test]
     fn default_matches_new() {
-        let set: InstanceSet<F> = InstanceSet::default();
+        let set: InstanceSet<F, Std> = InstanceSet::default();
         assert!(set.is_empty());
     }
 
     #[test]
     fn reset_clears_maps() {
-        let set: InstanceSet<F> = InstanceSet::new();
+        let set: InstanceSet<F, Std> = InstanceSet::new();
         // Direct field access keeps tests honest — InstanceSet exposes
         // the two locks so the caller can populate them; the contract
         // here is that `reset` blanks both regardless of how they got
@@ -83,7 +85,7 @@ mod tests {
         use std::panic::{catch_unwind, AssertUnwindSafe};
         use std::sync::Arc;
 
-        let set: Arc<InstanceSet<F>> = Arc::new(InstanceSet::new());
+        let set: Arc<InstanceSet<F, Std>> = Arc::new(InstanceSet::new());
         let set_for_panic = set.clone();
         let _ = catch_unwind(AssertUnwindSafe(|| {
             let _guard = set_for_panic.main_instances.write().unwrap();

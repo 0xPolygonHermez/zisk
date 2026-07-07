@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use zisk_common::SegmentId;
+use zisk_common::{SegmentId, StdProvider};
 use zisk_pil::{MemAirValues, MemTrace, MemTraceRow, MemTraceRowOps, MemTraceRowPacked};
 
 #[cfg(feature = "debug_mem")]
@@ -15,16 +15,15 @@ use crate::mem_module::save_offsets_to_file;
 use crate::{MemInput, MemModule};
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use zisk_core::{RAM_ADDR, RAM_SIZE};
 
 const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
 const OFFSET_USE_FLAG: u32 = 0x4000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x3FFF_FFFF;
-pub struct MemSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
+pub struct MemSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     range_22bits_id: usize,
     range_16bits_id: usize,
@@ -37,8 +36,8 @@ pub struct MemPreviousSegment {
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64> MemSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<STD: StdProvider> MemSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let range_22bits_id =
             std.get_range_id(0, (1 << 22) - 1, None).expect("Failed to get 22 bits range ID");
         let range_16bits_id =
@@ -51,7 +50,10 @@ impl<F: PrimeField64> MemSM<F> {
         (RAM_ADDR + RAM_SIZE - 1) as u32
     }
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn save_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(
+        trace: &MemTrace<R>,
+        file_name: &str,
+    ) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -80,7 +82,10 @@ impl<F: PrimeField64> MemSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn dump_trace_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn dump_trace_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(
+        trace: &MemTrace<R>,
+        file_name: &str,
+    ) {
         println!("[MemDebug] dumping trace to {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -109,7 +114,10 @@ impl<F: PrimeField64> MemSM<F> {
     }
 
     #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
-    pub fn save_addr_offsets_to_file<R: MemTraceRowOps<F>>(trace: &MemTrace<R>, file_name: &str) {
+    pub fn save_addr_offsets_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(
+        trace: &MemTrace<R>,
+        file_name: &str,
+    ) {
         use std::io::Write;
 
         println!("[MemDebug] saving address offsets to {} .....", file_name);
@@ -184,7 +192,7 @@ impl<F: PrimeField64> MemSM<F> {
     /// from_addr: first qword address in the trace for segment 0; previous_segment.addr for later
     ///            segments so the halo slot (index 0) is always present.
     #[cfg(feature = "debug_mem_bin_offsets")]
-    pub fn save_bin_offsets_to_file<R: MemTraceRowOps<F>>(
+    pub fn save_bin_offsets_to_file<F: PrimeField64, R: MemTraceRowOps<F>>(
         trace: &MemTrace<R>,
         segment_id: SegmentId,
         previous_segment: &MemPreviousSegment,
@@ -249,7 +257,7 @@ impl<F: PrimeField64> MemSM<F> {
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
     /// pre-sorted inputs instead of offset tables.
-    fn legacy_compute_witness(
+    fn legacy_compute_witness<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -259,7 +267,7 @@ impl<F: PrimeField64> MemSM<F> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.legacy_compute_witness_inner::<MemTraceRowPacked<F>>(
+            self.legacy_compute_witness_inner::<F, MemTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -267,7 +275,7 @@ impl<F: PrimeField64> MemSM<F> {
                 trace_buffer,
             )
         } else {
-            self.legacy_compute_witness_inner::<MemTraceRow<F>>(
+            self.legacy_compute_witness_inner::<F, MemTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -276,7 +284,7 @@ impl<F: PrimeField64> MemSM<F> {
             )
         }
     }
-    fn legacy_compute_witness_inner<R: MemTraceRowOps<F>>(
+    fn legacy_compute_witness_inner<F: PrimeField64, R: MemTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -517,7 +525,7 @@ impl<F: PrimeField64> MemSM<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets(
+    fn compute_witness_with_offsets<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -528,7 +536,7 @@ impl<F: PrimeField64> MemSM<F> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_with_offsets_inner::<MemTraceRowPacked<F>>(
+            self.compute_witness_with_offsets_inner::<F, MemTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -537,7 +545,7 @@ impl<F: PrimeField64> MemSM<F> {
                 seg,
             )
         } else {
-            self.compute_witness_with_offsets_inner::<MemTraceRow<F>>(
+            self.compute_witness_with_offsets_inner::<F, MemTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -572,7 +580,7 @@ impl<F: PrimeField64> MemSM<F> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: MemTraceRowOps<F>>(
+    fn compute_witness_with_offsets_inner<F: PrimeField64, R: MemTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -902,7 +910,7 @@ impl<F: PrimeField64> MemSM<F> {
     }
 }
 
-impl<F: PrimeField64> MemModule<F> for MemSM<F> {
+impl<F: PrimeField64, STD: StdProvider> MemModule<F> for MemSM<STD> {
     fn get_addr_range(&self) -> (u32, u32) {
         (RAM_W_ADDR_INIT, RAM_W_ADDR_END)
     }

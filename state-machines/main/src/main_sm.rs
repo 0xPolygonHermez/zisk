@@ -12,10 +12,9 @@ use std::sync::Arc;
 use crate::MainSmError;
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use rayon::prelude::*;
-use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
+use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId, StdProvider};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
@@ -24,15 +23,15 @@ use zisk_pil::{MainTrace, MainTraceRowOps};
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
-pub struct MainInstance<F: PrimeField64> {
+pub struct MainInstance<STD: StdProvider> {
     /// Instance Context
     pub ictx: InstanceCtx,
 
     /// Standard library for the main instance, used for range checks operations.
-    pub std: Arc<Std<F>>,
+    pub std: Arc<STD>,
 }
 
-impl<F: PrimeField64> MainInstance<F> {
+impl<STD: StdProvider> MainInstance<STD> {
     /// Maximum segment ID allowed, derived from `DEFAULT_MAX_STEPS` and `MainTrace::NUM_ROWS`.
     const MAX_SEGMENT_ID: usize =
         (((DEFAULT_MAX_STEPS + 1) / MainTrace::<()>::NUM_ROWS as u64) - 1) as usize;
@@ -44,7 +43,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// A new `MainInstance`.
-    pub fn new(ictx: InstanceCtx, std: Arc<Std<F>>) -> Self {
+    pub fn new(ictx: InstanceCtx, std: Arc<STD>) -> Self {
         Self { ictx, std }
     }
 
@@ -69,7 +68,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///   ([`MainSmError::EmptyFillTraceOutput`]).
     /// - `MemHelpers::mem_step_to_slot` returned a slot outside `0..=2`
     ///   ([`MainSmError::InvalidSlot`]).
-    pub fn compute_witness<R: MainTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: MainTraceRowOps<F>>(
         &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
@@ -141,7 +140,7 @@ impl<F: PrimeField64> MainInstance<F> {
                 let mut step_range_check = vec![0; max_range];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
-                let (pc, regs) = Self::fill_partial_trace::<R>(
+                let (pc, regs) = Self::fill_partial_trace(
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
@@ -164,7 +163,7 @@ impl<F: PrimeField64> MainInstance<F> {
         // are only a few values that exceed this limit, for this reason, are stored in a vector
 
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
-        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk::<R>(
+        let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk(
             NUM_ROWS,
             &fill_trace_outputs,
             &mut main_trace,
@@ -221,7 +220,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace<R: MainTraceRowOps<F>>(
+    fn fill_partial_trace<F: PrimeField64, R: MainTraceRowOps<F>>(
         zisk_rom: &ZiskRom,
         main_trace: &mut [R],
         min_trace: &EmuTrace,
@@ -261,7 +260,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// # Errors
     /// Returns [`MainSmError::InvalidSlot`] if `MemHelpers::mem_step_to_slot`
     /// produces a value outside `0..=2`.
-    fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F>>(
+    fn complete_trace_with_initial_reg_steps_per_chunk<F: PrimeField64, R: MainTraceRowOps<F>>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<R>,
@@ -325,7 +324,7 @@ impl<F: PrimeField64> MainInstance<F> {
         }
     }
     /// Updates the AIR values for the main instance's registers.
-    fn update_reg_airvalues(
+    fn update_reg_airvalues<F: PrimeField64>(
         air_values: &mut MainAirValues<'_, F>,
         final_step: u64,
         last_reg_values: &[u64],
@@ -440,13 +439,13 @@ impl MainSM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
     use std::any::Any;
+    use zisk_common::NoopStdProvider;
     use zisk_common::{CheckPoint, ChunkId, InstanceType};
 
-    // `mem_steps_for_segment` doesn't use `F`, but it's now an associated fn on
-    // `MainInstance<F>`, so the call site has to pick some concrete `F`.
-    type MI = MainInstance<Goldilocks>;
+    // `mem_steps_for_segment` doesn't use the std-provider type, but it's now an associated fn
+    // on `MainInstance<NoopStdProvider>`, so the call site has to pick some concrete provider.
+    type MI = MainInstance<NoopStdProvider>;
 
     fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any>>) -> Plan {
         Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)

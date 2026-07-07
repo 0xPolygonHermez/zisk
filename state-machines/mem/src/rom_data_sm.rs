@@ -3,13 +3,12 @@ use std::sync::Arc;
 use crate::{mem_sm::MemPreviousSegment, MemInput, MemModule};
 use fields::PrimeField64;
 use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, MEMORY_INIT_STEP, MEM_BYTES_BITS};
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use std::{
     fs::File,
     io::{BufWriter, Write},
 };
-use zisk_common::SegmentId;
+use zisk_common::{SegmentId, StdProvider};
 use zisk_core::{ROM_ADDR, ROM_ADDR_MAX};
 use zisk_pil::{
     RomDataAirValues, RomDataTrace, RomDataTraceRow, RomDataTraceRowOps, RomDataTraceRowPacked,
@@ -26,9 +25,9 @@ const _: () = {
     );
 };
 
-pub struct RomDataSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
+pub struct RomDataSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     range_24bits_id: usize,
 }
@@ -37,8 +36,8 @@ const OFFSET_USE_FLAG: u32 = 0x8000_0000;
 const OFFSET_VALUE_MASK: u32 = 0x7FFF_FFFF;
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64> RomDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<STD: StdProvider> RomDataSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let range_24bits_id =
             std.get_range_id(0, (1 << 24) - 1, None).expect("Failed to get 24 bits range ID");
         Arc::new(Self { range_24bits_id, std: std.clone() })
@@ -63,7 +62,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
     /// pre-sorted inputs instead of offset tables.
-    fn legacy_compute_witness(
+    fn legacy_compute_witness<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -73,7 +72,7 @@ impl<F: PrimeField64> RomDataSM<F> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.legacy_compute_witness_inner::<RomDataTraceRowPacked<F>>(
+            self.legacy_compute_witness_inner::<F, RomDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -81,7 +80,7 @@ impl<F: PrimeField64> RomDataSM<F> {
                 trace_buffer,
             )
         } else {
-            self.legacy_compute_witness_inner::<RomDataTraceRow<F>>(
+            self.legacy_compute_witness_inner::<F, RomDataTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -90,7 +89,7 @@ impl<F: PrimeField64> RomDataSM<F> {
             )
         }
     }
-    fn legacy_compute_witness_inner<R: RomDataTraceRowOps<F>>(
+    fn legacy_compute_witness_inner<F: PrimeField64, R: RomDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -176,7 +175,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets(
+    fn compute_witness_with_offsets<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -187,7 +186,7 @@ impl<F: PrimeField64> RomDataSM<F> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_with_offsets_inner::<RomDataTraceRowPacked<F>>(
+            self.compute_witness_with_offsets_inner::<F, RomDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -196,7 +195,7 @@ impl<F: PrimeField64> RomDataSM<F> {
                 seg,
             )
         } else {
-            self.compute_witness_with_offsets_inner::<RomDataTraceRow<F>>(
+            self.compute_witness_with_offsets_inner::<F, RomDataTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -230,7 +229,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: RomDataTraceRowOps<F>>(
+    fn compute_witness_with_offsets_inner<F: PrimeField64, R: RomDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -360,7 +359,10 @@ impl<F: PrimeField64> RomDataSM<F> {
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace).with_air_values(&mut air_values)))
     }
 
-    pub fn dump_trace_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
+    pub fn dump_trace_to_file<F: PrimeField64, R: RomDataTraceRowOps<F>>(
+        trace: &RomDataTrace<R>,
+        file_name: &str,
+    ) {
         println!("[RomDataDebug] dumping trace to {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -380,7 +382,10 @@ impl<F: PrimeField64> RomDataSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<R: RomDataTraceRowOps<F>>(trace: &RomDataTrace<R>, file_name: &str) {
+    pub fn save_to_file<F: PrimeField64, R: RomDataTraceRowOps<F>>(
+        trace: &RomDataTrace<R>,
+        file_name: &str,
+    ) {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
         let num_rows = RomDataTrace::<R>::NUM_ROWS;
@@ -402,7 +407,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_addr_offsets_to_file<R: RomDataTraceRowOps<F>>(
+    pub fn save_addr_offsets_to_file<F: PrimeField64, R: RomDataTraceRowOps<F>>(
         trace: &RomDataTrace<R>,
         file_name: &str,
     ) {
@@ -424,7 +429,7 @@ impl<F: PrimeField64> RomDataSM<F> {
     }
 }
 
-impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
+impl<F: PrimeField64, STD: StdProvider> MemModule<F> for RomDataSM<STD> {
     fn get_addr_range(&self) -> (u32, u32) {
         (ROM_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_END)
     }

@@ -8,9 +8,9 @@ use std::sync::Arc;
 use crate::{binary_constants::*, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
+use zisk_common::StdProvider;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{BinaryExtensionAirValues, BinaryExtensionTrace, BinaryExtensionTraceRowOps};
 
@@ -31,10 +31,10 @@ const LS_6_BITS: u64 = 0x3F;
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
 ///
 /// It processes binary extension-related operations and generates necessary traces and multiplicity
-/// tables for the operations. It also manages range checks through the PIL2 standard library.
-pub struct BinaryExtensionSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+/// tables for the operations. It also manages range checks and virtual-table lookups through the shared `Std`.
+pub struct BinaryExtensionSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     /// The range check ID
     range_id: usize,
@@ -43,15 +43,15 @@ pub struct BinaryExtensionSM<F: PrimeField64> {
     table_id: usize,
 }
 
-impl<F: PrimeField64> BinaryExtensionSM<F> {
+impl<STD: StdProvider> BinaryExtensionSM<STD> {
     /// Creates a new instance of the `BinaryExtensionSM`.
     ///
     /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `BinaryExtensionSM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the range check ID
         let range_id = std.get_range_id(0, 0xFFFFFF, None).expect("Failed to get range ID");
 
@@ -104,7 +104,10 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// A `BinaryExtensionTraceRow` representing the processed trace.
-    pub fn process_slice<R: BinaryExtensionTraceRowOps<F>>(&self, input: &BinaryInput) -> R {
+    pub fn process_slice<F: PrimeField64, R: BinaryExtensionTraceRowOps<F>>(
+        &self,
+        input: &BinaryInput,
+    ) -> R {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
 
@@ -305,7 +308,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` representing the computed witness.
-    pub fn compute_witness<R: BinaryExtensionTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: BinaryExtensionTraceRowOps<F>>(
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
@@ -337,7 +340,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         // Process each slice in parallel, and use the corresponding inner input from `inputs`.
         slices.into_par_iter().enumerate().for_each(|(i, slice)| {
             slice.iter_mut().enumerate().for_each(|(j, trace_row)| {
-                *trace_row = self.process_slice::<R>(&inputs[i][j]);
+                *trace_row = self.process_slice::<F, R>(&inputs[i][j]);
             });
         });
 

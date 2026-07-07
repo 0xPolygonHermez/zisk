@@ -4,18 +4,16 @@
 
 use crate::{BinaryExtensionFrops, BinaryInput};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, StdProvider, A, B, OP,
     OPERATION_BUS_ID,
 };
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
 use std::sync::Arc;
 
 use zisk_core::ZiskOperationType;
 
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
-pub struct BinaryExtensionCollector<F: PrimeField64> {
+pub struct BinaryExtensionCollector<STD: StdProvider> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
@@ -28,16 +26,16 @@ pub struct BinaryExtensionCollector<F: PrimeField64> {
     /// The table ID for the Binary Extension FROPS
     frops_table_id: usize,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64> BinaryExtensionCollector<F> {
+impl<STD: StdProvider> BinaryExtensionCollector<STD> {
     pub fn new(
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
-        std: Arc<Std<F>>,
+        std: Arc<STD>,
     ) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
@@ -102,7 +100,7 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
     }
 }
 
-impl<F: PrimeField64> BusDevice<u64> for BinaryExtensionCollector<F> {
+impl<STD: StdProvider> BusDevice<u64> for BinaryExtensionCollector<STD> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

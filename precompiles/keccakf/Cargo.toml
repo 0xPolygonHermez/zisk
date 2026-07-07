@@ -22,7 +22,6 @@ proofman-util = { workspace = true }
 precompiles-common = { workspace = true }
 precompiles-helpers = { workspace = true }
 
-pil-std-lib = { workspace = true }
 
 circuit = { workspace = true }
 

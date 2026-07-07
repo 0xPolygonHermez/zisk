@@ -1858,7 +1858,6 @@ dependencies = [
  "mem-common",
  "named-sem",
  "paste",
- "pil-std-lib",
  "precomp-arith-eq",
  "precomp-arith-eq-384",
  "precomp-big-int",
@@ -1869,7 +1868,6 @@ dependencies = [
  "precomp-sha256f",
  "precompiles-common",
  "precompiles-hints",
- "proofman",
  "proofman-common",
  "proofman-util",
  "rayon",
@@ -3439,7 +3437,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "path-clean",
- "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3465,7 +3462,6 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "path-clean",
- "pil-std-lib",
  "precomp-arith-eq",
  "precompiles-common",
  "precompiles-helpers",
@@ -3485,7 +3481,6 @@ version = "1.0.0-beta"
 dependencies = [
  "fields",
  "lib-c",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -3501,7 +3496,6 @@ name = "precomp-blake2"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -3517,7 +3511,6 @@ name = "precomp-dma"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3536,7 +3529,6 @@ dependencies = [
  "circuit",
  "fields",
  "path-clean",
- "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
  "proofman-common",
@@ -3554,7 +3546,6 @@ name = "precomp-poseidon"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -3570,7 +3561,6 @@ name = "precomp-sha256f"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "precompiles-common",
  "proofman-common",
  "proofman-util",
@@ -4780,7 +4770,6 @@ name = "sm-arith"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "proofman-common",
  "rayon",
  "sm-binary",
@@ -4796,7 +4785,6 @@ name = "sm-binary"
 version = "1.0.0-beta"
 dependencies = [
  "fields",
- "pil-std-lib",
  "proofman-common",
  "rayon",
  "sm-frequent-ops",
@@ -4824,7 +4812,6 @@ version = "1.0.0-beta"
 dependencies = [
  "fields",
  "mem-common",
- "pil-std-lib",
  "proofman-common",
  "rayon",
  "thiserror 2.0.18",
@@ -4842,7 +4829,6 @@ dependencies = [
  "env",
  "fields",
  "mem-common",
- "pil-std-lib",
  "proofman-common",
  "proofman-util",
  "rayon",
@@ -6503,6 +6489,7 @@ dependencies = [
  "dirs",
  "fields",
  "paste",
+ "pil-std-lib",
  "proofman",
  "proofman-common",
  "proofman-verifier",
@@ -6601,6 +6588,7 @@ dependencies = [
  "colored",
  "executor",
  "fields",
+ "pil-std-lib",
  "precompiles-hints",
  "proofman",
  "proofman-common",

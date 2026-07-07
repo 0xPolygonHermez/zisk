@@ -1,6 +1,5 @@
-use fields::PrimeField64;
 use precompiles_common::{MemProcessor, PrecompileMemInputs};
-use zisk_common::OP;
+use zisk_common::{StdProvider, OP};
 use zisk_core::zisk_ops::ZiskOp;
 
 use crate::mem_inputs::{
@@ -29,7 +28,7 @@ const BN254_COMPLEX_MUL_OP: u8 = ZiskOp::Bn254ComplexMul.code();
 const SECP256R1_ADD_OP: u8 = ZiskOp::Secp256r1Add.code();
 const SECP256R1_DBL_OP: u8 = ZiskOp::Secp256r1Dbl.code();
 
-impl<F: PrimeField64> PrecompileMemInputs for ArithEqSM<F> {
+impl<STD: StdProvider> PrecompileMemInputs for ArithEqSM<STD> {
     fn generate<P: MemProcessor>(
         addr_main: u32,
         step_main: u64,

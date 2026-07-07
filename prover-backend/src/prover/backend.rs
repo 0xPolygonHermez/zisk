@@ -8,13 +8,14 @@ use asm_runner::HintsShmem;
 use colored::Colorize;
 use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 use fields::Goldilocks;
+use pil_std_lib::Std;
 use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
     SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
-use proofman_common::{ProofCtx, ProofOptions, RowInfo};
+use proofman_common::{ProofCtx, ProofOptions, ProofmanOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -31,20 +32,29 @@ use zisk_common::{
 pub(crate) struct ProverBackend {
     proofman: ProofMan<Goldilocks>,
     snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
-    executor: Arc<ZiskExecutor<Goldilocks>>,
+    executor: Arc<ZiskExecutor<Goldilocks, Std<Goldilocks>>>,
     proving_key_path: PathBuf,
     proving_key_snark_path: Option<PathBuf>,
 }
 
 impl ProverBackend {
+    /// Assembles the proving backend, building its executor internally.
     pub fn new(
         proofman: ProofMan<Goldilocks>,
         snark_wrapper: Option<SnarkWrapper<Goldilocks>>,
-        executor: Arc<ZiskExecutor<Goldilocks>>,
+        shared_tables: bool,
+        with_asm_emulator: bool,
+        options: &ProofmanOptions,
         proving_key_path: PathBuf,
         proving_key_snark_path: Option<PathBuf>,
-    ) -> Self {
-        Self { proofman, snark_wrapper, executor, proving_key_path, proving_key_snark_path }
+    ) -> Result<Self> {
+        let wcm = proofman.get_wcm();
+        let std = Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
+        proofman::register_std(&wcm, &std);
+        let executor =
+            ZiskExecutor::new(&wcm, std, options.verbose_mode, with_asm_emulator, options.packed)?;
+
+        Ok(Self { proofman, snark_wrapper, executor, proving_key_path, proving_key_snark_path })
     }
 
     fn asm_emulator(&self) -> Option<&EmulatorAsm> {

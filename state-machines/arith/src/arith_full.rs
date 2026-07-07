@@ -11,10 +11,10 @@ use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
 };
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
 use sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
+use zisk_common::StdProvider;
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 use zisk_pil::{ArithTrace, ArithTraceRowOps};
@@ -26,9 +26,9 @@ const EXTENSION: u64 = 0xFFFFFFFF;
 ///
 /// This state machine coordinates the computation of arithmetic operations and updates
 /// the `ArithTableSM` and `ArithRangeTableSM` components based on operation traces.
-pub struct ArithFullSM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+pub struct ArithFullSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     /// The table ID for the Table State Machine
     table_id: usize,
@@ -37,15 +37,15 @@ pub struct ArithFullSM<F: PrimeField64> {
     range_table_id: usize,
 }
 
-impl<F: PrimeField64> ArithFullSM<F> {
+impl<STD: StdProvider> ArithFullSM<STD> {
     /// Creates a new `ArithFullSM` instance.
     ///
     /// # Arguments
-    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
+    /// * `std` - standard library handle exposing the range-check and virtual-table accumulators.
     ///
     /// # Returns
     /// An `Arc`-wrapped instance of `ArithFullSM`.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Get the Arithmetic table ID
         let table_id =
             std.get_virtual_table_id(ArithTableSM::TABLE_ID).expect("Failed to get table ID");
@@ -65,7 +65,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed arithmetic trace.
-    pub fn compute_witness<R: ArithTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: ArithTraceRowOps<F>>(
         &self,
         inputs: &[Vec<OperationData<u64>>],
         trace_buffer: Vec<F>,
@@ -103,7 +103,7 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
                     trace_slice.iter_mut().zip(input_slice.iter()).for_each(
                         |(trace_row, input)| {
-                            *trace_row = Self::process_slice::<R>(
+                            *trace_row = Self::process_slice::<F, R>(
                                 &mut range_table,
                                 &mut table,
                                 &mut aop,
@@ -164,59 +164,61 @@ impl<F: PrimeField64> ArithFullSM<F> {
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut arith_trace)))
     }
+}
 
-    /// Generates binary inputs for operations requiring additional validation (e.g., division).
-    #[inline(always)]
-    pub fn generate_inputs(
-        input: &OperationData<u64>,
-        pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
-    ) {
-        let mut aop = ArithOperation::new();
+/// Generates binary inputs for operations requiring additional validation (e.g. division).
+#[inline(always)]
+pub(crate) fn generate_inputs(
+    input: &OperationData<u64>,
+    pending: &mut VecDeque<(BusId, Vec<u64>, Vec<u64>)>,
+) {
+    let mut aop = ArithOperation::new();
 
-        let input_data = ExtOperationData::OperationData(*input);
+    let input_data = ExtOperationData::OperationData(*input);
 
-        let opcode = OperationBusData::get_op(&input_data);
-        let a = OperationBusData::get_a(&input_data);
-        let b = OperationBusData::get_b(&input_data);
+    let opcode = OperationBusData::get_op(&input_data);
+    let a = OperationBusData::get_a(&input_data);
+    let b = OperationBusData::get_b(&input_data);
 
-        aop.calculate(opcode, a, b);
+    aop.calculate(opcode, a, b);
 
-        // If the operation is a division, then use the binary component
-        // to check that the remainer is lower than the divisor
-        if aop.div && !aop.div_by_zero {
-            let opcode = match (aop.nr, aop.nb) {
-                (false, false) => LTU_OP,
-                (false, true) => LT_ABS_PN_OP,
-                (true, false) => LT_ABS_NP_OP,
-                (true, true) => GT_OP,
-            };
+    // If the operation is a division, then use the binary component
+    // to check that the remainder is lower than the divisor
+    if aop.div && !aop.div_by_zero {
+        let opcode = match (aop.nr, aop.nb) {
+            (false, false) => LTU_OP,
+            (false, true) => LT_ABS_PN_OP,
+            (true, false) => LT_ABS_NP_OP,
+            (true, true) => GT_OP,
+        };
 
-            let extension = match (aop.m32, aop.nr, aop.nb) {
-                (false, _, _) => (0, 0),
-                (true, false, false) => (0, 0),
-                (true, false, true) => (0, EXTENSION),
-                (true, true, false) => (EXTENSION, 0),
-                (true, true, true) => (EXTENSION, EXTENSION),
-            };
+        let extension = match (aop.m32, aop.nr, aop.nb) {
+            (false, _, _) => (0, 0),
+            (true, false, false) => (0, 0),
+            (true, false, true) => (0, EXTENSION),
+            (true, true, false) => (EXTENSION, 0),
+            (true, true, true) => (EXTENSION, EXTENSION),
+        };
 
-            // TODO: We dont need to "glue" the d,b chunks back, we can use the aop API to do this!
-            OperationBusData::from_values(
-                opcode,
-                ZiskOperationType::Binary as u64,
-                aop.d[0] as u64
-                    + CHUNK_SIZE * aop.d[1] as u64
-                    + CHUNK_SIZE.pow(2) * (aop.d[2] as u64 + extension.0)
-                    + CHUNK_SIZE.pow(3) * aop.d[3] as u64,
-                aop.b[0] as u64
-                    + CHUNK_SIZE * aop.b[1] as u64
-                    + CHUNK_SIZE.pow(2) * (aop.b[2] as u64 + extension.1)
-                    + CHUNK_SIZE.pow(3) * aop.b[3] as u64,
-                pending,
-            );
-        }
+        // TODO: We don't need to "glue" the d,b chunks back, we can use the aop API to do this!
+        OperationBusData::from_values(
+            opcode,
+            ZiskOperationType::Binary as u64,
+            aop.d[0] as u64
+                + CHUNK_SIZE * aop.d[1] as u64
+                + CHUNK_SIZE.pow(2) * (aop.d[2] as u64 + extension.0)
+                + CHUNK_SIZE.pow(3) * aop.d[3] as u64,
+            aop.b[0] as u64
+                + CHUNK_SIZE * aop.b[1] as u64
+                + CHUNK_SIZE.pow(2) * (aop.b[2] as u64 + extension.1)
+                + CHUNK_SIZE.pow(3) * aop.b[3] as u64,
+            pending,
+        );
     }
+}
 
-    fn process_slice<R: ArithTraceRowOps<F>>(
+impl<STD: StdProvider> ArithFullSM<STD> {
+    fn process_slice<F: PrimeField64, R: ArithTraceRowOps<F>>(
         range_table_inputs: &mut ArithRangeTableInputs,
         table_inputs: &mut ArithTableInputs,
         aop: &mut ArithOperation,

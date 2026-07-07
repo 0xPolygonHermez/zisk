@@ -3,6 +3,7 @@
 use crate::error::{ExecutorError, ExecutorResult};
 
 use fields::PrimeField64;
+
 use precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
     DmaPrePostCollector, DmaPrePostInstance, DmaUnalignedCollector, DmaUnalignedInstance,
@@ -18,7 +19,7 @@ use sm_mem::{
 };
 use sm_rom::{RomCollector, RomInstance};
 use zisk_common::BusDeviceMode;
-use zisk_common::{ChunkId, Instance};
+use zisk_common::{ChunkId, Instance, StdProvider};
 use zisk_pil::{
     ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
     DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS,
@@ -30,7 +31,7 @@ use zisk_pil::{
 };
 
 /// Collector for the built-in SMs.
-pub struct BuiltinCollectors<F: PrimeField64> {
+pub struct BuiltinCollectors<STD: StdProvider> {
     /// ROM operation collectors.
     pub rom: Vec<(usize, RomCollector)>,
 
@@ -40,14 +41,14 @@ pub struct BuiltinCollectors<F: PrimeField64> {
     pub mem_align: Vec<(usize, MemAlignCollector)>,
 
     /// Binary basic operation collectors.
-    pub binary_basic: Vec<(usize, BinaryBasicCollector<F>)>,
+    pub binary_basic: Vec<(usize, BinaryBasicCollector<STD>)>,
     /// Binary add operation collectors.
-    pub binary_add: Vec<(usize, BinaryAddCollector<F>)>,
+    pub binary_add: Vec<(usize, BinaryAddCollector<STD>)>,
     /// Binary extension operation collectors.
-    pub binary_extension: Vec<(usize, BinaryExtensionCollector<F>)>,
+    pub binary_extension: Vec<(usize, BinaryExtensionCollector<STD>)>,
 
     /// Arithmetic operation collectors.
-    pub arith: Vec<(usize, ArithInstanceCollector<F>)>,
+    pub arith: Vec<(usize, ArithInstanceCollector<STD>)>,
     /// Arithmetic input generator.
     pub arith_inputs_generator: ArithCounterInputGen,
 
@@ -63,7 +64,7 @@ pub struct BuiltinCollectors<F: PrimeField64> {
     pub dma_inputs_generator: DmaCounterInputGen,
 }
 
-impl<F: PrimeField64> BuiltinCollectors<F> {
+impl<STD: StdProvider> BuiltinCollectors<STD> {
     /// Builds the input generators. Collector vecs start empty.
     pub(crate) fn new() -> Self {
         Self {
@@ -89,7 +90,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     /// `Ok(true)` if `air_id` matched a built-in SM and the corresponding collector was pushed
     /// `Ok(false)` if `air_id` did not match any built-in SM
     /// `Err` if `air_id` matched a built-in SM but the downcast failed
-    pub(crate) fn try_push_collector(
+    pub(crate) fn try_push_collector<F: PrimeField64>(
         &mut self,
         air_id: usize,
         secn_instance: &dyn Instance<F>,
@@ -116,7 +117,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     }
 
     #[inline]
-    fn try_push_rom(
+    fn try_push_rom<F: PrimeField64>(
         &mut self,
         air_id: usize,
         secn: &dyn Instance<F>,
@@ -134,7 +135,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     }
 
     #[inline]
-    fn try_push_mem(
+    fn try_push_mem<F: PrimeField64>(
         &mut self,
         air_id: usize,
         secn: &dyn Instance<F>,
@@ -154,12 +155,12 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             }
             id if id == MEM_ALIGN_AIR_IDS[0] => {
                 let inst =
-                    downcast::<F, MemAlignInstance<F>>(secn, air_id, gid, "MemAlignInstance")?;
+                    downcast::<F, MemAlignInstance<STD>>(secn, air_id, gid, "MemAlignInstance")?;
                 self.mem_align.push((gid, inst.build_mem_align_collector(chunk)));
                 Ok(true)
             }
             id if id == MEM_ALIGN_BYTE_AIR_IDS[0] => {
-                let inst = downcast::<F, MemAlignByteInstance<F>>(
+                let inst = downcast::<F, MemAlignByteInstance<STD>>(
                     secn,
                     air_id,
                     gid,
@@ -169,7 +170,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 Ok(true)
             }
             id if id == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => {
-                let inst = downcast::<F, MemAlignReadByteInstance<F>>(
+                let inst = downcast::<F, MemAlignReadByteInstance<STD>>(
                     secn,
                     air_id,
                     gid,
@@ -179,7 +180,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 Ok(true)
             }
             id if id == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => {
-                let inst = downcast::<F, MemAlignWriteByteInstance<F>>(
+                let inst = downcast::<F, MemAlignWriteByteInstance<STD>>(
                     secn,
                     air_id,
                     gid,
@@ -193,7 +194,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     }
 
     #[inline]
-    fn try_push_binary(
+    fn try_push_binary<F: PrimeField64>(
         &mut self,
         air_id: usize,
         secn: &dyn Instance<F>,
@@ -202,7 +203,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     ) -> ExecutorResult<bool> {
         match air_id {
             id if id == BINARY_AIR_IDS[0] => {
-                let inst = downcast::<F, BinaryBasicInstance<F>>(
+                let inst = downcast::<F, BinaryBasicInstance<STD>>(
                     secn,
                     air_id,
                     gid,
@@ -213,12 +214,12 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             }
             id if id == BINARY_ADD_AIR_IDS[0] => {
                 let inst =
-                    downcast::<F, BinaryAddInstance<F>>(secn, air_id, gid, "BinaryAddInstance")?;
+                    downcast::<F, BinaryAddInstance<STD>>(secn, air_id, gid, "BinaryAddInstance")?;
                 self.binary_add.push((gid, inst.build_binary_add_collector(chunk)));
                 Ok(true)
             }
             id if id == BINARY_EXTENSION_AIR_IDS[0] => {
-                let inst = downcast::<F, BinaryExtensionInstance<F>>(
+                let inst = downcast::<F, BinaryExtensionInstance<STD>>(
                     secn,
                     air_id,
                     gid,
@@ -232,7 +233,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     }
 
     #[inline]
-    fn try_push_arith(
+    fn try_push_arith<F: PrimeField64>(
         &mut self,
         air_id: usize,
         secn: &dyn Instance<F>,
@@ -242,13 +243,13 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         if air_id != ARITH_AIR_IDS[0] {
             return Ok(false);
         }
-        let inst = downcast::<F, ArithFullInstance<F>>(secn, air_id, gid, "ArithFullInstance")?;
+        let inst = downcast::<F, ArithFullInstance<STD>>(secn, air_id, gid, "ArithFullInstance")?;
         self.arith.push((gid, inst.build_arith_collector(chunk)));
         Ok(true)
     }
 
     #[inline]
-    fn try_push_dma(
+    fn try_push_dma<F: PrimeField64>(
         &mut self,
         air_id: usize,
         secn: &dyn Instance<F>,
@@ -289,7 +290,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 Ok(true)
             }
             id if id == DMA_UNALIGNED_AIR_IDS[0] => {
-                let inst = downcast::<F, DmaUnalignedInstance<F>>(
+                let inst = downcast::<F, DmaUnalignedInstance<STD>>(
                     secn,
                     air_id,
                     gid,

@@ -7,7 +7,7 @@ use crate::{
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
+use executor::{AsmResources, AsmSharedResources, GpuBufferSource};
 use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
@@ -730,21 +730,15 @@ impl AsmCoreProver {
             )?);
         }
 
-        let executor = ZiskExecutor::new(
-            &proofman.get_wcm(),
-            options.verbose_mode,
-            shared_tables,
-            true,
-            options.packed,
-        )?;
-
         let core = ProverBackend::new(
             proofman,
             snark_wrapper,
-            executor,
+            shared_tables,
+            true,
+            &options,
             proving_key,
             Some(proving_key_snark),
-        );
+        )?;
 
         Ok(Self {
             backend: core,

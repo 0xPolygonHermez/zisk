@@ -4,11 +4,10 @@ use std::sync::Arc;
 use fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_common::OperationBlake2Data;
-use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
+use zisk_common::{OperationBlake2Data, StdProvider};
+use zisk_pil::{Blake2brTrace, Blake2brTraceRowOps};
 
 use super::blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA};
 
@@ -39,9 +38,9 @@ impl Blake2Input {
 }
 
 /// The `Blake2SM` struct encapsulates the logic of the Blake2 State Machine.
-pub struct Blake2SM<F: PrimeField64> {
-    /// Reference to the PIL2 standard library.
-    pub std: Arc<Std<F>>,
+pub struct Blake2SM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    pub std: Arc<STD>,
 
     /// Number of available blake2s in the trace.
     pub num_available_blake2s: usize,
@@ -51,16 +50,16 @@ pub struct Blake2SM<F: PrimeField64> {
     range_id: usize,
 }
 
-impl<F: PrimeField64> Blake2SM<F> {
+impl<STD: StdProvider> Blake2SM<STD> {
     /// Creates a new Blake2 State Machine instance.
     ///
     /// # Returns
     /// A new `Blake2SM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS % CLOCKS;
-        let num_available_blake2s = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS / CLOCKS
-            - (num_non_usable_rows != 0) as usize;
+        let num_non_usable_rows = Blake2brTrace::<()>::NUM_ROWS % CLOCKS;
+        let num_available_blake2s =
+            Blake2brTrace::<()>::NUM_ROWS / CLOCKS - (num_non_usable_rows != 0) as usize;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
@@ -75,7 +74,7 @@ impl<F: PrimeField64> Blake2SM<F> {
     /// * `input` - The operation data to process.
     /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
     #[inline(always)]
-    pub fn process_input<R: Blake2brTraceRowOps<F>>(
+    pub fn process_input<F: PrimeField64, R: Blake2brTraceRowOps<F>>(
         &self,
         input: &Blake2Input,
         trace: &mut [R],
@@ -290,7 +289,7 @@ impl<F: PrimeField64> Blake2SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Blake2brTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: Blake2brTraceRowOps<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<Blake2Input>],
@@ -344,7 +343,7 @@ impl<F: PrimeField64> Blake2SM<F> {
             .map(|(index, trace)| {
                 let input_index = inputs_indexes[index];
                 let input = &inputs[input_index.0][input_index.1];
-                self.process_input::<R>(input, trace)
+                self.process_input::<F, R>(input, trace)
             })
             .collect();
 

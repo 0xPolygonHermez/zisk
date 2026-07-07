@@ -1,8 +1,8 @@
 //! Precompile registry — the declarative source of truth for every
 //! precompile available to the executor.
 //!
-//! The `register_precompiles!` macro emits `Precompiles<F>` (with its
-//! `all` constructor), `PrecompileCounters<F>`, `PrecompileCollectors<F>`,
+//! The `register_precompiles!` macro emits `Precompiles<STD>` (with its
+//! `all` constructor), `PrecompileCounters`, `PrecompileCollectors<STD>`,
 //! plus the `PRECOMPILE_AIR_IDS` / `PRECOMPILE_RANK_ASSIGN` const slices
 //! from the one-liner-per-precompile list below. Per-precompile types
 //! (`*Manager`, `*CounterInputGen`, `*Instance`, `*Collector`) are
@@ -38,35 +38,35 @@ crate::register_precompiles! {
         op: KECCAK_OP_TYPE_ID,
         air: KECCAKF_AIR_IDS,
         rank_assign: true,
-    ] => KeccakfManager<F>,
+    ] => KeccakfManager,
     Sha256f [
         op: SHA256_OP_TYPE_ID,
         air: SHA_256_F_AIR_IDS,
         rank_assign: false,
-    ] => Sha256fManager<F>,
+    ] => Sha256fManager,
     Poseidon [
         op: POSEIDON_OP_TYPE_ID,
         air: POSEIDON_AIR_IDS,
         rank_assign: false,
-    ] => PoseidonManager<F>,
+    ] => PoseidonManager,
     Blake2 [
         op: BLAKE2_OP_TYPE_ID,
         air: BLAKE_2_BR_AIR_IDS,
         rank_assign: false,
-    ] => Blake2Manager<F>,
+    ] => Blake2Manager,
     ArithEq [
         op: ARITH_EQ_OP_TYPE_ID,
         air: ARITH_EQ_AIR_IDS,
         rank_assign: false,
-    ] => ArithEqManager<F>,
+    ] => ArithEqManager,
     ArithEq384 [
         op: ARITH_EQ_384_OP_TYPE_ID,
         air: ARITH_EQ_384_AIR_IDS,
         rank_assign: false,
-    ] => ArithEq384Manager<F>,
+    ] => ArithEq384Manager,
     Add256 [
         op: BIG_INT_OP_TYPE_ID,
         air: ADD_256_AIR_IDS,
         rank_assign: false,
-    ] => Add256Manager<F>,
+    ] => Add256Manager,
 }

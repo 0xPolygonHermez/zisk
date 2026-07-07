@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
@@ -9,7 +8,7 @@ use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use precompiles_helpers::{
     keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
 };
-use zisk_common::OperationKeccakData;
+use zisk_common::{OperationKeccakData, StdProvider};
 use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
 
 use super::{keccakf_constants::*, KeccakfTableSM};
@@ -35,18 +34,18 @@ impl KeccakfInput {
 }
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
-pub struct KeccakfSM<F: PrimeField64> {
+pub struct KeccakfSM<STD: StdProvider> {
     /// Number of available keccakfs in the trace.
     pub num_available_keccakfs: usize,
 
-    /// Reference to the PIL2 standard library.
-    std: Arc<Std<F>>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     /// The table ID for the Keccakf Table State Machine
     table_id: usize,
 }
 
-impl<F: PrimeField64> KeccakfSM<F> {
+impl<STD: StdProvider> KeccakfSM<STD> {
     /// Creates a new Keccakf State Machine instance.
     ///
     /// # Arguments
@@ -54,7 +53,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         // Compute some useful values
         let num_non_usable_rows = KeccakfTrace::<()>::NUM_ROWS % CLOCKS;
         let num_available_keccakfs = if num_non_usable_rows == 0 {
@@ -79,7 +78,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// * `input` - The operation data to process.
     #[inline(always)]
     #[allow(clippy::needless_range_loop)]
-    fn process_trace<R: KeccakfTraceRowOps<F>>(
+    fn process_trace<F: PrimeField64, R: KeccakfTraceRowOps<F>>(
         &self,
         trace: &mut [R],
         input: &[u64; 25],
@@ -157,7 +156,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: KeccakfTraceRowOps<F>>(
+    pub fn compute_witness<F: PrimeField64, R: KeccakfTraceRowOps<F>>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<KeccakfInput>],
@@ -205,7 +204,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         par_traces.par_iter_mut().enumerate().for_each(|(index, trace)| {
             let input_index = inputs_indexes[index];
             let input = &inputs[input_index.0][input_index.1];
-            self.process_trace::<R>(trace, &input.state, input.addr_main, input.step_main);
+            self.process_trace::<F, R>(trace, &input.state, input.addr_main, input.step_main);
         });
 
         // 2] Update lookup table

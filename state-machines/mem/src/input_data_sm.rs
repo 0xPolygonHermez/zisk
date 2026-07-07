@@ -15,9 +15,8 @@ use mem_common::{
 };
 
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
-use zisk_common::SegmentId;
+use zisk_common::{SegmentId, StdProvider};
 use zisk_core::{INPUT_ADDR, MAX_INPUT_SIZE};
 use zisk_pil::{
     InputDataAirValues, InputDataTrace, InputDataTraceRow, InputDataTraceRowOps,
@@ -43,9 +42,9 @@ const _: () = {
     );
 };
 
-pub struct InputDataSM<F: PrimeField64> {
-    /// PIL2 standard library
-    std: Arc<Std<F>>,
+pub struct InputDataSM<STD: StdProvider> {
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 
     /// Range check ID
     range_id: usize,
@@ -55,8 +54,8 @@ pub struct InputDataSM<F: PrimeField64> {
 }
 
 #[allow(unused, unused_variables)]
-impl<F: PrimeField64> InputDataSM<F> {
-    pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
+impl<STD: StdProvider> InputDataSM<STD> {
+    pub fn new(std: Arc<STD>) -> Arc<Self> {
         let range_id = std
             .get_range_id(0, SEGMENT_ADDR_MAX_RANGE as i64, None)
             .expect("Failed to get range ID");
@@ -76,7 +75,10 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_to_file<R: InputDataTraceRowOps<F>>(trace: &InputDataTrace<R>, file_name: &str) {
+    pub fn save_to_file<F: PrimeField64, R: InputDataTraceRowOps<F>>(
+        trace: &InputDataTrace<R>,
+        file_name: &str,
+    ) {
         println!("[MemDebug] writing information {} .....", file_name);
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
@@ -104,7 +106,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
 
     #[cfg(feature = "debug_mem")]
-    pub fn save_addr_offsets_to_file<R: InputDataTraceRowOps<F>>(
+    pub fn save_addr_offsets_to_file<F: PrimeField64, R: InputDataTraceRowOps<F>>(
         trace: &InputDataTrace<R>,
         file_name: &str,
     ) {
@@ -134,7 +136,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
     /// pre-sorted inputs instead of offset tables.
-    fn legacy_compute_witness(
+    fn legacy_compute_witness<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -144,7 +146,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.legacy_compute_witness_inner::<InputDataTraceRowPacked<F>>(
+            self.legacy_compute_witness_inner::<F, InputDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -152,7 +154,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                 trace_buffer,
             )
         } else {
-            self.legacy_compute_witness_inner::<InputDataTraceRow<F>>(
+            self.legacy_compute_witness_inner::<F, InputDataTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -161,7 +163,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             )
         }
     }
-    fn legacy_compute_witness_inner<R: InputDataTraceRowOps<F>>(
+    fn legacy_compute_witness_inner<F: PrimeField64, R: InputDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -346,7 +348,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets(
+    fn compute_witness_with_offsets<F: PrimeField64>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -357,7 +359,7 @@ impl<F: PrimeField64> InputDataSM<F> {
         seg: &MemModuleSegmentCheckPoint,
     ) -> ProofmanResult<AirInstance<F>> {
         if packed {
-            self.compute_witness_with_offsets_inner::<InputDataTraceRowPacked<F>>(
+            self.compute_witness_with_offsets_inner::<F, InputDataTraceRowPacked<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -366,7 +368,7 @@ impl<F: PrimeField64> InputDataSM<F> {
                 seg,
             )
         } else {
-            self.compute_witness_with_offsets_inner::<InputDataTraceRow<F>>(
+            self.compute_witness_with_offsets_inner::<F, InputDataTraceRow<F>>(
                 mem_ops,
                 segment_id,
                 is_last_segment,
@@ -400,7 +402,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     ///   `offsets[i] == offsets[i + 1]` (no increment between consecutive
     ///   slots).
     #[allow(clippy::too_many_arguments)]
-    fn compute_witness_with_offsets_inner<R: InputDataTraceRowOps<F>>(
+    fn compute_witness_with_offsets_inner<F: PrimeField64, R: InputDataTraceRowOps<F>>(
         &self,
         mem_ops: &[MemInput],
         segment_id: SegmentId,
@@ -580,7 +582,7 @@ impl<F: PrimeField64> InputDataSM<F> {
     }
 }
 
-impl<F: PrimeField64> MemModule<F> for InputDataSM<F> {
+impl<F: PrimeField64, STD: StdProvider> MemModule<F> for InputDataSM<STD> {
     fn get_addr_range(&self) -> (u32, u32) {
         (INPUT_DATA_W_ADDR_INIT, INPUT_DATA_W_ADDR_END)
     }

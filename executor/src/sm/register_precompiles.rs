@@ -7,7 +7,7 @@
 //!         op: KECCAK_OP_TYPE_ID,
 //!         air: KECCAKF_AIR_IDS,
 //!         rank_assign: true,
-//!     ] => KeccakfManager<F>,
+//!     ] => KeccakfManager,
 //!     // ... add yours here
 //! }
 //! ```
@@ -17,9 +17,11 @@
 //! * `air`    — `*_AIR_IDS` slice from `zisk_pil`. Drives planner/collector dispatch.
 //! * `rank_assign` — `true` if instances need `pctx.add_instance_assign` (rank-owned)
 //!   rather than the default `pctx.add_instance` (distributed). Today only `Keccakf` uses `true`.
+//! * `=> Manager` — the bare manager type name (e.g. `KeccakfManager`); the macro
+//!   appends `<STD>` itself, so the range-checker stays a free type parameter.
 //!
-//! Per-precompile types derived via `paste!`: `${Name}Manager<F>`,
-//! `${Name}CounterInputGen<F>`, `${Name}Instance<F>`, `${Name}Collector`.
+//! Per-precompile types derived via `paste!`: `${Name}Manager<STD>`,
+//! `${Name}CounterInputGen<STD>`, `${Name}Instance<STD>`, `${Name}Collector`.
 //!
 //! The `op:` constants must be in scope at the invocation site —
 //! typically `KECCAK_OP_TYPE_ID` etc. from `zisk_core`. Built-in SMs
@@ -28,10 +30,10 @@
 /// Declarative registry for precompiles.
 ///
 /// Emits from one declaration per precompile:
-/// * `enum Precompiles<F>` + `planner_for_air_id` / `configure_instances` /
+/// * `enum Precompiles<STD>` + `planner_for_air_id` / `configure_instances` /
 ///   `build_instance` dispatch.
-/// * `PrecompileCounters<F>` + `build(is_asm)` (static) + `dispatch_op` + `into_device_entries`.
-/// * `PrecompileCollectors<F>` + `new()` (static) + `try_push_collector` + `dispatch_op` +
+/// * `PrecompileCounters` + `build(is_asm)` (static) + `dispatch_op` + `into_device_entries`.
+/// * `PrecompileCollectors<STD>` + `new()` (static) + `try_push_collector` + `dispatch_op` +
 ///   `into_device_entries`.
 /// * `__PrecompileSlot` enum giving each variant a `BUILTIN_COUNT + n` bundle position.
 #[macro_export]
@@ -42,32 +44,32 @@ macro_rules! register_precompiles {
                 op: $op:expr,
                 air: $air:expr,
                 rank_assign: $rank_assign:expr $(,)?
-            ] => $mgr:ty
+            ] => $mgr:ident
         ),* $(,)?
     ) => {
         /// Tagged union of every precompile state machine registered via
         /// [`register_precompiles!`](crate::register_precompiles). One variant
         /// per declaration.
-        pub enum Precompiles<F: ::fields::PrimeField64> {
+        pub enum Precompiles<STD: ::zisk_common::StdProvider> {
             $(
                 #[doc = concat!(
                     "`", stringify!($variant),
                     "` precompile, backed by `", stringify!($mgr), "`.",
                 )]
-                $variant(::std::sync::Arc<$mgr>),
+                $variant(::std::sync::Arc<$mgr<STD>>),
             )*
         }
 
-        impl<F: ::fields::PrimeField64> Precompiles<F> {
+        impl<STD: ::zisk_common::StdProvider> Precompiles<STD> {
             /// Static planner dispatch by AIR id — no instance needed.
             /// Used by the plan path without constructing the precompile.
-            pub fn planner_for_air_id(
+            pub fn planner_for_air_id<F: ::fields::PrimeField64>(
                 air_id: ::std::primitive::usize,
                 is_asm_emulator: ::std::primitive::bool,
             ) -> ::std::boxed::Box<dyn ::zisk_common::Planner> {
                 match air_id {
                     $(
-                        id if id == $air[0] => <$mgr as
+                        id if id == $air[0] => <$mgr<STD> as
                             ::zisk_common::ComponentPlanBuilder<F>>::planner(is_asm_emulator),
                     )*
                     _ => panic!("planner_for_air_id: unknown precompile air_id {air_id}"),
@@ -77,7 +79,7 @@ macro_rules! register_precompiles {
             /// Dispatches to the active variant's manager to register its
             /// instances on `pctx` for the supplied `plans`. See
             /// `ComponentBuilder::configure_instances`.
-            pub fn configure_instances(
+            pub fn configure_instances<F: ::fields::PrimeField64>(
                 &self,
                 pctx: &::proofman_common::ProofCtx<F>,
                 plans: &[::zisk_common::Plan],
@@ -90,7 +92,7 @@ macro_rules! register_precompiles {
             /// Dispatches to the active variant's manager and returns the
             /// witness `Instance` for `ictx`. See
             /// `ComponentBuilder::build_instance`.
-            pub fn build_instance(
+            pub fn build_instance<F: ::fields::PrimeField64>(
                 &self,
                 ictx: ::zisk_common::InstanceCtx,
             ) -> ::std::boxed::Box<dyn ::zisk_common::Instance<F>> {
@@ -103,11 +105,11 @@ macro_rules! register_precompiles {
             /// variant. Macro-generated from the registration list; mirrors
             /// `BuiltinSMs::all` on the built-in side.
             pub(crate) fn all(
-                std: ::std::sync::Arc<::pil_std_lib::Std<F>>,
+                std: ::std::sync::Arc<STD>,
             ) -> ::std::vec::Vec<(::std::primitive::usize, Self)> {
                 ::std::vec![
                     $(
-                        ($air[0], Self::$variant(<$mgr>::new(std.clone()))),
+                        ($air[0], Self::$variant(<$mgr<STD>>::new(std.clone()))),
                     )*
                 ]
             }
@@ -134,35 +136,41 @@ macro_rules! register_precompiles {
 
         ::paste::paste! {
             // ────────────────────────────────────────────────────────
-            // PrecompileCounters<F> — counter-phase bus slots.
+            // PrecompileCounters — counter-phase bus slots.
             // ────────────────────────────────────────────────────────
 
             /// Counter-phase slots for every precompile registered via
             /// `register_precompiles!`. Each field stores
             /// `(bundle_position, counter_input_gen)`.
-            pub struct PrecompileCounters<F: ::fields::PrimeField64> {
+            ///
+            /// Unlike the witness-side [`Precompiles`] / `PrecompileCollectors`
+            /// (generic over `STD`), the counter phase never touches the
+            /// range-checker — its `CounterInputGen` carries `STD` only as a
+            /// phantom and its output is `dyn BusDeviceMetrics`. So it pins the
+            /// no-op `NoopStdProvider` token rather than staying generic over `STD`.
+            pub struct PrecompileCounters {
                 $(
                     #[doc = concat!(
                         "Counter for the `", stringify!($variant),
                         "` precompile: `(bundle_position, ",
-                        stringify!($variant), "CounterInputGen<F>)`.",
+                        stringify!($variant), "CounterInputGen)`.",
                     )]
                     pub [<$variant:snake>]: (
                         ::std::primitive::usize,
-                        [<$variant CounterInputGen>]<F>,
+                        [<$variant CounterInputGen>]<::zisk_common::NoopStdProvider>,
                     ),
                 )*
             }
 
-            impl<F: ::fields::PrimeField64> PrecompileCounters<F> {
+            impl PrecompileCounters {
                 /// Build each precompile's counter via static dispatch.
                 /// Bundle position is `BUILTIN_COUNT + slot`.
-                pub fn build(is_asm_emulator: ::std::primitive::bool) -> Self {
+                pub fn build<F: ::fields::PrimeField64>(is_asm_emulator: ::std::primitive::bool) -> Self {
                     Self {
                         $(
                             [<$variant:snake>]: (
                                 $crate::BUILTIN_COUNT + __PrecompileSlot::$variant as usize,
-                                <$mgr as ::zisk_common::ComponentPlanBuilder<F>>::counter(is_asm_emulator),
+                                <$mgr<::zisk_common::NoopStdProvider> as ::zisk_common::ComponentPlanBuilder<F>>::counter(is_asm_emulator),
                             ),
                         )*
                     }
@@ -224,7 +232,7 @@ macro_rules! register_precompiles {
             }
 
             // ────────────────────────────────────────────────────────
-            // PrecompileCollectors<F> — collector-phase bus slots.
+            // PrecompileCollectors<STD> — collector-phase bus slots.
             // ────────────────────────────────────────────────────────
 
             /// Collector-phase slots for every precompile registered
@@ -233,7 +241,7 @@ macro_rules! register_precompiles {
             /// `try_push_collector` during per-chunk setup, plus a
             /// `CounterInputGen` used by the bus to emit derived
             /// mem-ops on each operation message.
-            pub struct PrecompileCollectors<F: ::fields::PrimeField64> {
+            pub struct PrecompileCollectors<STD: ::zisk_common::StdProvider> {
                 $(
                     #[doc = concat!(
                         "Per-chunk collectors for the `", stringify!($variant),
@@ -249,17 +257,17 @@ macro_rules! register_precompiles {
                         "` precompile. Used by the bus to emit derived mem-ops ",
                         "on each matching operation message.",
                     )]
-                    pub [<$variant:snake _inputs_generator>]: [<$variant CounterInputGen>]<F>,
+                    pub [<$variant:snake _inputs_generator>]: [<$variant CounterInputGen>]<STD>,
                 )*
             }
 
-            impl<F: ::fields::PrimeField64> PrecompileCollectors<F> {
+            impl<STD: ::zisk_common::StdProvider> PrecompileCollectors<STD> {
                 pub fn new() -> Self {
                     Self {
                         $(
                             [<$variant:snake _collector>]: ::std::vec::Vec::new(),
                             [<$variant:snake _inputs_generator>]:
-                                [<$variant CounterInputGen>]::<F>::new(
+                                [<$variant CounterInputGen>]::<STD>::new(
                                     ::zisk_common::BusDeviceMode::InputGenerator,
                                 ),
                         )*
@@ -278,7 +286,7 @@ macro_rules! register_precompiles {
                 ///   caller handles built-in air-ids itself.
                 /// * `Err(_)` — `air_id` matched but the downcast
                 ///   failed (bundle-construction invariant violation).
-                pub fn try_push_collector(
+                pub fn try_push_collector<F: ::fields::PrimeField64>(
                     &mut self,
                     air_id: ::std::primitive::usize,
                     secn_instance: &dyn ::zisk_common::Instance<F>,
@@ -289,7 +297,7 @@ macro_rules! register_precompiles {
                         if air_id == $air[0] {
                             let inst = secn_instance
                                 .as_any()
-                                .downcast_ref::<[<$variant Instance>]<F>>()
+                                .downcast_ref::<[<$variant Instance>]<STD>>()
                                 .ok_or(
                                     $crate::error::ExecutorError::InstanceTypeMismatch {
                                         global_id: global_idx,

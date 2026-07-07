@@ -6,13 +6,12 @@
 
 use crate::{BinaryExtensionCollector, BinaryExtensionSM};
 use fields::PrimeField64;
-use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    PayloadType, StdProvider,
 };
 use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked};
 
@@ -21,9 +20,9 @@ use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTra
 ///
 /// It encapsulates the `BinaryExtensionSM` and its associated context, and it processes input data
 /// to compute witnesses for binary extension operations.
-pub struct BinaryExtensionInstance<F: PrimeField64> {
+pub struct BinaryExtensionInstance<STD: StdProvider> {
     /// Binary Extension state machine.
-    binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+    binary_extension_sm: Arc<BinaryExtensionSM<STD>>,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
@@ -31,11 +30,11 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
     /// Instance context.
     ictx: InstanceCtx,
 
-    /// Standard library instance, providing common functionalities.
-    std: Arc<Std<F>>,
+    /// Standard library handle exposing the range-check and virtual-table accumulators.
+    std: Arc<STD>,
 }
 
-impl<F: PrimeField64> BinaryExtensionInstance<F> {
+impl<STD: StdProvider> BinaryExtensionInstance<STD> {
     /// Creates a new `BinaryExtensionInstance`.
     ///
     /// # Arguments
@@ -47,9 +46,9 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     /// A new `BinaryExtensionInstance` instance initialized with the provided state machine and
     /// context.
     pub fn new(
-        binary_extension_sm: Arc<BinaryExtensionSM<F>>,
+        binary_extension_sm: Arc<BinaryExtensionSM<STD>>,
         mut ictx: InstanceCtx,
-        std: Arc<Std<F>>,
+        std: Arc<STD>,
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
@@ -70,7 +69,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     pub fn build_binary_extension_collector(
         &self,
         chunk_id: ChunkId,
-    ) -> BinaryExtensionCollector<F> {
+    ) -> BinaryExtensionCollector<STD> {
         assert_eq!(
             self.ictx.plan.air_id,
             BinaryExtensionTrace::<()>::AIR_ID,
@@ -88,7 +87,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     }
 }
 
-impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
+impl<F: PrimeField64, STD: StdProvider> Instance<F> for BinaryExtensionInstance<STD> {
     /// Computes the witness for the binary extension execution plan.
     ///
     /// This method leverages the `BinaryExtensionSM` to generate an `AirInstance` using the
@@ -113,20 +112,22 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             .into_iter()
             .map(|(_, collector)| {
                 let _collector =
-                    collector.as_any().downcast::<BinaryExtensionCollector<F>>().unwrap();
+                    collector.as_any().downcast::<BinaryExtensionCollector<STD>>().unwrap();
                 _collector.inputs
             })
             .collect();
 
         if packed {
             Ok(Some(
-                self.binary_extension_sm
-                    .compute_witness::<BinaryExtensionTraceRowPacked<F>>(&inputs, trace_buffer)?,
+                self.binary_extension_sm.compute_witness::<F, BinaryExtensionTraceRowPacked<F>>(
+                    &inputs,
+                    trace_buffer,
+                )?,
             ))
         } else {
             Ok(Some(
                 self.binary_extension_sm
-                    .compute_witness::<BinaryExtensionTraceRow<F>>(&inputs, trace_buffer)?,
+                    .compute_witness::<F, BinaryExtensionTraceRow<F>>(&inputs, trace_buffer)?,
             ))
         }
     }

@@ -38,26 +38,27 @@ use crate::{
 
 /// Stateful accumulator for the per-chunk MT replay phase.
 ///
-/// One `MtChunkProcessor<F>` covers a single
+/// One `MtChunkProcessor` covers a single
 /// `AsmRunnerMT::run_and_count` invocation:
 ///   * during the scope, rayon tasks call
 ///     [`Self::process_chunk`] once per chunk;
 ///   * after the scope, the caller calls [`Self::finalize`] to drain
 ///     the collected per-chunk buses into chunk-indexed counters and
 ///     accumulated `pub_outs`.
-pub struct MtChunkProcessor<F: PrimeField64> {
+#[derive(Default)]
+pub struct MtChunkProcessor {
     /// Per-chunk databuses, pushed in arbitrary order. `finalize` sorts
     /// by `ChunkId` before draining.
-    results: Mutex<Vec<(ChunkId, StaticDataBus<PayloadType, F>)>>,
+    results: Mutex<Vec<(ChunkId, StaticDataBus<PayloadType>)>>,
     /// Pre-formatted error messages collected from any failed chunk
     /// task. `finalize` returns `Err` if non-empty.
     errors: Mutex<Vec<String>>,
 }
 
-impl<F: PrimeField64> MtChunkProcessor<F> {
+impl MtChunkProcessor {
     /// Fresh processor with no recorded chunks or errors.
     pub fn new() -> Self {
-        Self { results: Mutex::new(Vec::new()), errors: Mutex::new(Vec::new()) }
+        Self::default()
     }
 
     /// Process a single chunk: build a per-chunk bus, replay the
@@ -68,7 +69,7 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
     /// drain via [`Self::finalize`]. The `mt_scope_id` is the parent
     /// `MT_ASSEMBLY` stats scope; per-chunk stats nest under it.
     #[allow(unused_variables)] // `stats` / `mt_scope_id` only used when the `stats` feature is on
-    pub fn process_chunk(
+    pub fn process_chunk<F: PrimeField64>(
         &self,
         chunk_id: ChunkId,
         emu_trace: &EmuTrace,
@@ -78,7 +79,7 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
     ) {
         stats_begin!(stats, mt_scope_id, _chunk_scope, "MT_CHUNK_PLAYER", 0);
 
-        let mut data_bus = StaticDataBus::<_, F>::build(true, None);
+        let mut data_bus = StaticDataBus::<_>::build::<F>(true, None);
 
         ZiskEmulator::process_emu_trace::<F, _, _>(zisk_rom, emu_trace, &mut data_bus, false);
         data_bus.on_close();
@@ -152,26 +153,13 @@ impl<F: PrimeField64> MtChunkProcessor<F> {
     }
 }
 
-impl<F: PrimeField64> Default for MtChunkProcessor<F> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
-
-    /// Concrete F used for tests that need a placeholder field type.
-    /// MtChunkProcessor uses F only through the `StaticDataBus`
-    /// generic argument; the empty-state and error-state tests don't
-    /// actually exercise databus construction.
-    type F = Goldilocks;
 
     #[test]
     fn new_processor_finalizes_to_empty() {
-        let p: MtChunkProcessor<F> = MtChunkProcessor::new();
+        let p: MtChunkProcessor = MtChunkProcessor::new();
         let (counters, pub_outs) = p.finalize().expect("empty processor finalizes Ok");
         assert!(counters.is_empty(), "no chunks recorded → no counters");
         assert!(pub_outs.0.is_empty(), "no chunks recorded → no pub_outs");
@@ -179,7 +167,7 @@ mod tests {
 
     #[test]
     fn default_matches_new() {
-        let p: MtChunkProcessor<F> = MtChunkProcessor::default();
+        let p: MtChunkProcessor = MtChunkProcessor::default();
         let (counters, pub_outs) = p.finalize().expect("default ok");
         assert!(counters.is_empty());
         assert!(pub_outs.0.is_empty());
@@ -187,7 +175,7 @@ mod tests {
 
     #[test]
     fn single_error_propagates_through_finalize() {
-        let p: MtChunkProcessor<F> = MtChunkProcessor::new();
+        let p: MtChunkProcessor = MtChunkProcessor::new();
         p.push_error_for_test("boom-chunk-42".to_string());
         // The Ok variant of `finalize` contains `Box<dyn BusDeviceMetrics>`
         // which doesn't implement `Debug`, so we can't use `expect_err`.
@@ -203,7 +191,7 @@ mod tests {
 
     #[test]
     fn multiple_errors_combine_with_indexed_prefixes() {
-        let p: MtChunkProcessor<F> = MtChunkProcessor::new();
+        let p: MtChunkProcessor = MtChunkProcessor::new();
         p.push_error_for_test("first-fail".to_string());
         p.push_error_for_test("second-fail".to_string());
         match p.finalize() {

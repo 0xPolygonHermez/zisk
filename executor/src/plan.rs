@@ -31,14 +31,13 @@ pub struct SecondaryPlanArtifacts {
 }
 
 /// Pure-planning phase actor. Owns chunk size only.
-pub struct PlanPhase<F: PrimeField64> {
+pub struct PlanPhase {
     chunk_size: u64,
-    _marker: std::marker::PhantomData<F>,
 }
 
-impl<F: PrimeField64> PlanPhase<F> {
+impl PlanPhase {
     pub fn new(chunk_size: u64) -> Self {
-        Self { chunk_size, _marker: std::marker::PhantomData }
+        Self { chunk_size }
     }
 
     /// Plan the main SM instances. Pure: unit-testable on synthetic `EmuTrace`.
@@ -47,7 +46,7 @@ impl<F: PrimeField64> PlanPhase<F> {
     }
 
     /// Plan the secondary SM instances from per-chunk counters via static dispatch.
-    pub fn plan_secondary(
+    pub fn plan_secondary<F: PrimeField64>(
         counters: &mut CountersChunkMetrics,
         num_chunks: usize,
         is_asm_emulator: bool,
@@ -73,7 +72,7 @@ impl<F: PrimeField64> PlanPhase<F> {
 
     /// Plan secondary + await `await_mem_plans` + merge. No bundle / pctx / registry contact.
     #[allow(unused_variables)]
-    pub fn run_secondary(
+    pub fn run_secondary<F: PrimeField64>(
         &self,
         counters: &mut CountersChunkMetrics,
         num_chunks: usize,
@@ -86,7 +85,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         timer_start_info!(PLAN_SECONDARY);
         let start_partial = Instant::now();
 
-        let mut secn_planning = Self::plan_secondary(counters, num_chunks, is_asm_emulator);
+        let mut secn_planning = Self::plan_secondary::<F>(counters, num_chunks, is_asm_emulator);
 
         let count_and_plan_duration = start_partial.elapsed();
         timer_stop_and_log_info!(PLAN_SECONDARY);
@@ -117,10 +116,7 @@ impl<F: PrimeField64> PlanPhase<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
     use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
-
-    type F = Goldilocks;
 
     const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
 
@@ -130,14 +126,13 @@ mod tests {
 
     #[test]
     fn plan_main_empty_traces_yields_empty_plan() {
-        let plans =
-            PlanPhase::<F>::plan_main(&[], NUM_ROWS as u64).expect("empty traces planned ok");
+        let plans = PlanPhase::plan_main(&[], NUM_ROWS as u64).expect("empty traces planned ok");
         assert!(plans.is_empty());
     }
 
     #[test]
     fn plan_main_single_full_trace_yields_one_plan() {
-        let plans = PlanPhase::<F>::plan_main(&synthetic_traces(1), NUM_ROWS as u64).expect("ok");
+        let plans = PlanPhase::plan_main(&synthetic_traces(1), NUM_ROWS as u64).expect("ok");
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].airgroup_id, ZISK_AIRGROUP_ID);
         assert_eq!(plans[0].air_id, MAIN_AIR_IDS[0]);
@@ -145,14 +140,13 @@ mod tests {
 
     #[test]
     fn plan_main_segments_via_ceil_div() {
-        let plans =
-            PlanPhase::<F>::plan_main(&synthetic_traces(3), (NUM_ROWS as u64) / 2).expect("ok");
+        let plans = PlanPhase::plan_main(&synthetic_traces(3), (NUM_ROWS as u64) / 2).expect("ok");
         assert_eq!(plans.len(), 2);
     }
 
     #[test]
     fn plan_main_rejects_non_power_of_two_chunk_size() {
-        match PlanPhase::<F>::plan_main(&synthetic_traces(1), 3) {
+        match PlanPhase::plan_main(&synthetic_traces(1), 3) {
             Ok(_) => panic!("non-power-of-two chunk_size must error"),
             Err(err) => {
                 assert!(err.to_string().to_lowercase().contains("power of two"));

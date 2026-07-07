@@ -1,12 +1,11 @@
-use fields::PrimeField64;
 use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 use tiny_keccak::keccakf;
 
-use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
+use zisk_common::{StdProvider, OPERATION_PRECOMPILED_BUS_DATA_SIZE};
 
 use crate::KeccakfSM;
 
-impl<F: PrimeField64> PrecompileMemInputs for KeccakfSM<F> {
+impl<STD: StdProvider> PrecompileMemInputs for KeccakfSM<STD> {
     fn generate<P: MemProcessor>(
         addr_main: u32,
         step_main: u64,
