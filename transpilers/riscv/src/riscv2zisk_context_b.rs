@@ -83,9 +83,9 @@ Zbkx — crossbar permutation
 //     cpop: 12 instructions
 //     cpop_w: 13 instructions
 //     orc_b: 7 instructions
-//     clmul: 321 instructions
-//     clmul_h: 316 instructions
-//     clmul_r: 321 instructions
+//     clmul: 322 instructions
+//     clmul_h: 317 instructions
+//     clmul_r: 322 instructions
 //     xperm4: 114 instructions
 //     xperm8: 90 instructions
 
@@ -1352,8 +1352,8 @@ impl Riscv2ZiskContext<'_> {
         // Get addresses for the required instructions to implement this function
         let rom_address = i.rom_address;
         let mut internal_address = [0u64; 12];
-        for i in 0..12 {
-            internal_address[i] = self.rom.get_internal_address();
+        for k in 0..12 {
+            internal_address[k] = self.rom.get_internal_address();
         }
 
         // reg32 = rs1 >> 8
@@ -3903,21 +3903,25 @@ impl Riscv2ZiskContext<'_> {
     //   clmul(a,b) = XOR over i in 0..64 of (a << i) for each set bit i of b
     //
     // Branchless, 5 ZisK ops per bit (sll, sra, sll, and, xor) using sra to build a
-    // per-bit all-ones/all-zeros mask, plus one instruction to zero rd:
-    //   1 + 64*5 = 321 ZisK instructions.  scratch = regs 32 (mask) and 33 (term).
+    // per-bit all-ones/all-zeros mask, plus one instruction to zero the accumulator and
+    // one to copy it into rd:
+    //   1 + 64*5 + 1 = 322 ZisK instructions.  scratch = reg 32 (mask), reg 33 (term)
+    //   and reg 34 (accumulator).  rd is written only at the end so it may safely alias
+    //   rs1 or rs2.
     //
-    // rd = 0
+    // acc = 0
     // for i in 0..64:
-    //     m  = rs2 << (63 - i)     # sll  — move bit i to bit 63
-    //     m  = m sra 63            # sra  — 0xFFFF..FF if bit i set, else 0
-    //     t  = rs1 << i            # sll
-    //     t  = t & m               # and
-    //     rd = rd ^ t              # xor
+    //     m   = rs2 << (63 - i)    # sll  — move bit i to bit 63
+    //     m   = m sra 63           # sra  — 0xFFFF..FF if bit i set, else 0
+    //     t   = rs1 << i           # sll
+    //     t   = t & m              # and
+    //     acc = acc ^ t            # xor
+    // rd = acc
     //
     pub fn clmul(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
 
-        const N: usize = 1 + 64 * 5; // 321
+        const N: usize = 1 + 64 * 5 + 1; // 322
         let mut ia = [0u64; N - 1];
         for k in 0..(N - 1) {
             ia[k] = self.rom.get_internal_address();
@@ -3930,13 +3934,19 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string());
 
             if k == 0 {
-                // rd = rs1 & 0  → 0
-                zib.src_a("reg", i.rs1 as u64, false);
+                // reg34 = 0  (accumulator; copyb stores src_b into c)
+                zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
-                zib.op("and").unwrap();
+                zib.op("copyb").unwrap();
+                zib.store("reg", 34, false, false);
+            } else if k == N - 1 {
+                // rd = reg34  (copyb stores src_b into c)
+                zib.src_a("imm", 0, false);
+                zib.src_b("reg", 34, false);
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
             } else {
-                let j = k - 1; // 0..320
+                let j = k - 1; // 0..319
                 let bit = (j / 5) as u64; // 0..63
                 match j % 5 {
                     0 => {
@@ -3968,11 +3978,11 @@ impl Riscv2ZiskContext<'_> {
                         zib.store("reg", 33, false, false);
                     }
                     _ => {
-                        // rd = rd ^ reg33
-                        zib.src_a("reg", i.rd as u64, false);
+                        // reg34 = reg34 ^ reg33  (accumulate; rd written only at the end)
+                        zib.src_a("reg", 34, false);
                         zib.src_b("reg", 33, false);
                         zib.op("xor").unwrap();
-                        zib.store("reg", i.rd as i64, false, false);
+                        zib.store("reg", 34, false, false);
                     }
                 }
             }
@@ -4002,12 +4012,14 @@ impl Riscv2ZiskContext<'_> {
     //
     // Branchless, 5 ZisK ops per bit (sll, sra, srl, and, xor): sll+sra build a
     // per-bit all-ones/all-zeros mask, srl is the (logical) partial product term,
-    // plus one instruction to zero rd:  1 + 63*5 = 316 ZisK instructions.
-    // scratch = regs 32 (mask) and 33 (term).
+    // plus one instruction to zero the accumulator and one to copy it into rd:
+    //   1 + 63*5 + 1 = 317 ZisK instructions.  scratch = reg 32 (mask), reg 33 (term)
+    //   and reg 34 (accumulator).  rd is written only at the end so it may safely alias
+    //   rs1 or rs2.
     pub fn clmul_h(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
 
-        const N: usize = 1 + 63 * 5; // 316
+        const N: usize = 1 + 63 * 5 + 1; // 317
         let mut ia = [0u64; N - 1];
         for k in 0..(N - 1) {
             ia[k] = self.rom.get_internal_address();
@@ -4020,10 +4032,16 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string());
 
             if k == 0 {
-                // rd = rs1 & 0  → 0
-                zib.src_a("reg", i.rs1 as u64, false);
+                // reg34 = 0  (accumulator; copyb stores src_b into c)
+                zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
-                zib.op("and").unwrap();
+                zib.op("copyb").unwrap();
+                zib.store("reg", 34, false, false);
+            } else if k == N - 1 {
+                // rd = reg34  (copyb stores src_b into c)
+                zib.src_a("imm", 0, false);
+                zib.src_b("reg", 34, false);
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
             } else {
                 let j = k - 1; // 0..314
@@ -4058,11 +4076,11 @@ impl Riscv2ZiskContext<'_> {
                         zib.store("reg", 33, false, false);
                     }
                     _ => {
-                        // rd = rd ^ reg33
-                        zib.src_a("reg", i.rd as u64, false);
+                        // reg34 = reg34 ^ reg33  (accumulate; rd written only at the end)
+                        zib.src_a("reg", 34, false);
                         zib.src_b("reg", 33, false);
                         zib.op("xor").unwrap();
-                        zib.store("reg", i.rd as i64, false, false);
+                        zib.store("reg", 34, false, false);
                     }
                 }
             }
@@ -4093,12 +4111,14 @@ impl Riscv2ZiskContext<'_> {
     //
     // Branchless, 5 ZisK ops per bit (sll, sra, srl, and, xor): sll+sra build a
     // per-bit all-ones/all-zeros mask, srl is the (logical) partial product term,
-    // plus one instruction to zero rd:  1 + 64*5 = 321 ZisK instructions.
-    // scratch = regs 32 (mask) and 33 (term).
+    // plus one instruction to zero the accumulator and one to copy it into rd:
+    //   1 + 64*5 + 1 = 322 ZisK instructions.  scratch = reg 32 (mask), reg 33 (term)
+    //   and reg 34 (accumulator).  rd is written only at the end so it may safely alias
+    //   rs1 or rs2.
     pub fn clmul_r(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
 
-        const N: usize = 1 + 64 * 5; // 321
+        const N: usize = 1 + 64 * 5 + 1; // 322
         let mut ia = [0u64; N - 1];
         for k in 0..(N - 1) {
             ia[k] = self.rom.get_internal_address();
@@ -4111,10 +4131,16 @@ impl Riscv2ZiskContext<'_> {
             let mut zib = ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string());
 
             if k == 0 {
-                // rd = rs1 & 0  → 0
-                zib.src_a("reg", i.rs1 as u64, false);
+                // reg34 = 0  (accumulator; copyb stores src_b into c)
+                zib.src_a("imm", 0, false);
                 zib.src_b("imm", 0, false);
-                zib.op("and").unwrap();
+                zib.op("copyb").unwrap();
+                zib.store("reg", 34, false, false);
+            } else if k == N - 1 {
+                // rd = reg34  (copyb stores src_b into c)
+                zib.src_a("imm", 0, false);
+                zib.src_b("reg", 34, false);
+                zib.op("copyb").unwrap();
                 zib.store("reg", i.rd as i64, false, false);
             } else {
                 let j = k - 1; // 0..319
@@ -4149,11 +4175,11 @@ impl Riscv2ZiskContext<'_> {
                         zib.store("reg", 33, false, false);
                     }
                     _ => {
-                        // rd = rd ^ reg33
-                        zib.src_a("reg", i.rd as u64, false);
+                        // reg34 = reg34 ^ reg33  (accumulate; rd written only at the end)
+                        zib.src_a("reg", 34, false);
                         zib.src_b("reg", 33, false);
                         zib.op("xor").unwrap();
-                        zib.store("reg", i.rd as i64, false, false);
+                        zib.store("reg", 34, false, false);
                     }
                 }
             }
