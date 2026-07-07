@@ -60,7 +60,6 @@ main() {
 
     step "Building zec-reth ELF..."
     ensure cd "${GUEST_DIR}" || return 1
-    ensure git submodule update --init --recursive || return 1
     ensure cargo-zisk build --release || return 1
     cd "${WORKSPACE_DIR}" || return 1
 

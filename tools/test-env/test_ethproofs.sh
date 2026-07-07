@@ -7,8 +7,6 @@ main() {
     current_step=1
     total_steps=5
 
-    # Directory holding this script (and build_ethproofs.sh); needed because we cd
-    # into WORKSPACE_DIR below and build_ethproofs.sh sources ./utils.sh relative to here.
     script_dir=$(pwd)
 
     step "Loading environment variables..."
