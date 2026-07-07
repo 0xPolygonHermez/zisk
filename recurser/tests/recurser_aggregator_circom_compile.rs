@@ -19,6 +19,9 @@ use common::{AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_1_FREE};
 /// The include filename the aggregator emits (`include "<verifier_filename>"`).
 const STUB_VERIFIER_FILENAME: &str = "stub_verifier.circom";
 
+/// One branch combination: (label, normalize, aggregate body, n_free, allow-list).
+type BranchCase = (&'static str, Option<NormalizeCircuit>, &'static str, usize, Vec<[String; 4]>);
+
 /// Stub STARK verifier: exposes only what the aggregator touches — `publics[69]`
 /// and a `rootC[4]` input driven by its rootC mux.
 const STUB_VERIFIER: &str = r#"pragma circom 2.1.0;
@@ -131,8 +134,7 @@ fn aggregator_circom_compiles_all_branches() {
         return;
     }
 
-    // (label, normalize, aggregate body, n_free, allow-list)
-    let cases: Vec<(&str, Option<NormalizeCircuit>, &str, usize, Vec<[String; 4]>)> = vec![
+    let cases: Vec<BranchCase> = vec![
         ("plain", None, AGGREGATE_0_FREE, 0, vec![]),
         ("nfree1", None, AGGREGATE_1_FREE, 1, vec![]),
         (
