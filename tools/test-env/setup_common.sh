@@ -61,7 +61,7 @@ resolve_proofman_dir() {
     return 1
   fi
   root="$(cd "${manifest%/Cargo.toml}/.." && pwd)"
-  if [ -f "$root/package.json" ] && [ -d "$root/pil2-components/lib/std/pil" ]; then
+  if [ -f "$root/setup/pil2-stark/package.json" ] && [ -d "$root/pil2-components/lib/std/pil" ]; then
     printf '%s\n' "$root"
     return 0
   fi
@@ -121,9 +121,9 @@ compute_input_hash() (
   if [ -n "$pil2_compiler_override" ]; then
     pil2_compiler_version="$pil2_compiler_override"
   else
-    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
+    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/setup/pil2-stark/package.json" | head -n1)"
     [ -n "$pil2_compiler_version" ] || \
-      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/setup/pil2-stark/package.json" >&2; exit 1; }
   fi
 
   # pil2-stark-setup is a transitive dep, not a workspace member. Prefer its
