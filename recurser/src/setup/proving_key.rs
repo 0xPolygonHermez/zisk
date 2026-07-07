@@ -123,7 +123,6 @@ pub fn gen_recurser_setup(
             &stark_inputs,
             config.circom_templates,
         )
-        // Preserve the RecurserError source (tera/serde) rather than `{e}`.
         .map_err(anyhow::Error::new)
         .context("gen_recurser failed")?;
         fs::write(&circom_out, &circom_src).context("Failed to write recurser circom")?;
@@ -237,8 +236,6 @@ pub fn gen_recurser_setup(
     .context("compile_pil failed for recurser")?;
 
     let pilout_proxy = PilOutProxy::new(pilout_path.to_str().unwrap())
-        // Preserve the boxed error's source chain; `{e}` would flatten it to
-        // the top message only.
         .map_err(anyhow::Error::from_boxed)
         .context("Failed to load recurser pilout")?;
     let pilout = &pilout_proxy.pilout;

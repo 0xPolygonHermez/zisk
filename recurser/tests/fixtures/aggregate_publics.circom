@@ -1,14 +1,9 @@
-// Example AggregatePublics — inherits the used slots from A (the "prev" side).
-// Inputs are ZisK's fixed 64-slot publics (via ZISK_PUBLICS()); the output is
-// only `nPublicsAgg` wide (the trailing template param, from the
-// recurser's `n-publics-agg` config). The scaffolding zero-fills the tail
-// outside this template, so a prover cannot inject values into unused slots.
-//
-// Inputs bind positionally, in declaration order:
+// Example AggregatePublics — inherits the used slots from A. Inputs are ZisK's
+// fixed 64-slot publics; the output is only `nPublicsAgg` wide (scaffolding
+// zero-fills the tail). Inputs bind positionally in declaration order:
 //   AggregatePublics(nFreeInputs, nPublicsAgg)(ziskPublicsA, ziskPublicsB,
-//                                                     freeInputsA, freeInputsB)
-// freeInputs are available for e.g. preimage checks; this example just drains them.
-// See docs/aggregator-flow.md §2, §6.
+//                                              freeInputsA, freeInputsB)
+// freeInputs are available for e.g. preimage checks; this example drains them.
 template AggregatePublics(nFreeInputs, nPublicsAgg) {
     signal output aggregated_publics[nPublicsAgg];
     signal input a_publics[ZISK_PUBLICS()];

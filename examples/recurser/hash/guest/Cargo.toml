@@ -1,0 +1,23 @@
+[package]
+name = "recurser-hash-guest"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Pin the binary-target name for a stable `load_program!` key and allow-list entry.
+[[bin]]
+name = "recurser_hash_guest"
+path = "src/main.rs"
+
+[dependencies]
+ziskos = { path = "../../../../ziskos/entrypoint" }
+# Layout constants only — the `host` feature (which pulls `fields`) is NOT enabled.
+recurser-hash-common = { path = "../common" }
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

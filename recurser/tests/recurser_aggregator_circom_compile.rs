@@ -1,21 +1,12 @@
 //! Circom **compile** smoke test for the generated aggregator.
 //!
-//! The snapshot tests (`recurser_aggregator_circom_snapshot.rs`) only string-match
-//! the rendered output — they cannot catch a "declared but unassigned signal"
-//! (circom T3001) or a "double-assigned signal" (T2001) regression. Exactly that
-//! class of bug shipped once: `aggregatedPublics[0] === 0` constrained a signal
-//! that was never driven, and only the full end-to-end prove caught it.
+//! The snapshot tests only string-match the rendered output; they cannot catch a
+//! declared-but-unassigned (T3001) or double-assigned (T2001) signal. This test
+//! invokes `circom` on the aggregator's own body, substituting stub includes and
+//! a stub verifier for the pil2 STARK tree (unavailable in a unit test) so the
+//! flag/allow-list/mux/output-slot constraints compile for real.
 //!
-//! This test actually invokes `circom` on the aggregator's OWN constraint logic.
-//! The real circuit `include`s the pil2 STARK verifier tree (unavailable in a unit
-//! test), so we substitute a minimal stub verifier and stub includes and feed
-//! synthetic `StarkInputBlocks`. That leaves the aggregator body — flag/boolean
-//! constraints, allow-list membership, the rootC/normalize/free-value muxes, and
-//! the 69 output-slot assignments — compiled by circom for real. A T3001/T2001 in
-//! that body fails the test.
-//!
-//! The test is skipped (not failed) when the `circom` binary is absent, so it is
-//! safe to run in any environment.
+//! Skipped (not failed) when the `circom` binary is absent.
 
 use std::fs;
 use std::process::Command;
@@ -28,10 +19,8 @@ use common::{AGGREGATE_0_FREE, AGGREGATE_1_FREE, NORMALIZE_1_FREE};
 /// The include filename the aggregator emits (`include "<verifier_filename>"`).
 const STUB_VERIFIER_FILENAME: &str = "stub_verifier.circom";
 
-/// Stub STARK verifier: exposes exactly the surface the aggregator's own body
-/// touches — `publics[69]` (fed from `a_sv_publics`) and a `rootC[4]` input the
-/// aggregator drives via its rootC mux. Everything the real verifier proves is
-/// out of scope: we only compile the aggregator's constraints, not the STARK.
+/// Stub STARK verifier: exposes only what the aggregator touches — `publics[69]`
+/// and a `rootC[4]` input driven by its rootC mux.
 const STUB_VERIFIER: &str = r#"pragma circom 2.1.0;
 template StubVerifier() {
     signal input publics[69];
@@ -44,8 +33,7 @@ template StubVerifier() {
     sink <== acc;
 }"#;
 
-/// Stub `mux1.circom`: a real linear MultiMux1 (sel in {0,1}) is all the
-/// aggregator needs, and it is genuinely sound, so no behaviour is faked.
+/// Stub `mux1.circom`: a real, sound linear MultiMux1 (sel in {0,1}).
 const STUB_MUX1: &str = r#"pragma circom 2.1.0;
 // Matches the aggregator's call `MultiMux1(n)([choice0, choice1], s)`:
 // two n-wide choices, selector s in {0,1}. Linear and genuinely sound.
@@ -69,13 +57,11 @@ template IsZero() {
     in * out === 0;
 }"#;
 
-/// `publics_helpers.circom` is bundled in the crate; the aggregator body itself
-/// does not call its templates, so an empty stub keeps the include resolvable.
+/// Empty stub: the aggregator body calls none of its templates.
 const STUB_PUBLICS_HELPERS: &str = r#"pragma circom 2.1.0;"#;
 
-/// StarkInputBlocks that declare only what the aggregator body reads
-/// (`a_sv_publics` / `b_sv_publics`) and instantiate the stub verifier so the
-/// aggregator's `vA.rootC <== ...` / `vB.rootC <== ...` writes resolve.
+/// Declares what the aggregator reads (`a_sv_publics`/`b_sv_publics`) and
+/// instantiates the stub verifier so its `vA.rootC`/`vB.rootC` writes resolve.
 fn stub_stark() -> StarkInputBlocks<'static> {
     StarkInputBlocks {
         define_a: "    signal input a_sv_publics[69];\n    component vA = StubVerifier();",
@@ -136,9 +122,8 @@ fn assert_compiles(label: &str, templates: &CircomTemplates) {
     );
 }
 
-/// Compile every structural branch combination of the template. Each would have
-/// caught the slot-0 T3001 regression; together they guard the aggregator body
-/// against declared-but-unassigned / double-assigned signals in any branch.
+/// Compile every structural branch combination of the template, guarding each
+/// against unassigned / double-assigned signals.
 #[test]
 fn aggregator_circom_compiles_all_branches() {
     if !circom_available() {

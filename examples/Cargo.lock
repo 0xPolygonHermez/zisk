@@ -4603,6 +4603,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "recurser-hash-common"
+version = "0.1.0"
+dependencies = [
+ "fields",
+]
+
+[[package]]
+name = "recurser-hash-host"
+version = "0.1.0"
+dependencies = [
+ "proofman-util",
+ "recurser-hash-common",
+ "tokio",
+ "tracing",
+ "zisk-sdk",
+]
+
+[[package]]
+name = "recurser-l2-common"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+]
+
+[[package]]
+name = "recurser-l2-host"
+version = "0.1.0"
+dependencies = [
+ "alloy-sol-types",
+ "proofman-util",
+ "recurser-l2-common",
+ "tokio",
+ "tracing",
+ "zisk-sdk",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"

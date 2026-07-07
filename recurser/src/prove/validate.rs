@@ -35,30 +35,21 @@ pub enum ProveValidationError {
     InvalidVadcopFinalFlag { side: char, value: u64 },
 
     #[error(
-        "free_inputs_{side}: {got} values supplied but the circuit expects exactly {expected}. \
-         The free-input arrays are laid out positionally in the witness buffer ahead of \
-         rootCRecurserAgg, so a wrong length shears every following input"
+        "free_inputs_{side}: {got} values supplied but the circuit expects exactly {expected}"
     )]
     FreeInputsLength { side: char, got: usize, expected: usize },
 }
 
-/// Pre-check inputs at the CLI boundary so errors surface as clear messages
-/// rather than cryptic constraint violations deep inside proofman.
+/// Pre-check inputs at the CLI boundary so errors surface clearly rather than as
+/// cryptic constraint violations deep inside proofman.
 ///
-/// Classification uses `public_values[IS_VADCOP_FINAL_SLOT]`:
-/// - `1` → `Leaf`  (the free array is free_in, consumed by `NormalizePublics`).
-/// - `0` → `Aggregated` (the free array is free_out, fed to `AggregatePublics`).
+/// Classification uses `public_values[IS_VADCOP_FINAL_SLOT]`: `1` → `Leaf`,
+/// `0` → `Aggregated`. Both origins check the same per-side free array against
+/// the single `n_free`.
 ///
-/// The caller passes ONE free array per side (width `n_free`). The leaf/aggregated
-/// distinction drives runtime semantics but NOT validation: both origins check the
-/// same array against the single `n_free`.
-///
-/// Free-input rule (per side): the array length must equal `n_free` exactly.
-/// The witness (`zkin`) buffer is filled positionally — `proof_a`, `proof_b`,
-/// `freeInputsA`, `freeInputsB`, `rootCRecurserAgg` — and the backend appends
-/// each free array by its supplied length with no padding, so any length other
-/// than `n_free` shifts `rootCRecurserAgg` and shears the witness. Both under-
-/// and oversupply are therefore errors.
+/// Each free array must equal `n_free` exactly: proofman fills the witness
+/// positionally with no padding, so any other length shears it (under- and
+/// oversupply both error).
 pub fn validate_prove_inputs(
     manifest_inputs: &RecurserManifestInputs,
     proof_a_publics: &[u64],
@@ -221,8 +212,7 @@ mod tests {
         );
     }
 
-    // An aggregated side supplies its free_out through the SAME array, checked
-    // against the same n_free — so an exactly-n_free array is accepted.
+    // An aggregated side's free array is checked against the same n_free.
     #[test]
     fn accepts_free_inputs_on_aggregated_proof() {
         let m = manifest(3);
@@ -266,7 +256,7 @@ mod tests {
         );
     }
 
-    // --- undersupply is an error (no padding; a short array shears the witness) ---
+    // --- undersupply is an error (no padding) ---
 
     #[test]
     fn accepts_exact_width_free_inputs() {

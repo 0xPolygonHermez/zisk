@@ -1,0 +1,21 @@
+[package]
+name = "recurser-l2-foreign"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Pin the binary-target name for a stable `load_program!` key.
+[[bin]]
+name = "recurser_l2_foreign"
+path = "src/main.rs"
+
+[dependencies]
+ziskos = { path = "../../../../ziskos/entrypoint" }
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

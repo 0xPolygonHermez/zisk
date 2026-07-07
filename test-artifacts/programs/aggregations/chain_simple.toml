@@ -1,3 +1,0 @@
-programs = ["chain_segment"]
-aggregate-publics = "circuits/aggregate_publics_simple.circom"
-n-publics-agg = 2

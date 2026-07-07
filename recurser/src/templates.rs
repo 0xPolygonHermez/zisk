@@ -21,11 +21,9 @@ pub struct StarkInputBlocks<'a> {
     pub assign_b: &'a str,
 }
 
-/// Reserved public slot for `is_vadcop_final_proof` (1 = raw ZisK vadcop_final
-/// leaf, 0 = aggregator output). Slot 0, before rom_root: the vadcop_final
-/// circuit emits it as a `signal output`, which circom orders ahead of the
-/// input publics. It is stripped in the final_compressed / recursion_final
-/// layers, so it never reaches the flag-free publics.json / on-chain hash.
+/// Reserved public slot for `is_vadcop_final_proof` (1 = raw leaf, 0 =
+/// aggregator output). It is a `signal output` circom orders ahead of the input
+/// publics, and is stripped in later layers so it never reaches publics.json.
 pub const IS_VADCOP_FINAL_SLOT: usize = 0;
 
 /// ZisK's fixed user-publics width (64), from the canonical `zisk-verifier`
@@ -48,8 +46,7 @@ pub struct NormalizeCircuit {
     pub body: String,
 }
 
-/// Circom bodies injected verbatim into the recurser. Required signatures are
-/// documented in `recurser/docs/aggregator-flow.md`. `AggregatePublics` both
+/// Circom bodies injected verbatim into the recurser. `AggregatePublics`
 /// asserts the caller's consistency constraints and produces the merged
 /// publics; the optional normalize circuit applies to every leaf proof.
 #[derive(Debug, Clone)]
@@ -57,21 +54,16 @@ pub struct CircomTemplates {
     /// Optional single normalize circuit (applies to all leaves).
     pub normalize: Option<NormalizeCircuit>,
     pub aggregate_publics: String,
-    /// Optional leaf allow-list: the 4-limb program VKs baked into the circuit.
-    /// Empty = VK-agnostic (any valid vadcop_final leaf accepted). When
-    /// non-empty, a leaf whose programVK is absent makes the circuit
-    /// unsatisfiable (hard reject). Order fixes each `programVKs[]` index.
+    /// Optional leaf allow-list: 4-limb program VKs baked into the circuit.
+    /// Empty = VK-agnostic. Non-empty: a leaf whose programVK is absent makes
+    /// the circuit unsatisfiable. Order fixes each `programVKs[]` index.
     pub program_vks: Vec<[String; 4]>,
-    /// Single unified free-value width per side. It is BOTH the entry template's
-    /// (NormalizePublics) free-input width AND the aggregate's free-value width:
-    /// NormalizePublics consumes `n_free` free inputs and emits `n_free`
-    /// free outputs, which feed AggregatePublics.
+    /// Unified free-value width per side: NormalizePublics consumes `n_free`
+    /// free inputs and emits `n_free` free outputs, which feed AggregatePublics.
     pub n_free: usize,
-    /// Number of publics slots the aggregation actually populates. `AggregatePublics`
-    /// outputs a `n_publics_agg`-wide array (slots `[0, n_publics_agg)`); the generator
-    /// zero-fills the remaining `[n_publics_agg, ZISK_PUBLICS())` tail outside the
-    /// user template, so authors never write a padding loop. Must be in
-    /// `1..=ZISK_PUBLICS()`.
+    /// Publics slots the aggregation populates. `AggregatePublics` outputs a
+    /// `n_publics_agg`-wide array; the generator zero-fills the
+    /// `[n_publics_agg, ZISK_PUBLICS())` tail. Must be in `1..=ZISK_PUBLICS()`.
     pub n_publics_agg: usize,
 }
 
@@ -83,19 +75,12 @@ impl CircomTemplates {
 }
 
 /// Assert the user circom body declares `template <template>(...)` with the
-/// arity the recurser scaffolding instantiates it with:
+/// arity the scaffolding instantiates it with:
 ///
-/// - `NormalizePublics` sizes its publics arrays via `ZISK_PUBLICS()`, so it
-///   takes NO publics-width param — only `nFreeInputs` when `n_free > 0`:
-///   `NormalizePublics()` or `NormalizePublics(nFreeInputs)`. With `n_free > 0`
-///   it MUST also emit a `free_outputs` output (the free values that feed
-///   AggregatePublics).
-/// - `AggregatePublics` outputs only the used slots, so it takes a leading
-///   `nPublicsAgg` param, plus `nFreeInputs` when `n_free > 0`:
-///   `AggregatePublics(nPublicsAgg)` or `AggregatePublics(nFreeInputs, nPublicsAgg)`.
-///
-/// The tera instantiations (`NormalizePublics([n])`,
-/// `AggregatePublics([n,] nPublicsAgg)`) are the contract these counts mirror.
+/// - `NormalizePublics()` or `NormalizePublics(nFreeInputs)` (no publics-width
+///   param; it sizes off `ZISK_PUBLICS()`). With `n_free > 0` it MUST emit a
+///   `free_outputs` output feeding AggregatePublics.
+/// - `AggregatePublics(nPublicsAgg)` or `AggregatePublics(nFreeInputs, nPublicsAgg)`.
 pub fn expect_template_arity(body: &str, template: &str, n_free: usize) -> Result<()> {
     let needle = format!("template {template}(");
     let start = body.find(&needle).ok_or_else(|| {

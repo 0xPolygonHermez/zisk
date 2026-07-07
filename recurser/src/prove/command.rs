@@ -70,8 +70,8 @@ where
 
     proofman
         .register_recurser_setup(recurser_id, &artifacts.setup_stem())
-        // Preserve the ProofmanError source chain (Io/Library/Json etc.);
-        // `{e}` would flatten it to the top-level message only.
+        // Preserve the error's source chain; `{e}` would flatten it to the
+        // top-level message only.
         .map_err(anyhow::Error::new)
         .context("register_recurser_setup failed")?;
 
@@ -82,16 +82,10 @@ where
 /// No filesystem or layout knowledge lives here — everything is the validated,
 /// in-memory result of [`register_recurser_setup`] plus the proofs.
 ///
-/// `free_a`/`free_b` are the single per-side free-input arrays (width `n_free`).
-/// The runtime semantics depend on each side's origin: for a leaf proof the
-/// array is the free_in consumed by `NormalizePublics`; for an aggregated proof
-/// it is the free_out fed directly to `AggregatePublics`. Both cases share the
-/// same `n_free` width.
-///
-/// Each array must be exactly `n_free` wide: the arrays are passed straight
-/// through to proofman's 2-array API as `free_inputs_a`/`free_inputs_b`, which
-/// appends each by its supplied length with no padding — a wrong length shifts
-/// `rootCRecurserAgg` in the witness buffer and shears the proof.
+/// `free_a`/`free_b` are the per-side free-input arrays (width `n_free`). For a
+/// leaf the array is free_in (consumed by `NormalizePublics`); for an aggregated
+/// proof it is free_out (fed to `AggregatePublics`). Each must be exactly
+/// `n_free` wide — proofman appends them positionally with no padding.
 pub struct ProveRecurserAggregatorOptions<'a> {
     pub registered: &'a RegisteredRecurser,
     pub proof_a: &'a VadcopFinalProof,
@@ -143,8 +137,6 @@ where
         format_origin(origin_b),
     );
 
-    // Free arrays pass straight through; proofman fills the zkin free region
-    // positionally ahead of rootCRecurserAgg (contract on the struct doc).
     tracing::info!("Proving recurser '{}'", registered.recurser_id());
     let out = proofman
         .prove_recurser_aggregator(

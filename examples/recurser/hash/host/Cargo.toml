@@ -1,0 +1,19 @@
+[package]
+name = "recurser-hash-host"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+recurser-hash-common = { path = "../common" }
+zisk-sdk = { workspace = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# Timing macros (expand to `tracing::info!`), matching the prover's log style.
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/recurser-1.0.0-beta" }
+tracing = "0.1"
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
+
+[features]
+default = []
+gpu = []

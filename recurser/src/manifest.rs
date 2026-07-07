@@ -20,18 +20,15 @@ pub struct NormalizeHash {
 pub struct TemplateHashes {
     pub normalize: Option<NormalizeHash>,
     pub aggregate_publics_blake3: String,
-    /// Single unified free-input width per side, shared by NormalizePublics
-    /// and AggregatePublics.
+    /// Unified free-input width per side (NormalizePublics + AggregatePublics).
     pub n_free: usize,
-    /// Number of publics slots the aggregation populates; the rest are
-    /// generator-zero-filled. Part of the id so a used-width change forces a
-    /// fresh setup.
+    /// Publics slots the aggregation populates; the rest are zero-filled. In the
+    /// id so a used-width change forces a fresh setup.
     pub n_publics_agg: usize,
 }
 
-/// Everything the `recurser_id` is derived from. The id is a blake3 of the
-/// JSON serialization, so any change to this struct's shape or contents
-/// produces a fresh id — no explicit schema versioning needed.
+/// Everything the `recurser_id` is derived from — a blake3 of the JSON
+/// serialization, so any change to this struct produces a fresh id.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RecurserManifestInputs {
     pub zisk_vk: [String; 4],
@@ -47,10 +44,8 @@ pub struct RecurserManifest {
 }
 
 impl RecurserManifestInputs {
-    /// Build the id-bearing inputs from the resolved generation inputs.
-    /// Every layer that derives an id (SDK builder, setup command, worker
-    /// claimed-id check) must go through here so the derivation cannot
-    /// diverge.
+    /// Build the id-bearing inputs. Every layer that derives an id must go
+    /// through here so the derivation cannot diverge.
     pub fn new(
         zisk_vk: [String; 4],
         program_vks: Vec<[String; 4]>,
