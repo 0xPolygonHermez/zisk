@@ -53,10 +53,11 @@ main() {
     # Guest Cargo.toml: only depends on ziskos.
     patch_cargo_dep "${GUEST_CARGO_TOML}" "ziskos" "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
-    # Client Cargo.toml: depends on zisk-sdk, zkvm-interface and ziskos.
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"       "${ZISK_REPO_DIR}/sdk"               || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"         "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
+    # Client Cargo.toml: depends on zisk-sdk, zisk-zkvm-interface and ziskos.
+    # (zisk-zkvm-interface was renamed from zkvm-interface; the on-disk dir is still zkvm-interface.)
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"            "${ZISK_REPO_DIR}/sdk"               || return 1
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"              "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
     step "Building zec-reth ELF..."
     ensure cd "${GUEST_DIR}" || return 1
