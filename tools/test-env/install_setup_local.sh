@@ -8,9 +8,9 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     current_step=1
-    total_steps=3
+    total_steps=2
 
-    step "Loading environment variables..."
+    info "Loading environment variables..."
     load_env || return 1
 
     # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
