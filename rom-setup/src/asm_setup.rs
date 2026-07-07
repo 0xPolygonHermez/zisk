@@ -114,7 +114,7 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
             // require its libziskc.a artifact — when targeting Linux.
             let mut args = vec!["build", "--release", "-p", "ziskclib"];
             if cfg!(target_os = "linux") {
-                args.extend(["-p", "lib-c"]);
+                args.extend(["-p", "zisk-lib-c"]);
             }
             let output = Command::new("cargo")
                 .args(&args)
