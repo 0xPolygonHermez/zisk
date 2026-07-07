@@ -2079,7 +2079,7 @@ impl Riscv2ZiskContext<'_> {
             zib.build(self.rom);
         }
 
-        // rd = rs1 | (reg32 >> 1)
+        // rd = rs1 | reg32 = rs1 | (rs1 >> 1)
         {
             let mut zib =
                 ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
