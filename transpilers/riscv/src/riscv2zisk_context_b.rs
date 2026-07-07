@@ -234,7 +234,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh1add, which computes the sum of the first source register and the second source
+    /// Implements sh1add, which computes the sum of the second source register and the first source
     /// register shifted left by 1
     pub fn sh1add(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
@@ -271,7 +271,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh2add, which computes the sum of the first source register and the second source
+    /// Implements sh2add, which computes the sum of the second source register and the first source
     /// register shifted left by 2
     pub fn sh2add(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
@@ -345,7 +345,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh1add_u_w, which computes the sum of the first source register and the second
+    /// Implements sh1add_u_w, which computes the sum of the second source register and the first
     /// source register shifted left by 1, modulo 2^32
     pub fn sh1add_u_w(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
@@ -397,7 +397,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh2add_u_w, which computes the sum of the first source register and the second
+    /// Implements sh2add_u_w, which computes the sum of the second source register and the first
     /// source register shifted left by 2, modulo 2^32
     pub fn sh2add_u_w(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
@@ -449,7 +449,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh3add_u_w, which computes the sum of the first source register and the second
+    /// Implements sh3add_u_w, which computes the sum of the second source register and the first
     /// source register shifted left by 3, modulo 2^32
     pub fn sh3add_u_w(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
