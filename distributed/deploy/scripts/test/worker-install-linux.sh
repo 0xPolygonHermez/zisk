@@ -71,7 +71,7 @@ info "Running worker install.sh (--no-mpi --no-enable -y)"
 # ── 2. bundle layout ──────────────────────────────────────────────────────────
 info "Bundle layout under $BUNDLE"
 [[ -d "$BUNDLE/bin" ]] && ok "$BUNDLE/bin exists" || fail "$BUNDLE/bin missing"
-for f in cargo-zisk ziskemu riscv2zisk zisk-worker zisk-coordinator ziskup libziskclib.a; do
+for f in cargo-zisk ziskemu zisk-transpiler-riscv zisk-worker zisk-coordinator ziskup libziskclib.a; do
     [[ -f "$BUNDLE/bin/$f" ]] && ok "bundle has $f" || fail "missing $BUNDLE/bin/$f"
 done
 # Linux x86_64 ships emulator-asm + lib-c sources for runtime ASM build.
