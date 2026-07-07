@@ -8,7 +8,7 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=8
+    total_steps=7
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"

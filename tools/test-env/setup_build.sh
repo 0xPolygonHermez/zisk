@@ -488,7 +488,12 @@ elif [ "$GEN_EXPS_ON_HIT" -eq 1 ]; then
 fi
 
 if [ "$MODE" = "build" ]; then
-  echo "done. to package: (cd tools/test-env && ./upload_setup.sh)"
+  echo "done. to package: (cd tools/test-env && ./upload_setup.sh)" >&2
 else
-  echo "done."
+  echo "done." >&2
+fi
+
+# Emit the input hash as the final stdout line so callers can capture it
+if [ "$MODE" = "build" ] || [ "$MODE" = "no_aggregation" ]; then
+  echo "$LOCAL_HASH"
 fi

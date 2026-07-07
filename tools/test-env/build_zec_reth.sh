@@ -8,7 +8,7 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=5
+    total_steps=4
 
     step "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
