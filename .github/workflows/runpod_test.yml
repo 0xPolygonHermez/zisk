@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_time:
+        description: "Run time (minutes)"
+        required: false
+        type: number
+        default: 60
 
   schedule:
     - cron: "0 1 * * *"
@@ -151,6 +156,7 @@ jobs:
       - name: Provision and run cluster
         env:
           DISABLE_MPI_FLAG: ${{ github.event_name == 'workflow_dispatch' && inputs.disable_mpi && '--disable-mpi' || '' }}
+          RUN_TIME: ${{ github.event_name == 'workflow_dispatch' && inputs.run_time || 60 }}
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
@@ -161,6 +167,7 @@ jobs:
               python3 tools/runpod-test/deploy_cluster.py \
                 --ssh-key ~/.ssh/runpod_ed25519 \
                 --work-dir "$WORKSPACE_DIR" \
+                --run-time $RUN_TIME \
                 $DISABLE_MPI_FLAG
             '
 
