@@ -16,6 +16,11 @@ pub struct EmuContext {
     pub trace: EmuTrace,
     pub do_stats: bool,
     pub stats: Stats,
+    /// Change-trace window [trace_from, trace_to]: within it, register and stack
+    /// writes are traced (see ziskemu's `--trace-from` / `--trace-to`). `trace_from`
+    /// defaults to 0 and `trace_to` to unbounded.
+    pub trace_from: Option<u64>,
+    pub trace_to: Option<u64>,
 }
 
 /// RisK emulator context implementation
@@ -34,6 +39,8 @@ impl EmuContext {
             last_callback_step: 0,
             do_stats: false,
             stats: Stats::default(),
+            trace_from: None,
+            trace_to: None,
         };
 
         // Check the input data size is inside the proper range

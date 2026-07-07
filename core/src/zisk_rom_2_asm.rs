@@ -8,7 +8,7 @@ use ziskos::zisklib::FCALL_INPUT_READY_ID;
 use crate::{
     zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
     INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG,
+    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -2422,8 +2422,9 @@ impl ZiskRom2Asm {
                         }
                         if ctx.log_output {
                             *code += &format!(
-                                "\tmov {}, 0xa0000200 {}\n",
+                                "\tmov {}, {} {}\n",
                                 REG_FLAG,
+                                UART_ADDR,
                                 ctx.comment_str("width=1: aux = UART")
                             );
                             *code += &format!(

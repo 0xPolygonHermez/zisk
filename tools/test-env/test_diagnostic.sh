@@ -11,17 +11,12 @@ main() {
 
     PROGRAMS_DIR="$(get_zisk_repo_dir)/test-artifacts/programs"
     ELF_FILE="${PROGRAMS_DIR}/target/elf/riscv64ima-zisk-zkvm-elf/release/diagnostic"
-    ZISK_LINKER_SCRIPT="$(get_zisk_repo_dir)/ziskbuild/zisk_linker_script.ld"
 
     info "Building diagnostic ELF..."
     cd "${PROGRAMS_DIR}" || return 1
-    
-    # Append to any RUSTFLAGS already set in the environment instead of replacing
-    # them. `${RUSTFLAGS:+$RUSTFLAGS }` expands to the existing flags plus a space
-    # only when RUSTFLAGS is non-empty, so there is no stray leading space.
-    ensure env CARGO_TARGET_DIR="${PROGRAMS_DIR}/target/elf" \
-           env RUSTFLAGS="${RUSTFLAGS:+$RUSTFLAGS }-C link-arg=-T${ZISK_LINKER_SCRIPT}" \
-        cargo +zisk build --release  -p diagnostic --target riscv64ima-zisk-zkvm-elf || return 1
+
+    # cargo-zisk injects the Zisk linker script and preserves config.toml rustflags.
+    ensure cargo-zisk build --release -p diagnostic || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
     DIAGNOSTIC_INPUTS_SINGLE="empty"

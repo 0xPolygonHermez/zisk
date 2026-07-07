@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "8ada3a280a9af7a09fbf614eab1706090d85c3e2da3a39941857d4c778022ddc";
+pub const PILOUT_HASH: &str = "e6ce1bcc1970586d925f2e1cef405fe864f03c69487c6b9ae8d01b7794fc851d";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -489,18 +489,18 @@ trace_row!(DmaPrePostInputCpyTraceRow<F> {
 pub type DmaPrePostInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 31>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 23], column: [F; 64], __L1__: F,
+ UID: [F; 22], column: [F; 59], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 23],
+ multiplicity:[F; 22],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- UID: [F; 8], column: [F; 64], __L1__: F,
+ UID: [F; 8], column: [F; 63], __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 33>;
 

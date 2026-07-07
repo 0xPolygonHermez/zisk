@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Shared helpers for build-setup.sh. Sourced, not executed.
+# Shared helpers for setup_build.sh. Sourced, not executed.
 #
 # Caller responsibilities before sourcing:
 #   - set ROOT_DIR to the zisk repo root and cd there
@@ -29,6 +29,19 @@ sha256_hex() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum
   else shasum -a 256
   fi | awk '{print $1}'
+}
+
+# Print the pil2-compiler git URL#ref, or nothing when no branch is set. The
+# branch is PIL2_COMPILER_BRANCH (set by --pil2-compiler-branch) if given, else
+# gha_pil2_compiler_branch from the root Cargo.toml. Shared by the cache key and
+# the installer so they can't disagree.
+PIL2_COMPILER_REPO="https://github.com/0xPolygonHermez/pil2-compiler.git"
+read_zisk_pil2_compiler_override() {
+  local branch="${PIL2_COMPILER_BRANCH:-}"
+  [ -n "$branch" ] || branch="$(cargo metadata --format-version 1 --no-deps 2>/dev/null \
+    | jq -r '.metadata.gha_pil2_compiler_branch // empty')"
+  [ -n "$branch" ] || return 0
+  printf '%s#%s\n' "$PIL2_COMPILER_REPO" "$branch"
 }
 
 # Resolve the pil2-proofman checkout — always whatever cargo actually compiled
@@ -99,13 +112,19 @@ compute_input_hash() (
     [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; exit 1; }
   done
 
-  # The package.json dependency value, e.g.
-  #   "pil2-compiler": "https://github.com/.../pil2-compiler.git#v0.9.0"
-  # Extracted with sed (no jq); identical to what jq -r '.dependencies."pil2-compiler"'
-  # returned, so the cache key is unchanged.
-  pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
-  [ -n "$pil2_compiler_version" ] || \
-    { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+  # The pil2-compiler version that will actually compile the PIL. The override
+  # wins over proofman's own package.json, so it must feed the cache key or two
+  # builds with different overrides would collide. Falls back to proofman's value
+  # when there is no override. Shared resolver with the installer.
+  local pil2_compiler_version pil2_compiler_override
+  pil2_compiler_override="$(read_zisk_pil2_compiler_override)"
+  if [ -n "$pil2_compiler_override" ]; then
+    pil2_compiler_version="$pil2_compiler_override"
+  else
+    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
+    [ -n "$pil2_compiler_version" ] || \
+      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+  fi
 
   # pil2-stark-setup is a transitive dep, not a workspace member. Prefer its
   # source straight from Cargo.lock: for a git dep that's a stable

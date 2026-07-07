@@ -996,7 +996,7 @@ impl Riscv2ZiskContext<'_> {
         zib.op("copyb").unwrap();
         zib.store("mem", EXTRA_PARAMS_ADDR as i64, false, false);
         zib.j(0, inst_size as i64);
-        zib.verbose(&format!("sd r{}, (0x{}) (param 0x{:03X})", rs1, EXTRA_PARAMS_ADDR, i.csr));
+        zib.verbose(&format!("sd r{}, (0x{:X}) (param 0x{:03X})", rs1, EXTRA_PARAMS_ADDR, i.csr));
         zib.build(self.rom);
         self.output_precompile = Some(i.csr);
         self.output_precompile_reg = Some(i.rs1);
@@ -2400,7 +2400,7 @@ impl Riscv2ZiskContext<'_> {
                 // memcpy/memcmp transpilation pattern:
                 //
                 //  csrs  0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM]
-                //  addi  rd, reg(dst), reg(count)       memcxx rd, reg(dst), reg(src)
+                //  add   rd, reg(dst), reg(count)       memcxx rd, reg(dst), reg(src)
                 //  ..........                           ..........
 
                 self.create_set_precompiles_param_op(i, next_instructions[0].rs2, 4);
