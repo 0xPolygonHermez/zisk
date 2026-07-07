@@ -156,18 +156,36 @@ jobs:
       - name: Provision and run cluster
         env:
           DISABLE_MPI_FLAG: ${{ github.event_name == 'workflow_dispatch' && inputs.disable_mpi && '--disable-mpi' || '' }}
-          RUN_TIME: ${{ github.event_name == 'workflow_dispatch' && inputs.run_time || 60 }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          DISPATCH_RUN_TIME: ${{ inputs.run_time }}
+          NIGHTLY_RUN_TIME: ${{ vars.RUNPOD_NIGHTLY_RUN_TIME }}
         run: |
+          # Build the --run-time flag depending on the trigger:
+          #  - workflow_dispatch: use the run_time input
+          #  - push to develop:   use RUNPOD_NIGHTLY_RUN_TIME if the var is set,
+          #                        otherwise omit --run-time entirely
+          #  - otherwise omit --run-time entirely (use default value in deploy_cluster.py)
+          RUN_TIME_FLAG=""
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            RUN_TIME_FLAG="--run-time ${DISPATCH_RUN_TIME}"
+          elif [ "$EVENT_NAME" = "push" ] && [ "$EVENT_REF" = "refs/heads/develop" ]; then
+            if [ -n "$NIGHTLY_RUN_TIME" ]; then
+              RUN_TIME_FLAG="--run-time ${NIGHTLY_RUN_TIME}"
+            fi
+          fi
+
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
             -e DISABLE_MPI_FLAG="${DISABLE_MPI_FLAG}" \
+            -e RUN_TIME_FLAG="${RUN_TIME_FLAG}" \
             -- bash -lc '
               cd /workspace/zisk
               python3 tools/runpod-test/deploy_cluster.py \
                 --ssh-key ~/.ssh/runpod_ed25519 \
                 --work-dir "$WORKSPACE_DIR" \
-                --run-time $RUN_TIME \
+                $RUN_TIME_FLAG \
                 $DISABLE_MPI_FLAG
             '
 

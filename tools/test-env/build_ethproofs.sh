@@ -59,7 +59,7 @@ main() {
 
     step "Building ethproofs-client..."
     ensure cd "${CLIENT_DIR}" || return 1
-    ensure eval "RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release" || return 1
+    ensure env RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release || return 1
     cd "${WORKSPACE_DIR}" || return 1
 
     step "Verifying ethproofs-client binary was generated..."

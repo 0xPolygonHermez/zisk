@@ -187,7 +187,8 @@ def main() -> None:
     if not command:
         parser.error("No command provided. Example: run_command.py -- nvidia-smi")
 
-    command_str = " ".join(command)
+    import shlex
+    command_str = shlex.join(command)
 
     private_key = str(Path(args.ssh_key).expanduser().resolve())
 

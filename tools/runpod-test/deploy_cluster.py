@@ -563,10 +563,10 @@ def main() -> None:
     parser.add_argument(
         "--run-time",
         type=int,
-        default=15,
+        default=60,
         help=(
-            "Time (seconds) the test runs, passed to ethproofs-client "
-            "--run-time. Default: 15"
+            "Time (minutes) the test runs, passed to ethproofs-client "
+            "--run-time. Default: 60"
         ),
     )
     parser.add_argument(

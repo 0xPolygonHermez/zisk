@@ -7,7 +7,7 @@ main() {
     current_step=1
     total_steps=5
 
-    script_dir=$(pwd)
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
     step "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
