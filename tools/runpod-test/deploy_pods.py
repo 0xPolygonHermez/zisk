@@ -107,7 +107,7 @@ def create_pod(
         # Allowed data centers (all except the excluded ones, e.g. EUR-IS-2).
         "dataCenterIds": DATA_CENTER_IDS,
 
-        # Puertos públicos
+        # Public ports
         "ports": POD_PORTS,
         "supportPublicIp": True,
 
@@ -116,15 +116,15 @@ def create_pod(
         # pods behind the same NAT).
         "globalNetworking": True,
 
-        # false = reserved/on-demand, no spot/interrumpible
+        # False = reserved/on-demand, no spot/interrumpible
         "interruptible": False,
 
-        # Disco
+        # Storage
         "containerDiskInGb": container_disk_gb,
         "volumeInGb": volume_gb,
         "volumeMountPath": volume_mount_path,
 
-        # Variables de entorno
+        # Environment variables
         "env": env,
     }
 

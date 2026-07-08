@@ -32,7 +32,6 @@ COORD_INTERNAL_PORT = 50051
 # Remote destinations. $HOME expands inside remote shell / tmux commands; scp
 # (SFTP mode) does not expand $HOME, so scp destinations use ~ instead.
 REMOTE_ZISK_DIR = "$HOME/.zisk"
-REMOTE_ZISK_DIR_SCP = "~/.zisk"
 REMOTE_BIN_DIR = "$HOME/.zisk/bin"
 REMOTE_PROVING_KEY_DIR = "$HOME/.zisk/provingKey"
 REMOTE_LOG_DIR = "/workspace/logs"
@@ -284,7 +283,7 @@ def build_pod_steps(
                 target,
                 private_key,
                 local_zisk_dir,
-                REMOTE_ZISK_DIR_SCP,
+                REMOTE_ZISK_DIR,
                 items=["bin", "zisk"],
             ),
         }

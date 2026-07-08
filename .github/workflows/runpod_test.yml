@@ -163,13 +163,13 @@ jobs:
         run: |
           # Build the --run-time flag depending on the trigger:
           #  - workflow_dispatch: use the run_time input
-          #  - push to develop:   use RUNPOD_NIGHTLY_RUN_TIME if the var is set,
+          #  - schedule:          use RUNPOD_NIGHTLY_RUN_TIME if the var is set,
           #                        otherwise omit --run-time entirely
           #  - otherwise omit --run-time entirely (use default value in deploy_cluster.py)
           RUN_TIME_FLAG=""
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             RUN_TIME_FLAG="--run-time ${DISPATCH_RUN_TIME}"
-          elif [ "$EVENT_NAME" = "push" ] && [ "$EVENT_REF" = "refs/heads/develop" ]; then
+          elif [ "$EVENT_NAME" = "schedule" ]; then
             if [ -n "$NIGHTLY_RUN_TIME" ]; then
               RUN_TIME_FLAG="--run-time ${NIGHTLY_RUN_TIME}"
             fi

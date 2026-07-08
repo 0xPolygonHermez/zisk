@@ -98,8 +98,8 @@ load_env() {
             continue
         fi
 
-        # If an allow-list was provided, skip variables not in it
-        if (( ${#__wanted_vars[@]} > 0 )); then
+        # If an allow-list was provided, skip variables not in it (except control vars)
+        if (( ${#__wanted_vars[@]} > 0 )) && [[ "$key" != "DISABLE_ENV_CONFIRM" ]]; then
             local __is_wanted=0
             local __w
             for __w in "${__wanted_vars[@]}"; do

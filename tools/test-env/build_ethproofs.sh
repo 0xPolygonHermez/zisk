@@ -12,7 +12,7 @@ main() {
 
     step "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR ZISK_ETHPROOFS_BRANCH DISABLE_CLONE_REPO || return 1
+    load_env ZISK_REPO_DIR ZISK_ETHPROOFS_BRANCH DISABLE_CLONE_REPO ENABLE_HINTS || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
 
@@ -59,7 +59,11 @@ main() {
 
     step "Building ethproofs-client..."
     ensure cd "${CLIENT_DIR}" || return 1
-    ensure env RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release || return 1
+    if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
+        ensure env RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release || return 1
+    else
+        ensure cargo build --release || return 1
+    fi
     cd "${WORKSPACE_DIR}" || return 1
 
     step "Verifying ethproofs-client binary was generated..."
