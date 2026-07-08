@@ -22,7 +22,7 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `execute_task_response` - Response containing final proof or failure details
-    pub(super) async fn handle_aggregation_completion(
+    pub(super) async fn handle_recurser_completion(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
@@ -102,7 +102,7 @@ impl Coordinator {
             error!("Missing start time for Phase2 in job {}", job.job_id);
             end_time
         });
-        let phase3_time = job.phase_start_time(&JobPhase::Aggregate).unwrap_or_else(|| {
+        let phase3_time = job.phase_start_time(&JobPhase::Recurse).unwrap_or_else(|| {
             error!("Missing start time for Phase3 in job {}", job.job_id);
             end_time
         });
@@ -412,7 +412,7 @@ impl Coordinator {
 
     /// Re-sends the in-flight aggregation task to a reconnecting aggregator.
     /// No-op if the worker is not the aggregator for this job, or if no task is in-flight.
-    pub(super) async fn replay_inflight_agg_task_if_aggregator(
+    pub(super) async fn replay_inflight_agg_task_if_recurser(
         &self,
         worker_id: &WorkerId,
         job_id: &JobId,
@@ -432,14 +432,8 @@ impl Coordinator {
 
         if let Some(task) = inflight {
             info!("Replaying in-flight agg task to reconnected aggregator {worker_id}");
-            self.send_aggregation_task(
-                job_id,
-                worker_id,
-                task.proofs,
-                task.all_done,
-                task.proof_type,
-            )
-            .await?;
+            self.send_recurser_task(job_id, worker_id, task.proofs, task.all_done, task.proof_type)
+                .await?;
         }
 
         Ok(())
@@ -466,14 +460,8 @@ impl Coordinator {
             (task, agg_worker_id)
         };
 
-        self.send_aggregation_task(
-            job_id,
-            &agg_worker_id,
-            task.proofs,
-            task.all_done,
-            task.proof_type,
-        )
-        .await
+        self.send_recurser_task(job_id, &agg_worker_id, task.proofs, task.all_done, task.proof_type)
+            .await
     }
 
     /// Sends an aggregation task to the designated aggregator worker.
@@ -484,7 +472,7 @@ impl Coordinator {
     /// * `agg_worker_id` - Worker ID assigned as the aggregator
     /// * `proofs` - List of proofs to aggregate
     /// * `all_done` - Indicates if this is the final aggregation step
-    pub(super) async fn send_aggregation_task(
+    pub(super) async fn send_recurser_task(
         &self,
         job_id: &JobId,
         agg_worker_id: &WorkerId,

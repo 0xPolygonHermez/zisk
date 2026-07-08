@@ -2,11 +2,13 @@ use anyhow::Result;
 
 use crate::common::reject_quic_hints;
 
+mod aggregate;
 mod execute;
 mod prove;
 mod setup;
 mod wrap;
 
+pub(crate) use aggregate::ZiskEmbeddedAggregate;
 pub(crate) use execute::ZiskEmbeddedExecute;
 pub(crate) use prove::ZiskEmbeddedProve;
 pub(crate) use setup::ZiskEmbeddedSetup;
@@ -42,6 +44,8 @@ pub(crate) enum ZiskEmbeddedCmd {
     Execute(ZiskEmbeddedExecute),
     /// Wrap a proof locally
     Wrap(ZiskEmbeddedWrap),
+    /// Fold two proofs into one recurser proof locally
+    Aggregate(ZiskEmbeddedAggregate),
 }
 
 impl ZiskEmbeddedCmd {
@@ -51,6 +55,7 @@ impl ZiskEmbeddedCmd {
             ZiskEmbeddedCmd::Prove(cmd) => cmd.run(),
             ZiskEmbeddedCmd::Execute(cmd) => cmd.run(),
             ZiskEmbeddedCmd::Wrap(cmd) => cmd.run(),
+            ZiskEmbeddedCmd::Aggregate(cmd) => cmd.run(),
         }
     }
 }

@@ -1,0 +1,242 @@
+{# `zisk_publics` (64) comes from the Rust context (templates::ZISK_PUBLICS).
+   Slot 0 = is_vadcop_final_proof (1=leaf, 0=aggregator output); stripped later. #}
+pragma circom 2.1.0;
+pragma custom_templates;
+
+include "{{ verifier_filename }}";
+include "mux1.circom";
+{% if n_programs > 0 %}
+include "iszero.circom";
+{% endif %}
+include "publics_helpers.circom";
+
+// Shared named constant (circom has no const/global): AggregatePublics sizes
+// its publics arrays as `[ZISK_PUBLICS()]`.
+function ZISK_PUBLICS() {
+    return {{ zisk_publics }};
+}
+
+{{ aggregate_publics_template }}
+
+{% if n_programs > 0 %}
+// 1 iff the two 4-limb VKs are equal (allow-list membership).
+template IsEqualVK() {
+    signal input a[4];
+    signal input b[4];
+    signal output {binary} out;
+
+    signal {binary} eq[4];
+    for (var i = 0; i < 4; i++) {
+        eq[i] <== IsZero()(a[i] - b[i]);
+    }
+    signal {binary} eq01 <== eq[0] * eq[1];
+    signal {binary} eq23 <== eq[2] * eq[3];
+    out <== eq01 * eq23;
+}
+
+{% endif %}
+{% if normalize %}
+{{ normalize_body }}
+
+{% endif %}
+template Main(nPublics) {
+    // Fold-layer publics: [0]=flag, VK at [VK_BASE..), user inputs at
+    // [PUBLICS_BASE..). The output re-emits the same layout so it re-verifies
+    // one fold up.
+    var PROGRAM_VK_LEN = 4;
+    var VK_BASE = 1;
+    var PUBLICS_BASE = VK_BASE + PROGRAM_VK_LEN;  // = 5
+    var OUTPUT_LEN = PUBLICS_BASE + nPublics;
+
+    signal output aggregatedPublics[OUTPUT_LEN];
+
+    // WARNING: proofman fills the zkin witness positionally, so declaration
+    // order is a hard contract (reordering silently shears the witness).
+{{ define_stark_inputs_a }}
+
+{{ define_stark_inputs_b }}
+
+{% if n_free > 0 %}
+    signal input freeInputsA[{{ n_free }}];
+{% endif %}
+{% if n_free > 0 %}
+    signal input freeInputsB[{{ n_free }}];
+{% endif %}
+
+    signal input rootCRecurserAgg[4];
+
+    var rootCVadcopFinalZisk[4] = [{% for v in root_c_vadcop_final_zisk %}{{ v }}{% if not loop.last %},{% endif %}{% endfor %}];
+
+    // -- Extract each proof's programVK.
+    signal programVK_A[4];
+    signal programVK_B[4];
+    for (var i = 0; i < 4; i++) {
+        programVK_A[i] <== a_sv_publics[VK_BASE + i];
+        programVK_B[i] <== b_sv_publics[VK_BASE + i];
+    }
+
+    // -- is_vadcop_final_proof selector (reserved slot 0).
+    signal {binary} isFinalA <== a_sv_publics[{{ is_vadcop_final_slot }}];
+    signal {binary} isFinalB <== b_sv_publics[{{ is_vadcop_final_slot }}];
+    // Self-defending: enforce boolean, don't merely trust the {binary} tag.
+    isFinalA * (1 - isFinalA) === 0;
+    isFinalB * (1 - isFinalB) === 0;
+
+{% if n_programs > 0 %}
+    // -- Optional leaf allow-list: a leaf whose programVK is absent makes the
+    //    circuit unsatisfiable. Aggregated proofs (isFinal=0) are unaffected.
+    var programVKs[{{ n_programs }}][4] = [{% for vk in program_vks %}[{{ vk[0] }},{{ vk[1] }},{{ vk[2] }},{{ vk[3] }}]{% if not loop.last %},{% endif %}{% endfor %}];
+
+    // Membership: isRegistered = 1 - ∏(1 - eq[k]). Product form (not Σ eq[k])
+    // preserves circom 2.1's {binary} tag (addition strips it). Soundness
+    // assumes programVKs[] has no duplicates (enforced upstream).
+    signal {binary} eqA[{{ n_programs }}];
+    signal {binary} eqB[{{ n_programs }}];
+    signal {binary} noMatchA[{{ n_programs }}];
+    signal {binary} noMatchB[{{ n_programs }}];
+    for (var k = 0; k < {{ n_programs }}; k++) {
+        eqA[k] <== IsEqualVK()(programVK_A, programVKs[k]);
+        eqB[k] <== IsEqualVK()(programVK_B, programVKs[k]);
+    }
+    noMatchA[0] <== 1 - eqA[0];
+    noMatchB[0] <== 1 - eqB[0];
+    for (var k = 1; k < {{ n_programs }}; k++) {
+        noMatchA[k] <== noMatchA[k - 1] * (1 - eqA[k]);
+        noMatchB[k] <== noMatchB[k - 1] * (1 - eqB[k]);
+    }
+    signal {binary} isRegisteredProgramA <== 1 - noMatchA[{{ n_programs }} - 1];
+    signal {binary} isRegisteredProgramB <== 1 - noMatchB[{{ n_programs }} - 1];
+
+    // Claimed leaf must be registered (else unsatisfiable).
+    isFinalA * (1 - isRegisteredProgramA) === 0;
+    isFinalB * (1 - isRegisteredProgramB) === 0;
+{% endif %}
+
+{{ assign_stark_inputs_a }}
+{{ assign_stark_inputs_b }}
+
+    // -- rootC: leaf (isFinal=1) -> rootCVadcopFinalZisk; aggregated (isFinal=0) -> programVK.
+    vA.rootC <== MultiMux1(4)([programVK_A, rootCVadcopFinalZisk], isFinalA);
+    vB.rootC <== MultiMux1(4)([programVK_B, rootCVadcopFinalZisk], isFinalB);
+
+    // -- User publics live at [PUBLICS_BASE..).
+    signal aPublics[nPublics];
+    signal bPublics[nPublics];
+    for (var i = 0; i < nPublics; i++) {
+        aPublics[i] <== a_sv_publics[PUBLICS_BASE + i];
+        bPublics[i] <== b_sv_publics[PUBLICS_BASE + i];
+    }
+
+{% if normalize %}
+    // -- Optional NormalizePublics runs on every leaf; aggregated proofs pass raw.
+    //    ziskPublicsX = isFinalX * normX + (1 - isFinalX) * rawX.
+{% if n_free > 0 %}
+    // NormalizePublics emits recurser_publics + free_outputs.
+    component normACmp = NormalizePublics({{ n_free }});
+    normACmp.publics <== aPublics;
+    normACmp.free_inputs <== freeInputsA;
+    signal normA[nPublics] <== normACmp.recurser_publics;
+    signal normFreeOutA[{{ n_free }}] <== normACmp.free_outputs;
+
+    component normBCmp = NormalizePublics({{ n_free }});
+    normBCmp.publics <== bPublics;
+    normBCmp.free_inputs <== freeInputsB;
+    signal normB[nPublics] <== normBCmp.recurser_publics;
+    signal normFreeOutB[{{ n_free }}] <== normBCmp.free_outputs;
+{% else %}
+    signal normA[nPublics] <== NormalizePublics()(aPublics);
+    signal normB[nPublics] <== NormalizePublics()(bPublics);
+{% endif %}
+    signal ziskPublicsA[nPublics];
+    signal ziskPublicsB[nPublics];
+    signal selNormA[nPublics];
+    signal selNormB[nPublics];
+    signal selRawA[nPublics];
+    signal selRawB[nPublics];
+    for (var i = 0; i < nPublics; i++) {
+        selNormA[i] <== isFinalA * normA[i];
+        selNormB[i] <== isFinalB * normB[i];
+        selRawA[i] <== (1 - isFinalA) * aPublics[i];
+        selRawB[i] <== (1 - isFinalB) * bPublics[i];
+        ziskPublicsA[i] <== selNormA[i] + selRawA[i];
+        ziskPublicsB[i] <== selNormB[i] + selRawB[i];
+    }
+{% if n_free > 0 %}
+    // -- Free-value mux, parallel to the publics mux.
+    signal aggFreeA[{{ n_free }}];
+    signal aggFreeB[{{ n_free }}];
+    signal selFreeNormA[{{ n_free }}];
+    signal selFreeNormB[{{ n_free }}];
+    signal selFreeRawA[{{ n_free }}];
+    signal selFreeRawB[{{ n_free }}];
+    for (var i = 0; i < {{ n_free }}; i++) {
+        selFreeNormA[i] <== isFinalA * normFreeOutA[i];
+        selFreeNormB[i] <== isFinalB * normFreeOutB[i];
+        selFreeRawA[i] <== (1 - isFinalA) * freeInputsA[i];
+        selFreeRawB[i] <== (1 - isFinalB) * freeInputsB[i];
+        aggFreeA[i] <== selFreeNormA[i] + selFreeRawA[i];
+        aggFreeB[i] <== selFreeNormB[i] + selFreeRawB[i];
+    }
+{% endif %}
+{% else %}
+    // -- No normalize configured: every proof's publics pass through raw.
+    signal ziskPublicsA[nPublics];
+    signal ziskPublicsB[nPublics];
+    for (var i = 0; i < nPublics; i++) {
+        ziskPublicsA[i] <== aPublics[i];
+        ziskPublicsB[i] <== bPublics[i];
+    }
+{% if n_free > 0 %}
+    // -- No normalize: freeInputsX is the free value directly (no norm path, no mux).
+    signal aggFreeA[{{ n_free }}] <== freeInputsA;
+    signal aggFreeB[{{ n_free }}] <== freeInputsB;
+{% endif %}
+{% endif %}
+
+    // -- Consistency + aggregation. AggregatePublics outputs only the used
+    //    slots; the generator zero-fills the [N_PUBLICS_AGG, nPublics) tail.
+    var N_PUBLICS_AGG = {{ n_publics_agg }};
+{% if n_free > 0 %}
+    signal aggPublics[N_PUBLICS_AGG] <== AggregatePublics({{ n_free }}, N_PUBLICS_AGG)(
+        ziskPublicsA, ziskPublicsB, aggFreeA, aggFreeB);
+{% else %}
+    signal aggPublics[N_PUBLICS_AGG] <== AggregatePublics(N_PUBLICS_AGG)(ziskPublicsA, ziskPublicsB);
+{% endif %}
+
+    for (var i = 0; i < N_PUBLICS_AGG; i++) {
+        aggregatedPublics[PUBLICS_BASE + i] <== aggPublics[i];
+    }
+    for (var i = N_PUBLICS_AGG; i < nPublics; i++) {
+        aggregatedPublics[PUBLICS_BASE + i] <== 0;
+    }
+
+    // -- When both proofs are aggregated, their programVKs must match.
+    signal bothAggregated <== (1 - isFinalA) * (1 - isFinalB);
+    for (var i = 0; i < 4; i++) {
+        bothAggregated * (programVK_A[i] - programVK_B[i]) === 0;
+    }
+
+    // -- Output programVK selection (selectors mutually exclusive, sum to 1):
+    //      both leaves          -> rootCRecurserAgg
+    //      A aggregated         -> programVK_A
+    //      A leaf, B aggregated -> programVK_B
+    signal selectAgg <== isFinalA * isFinalB;
+    signal selectAVK <== 1 - isFinalA;
+    signal selectBVK <== isFinalA * (1 - isFinalB);
+
+    signal aggTerm[4];
+    signal aTerm[4];
+    signal bTerm[4];
+    for (var i = 0; i < 4; i++) {
+        aggTerm[i] <== selectAgg * rootCRecurserAgg[i];
+        aTerm[i]   <== selectAVK * programVK_A[i];
+        bTerm[i]   <== selectBVK * programVK_B[i];
+        aggregatedPublics[VK_BASE + i] <== aggTerm[i] + aTerm[i] + bTerm[i];
+    }
+
+    // -- Slot 0 = 0: an aggregator output is never a raw leaf. Must be `<==`
+    //    (assign), not `===`: the signal is otherwise undriven.
+    aggregatedPublics[{{ is_vadcop_final_slot }}] <== 0;
+}
+
+component main = Main({{ zisk_publics }});

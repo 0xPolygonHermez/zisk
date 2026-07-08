@@ -7,6 +7,7 @@ use zisk_build::ZISK_VERSION_MESSAGE;
 mod build;
 mod embedded;
 mod new;
+mod recurser_common;
 mod remote;
 mod run;
 mod toolchain;

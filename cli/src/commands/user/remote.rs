@@ -4,12 +4,14 @@ use anyhow::Result;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_sdk::ProverClient;
 
+mod aggregate;
 mod execute;
 mod prove;
 mod setup;
 mod upload;
 mod wrap;
 
+pub(crate) use aggregate::ZiskRemoteAggregate;
 pub(crate) use execute::ZiskRemoteExecute;
 pub(crate) use prove::ZiskRemoteProve;
 pub(crate) use setup::ZiskRemoteSetup;
@@ -28,6 +30,8 @@ pub(crate) enum ZiskRemoteCmd {
     Execute(ZiskRemoteExecute),
     /// Wrap a proof on the remote service
     Wrap(ZiskRemoteWrap),
+    /// Fold two proofs into one recurser proof on the remote service
+    Aggregate(ZiskRemoteAggregate),
 }
 
 #[derive(clap::Args)]
@@ -74,6 +78,7 @@ impl RemoteCmd {
                 ZiskRemoteCmd::Prove(cmd) => cmd.run(&client).await,
                 ZiskRemoteCmd::Execute(cmd) => cmd.run(&client).await,
                 ZiskRemoteCmd::Wrap(cmd) => cmd.run(&client).await,
+                ZiskRemoteCmd::Aggregate(cmd) => cmd.run(&client).await,
             }
         })
     }

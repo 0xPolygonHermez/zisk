@@ -10,12 +10,13 @@
 
 use crate::{
     contribution_params::InputSource, coordinator_message::Payload, execute_task_request,
-    execute_task_response, AggParams, Challenges, ComputeCapacity as GrpcComputeCapacity,
-    ContributionParams, CoordinatorMessage, CostPerType, ExecuteTaskRequest, ExecuteTaskResponse,
-    Heartbeat, HeartbeatAck, InputStreamData, JobCancelled, ProofList, ProofStark, ProveParams,
-    ReconnectionAction, ReconnectionDirective, SetupProgram, Shutdown, StreamData, StreamPayload,
-    StreamType, TaskType, WorkerError, WorkerReconnectRequest, WorkerRegisterRequest,
-    WorkerRegisterResponse,
+    execute_task_response, AggParams, AggregationProgramSpec, Challenges,
+    ComputeCapacity as GrpcComputeCapacity, ContributionParams, CoordinatorMessage, CostPerType,
+    ExecuteTaskRequest, ExecuteTaskResponse, Heartbeat, HeartbeatAck, InputStreamData,
+    JobCancelled, NormalizeCircuit, ProgramVk, ProofList, ProofStark, ProveParams,
+    ReconnectionAction, ReconnectionDirective, RunAggregateProofs, SetupAggregationProgram,
+    SetupProgram, Shutdown, StreamData, StreamPayload, StreamType, TaskType, WorkerError,
+    WorkerReconnectRequest, WorkerRegisterRequest, WorkerRegisterResponse,
 };
 use zisk_cluster_common::*;
 
@@ -130,6 +131,73 @@ impl From<CoordinatorMessageDto> for CoordinatorMessage {
             CoordinatorMessageDto::InputStreamData(dto) => {
                 CoordinatorMessage { payload: Some(Payload::InputStreamData(dto.into())) }
             }
+            CoordinatorMessageDto::SetupAggregationProgram(dto) => {
+                CoordinatorMessage { payload: Some(Payload::SetupAggregationProgram(dto.into())) }
+            }
+            CoordinatorMessageDto::RunAggregateProofs(dto) => {
+                CoordinatorMessage { payload: Some(Payload::RunAggregateProofs(dto.into())) }
+            }
+        }
+    }
+}
+
+impl From<AggregationProgramSpecDto> for AggregationProgramSpec {
+    fn from(dto: AggregationProgramSpecDto) -> Self {
+        AggregationProgramSpec {
+            normalize: dto.normalize.map(|n| NormalizeCircuit { body: n.body }),
+            aggregate_publics_body: dto.aggregate_publics_body,
+            n_free: dto.n_free,
+            n_publics_agg: dto.n_publics_agg,
+            program_vks: dto
+                .program_vks
+                .into_iter()
+                .map(|vk| ProgramVk { limbs: vk.to_vec() })
+                .collect(),
+        }
+    }
+}
+
+impl From<AggregationProgramSpec> for AggregationProgramSpecDto {
+    fn from(spec: AggregationProgramSpec) -> Self {
+        AggregationProgramSpecDto {
+            normalize: spec.normalize.map(|n| NormalizeCircuitDto { body: n.body }),
+            aggregate_publics_body: spec.aggregate_publics_body,
+            n_free: spec.n_free,
+            n_publics_agg: spec.n_publics_agg,
+            program_vks: spec.program_vks.into_iter().map(program_vk_from_proto).collect(),
+        }
+    }
+}
+
+/// A `ProgramVk` off the wire must carry exactly 4 limbs; pad/truncate
+/// defensively so a malformed spec can't panic. A wrong length changes the
+/// derived `recurser_id`, which the worker's id check rejects.
+fn program_vk_from_proto(vk: ProgramVk) -> [String; 4] {
+    let mut limbs = vk.limbs;
+    limbs.resize(4, String::from("0"));
+    [limbs[0].clone(), limbs[1].clone(), limbs[2].clone(), limbs[3].clone()]
+}
+
+impl From<SetupAggregationProgramDto> for SetupAggregationProgram {
+    fn from(dto: SetupAggregationProgramDto) -> Self {
+        SetupAggregationProgram {
+            job_id: dto.job_id,
+            recurser_id: dto.recurser_id,
+            spec: Some(dto.spec.into()),
+        }
+    }
+}
+
+impl From<RunAggregateProofsDto> for RunAggregateProofs {
+    fn from(dto: RunAggregateProofsDto) -> Self {
+        RunAggregateProofs {
+            job_id: dto.job_id,
+            recurser_id: dto.recurser_id,
+            proof_a: dto.proof_a,
+            proof_b: dto.proof_b,
+            free_inputs_a: dto.free_inputs_a,
+            free_inputs_b: dto.free_inputs_b,
+            root_c_recurser_agg: dto.root_c_recurser_agg.map(|l| l.to_vec()).unwrap_or_default(),
         }
     }
 }

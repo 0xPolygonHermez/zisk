@@ -13,6 +13,7 @@ use proofman::{
     AggProofs, AggProofsRegister, ProvePhase, ProvePhaseInputs, ProvePhaseResult, WitnessInfo,
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
+use proofman_verifier::VadcopFinalProof;
 use zisk_pil::get_packed_info;
 
 use anyhow::{anyhow, Result};
@@ -25,7 +26,7 @@ use std::{
 };
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
     StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
@@ -378,11 +379,14 @@ pub trait ProverEngine {
         prover_options: BackendProverOpts,
     ) -> Result<ProveOutput>;
 
+    /// Wrap a vadcop_final proof to `proof_kind` (Plonk or minimal).
+    /// `publics_full` is the full-width `[program_vk(4)][user(ZISK_PUBLICS)]`
+    /// blob, used verbatim — a recurser proof's publics exceed 32 bits, so the
+    /// truncated u32 view must not be used here.
     fn wrap_proof(
         &self,
         proof: &[u64],
-        publics: &PublicValues,
-        vk: &ProgramVK,
+        publics_full: &[u64],
         proof_kind: ProofKind,
     ) -> Result<ProveOutput>;
 
@@ -400,9 +404,13 @@ pub trait ProverEngine {
         rank_id: usize,
     ) -> Result<()>;
 
-    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
+    /// Register partial proofs received from other workers of the same job,
+    /// ahead of this worker joining them in [`Self::join_worker_proofs`].
+    fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()>;
 
-    fn aggregate_proofs(
+    /// Join the workers' partial proofs into the job's aggregated proof (the
+    /// in-job Aggregate phase). Unrelated to the recurser's `aggregate_proofs`.
+    fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
@@ -411,6 +419,18 @@ pub trait ProverEngine {
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
+
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()>;
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_a: &[u64],
+        free_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof>;
 
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     fn hash(&self) -> Result<String>;
@@ -650,18 +670,18 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_partition(total_compute_units, allocation, rank_id)
     }
 
-    pub fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
-        self.prover.register_aggregated_proofs(agg_proofs)
+    pub fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.prover.register_worker_proofs(agg_proofs)
     }
 
-    pub fn aggregate_proofs(
+    pub fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.prover.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
+        self.prover.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     /// Broadcast data to all MPI processes.
@@ -682,6 +702,33 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     pub fn hash(&self) -> Result<String> {
         self.prover.hash()
+    }
+
+    /// Register a recurser setup so it can prove. One-time, like registering a
+    /// program; must precede [`prove_recurser`](Self::prove_recurser).
+    pub fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.prover.register_recurser(output_dir, recurser_id)
+    }
+
+    /// Fold two recurser proofs through an already-registered recurser, reusing
+    /// this prover's already-initialized proofman (one MPI init per process).
+    pub fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_a: &[u64],
+        free_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.prover.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            free_a,
+            free_b,
+            root_c_recurser_agg,
+        )
     }
 
     pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
@@ -874,37 +921,21 @@ pub struct WrapBuilder<'a, C: ZiskBackend> {
     prover: &'a C::Prover,
     proof: &'a Proof,
     proof_kind: ProofKind,
-    override_publics: Option<&'a PublicValues>,
-    override_program_vk: Option<&'a ProgramVK>,
 }
 
 impl<'a, C: ZiskBackend> WrapBuilder<'a, C> {
     fn new(prover: &'a C::Prover, proof: &'a Proof, proof_kind: ProofKind) -> Self {
-        Self { prover, proof, proof_kind, override_publics: None, override_program_vk: None }
-    }
-
-    /// Override the publics from the original proof.
-    pub fn with_publics(mut self, publics: &'a PublicValues) -> Self {
-        self.override_publics = Some(publics);
-        self
-    }
-
-    /// Override the program verification key from the original proof.
-    pub fn with_program_vk(mut self, program_vk: &'a ProgramVK) -> Self {
-        self.override_program_vk = Some(program_vk);
-        self
+        Self { prover, proof, proof_kind }
     }
 
     /// Execute the proof wrapping with the configured options.
     pub fn run(self) -> Result<ProveOutput> {
-        let publics = self.override_publics.unwrap_or(&self.proof.publics);
-        let program_vk = self.override_program_vk.unwrap_or(&self.proof.program_vk);
-        let proof = match &self.proof.body {
-            ProofBody::Vadcop { proof, .. } => proof.as_slice(),
+        let (proof, publics_full) = match &self.proof.body {
+            ProofBody::Vadcop { proof, publics_full, .. } => (proof.as_slice(), publics_full),
             ProofBody::Plonk { .. } => {
                 return Err(anyhow::anyhow!("Cannot wrap a Plonk proof"));
             }
         };
-        self.prover.wrap_proof(proof, publics, program_vk, self.proof_kind)
+        self.prover.wrap_proof(proof, publics_full, self.proof_kind)
     }
 }

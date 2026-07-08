@@ -151,6 +151,9 @@ pub struct ZiskInst {
     pub riscv_inst: Option<String>,
     pub index: u64, // internal field used for tracking the instruction creation order in the ROM
     pub next_internal_inst: Option<u64>, // connection to next internal odd instruction, if any
+    pub external_ref_addr: Option<u64>, // external address of the instruction, if any
+    pub meta_rs1: Option<u8>, // meta information used for callstack.
+    pub meta_rd: Option<u8>, // meta information used for callstack.
 }
 
 /// Default constructor
@@ -191,6 +194,9 @@ impl Default for ZiskInst {
             riscv_inst: None,
             index: 0,
             next_internal_inst: None,
+            external_ref_addr: None,
+            meta_rs1: None,
+            meta_rd: None,
         }
     }
 }
@@ -270,6 +276,12 @@ impl ZiskInst {
         s += &format!(" index={}", self.index);
         if let Some(next_internal_inst) = self.next_internal_inst {
             s += &format!(" next_internal_inst=0x{:x}", next_internal_inst);
+        }
+        if let Some(meta_reg) = self.meta_rs1 {
+            s += &format!(" meta_rs1=0x{:x}", meta_reg);
+        }
+        if let Some(meta_reg) = self.meta_rd {
+            s += &format!(" meta_rd=0x{:x}", meta_reg);
         }
         s.remove(0); // remove first space
         s

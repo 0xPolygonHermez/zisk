@@ -7,7 +7,7 @@ use crate::{
 };
 use crate::{Result, SdkError};
 use std::{sync::Arc, time::Duration};
-use zisk_common::{ProgramVK, Proof, ProofBody, ProofKind, PublicValues};
+use zisk_common::{ProgramVK, Proof, ProofBody, ProofKind, PublicValues, PROGRAM_VK_LEN};
 use zisk_prover_backend::ProverEngine;
 
 impl EmbeddedClient {
@@ -74,24 +74,49 @@ impl EmbeddedClient {
         override_publics: Option<&PublicValues>,
         override_program_vk: Option<&ProgramVK>,
     ) -> Result<ProveResult> {
-        let publics = override_publics.unwrap_or(&proof.publics);
-        let program_vk = override_program_vk.unwrap_or(&proof.program_vk);
-        let proof_words = match &proof.body {
-            ProofBody::Vadcop { proof, .. } => proof.as_slice(),
+        let (proof_words, kind, default_publics_full) = match &proof.body {
+            ProofBody::Vadcop { proof, kind, publics_full, .. } => {
+                (proof.as_slice(), *kind, publics_full)
+            }
             ProofBody::Plonk { .. } => {
                 return Err(SdkError::InvalidConfig("Cannot wrap a Plonk proof".to_string()));
             }
         };
 
+        // Build the flag-free `[vk | inputs]` (68) base publics. `publics_full` is
+        // already canonical flag-free; overrides arrive as u32 `PublicValues`, so
+        // reconstructing through them truncates publics above 32 bits — fine for
+        // standard proofs (the override's intent), lossy for recurser publics.
+        let reconstructed;
+        let program_publics: &[u64] = if override_publics.is_some() || override_program_vk.is_some()
+        {
+            let vk = override_program_vk
+                .map(|v| v.vk.as_slice())
+                .unwrap_or(&default_publics_full[..PROGRAM_VK_LEN]);
+            let user = override_publics
+                .map(|p| p.public_u64())
+                .unwrap_or_else(|| default_publics_full[PROGRAM_VK_LEN..].to_vec());
+            reconstructed = [vk.to_vec(), user].concat();
+            &reconstructed
+        } else {
+            default_publics_full
+        };
+
+        // The backend/proofman witness commits over the full STARK public vector,
+        // so re-add the is_vadcop_final_proof flag (from the source proof's kind)
+        // before handing it down. `stark_publics` is the inverse of the ingest
+        // strip: 69 for Final/Recurser, 68 for Minimal.
+        let publics_full = kind.stark_publics(program_publics);
+
         match prover.as_ref() {
             EmbeddedProver::Emu(p) => p
                 .prover
-                .wrap_proof(proof_words, publics, program_vk, proof_kind)
+                .wrap_proof(proof_words, &publics_full, proof_kind)
                 .map(ProveResult::from)
                 .map_err(SdkError::backend),
             EmbeddedProver::Asm(p) => p
                 .prover
-                .wrap_proof(proof_words, publics, program_vk, proof_kind)
+                .wrap_proof(proof_words, &publics_full, proof_kind)
                 .map(ProveResult::from)
                 .map_err(SdkError::backend),
         }

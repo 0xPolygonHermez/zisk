@@ -58,6 +58,10 @@ pub(crate) fn build_program_internal(path: &str, args: Option<BuildArgs>) {
     if let Err(err) = path_output {
         panic!("Failed to build ZisK program: {err:#}.");
     }
+
+    if let Err(err) = crate::aggregation::process_aggregations(program_dir) {
+        panic!("Failed to process ZisK aggregation definitions: {err:#}.");
+    }
 }
 
 pub fn execute_build_program(
