@@ -355,7 +355,7 @@ mod tests {
     fn dummy_agg() -> Recurser {
         Recurser {
             recurser_id: "rid".into(),
-            templates: recurser::CircomTemplates {
+            templates: zisk_recurser::CircomTemplates {
                 normalize: None,
                 aggregate_publics: "// body".into(),
                 n_free: 0,
