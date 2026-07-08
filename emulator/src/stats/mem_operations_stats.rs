@@ -65,27 +65,36 @@ impl MemoryOperationsStats {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn memory_write(&mut self, address: u64, width: u64, value: u64) {
+    /// Accounts a memory write. Returns `false` if `address` falls outside every known memory region
+    /// (an unauthorized access); the caller reports it with execution context instead of panicking here.
+    pub fn memory_write(&mut self, address: u64, width: u64, value: u64) -> bool {
         if (STACK_ADDR..(STACK_ADDR + STACK_SIZE)).contains(&address) {
             self.ram_stack.memory_write(address, width, value);
+            true
         } else if (RAM_ADDR..(RAM_ADDR + RAM_SIZE)).contains(&address) {
             self.ram_no_stack.memory_write(address, width, value);
+            true
         } else {
-            panic!(
-                "Memory write to invalid address 0x{:08x} width {} value 0x{:016x}",
-                address, width, value
-            );
+            false
         }
     }
-    pub fn memory_read(&mut self, address: u64, width: u64) {
+    /// Accounts a memory read. Returns `false` if `address` falls outside every known memory region
+    /// (an unauthorized access); the caller reports it with execution context instead of panicking here.
+    pub fn memory_read(&mut self, address: u64, width: u64) -> bool {
         if (STACK_ADDR..(STACK_ADDR + STACK_SIZE)).contains(&address) {
             self.ram_stack.memory_read(address, width);
+            true
         } else if (RAM_ADDR..(RAM_ADDR + RAM_SIZE)).contains(&address) {
             self.ram_no_stack.memory_read(address, width);
+            true
         } else if (ROM_ADDR..=ROM_ADDR_MAX).contains(&address) {
             self.rom.memory_read(address, width);
-        } else if (INPUT_ADDR..=(INPUT_ADDR + MAX_INPUT_SIZE)).contains(&address) {
+            true
+        } else if (INPUT_ADDR..(INPUT_ADDR + MAX_INPUT_SIZE)).contains(&address) {
             self.input.memory_read(address, width);
+            true
+        } else {
+            false
         }
     }
     pub fn get_ram_cost(&self) -> u64 {

@@ -139,12 +139,20 @@ pub const ROM_ADDR: u64 = 0x80000000;
 pub const ROM_SIZE: u64 = 0x08000000; // 128M
 /// Maximum program ROM instruction address
 pub const ROM_ADDR_MAX: u64 = ROM_ADDR + ROM_SIZE - 1;
+/// Size of float library ROM
+pub const FLOAT_LIB_ROM_SIZE: u64 = 0x100000; // 1M
 /// First float library ROM instruction address
-pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + ROM_SIZE - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
+pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + ROM_SIZE - FLOAT_LIB_ROM_SIZE;
+/// Maximum float library ROM instruction address
+pub const FLOAT_LIB_ROM_ADDR_MAX: u64 = FLOAT_LIB_ROM_ADDR + FLOAT_LIB_ROM_SIZE - 1;
+/// Size of float library RAM
+pub const FLOAT_LIB_RAM_SIZE: u64 = 0x10000; // 64K
 /// First float library RAM address
-pub const FLOAT_LIB_RAM_ADDR: u64 = 0xc0000000 - 0x10000; // 0xbfff0000
+pub const FLOAT_LIB_RAM_ADDR: u64 = RAM_ADDR + RAM_SIZE - FLOAT_LIB_RAM_SIZE;
+/// Maximum float library RAM address
+pub const FLOAT_LIB_RAM_ADDR_MAX: u64 = FLOAT_LIB_RAM_ADDR + FLOAT_LIB_RAM_SIZE - 1;
 /// Float library stack pointer address
-pub const FLOAT_LIB_SP: u64 = 0xc0000000 - 16; // 0xbffffff0
+pub const FLOAT_LIB_SP: u64 = RAM_ADDR + RAM_SIZE - 16;
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output

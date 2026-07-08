@@ -27,11 +27,11 @@ impl StatsCosts {
             cost: 0,
         }
     }
-    pub fn memory_write(&mut self, address: u64, width: u64, value: u64) {
-        self.mops.memory_write(address, width, value);
+    pub fn memory_write(&mut self, address: u64, width: u64, value: u64) -> bool {
+        self.mops.memory_write(address, width, value)
     }
-    pub fn memory_read(&mut self, address: u64, width: u64) {
-        self.mops.memory_read(address, width);
+    pub fn memory_read(&mut self, address: u64, width: u64) -> bool {
+        self.mops.memory_read(address, width)
     }
     pub fn get_delta_steps(&mut self, reference: &StatsCosts, current: &StatsCosts) -> u64 {
         (current.steps - reference.steps).saturating_sub(1)

@@ -49,17 +49,13 @@ impl RegionsOfInterest {
         }
     }
 
-    pub fn update_internal_from_to_pc(&mut self, from_pc: u32, to_pc: u32) {
-        assert!(
-            self.internal_from_to_pc.is_none(),
-            "Internal from/to PC range is already set for ROI '{}' defined 0x{:08x}-0x{:08x} new range 0x{:08x}-0x{:08x}",
-            self.name,
-            self.internal_from_to_pc.map_or(0, |(from, _)| from),
-            self.internal_from_to_pc.map_or(0, |(_, to)| to),
-            from_pc,
-            to_pc
-        );
-        self.internal_from_to_pc = Some((from_pc, to_pc));
+    pub fn update_internal_from_to_pc(&mut self, from_pc: u32, to_pc: u32) -> Option<(u32, u32)> {
+        if self.internal_from_to_pc.is_some() {
+            self.internal_from_to_pc
+        } else {
+            self.internal_from_to_pc = Some((from_pc, to_pc));
+            None
+        }
     }
 
     pub fn set_selected_roi(&mut self, track_calls: usize) {
@@ -161,14 +157,13 @@ impl RegionsOfInterest {
                 .or_insert(CallerInfo { calls: 1, steps: 0 });
         }
     }
-    pub fn return_call(&mut self, call_stack_depth: usize) -> bool {
+    pub fn return_call(&mut self, call_stack_depth: usize) -> (bool, bool) {
         let rc = self.call_stack_rc;
         if self.call_stack_rc > 0 {
             self.call_stack_rc -= 1;
         }
         self.update_call_depth(call_stack_depth);
-        assert!(rc > self.call_stack_rc);
-        rc == 0
+        (rc == 0, rc > self.call_stack_rc)
     }
     pub fn get_callers(&self) -> impl Iterator<Item = (&usize, &CallerInfo)> {
         self.callers.iter()

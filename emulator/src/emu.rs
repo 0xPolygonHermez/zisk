@@ -2071,6 +2071,10 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
+        if self.ctx.do_stats {
+            self.ctx.stats.set_current_pc(pc);
+        }
+
         if options.with_progress && self.ctx.inst_ctx.step & 0xF_FFFF == 0 {
             println!(
                 "running 0x{pc:08x} MS:{} {}",

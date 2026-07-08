@@ -117,6 +117,9 @@ pub struct Stats {
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
     previous_pc: u64,
+    /// pc of the instruction currently being executed, set once per step; used to give execution
+    /// context when reporting an invalid memory access.
+    current_pc: u64,
     call_stack: Vec<CallStackEntry>,
     is_call: bool,
     is_return: bool,
@@ -155,8 +158,6 @@ pub struct Stats {
     debug_step_stack: Vec<u64>,
     #[cfg(feature = "debug_stats_trace")]
     previous_stack_depth: usize,
-    #[cfg(feature = "debug_call_stack")]
-    previous_verbose: String,
     profiler_output: String,
     inst_count: usize,
     rom_init_count: usize,
@@ -193,6 +194,7 @@ impl Default for Stats {
             sdk: false,
             pc_histogram: HashMap::new(),
             previous_pc: 0,
+            current_pc: 0,
             call_stack: Vec::new(),
             is_call: false,
             is_tail_call: false,
@@ -234,8 +236,6 @@ impl Default for Stats {
             debug_step_stack: Vec::new(),
             #[cfg(feature = "debug_stats_trace")]
             previous_stack_depth: 0,
-            #[cfg(feature = "debug_call_stack")]
-            previous_verbose: String::new(),
             inst_count: 0,
             rom_init_count: 0,
             ram_init_count: 0,
@@ -262,14 +262,42 @@ impl Stats {
         }
     }
 
+    /// Records the pc of the instruction currently being executed (set once per step), so an invalid
+    /// memory access can be reported with the pc/function where it happened.
+    pub fn set_current_pc(&mut self, pc: u64) {
+        self.current_pc = pc;
+    }
+
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
-        self.costs.memory_read(address, width);
+        if !self.costs.memory_read(address, width) {
+            self.report_invalid_mem_access("read", address, width);
+        }
     }
 
     /// Called every time some data is writen to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
-        self.costs.memory_write(address, width, value);
+        if !self.costs.memory_write(address, width, value) {
+            self.report_invalid_mem_access("write", address, width);
+        }
+    }
+
+    /// Reports a memory access to an address outside every known region (an unauthorized access, which
+    /// would fault on real hardware) with the execution context needed to locate it: the current pc,
+    /// step, decoded instruction and enclosing function.
+    fn report_invalid_mem_access(&self, kind: &str, address: u64, width: u64) {
+        let pc = self.current_pc;
+        let func = self
+            .rois_by_pc
+            .range(..=(pc as u32))
+            .next_back()
+            .map(|(_, &i)| self.rois[i as usize].name.as_str())
+            .unwrap_or("<unknown>");
+        panic!(
+            "Invalid memory {kind} to 0x{address:08x} (width {width}) at pc=0x{pc:08x} \
+             step={} fn='{func}'",
+            self.costs.steps
+        );
     }
 
     /// Called every time a register is read, if statistics are enabled
@@ -367,9 +395,9 @@ impl Stats {
     }
     fn call_stack_error(&mut self, msg: &str) {
         if self.use_colors {
-            println!("\x1B[1;31m{}\x1B[0m", msg);
+            println!("\x1B[1;31mCALL_STACK_ERROR: {}\x1B[0m", msg);
         } else {
-            println!("{}", msg);
+            println!("CALL_STACK_ERROR: {}", msg);
         }
         self.disable_call_stack = true;
     }
@@ -434,11 +462,10 @@ impl Stats {
                 {
                     self.debug_call_stack_operation("NONE", instruction, pc);
                 }
-                println!(
-                    "CALL STACK ERROR: ROI change without CALL/RETURN, disabled call stack feature (P_PC:0x{:08x} => PC:0x{pc:08x})",
+                self.call_stack_error(&format!("ROI change without CALL/RETURN, disabled call stack feature (P_PC:0x{:08x} => PC:0x{pc:08x})",
                     self.previous_pc
-                );
-                self.disable_call_stack = true;
+                ));
+                return;
             } else if self.is_tail_call {
                 if let Some(roi_index) = self.current_roi {
                     // Tail call
@@ -518,7 +545,12 @@ impl Stats {
                     return;
                 }
 
-                let last_caller_in_stack = self.rois[roi_index].return_call(self.call_stack.len());
+                let (last_caller_in_stack, ok_return_call) =
+                    self.rois[roi_index].return_call(self.call_stack.len());
+                if !ok_return_call {
+                    self.call_stack_error("RETURN CALL unexpected, disabled call stack feature");
+                    return;
+                }
                 // TODO: check tail call re-entry calls
                 // For all tail_call add costs from tail call to now
                 let mut processed = HashSet::new();
@@ -946,6 +978,11 @@ impl Stats {
                                 && inst.jmp_offset1 == inst.jmp_offset2
                                 && self.check_call(pc as i64 + inst.jmp_offset2)
                         }
+                        ZiskOp::FLAG => {
+                            !inst.store_pc
+                                && !inst.set_pc
+                                && self.check_call(pc as i64 + inst.jmp_offset1)
+                        }
                         _ => false,
                     };
                 }
@@ -1102,13 +1139,16 @@ impl Stats {
         mops: &MemoryOperationsStats,
         partial_report: bool,
     ) {
-        report.set_custom_totals(mops.get_count(), mops.get_cost());
         let previous_hidden_no_cost = report.set_hidden_no_cost(true);
         let (rom_init_count, ram_init_count) = if partial_report {
             (0, 0)
         } else {
             (self.rom_init_count as u64, self.ram_init_count as u64)
         };
+        report.set_custom_totals(
+            mops.get_count() + rom_init_count + ram_init_count,
+            mops.get_cost() + rom_init_count * ROM_READ_COST + ram_init_count * MEM_WRITE_COST,
+        );
         report.add_count_cost_perc2_custom(
             "RAM STACK ALIGNED",
             mops.get_ram_stack_aligned_count(),
@@ -1489,7 +1529,8 @@ impl Stats {
         if self.ram_monitor.ram_size > 0 {
             report.add_perc("RAM USAGE", self.ram_monitor.ram_used, self.ram_monitor.ram_size);
         }
-        let rom_used_rows = self.inst_count + self.rom_init_count / 4 + self.ram_init_count / 4;
+        let rom_used_rows =
+            self.inst_count + self.rom_init_count.div_ceil(4) + self.ram_init_count.div_ceil(4);
         let rom_size = RomRomTrace::<Goldilocks>::NUM_ROWS;
         report.add_perc("ROM USAGE", rom_used_rows as u64, rom_size as u64);
 
@@ -1714,8 +1755,22 @@ impl Stats {
         self.rois.push(roi);
         self.rois_by_pc.insert(from_pc, index);
     }
-    pub fn update_roi_internal_pc_range(&mut self, roi_index: usize, from_pc: u32, to_pc: u32) {
-        self.rois[roi_index].update_internal_from_to_pc(from_pc, to_pc);
+    pub fn update_roi_internal_pc_range(
+        &mut self,
+        roi_index: usize,
+        from_pc: u32,
+        to_pc: u32,
+    ) -> bool {
+        if let Some((defined_from_pc, defined_to_pc)) =
+            self.rois[roi_index].update_internal_from_to_pc(from_pc, to_pc)
+        {
+            self.call_stack_error(&format!("Internal from/to PC range is already set for ROI \
+                [{roi_index}]. Disabled call stack feature. [0x{defined_from_pc:08x}-0x{defined_to_pc:08x}],\
+                [0x{from_pc:08x}-0x{to_pc:08x}]"));
+            false
+        } else {
+            true
+        }
     }
     pub fn load_rom_data(&mut self, rom: &ZiskRom) {
         self.inst_count = rom.get_instruction_count();
@@ -1742,11 +1797,13 @@ impl Stats {
             } else {
                 if let Some(internal_from) = current_internal_from {
                     if let Some(roi_index) = current_roi_index {
-                        self.update_roi_internal_pc_range(
+                        if !(self.update_roi_internal_pc_range(
                             roi_index,
                             internal_from,
                             current_internal_to.unwrap_or(internal_from),
-                        );
+                        )) {
+                            return;
+                        }
                     }
                 }
                 if let Some((roi_index, roi)) = self.get_roi_from_pc(pc) {
@@ -1957,12 +2014,11 @@ impl Stats {
             }
 
             println!(
-                "#T: {:>10} {:>7} {jmp_type} {:>10} PC {:x}: [{:x}] ({}) => {pc:x}: ({}) {func_name}",
+                "#T: {:>10} {:>7} {jmp_type} {:>10} PC {:x}: ({}) => {pc:x}: ({}) {func_name}",
                 self.costs.steps,
                 self.call_stack.len(),
                 if down { self.costs.steps - self.debug_step_stack[stack_depth - 1] } else { 0 },
                 self.previous_pc,
-                self.internal_previous_pc,
                 self.previous_roi.unwrap_or(0),
                 self.current_roi.unwrap_or(0),
             );

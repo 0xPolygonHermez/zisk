@@ -48,6 +48,7 @@
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)/4`
 //!     * If the address is not aligned, then get it from the vector `rom_float_na_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)`
+use crate::FLOAT_LIB_ROM_ADDR_MAX;
 use crate::{ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -433,14 +434,25 @@ impl ZiskRom {
     }
 
     pub fn get_internal_instruction(&self, pc: u64) -> Option<&ZiskInst> {
-        if !(ROM_ADDR..=ROM_ADDR_MAX).contains(&pc) || pc & 0x01 == 0 {
-            return None;
+        if pc & 0x01 == 0 {
+            None
+        } else if (ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&pc) {
+            let rom_index = (pc - ROM_ADDR) as usize;
+            if rom_index >= self.rom_program_na_instructions.len() {
+                None
+            } else {
+                Some(&self.rom_program_na_instructions[rom_index])
+            }
+        } else if (FLOAT_LIB_ROM_ADDR..=FLOAT_LIB_ROM_ADDR_MAX).contains(&pc) {
+            let rom_index = (pc - FLOAT_LIB_ROM_ADDR) as usize;
+            if rom_index >= self.rom_float_na_instructions.len() {
+                None
+            } else {
+                Some(&self.rom_float_na_instructions[rom_index])
+            }
+        } else {
+            None
         }
-        let rom_index = (pc - ROM_ADDR) as usize;
-        if rom_index >= self.rom_program_na_instructions.len() {
-            return None;
-        }
-        Some(&self.rom_program_na_instructions[rom_index])
     }
     /// Gets the ROM instruction corresponding to the provided pc address, as a mutable reference.
     /// Depending on the range and alignment of the address, the function searches for it in the
