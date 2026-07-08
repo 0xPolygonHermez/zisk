@@ -1511,12 +1511,17 @@ impl<'a> Emu<'a> {
     /// Set PC, based on current PC, current flag and current instruction
     #[inline(always)]
     pub fn set_pc(&mut self, instruction: &ZiskInst) {
+        self.ctx.inst_ctx.pc = self.get_next_pc(instruction);
+    }
+
+    #[inline(always)]
+    pub fn get_next_pc(&self, instruction: &ZiskInst) -> u64 {
         if instruction.set_pc {
-            self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.c as i64 + instruction.jmp_offset1) as u64;
+            (self.ctx.inst_ctx.c as i64 + instruction.jmp_offset1) as u64
         } else if self.ctx.inst_ctx.flag {
-            self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset1) as u64;
+            (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset1) as u64
         } else {
-            self.ctx.inst_ctx.pc = (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2) as u64;
+            (self.ctx.inst_ctx.pc as i64 + instruction.jmp_offset2) as u64
         }
     }
 
@@ -1674,6 +1679,8 @@ impl<'a> Emu<'a> {
                     );
                 }
 
+                self.ctx.stats.load_rom_data(self.rom);
+
                 // With the call-stack debug feature, dump the ROI list up front so
                 // the ROI indices printed during the trace can be mapped back.
                 #[cfg(feature = "debug_call_stack")]
@@ -1731,6 +1738,8 @@ impl<'a> Emu<'a> {
                 });
             }
         } else if !options.is_fast() {
+            self.ctx.stats.load_rom_data(self.rom);
+
             if let Some(elf_file) = &options.elf {
                 if let Ok(address) = elf.get_symbols_from_file(elf_file, &LOAD_SYMBOLS) {
                     self.ctx.stats.set_heap_address(address[0], address[1], address[2]);
@@ -1756,6 +1765,8 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_sdk_opcodes(options.opcodes);
         self.ctx.stats.set_sdk_profile_tags(options.profile_tags);
         self.ctx.stats.set_sdk_top_functions(options.top_functions);
+        self.ctx.stats.set_mem_stats(options.mem_stats);
+        self.ctx.stats.set_mem_full_stats(options.mem_full_stats);
         self.ctx.stats.set_sdk_width(options.sdk_width);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
         if let Some(profiler_output) = &options.profiler_output {
@@ -2060,6 +2071,10 @@ impl<'a> Emu<'a> {
         let pc = self.ctx.inst_ctx.pc;
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
+        if self.ctx.do_stats {
+            self.ctx.stats.set_current_pc(pc);
+        }
+
         if options.with_progress && self.ctx.inst_ctx.step & 0xF_FFFF == 0 {
             println!(
                 "running 0x{pc:08x} MS:{} {}",
@@ -2091,7 +2106,11 @@ impl<'a> Emu<'a> {
                     inst.call_stats(&self.ctx.inst_ctx, &mut self.ctx.stats);
                 }
             }
-            self.ctx.stats.on_op(instruction, &self.ctx.inst_ctx);
+            self.ctx.stats.on_op(
+                instruction,
+                &self.ctx.inst_ctx,
+                self.get_value_to_store(instruction),
+            );
         }
 
         // Store the 'c' register value based on the storage specified by the current instruction

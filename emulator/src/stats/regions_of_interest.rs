@@ -16,8 +16,9 @@ pub struct RegionsOfInterest {
     pub id: usize,
     pub from_pc: u32,
     pub to_pc: u32,
+    pub internal_from_to_pc: Option<(u32, u32)>,
     pub name: String,
-    costs: StatsCosts,
+    pub costs: StatsCosts,
     pub calls: usize,
     pub callers: BTreeMap<usize, CallerInfo>,
     pub call_stack_rc: usize,
@@ -34,6 +35,7 @@ impl RegionsOfInterest {
             id,
             from_pc,
             to_pc,
+            internal_from_to_pc: None,
             costs: if compact { StatsCosts::new_compact() } else { StatsCosts::new_no_compact() },
             calls: 0,
             name: name.to_string(),
@@ -44,6 +46,15 @@ impl RegionsOfInterest {
             track_calls: 0,
             tracked_calls: Vec::new(),
             track_file: None,
+        }
+    }
+
+    pub fn update_internal_from_to_pc(&mut self, from_pc: u32, to_pc: u32) -> Option<(u32, u32)> {
+        if self.internal_from_to_pc.is_some() {
+            self.internal_from_to_pc
+        } else {
+            self.internal_from_to_pc = Some((from_pc, to_pc));
+            None
         }
     }
 
@@ -146,20 +157,25 @@ impl RegionsOfInterest {
                 .or_insert(CallerInfo { calls: 1, steps: 0 });
         }
     }
-    pub fn return_call(&mut self, call_stack_depth: usize) -> bool {
+    pub fn return_call(&mut self, call_stack_depth: usize) -> (bool, bool) {
         let rc = self.call_stack_rc;
         if self.call_stack_rc > 0 {
             self.call_stack_rc -= 1;
         }
         self.update_call_depth(call_stack_depth);
-        assert!(rc > self.call_stack_rc);
-        rc == 0
+        (rc == 0, rc > self.call_stack_rc)
     }
     pub fn get_callers(&self) -> impl Iterator<Item = (&usize, &CallerInfo)> {
         self.callers.iter()
     }
     pub fn get_cost(&self) -> u64 {
         self.costs.total_cost()
+    }
+    pub fn get_ops_cost(&self) -> u64 {
+        self.costs.base_ops_cost()
+    }
+    pub fn get_precompiled_cost(&self) -> u64 {
+        self.costs.precompiled_ops_cost()
     }
     pub fn get_mem_cost(&self) -> u64 {
         self.costs.mops.get_cost()
