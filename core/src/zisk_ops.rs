@@ -875,7 +875,17 @@ pub fn op_blake2(_a: u64, _b: u64) -> (u64, bool) {
 
 #[inline(always)]
 pub fn ops_blake2(ctx: &InstContext, stats: &mut dyn OpStats) {
-    precompiled_stats_data(ctx, stats, &[4, 8], &[], 1);
+    // Mirrors opc_blake2's precompiled_load_data(ctx, 3, 2, 16, 0, Some(0)): the 3 params live
+    // directly at ctx.b ([index, state_addr, input_addr]); param[0] (index) is a direct value, not a
+    // pointer. State is read and written back (16 words), input is read only (16 words).
+    let param_addr = ctx.b;
+
+    stats.mem_align_read(param_addr, 3);
+    let state_addr = ctx.mem.read(param_addr + 8, 8);
+    let input_addr = ctx.mem.read(param_addr + 16, 8);
+    stats.mem_align_read(state_addr, 16);
+    stats.mem_align_read(input_addr, 16);
+    stats.mem_align_write(state_addr, 16);
 }
 
 #[allow(clippy::too_many_arguments)]

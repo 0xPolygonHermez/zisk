@@ -2,16 +2,24 @@ use zisk_core::zisk_ops::ZiskOp;
 
 pub const MEM_READ_COST: u64 = 16; // Dual RAM 28 cols => R+R, W+R
 pub const MEM_WRITE_COST: u64 = 18; // Dual RAM 28 cols => R+R, W+R
-pub const MEM_READ_BYTE_COST: u64 = 25;
-pub const MEM_WRITE_BYTE_COST: u64 = 32;
-pub const MEM_READ_UNALIGNED_1_COST: u64 = 53 * 2;
-pub const MEM_READ_UNALIGNED_2_COST: u64 = 53 * 3;
-pub const MEM_WRITE_UNALIGNED_1_COST: u64 = 53 * 3;
-pub const MEM_WRITE_UNALIGNED_2_COST: u64 = 53 * 5;
+
+pub const MEM_ALIGN_READ_BYTE_COST: u64 = 25;
+pub const MEM_ALIGN_WRITE_BYTE_COST: u64 = 32;
+
+pub const MEM_ALIGN_COST: u64 = 53;
+pub const MEM_ALIGN_READ_UNALIGNED_1_COST: u64 = MEM_ALIGN_COST * 2;
+pub const MEM_ALIGN_READ_UNALIGNED_2_COST: u64 = MEM_ALIGN_COST * 3;
+pub const MEM_ALIGN_WRITE_UNALIGNED_1_COST: u64 = MEM_ALIGN_COST * 3;
+pub const MEM_ALIGN_WRITE_UNALIGNED_2_COST: u64 = MEM_ALIGN_COST * 5;
 pub const MEM_PRECOMPILE_READ_COST: u64 = MEM_READ_COST;
 pub const MEM_PRECOMPILE_WRITE_COST: u64 = MEM_WRITE_COST;
 
-pub const ROM_COST: usize = 21 << 21;
+pub const ROM_READ_COST: u64 = 14;
+pub const ROM_INIT_COST: u64 = ROM_READ_COST;
+
+pub const INPUT_READ_COST: u64 = 29;
+
+pub const ROM_COST: usize = 16 << 21;
 pub const TABLES_COST: usize = (55 + 35 + 29) << 21;
 pub const BASE_COST: usize = ROM_COST + TABLES_COST;
 

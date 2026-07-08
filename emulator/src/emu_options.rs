@@ -100,6 +100,14 @@ pub struct EmuOptions {
     /// Requires option: --sdk
     #[clap(long, value_name = "TOP_FUNCTIONS", default_value = "false")]
     pub top_functions: bool,
+    /// Show the "MEM COST BY TYPE" section in the stats report.
+    /// Requires option: -X
+    #[clap(long, value_name = "MEM_STATS", default_value = "false")]
+    pub mem_stats: bool,
+    /// Show the "DETAILED MEM COST" section in the stats report.
+    /// Requires option: -X
+    #[clap(long, value_name = "MEM_FULL_STATS", default_value = "false")]
+    pub mem_full_stats: bool,
     /// Generates statistics about opcodes and memory usage.  Enabled with `-X`.
     #[clap(short = 'X', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
@@ -173,7 +181,12 @@ pub struct EmuOptions {
     pub with_progress: bool,
     /// Output file path for the profiler data (default: profile.json.gz).
     /// Requires options: -S -X
-    #[clap(long, value_name = "PROFILER_OUTPUT")]
+    #[clap(
+        long,
+        value_name = "PROFILER_OUTPUT",
+        num_args = 0..=1,
+        default_missing_value = "profile.json.gz"
+    )]
     pub profiler_output: Option<String>,
     /// Shorten long ROI function names in statistics reports.
     /// Optionally specify maximum length (default: 160 characters).
@@ -230,6 +243,8 @@ impl Default for EmuOptions {
             opcodes: false,
             profile_tags: false,
             top_functions: false,
+            mem_stats: false,
+            mem_full_stats: false,
             coverage: false,
             top_histogram: 0,
             main_name: "main".to_string(),
