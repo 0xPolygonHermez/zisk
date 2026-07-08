@@ -18,5 +18,5 @@ zisk-sdk = { path = "../sdk" }
 
 [features]
 default = []
-b_native = []
-b_soft = []
+zbxx_native = []
+zbxx_soft = []

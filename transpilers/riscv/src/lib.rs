@@ -3,7 +3,7 @@
 //! the RISC-V spec, and generates a vector of RiscvInst's
 
 pub mod riscv2zisk_context;
-#[cfg(feature = "b_soft")]
+#[cfg(feature = "zbxx_soft")]
 pub mod riscv2zisk_context_b;
 pub mod riscv_decoder;
 pub mod riscv_inst;
@@ -19,6 +19,3 @@ pub use riscv_inst_name::*;
 pub use riscv_inst_type::*;
 pub use riscv_interpreter::*;
 pub use riscv_registers::*;
-
-#[cfg(all(feature = "b_native", feature = "b_soft"))]
-compile_error!("features `b_native` and `b_soft` are mutually exclusive");

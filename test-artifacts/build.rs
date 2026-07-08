@@ -13,24 +13,16 @@ fn main() -> Result<()> {
     // Collect enabled features from the environment
     let mut features = Vec::new();
 
-    // Check for b_native feature
-    let b_native = env::var("CARGO_FEATURE_B_NATIVE").is_ok();
-    if b_native {
-        features.push("b_native");
+    // Check for zbxx_native feature
+    let zbxx_native = env::var("CARGO_FEATURE_ZBXX_NATIVE").is_ok();
+    if zbxx_native {
+        features.push("zbxx_native");
     }
 
-    // Check for b_soft feature
-    let b_soft = env::var("CARGO_FEATURE_B_SOFT").is_ok();
-    if b_soft {
-        features.push("b_soft");
-    }
-
-    // Check for mutual exclusivity of features
-    if b_native && b_soft {
-        return Err(Error::new(
-            std::io::ErrorKind::Other,
-            "features `b_native` and `b_soft` are mutually exclusive",
-        ));
+    // Check for zbxx_soft feature
+    let zbxx_soft = env::var("CARGO_FEATURE_ZBXX_SOFT").is_ok();
+    if zbxx_soft {
+        features.push("zbxx_soft");
     }
 
     let mut build_args = BuildArgs::default();

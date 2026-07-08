@@ -1,4 +1,4 @@
-#![cfg(any(feature = "b_native", feature = "b_soft"))]
+#![cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
 
 pub fn diagnostic_riscv_b() {
     // B bit manipulation extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx

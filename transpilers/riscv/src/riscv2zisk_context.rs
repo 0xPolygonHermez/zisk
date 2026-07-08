@@ -544,81 +544,81 @@ impl Riscv2ZiskContext<'_> {
             // RISC-V Bit manipulation Extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
 
             // Byte and bit reverse operations
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Rev8 => {
                 self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Rev8 => self.rev8(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Brev8 => {
                 self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Brev8 => self.brev8(riscv_instruction),
 
             // Negate logical operations
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Andn => self.create_register_op(riscv_instruction, "andn", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Andn => self.andn(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Orn => self.create_register_op(riscv_instruction, "orn", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Orn => self.orn(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Xnor => self.create_register_op(riscv_instruction, "xnor", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Xnor => self.xnor(riscv_instruction),
 
             // Pack operations
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Pack => self.create_register_op(riscv_instruction, "pack", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Pack => self.pack(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Packh => self.create_register_op(riscv_instruction, "pack_h", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Packh => self.pack_h(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Packw => self.create_register_op(riscv_instruction, "pack_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Packw => self.pack_w(riscv_instruction),
 
             // Rotate operations
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Rol => self.create_register_op(riscv_instruction, "rol", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Rol => self.rol(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Rolw => self.create_register_op(riscv_instruction, "rol_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Rolw => self.rol_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Ror => self.create_register_op(riscv_instruction, "ror", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Ror => self.ror(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Rorw => self.create_register_op(riscv_instruction, "ror_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Rorw => self.ror_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Rori => self.immediate_op(riscv_instruction, "ror", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Rori => self.rori(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Roriw => self.immediate_op(riscv_instruction, "ror_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Roriw => self.rori_w(riscv_instruction),
 
             // Min and max operations
-            #[cfg(any(feature = "b_native", feature = "b_soft"))]
+            #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
             RiscvInstName::Min => self.create_register_op(riscv_instruction, "min", 4),
-            #[cfg(any(feature = "b_native", feature = "b_soft"))]
+            #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
             RiscvInstName::Minu => self.create_register_op(riscv_instruction, "minu", 4),
-            #[cfg(any(feature = "b_native", feature = "b_soft"))]
+            #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
             RiscvInstName::Max => self.create_register_op(riscv_instruction, "max", 4),
-            #[cfg(any(feature = "b_native", feature = "b_soft"))]
+            #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
             RiscvInstName::Maxu => self.create_register_op(riscv_instruction, "maxu", 4),
 
             // Sign-extend / zero-extend operations.
@@ -626,152 +626,152 @@ impl Riscv2ZiskContext<'_> {
             // extend the low byte/half of rs1, so they use the single-source
             // register path (signature is (op, inst_size, rs), rs=1 -> rs1).
             // Using load_op here would (wrongly) read memory at rs1 + imm.
-            #[cfg(any(feature = "b_native", feature = "b_soft"))]
+            #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
             RiscvInstName::SextB => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_b", 4, 1)
             }
-            #[cfg(any(feature = "b_native", feature = "b_soft"))]
+            #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
             RiscvInstName::SextH => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_h", 4, 1)
             }
             // zext.h zero-extends the low 16 bits of rs1: rd = rs1 & 0xFFFF.
-            #[cfg(any(feature = "b_native", feature = "b_soft"))]
+            #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
             RiscvInstName::ZextH => self.zero_extend_h(riscv_instruction, 4),
 
             // Bit count operations
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Clz => {
                 self.create_single_source_register_op(riscv_instruction, "clz", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Clz => self.clz(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Clzw => {
                 self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Clzw => self.clz_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Ctz => {
                 self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Ctz => self.ctz(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Ctzw => {
                 self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Ctzw => self.ctz_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Cpop => {
                 self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Cpop => self.cpop(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Cpopw => {
                 self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Cpopw => self.cpop_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::OrcB => {
                 self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1)
             }
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::OrcB => self.orc_b(riscv_instruction),
 
             // Single bit operations (Zbs)
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Bclr => self.create_register_op(riscv_instruction, "bclr", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Bclr => self.bclr(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Bclri => self.immediate_op(riscv_instruction, "bclr", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Bclri => self.bclri(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Bext => self.create_register_op(riscv_instruction, "bext", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Bext => self.bext(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Bexti => self.immediate_op(riscv_instruction, "bext", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Bexti => self.bexti(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Binv => self.create_register_op(riscv_instruction, "binv", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Binv => self.binv(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Binvi => self.immediate_op(riscv_instruction, "binv", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Binvi => self.binvi(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Bset => self.create_register_op(riscv_instruction, "bset", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Bset => self.bset(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Bseti => self.bseti(riscv_instruction),
 
             // Address generation operations (Zba)
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_u_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::AddUw => self.add_u_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Sh1add => self.create_register_op(riscv_instruction, "sh1add", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Sh1add => self.sh1add(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Sh1addUw => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Sh1addUw => self.sh1add_u_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Sh2add => self.create_register_op(riscv_instruction, "sh2add", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Sh2add => self.sh2add(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Sh2addUw => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Sh2addUw => self.sh2add_u_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Sh3add => self.create_register_op(riscv_instruction, "sh3add", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Sh3add => self.sh3add(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Sh3addUw => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Sh3addUw => self.sh3add_u_w(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::SlliUw => self.immediate_op(riscv_instruction, "sll_u_w", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::SlliUw => self.sll_u_w(riscv_instruction, true),
 
             // Carry-less multiplication operations (Zbc)
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Clmul => self.create_register_op(riscv_instruction, "clmul", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Clmul => self.clmul(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Clmulh => self.create_register_op(riscv_instruction, "clmul_h", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Clmulh => self.clmul_h(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmul_r", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Clmulr => self.clmul_r(riscv_instruction),
 
             // Crossbar permutations operations (Zbkx)
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Xperm4 => self.create_register_op(riscv_instruction, "xperm4", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Xperm4 => self.xperm4(riscv_instruction),
-            #[cfg(feature = "b_native")]
+            #[cfg(feature = "zbxx_native")]
             RiscvInstName::Xperm8 => self.create_register_op(riscv_instruction, "xperm8", 4),
-            #[cfg(feature = "b_soft")]
+            #[cfg(feature = "zbxx_soft")]
             RiscvInstName::Xperm8 => self.xperm8(riscv_instruction),
 
             // Special ZisK instructions
@@ -784,7 +784,10 @@ impl Riscv2ZiskContext<'_> {
 
             // Skip if any B features is enabled and float is also enabled; otherwise the compiler
             // will complain about unreachable code
-            #[cfg(not(all(any(feature = "b_native", feature = "b_soft"), feature = "float")))]
+            #[cfg(not(all(
+                any(feature = "zbxx_native", feature = "zbxx_soft"),
+                feature = "float"
+            )))]
             _ => {
                 panic!(
                     "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst_name={}",
