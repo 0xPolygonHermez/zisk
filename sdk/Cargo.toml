@@ -31,6 +31,15 @@ zisk-coordinator-client = { workspace = true }
 # For utils.rs
 zisk-rom-setup = { workspace = true }
 
+# Recurser-aggregator support
+zisk-recurser = { workspace = true }
+proofman = { workspace = true }
+proofman-verifier = { workspace = true }
+rayon = { workspace = true }
+serde_json = { workspace = true }
+proofman-fields = { workspace = true }
+tracing = { workspace = true }
+
 [dev-dependencies]
 zisk-test-artifacts = { workspace = true }
 

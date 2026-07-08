@@ -21,7 +21,7 @@ zisk-pil = { workspace = true }
 
 proofman-fields = { workspace = true }
 rayon = { workspace = true }
-clap = { workspace = true }
+clap = { version = "4", features = ["derive"] }
 static_assertions = { workspace = true }
 
 [features]

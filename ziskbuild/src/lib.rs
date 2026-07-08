@@ -1,8 +1,13 @@
+mod aggregation;
 mod build;
 mod command;
 mod utils;
 
 use build::build_program_internal;
+
+pub use aggregation::{
+    guest_elf_map, resolve_aggregation, ResolvedAggregation, ResolvedCircuitPaths, ResolvedProgram,
+};
 // pub use build::{execute_build_program, generate_elf_paths};
 
 use clap::Parser;
@@ -101,6 +106,13 @@ pub struct BuildArgs {
 
     #[clap(long = "bin", value_name = "BIN")]
     pub binaries: Vec<String>,
+}
+
+impl BuildArgs {
+    pub fn release(mut self, release: bool) -> Self {
+        self.release = release;
+        self
+    }
 }
 
 /// Rustflags environment for compiling a Zisk guest: the flags

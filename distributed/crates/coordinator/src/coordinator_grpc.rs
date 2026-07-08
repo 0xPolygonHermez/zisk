@@ -203,6 +203,44 @@ impl CoordinatorGrpc {
                     Self::validate_same_worker_id(worker_id, &rc.worker_id)?;
                     coordinator.handle_stream_recovery_complete(worker_id).await
                 }
+                worker_message::Payload::SetupAggregationProgramAck(ack) => {
+                    Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
+                    coordinator
+                        .handle_stream_setup_aggregation_program_ack(
+                            zisk_cluster_common::SetupAggregationProgramAckDto {
+                                job_id: ack.job_id,
+                                worker_id: worker_id.clone(),
+                                recurser_id: ack.recurser_id,
+                                success: ack.success,
+                                error_message: if ack.error_message.is_empty() {
+                                    None
+                                } else {
+                                    Some(ack.error_message)
+                                },
+                                vk: ack.vk,
+                                hash_mode: ack.hash_mode,
+                            },
+                        )
+                        .await
+                }
+                worker_message::Payload::RunAggregateProofsAck(ack) => {
+                    Self::validate_same_worker_id(worker_id, &ack.worker_id)?;
+                    coordinator
+                        .handle_stream_run_aggregate_proofs_ack(
+                            zisk_cluster_common::RunAggregateProofsAckDto {
+                                job_id: ack.job_id,
+                                worker_id: worker_id.clone(),
+                                success: ack.success,
+                                error_message: if ack.error_message.is_empty() {
+                                    None
+                                } else {
+                                    Some(ack.error_message)
+                                },
+                                proof: ack.proof,
+                            },
+                        )
+                        .await
+                }
             },
             None => Err(CoordinatorError::InvalidRequest("Invalid message format".to_string())),
         }

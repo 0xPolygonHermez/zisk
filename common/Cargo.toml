@@ -17,7 +17,7 @@ zisk-definitions = { workspace = true }
 zisk-stream = { workspace = true, features = ["quic"] }
 
 proofman-common = { workspace = true }
-proofman-verifier = { workspace = true, features = ["parallel", "verify"] }
+proofman-verifier = { workspace = true, features = ["parallel"], default-features = true }
 proofman = { workspace = true }
 proofman-fields = { workspace = true }
 clap = { workspace = true }
@@ -26,6 +26,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
+num-bigint = { workspace = true }
 dirs = "6"
 alloy-sol-types = { workspace = true }
 

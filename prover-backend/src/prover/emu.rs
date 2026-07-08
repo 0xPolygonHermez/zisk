@@ -11,6 +11,7 @@ use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{initialize_logger, ProofOptions, ProofmanOptions, RankInfo, RowInfo};
+use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -18,8 +19,8 @@ use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::io::StreamSource;
 use zisk_common::{
-    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues,
-    StatsCostPerType, ZiskExecutorTime,
+    io::ZiskStdin, AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, StatsCostPerType,
+    ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
 use zisk_executor::ZiskExecutor;
@@ -228,13 +229,12 @@ impl ProverEngine for EmuProver {
     fn wrap_proof(
         &self,
         proof: &[u64],
-        publics: &PublicValues,
-        vk: &ProgramVK,
+        publics_full: &[u64],
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -257,18 +257,18 @@ impl ProverEngine for EmuProver {
         self.core_prover.backend.set_partition(total_compute_units, allocation, rank_id)
     }
 
-    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
-        self.core_prover.backend.register_aggregated_proofs(agg_proofs)
+    fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.core_prover.backend.register_worker_proofs(agg_proofs)
     }
 
-    fn aggregate_proofs(
+    fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -285,6 +285,29 @@ impl ProverEngine for EmuProver {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
+    }
+
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.core_prover.backend.register_recurser(output_dir, recurser_id)
+    }
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_a: &[u64],
+        free_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.core_prover.backend.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            free_a,
+            free_b,
+            root_c_recurser_agg,
+        )
     }
 
     fn hash(&self) -> Result<String> {
