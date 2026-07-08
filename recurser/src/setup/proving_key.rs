@@ -180,6 +180,7 @@ pub fn gen_recurser_setup(
         airgroup_name: Some("RecurserAggregator".to_string()),
         max_constraint_degree: None,
         hash_id: config.hash.to_string(),
+        merge_copies: true,
     };
     let plonk_result: PlonkResult = plonk2pil::plonk2pil(&r1cs_data, "aggregation", &plonk_opts)
         .context("plonk2pil failed in recurser setup")?;

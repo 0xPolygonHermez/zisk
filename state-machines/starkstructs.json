@@ -4,6 +4,15 @@
     "lastLevelVerification": 1,
     "hasCompressor": true
   },
+  "VirtualTableZisk0": {
+    "powBits": 20
+  },
+  "VirtualTableZisk1": {
+    "powBits": 20
+  },
+  "Rom": {
+    "powBits": 20
+  },
   "Sha256f": {
     "hasCompressor": true
   },
@@ -13,25 +22,10 @@
   "ArithEq384": {
     "hasCompressor": true
   },
-  "VirtualTableZisk0": {
-    "lastLevelVerification": 1,
-    "powBits": 20
-  },
-  "VirtualTableZisk1": {
-    "lastLevelVerification": 1,
-    "powBits": 20
-  },
-  "Rom": {
-    "powBits": 20
+  "Poseidon": {
+    "hasCompressor": true
   },
   "Blake2br": {
-    "hasCompressor": true
-  },
-  "Poseidon": {
-    "blowupFactor": 2,
-    "hasCompressor": true
-  },
-  "DmaPrePost": {
     "hasCompressor": true
   }
 }
