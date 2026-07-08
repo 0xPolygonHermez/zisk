@@ -133,7 +133,7 @@ SECTIONS
 
   .bss : {
     PROVIDE(_bss_start = .);
-    *(.bss .bss.*);
+    *(.bss .bss.* .sbss .sbss.*);
     PROVIDE(_bss_end = .); # ... and one at the end
   } >ram AT>ram :bss
 
