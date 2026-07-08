@@ -15,15 +15,10 @@
 #   RECURSIVE_JOBS / SETUP_JOBS  Setup pipeline concurrency.
 #   HASH                         Hash function (default: Poseidon1).
 #   PTAU_PATH                    Powers-of-tau file for the snark setup
-#                                (default: ../powersOfTau28_hez_final_24.ptau);
-#                                downloaded from PTAU_URL if missing.
-#   PTAU_URL                     Download URL for the powers-of-tau file.
-#   PROOFMAN_DIR                 Override the resolved pil2-proofman checkout.
+#                                (default: ../powersOfTau28_hez_final_24.ptau).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
-
-HASH="${HASH:-Poseidon1}"
 
 # Copy the inputs needed to compile the macOS dylib files into
 # build_dir/dylib_input, preserving the provingKey/ provingKeySnark/ layout.
@@ -50,14 +45,23 @@ main() {
 
     local build_dir="build"
     local local_hash=""
+
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP \
+        INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
+        HASH PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
+
+    # Default the hash function when neither the shell, .env, nor Cargo.toml set
+    # it. Exported so the setup_build.sh child process inherits it.
+    export HASH="${HASH:-Poseidon1}"
+
     current_step=1
     total_steps=2   # computing hash + building setup
     [[ "${INCLUDE_SNARK}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${DYLIB_INPUT_FILES}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${INSTALL_SETUP}" == "1" ]] && total_steps=$((total_steps + 1))
 
-    info "Loading environment variables..."
-    load_env || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     # Export so child tooling resolves the repo root from this, not its own location.

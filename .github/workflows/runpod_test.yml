@@ -1,0 +1,267 @@
+name: Nightly RunPod Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_branch:
+        description: "Branch to test"
+        required: true
+        type: string
+      disable_mpi:
+        description: "Disable MPI"
+        required: false
+        type: boolean
+        default: false
+      run_time:
+        description: "Run time (minutes)"
+        required: false
+        type: number
+        default: 60
+
+  schedule:
+    - cron: "0 1 * * *"
+
+jobs:
+  runpod-test:
+    runs-on:
+      group: zisk-gpu
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+      DEFAULT_TARGET_BRANCH: ${{ vars.RUNPOD_NIGHTLY_BRANCH }}
+      TEST_CONTAINER: zisk-runpod-test
+
+    steps:
+      - name: Resolve target branch
+        id: branch
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target=${{ inputs.target_branch }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=${DEFAULT_TARGET_BRANCH}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout selected branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.branch.outputs.target }}
+
+      - name: Give workspace ownership to container user
+        run: |
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+
+      - name: Start test container
+        run: .github/scripts/start_test_container.sh
+
+      - name: Setup SSH key
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e RUNPOD_SSH_PRIVATE_KEY="${{ secrets.RUNPOD_SSH_PRIVATE_KEY }}" \
+            -- bash -lc '
+              mkdir -p ~/.ssh
+              chmod 700 ~/.ssh
+              printf "%s\n" "$RUNPOD_SSH_PRIVATE_KEY" > ~/.ssh/runpod_ed25519
+              chmod 600 ~/.ssh/runpod_ed25519
+              ssh-keygen -y -f ~/.ssh/runpod_ed25519 > ~/.ssh/runpod_ed25519.pub
+            '
+
+      - name: Install dependencies
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              set -euo pipefail
+              sudo apt-get update
+              sudo apt-get install -y python3-requests pv
+            '
+      - name: Deploy pods (background)
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
+            -- bash -lc '
+              cd /workspace/zisk
+              rm -f /tmp/deploy_pods.rc /tmp/deploy_pods.log
+              # Provision the pods in parallel with the ZisK / zec-reth /
+              # ethproofs builds. python3 -u so the log file (tailed later by
+              # "Wait for pod deployment") is written unbuffered.
+              nohup bash -c "
+                python3 -u tools/runpod-test/deploy_pods.py --ssh-key ~/.ssh/runpod_ed25519
+                echo \$? > /tmp/deploy_pods.rc
+              " > /tmp/deploy_pods.log 2>&1 &
+              disown
+              echo "deploy_pods.py launched in background (pid $!)"
+            '
+
+      - name: Build ZisK
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zisk.sh
+            '
+
+      - name: Build zec-reth ELF
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              # Pass the zisk-eth-client branch explicitly (read from zisk Cargo.toml)
+              export ZISK_ETH_CLIENT_BRANCH="$(sed -nE "s/^[[:space:]]*gha_zisk_eth_client_branch[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" /workspace/zisk/Cargo.toml | head -n1)"
+              echo "Using zisk-eth-client branch: ${ZISK_ETH_CLIENT_BRANCH}"
+              ./build_zec_reth.sh
+            '
+
+      - name: Build ethproofs binary
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              # Pass the zisk-ethproofs branch explicitly (read from zisk Cargo.toml)
+              export ZISK_ETHPROOFS_BRANCH="$(sed -nE "s/^[[:space:]]*gha_zisk_ethproofs_branch[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" /workspace/zisk/Cargo.toml | head -n1)"
+              echo "Using zisk-ethproofs branch: ${ZISK_ETHPROOFS_BRANCH}"
+              ./build_ethproofs.sh
+            '
+
+      - name: Wait for pod deployment
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              echo "Waiting for the background deploy_pods.py to finish..."
+              while [ ! -f /tmp/deploy_pods.rc ]; do
+                sleep 5
+              done
+              rc="$(cat /tmp/deploy_pods.rc)"
+              echo "===== deploy_pods.py log ====="
+              cat /tmp/deploy_pods.log || true
+              echo "===== deploy_pods.py exit code: ${rc} ====="
+              exit "${rc}"
+            '
+
+      - name: Provision and run cluster
+        env:
+          DISABLE_MPI_FLAG: ${{ github.event_name == 'workflow_dispatch' && inputs.disable_mpi && '--disable-mpi' || '' }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          DISPATCH_RUN_TIME: ${{ inputs.run_time }}
+          NIGHTLY_RUN_TIME: ${{ vars.RUNPOD_NIGHTLY_RUN_TIME }}
+        run: |
+          # Build the --run-time flag depending on the trigger:
+          #  - workflow_dispatch: use the run_time input
+          #  - schedule:          use RUNPOD_NIGHTLY_RUN_TIME if the var is set,
+          #                        otherwise omit --run-time entirely
+          #  - otherwise omit --run-time entirely (use default value in deploy_cluster.py)
+          RUN_TIME_FLAG=""
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            RUN_TIME_FLAG="--run-time ${DISPATCH_RUN_TIME}"
+          elif [ "$EVENT_NAME" = "schedule" ]; then
+            if [ -n "$NIGHTLY_RUN_TIME" ]; then
+              RUN_TIME_FLAG="--run-time ${NIGHTLY_RUN_TIME}"
+            fi
+          fi
+
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
+            -e DISABLE_MPI_FLAG="${DISABLE_MPI_FLAG}" \
+            -e RUN_TIME_FLAG="${RUN_TIME_FLAG}" \
+            -- bash -lc '
+              cd /workspace/zisk
+              python3 tools/runpod-test/deploy_cluster.py \
+                --ssh-key ~/.ssh/runpod_ed25519 \
+                --work-dir "$WORKSPACE_DIR" \
+                $RUN_TIME_FLAG \
+                $DISABLE_MPI_FLAG
+            '
+
+      - name: Download pod logs
+        if: always()
+        run: |
+          if docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
+            .github/scripts/docker_exec.sh \
+              -u ziskuser \
+              -- bash -lc '
+                cd /workspace/zisk
+                if [ ! -f pods.json ]; then
+                  echo "pods.json not found; skipping log download"
+                  exit 0
+                fi
+
+                rm -rf pod-logs pod-logs.tar.gz
+                mkdir -p pod-logs
+
+                i=0
+                while IFS=" " read -r ip port user; do
+                  i=$((i + 1))
+                  dest="pod-logs/pod${i}"
+                  mkdir -p "$dest"
+                  echo "Downloading /workspace/logs from pod${i} (${user}@${ip}:${port})..."
+                  # Stream the remote log dir as a gzip tar over a single SSH
+                  # connection (scp runs in SFTP mode here and is unreliable for
+                  # many small files). If the dir is missing the remote returns
+                  # non-zero and we just warn.
+                  if ssh \
+                       -n \
+                       -i ~/.ssh/runpod_ed25519 \
+                       -p "$port" \
+                       -o StrictHostKeyChecking=no \
+                       -o UserKnownHostsFile=/dev/null \
+                       -o ConnectTimeout=15 \
+                       "${user}@${ip}" \
+                       "test -d /workspace/logs && tar -C /workspace/logs -czf - ." \
+                     | tar -C "$dest" -xzf - ; then
+                    echo "  pod${i}: logs downloaded"
+                  else
+                    echo "WARN: failed to download logs from pod${i}"
+                  fi
+                done < <(python3 -c "import json; [print(p[\"publicIp\"], p[\"sshPort\"], p.get(\"sshUser\", \"root\")) for p in json.load(open(\"pods.json\"))[\"pods\"]]")
+
+                tar -czf pod-logs.tar.gz -C pod-logs .
+                echo "Created pod-logs.tar.gz with $i pod folder(s)."
+              '
+          fi
+
+      - name: Upload pod logs artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pod-logs
+          path: pod-logs.tar.gz
+          if-no-files-found: warn
+
+      - name: Terminate pods
+        if: always()
+        run: |
+          if docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$"; then
+            .github/scripts/docker_exec.sh \
+              -u ziskuser \
+              -e RUNPOD_API_KEY="${RUNPOD_API_KEY}" \
+              -- bash -lc '
+                cd /workspace/zisk
+                if [ -f pods.json ]; then
+                  python3 tools/runpod-test/terminate_pods.py || true
+                fi
+              '
+          fi
+
+      - name: Stop test container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true

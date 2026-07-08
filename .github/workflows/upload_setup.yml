@@ -27,11 +27,6 @@ on:
         required: false
         type: boolean
         default: false
-      ptau_url:
-        description: "Powers-of-tau URL for SNARK setup"
-        required: false
-        type: string
-        default: "https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau"
 
 concurrency:
   group: upload-setup-${{ github.ref }}
@@ -130,8 +125,6 @@ jobs:
           INCLUDE_SNARK: ${{ steps.resolve.outputs.include_snark }}
           # include_dylib (resolved) -> DYLIB_INPUT_FILES (stage the macOS dylib inputs).
           DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
-          # ptau_url input -> PTAU_URL; falls back to the default URL on push.
-          PTAU_URL: ${{ inputs.ptau_url || 'https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau' }}
           # Cache the (~18 GB) powers-of-tau in the persistent, writable output mount
           PTAU_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
         run: |
@@ -139,7 +132,6 @@ jobs:
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
             -e INCLUDE_SNARK="$INCLUDE_SNARK" \
-            -e PTAU_URL="$PTAU_URL" \
             -e PTAU_PATH="$PTAU_PATH" \
             -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \
             -- bash -lc '
