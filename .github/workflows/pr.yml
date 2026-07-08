@@ -185,6 +185,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
+            -e INSTALL_SETUP="1" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh

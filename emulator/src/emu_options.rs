@@ -358,6 +358,7 @@ impl EmuOptions {
             ProfilingMode::Complete => {
                 self.sdk = true;
                 self.stats = true;
+                self.read_symbols = true;
                 self.profiler_output = Some("profile.json.gz".to_string());
             }
         }
