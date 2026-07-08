@@ -58,7 +58,7 @@ main() {
 
     step "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP ONLY_CPU || return 1
+    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP ONLY_CPU || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     # Export so child tooling resolves the repo root from this, not its own location.
