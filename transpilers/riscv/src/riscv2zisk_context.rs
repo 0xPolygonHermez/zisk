@@ -782,12 +782,9 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 2),
             RiscvInstName::Reserved => self.halt_with_error(riscv_instruction, 4),
 
-            // Skip if any B features is enabled and float is also enabled; otherwise the compiler
-            // will complain about unreachable code
-            #[cfg(not(all(
-                any(feature = "zbxx_native", feature = "zbxx_soft"),
-                feature = "float"
-            )))]
+            // This arm is needed when some optional instruction subsets are disabled; when all are
+            // enabled it can become unreachable, so silence that lint.
+            #[allow(unreachable_patterns)]
             _ => {
                 panic!(
                     "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst_name={}",
