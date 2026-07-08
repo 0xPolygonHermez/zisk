@@ -198,8 +198,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements add_u_w, which computes the sum of the first source register and the second
-    /// source register modulo 2^32
+    /// Implements add_u_w (add.uw): rd = rs2 + zext(rs1[31:0]) (64-bit addition).
     pub fn add_u_w(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
         let rom_address = i.rom_address;
@@ -345,8 +344,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh1add_u_w, which computes the sum of the second source register and the first
-    /// source register shifted left by 1, modulo 2^32
+    /// Implements sh1add_u_w (sh1add.uw): rd = rs2 + (zext(rs1[31:0]) << 1).
     pub fn sh1add_u_w(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
         let rom_address = i.rom_address;
@@ -397,8 +395,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh2add_u_w, which computes the sum of the second source register and the first
-    /// source register shifted left by 2, modulo 2^32
+    /// Implements sh2add_u_w (sh2add.uw): rd = rs2 + (zext(rs1[31:0]) << 2).
     pub fn sh2add_u_w(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
         let rom_address = i.rom_address;
@@ -449,8 +446,7 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 
-    /// Implements sh3add_u_w, which computes the sum of the second source register and the first
-    /// source register shifted left by 3, modulo 2^32
+    /// Implements sh3add_u_w (sh3add.uw): rd = rs2 + (zext(rs1[31:0]) << 3).
     pub fn sh3add_u_w(&mut self, i: &RiscvInst) {
         // Get addresses of the required instructions to implement this function
         let rom_address = i.rom_address;
