@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::PathBuf;
-use zisk_test_artifacts::ELF_BIG_INPUT;
 use zisk_sdk::{ProverClient, ZiskStdin};
+use zisk_test_artifacts::ELF_BIG_INPUT;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

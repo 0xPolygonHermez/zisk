@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::error::Error;
-use zisk_test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
 use zisk_sdk::{EmbeddedOpts, ProfilingMode, ProverClient, ZiskStdin};
+use zisk_test_artifacts::{ELF_AGG_VERIFY, ELF_FIB_MOD};
 
 #[derive(Serialize, Deserialize)]
 struct GuestPublics {

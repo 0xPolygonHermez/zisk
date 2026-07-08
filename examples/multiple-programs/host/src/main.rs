@@ -1,6 +1,6 @@
 use std::error::Error;
-use zisk_test_artifacts::ELF_FIB_MOD;
 use zisk_sdk::{EmbeddedOpts, ProverClient, ZiskStdin};
+use zisk_test_artifacts::ELF_FIB_MOD;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
