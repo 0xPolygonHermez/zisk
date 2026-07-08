@@ -1265,13 +1265,15 @@ impl Stats {
         mops: &MemoryOperationsStats,
         partial_report: bool,
     ) {
-        report.set_custom_totals(mops.get_count(), mops.get_cost());
         let (rom_init_count, ram_init_count) = if partial_report {
             (0, 0)
         } else {
             (self.rom_init_count as u64, self.ram_init_count as u64)
         };
-
+        report.set_custom_totals(
+            mops.get_count() + rom_init_count + ram_init_count,
+            mops.get_cost() + rom_init_count * ROM_READ_COST + ram_init_count * MEM_WRITE_COST,
+        );
         let report_items = mops.get_detailed_items(rom_init_count, ram_init_count);
         for (title, count, cost) in report_items {
             if title.is_empty() {
@@ -1623,7 +1625,7 @@ impl Stats {
                     roi_report.add_perc_total_line();
                     roi_report.add_perc("TOTAL COST", total_cost, total_cost);
 
-                    if self.mem_stats {
+                    if self.mem_stats || self.mem_full_stats {
                         roi_report.title_count_cost_perc2("MEM COST BY TYPE", "COUNT", "COST", "");
                         self.report_mem(&mut roi_report, &roi.costs.mops, true);
                     }
