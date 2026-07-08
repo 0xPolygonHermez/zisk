@@ -20,8 +20,8 @@ main() {
     fi
 
     info "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ZISK_BRANCH DISABLE_CLONE_REPO ONLY_CPU || return 1
 
     # pil2-proofman is consumed as the git dependency pinned in the ZisK
     # Cargo.toml / Cargo.lock — it is never cloned or path-patched here.
@@ -69,7 +69,14 @@ main() {
         BUILD_FEATURES="--features $(IFS=,; echo "${FEATURES[*]}")"
     fi
 
-    ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES}
+    # Build the CUDA kernels for the current GPU's major compute capability,
+    # unless this is a CPU-only build.
+    CUDA_ENV=()
+    if [[ "${ONLY_CPU}" != "1" ]]; then
+        CUDA_ENV=(env CUDA_ARCHS="major")
+    fi
+
+    ensure "${CUDA_ENV[@]}" cargo build --release --target ${TARGET} ${BUILD_FEATURES}
 
     step "Copying binaries to ${ZISK_BIN_DIR}..."
     mkdir -p "${ZISK_BIN_DIR}"

@@ -87,8 +87,8 @@ main() {
     command -v gcloud >/dev/null || { err "gcloud not found in PATH (needed to read/upload the setup)"; return 1; }
 
     info "Loading environment variables..."
-    load_env || return 1
-    [[ -n "${SETUP_VERSION:-}" ]] || { err "SETUP_VERSION is required"; return 1; }
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_ADD_DYLIBS FORCE_UPLOAD SETUP_DYLIB_DIR || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     ensure cd "${ZISK_REPO}" || return 1

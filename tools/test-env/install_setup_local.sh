@@ -8,10 +8,11 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     current_step=1
-    total_steps=2
+    total_steps=1
 
     info "Loading environment variables..."
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_SETUP_FILE || return 1
 
     # If ZISK_SETUP_FILE is not set or empty, define it using version from cargo-zisk
     if [[ -z "$ZISK_SETUP_FILE" ]]; then
@@ -31,11 +32,6 @@ main() {
     ensure mkdir -p "$HOME/.zisk" || return 1
     ensure rm -rf "$HOME/.zisk/provingKey/" || return 1
     ensure tar -xf "${TAR_FILE}" -C "$HOME/.zisk" || return 1
-
-    step "Generating constant tree files..."
-    local gpu_flag=""
-    [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && gpu_flag="--gpu"
-    ensure cargo-zisk-dev check-setup ${gpu_flag} || return 1
 
     success "Local proving key ${ZISK_SETUP_FILE} installed successfully!"
 }

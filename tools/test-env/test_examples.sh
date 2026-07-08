@@ -303,7 +303,8 @@ main() {
     fi
 
     info "Loading environment variables..."
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ONLY_CPU || return 1
 
     # Determine which flag combinations to test (power set of available asm/gpu).
     build_flag_combos || return 1

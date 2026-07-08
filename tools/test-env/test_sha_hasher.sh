@@ -10,6 +10,10 @@ main() {
 
     current_dir=$(pwd)
 
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ZISK_TEMPLATE_BRANCH DISABLE_PROVE ONLY_CPU PROVE_FLAGS || return 1
+
     current_step=1
     if [[ "${DISABLE_PROVE}" == "1" ]]; then
         total_steps=8
@@ -23,10 +27,6 @@ main() {
     if ! is_gha || [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
     fi
-
-    step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
 
     cd "${WORKSPACE_DIR}"
 
