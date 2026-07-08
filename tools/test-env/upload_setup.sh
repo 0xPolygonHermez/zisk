@@ -88,7 +88,7 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_ADD_DYLIBS SETUP_ARTIFACTS SETUP_HASH || return 1
+    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_ADD_DYLIBS FORCE_UPLOAD SETUP_DYLIB_DIR || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     ensure cd "${ZISK_REPO}" || return 1

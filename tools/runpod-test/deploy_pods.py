@@ -99,7 +99,7 @@ def create_pod(
         "cloudType": cloud_type,
         "computeType": "GPU",
 
-        # 2 GPUs por pod
+        # 2 GPUs per pod
         "gpuCount": 2,
         "gpuTypeIds": GPU_TYPES,
         "gpuTypePriority": "availability",
