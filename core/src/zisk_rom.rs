@@ -330,6 +330,24 @@ impl ZiskRom {
         Ok(())
     }
 
+    pub fn get_instruction_count(&self) -> usize {
+        self.insts.len()
+    }
+
+    pub fn get_rom_init_64bit_words(&self) -> usize {
+        let mut count = 0;
+        for section in &self.ro_data_64 {
+            count += section.data.len();
+        }
+        count
+    }
+    pub fn get_ram_init_64bit_words(&self) -> usize {
+        let mut count = 0;
+        for section in &self.rw_data_64 {
+            count += section.data.len();
+        }
+        count
+    }
     /// Gets the ROM instruction corresponding to the provided pc address.
     /// Depending on the range and alignment of the address, the function searches for it in the
     /// corresponding vector.
@@ -414,6 +432,16 @@ impl ZiskRom {
         }
     }
 
+    pub fn get_internal_instruction(&self, pc: u64) -> Option<&ZiskInst> {
+        if !(ROM_ADDR..=ROM_ADDR_MAX).contains(&pc) || pc & 0x01 == 0 {
+            return None;
+        }
+        let rom_index = (pc - ROM_ADDR) as usize;
+        if rom_index >= self.rom_program_na_instructions.len() {
+            return None;
+        }
+        Some(&self.rom_program_na_instructions[rom_index])
+    }
     /// Gets the ROM instruction corresponding to the provided pc address, as a mutable reference.
     /// Depending on the range and alignment of the address, the function searches for it in the
     /// corresponding vector.
@@ -651,9 +679,12 @@ mod tests {
         let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add non-aligned instructions (not on 4-byte boundary)
-        rom.insts.insert(ROM_ADDR + 1, create_test_internal_inst_builder(ROM_ADDR + 1, ROM_ADDR, 20));
-        rom.insts.insert(ROM_ADDR + 5, create_test_internal_inst_builder(ROM_ADDR + 5, ROM_ADDR, 21));
-        rom.insts.insert(ROM_ADDR + 7, create_test_internal_inst_builder(ROM_ADDR + 7, ROM_ADDR, 22));
+        rom.insts
+            .insert(ROM_ADDR + 1, create_test_internal_inst_builder(ROM_ADDR + 1, ROM_ADDR, 20));
+        rom.insts
+            .insert(ROM_ADDR + 5, create_test_internal_inst_builder(ROM_ADDR + 5, ROM_ADDR, 21));
+        rom.insts
+            .insert(ROM_ADDR + 7, create_test_internal_inst_builder(ROM_ADDR + 7, ROM_ADDR, 22));
 
         assert!(rom.optimize_instruction_lookup().is_ok());
 
@@ -678,7 +709,8 @@ mod tests {
         // Mix of all three types
         rom.insts.insert(ROM_ENTRY + 4, create_test_inst_builder(ROM_ENTRY + 4, 1));
         rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 2));
-        rom.insts.insert(ROM_ADDR + 3, create_test_internal_inst_builder(ROM_ADDR + 3, ROM_ADDR, 3));
+        rom.insts
+            .insert(ROM_ADDR + 3, create_test_internal_inst_builder(ROM_ADDR + 3, ROM_ADDR, 3));
 
         assert!(rom.optimize_instruction_lookup().is_ok());
 
@@ -769,7 +801,10 @@ mod tests {
         let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add instruction above ROM_ADDR_MAX.
-        rom.insts.insert(ROM_ADDR_MAX + 4, create_test_internal_inst_builder(ROM_ADDR_MAX + 4, ROM_ADDR, 1));
+        rom.insts.insert(
+            ROM_ADDR_MAX + 4,
+            create_test_internal_inst_builder(ROM_ADDR_MAX + 4, ROM_ADDR, 1),
+        );
         assert!(rom.optimize_instruction_lookup().is_err());
     }
 

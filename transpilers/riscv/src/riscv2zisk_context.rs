@@ -1240,7 +1240,16 @@ impl Riscv2ZiskContext<'_> {
                 let jump_offset = jump_pc as i64 - i.rom_address as i64;
                 zib.j(jump_offset, jump_offset);
 
-                zib.verbose(&format!("auipc r{}, 0x{:x} + jalr pc=0x{:x}", i.rd, i.imm, jump_pc));
+                zib.verbose(&format!(
+                    "auipc r{}, 0x{:x} + jalr r{}, r{}, {:#x} rpc=0x{:x}",
+                    i.rd,
+                    i.imm,
+                    next_instructions[0].rd,
+                    next_instructions[0].rs1,
+                    next_instructions[0].imm,
+                    jump_pc
+                ));
+                zib.set_meta_rs1_rd(next_instructions[0].rs1 as u8, next_instructions[0].rd as u8);
                 zib.build(self.rom);
             }
 
@@ -1405,6 +1414,7 @@ impl Riscv2ZiskContext<'_> {
             zib.store_pc("reg", i.rd as i64, false);
             zib.j(i.imm as i64, inst_size as i64);
             zib.verbose(&format!("jalr r{}, r{}, 0x{:x}", i.rd, i.rs1, i.imm));
+            zib.set_meta_rs1_rd(i.rs1 as u8, i.rd as u8);
             zib.build(self.rom);
         } else {
             let internal_address_1 = self.rom.get_internal_address();
@@ -1414,8 +1424,8 @@ impl Riscv2ZiskContext<'_> {
                 zib.src_b("reg", i.rs1 as u64, false);
                 zib.op("add").unwrap();
                 zib.set_next_internal_address(internal_address_1);
-                let jump_address = internal_address_1 as i64 - i.rom_address as i64;
-                zib.j(jump_address, jump_address);
+                let jump_offset = internal_address_1 as i64 - i.rom_address as i64;
+                zib.j(jump_offset, jump_offset);
                 zib.verbose(&format!("jalr r{}, r{}, 0x{:x} ; 1/2", i.rd, i.rs1, i.imm));
                 zib.build(self.rom);
             }
@@ -1426,10 +1436,10 @@ impl Riscv2ZiskContext<'_> {
                 zib.op("and").unwrap();
                 zib.set_pc();
                 zib.store_pc("reg", i.rd as i64, false);
-                let jump_address =
-                    rom_address as i64 + inst_size as i64 - internal_address_1 as i64;
-                zib.j(0, jump_address);
+                let jump_offset = rom_address as i64 + inst_size as i64 - internal_address_1 as i64;
+                zib.j(0, jump_offset);
                 zib.verbose(&format!("internal jalr r{}, r{}, 0x{:x} ; 2/2", i.rd, i.rs1, i.imm));
+                zib.set_meta_rs1_rd(i.rs1 as u8, i.rd as u8);
                 zib.build(self.rom);
             }
         }
@@ -1447,6 +1457,7 @@ impl Riscv2ZiskContext<'_> {
         zib.store_pc("reg", i.rd as i64, false);
         zib.j(i.imm as i64, inst_size as i64);
         zib.verbose(&format!("jal r{}, 0x{:x}", i.rd, i.imm));
+        zib.set_meta_rs1_rd(i.rd as u8, i.rd as u8);
         zib.build(self.rom);
     }
 

@@ -5,6 +5,7 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
+use fields::Goldilocks;
 use riscv::RiscVRegisters;
 use sm_arith::ArithFrops;
 use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
@@ -16,8 +17,9 @@ use std::{
 use zisk_core::{
     zisk_ops::{OpStats, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
-    ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, SRC_IMM, SRC_REG, SYS_ADDR,
+    ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
 };
+use zisk_pil::RomRomTrace;
 
 use zisk_definitions::{
     PROFILE_END_COST_ID, PROFILE_END_STEPS_ID, PROFILE_REPORT_END_COST_ID,
@@ -29,12 +31,10 @@ use zisk_definitions::{
 use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
-    CallPathProfiler, OpsCosts, RamMonitor, RegionsOfInterest, StatsCosts, StatsCoverageReport,
-    StatsReport, BASE_COST, MAIN_COST, NO_ROI_ID,
+    CallPathProfiler, MemoryOperationsStats, OpsCosts, RamMonitor, RegionsOfInterest, StatsCosts,
+    StatsCoverageReport, StatsReport, BASE_COST, MAIN_COST, MEM_WRITE_COST, NO_ROI_ID,
+    ROM_READ_COST,
 };
-
-const MAX_PATTERN_SIZE: usize = 16;
-const MAX_RETURN_OFFSET: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct CallStackEntry {
@@ -50,7 +50,9 @@ pub struct CallStackEntry {
 
 const OP_DATA_BUFFER_DEFAULT_CAPACITY: usize = 128 * 1024 * 1024;
 
-const REG_RA_IDX: usize = 1;
+const REG_RA_IDX: u8 = 1;
+const REG_T0_IDX: u8 = 5;
+const RETURN_REGS: [u8; 2] = [REG_RA_IDX, REG_T0_IDX];
 
 #[derive(Debug)]
 pub struct ProfileStats {
@@ -95,8 +97,9 @@ pub struct Stats {
     costs: StatsCosts,
     /// Buffer to store operation data before writing to file
     op_data_buffer: Vec<u8>,
-    rois_by_address: BTreeMap<u32, u32>,
+    rois_by_pc: BTreeMap<u32, u32>,
     rois: Vec<RegionsOfInterest>,
+    cached_roi: Option<usize>,
     current_roi: Option<usize>,
     previous_roi: Option<usize>,
     top_rois: usize,
@@ -109,16 +112,17 @@ pub struct Stats {
     sdk_opcodes: bool,
     sdk_profile_tags: bool,
     sdk_top_functions: bool,
+    mem_stats: bool,
+    mem_full_stats: bool,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
-    internal_previous_pc: u64,
     previous_pc: u64,
-    external_is_jmp: bool,
     call_stack: Vec<CallStackEntry>,
-    previous_verbose: String,
     is_call: bool,
     is_return: bool,
+    is_tail_call: bool,
     call_return_reg: u8,
+    call_return_value: u64,
     profiler: Option<CallPathProfiler>,
     main_name: String,
     track_separator: String,
@@ -151,11 +155,12 @@ pub struct Stats {
     debug_step_stack: Vec<u64>,
     #[cfg(feature = "debug_stats_trace")]
     previous_stack_depth: usize,
+    #[cfg(feature = "debug_call_stack")]
+    previous_verbose: String,
     profiler_output: String,
-    external_is_call: bool,
-    external_store_offset: u8,
-    external_is_jalr_ra: bool,
-    external_is_return: bool,
+    inst_count: usize,
+    rom_init_count: usize,
+    ram_init_count: usize,
 }
 
 impl Default for Stats {
@@ -169,16 +174,17 @@ impl Default for Stats {
             "ziskos::BIOS",
             true,
         ));
-        let rois_by_address = BTreeMap::from([(ROM_ENTRY as u32, 0)]);
+        let rois_by_pc = BTreeMap::from([(ROM_ENTRY as u32, 0)]);
         Self {
             costs: StatsCosts::new_no_compact(),
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             op_data_buffer: vec![],
             store_ops: false,
             rois,
-            rois_by_address,
+            rois_by_pc,
             current_roi: None,
             previous_roi: None,
+            cached_roi: None,
             top_rois: 25,
             roi_callers: 10,
             top_rois_detail: false,
@@ -187,12 +193,12 @@ impl Default for Stats {
             sdk: false,
             pc_histogram: HashMap::new(),
             previous_pc: 0,
-            internal_previous_pc: 0,
             call_stack: Vec::new(),
-            previous_verbose: String::default(),
             is_call: false,
+            is_tail_call: false,
             is_return: false,
             call_return_reg: 0,
+            call_return_value: 0,
             profiler: None,
             // profile_marks: HashMap::new(),
             // individual_cost_marks: false,
@@ -209,6 +215,8 @@ impl Default for Stats {
             sdk_opcodes: false,
             sdk_profile_tags: false,
             sdk_top_functions: false,
+            mem_stats: false,
+            mem_full_stats: false,
             ram_monitor: RamMonitor::new(),
             profile_tags_map: HashMap::new(),
             profile_tags: Vec::new(),
@@ -226,11 +234,11 @@ impl Default for Stats {
             debug_step_stack: Vec::new(),
             #[cfg(feature = "debug_stats_trace")]
             previous_stack_depth: 0,
-            external_is_jmp: false,
-            external_is_call: false,
-            external_store_offset: 0,
-            external_is_jalr_ra: false,
-            external_is_return: false,
+            #[cfg(feature = "debug_call_stack")]
+            previous_verbose: String::new(),
+            inst_count: 0,
+            rom_init_count: 0,
+            ram_init_count: 0,
         }
     }
 }
@@ -366,36 +374,18 @@ impl Stats {
         self.disable_call_stack = true;
     }
 
-    pub fn check_roi(&mut self, inst_ctx: &InstContext) {
+    pub fn check_roi(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
         if self.disable_call_stack {
             return;
         }
         let pc = inst_ctx.pc as u32;
         let regular_pc = pc & 0x01 == 0;
-        #[cfg(feature = "debug_call_stack")]
-        let _previous_roi = self.previous_roi;
         self.previous_roi = self.current_roi;
 
         // First, handle RETURN even if we're not changing ROI
         let return_call = if self.is_return && !self.call_stack.is_empty() {
             #[cfg(feature = "debug_call_stack")]
-            {
-                let _proi = if let Some(proi) = _previous_roi {
-                    &format!("[{proi}] RC:{}", self.rois[proi].call_stack_rc)
-                } else {
-                    "???"
-                };
-                let _croi = if let Some(croi) = self.current_roi {
-                    &format!("[{croi}] RC:{}", self.rois[croi].call_stack_rc)
-                } else {
-                    "???"
-                };
-                println!(
-                    "CALL_STACK_DEBUG: RETURN P_PC:0x{:08x}{_proi} => PC:0x{pc:08x}{_croi} STACK:{}",
-                    self.previous_pc,
-                    self.summary_call_stack()
-                );
-            }
+            self.debug_call_stack_operation("RETURN", instruction, pc);
 
             if let Some(profiler) = &mut self.profiler {
                 let ram_usage = self.ram_monitor.get_usage(inst_ctx);
@@ -433,34 +423,42 @@ impl Stats {
                     profiler.pop_call_path(self.costs.total_cost(), ram_usage);
                 }
             }
-
-            self.current_roi =
-                if let Some((_, index)) = self.rois_by_address.range(..=pc).next_back() {
-                    Some(*index as usize)
-                } else {
-                    None
-                };
+            let roi_pc = instruction.external_ref_addr.unwrap_or(pc as u64) as u32;
+            self.current_roi = self.get_cached_roi_index_from_pc(roi_pc);
         }
 
-        if previous_roi_index != self.current_roi && !self.is_return && !self.is_call {
-            if let Some(roi_index) = self.current_roi {
-                // Tail call
-                let cloned_costs = self.clone_costs();
+        if previous_roi_index != self.current_roi {
+            if !self.is_return && !self.is_call && !self.is_tail_call && !self.call_stack.is_empty()
+            {
                 #[cfg(feature = "debug_call_stack")]
-                let summary_call_stack = if self.call_stack.is_empty() {
-                    String::new()
-                } else {
-                    self.summary_call_stack()
-                };
-                if let Some(top) = self.call_stack.last_mut() {
+                {
+                    self.debug_call_stack_operation("NONE", instruction, pc);
+                }
+                println!(
+                    "CALL STACK ERROR: ROI change without CALL/RETURN, disabled call stack feature (P_PC:0x{:08x} => PC:0x{pc:08x})",
+                    self.previous_pc
+                );
+                self.disable_call_stack = true;
+            } else if self.is_tail_call {
+                if let Some(roi_index) = self.current_roi {
+                    // Tail call
+                    let cloned_costs = self.clone_costs();
                     #[cfg(feature = "debug_call_stack")]
-                    println!(
-                        "CALL_STACK_DEBUG: TAIL CALL P_PC:0x{:08x}[{roi_index}] => PC:0x{pc:08x}[{roi_index}] STACK:{summary_call_stack}",
-                        self.previous_pc
-                    );
-                    top.tail_calls.push((roi_index, cloned_costs));
-                    self.rois[roi_index].tail_jmp(previous_roi_index);
-                    self.rois[roi_index].calls += 1;
+                    let summary_call_stack = if self.call_stack.is_empty() {
+                        String::new()
+                    } else {
+                        self.summary_call_stack()
+                    };
+                    if let Some(top) = self.call_stack.last_mut() {
+                        #[cfg(feature = "debug_call_stack")]
+                        println!(
+                            "CALL_STACK_DEBUG: TAIL CALL P_PC:0x{:08x}[{roi_index}] => PC:0x{pc:08x}[{roi_index}] STACK:{summary_call_stack}",
+                            self.previous_pc
+                        );
+                        top.tail_calls.push((roi_index, cloned_costs));
+                        self.rois[roi_index].tail_jmp(previous_roi_index);
+                        self.rois[roi_index].calls += 1;
+                    }
                 }
             }
         }
@@ -579,10 +577,11 @@ impl Stats {
                     };
                     #[cfg(feature = "debug_call_stack")]
                     println!(
-                        "CALL_STACK_DEBUG: CALL P_PC:0x{:08x}[{}] => PC:0x{pc:08x}[{}] STACK:{}",
+                        "CALL_STACK_DEBUG: CALL P_PC:0x{:08x}[{}] => PC:0x{pc:08x}[{}] RETURN:0x{:08x} STACK:{}",
                         self.previous_pc,
                         previous_roi_index.unwrap_or(900_000_000),
                         self.current_roi.unwrap_or(900_000_000),
+                        self.call_return_value,
                         self.summary_call_stack()
                     );
                     let mut cloned_costs = self.clone_costs();
@@ -590,7 +589,7 @@ impl Stats {
                     let func_name = self.rois[roi_index].name.clone();
                     self.call_stack.push(CallStackEntry {
                         pc: pc as u64,
-                        ra: inst_ctx.regs[REG_RA_IDX],
+                        ra: inst_ctx.regs[REG_RA_IDX as usize],
                         caller_roi_index: previous_roi_index,
                         called_roi_index: self.current_roi,
                         costs: cloned_costs,
@@ -638,6 +637,117 @@ impl Stats {
             }
         }
     }
+    fn valid_code_addr(&self, code_addr: u64) -> bool {
+        (ROM_ADDR..(ROM_ADDR + ROM_SIZE)).contains(&code_addr)
+            || (ROM_ENTRY..(ROM_ENTRY + ROM_ENTRY_SIZE)).contains(&code_addr)
+    }
+    #[inline(always)]
+    fn change_roi(&mut self, code_addr: u32) -> bool {
+        !self.same_roi(code_addr)
+    }
+    #[inline(always)]
+    fn same_roi(&self, code_addr: u32) -> bool {
+        self.same_roi_recursive(code_addr).0
+    }
+    fn same_roi_recursive(&self, code_addr: u32) -> (bool, bool) {
+        if let Some(roi_index) = self.current_roi {
+            if code_addr & 1 == 0
+                && self.rois[roi_index].from_pc <= code_addr
+                && code_addr <= self.rois[roi_index].to_pc
+            {
+                (true, self.rois[roi_index].from_pc == code_addr)
+            } else if code_addr & 1 == 1 {
+                if let Some((from_pc, to_pc)) = self.rois[roi_index].internal_from_to_pc {
+                    (from_pc <= code_addr && code_addr <= to_pc, false)
+                } else {
+                    (false, false)
+                }
+            } else {
+                (false, false)
+            }
+        } else {
+            (false, false)
+        }
+    }
+    #[cfg(feature = "debug_call_stack")]
+    fn debug_call_stack_operation(&mut self, operation: &str, instruction: &ZiskInst, pc: u32) {
+        let external_pc = instruction.external_ref_addr.unwrap_or(pc as u64) as u32;
+        let pc_roi = self.get_cached_roi_index_from_pc(external_pc);
+        let _proi = if let Some(proi) = self.previous_roi {
+            &format!("[{proi}] RC:{}", self.rois[proi].call_stack_rc)
+        } else {
+            "???"
+        };
+        let _croi = if let Some(croi) = pc_roi {
+            &format!("[{croi}] RC:{}", self.rois[croi].call_stack_rc)
+        } else {
+            "???"
+        };
+        println!(
+            "CALL_STACK_DEBUG: {operation} P_PC:0x{:08x}{_proi} => PC:0x{pc:08x}{_croi} STACK:{}",
+            self.previous_pc,
+            self.summary_call_stack()
+        );
+    }
+    fn check_call_return(
+        &mut self,
+        call_addr: i64,
+        return_addr: i64,
+        allow_recursive: bool,
+    ) -> bool {
+        let call_addr = call_addr as u64;
+        let return_addr = return_addr as u64;
+        if !self.valid_code_addr(call_addr) || !self.valid_code_addr(return_addr) {
+            return false;
+        }
+        let (same_roi, recursive) = self.same_roi_recursive(call_addr as u32);
+        let call_addr_ok = if allow_recursive && recursive {
+            #[cfg(feature = "debug_call_stack")]
+            println!(
+                "CALL_STACK_DEBUG: RECURSIVE DETECTED CALL:{:x} RA:{:x} STACK:{}",
+                call_addr,
+                return_addr,
+                self.summary_call_stack()
+            );
+            true
+        } else {
+            !same_roi
+        };
+        call_addr_ok && self.same_roi(return_addr as u32)
+    }
+    fn check_call(&mut self, return_addr: i64) -> bool {
+        let return_addr = return_addr as u64;
+        if !self.valid_code_addr(return_addr) {
+            return false;
+        }
+        self.change_roi(return_addr as u32)
+    }
+    pub fn get_roi_from_pc(&mut self, pc: u32) -> Option<(usize, &RegionsOfInterest)> {
+        assert!(pc & 0x01 == 0);
+        if let Some((_, index)) = self.rois_by_pc.range(..=pc).next_back() {
+            Some((*index as usize, &self.rois[*index as usize]))
+        } else {
+            None
+        }
+    }
+    pub fn get_cached_roi_index_from_pc(&mut self, pc: u32) -> Option<usize> {
+        assert!(pc & 0x01 == 0);
+        if let Some(roi_index) = self.cached_roi {
+            let roi = &self.rois[roi_index];
+            if pc >= roi.from_pc && pc <= roi.to_pc {
+                return Some(roi_index);
+            }
+        }
+
+        if let Some((_, index)) = self.rois_by_pc.range(..=pc).next_back() {
+            let roi_index = *index as usize;
+            self.cached_roi = Some(roi_index);
+            Some(roi_index)
+        } else {
+            None
+        }
+    }
+
     #[cfg(feature = "handle_stdout")]
     pub fn handle_stdout(&mut self) {}
 
@@ -668,7 +778,7 @@ impl Stats {
         self.current_variable_cost = 0;
     }
     /// Called every time an operation is executed, if statistics are enabled
-    pub fn on_op(&mut self, instruction: &ZiskInst, inst_ctx: &InstContext) {
+    pub fn on_op(&mut self, inst: &ZiskInst, inst_ctx: &InstContext, store_value: u64) {
         // Per-instruction execution trace, enabled by ziskemu's `--trace-steps`, or
         // by the change-trace window (`--trace-from` / `--trace-to`) from the requested
         // step onwards (so that each change block is preceded by its instruction). At
@@ -678,17 +788,17 @@ impl Stats {
                 && self.costs.steps >= self.trace_from.unwrap_or(0)
                 && self.trace_to.map_or(true, |to| self.costs.steps <= to))
         {
-            println!("### S:{} PC {:x}: {}", self.costs.steps, inst_ctx.pc, instruction.verbose);
+            println!("### S:{} PC {:x}: {}", self.costs.steps, inst_ctx.pc, inst.verbose);
         }
         let pc = inst_ctx.pc;
         self.costs.steps += 1;
         #[cfg(feature = "handle_stdout")]
-        self.check_stdout(instruction, inst_ctx);
-        self.check_roi(inst_ctx);
+        self.check_stdout(inst, inst_ctx);
+        self.check_roi(inst, inst_ctx);
         #[cfg(feature = "debug_stats_trace")]
         self.debug_stats_trace(pc);
 
-        if instruction.op == ZiskOp::PROFILE {
+        if inst.op == ZiskOp::PROFILE {
             let p_data = inst_ctx.mem.read(inst_ctx.a, 8);
             let count = inst_ctx.mem.read(inst_ctx.a + 8, 8);
             let bytes = inst_ctx.mem.read_slice(p_data, count);
@@ -728,92 +838,120 @@ impl Stats {
             // );
         }
         if self.store_ops
-            && (instruction.op_type == ZiskOperationType::Arith
-                || instruction.op_type == ZiskOperationType::Binary
-                || instruction.op_type == ZiskOperationType::BinaryE)
+            && (inst.op_type == ZiskOperationType::Arith
+                || inst.op_type == ZiskOperationType::Binary
+                || inst.op_type == ZiskOperationType::BinaryE)
         {
             // store op, a and b values in file
-            self.store_op_data(instruction.op, inst_ctx.a, inst_ctx.b);
+            self.store_op_data(inst.op, inst_ctx.a, inst_ctx.b);
         }
-        if self.is_frops(instruction, inst_ctx.a, inst_ctx.b) {
-            self.costs.add_fixed_frops_cost_op(instruction.op);
+        if self.is_frops(inst, inst_ctx.a, inst_ctx.b) {
+            self.costs.add_fixed_frops_cost_op(inst.op);
         }
         // Otherwise, increase the counter corresponding to this opcode
         else if self.current_variable_cost == 0 {
-            self.costs.add_fixed_cost_op(instruction.op);
+            self.costs.add_fixed_cost_op(inst.op);
         } else {
-            self.costs.add_variable_cost_op(instruction.op, self.current_variable_cost);
+            self.costs.add_variable_cost_op(inst.op, self.current_variable_cost);
         }
 
         // Increase the PC histogram entry for this PC
         self.pc_histogram.entry(pc).and_modify(|count| *count += 1).or_insert(1);
-        self.internal_previous_pc = pc;
-        // Check if PC is regular to discard internal (odd) PCs.
-        let internal_pc = pc & 0x01 == 0x01;
-        let is_jmp = if internal_pc {
-            self.external_is_jmp
+
+        self.is_call = false;
+        self.is_return = false;
+        self.call_return_reg = 0;
+        self.call_return_value = 0;
+        self.is_tail_call = false;
+        let _is_rs1_return_reg = if let Some(meta_rs1) = inst.meta_rs1 {
+            RETURN_REGS.contains(&meta_rs1)
         } else {
-            self.previous_pc = pc;
-            // Detect a jump using the offset that actually moves the PC, per the next-pc
-            // constraint in main.pil: when set_pc is not active, next_pc = pc + jmp_offset1 if the
-            // flag is set, else pc + jmp_offset2. The PIL also forces flag=1 for `flag` ops and
-            // flag=0 for `copyb` ops, so each op must be tested against its own active offset:
-            //   - FLAG  (jal/hint/nop): flag=1 -> jmp_offset1
-            //   - COPYB:                flag=0 -> jmp_offset2
-            // A delta beyond MAX_PATTERN_SIZE (or negative) means a real jump rather than the small
-            // forward step used to sequence an instruction's micro-op pattern.
-            let is_jmp = instruction.set_pc
-                || (instruction.op == ZiskOp::FLAG
-                    && (instruction.jmp_offset1 > MAX_PATTERN_SIZE as i64
-                        || instruction.jmp_offset1 < 0))
-                || (instruction.op == ZiskOp::COPYB
-                    && (instruction.jmp_offset2 > MAX_PATTERN_SIZE as i64
-                        || instruction.jmp_offset2 < 0));
-            self.external_is_jmp = is_jmp;
-            self.previous_verbose = instruction.verbose.clone();
-            is_jmp
+            false
         };
-
-        if is_jmp {
-            // CALL: set_pc=true, store_ra=true, store_offset=1 (stores PC+4 or PC+2 in ra)
-            // self.is_call = instruction.store_ra && instruction.store_offset == 1;
-            if !internal_pc {
-                let store_next_pc = instruction.store_pc
-                    || (instruction.op == ZiskOp::COPYB
-                        && (instruction.b_offset_imm0 > pc
-                            && (instruction.b_offset_imm0 - pc) <= MAX_RETURN_OFFSET as u64)
-                        && instruction.b_src == SRC_IMM);
-                self.external_is_call = store_next_pc;
-                self.external_store_offset = instruction.store_offset as u8;
-                self.external_is_jalr_ra = !instruction.store_pc
-                    && instruction.set_pc
-                    && instruction.b_src == SRC_REG
-                    && instruction.b_offset_imm0 == 1;
-
-                // RETURN: set_pc=true, store_pc=false (no stores RA), b_src=SRC_REG,
-                // b_offset_imm0=1 (jumps to ra/x1). Frozen here at the regular entry, exactly like
-                // is_call / is_jalr_ra, so the whole internal (odd-PC) chain inherits a consistent
-                // control state and cannot recompute a return from a meaningless internal
-                // instruction. The is_jalr_ra && empty case falls through to the call_stack.last()
-                // branch (None => false), matching the previous behavior.
-                self.external_is_return = if self.external_is_jalr_ra && !self.call_stack.is_empty()
+        let non_rd = if let Some(rd) = inst.meta_rd { rd == 0 } else { false };
+        if !non_rd {
+            // CALL path
+            match inst.op {
+                ZiskOp::AND
+                    if inst.store_pc
+                        && inst.set_pc
+                        && self.check_call_return(
+                            inst_ctx.c as i64 + inst.jmp_offset1,
+                            pc as i64 + inst.jmp_offset2,
+                            true,
+                        ) =>
                 {
-                    true
-                } else if let Some(top) = self.call_stack.last() {
-                    !instruction.store_pc
-                        && instruction.b_src == SRC_REG
-                        && instruction.b_offset_imm0 == top.return_reg as u64
+                    self.is_call = true;
+                    self.call_return_reg = inst.store_offset as u8;
+                    self.call_return_value = store_value;
+                }
+                ZiskOp::COPYB
+                    if !inst.store_pc
+                        && !inst.set_pc
+                        && inst.jmp_offset1 == inst.jmp_offset2
+                        && self.check_call_return(
+                            pc as i64 + inst.jmp_offset2,
+                            inst_ctx.b as i64,
+                            false,
+                        ) =>
+                {
+                    self.is_call = true;
+                    self.call_return_reg = inst.store_offset as u8;
+                    self.call_return_value = store_value;
+                }
+                ZiskOp::FLAG
+                    if inst.store_pc
+                        && !inst.set_pc
+                        && self.check_call_return(
+                            pc as i64 + inst.jmp_offset1,
+                            pc as i64 + inst.jmp_offset2,
+                            true,
+                        ) =>
+                {
+                    self.is_call = true;
+                    self.call_return_reg = inst.store_offset as u8;
+                    self.call_return_value = store_value;
+                }
+                _ => {}
+            }
+        } else if inst.store == STORE_NONE || non_rd {
+            // RETURN path
+
+            if let Some(meta_reg) = inst.meta_rs1 {
+                if RETURN_REGS.contains(&meta_reg) {
+                    self.is_return = match inst.op {
+                        ZiskOp::AND => {
+                            !inst.store_pc
+                                && inst.set_pc
+                                && self.check_call(inst_ctx.c as i64 + inst.jmp_offset2)
+                        }
+                        ZiskOp::COPYB => {
+                            !inst.store_pc
+                                && !inst.set_pc
+                                && inst.jmp_offset1 == inst.jmp_offset2
+                                && self.check_call(pc as i64 + inst.jmp_offset2)
+                        }
+                        _ => false,
+                    };
                 } else {
-                    false
-                };
-            };
-            self.is_call = self.external_is_call;
-            self.call_return_reg = if self.is_call { self.external_store_offset } else { 0 };
-            self.is_return = self.external_is_return;
-        } else {
-            self.is_call = false;
-            self.is_return = false;
+                    self.is_tail_call = match inst.op {
+                        ZiskOp::AND => {
+                            !inst.store_pc
+                                && inst.set_pc
+                                && self.check_call(inst_ctx.c as i64 + inst.jmp_offset2)
+                        }
+                        ZiskOp::COPYB => {
+                            !inst.store_pc
+                                && !inst.set_pc
+                                && inst.jmp_offset1 == inst.jmp_offset2
+                                && self.check_call(pc as i64 + inst.jmp_offset2)
+                        }
+                        _ => false,
+                    };
+                }
+            }
         }
+        self.previous_pc = pc;
     }
 
     fn start_profile_tag(&mut self, tag: &str, use_steps: bool) -> usize {
@@ -958,6 +1096,152 @@ impl Stats {
         }
     }
 
+    pub fn report_mem(
+        &self,
+        report: &mut StatsReport,
+        mops: &MemoryOperationsStats,
+        partial_report: bool,
+    ) {
+        report.set_custom_totals(mops.get_count(), mops.get_cost());
+        let previous_hidden_no_cost = report.set_hidden_no_cost(true);
+        let (rom_init_count, ram_init_count) = if partial_report {
+            (0, 0)
+        } else {
+            (self.rom_init_count as u64, self.ram_init_count as u64)
+        };
+        report.add_count_cost_perc2_custom(
+            "RAM STACK ALIGNED",
+            mops.get_ram_stack_aligned_count(),
+            mops.get_ram_stack_aligned_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "RAM NO STACK ALIGNED",
+            mops.get_ram_no_stack_aligned_count(),
+            mops.get_ram_no_stack_aligned_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "RAM INIT",
+            ram_init_count,
+            ram_init_count * MEM_WRITE_COST,
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "ROM ALIGNED",
+            mops.get_rom_aligned_count(),
+            mops.get_rom_aligned_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "ROM INIT",
+            rom_init_count,
+            rom_init_count * ROM_READ_COST,
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "INPUT ALIGNED",
+            mops.get_input_aligned_count(),
+            mops.get_input_aligned_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "RAM STACK UNALIGNED",
+            mops.get_ram_stack_unaligned_count(),
+            mops.get_ram_stack_unaligned_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "RAM NO STACK UNALIGNED",
+            mops.get_ram_no_stack_unaligned_count(),
+            mops.get_ram_no_stack_unaligned_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "ROM UNALIGNED",
+            mops.get_rom_unaligned_count(),
+            mops.get_rom_unaligned_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "INPUT UNALIGNED",
+            mops.get_input_unaligned_count(),
+            mops.get_input_unaligned_cost(),
+            "",
+        );
+        report.add_total_line();
+        report.add_count_cost_perc2_custom(
+            "TOTAL ALIGNED",
+            mops.get_aligned_count() + ram_init_count + rom_init_count,
+            mops.get_aligned_cost()
+                + ram_init_count * MEM_WRITE_COST
+                + rom_init_count * ROM_READ_COST,
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "TOTAL UNALIGNED",
+            mops.get_unaligned_count(),
+            mops.get_unaligned_cost(),
+            "",
+        );
+        report.add_total_line();
+        report.add_count_cost_perc2_custom(
+            "TOTAL RAM STACK",
+            mops.get_ram_stack_count(),
+            mops.get_ram_stack_cost(),
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "TOTAL RAM NO STACK",
+            mops.get_ram_no_stack_count(),
+            mops.get_ram_no_stack_cost(),
+            "",
+        );
+        report.add_total_line();
+        report.add_count_cost_perc2_custom(
+            "TOTAL RAM",
+            mops.get_ram_count() + ram_init_count,
+            mops.get_ram_cost() + ram_init_count * MEM_WRITE_COST,
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "TOTAL ROM",
+            mops.get_rom_count() + rom_init_count,
+            mops.get_rom_cost() + rom_init_count * ROM_READ_COST,
+            "",
+        );
+        report.add_count_cost_perc2_custom(
+            "TOTAL INPUT",
+            mops.get_input_count(),
+            mops.get_input_cost(),
+            "",
+        );
+        report.set_hidden_no_cost(previous_hidden_no_cost);
+    }
+
+    pub fn report_detailed_mem(
+        &self,
+        report: &mut StatsReport,
+        mops: &MemoryOperationsStats,
+        partial_report: bool,
+    ) {
+        report.set_custom_totals(mops.get_count(), mops.get_cost());
+        let (rom_init_count, ram_init_count) = if partial_report {
+            (0, 0)
+        } else {
+            (self.rom_init_count as u64, self.ram_init_count as u64)
+        };
+
+        let report_items = mops.get_detailed_items(rom_init_count, ram_init_count);
+        for (title, count, cost) in report_items {
+            if title.is_empty() {
+                report.add_total_line();
+            } else {
+                report.add_count_cost_perc2_custom(&title, count, cost, "");
+            }
+        }
+    }
+
     pub fn report_frops_hit(&self, report: &mut StatsReport, title: &str) {
         let top_opcodes = self.costs.top_cost_frops_opcodes(5);
         for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
@@ -1079,7 +1363,7 @@ impl Stats {
             report.sdk_report_footer();
         }
 
-        if self.sdk_top_functions && !self.rois.is_empty() && !self.disable_call_stack {
+        if self.sdk_top_functions && self.is_rois_enabled() && !self.disable_call_stack {
             report.sdk_report_header("TOP COST FUNCTIONS");
             let top_cost_rois = self.get_top_rois(false);
             let label_width = report.sdk_top_cost_line_label_width() - 3;
@@ -1175,7 +1459,9 @@ impl Stats {
         let ops_cost = self.costs.base_ops_cost();
         let precompiled_cost = self.costs.precompiled_ops_cost();
         let total_steps = self.costs.steps;
-        let mem_cost = self.costs.mops.get_cost();
+        let mem_cost = self.costs.mops.get_cost()
+            + self.rom_init_count as u64 * ROM_READ_COST
+            + self.ram_init_count as u64 * MEM_WRITE_COST;
         let main_cost = total_steps * MAIN_COST;
         let base_cost = BASE_COST as u64;
         let total_cost = base_cost + mem_cost + main_cost + ops_cost + precompiled_cost;
@@ -1203,6 +1489,21 @@ impl Stats {
         if self.ram_monitor.ram_size > 0 {
             report.add_perc("RAM USAGE", self.ram_monitor.ram_used, self.ram_monitor.ram_size);
         }
+        let rom_used_rows = self.inst_count + self.rom_init_count / 4 + self.ram_init_count / 4;
+        let rom_size = RomRomTrace::<Goldilocks>::NUM_ROWS;
+        report.add_perc("ROM USAGE", rom_used_rows as u64, rom_size as u64);
+
+        if self.mem_stats || self.mem_full_stats {
+            report.title_count_cost_perc2("MEM COST BY TYPE", "COUNT", "COST", "");
+            self.report_mem(&mut report, &self.costs.mops, false);
+        }
+
+        if self.mem_full_stats {
+            report.set_and_push_label_width(40);
+            report.title_count_cost_perc2("DETAILED MEM COST", "COUNT", "COST", "");
+            self.report_detailed_mem(&mut report, &self.costs.mops, false);
+            report.pop_label_width();
+        }
 
         if show_opcodes {
             report.title_count_cost_perc2("COST BY OPCODE", "COUNT", "COST", " RANK");
@@ -1222,7 +1523,7 @@ impl Stats {
             );
         }
 
-        if show_top_functions && !self.rois.is_empty() && !self.disable_call_stack {
+        if show_top_functions && self.is_rois_enabled() && !self.disable_call_stack {
             report.title_auto_width(
                 "TOP STEP FUNCTIONS (STEPS, % STEPS, CALLS, STEPS/CALL, FUNCTION)",
             );
@@ -1266,10 +1567,33 @@ impl Stats {
                     roi_report.set_steps(roi.get_steps());
                     let formatted_name = self.format_roi_name(&roi.name);
                     roi_report.title(&format!("DETAIL FUNCTION {}", formatted_name));
-                    roi_report.add_perc("STEPS", roi.get_steps(), total_steps);
-                    roi_report.add_perc("COST", roi.get_cost(), total_cost);
-
                     roi_report.set_identation(1);
+                    roi_report.add_perc("STEPS", roi.get_steps(), total_steps);
+                    let main_cost = roi.get_steps() * MAIN_COST;
+                    let ops_cost = roi.get_ops_cost();
+                    let precompiled_cost = roi.get_precompiled_cost();
+                    let mem_cost = roi.get_mem_cost();
+                    let total_cost = main_cost + ops_cost + precompiled_cost + mem_cost;
+                    roi_report.ln();
+                    roi_report.add_perc("MAIN COST", main_cost, total_cost);
+                    roi_report.add_perc("OPCODES COST", ops_cost, total_cost);
+                    roi_report.add_perc("PRECOMPILES COST", precompiled_cost, total_cost);
+                    roi_report.add_perc("MEMORY COST", mem_cost, total_cost);
+                    roi_report.add_perc_total_line();
+                    roi_report.add_perc("TOTAL COST", total_cost, total_cost);
+
+                    if self.mem_stats {
+                        roi_report.title_count_cost_perc2("MEM COST BY TYPE", "COUNT", "COST", "");
+                        self.report_mem(&mut roi_report, &roi.costs.mops, true);
+                    }
+
+                    if self.mem_full_stats {
+                        roi_report.set_and_push_label_width(40);
+                        roi_report.title_count_cost_perc2("DETAILED MEM COST", "COUNT", "COST", "");
+                        self.report_detailed_mem(&mut roi_report, &roi.costs.mops, true);
+                        roi_report.pop_label_width();
+                    }
+
                     roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
                     self.report_opcodes(&mut roi_report, "OP", roi.ops_costs());
 
@@ -1364,7 +1688,7 @@ impl Stats {
                     initial_address = **pc;
                     block_count = **count;
                     block_label = if let Some((_, index)) =
-                        self.rois_by_address.range(..=initial_address as u32).next_back()
+                        self.rois_by_pc.range(..=initial_address as u32).next_back()
                     {
                         self.format_roi_name(&self.rois[*index as usize].name)
                     } else {
@@ -1383,14 +1707,71 @@ impl Stats {
 
         report.output
     }
+
     pub fn add_roi(&mut self, from_pc: u32, to_pc: u32, name: &str) {
         let roi = RegionsOfInterest::new(self.rois.len(), from_pc, to_pc, name, self.compact_cost);
         let index = self.rois.len() as u32;
         self.rois.push(roi);
-        self.rois_by_address.insert(from_pc, index);
+        self.rois_by_pc.insert(from_pc, index);
+    }
+    pub fn update_roi_internal_pc_range(&mut self, roi_index: usize, from_pc: u32, to_pc: u32) {
+        self.rois[roi_index].update_internal_from_to_pc(from_pc, to_pc);
+    }
+    pub fn load_rom_data(&mut self, rom: &ZiskRom) {
+        self.inst_count = rom.get_instruction_count();
+        self.rom_init_count = rom.get_rom_init_64bit_words();
+        self.ram_init_count = rom.get_ram_init_64bit_words();
+        if self.is_rois_enabled() {
+            self.load_internal_pc_ranges(rom);
+        }
+    }
+    pub fn is_rois_enabled(&self) -> bool {
+        self.rois.len() > 1
+    }
+    fn load_internal_pc_ranges(&mut self, rom: &ZiskRom) {
+        let mut internal_pc = ROM_ADDR + 1;
+        let mut current_roi_index = None;
+        let mut current_roi_from = 0;
+        let mut current_roi_to = 0;
+        let mut current_internal_from = None;
+        let mut current_internal_to = None;
+        while let Some(inst) = rom.get_internal_instruction(internal_pc) {
+            let pc = inst.external_ref_addr.unwrap() as u32;
+            if pc >= current_roi_from && pc <= current_roi_to {
+                current_internal_to = Some(internal_pc as u32);
+            } else {
+                if let Some(internal_from) = current_internal_from {
+                    if let Some(roi_index) = current_roi_index {
+                        self.update_roi_internal_pc_range(
+                            roi_index,
+                            internal_from,
+                            current_internal_to.unwrap_or(internal_from),
+                        );
+                    }
+                }
+                if let Some((roi_index, roi)) = self.get_roi_from_pc(pc) {
+                    current_roi_index = Some(roi_index);
+                    current_roi_from = roi.from_pc;
+                    current_roi_to = roi.to_pc;
+                    current_internal_from = Some(internal_pc as u32);
+                    current_internal_to = None;
+                }
+            }
+
+            internal_pc += 2;
+        }
+        if let Some(internal_from) = current_internal_from {
+            if let Some(roi_index) = current_roi_index {
+                self.update_roi_internal_pc_range(
+                    roi_index,
+                    internal_from,
+                    current_internal_to.unwrap_or(internal_from),
+                );
+            }
+        }
     }
     pub fn mark_roi_as_selected(&mut self, from_pc: u32, track_calls: usize) {
-        if let Some(&index) = self.rois_by_address.get(&from_pc) {
+        if let Some(&index) = self.rois_by_pc.get(&from_pc) {
             if let Some(roi) = self.rois.get_mut(index as usize) {
                 roi.set_selected_roi(track_calls);
             }
@@ -1478,6 +1859,12 @@ impl Stats {
     }
     pub fn set_sdk_top_functions(&mut self, value: bool) {
         self.sdk_top_functions = value;
+    }
+    pub fn set_mem_stats(&mut self, value: bool) {
+        self.mem_stats = value;
+    }
+    pub fn set_mem_full_stats(&mut self, value: bool) {
+        self.mem_full_stats = value;
     }
     pub fn set_sdk_width(&mut self, value: usize) {
         self.sdk_width = value;

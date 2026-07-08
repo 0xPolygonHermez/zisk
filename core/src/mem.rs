@@ -113,6 +113,8 @@ pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
 pub const RAM_SIZE: u64 = 0x20000000; // 512M
+/// Program stack addr
+pub const STACK_ADDR: u64 = RAM_ADDR;
 /// Program stack size
 pub const STACK_SIZE: u64 = 0x400000; // 4MB
 /// First system RW memory address

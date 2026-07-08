@@ -288,4 +288,14 @@ impl ZiskInstBuilder {
 
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
     }
+    pub fn set_meta_rs1(&mut self, rs1: u8) {
+        self.i.meta_rs1 = Some(rs1);
+    }
+    pub fn set_meta_rd(&mut self, rd: u8) {
+        self.i.meta_rd = Some(rd);
+    }
+    pub fn set_meta_rs1_rd(&mut self, rs1: u8, rd: u8) {
+        self.i.meta_rs1 = Some(rs1);
+        self.i.meta_rd = Some(rd);
+    }
 }

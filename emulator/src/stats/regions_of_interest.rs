@@ -16,8 +16,9 @@ pub struct RegionsOfInterest {
     pub id: usize,
     pub from_pc: u32,
     pub to_pc: u32,
+    pub internal_from_to_pc: Option<(u32, u32)>,
     pub name: String,
-    costs: StatsCosts,
+    pub costs: StatsCosts,
     pub calls: usize,
     pub callers: BTreeMap<usize, CallerInfo>,
     pub call_stack_rc: usize,
@@ -34,6 +35,7 @@ impl RegionsOfInterest {
             id,
             from_pc,
             to_pc,
+            internal_from_to_pc: None,
             costs: if compact { StatsCosts::new_compact() } else { StatsCosts::new_no_compact() },
             calls: 0,
             name: name.to_string(),
@@ -45,6 +47,19 @@ impl RegionsOfInterest {
             tracked_calls: Vec::new(),
             track_file: None,
         }
+    }
+
+    pub fn update_internal_from_to_pc(&mut self, from_pc: u32, to_pc: u32) {
+        assert!(
+            self.internal_from_to_pc.is_none(),
+            "Internal from/to PC range is already set for ROI '{}' defined 0x{:08x}-0x{:08x} new range 0x{:08x}-0x{:08x}",
+            self.name,
+            self.internal_from_to_pc.map_or(0, |(from, _)| from),
+            self.internal_from_to_pc.map_or(0, |(_, to)| to),
+            from_pc,
+            to_pc
+        );
+        self.internal_from_to_pc = Some((from_pc, to_pc));
     }
 
     pub fn set_selected_roi(&mut self, track_calls: usize) {
@@ -160,6 +175,12 @@ impl RegionsOfInterest {
     }
     pub fn get_cost(&self) -> u64 {
         self.costs.total_cost()
+    }
+    pub fn get_ops_cost(&self) -> u64 {
+        self.costs.base_ops_cost()
+    }
+    pub fn get_precompiled_cost(&self) -> u64 {
+        self.costs.precompiled_ops_cost()
     }
     pub fn get_mem_cost(&self) -> u64 {
         self.costs.mops.get_cost()
