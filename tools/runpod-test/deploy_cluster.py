@@ -46,7 +46,7 @@ REGISTRATION_TIMEOUT_SECONDS = 300
 
 DEFAULT_WORK_DIR = "/workspace"
 DEFAULT_LOCAL_ZISK_DIR = "~/.zisk"
-DEFAULT_PROVING_KEY = "zisk-provingkey-pre-1.0.0-beta.tar.gz"
+DEFAULT_PROVING_KEY = "zisk-provingkey-pre-1.1.0-alpha.tar.gz"
 DEFAULT_RPC_HTTP_URL = "http://144.76.59.84:8545"
 DEFAULT_RPC_WS_URL = "ws://144.76.59.84:8546"
 
