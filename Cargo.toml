@@ -3,7 +3,9 @@ version = "1.0.0-beta"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
+homepage = "https://github.com/0xPolygonHermez/zisk"
 repository = "https://github.com/0xPolygonHermez/zisk"
+documentation = "https://0xpolygonhermez.github.io/zisk-docs/"
 categories = ["cryptography"]
 
 [workspace.metadata]
