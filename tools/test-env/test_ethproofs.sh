@@ -5,11 +5,11 @@ source "./deploy_distributed.sh"
 
 main() {
     current_step=1
-    total_steps=5
+    total_steps=4
 
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    step "Loading environment variables..."
+    info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
     load_env ENABLE_HINTS BLOCK_INPUTS_ETHPROOFS BLOCK_INPUTS_ETHPROOFS_HINTS ONLY_CPU || return 1
 

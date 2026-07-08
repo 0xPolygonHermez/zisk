@@ -116,7 +116,7 @@ def create_pod(
         # pods behind the same NAT).
         "globalNetworking": True,
 
-        # False = reserved/on-demand, no spot/interrumpible
+        # False = reserved/on-demand (not spot/interruptible)
         "interruptible": False,
 
         # Storage

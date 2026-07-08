@@ -8,7 +8,7 @@ main () {
     current_step=1
     total_steps=3
 
-    step "Loading environment variables..."
+    info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
     load_env ZISK_SETUP_FILE || return 1
 

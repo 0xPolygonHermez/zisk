@@ -50,15 +50,18 @@ main() {
 
     local build_dir="build"
     local local_hash=""
+
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP \
+        ONLY_CPU INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES || return 1
+
     current_step=1
     total_steps=2   # computing hash + building setup
     [[ "${INCLUDE_SNARK}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${DYLIB_INPUT_FILES}" == "1" ]] && total_steps=$((total_steps + 1))
     [[ "${INSTALL_SETUP}" == "1" ]] && total_steps=$((total_steps + 1))
 
-    step "Loading environment variables..."
-    # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP ONLY_CPU || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     # Export so child tooling resolves the repo root from this, not its own location.

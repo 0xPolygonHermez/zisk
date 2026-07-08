@@ -8,9 +8,9 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=4
+    total_steps=3
 
-    step "Loading environment variables..."
+    info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
     load_env ZISK_REPO_DIR ZISK_ETH_CLIENT_BRANCH DISABLE_CLONE_REPO || return 1
 
