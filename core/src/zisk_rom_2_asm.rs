@@ -5798,36 +5798,36 @@ impl ZiskRom2Asm {
         // When executing zisk without float support, there are no dynamic jumps to low addresses,
         // so we can optimize the code by skipping the check for address range, assuming that the pc
         // is always a high address.
-        #[cfg(not(feature = "float"))]
-        {
-            // Check that we are not using the float library.
-            assert!(
-                ctx.pc < FLOAT_LIB_ROM_ADDR,
-                "Non-float build must not emit dynamic-jump code for float-lib PCs (ctx.pc must be < FLOAT_LIB_ROM_ADDR)"
-            );
-            // The next assembly line is an optimization that depends on the ROM_ADDR being
-            // 0x8000_0000, so we assert it to ensure correctness.  If it wasn't, we should subtract
-            // ROM_ADDR from pc, but since it is, we can just clear the 31st bit of pc to get the
-            // correct index into the map.
-            const {
-                assert!(ROM_ADDR == 0x8000_0000, "ROM_ADDR must be 0x8000_0000");
-            }
-            *code += &format!("\tbtr {}, 31 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ADDR"));
-            *code += &format!(
-                "\tmov {}, [map_pc_80000000 + {}*8] {}\n",
-                REG_ADDRESS,
-                REG_PC,
-                ctx.comment_str("address = map[pc]")
-            );
-            *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
-        }
+        // #[cfg(not(feature = "float"))]
+        // {
+        //     // Check that we are not using the float library.
+        //     assert!(
+        //         ctx.pc < FLOAT_LIB_ROM_ADDR,
+        //         "Non-float build must not emit dynamic-jump code for float-lib PCs (ctx.pc must be < FLOAT_LIB_ROM_ADDR)"
+        //     );
+        //     // The next assembly line is an optimization that depends on the ROM_ADDR being
+        //     // 0x8000_0000, so we assert it to ensure correctness.  If it wasn't, we should subtract
+        //     // ROM_ADDR from pc, but since it is, we can just clear the 31st bit of pc to get the
+        //     // correct index into the map.
+        //     const {
+        //         assert!(ROM_ADDR == 0x8000_0000, "ROM_ADDR must be 0x8000_0000");
+        //     }
+        //     *code += &format!("\tbtr {}, 31 {}\n", REG_PC, ctx.comment_str("pc -= ROM_ADDR"));
+        //     *code += &format!(
+        //         "\tmov {}, [map_pc_80000000 + {}*8] {}\n",
+        //         REG_ADDRESS,
+        //         REG_PC,
+        //         ctx.comment_str("address = map[pc]")
+        //     );
+        //     *code += &format!("\tjmp {} {}\n", REG_ADDRESS, ctx.comment_str("jump to address"));
+        // }
 
         // When executing program code, it can dynamically jump to any BIOS instruction
         // (low address) or to any program code address (high address).
         // When executing zisk float library code, it can dynamically jump to any BIOS instruction
         // (low address) or to any float library code address (high address) but not to program
         // code addresses.
-        #[cfg(feature = "float")]
+        //#[cfg(feature = "float")]
         {
             let high_address =
                 if ctx.pc < FLOAT_LIB_ROM_ADDR { ROM_ADDR } else { FLOAT_LIB_ROM_ADDR };
