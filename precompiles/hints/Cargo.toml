@@ -28,7 +28,7 @@ anyhow = { workspace = true }
 rayon = { workspace = true }
 tracing = { workspace = true }
 zisk-common = { workspace = true }
-rustls = { workspace = true }
+rustls = { workspace = true, features = ["ring"] }
 borsh = { workspace = true }
 zisk-cluster-common = { workspace = true }
 
