@@ -71,7 +71,15 @@ tolower() {
 }
 
 # load_env: Load environment variables from .env file, without overwriting existing ones
+#
+# Arguments:
+#   $1…$n (optional) — Names of the variables to process. When provided, only
+#       those variables are loaded from .env; any other keys are skipped. When
+#       omitted, every variable in .env is processed.
 load_env() {
+    # Optional allow-list of variable names to process
+    local -a __wanted_vars=("$@")
+
     # Check if .env file exists
     if [[ ! -f ".env" ]]; then
         info "Skipping loading .env file as it does not exist"
@@ -90,21 +98,36 @@ load_env() {
             continue
         fi
 
+        # If an allow-list was provided, skip variables not in it (except control vars)
+        if (( ${#__wanted_vars[@]} > 0 )) && [[ "$key" != "DISABLE_ENV_CONFIRM" ]]; then
+            local __is_wanted=0
+            local __w
+            for __w in "${__wanted_vars[@]}"; do
+                if [[ "$__w" == "$key" ]]; then
+                    __is_wanted=1
+                    break
+                fi
+            done
+            if (( __is_wanted == 0 )); then
+                continue
+            fi
+        fi
+
         # Precedence (highest first): already-set env var, then .env, then Cargo.toml.
         if [[ -n "${!key}" ]]; then
             # Already defined in the shell/CI environment: keep current value.
-            [[ "${!key}" != "0" ]] && __env_print_lines+=(" - [shell] ${key} = ${!key}")
+            __env_print_lines+=(" - [shell] ${key} = ${!key}")
         elif [[ -n "$value" ]] && ! is_gha; then
             # Value from .env (skipped under ZISK_GHA, where the environment and
             # Cargo.toml drive configuration).
             export "$key=$value"
-            [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
+            __env_print_lines+=(" -  [.env] ${key} = ${value}")
         else
             # Fall back to Cargo.toml.
             key_value=$(get_var_from_cargo_toml "$key") || return 1
             if [[ -n "$key_value" ]]; then
                 export "$key=$key_value"
-                [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
+                __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
             fi
         fi
     done < .env
@@ -283,6 +306,7 @@ get_zisk_repo_dir() {
     fi
 }
 
+
 # patch_cargo_dep: Repoint a git dependency in a Cargo.toml to a local path.
 # Comments out the existing `<crate> = { git = ... }` line and inserts (idempotently)
 # a `<crate> = { path = "<local_path>" }` entry right after it.
@@ -412,7 +436,7 @@ source "$HOME/.cargo/env"
 # Define directories
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
-WORKSPACE_DIR="${HOME}/workspace"
+WORKSPACE_DIR="${WORKSPACE_DIR:-${HOME}/workspace}"
 OUTPUT_DIR="${HOME}/output"
 
 # Ensure directories exists

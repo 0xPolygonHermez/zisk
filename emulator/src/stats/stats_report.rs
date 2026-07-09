@@ -11,6 +11,11 @@ pub struct StatsReport {
     pub label_width_stack: Vec<usize>,
     pub use_thousands_sep: bool,
     pub sdk_width: usize,
+    pub custom_total_count_factor: f64,
+    pub custom_total_cost_factor: f64,
+    title_len: usize,
+    hidden_no_cost: bool,
+    output_len_total_line: usize,
 }
 impl Default for StatsReport {
     fn default() -> Self {
@@ -30,6 +35,11 @@ impl StatsReport {
             label_width_stack: Vec::new(),
             use_thousands_sep: true,
             sdk_width: 120,
+            custom_total_count_factor: 0.0,
+            custom_total_cost_factor: 0.0,
+            title_len: 0,
+            hidden_no_cost: false,
+            output_len_total_line: 0,
         }
     }
 
@@ -88,7 +98,21 @@ impl StatsReport {
             &"-".repeat(title.len()),
             identation = self.identation,
         );
+        self.title_len = title.len();
     }
+    pub fn add_total_line(&mut self) {
+        if self.output.len() > self.output_len_total_line {
+            self.output += &format!(
+                "{identation}{label:<label_width$} {}\n",
+                &"-".repeat(self.title_len - self.label_width - 1),
+                label_width = self.label_width,
+                label = "",
+                identation = self.identation,
+            );
+            self.output_len_total_line = self.output.len();
+        }
+    }
+
     pub fn title_cost(&mut self, label: &str, cost_label: &str) {
         self.line_from_title(&format!(
             "{:<label_width$} {:>15}",
@@ -111,6 +135,16 @@ impl StatsReport {
             self.identation,
             self.format_number(cost),
             (cost as f64 * 100.0) / total as f64,
+            label_width = self.label_width,
+        );
+    }
+
+    pub fn add_perc_total_line(&mut self) {
+        self.output += &format!(
+            "{}{:<label_width$} {}\n",
+            self.identation,
+            "",
+            &"-".repeat(23),
             label_width = self.label_width,
         );
     }
@@ -282,6 +316,37 @@ impl StatsReport {
         ));
     }
 
+    pub fn set_custom_totals(&mut self, total_count: u64, total_cost: u64) {
+        self.custom_total_count_factor = total_count as f64 / 100.0;
+        self.custom_total_cost_factor = total_cost as f64 / 100.0;
+    }
+    pub fn set_hidden_no_cost(&mut self, hidden: bool) -> bool {
+        let previous = self.hidden_no_cost;
+        self.hidden_no_cost = hidden;
+        previous
+    }
+    pub fn add_count_cost_perc2_custom(
+        &mut self,
+        label: &str,
+        count: u64,
+        cost: u64,
+        comment: &str,
+    ) {
+        if self.hidden_no_cost && cost == 0 {
+            return;
+        }
+        self.output += &format!(
+            "{}{:<label_width$} {:>15} {:6.2}% {:>15} {:6.2}%{comment}\n",
+            self.identation,
+            label,
+            self.format_number(count),
+            count as f64 / self.custom_total_count_factor,
+            self.format_number(cost),
+            cost as f64 / self.custom_total_cost_factor,
+            label_width = self.label_width,
+        );
+    }
+
     pub fn add_count_cost_perc2(&mut self, label: &str, count: u64, cost: u64, comment: &str) {
         self.output += &format!(
             "{}{:<label_width$} {:>15} {:6.2}% {:>15} {:6.2}%{comment}\n",
@@ -379,6 +444,9 @@ impl StatsReport {
     }
     pub fn add_separator_from(&mut self, from: usize) {
         let width = 48 - from;
+        self.output += &format!("{}{: <from$}{:-<width$}\n", self.identation, "", "");
+    }
+    pub fn add_separator_from_width(&mut self, from: usize, width: usize) {
         self.output += &format!("{}{: <from$}{:-<width$}\n", self.identation, "", "");
     }
 

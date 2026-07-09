@@ -188,6 +188,7 @@ TOTAL                     11,437,643,381 100.00%
 
 FROPS                        963,440,253   8.42%
 RAM USAGE                     18,465,008   3.47%
+ROM USAGE                      1,253,331  29.88%
 
 ```
 
@@ -229,6 +230,14 @@ These frequent operations are analyzed, detected, and **pre-calculated**, becomi
 - Avoids the CPU cycles needed to manage the entire heap (typically >10% overhead)
 - Is recommended as long as sufficient memory is available
 - Provides better performance by eliminating heap management costs
+
+**ROM USAGE**: How much of the ROM instance capacity is being used out of the total available. The ROM
+holds two things that consume rows:
+- the **program instructions** (one row each), and
+- the **ROM/RAM initialization** operations, which are packed **4 per row** (hence the count is divided
+  by 4 when computing usage).
+
+A high ROM usage means the program (plus its initialization data) is close to filling the ROM instance.
 
 **Detailed Opcode Breakdown:**
 
@@ -334,6 +343,108 @@ Use this information to:
 - Find operations with high count but disproportionate cost (optimization candidates)
 - Verify that precompiles are being used where expected
 - Understand the balance between computation (OPCODES), memory access (MEMORY), and complex operations (PRECOMPILES)
+
+## Memory Statistics
+
+The `MEMORY` line in the cost distribution can be broken down in detail with two **opt-in** flags.
+They are **off by default**: a plain `-X` report does not print the memory sections. Each requires
+stats (`-X`).
+
+| Flag | Section it adds | Content |
+|------|-----------------|---------|
+| `--mem-stats` | **MEM COST BY TYPE** | Memory cost aggregated by category (region × alignment) plus totals. |
+| `--mem-full-stats` | **DETAILED MEM COST** | Per-operation breakdown (also implies **MEM COST BY TYPE**, so both sections are shown). |
+
+```bash
+# By-type memory section only
+ziskemu -e <elf> -i <input> -X --mem-stats
+
+# Detailed per-operation section (also prints the by-type section)
+ziskemu -e <elf> -i <input> -X --mem-full-stats
+```
+
+### Key concepts
+
+Before reading the tables, a few definitions:
+
+- **Aligned**: an access is *aligned* only when it reads/writes exactly **8 bytes** and its address is a
+  **multiple of 8**. This is the natural, cheapest memory access (one memory row, no alignment state
+  machine). Every other access (1/2/4 bytes, or 8 bytes at a non-8-aligned address) is **unaligned** and
+  costs more.
+
+- **Single vs. double**: an unaligned access is **single** when it touches a **single** memory address
+  (row) and **double** when it spans **two** consecutive rows (it crosses an 8-byte boundary). A double
+  access is more expensive because it reads/writes two rows instead of one. An unaligned 8-byte access is
+  always **double**; 2-byte and 4-byte accesses are single or double depending on where they fall within
+  the 8-byte word.
+
+- **Region**: memory is split into **RAM STACK** (the stack area of RAM), **RAM NO STACK** (the rest of
+  RAM), **ROM** (read-only data next to the program) and **INPUT** (the program input).
+
+- **INIT**: `ROM INIT` / `RAM INIT` are the **aligned initialization** operations that set up the initial
+  ROM and RAM contents (the initial data image). They are *not* the `.bss` (zero-initialized memory,
+  which needs no operations); they are the memory operations required to lay down the initial values.
+
+### MEM COST BY TYPE (`--mem-stats`)
+
+```
+MEM COST BY TYPE                   COUNT       %            COST       %
+------------------------------------------------------------------------
+RAM STACK ALIGNED                383,482  92.38%       6,533,298  79.77%
+RAM NO STACK ALIGNED              17,568   4.23%         298,088   3.64%
+ROM ALIGNED                        1,093   0.26%          15,302   0.19%
+ROM INIT                           3,736   0.90%          52,304   0.64%
+INPUT ALIGNED                         31   0.01%             899   0.01%
+RAM STACK UNALIGNED                8,524   2.05%       1,250,979  15.27%
+RAM NO STACK UNALIGNED               381   0.09%          27,103   0.33%
+ROM UNALIGNED                        319   0.08%          12,522   0.15%
+                         -----------------------------------------------
+TOTAL ALIGNED                    405,910  97.78%       6,899,891  84.24%
+TOTAL UNALIGNED                    9,224   2.22%       1,290,604  15.76%
+                         -----------------------------------------------
+TOTAL RAM STACK                  392,006  94.43%       7,784,277  95.04%
+TOTAL RAM NO STACK                17,949   4.32%         325,191   3.97%
+                         -----------------------------------------------
+TOTAL RAM                        409,955  98.75%       8,109,468  99.01%
+TOTAL ROM                          5,148   1.24%          80,128   0.98%
+TOTAL INPUT                           31   0.01%             899   0.01%
+```
+
+Each row shows the **COUNT** of accesses and their **COST**, with the percentage each represents of the
+total memory cost. The per-category rows are grouped by region and alignment; the `TOTAL …` rows roll
+them up along different axes (aligned vs. unaligned, per region, per RAM sub-area). Unaligned accesses
+are typically a small fraction of the count but a large fraction of the cost — in the example above they
+are 2.22% of accesses but 15.76% of the memory cost.
+
+### DETAILED MEM COST (`--mem-full-stats`)
+
+The detailed section expands every category into the exact access shape, so you can see which specific
+patterns dominate:
+
+```
+DETAILED MEM COST                                  COUNT       %            COST       %
+----------------------------------------------------------------------------------------
+RAM STACK aligned 8B read                        184,689  44.89%       2,955,024  36.31%
+RAM STACK unaligned 4B single read                 1,694   0.41%         206,668   2.54%
+RAM STACK aligned 8B write                       198,793  48.32%       3,578,274  43.97%
+RAM STACK unaligned 1B clean write                 2,052   0.50%         135,432   1.66%
+RAM STACK unaligned 4B single write                4,674   1.14%         902,082  11.08%
+ROM aligned 8B read                                4,829   1.17%          67,606   0.83%
+INPUT aligned 8B read                                 31   0.01%             899   0.01%
+                                         -----------------------------------------------
+TOTAL aligned 8B                                 405,910  98.67%       6,899,891  84.78%
+TOTAL unaligned 4B single                          6,394   1.55%       1,113,127  13.68%
+                                         -----------------------------------------------
+TOTAL reads                                      200,754  48.80%       3,393,944  41.70%
+TOTAL writes                                     214,380  52.11%       4,796,551  58.94%
+```
+
+Each line names the **region**, **alignment**, **width** (`1B`/`2B`/`4B`/`8B`), **single/double** and
+**read/write**. For 1-byte writes you may also see **clean** vs **dirty**: a *clean* write targets a byte
+whose surrounding word did not need to be read first, while a *dirty* write requires reading the word
+before updating the byte (more expensive). The `TOTAL …` rows at the bottom summarize by access shape and
+by read vs. write, which makes it easy to spot, for example, that unaligned 4-byte writes are cheap in
+count but expensive in cost.
 
 ## SDK Report Mode
 
@@ -875,8 +986,33 @@ This information helps you understand:
 ```
 DETAIL FUNCTION ziskos::zisklib::lib::keccak256::keccak256
 ----------------------------------------------------------
-STEPS                         13,714,388  14.77%
-COST                       3,759,934,537  32.87%
+|    STEPS                          1,516,032   1.99%
+
+|    MAIN COST                    103,090,176  57.43%
+|    OPCODES COST                   1,451,520   0.81%
+|    PRECOMPILES COST                       0   0.00%
+|    MEMORY COST                   74,973,696  41.76%
+|                             -----------------------
+|    TOTAL COST                   179,515,392 100.00%
+
+|    DETAILED MEM COST                                  COUNT       %            COST       %
+|    ----------------------------------------------------------------------------------------
+|    RAM STACK aligned 8B read                         21,504   1.49%         344,064   0.46%
+|    RAM STACK aligned 8B write                        21,504   1.49%         387,072   0.52%
+|    RAM NO STACK aligned 8B read                      10,752   0.75%         172,032   0.23%
+|    RAM NO STACK unaligned 1B read                   698,880  48.51%      28,654,080  38.22%
+|    RAM NO STACK unaligned 1B clean write            688,128  47.76%      45,416,448  60.58%
+|                                             -----------------------------------------------
+|    TOTAL aligned 8B                                  53,760   3.73%         903,168   1.20%
+|    TOTAL unaligned 1B single                      1,387,008  96.27%      74,070,528  98.80%
+|                                             -----------------------------------------------
+|    TOTAL aligned 8B                                  53,760   3.73%         903,168   1.20%
+|    TOTAL unaligned 1B                             1,387,008  96.27%      74,070,528  98.80%
+|                                             -----------------------------------------------
+|    TOTAL reads                                      731,136  50.75%      29,170,176  38.91%
+|    TOTAL writes                                     709,632  49.25%      45,803,520  61.09%
+|                                             -----------------------------------------------
+|    TOTAL                                          1,440,768 100.00%      74,973,696 100.00%
 
 |    COST BY OPCODE                     COUNT            COST       % RANK
 |    ---------------------------------------------------------------------
@@ -910,14 +1046,29 @@ COST                       3,759,934,537  32.87%
 
 **Understanding the detailed report:**
 
-**Function Header:**
+**Function Header and per-function cost distribution:**
 ```
 DETAIL FUNCTION ziskos::zisklib::lib::keccak256::keccak256
 ----------------------------------------------------------
-STEPS                         13,714,388  14.77%
-COST                       3,759,934,537  32.87%
+|    STEPS                          1,516,032   1.99%
+
+|    MAIN COST                    103,090,176  57.43%
+|    OPCODES COST                   1,451,520   0.81%
+|    PRECOMPILES COST                       0   0.00%
+|    MEMORY COST                   74,973,696  41.76%
+|                             -----------------------
+|    TOTAL COST                   179,515,392 100.00%
+
 ```
-Shows the total cumulative steps and profiling cost for this function (including nested calls).
+Shows the total cumulative steps for this function (including nested calls) and, broken down the same
+way as the top-level **COST DISTRIBUTION**, how that function's cost splits across MAIN, OPCODES,
+PRECOMPILES and MEMORY. This makes it easy to see whether a function is dominated by computation,
+precompiles or memory traffic.
+
+When `--mem-stats` or `--mem-full-stats` is passed, a **per-function memory breakdown** is inserted
+right after the cost distribution — the same **MEM COST BY TYPE** / **DETAILED MEM COST** tables
+described in [Memory Statistics](#memory-statistics), but scoped to this function. This lets you attribute
+unaligned/double accesses to the exact function that causes them.
 
 **COST BY OPCODE section:**
 ```

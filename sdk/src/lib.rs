@@ -6,6 +6,7 @@
 #![warn(rustdoc::all)]
 #![deny(rustdoc::missing_crate_level_docs)]
 
+mod aggregate_proofs;
 mod cancel;
 mod client;
 mod embedded;
@@ -15,8 +16,10 @@ mod hints;
 mod input_source;
 mod input_stream;
 mod job_handle;
+mod lifecycle;
 mod opts;
 mod prove;
+mod recurser;
 mod remote;
 mod setup;
 mod stdin;
@@ -26,6 +29,7 @@ mod verify_constraints;
 mod wrap;
 mod zisk_client;
 
+pub use aggregate_proofs::{AggregateProofsRequest, AggregationInput, ProofExt};
 pub use cancel::CancellationToken;
 pub use client::ProverClient;
 pub use embedded::{
@@ -40,7 +44,9 @@ pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;
 pub use input_stream::ZiskStream;
 pub use job_handle::JobHandle;
+pub use lifecycle::{SetupTarget, UploadTarget};
 pub use prove::{JobEvent, ProveRequest, ProveResult};
+pub use recurser::{AggregationProgram, AggregationProgramBuilder, Recurser};
 pub use remote::setup::SetupByIdRequest;
 pub use remote::{RemoteClient, RemoteClientBuilder};
 pub use setup::SetupRequest;
@@ -54,8 +60,8 @@ pub use wrap::WrapRequest;
 
 // Re-export guest types from backend (public API for loading programs)
 pub use zisk_prover_backend::{
-    load_program, Asm, AsmOptions, Elf, EmuOptions, GuestProgram, HashMode, ProfilingMode,
-    ProgramId,
+    load_circuit, load_program, Asm, AsmOptions, CircomCircuit, Elf, EmuOptions, GuestProgram,
+    HashMode, ProfilingMode, ProgramId,
 };
 
 pub use opts::EmbeddedOpts;
@@ -137,6 +143,30 @@ pub(crate) trait Client: Clone + Send + Sync + 'static {
         timeout: Option<std::time::Duration>,
         subs: job_handle::SubscriberList,
     ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
+
+    fn run_upload_aggregation_program(
+        &self,
+        agg: &crate::recurser::Recurser,
+    ) -> Result<UploadResult>;
+
+    fn run_setup_aggregation_program(
+        &self,
+        agg: &crate::recurser::Recurser,
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<SetupResult>>;
+
+    fn run_aggregate_proofs(
+        &self,
+        agg: &crate::recurser::Recurser,
+        proof_a: &Proof,
+        proof_b: &Proof,
+        free_a: &[u64],
+        free_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+        timeout: Option<std::time::Duration>,
+        subs: job_handle::SubscriberList,
+    ) -> Result<job_handle::JobHandle<crate::prove::ProveResult>>;
 }
 
 /// Synchronous counterpart to [`Client`], implemented only by backends whose
@@ -161,6 +191,12 @@ pub(crate) trait ClientSync {
         program: &GuestProgram,
         with_hints: bool,
         emulator_only: bool,
+        subs: job_handle::SubscriberList,
+    ) -> Result<SetupResult>;
+
+    fn run_setup_aggregation_program_sync(
+        &self,
+        agg: &crate::recurser::Recurser,
         subs: job_handle::SubscriberList,
     ) -> Result<SetupResult>;
 

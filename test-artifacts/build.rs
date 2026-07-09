@@ -25,7 +25,12 @@ fn main() -> Result<()> {
         features.push("zbxx_soft");
     }
 
-    let mut build_args = BuildArgs::default();
+    // Build guests with the same profile as the host so profiling/benchmarks
+    // measure an optimized guest. `BuildArgs::default()` is debug, which left
+    // every guest ELF unoptimized (uninlined field ops + debug_assertions).
+    // Mirrors ziskbuild/src/aggregation.rs's PROFILE handling.
+    let release = env::var("PROFILE").map(|p| p == "release").unwrap_or(false);
+    let mut build_args = BuildArgs::default().release(release);
     build_args.features = if features.is_empty() { None } else { Some(features.join(",")) };
 
     build_program_with_args(

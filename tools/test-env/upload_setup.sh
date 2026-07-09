@@ -1,37 +1,31 @@
 #!/bin/bash
-
-source ./utils.sh
-export -f ensure
-
-# Package the setup artifacts produced under <zisk-repo>/build into tarballs in
-# ${OUTPUT_DIR} and upload them to gs://zisk-setup. Always produced (provingKey
-# is required):
-#   provingKey/                              -> zisk-provingkey-<VER>.tar.gz   (+ .md5)
-#   provingKey/.../vadcop_final.verkey.bin   -> zisk-verifykey-<VER>.tar.gz    (+ .md5)
-# Produced when present (recursive setup / setup-snark):
-#   circom/                                  -> zisk-circuits-<VER>.tar.gz     (+ .md5)
-#   provingKeySnark/                         -> zisk-provingkey-plonk-<VER>.tar.gz (+ .md5)
 #
-# <VER> = SETUP_VERSION.
+# Package and upload the ZisK setup to gs://zisk-setup. The setup must be built
+# beforehand (build_setup.sh) — this script requires build/provingKey, computes
+# the setup hash via `setup_build.sh --print-hash`, and skips the upload when the
+# bucket already holds that hash. The hash is published as the <name>.hash sidecar.
+#
+# Artifacts (<VER> = SETUP_VERSION):
+#   provingKey/                            -> zisk-provingkey-<VER>.tar.gz       (+ .md5)
+#   provingKey/.../vadcop_final.verkey.bin -> zisk-verifykey-<VER>.tar.gz        (+ .md5)
+#   circom/            (if present)        -> zisk-circuits-<VER>.tar.gz         (+ .md5)
+#   provingKeySnark/   (if present)        -> zisk-provingkey-plonk-<VER>.tar.gz (+ .md5)
+#
+# Every tarball present is uploaded (circom/provingKeySnark only when the setup
+# was built with INCLUDE_SNARK=1).
 #
 # Env vars:
-#   SETUP_VERSION       version tag <VER> used in the tarball names.
-#   SETUP_ADD_DYLIBS=1  merge macOS *.dylib into build/provingKey before packing.
-#                       Dylibs come from SETUP_DYLIB_DIR if set, else from the
-#                       macOS tarball under ${OUTPUT_DIR}/macos.
-#   SETUP_ARTIFACTS     which artifacts to upload: 'provingkey' (proving key
-#                       tarball only) or 'all' (default, every artifact).
-#   SETUP_HASH          if non-empty, also upload a <name>.hash sidecar for the
-#                       proving key tarball (the gate file fetch_setup.sh reads).
+#   SETUP_VERSION       version tag <VER> in the tarball names.
+#   FORCE_UPLOAD        upload even if the bucket .hash already matches (no gate).
+#   SETUP_ADD_DYLIBS    merge macOS *.dylib into build/provingKey before packing
+#                       (from SETUP_DYLIB_DIR, else the macOS tarball in ${OUTPUT_DIR}/macos).
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/utils.sh"
 
 BUCKET="gs://zisk-setup"
 
-# Copy all *.dylib files from a source directory (including subdirectories)
-# to a destination directory while preserving the same directory structure.
-#
-# Usage:
-#   copy_dylibs /path/to/source /path/to/destination
-#
+# Copy all *.dylib under $1 into $2, preserving the directory structure.
 copy_dylibs() {
     local SRC_DIR="$1"
     local DEST_DIR="$2"
@@ -90,25 +84,51 @@ pack_dir() {
 main() {
     info "▶️  Running $(basename "$0") script..."
 
-    current_dir=$(pwd)
+    command -v gcloud >/dev/null || { err "gcloud not found in PATH (needed to read/upload the setup)"; return 1; }
 
-    # base steps: load env, pack provingKey, pack verifyKey, move, upload = 5. The
-    # count is cosmetic and finalized just below — ZISK_REPO_DIR may come from
-    # .env, so the repo (and the build-dir probes) must be resolved AFTER load_env.
-    current_step=1
-    total_steps=5
-    if [[ "${SETUP_ADD_DYLIBS:-0}" == "1" ]]; then
-      if [[ -n "${SETUP_DYLIB_DIR:-}" ]]; then total_steps=$((total_steps + 1)); else total_steps=$((total_steps + 2)); fi
-    fi
-    [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
-    [[ -d "build/provingKeySnark" ]] && total_steps=$((total_steps + 1))
-    [[ -n "${SETUP_HASH:-}" ]] && total_steps=$((total_steps + 1))
-
-    step "Loading environment variables..."
-    load_env || return 1
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR SETUP_VERSION SETUP_ADD_DYLIBS FORCE_UPLOAD SETUP_DYLIB_DIR || return 1
 
     ZISK_REPO="$(get_zisk_repo_dir)"
     ensure cd "${ZISK_REPO}" || return 1
+
+    current_dir=$(pwd)
+
+    # The setup must already be built (by build_setup.sh).
+    [[ -d build/provingKey ]] || { err "build/provingKey not found — run build_setup.sh first"; return 1; }
+
+    # Compute the setup hash and gate on the bucket. --print-hash runs frops +
+    # compute_input_hash only (no compile-pil / setup) and prints the 64-hex hash
+    # as its sole stdout line, so the same hasher that keyed the build is reused.
+    info "Computing setup hash..."
+    SETUP_HASH="$("${SCRIPT_DIR}/setup_build.sh" --print-hash --build-dir build)" || return 1
+    [[ -n "${SETUP_HASH}" ]] || { err "failed to compute setup hash"; return 1; }
+    info "Setup hash: ${SETUP_HASH}"
+
+    if [[ "${FORCE_UPLOAD:-0}" != "1" ]]; then
+      local remote_hash
+      remote_hash="$(gcloud storage cat "${BUCKET}/zisk-provingkey-${SETUP_VERSION}.hash" 2>/dev/null | tr -d '[:space:]' || true)"
+      if [[ "${remote_hash}" == "${SETUP_HASH}" ]]; then
+        success "Setup ${SETUP_VERSION} already in ${BUCKET} (hash matches), nothing to do."
+        return 0
+      fi
+    fi
+
+    current_step=1
+    total_steps=5
+    if [[ "${SETUP_ADD_DYLIBS:-0}" == "1" ]]; then
+      if [[ -n "${SETUP_DYLIB_DIR:-}" ]]; then
+        total_steps=$((total_steps + 1))
+        # Extra step only when both dylib subdirs exist (snark step is nested).
+        [[ -d "${SETUP_DYLIB_DIR}/provingKey" && -d "${SETUP_DYLIB_DIR}/provingKeySnark" ]] && total_steps=$((total_steps + 1))
+      else
+        total_steps=$((total_steps + 2))
+      fi
+    fi
+
+    [[ -d "build/circom" ]] && total_steps=$((total_steps + 1))
+    [[ -d "build/provingKeySnark" ]] && total_steps=$((total_steps + 1))
 
     PROVINGKEY_FILE="zisk-provingkey-${SETUP_VERSION}.tar.gz"
     VERIFYKEY_FILE="zisk-verifykey-${SETUP_VERSION}.tar.gz"
@@ -175,29 +195,14 @@ main() {
       ensure mv "${f}" "${OUTPUT_DIR}" || return 1
     done
 
-    command -v gcloud >/dev/null || { err "gcloud not found in PATH (needed to upload the setup)"; return 1; }
+    step "Uploading artifacts to ${BUCKET}/..."
+    ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${ARTIFACTS[@]}" "${BUCKET}/" ) || return 1
 
-    # Select which artifacts to upload (SETUP_ARTIFACTS, default "all").
-    local setup_artifacts="${SETUP_ARTIFACTS:-all}"
-    local UPLOAD=()
-    case "${setup_artifacts}" in
-      provingkey) UPLOAD=("${PROVINGKEY_FILE}" "${PROVINGKEY_FILE}.md5") ;;
-      all)        UPLOAD=("${ARTIFACTS[@]}") ;;
-      *) err "invalid SETUP_ARTIFACTS='${setup_artifacts}' (expected 'provingkey' or 'all')"; return 1 ;;
-    esac
-
-    step "Uploading artifacts (${setup_artifacts}) to ${BUCKET}/..."
-    ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${UPLOAD[@]}" "${BUCKET}/" ) || return 1
-
-    # Proving key .hash sidecar (SETUP_HASH): same name as the proving key
-    # tarball but with a .hash extension, content = $SETUP_HASH. This is the
-    # gate file fetch_setup.sh reads from the bucket.
-    if [[ -n "${SETUP_HASH:-}" ]]; then
-      local HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
-      step "Uploading proving key hash sidecar ${HASH_FILE}..."
-      printf '%s' "${SETUP_HASH}" > "${OUTPUT_DIR}/${HASH_FILE}" || { err "failed to write ${HASH_FILE}"; return 1; }
-      ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${HASH_FILE}" "${BUCKET}/" ) || return 1
-    fi
+    # Publish the <name>.hash sidecar (content = SETUP_HASH) — the gate file.
+    local HASH_FILE="${PROVINGKEY_FILE%.tar.gz}.hash"
+    step "Uploading proving key hash sidecar ${HASH_FILE}..."
+    printf '%s' "${SETUP_HASH}" > "${OUTPUT_DIR}/${HASH_FILE}" || { err "failed to write ${HASH_FILE}"; return 1; }
+    ( cd "${OUTPUT_DIR}" && ensure gcloud storage cp "${HASH_FILE}" "${BUCKET}/" ) || return 1
 
     cd "${current_dir}"
 

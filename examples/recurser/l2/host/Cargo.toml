@@ -1,0 +1,31 @@
+[package]
+name = "recurser-l2-host"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "recurser-l2-host"
+path = "src/main.rs"
+
+# Dumps the leaf inputs to files for the README's CLI walkthrough.
+[[bin]]
+name = "gen-inputs"
+path = "src/bin/gen_inputs.rs"
+
+[dependencies]
+recurser-l2-common = { path = "../common" }
+zisk-sdk = { workspace = true }
+alloy-sol-types = "1.5.7"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# For the `timer_start_info!` / `timer_stop_and_log_info!` timing macros, matching
+# the rest of the ZisK prover's log style. The macros expand to `tracing::info!`,
+# so `tracing` must be a direct dependency here (macros resolve it in this crate).
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+tracing = "0.1"
+
+[build-dependencies]
+zisk-sdk = { workspace = true }
+
+[features]
+default = []
+gpu = []

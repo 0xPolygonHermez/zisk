@@ -1,7 +1,5 @@
-use crate::Result;
-use zisk_prover_backend::GuestProgram;
-
-use crate::Client;
+use crate::lifecycle::UploadTarget;
+use crate::{Client, Result};
 
 pub struct UploadResult {
     hash_id: String,
@@ -17,25 +15,27 @@ impl UploadResult {
     }
 }
 
-/// Builder for a program upload request.
+/// Builder for a program or recurser upload request.
 ///
-/// Obtain via `client.upload(&program)`.
-///
-/// - Embedded client: no-op (program is available locally).
-/// - Remote client: registers the ELF with the coordinator and verifies the `hash_id` matches.
+/// Obtain via `client.upload(&program)` or `client.upload(&recurser)`.
+/// - Embedded: no-op (artifacts are already local).
+/// - Remote: registers the program ELF or recurser spec on the coordinator.
 pub struct UploadRequest<'a, C> {
     client: &'a C,
-    program: &'a GuestProgram,
+    target: UploadTarget<'a>,
 }
 
 #[allow(private_bounds)]
 impl<'a, C: Client> UploadRequest<'a, C> {
-    pub(crate) fn new(client: &'a C, program: &'a GuestProgram) -> Self {
-        Self { client, program }
+    pub(crate) fn new(client: &'a C, target: UploadTarget<'a>) -> Self {
+        Self { client, target }
     }
 
     /// Run the upload synchronously.
     pub fn run(self) -> Result<UploadResult> {
-        self.client.run_upload(self.program)
+        match self.target {
+            UploadTarget::Program(p) => self.client.run_upload(p),
+            UploadTarget::Recurser(a) => self.client.run_upload_aggregation_program(a),
+        }
     }
 }
