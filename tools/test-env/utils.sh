@@ -116,18 +116,18 @@ load_env() {
         # Precedence (highest first): already-set env var, then .env, then Cargo.toml.
         if [[ -n "${!key}" ]]; then
             # Already defined in the shell/CI environment: keep current value.
-            [[ "${!key}" != "0" ]] && __env_print_lines+=(" - [shell] ${key} = ${!key}")
+            __env_print_lines+=(" - [shell] ${key} = ${!key}")
         elif [[ -n "$value" ]] && ! is_gha; then
             # Value from .env (skipped under ZISK_GHA, where the environment and
             # Cargo.toml drive configuration).
             export "$key=$value"
-            [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
+            __env_print_lines+=(" -  [.env] ${key} = ${value}")
         else
             # Fall back to Cargo.toml.
             key_value=$(get_var_from_cargo_toml "$key") || return 1
             if [[ -n "$key_value" ]]; then
                 export "$key=$key_value"
-                [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
+                __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
             fi
         fi
     done < .env

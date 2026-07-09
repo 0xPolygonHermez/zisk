@@ -133,6 +133,7 @@ jobs:
               cd /workspace/zisk/tools/test-env
               # Pass the zisk-ethproofs branch explicitly (read from zisk Cargo.toml)
               export ZISK_ETHPROOFS_BRANCH="$(sed -nE "s/^[[:space:]]*gha_zisk_ethproofs_branch[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" /workspace/zisk/Cargo.toml | head -n1)"
+              export ENABLE_HINTS=1
               echo "Using zisk-ethproofs branch: ${ZISK_ETHPROOFS_BRANCH}"
               ./build_ethproofs.sh
             '
