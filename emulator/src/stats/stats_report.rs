@@ -95,7 +95,7 @@ impl StatsReport {
     fn line_from_title(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(title.len()),
+            "-".repeat(title.len()),
             identation = self.identation,
         );
         self.title_len = title.len();
@@ -104,7 +104,7 @@ impl StatsReport {
         if self.output.len() > self.output_len_total_line {
             self.output += &format!(
                 "{identation}{label:<label_width$} {}\n",
-                &"-".repeat(self.title_len - self.label_width - 1),
+                "-".repeat(self.title_len - self.label_width - 1),
                 label_width = self.label_width,
                 label = "",
                 identation = self.identation,
@@ -144,7 +144,7 @@ impl StatsReport {
             "{}{:<label_width$} {}\n",
             self.identation,
             "",
-            &"-".repeat(23),
+            "-".repeat(23),
             label_width = self.label_width,
         );
     }
@@ -166,7 +166,7 @@ impl StatsReport {
     pub fn title_top_perc(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(std::cmp::min(title.len(), 22)),
+            "-".repeat(std::cmp::min(title.len(), 22)),
             identation = self.identation,
         );
     }
@@ -174,7 +174,7 @@ impl StatsReport {
     pub fn title_auto_width(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(title.len()),
+            "-".repeat(title.len()),
             identation = self.identation,
         );
     }
@@ -182,7 +182,7 @@ impl StatsReport {
     pub fn title_fixed_width(&mut self, title: &str, width: usize) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(width),
+            "-".repeat(width),
             identation = self.identation,
         );
     }
@@ -263,7 +263,7 @@ impl StatsReport {
     pub fn title_top_count_perc(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(std::cmp::min(title.len(), 38)),
+            "-".repeat(std::cmp::min(title.len(), 38)),
             identation = self.identation,
         );
     }
