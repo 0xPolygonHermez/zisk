@@ -116,6 +116,9 @@ impl<'a, C: Client> ProveRequest<'a, C> {
     }
 
     /// Set a timeout for proof generation.
+    ///
+    /// The timeout is applied by [`run`](Self::run). Calls to
+    /// [`run_sync`](Self::run_sync) do not currently use this value.
     #[must_use]
     pub fn timeout(mut self, duration: Duration) -> Self {
         self.timeout = Some(duration);
