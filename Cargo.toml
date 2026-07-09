@@ -144,7 +144,7 @@ zisk-coordinator-client = { path = "distributed/crates/coordinator-client", vers
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", default-features = false, version = "1.1.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
@@ -157,7 +157,7 @@ pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", br
 # proofman = { version = "1.1.0-alpha" }
 # proofman-common = { version = "1.1.0-alpha" }
 # proofman-macros = { version = "1.1.0-alpha" }
-# proofman-verifier = { version = "1.1.0-alpha", default-features = false }
+# proofman-verifier = { version = "1.1.0-alpha" }
 # proofman-util = { version = "1.1.0-alpha" }
 # pil2-std-lib = { version = "1.1.0-alpha" }
 # proofman-witness = { version = "1.1.0-alpha" }
@@ -170,7 +170,7 @@ pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", br
 # proofman = { path = "../pil2-proofman/proofman", version = "1.1.0-alpha" }
 # proofman-common = { path = "../pil2-proofman/common", version = "1.1.0-alpha" }
 # proofman-macros = { path = "../pil2-proofman/macros", version = "1.1.0-alpha" }
-# proofman-verifier = { path = "../pil2-proofman/verifier", default-features = false, version = "1.1.0-alpha" }
+# proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.1.0-alpha" }
 # proofman-util = { path = "../pil2-proofman/util", version = "1.1.0-alpha" }
 # pil2-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs", version = "1.1.0-alpha" }
 # proofman-witness = { path = "../pil2-proofman/witness", version = "1.1.0-alpha" }
