@@ -17,5 +17,5 @@ name = "ziskclib"
 crate-type = ["staticlib"] # Creates static lib
 
 [dependencies]
-tiny-keccak = { workspace = true }
+tiny-keccak = { workspace = true, features = ["keccak"] }
 sha2 = { workspace = true }
