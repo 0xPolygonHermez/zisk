@@ -959,8 +959,12 @@ impl Coordinator {
         let default_requested =
             if cfg.default_compute_units == 0 { available } else { cfg.default_compute_units };
 
+        // `min_compute_units == 0` means "require all currently available capacity".
+        let default_minimum =
+            if cfg.min_compute_units == 0 { available } else { cfg.min_compute_units };
+
         let requested_units = requested.unwrap_or(default_requested);
-        let minimum_units = minimum.unwrap_or(cfg.min_compute_units);
+        let minimum_units = minimum.unwrap_or(default_minimum);
 
         // Clamp to available — not an error to ask for more than is free right now.
         let resolved = requested_units.min(available);

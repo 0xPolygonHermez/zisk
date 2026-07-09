@@ -102,6 +102,7 @@ pub struct CoordinatorConfig {
     pub default_compute_units: u32,
     /// Minimum compute units required to start any job. Jobs are rejected
     /// (`ResourceExhausted`) if available capacity falls below this floor.
+    /// `0` means "require all currently available capacity".
     pub min_compute_units: u32,
     /// Grace period in milliseconds before a disconnected worker's job is failed.
     /// If the worker reconnects within this window the disconnect is treated as a
@@ -156,7 +157,7 @@ impl Config {
             .set_default("coordinator.stuck_recovery_threshold_seconds", 600)?
             .set_default("coordinator.job_ttl_seconds", 3600)?
             .set_default("coordinator.default_compute_units", 0)?
-            .set_default("coordinator.min_compute_units", 1)?
+            .set_default("coordinator.min_compute_units", 0)?
             .set_default("coordinator.reconnect_grace_period_ms", 500_u64)?;
 
         if let Some(path) = config_file {
