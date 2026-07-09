@@ -19,7 +19,7 @@ tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 borsh = { workspace = true }
 
-serde = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 uuid = { version = "1.0", features = ["v4"] }
 anyhow = { workspace = true }
-chrono = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }

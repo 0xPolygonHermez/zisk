@@ -58,7 +58,7 @@ metrics-exporter-prometheus = "0.18"
 
 # Graceful shutdown
 signal-hook = { workspace = true }
-signal-hook-tokio = { workspace = true }
+signal-hook-tokio = { workspace = true, features = ["futures-v0_3"] }
 
 [build-dependencies]
 

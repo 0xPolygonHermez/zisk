@@ -35,7 +35,7 @@ reqwest = { workspace = true }
 colored = { workspace = true }
 
 signal-hook = { workspace = true }
-signal-hook-tokio = { workspace = true }
+signal-hook-tokio = { workspace = true, features = ["futures-v0_3"] }
 humantime = "2.3"
 futures-util = { workspace = true }
 async-stream = { workspace = true }

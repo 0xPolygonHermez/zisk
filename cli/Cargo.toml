@@ -49,7 +49,7 @@ time = { workspace = true }
 clap = { workspace = true }
 target-lexicon = "0.13"
 reqwest = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 indicatif = "0.17.8"
 futures = { workspace = true }
 yansi = "1.0.1"
