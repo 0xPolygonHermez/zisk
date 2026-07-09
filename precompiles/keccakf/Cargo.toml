@@ -34,7 +34,7 @@ tracing = { workspace = true }
 rayon = { workspace = true }
 
 path-clean = { workspace = true }
-tiny-keccak = { workspace = true }
+tiny-keccak = { workspace = true, features = ["keccak"] }
 
 [dev-dependencies]
 zisk-test-artifacts = { workspace = true }
