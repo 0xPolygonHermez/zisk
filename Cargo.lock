@@ -1757,7 +1757,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "fields",
  "num-bigint",
@@ -2229,7 +2229,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2292,7 +2292,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -4081,7 +4081,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "colored",
  "fields",
@@ -4101,7 +4101,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "anyhow",
  "clap",
@@ -4128,7 +4128,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4539,7 +4539,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "bincode",
  "blake3",
@@ -4573,7 +4573,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "bincode",
  "borsh",
@@ -4604,7 +4604,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "fields",
  "itoa",
@@ -4617,7 +4617,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4627,7 +4627,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4636,7 +4636,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "bincode",
  "colored",
@@ -4647,7 +4647,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "bincode",
  "fields",
@@ -6135,7 +6135,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "anyhow",
  "fields",
@@ -7621,7 +7621,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#fd74ce20df1346a74f0a3930225dc2741bd85cbc"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Frace-condition#e44b66e3eea4c35ba9b1542f7a3e1730dffd23e3"
 dependencies = [
  "colored",
  "fields",
