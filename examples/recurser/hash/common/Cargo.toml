@@ -9,4 +9,4 @@ publish = false
 # `syscall_poseidon1` precompile on the zkVM guest target and a native impl on
 # the host — so guest and host share one `hash12` (see lib.rs). Default features
 # only (no heavy C prover lib).
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-condition" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
