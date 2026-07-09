@@ -62,6 +62,11 @@ pub fn mulmod_short(
     modulus: &U256,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> U256 {
+    #[cfg(debug_assertions)]
+    {
+        assert!(!modulus.is_zero(), "Input 'modulus' must not be zero");
+    }
+
     let mut d = [0u64; 4];
     let mut params = SyscallArith256ModParams {
         a: a.as_limbs(),
