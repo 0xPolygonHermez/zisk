@@ -20,7 +20,7 @@ use super::{rem_long, LongScratch, U256};
 /// The number of limbs in the result
 ///
 /// # Note
-/// Not optimal for `len(a) == 1`, use `square_short` instead
+/// Not optimal for `len(a) == 1`
 pub fn square_long(
     a: &[U256],
     out: &mut [U256],
