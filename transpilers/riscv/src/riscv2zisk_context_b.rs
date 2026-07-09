@@ -113,8 +113,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 AND reg32 = rs1 AND NOT rs2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("and").unwrap();
@@ -149,8 +148,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 OR reg32 = rs1 OR NOT rs2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -185,8 +183,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = NOT rd = NOT (rs1 XOR rs2)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("imm", 0xFFFFFFFFFFFFFFFF, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("xor").unwrap();
@@ -220,8 +217,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 + reg32 = rs2 + (rs1 & 0xFFFFFFFF)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -257,8 +253,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 + reg32 = rs2 + (rs1 << 1)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -294,8 +289,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 + reg32 = rs2 + (rs1 << 2)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -331,8 +325,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 + reg32 = rs2 + (rs1 << 3)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -367,8 +360,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 << 1 = (rs1 & 0xFFFFFFFF) << 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 1, false);
             zib.op("sll").unwrap();
@@ -382,8 +374,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 + reg32 = rs2 + (rs1 & 0xFFFFFFFF) << 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -418,8 +409,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 << 2 = (rs1 & 0xFFFFFFFF) << 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 2, false);
             zib.op("sll").unwrap();
@@ -433,8 +423,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 + reg32 = rs2 + (rs1 & 0xFFFFFFFF) << 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -469,8 +458,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 << 3 = (rs1 & 0xFFFFFFFF) << 3
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 3, false);
             zib.op("sll").unwrap();
@@ -484,8 +472,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 + reg32 = rs2 + (rs1 & 0xFFFFFFFF) << 3
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -521,8 +508,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 XOR 0xFFFFFFFFFFFFFFFF = NOT reg32 = NOT (1 << (rs2 & 0x3F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0xFFFFFFFFFFFFFFFF, false);
             zib.op("xor").unwrap();
@@ -536,8 +522,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 AND reg32 = rs1 AND NOT (1 << (rs2 & 0x3F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("and").unwrap();
@@ -591,8 +576,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 OR reg32 = rs1 OR (1 << (rs2 & 0x3F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -645,8 +629,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 XOR reg32 = rs1 XOR (1 << (rs2 & 0x3F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("xor").unwrap();
@@ -700,8 +683,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd AND 1 = (rs1 >> (rs2 & 0x3F)) & 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("and").unwrap();
@@ -736,8 +718,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd AND 1 = (rs1 >> (imm & 0x3F)) & 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("and").unwrap();
@@ -772,8 +753,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 << rs2 = (rs1 & 0xFFFFFFFF) << rs2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             if is_imm {
                 zib.src_b("imm", i.imm as u64, false);
@@ -814,8 +794,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rs2 & 0x3F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("imm", 0x3F, false);
             zib.op("and").unwrap();
@@ -829,8 +808,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = 64 - reg33 = 64 - (rs2 & 0x3F)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("imm", 64, false);
             zib.src_b("reg", 33, false);
             zib.op("sub").unwrap();
@@ -844,8 +822,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 >> reg33 = rs1 >> (64 - (rs2 & 0x3F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_3, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_3, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 33, false);
             zib.op("srl").unwrap();
@@ -859,8 +836,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 OR rd = (rs1 << (rs2 & 0x3F)) OR (rs1 >> (64 - (rs2 & 0x3F)))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_4, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_4, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -901,8 +877,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 << rs2 = (rs1 & 0xFFFFFFFF) << (rs2 & 0x1F)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rs2 as u64, false);
             zib.op("sll_w").unwrap();
@@ -916,8 +891,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rs2 & 0x1F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("imm", 0x1F, false);
             zib.op("and").unwrap();
@@ -931,8 +905,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = 32 - reg33 = 32 - (rs2 & 0x1F)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_3, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_3, rom_address);
             zib.src_a("imm", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("sub").unwrap();
@@ -946,8 +919,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 >> reg33 = rs1 >> (32 - (rs2 & 0x1F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_4, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_4, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 33, false);
             zib.op("srl_w").unwrap();
@@ -961,8 +933,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 OR rd = (rs1 << (rs2 & 0x1F)) OR (rs1 >> (32 - (rs2 & 0x1F)))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_5, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_5, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -976,8 +947,7 @@ impl Riscv2ZiskContext<'_> {
 
         // sign-extend rd from 32 to 64 bits
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_6, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_6, rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.op("signextend_w").unwrap();
             zib.store("reg", i.rd as i64, false, false);
@@ -1013,8 +983,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rs2 & 0x3F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("imm", 0x3F, false);
             zib.op("and").unwrap();
@@ -1028,8 +997,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = 64 - reg33 = 64 - (rs2 & 0x3F)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("imm", 64, false);
             zib.src_b("reg", 33, false);
             zib.op("sub").unwrap();
@@ -1043,8 +1011,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 << reg33 = rs1 << (64 - (rs2 & 0x3F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_3, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_3, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 33, false);
             zib.op("sll").unwrap();
@@ -1058,8 +1025,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 OR rd = (rs1 >> (rs2 & 0x3F)) OR (rs1 << (64 - (rs2 & 0x3F)))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_4, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_4, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -1094,8 +1060,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 << (64 - (imm & 0x3F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("imm", 64 - (i.imm as u64 & 0x3F), false);
             zib.op("sll").unwrap();
@@ -1109,8 +1074,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 OR rd = (rs1 >> (imm & 0x3F)) OR (rs1 << (64 - (imm & 0x3F)))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -1152,8 +1116,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 >> rs2 = (rs1 & 0xFFFFFFFF) >> (rs2 & 0x1F)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rs2 as u64, false);
             zib.op("srl_w").unwrap();
@@ -1167,8 +1130,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rs2 & 0x1F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("imm", 0x1F, false);
             zib.op("and").unwrap();
@@ -1182,8 +1144,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = 32 - reg33 = 32 - (rs2 & 0x1F)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_3, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_3, rom_address);
             zib.src_a("imm", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("sub").unwrap();
@@ -1197,8 +1158,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rs1 << reg33 = rs1 << (32 - (rs2 & 0x1F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_4, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_4, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 33, false);
             zib.op("sll_w").unwrap();
@@ -1212,8 +1172,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 OR reg33 = (rs1 >> (rs2 & 0x1F)) OR (rs1 << (32 - (rs2 & 0x1F)))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_5, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_5, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("or").unwrap();
@@ -1227,8 +1186,7 @@ impl Riscv2ZiskContext<'_> {
 
         // sign-extend rd from 32 to 64 bits
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_6, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_6, rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.op("signextend_w").unwrap();
             zib.store("reg", i.rd as i64, false, false);
@@ -1266,8 +1224,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 >> imm = (rs1 & 0xFFFFFFFF) >> (imm & 0x1F)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_1, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", i.imm as u64, false);
             zib.op("srl_w").unwrap();
@@ -1281,8 +1238,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 << (32 - (imm & 0x1F))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_2, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("imm", 32 - (i.imm as u64 & 0x1F), false);
             zib.op("sll_w").unwrap();
@@ -1296,8 +1252,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 OR rd = (rs1 >> (imm & 0x1F)) OR (rs1 << (32 - (imm & 0x1F)))
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_3, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_3, rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -1311,8 +1266,7 @@ impl Riscv2ZiskContext<'_> {
 
         // sign-extend rd from 32 to 64 bits
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address_4, i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_4, rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.op("signextend_w").unwrap();
             zib.store("reg", i.rd as i64, false, false);
@@ -1368,8 +1322,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 & M1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", M1, false);
             zib.op("and").unwrap();
@@ -1383,8 +1336,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rs1 & M1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("imm", M1, false);
             zib.op("and").unwrap();
@@ -1398,8 +1350,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = reg33 << 8
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", 8, false);
             zib.op("sll").unwrap();
@@ -1413,8 +1364,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | reg33
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("or").unwrap();
@@ -1428,8 +1378,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 16
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 16, false);
             zib.op("srl").unwrap();
@@ -1443,8 +1392,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 & M2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", M2, false);
             zib.op("and").unwrap();
@@ -1458,8 +1406,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rd & M2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", M2, false);
             zib.op("and").unwrap();
@@ -1473,8 +1420,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = reg33 << 16
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", 16, false);
             zib.op("sll").unwrap();
@@ -1488,8 +1434,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | reg33
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("or").unwrap();
@@ -1503,8 +1448,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 32, false);
             zib.op("srl").unwrap();
@@ -1518,8 +1462,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd << 32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 32, false);
             zib.op("sll").unwrap();
@@ -1533,8 +1476,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | rd
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[11], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[11], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -1587,8 +1529,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 & M1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", M1, false);
             zib.op("and").unwrap();
@@ -1602,8 +1543,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rs1 & M1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("imm", M1, false);
             zib.op("and").unwrap();
@@ -1617,8 +1557,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = reg33 << 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", 1, false);
             zib.op("sll").unwrap();
@@ -1632,8 +1571,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | reg33
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("or").unwrap();
@@ -1647,8 +1585,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -1662,8 +1599,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 & M2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", M2, false);
             zib.op("and").unwrap();
@@ -1677,8 +1613,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rd & M2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", M2, false);
             zib.op("and").unwrap();
@@ -1692,8 +1627,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = reg33 << 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", 2, false);
             zib.op("sll").unwrap();
@@ -1707,8 +1641,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | reg33
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("or").unwrap();
@@ -1722,8 +1655,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -1737,8 +1669,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 & M4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", M4, false);
             zib.op("and").unwrap();
@@ -1752,8 +1683,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = rd & M4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[11], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[11], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", M4, false);
             zib.op("and").unwrap();
@@ -1767,8 +1697,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg33 = reg33 << 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[12], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[12], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", 4, false);
             zib.op("sll").unwrap();
@@ -1782,8 +1711,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | reg33
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[13], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[13], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", 33, false);
             zib.op("or").unwrap();
@@ -1827,8 +1755,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 & 0xFFFFFFFF
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("imm", 0xFFFFFFFF, false);
             zib.op("and").unwrap();
@@ -1842,8 +1769,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd << 32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 32, false);
             zib.op("sll").unwrap();
@@ -1857,8 +1783,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | rd
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -1902,8 +1827,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 & 0xFF
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("imm", 0xFF, false);
             zib.op("and").unwrap();
@@ -1917,8 +1841,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd << 8
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 8, false);
             zib.op("sll").unwrap();
@@ -1932,8 +1855,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg32 | rd
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("or").unwrap();
@@ -1978,8 +1900,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs2 & 0xFFFF
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("imm", 0xFFFF, false);
             zib.op("and").unwrap();
@@ -1993,8 +1914,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd << 16
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 16, false);
             zib.op("sll").unwrap();
@@ -2008,8 +1928,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2023,8 +1942,7 @@ impl Riscv2ZiskContext<'_> {
 
         // Sign-extend rd to 64 bits
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.op("signextend_w").unwrap();
             zib.store("reg", i.rd as i64, false, false);
@@ -2077,8 +1995,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 | reg32 = rs1 | (rs1 >> 1)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2092,8 +2009,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -2107,8 +2023,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2122,8 +2037,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -2137,8 +2051,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2152,8 +2065,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 8
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 8, false);
             zib.op("srl").unwrap();
@@ -2167,8 +2079,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2182,8 +2093,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 16
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 16, false);
             zib.op("srl").unwrap();
@@ -2197,8 +2107,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2212,8 +2121,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 32, false);
             zib.op("srl").unwrap();
@@ -2227,8 +2135,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2244,8 +2151,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[11], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[11], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("srl").unwrap();
@@ -2259,8 +2165,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 & 0x5555555555555555
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[12], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[12], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x5555555555555555, false);
             zib.op("and").unwrap();
@@ -2274,8 +2179,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd - reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[13], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[13], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("sub").unwrap();
@@ -2291,8 +2195,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[14], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[14], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -2306,8 +2209,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = reg32 & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[15], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[15], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -2321,8 +2223,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[16], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[16], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -2336,8 +2237,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[17], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[17], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -2353,8 +2253,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[18], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[18], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -2368,8 +2267,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[19], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[19], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -2383,8 +2281,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x0F0F0F0F0F0F0F0F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[20], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[20], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0F0F0F0F0F0F0F0F, false);
             zib.op("and").unwrap();
@@ -2400,8 +2297,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd * 0x0101010101010101
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[21], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[21], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0101010101010101, false);
             zib.op("mul").unwrap();
@@ -2415,8 +2311,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd >> 56
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[22], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[22], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 56, false);
             zib.op("srl").unwrap();
@@ -2432,8 +2327,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = 64 - rd
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[23], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[23], rom_address);
             zib.src_a("imm", 64, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("sub").unwrap();
@@ -2485,8 +2379,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 XOR 0xFFFFFFFFFFFFFFFF
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("imm", 0xFFFFFFFFFFFFFFFF, false);
             zib.op("xor").unwrap();
@@ -2500,8 +2393,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("and").unwrap();
@@ -2517,8 +2409,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("srl").unwrap();
@@ -2532,8 +2423,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x5555555555555555
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x5555555555555555, false);
             zib.op("and").unwrap();
@@ -2547,8 +2437,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd - r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("sub").unwrap();
@@ -2562,8 +2451,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -2577,8 +2465,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -2592,8 +2479,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -2607,8 +2493,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -2622,8 +2507,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -2637,8 +2521,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -2652,8 +2535,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x0F0F0F0F0F0F0F0F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[11], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[11], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0F0F0F0F0F0F0F0F, false);
             zib.op("and").unwrap();
@@ -2667,8 +2549,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd * 0x0101010101010101
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[12], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[12], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0101010101010101, false);
             zib.op("mul").unwrap();
@@ -2682,8 +2563,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd >> 56
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[13], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[13], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 56, false);
             zib.op("srl").unwrap();
@@ -2743,8 +2623,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = i.rd >> 1 = (rs1 & 0x00000000FFFFFFFF) >> 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("srl").unwrap();
@@ -2758,8 +2637,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2773,8 +2651,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -2788,8 +2665,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2803,8 +2679,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -2818,8 +2693,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2833,8 +2707,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 8
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 8, false);
             zib.op("srl").unwrap();
@@ -2848,8 +2721,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2863,8 +2735,7 @@ impl Riscv2ZiskContext<'_> {
 
         // reg32 = rd >> 16
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 16, false);
             zib.op("srl").unwrap();
@@ -2878,8 +2749,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd | reg32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -2895,8 +2765,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("srl").unwrap();
@@ -2910,8 +2779,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x5555555555555555
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[11], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[11], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x5555555555555555, false);
             zib.op("and").unwrap();
@@ -2925,8 +2793,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd - r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[12], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[12], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("sub").unwrap();
@@ -2940,8 +2807,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[13], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[13], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -2955,8 +2821,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[14], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[14], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -2970,8 +2835,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[15], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[15], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -2985,8 +2849,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[16], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[16], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3000,8 +2863,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[17], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[17], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -3015,8 +2877,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[18], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[18], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3030,8 +2891,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x0F0F0F0F0F0F0F0F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[19], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[19], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0F0F0F0F0F0F0F0F, false);
             zib.op("and").unwrap();
@@ -3045,8 +2905,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd * 0x0101010101010101
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[20], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[20], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0101010101010101, false);
             zib.op("mul").unwrap();
@@ -3060,8 +2919,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd >> 56
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[21], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[21], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 56, false);
             zib.op("srl").unwrap();
@@ -3075,8 +2933,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = 32 - rd
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[22], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[22], rom_address);
             zib.src_a("imm", 32, false);
             zib.src_b("reg", i.rd as u64, false);
             zib.op("sub").unwrap();
@@ -3131,8 +2988,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd - 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("sub").unwrap();
@@ -3146,8 +3002,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd XOR 0xFFFFFFFFFFFFFFFF
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0xFFFFFFFFFFFFFFFF, false);
             zib.op("xor").unwrap();
@@ -3161,8 +3016,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("and").unwrap();
@@ -3178,8 +3032,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("srl").unwrap();
@@ -3193,8 +3046,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x5555555555555555
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x5555555555555555, false);
             zib.op("and").unwrap();
@@ -3208,8 +3060,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd - r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("sub").unwrap();
@@ -3223,8 +3074,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -3238,8 +3088,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -3253,8 +3102,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -3268,8 +3116,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3283,8 +3130,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -3298,8 +3144,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[11], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[11], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3313,8 +3158,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x0F0F0F0F0F0F0F0F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[12], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[12], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0F0F0F0F0F0F0F0F, false);
             zib.op("and").unwrap();
@@ -3328,8 +3172,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd * 0x0101010101010101
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[13], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[13], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0101010101010101, false);
             zib.op("mul").unwrap();
@@ -3343,8 +3186,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd >> 56
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[14], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[14], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 56, false);
             zib.op("srl").unwrap();
@@ -3390,8 +3232,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x5555555555555555
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x5555555555555555, false);
             zib.op("and").unwrap();
@@ -3405,8 +3246,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rs1 - r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", i.rs1 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("sub").unwrap();
@@ -3420,8 +3260,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -3435,8 +3274,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -3450,8 +3288,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -3465,8 +3302,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3480,8 +3316,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -3495,8 +3330,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3510,8 +3344,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x0F0F0F0F0F0F0F0F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0F0F0F0F0F0F0F0F, false);
             zib.op("and").unwrap();
@@ -3525,8 +3358,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd * 0x0101010101010101
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0101010101010101, false);
             zib.op("mul").unwrap();
@@ -3540,8 +3372,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd >> 56
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 56, false);
             zib.op("srl").unwrap();
@@ -3587,8 +3418,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 1, false);
             zib.op("srl").unwrap();
@@ -3602,8 +3432,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x5555555555555555
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x5555555555555555, false);
             zib.op("and").unwrap();
@@ -3617,8 +3446,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd - r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("sub").unwrap();
@@ -3632,8 +3460,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 2
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 2, false);
             zib.op("srl").unwrap();
@@ -3647,8 +3474,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r32 & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", 32, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -3662,8 +3488,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x3333333333333333
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x3333333333333333, false);
             zib.op("and").unwrap();
@@ -3677,8 +3502,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[6], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[6], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3692,8 +3516,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = rd >> 4
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[7], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[7], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 4, false);
             zib.op("srl").unwrap();
@@ -3707,8 +3530,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd + r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[8], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[8], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
@@ -3722,8 +3544,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd & 0x0F0F0F0F0F0F0F0F
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[9], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[9], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0F0F0F0F0F0F0F0F, false);
             zib.op("and").unwrap();
@@ -3737,8 +3558,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd * 0x0101010101010101
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[10], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[10], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 0x0101010101010101, false);
             zib.op("mul").unwrap();
@@ -3752,8 +3572,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = rd >> 56
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[11], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[11], rom_address);
             zib.src_a("reg", i.rd as u64, false);
             zib.src_b("imm", 56, false);
             zib.op("srl").unwrap();
@@ -3806,8 +3625,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r33 = r33 + M
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[0], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[0], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", M, false);
             zib.op("add").unwrap();
@@ -3821,12 +3639,12 @@ impl Riscv2ZiskContext<'_> {
 
         // r33 = r33 | rs1
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[1], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("or").unwrap();
             zib.store("reg", 33, false, false);
+            ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
             zib.set_next_internal_address(internal_address[2]);
             let jump_address = internal_address[2] as i64 - internal_address[1] as i64;
             zib.j(jump_address, jump_address);
@@ -3836,8 +3654,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r33 = r33 & H
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[2], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[2], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", H, false);
             zib.op("and").unwrap();
@@ -3851,8 +3668,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r33 >> 7
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[3], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[3], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("imm", 7, false);
             zib.op("srl").unwrap();
@@ -3866,8 +3682,7 @@ impl Riscv2ZiskContext<'_> {
 
         // r32 = r33 - r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[4], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[4], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("reg", 32, false);
             zib.op("sub").unwrap();
@@ -3881,8 +3696,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = r33 | r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(internal_address[5], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(internal_address[5], rom_address);
             zib.src_a("reg", 33, false);
             zib.src_b("reg", 32, false);
             zib.op("or").unwrap();
@@ -3927,7 +3741,11 @@ impl Riscv2ZiskContext<'_> {
 
         for k in 0..N {
             let this = addr(k);
-            let mut zib = ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string());
+            let mut zib = if k == 0 {
+                ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string())
+            } else {
+                ZiskInstBuilder::new_internal(this, rom_address)
+            };
 
             if k == 0 {
                 // reg34 = 0  (accumulator; copyb stores src_b into c)
@@ -4025,7 +3843,11 @@ impl Riscv2ZiskContext<'_> {
 
         for k in 0..N {
             let this = addr(k);
-            let mut zib = ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string());
+            let mut zib = if k == 0 {
+                ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string())
+            } else {
+                ZiskInstBuilder::new_internal(this, rom_address)
+            };
 
             if k == 0 {
                 // reg34 = 0  (accumulator; copyb stores src_b into c)
@@ -4124,7 +3946,11 @@ impl Riscv2ZiskContext<'_> {
 
         for k in 0..N {
             let this = addr(k);
-            let mut zib = ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string());
+            let mut zib = if k == 0 {
+                ZiskInstBuilder::new_from_riscv(this, i.inst_name.to_string())
+            } else {
+                ZiskInstBuilder::new_internal(this, rom_address)
+            };
 
             if k == 0 {
                 // reg34 = 0  (accumulator; copyb stores src_b into c)
@@ -4259,8 +4085,7 @@ impl Riscv2ZiskContext<'_> {
         for j in 0..16 {
             // reg33 = rs2 >> (4*i) (if i!=0, else reg33 = rs2)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", i.rs2 as u64, false);
                 zib.src_b("imm", j * 4, false);
                 zib.op("srl").unwrap();
@@ -4282,8 +4107,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg33 = reg33 & 0xF
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 33, false);
                 zib.src_b("imm", 0xF, false);
                 zib.op("and").unwrap();
@@ -4305,8 +4129,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg33 = reg33 << 2 = 4*reg33 = number of bits to shift rs1 to select the nibble
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 33, false);
                 zib.src_b("imm", 2, false);
                 zib.op("sll").unwrap();
@@ -4328,8 +4151,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg34 = rs1 >> reg33
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", 33, false);
                 zib.op("srl").unwrap();
@@ -4351,8 +4173,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg34 = reg34 & 0xF
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 34, false);
                 zib.src_b("imm", 0xF, false);
                 zib.op("and").unwrap();
@@ -4374,8 +4195,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg34 = reg34 << (4*i) (if i!=0, else nothing)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 34, false);
                 zib.src_b("imm", 4 * j, false);
                 zib.op("sll").unwrap();
@@ -4397,8 +4217,7 @@ impl Riscv2ZiskContext<'_> {
 
             // r32 = r32 | reg34 (if i==0, just copy)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 32, false);
                 zib.src_b("reg", 34, false);
                 zib.op("or").unwrap();
@@ -4420,8 +4239,7 @@ impl Riscv2ZiskContext<'_> {
         }
         // rd = r32
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
             // copyb stores src_b into c, so the accumulator must be in src_b (not src_a).
             zib.src_a("imm", 0, false);
             zib.src_b("reg", 32, false);
@@ -4481,8 +4299,7 @@ impl Riscv2ZiskContext<'_> {
         for j in 0..8 {
             // reg32 = rs2 >> (8*j)   (idx in low byte, garbage above)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", i.rs2 as u64, false);
                 zib.src_b("imm", 8 * j, false);
                 zib.op("srl").unwrap();
@@ -4504,8 +4321,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg33 = reg32 & 0xF8   (0 iff idx < 8)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 32, false);
                 zib.src_b("imm", 0xF8, false);
                 zib.op("and").unwrap();
@@ -4527,8 +4343,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg33 = reg33 - 1
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 33, false);
                 zib.src_b("imm", 1, false);
                 zib.op("sub").unwrap();
@@ -4550,8 +4365,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg33 = reg33 sra 63   → all-ones iff idx < 8, else 0
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 33, false);
                 zib.src_b("imm", 63, false);
                 zib.op("sra").unwrap();
@@ -4573,8 +4387,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg32 = reg32 & 0x7    (low 3 bits of idx)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 32, false);
                 zib.src_b("imm", 0x7, false);
                 zib.op("and").unwrap();
@@ -4596,8 +4409,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg32 = reg32 << 3     → 8*(idx & 7), a valid shift amount 0..56
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 32, false);
                 zib.src_b("imm", 3, false);
                 zib.op("sll").unwrap();
@@ -4619,8 +4431,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg32 = rs1 >> reg32   (data-dependent shift)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", i.rs1 as u64, false);
                 zib.src_b("reg", 32, false);
                 zib.op("srl").unwrap();
@@ -4642,8 +4453,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg32 = reg32 & 0xFF   → selected byte
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 32, false);
                 zib.src_b("imm", 0xFF, false);
                 zib.op("and").unwrap();
@@ -4665,8 +4475,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg32 = reg32 & reg33  → zero if idx out of range
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 32, false);
                 zib.src_b("reg", 33, false);
                 zib.op("and").unwrap();
@@ -4688,8 +4497,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg32 = reg32 << (8*j) → place into output byte j
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 32, false);
                 zib.src_b("imm", 8 * j, false);
                 zib.op("sll").unwrap();
@@ -4711,8 +4519,7 @@ impl Riscv2ZiskContext<'_> {
 
             // reg34 = reg34 | reg32  (accumulate; rd written only at the end)
             {
-                let mut zib =
-                    ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+                let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
                 zib.src_a("reg", 34, false);
                 zib.src_b("reg", 32, false);
                 zib.op("or").unwrap();
@@ -4735,8 +4542,7 @@ impl Riscv2ZiskContext<'_> {
 
         // rd = reg34 (copyb stores src_b into c)
         {
-            let mut zib =
-                ZiskInstBuilder::new_from_riscv(addr[addr_index], i.inst_name.to_string());
+            let mut zib = ZiskInstBuilder::new_internal(addr[addr_index], rom_address);
             zib.src_a("imm", 0, false);
             zib.src_b("reg", 34, false);
             zib.op("copyb").unwrap();
