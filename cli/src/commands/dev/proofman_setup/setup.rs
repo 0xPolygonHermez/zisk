@@ -5,6 +5,15 @@ use zisk_prover_backend::setup_logger;
 
 const DEFAULT_HASH: &str = "Poseidon1";
 
+/// Parse a job-count flag, rejecting 0 (a 0-sized rayon/nvcc pool is invalid).
+fn parse_jobs(s: &str) -> std::result::Result<usize, String> {
+    let n: usize = s.parse().map_err(|_| format!("`{s}` is not a valid number"))?;
+    if n == 0 {
+        return Err("must be at least 1".to_string());
+    }
+    Ok(n)
+}
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run non-recursive (and optionally recursive) setup for all AIRs.
@@ -32,12 +41,12 @@ pub(crate) struct ZiskProofmanSetupSetup {
     /// Max concurrent recursive1 air pipelines (default 1 = serial).
     /// Each slot runs one circom compile + pil2com. Size by available RAM:
     /// set to floor(available_GB / per_air_peak_GB).
-    #[arg(long, default_value_t = 1, env = "RECURSIVE_JOBS")]
+    #[arg(long, default_value_t = 1, env = "RECURSIVE_JOBS", value_parser = parse_jobs)]
     recursive_jobs: usize,
 
     /// Max concurrent AIRs during non-recursive setup (default 1 = serial).
     /// Each slot runs pil_info + file I/O. Size by available RAM.
-    #[arg(long, default_value_t = 1, env = "SETUP_JOBS")]
+    #[arg(long, default_value_t = 1, env = "SETUP_JOBS", value_parser = parse_jobs)]
     setup_jobs: usize,
 
     /// Output file for per-AIR stats (same format as `stats` subcommand).

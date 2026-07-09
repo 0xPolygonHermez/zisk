@@ -945,6 +945,18 @@ impl Coordinator {
         let minimum = &request.minimal_compute_capacity;
         let cfg = &self.config.coordinator;
 
+        // An explicit 0 for either field is invalid, not a capacity shortage.
+        if requested == &Some(0) {
+            return Err(CoordinatorError::InvalidArgument(
+                "compute_capacity must be greater than 0".to_string(),
+            ));
+        }
+        if minimum == &Some(0) {
+            return Err(CoordinatorError::InvalidArgument(
+                "minimal_compute_capacity must be greater than 0".to_string(),
+            ));
+        }
+
         // Explicit caller constraint: minimum must not exceed requested.
         if let (Some(req), Some(min)) = (requested, minimum) {
             if min > req {
@@ -963,13 +975,19 @@ impl Coordinator {
         let default_minimum =
             if cfg.min_compute_units == 0 { available } else { cfg.min_compute_units };
 
-        let requested_units = requested.unwrap_or(default_requested);
         let minimum_units = minimum.unwrap_or(default_minimum);
+
+        let requested_units = match requested {
+            Some(req) => *req,
+            None => default_requested.max(minimum_units),
+        };
 
         // Clamp to available — not an error to ask for more than is free right now.
         let resolved = requested_units.min(available);
 
-        if resolved < minimum_units {
+        // `resolved == 0` covers the empty-pool case (all defaults resolve to the
+        // available 0); treat it as a capacity shortage alongside `< minimum`.
+        if resolved == 0 || resolved < minimum_units {
             if self.workers_pool.setting_up_workers().await > 0 {
                 return Err(CoordinatorError::WorkersSettingUp);
             }
@@ -4006,5 +4024,147 @@ mod tests {
             .unwrap();
 
         assert_eq!(coordinator.workers_pool.worker_state(&w0_id).await, Some(WorkerState::Ready));
+    }
+
+    // --- resolve_capacity ----------------------------------------------------
+
+    fn capacity_request(
+        compute_capacity: Option<u32>,
+        minimal_compute_capacity: Option<u32>,
+    ) -> LaunchProofRequestDto {
+        LaunchProofRequestDto {
+            data_id: "data".to_string().into(),
+            hash_id: "hash".to_string(),
+            compute_capacity,
+            minimal_compute_capacity,
+            inputs_mode: InputsModeDto::InputsNone,
+            hints_mode: HintsModeDto::HintsNone,
+            simulated_node: None,
+            metadata: BTreeMap::new(),
+            execution_only: false,
+            proof_type: ProofKind::VadcopFinal,
+        }
+    }
+
+    /// Register a single worker in the given state with a compute capacity.
+    async fn add_worker(coordinator: &Coordinator, id: &str, capacity: u32, state: WorkerState) {
+        let (sender, _msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(WorkerId::from(id.to_string()), capacity, Box::new(sender), state)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_explicit_zero_requested_is_invalid() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        add_worker(&coordinator, "w0", 4, WorkerState::Ready).await;
+
+        let err = coordinator.resolve_capacity(&capacity_request(Some(0), None)).await.unwrap_err();
+        match err {
+            CoordinatorError::InvalidArgument(msg) => assert!(msg.contains("compute_capacity")),
+            other => panic!("expected InvalidArgument, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_explicit_zero_minimum_is_invalid() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        add_worker(&coordinator, "w0", 4, WorkerState::Ready).await;
+
+        let err = coordinator.resolve_capacity(&capacity_request(None, Some(0))).await.unwrap_err();
+        match err {
+            CoordinatorError::InvalidArgument(msg) => {
+                // Field-specific message, not the generic compute_capacity one.
+                assert!(msg.contains("minimal_compute_capacity"));
+            }
+            other => panic!("expected InvalidArgument, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_zero_requested_takes_precedence_over_min_gt_req() {
+        // compute_capacity=0, minimal=1: the 0-check must fire first with the
+        // compute_capacity message, not the "min must not exceed req" message.
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        add_worker(&coordinator, "w0", 4, WorkerState::Ready).await;
+
+        let err =
+            coordinator.resolve_capacity(&capacity_request(Some(0), Some(1))).await.unwrap_err();
+        match err {
+            CoordinatorError::InvalidArgument(msg) => {
+                assert!(msg.contains("greater than 0"));
+                assert!(!msg.contains("must not exceed"));
+            }
+            other => panic!("expected InvalidArgument, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_min_exceeds_requested_is_invalid() {
+        let coordinator = Coordinator::new(test_config_with(|_| {}));
+        add_worker(&coordinator, "w0", 4, WorkerState::Ready).await;
+
+        let err =
+            coordinator.resolve_capacity(&capacity_request(Some(2), Some(3))).await.unwrap_err();
+        match err {
+            CoordinatorError::InvalidArgument(msg) => assert!(msg.contains("must not exceed")),
+            other => panic!("expected InvalidArgument, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_empty_pool_is_insufficient_not_zero() {
+        // Default min_compute_units == 0 ("require all available"); with an empty
+        // pool this must fail as InsufficientCapacity rather than resolving (0,0).
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.min_compute_units = 0));
+
+        let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
+        assert!(matches!(err, CoordinatorError::InsufficientCapacity), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_idle_only_pool_reports_not_setup() {
+        // No Ready workers (0 available) but an Idle one present => WorkersNotSetup.
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.min_compute_units = 0));
+        add_worker(&coordinator, "w0", 4, WorkerState::Idle).await;
+
+        let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
+        assert!(matches!(err, CoordinatorError::WorkersNotSetup), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_min_zero_default_requires_all_available() {
+        // min_compute_units == 0 with capacity free => minimum resolves to the
+        // full available amount, and an unspecified request resolves to it too.
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.min_compute_units = 0;
+            c.coordinator.default_compute_units = 0;
+        }));
+        add_worker(&coordinator, "w0", 3, WorkerState::Ready).await;
+        add_worker(&coordinator, "w1", 5, WorkerState::Ready).await;
+
+        let (resolved, minimum) =
+            coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap();
+        assert_eq!(resolved.compute_units, 8);
+        assert_eq!(minimum.compute_units, 8);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_default_requested_not_below_default_minimum() {
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.min_compute_units = 0; // => default_minimum = available (8)
+            c.coordinator.default_compute_units = 2; // smaller than the minimum
+        }));
+        add_worker(&coordinator, "w0", 3, WorkerState::Ready).await;
+        add_worker(&coordinator, "w1", 5, WorkerState::Ready).await;
+
+        let (resolved, minimum) =
+            coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap();
+        assert_eq!(resolved.compute_units, 8);
+        assert_eq!(minimum.compute_units, 8);
     }
 }

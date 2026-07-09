@@ -26,7 +26,7 @@ impl CommandExecutor for Command {
             .stdout(Stdio::inherit())
             .stdin(Stdio::inherit())
             .output()
-            .with_context(|| format!("while executing `{:?}`", &self))
+            .with_context(|| format!("while executing `{:?}`", self))
             .map(|_| ())
     }
 }
@@ -232,9 +232,9 @@ pub(crate) async fn download_file(
         .headers(headers)
         .send()
         .await
-        .or(Err(format!("Failed to GET from '{}'", &url)))?;
+        .or(Err(format!("Failed to GET from '{}'", url)))?;
     let total_size =
-        res.content_length().ok_or(format!("Failed to get content length from '{}'", &url))?;
+        res.content_length().ok_or(format!("Failed to get content length from '{}'", url))?;
 
     let pb = ProgressBar::new(total_size);
     pb.set_style(ProgressStyle::default_bar()
