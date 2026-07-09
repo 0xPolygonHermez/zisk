@@ -30,9 +30,9 @@ zisk-precomp-helpers = { workspace = true }
 rand = { workspace = true }
 
 lazy_static = { workspace = true }
-getrandom = { workspace = true }
+getrandom = { workspace = true, features = ["custom"] }
 cfg-if = { workspace = true }
-tiny-keccak = { workspace = true }
+tiny-keccak = { workspace = true, features = ["keccak"] }
 serde = { workspace = true, features = ["derive"] }
 bincode = { workspace = true }
 paste = { workspace = true }
