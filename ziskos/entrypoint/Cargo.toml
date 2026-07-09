@@ -16,7 +16,7 @@ crate-type = ["rlib"]
 [dependencies]
 zisk-zkvm-interface = { workspace = true }
 
-getrandom = { workspace = true }
+getrandom = { workspace = true, features = ["custom"] }
 cfg-if = { workspace = true }
 ripemd = { version = "0.1.3", default-features = false }
 zisk-definitions = { workspace = true }
