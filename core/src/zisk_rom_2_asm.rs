@@ -7,8 +7,8 @@ use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
     zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
-    INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
+    INPUT_ADDR, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -2702,6 +2702,17 @@ impl ZiskRom2Asm {
                 } else {
                     assert!(ctx.store_a_in_c);
                     *code += &ctx.full_line_comment("Add: c = a".to_string());
+                    // If B is too high for the x86_64 operation encoding, move it to a register
+                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Add: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tadd {}, {} {}\n",
                         REG_C,
@@ -2740,6 +2751,17 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Sub: ignoring b since b = 0".to_string());
                 } else {
+                    // If B is too high for the x86_64 operation encoding, move it to a register
+                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Sub: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tsub {}, {} {}\n",
                         REG_C,
@@ -2763,6 +2785,17 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("SubW: ignoring b since b = 0".to_string());
                 } else {
+                    // If B is too high for the x86_64 operation encoding, move it to a register
+                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("SubW: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tsub {}, {} {}\n",
                         REG_A,
@@ -2961,6 +2994,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Eq => {
                 assert!(ctx.store_a_in_a);
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Eq: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_A,
@@ -2989,7 +3033,23 @@ impl ZiskRom2Asm {
                     );
                 }
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("EqW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("EqW: a == b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
@@ -3017,6 +3077,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Ltu => {
                 assert!(ctx.store_a_in_a);
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Ltu: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_A,
@@ -3036,15 +3107,15 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Lt => {
                 assert!(ctx.store_a_in_a);
-                // If b is constant and too big, move it to its register
-                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value >= 0x7fffffff) {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
                         ctx.b.string_value,
                         ctx.comment_str("Lt: b = constant")
                     );
-                    ctx.b.is_constant = false;
+                    ctx.b.is_saved = true;
                     ctx.b.string_value = REG_B.to_string();
                 }
                 *code += &format!(
@@ -3067,7 +3138,23 @@ impl ZiskRom2Asm {
             ZiskOp::LtuW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LtuW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LtuW: a == b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
@@ -3096,7 +3183,23 @@ impl ZiskRom2Asm {
             ZiskOp::LtW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LtW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LtW: a == b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
@@ -3124,15 +3227,15 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Leu => {
                 assert!(ctx.store_a_in_a);
-                // If b is constant and too big, move it to its register
-                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value >= 0x7fffffff) {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
                         ctx.b.string_value,
                         ctx.comment_str("Leu: b = const_value")
                     );
-                    ctx.b.is_constant = false;
+                    ctx.b.is_saved = true;
                     ctx.b.string_value = REG_B.to_string();
                 }
                 *code += &format!(
@@ -3154,15 +3257,15 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Le => {
                 assert!(ctx.store_a_in_a);
-                // If b is constant and too big, move it to its register
-                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value >= 0x7fffffff) {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
                         ctx.b.string_value,
                         ctx.comment_str("Le: b = const_value")
                     );
-                    ctx.b.is_constant = false;
+                    ctx.b.is_saved = true;
                     ctx.b.string_value = REG_B.to_string();
                 }
                 *code += &format!(
@@ -3185,7 +3288,23 @@ impl ZiskRom2Asm {
             ZiskOp::LeuW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LeuW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LeuW: a == b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
@@ -3214,7 +3333,23 @@ impl ZiskRom2Asm {
             ZiskOp::LeW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LeW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LeW: a == b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
@@ -3245,6 +3380,17 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0xffffffffffffffff) {
                     *code += &ctx.full_line_comment("And: ignoring b since b = f's".to_string());
                 } else {
+                    // If B is too high for the x86_64 operation encoding, move it to a register
+                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("And: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tand {}, {} {}\n",
                         REG_C,
@@ -3260,6 +3406,17 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Or: ignoring b since b = 0".to_string());
                 } else {
+                    // If B is too high for the x86_64 operation encoding, move it to a register
+                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Or: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tor {}, {} {}\n",
                         REG_C,
@@ -3275,6 +3432,17 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Xor: ignoring b since b = 0".to_string());
                 } else {
+                    // If B is too high for the x86_64 operation encoding, move it to a register
+                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Xor: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\txor {}, {} {}\n",
                         REG_C,
@@ -3990,6 +4158,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Minu => {
                 assert!(ctx.store_a_in_c);
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Minu: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
@@ -4009,6 +4188,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Min => {
                 assert!(ctx.store_a_in_c);
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Min: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
@@ -4060,6 +4250,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Maxu => {
                 assert!(ctx.store_a_in_c);
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Maxu: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
@@ -4079,6 +4280,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Max => {
                 assert!(ctx.store_a_in_c);
+                // If B is too high for the x86_64 operation encoding, move it to a register
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Maxu: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
