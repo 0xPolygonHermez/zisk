@@ -506,10 +506,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.current_computation = Some(handle);
     }
 
-    pub fn has_current_computation(&self) -> bool {
-        self.current_computation.is_some()
-    }
-
     pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.prover.get_vadcop_vk(minimal)
     }

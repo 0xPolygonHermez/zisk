@@ -52,10 +52,11 @@ impl<T: ZiskBackend + 'static> RecoveryActions for ZiskProver<T> {
 //
 pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()> {
     // ASM cleanup runs inside `executor::execute`'s Err arm; the wake-up signal
-    // is sent from `worker::cancel_current_computation`, and the caller awaits
-    // the in-flight compute task (so the ASM child has finished + reset) before
-    // invoking this. All this task does is notify peers, drain any zombie
-    // proofman thread, and barrier with the cluster before advertising `Ready`.
+    // is sent from `worker::cancel_current_computation`. A caller that clobbered a
+    // live compute task should await its handle (so the ASM child has finished +
+    // reset) before invoking this; callers with nothing in flight can call it
+    // directly. All this task does is notify peers, drain any zombie proofman
+    // thread, and barrier with the cluster before advertising `Ready`.
     prover.notify_cluster_cancellation();
     prover.wait_until_proofman_ready();
     prover.cluster_barrier();
@@ -1023,11 +1024,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     // (else a new dispatch's `prover.reset()` races the unwinding
                     // task), then emits `WorkerRecoveryComplete`.
                     let mut recovery_handle: Option<JoinHandle<()>> = None;
-                    let mut needs_recovery_drain = false;
                     match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
                         Some(Ok(ReconnectionAction::CancelStaleJob)) => {
                             info!("Coordinator directed cancellation of stale job");
-                            needs_recovery_drain = self.worker.has_current_computation();
                             recovery_handle = self.worker.clear_current_job();
                         }
                         Some(Ok(ReconnectionAction::KeepComputing)) => {
@@ -1036,7 +1035,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Some(Ok(ReconnectionAction::Idle)) | None => {
                             if self.worker.current_job().is_some() {
                                 warn!("No cancel directive but worker has stale job; clearing");
-                                needs_recovery_drain = self.worker.has_current_computation();
                                 recovery_handle = self.worker.clear_current_job();
                             }
                         }
@@ -1044,11 +1042,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             warn!(
                                 "Unknown reconciliation action; clearing stale state defensively"
                             );
-                            needs_recovery_drain = self.worker.has_current_computation();
                             recovery_handle = self.worker.clear_current_job();
                         }
                     }
-                    if needs_recovery_drain {
+                    // Only drain when a live computation was actually clobbered —
+                    // i.e. `clear_current_job` handed back its compute handle.
+                    if recovery_handle.is_some() {
                         self.spawn_post_failure_recovery(loop_tx.clone(), recovery_handle);
                     }
 
@@ -1165,13 +1164,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        let had_computation = self.worker.has_current_computation();
                         // Keep the detached compute handle so recovery can await
                         // the ASM child finishing its reset before the barrier.
+                        // A returned handle is the authoritative "had a live
+                        // computation" signal — no separate state query needed.
                         recovery_handle = self.worker.clear_current_job();
                         self.worker.set_state(WorkerState::Ready);
 
-                        if had_computation {
+                        if recovery_handle.is_some() {
                             spawn_recovery = true;
                         } else {
                             emit_recovery_complete_directly = true;
