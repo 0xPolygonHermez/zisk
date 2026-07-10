@@ -319,16 +319,8 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
     ) -> Result<Response<JobResponse>, Status> {
         let start = Instant::now();
         let msg = request.into_inner();
-        // Parse the opaque metadata bytes as a UTF-8 string (strict: reject
-        // non-UTF-8). Empty bytes mean "no metadata".
-        let metadata = if msg.metadata.is_empty() {
-            None
-        } else {
-            Some(
-                String::from_utf8(msg.metadata)
-                    .map_err(|_| Status::invalid_argument("metadata must be valid UTF-8"))?,
-            )
-        };
+        // Empty string means "no metadata".
+        let metadata = if msg.metadata.is_empty() { None } else { Some(msg.metadata) };
         let kind = msg
             .job_kind
             .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?

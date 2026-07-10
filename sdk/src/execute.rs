@@ -133,7 +133,7 @@ pub struct ExecuteRequestExt<'a> {
     hints: Option<HintsSource>,
     executor: ExecutorKind,
     timeout: Option<Duration>,
-    metadata: Vec<u8>,
+    metadata: String,
 }
 
 impl<'a> ExecuteRequestExt<'a> {
@@ -149,16 +149,14 @@ impl<'a> ExecuteRequestExt<'a> {
             hints: None,
             executor: ExecutorKind::default(),
             timeout: None,
-            metadata: Vec::new(),
+            metadata: String::new(),
         }
     }
 
-    /// Attach opaque, job-level metadata forwarded to the coordinator.
-    ///
-    /// The bytes are caller-defined (e.g. serde-serialized) and currently ignored
-    /// by the coordinator.
+    /// Attach job-level metadata forwarded to the coordinator (e.g. a tag or a
+    /// JSON string). Empty means no metadata.
     #[must_use]
-    pub fn metadata(mut self, metadata: impl Into<Vec<u8>>) -> Self {
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.metadata = metadata.into();
         self
     }

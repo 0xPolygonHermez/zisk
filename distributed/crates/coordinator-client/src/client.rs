@@ -82,7 +82,7 @@ impl CoordinatorClient {
     }
 
     /// Submit an extended job
-    pub fn submit_job_ext(&self, kind: DomainJobKind, metadata: Vec<u8>) -> Result<Job> {
+    pub fn submit_job_ext(&self, kind: DomainJobKind, metadata: String) -> Result<Job> {
         let job_kind = JobKindExt::try_from(kind).map_err(|e| anyhow::anyhow!(e))?;
         let resp = block_on(async {
             let mut gw = self.ext.clone();

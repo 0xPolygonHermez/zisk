@@ -189,7 +189,7 @@ pub struct ProveRequestExt<'a> {
     timeout: Option<Duration>,
     proof_kind: ProofKind,
     subscribers: Vec<Subscriber>,
-    metadata: Vec<u8>,
+    metadata: String,
 }
 
 impl<'a> ProveRequestExt<'a> {
@@ -207,16 +207,14 @@ impl<'a> ProveRequestExt<'a> {
             timeout: None,
             proof_kind: ProofKind::default(),
             subscribers: Vec::new(),
-            metadata: Vec::new(),
+            metadata: String::new(),
         }
     }
 
-    /// Attach opaque, job-level metadata forwarded to the coordinator.
-    ///
-    /// The bytes are caller-defined (e.g. serde-serialized) and currently ignored
-    /// by the coordinator.
+    /// Attach job-level metadata forwarded to the coordinator (e.g. a tag or a
+    /// JSON string). Empty means no metadata.
     #[must_use]
-    pub fn metadata(mut self, metadata: impl Into<Vec<u8>>) -> Self {
+    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
         self.metadata = metadata.into();
         self
     }

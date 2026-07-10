@@ -23,9 +23,9 @@ service ZiskCoordinatorApiExt {
 
 message JobRequestExtMessage {
   JobKindExt job_kind = 1;
-  // Opaque, caller-defined blob (e.g. serde-serialized). Applies to the whole
-  // job. The coordinator parses it to a UTF-8 string.
-  bytes      metadata = 2;
+  // Caller-defined job-level metadata (e.g. a tag or a JSON string). Empty
+  // means no metadata.
+  string     metadata = 2;
 }
 
 // Restricted job-kind set for the extended API: only jobs that can carry

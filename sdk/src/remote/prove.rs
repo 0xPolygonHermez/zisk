@@ -41,7 +41,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: Vec<u8>,
+        metadata: String,
     ) -> Result<JobHandle<ProveResult>> {
         self.submit_prove(
             program,
@@ -67,7 +67,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: Option<Vec<u8>>,
+        metadata: Option<String>,
     ) -> Result<JobHandle<ProveResult>> {
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 

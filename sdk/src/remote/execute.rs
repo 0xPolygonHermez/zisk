@@ -38,7 +38,7 @@ impl RemoteClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: Vec<u8>,
+        metadata: String,
     ) -> Result<JobHandle<ExecuteResult>> {
         self.submit_execute(program, stdin, hints, executor, timeout, subs, Some(metadata))
     }
@@ -54,7 +54,7 @@ impl RemoteClient {
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: Option<Vec<u8>>,
+        metadata: Option<String>,
     ) -> Result<JobHandle<ExecuteResult>> {
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 
