@@ -527,17 +527,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.guest_programs.get(hash_id).cloned()
     }
 
-    /// Signals cancellation and pokes the ASM children so the in-flight
-    /// `executor::execute` returns Err promptly (its Err arm does the actual
-    /// ASM cleanup). The in-flight handle itself is detached — awaiting it
-    /// here would block the event loop. Stream-actor shutdown runs in
-    /// background.
-    pub fn cancel_current_computation(&mut self) {
+    /// Signals cancellation so the in-flight `executor::execute` returns Err
+    /// (its Err arm does the ASM cleanup). Returns the compute handle rather
+    /// than dropping it, so recovery can await it off the event loop — letting
+    /// the ASM child finish resetting before a new job reuses its shmem.
+    pub fn cancel_current_computation(&mut self) -> Option<JoinHandle<()>> {
         if let Err(e) = self.prover.cancel() {
             tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
         }
 
-        if self.current_computation.take().is_some() {
+        let handle = self.current_computation.take();
+        if handle.is_some() {
             self.prover.notify_cluster_cancellation();
         }
 
@@ -546,15 +546,17 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                 stream_actor.shutdown_and_join(STREAM_ACTOR_SHUTDOWN_TIMEOUT);
             });
         }
+
+        handle
     }
 
-    /// Cancels any in-flight computation (without awaiting) and clears the
-    /// current job context. The caller is responsible for kicking off
-    /// recovery (`spawn_post_failure_recovery`) so the detached spawn_blocking
-    /// task actually unwinds.
-    pub fn clear_current_job(&mut self) {
-        self.cancel_current_computation();
+    /// Cancels any in-flight computation and clears the current job context.
+    /// Returns the compute handle (if any) for recovery to await — see
+    /// [`Self::cancel_current_computation`].
+    pub fn clear_current_job(&mut self) -> Option<JoinHandle<()>> {
+        let handle = self.cancel_current_computation();
         self.current_job = None;
+        handle
     }
 
     pub fn prepare_for_new_job(
