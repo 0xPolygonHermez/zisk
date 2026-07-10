@@ -4225,13 +4225,8 @@ mod tests {
             c.coordinator.default_compute_units = 0;
         }));
         add_worker(&coordinator, "w0", 6, WorkerState::Ready).await;
-        add_worker(
-            &coordinator,
-            "w1",
-            6,
-            WorkerState::Computing((JobId::new(), JobPhase::Prove)),
-        )
-        .await;
+        add_worker(&coordinator, "w1", 6, WorkerState::Computing((JobId::new(), JobPhase::Prove)))
+            .await;
 
         let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
         assert!(matches!(err, CoordinatorError::WorkersBusy), "got {err:?}");
