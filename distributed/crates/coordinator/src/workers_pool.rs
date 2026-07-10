@@ -165,6 +165,23 @@ impl WorkersPool {
         ComputeCapacity::from(total_capacity)
     }
 
+    /// Capacity of `SettingUp` workers: transiently down (setup / draining a
+    /// cancelled job) but rejoining the ready pool soon. Distinct from
+    /// `Computing` (busy elsewhere, not coming back). Lets `resolve_capacity`
+    /// wait for the fleet to recover instead of sizing against a short pool.
+    pub async fn recovering_compute_capacity(&self) -> ComputeCapacity {
+        let total_capacity: u32 = self
+            .workers
+            .read()
+            .await
+            .values()
+            .filter(|p| p.state == WorkerState::SettingUp)
+            .map(|p| p.compute_capacity.compute_units)
+            .sum();
+
+        ComputeCapacity::from(total_capacity)
+    }
+
     /// Returns (num_workers, compute_capacity, available_compute_capacity) under a single read lock.
     pub async fn pool_stats(&self) -> (usize, ComputeCapacity, ComputeCapacity) {
         let workers = self.workers.read().await;

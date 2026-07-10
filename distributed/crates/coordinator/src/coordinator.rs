@@ -967,13 +967,17 @@ impl Coordinator {
         }
 
         let available = self.workers_pool.available_compute_capacity().await.compute_units;
+        let recovering = self.workers_pool.recovering_compute_capacity().await.compute_units;
 
         let default_requested =
             if cfg.default_compute_units == 0 { available } else { cfg.default_compute_units };
 
-        // `min_compute_units == 0` means "require all currently available capacity".
+        // `min_compute_units == 0` means "require all registered capacity",
+        // counting recovering workers, so a whole-fleet job waits for them
+        // instead of admitting on a short pool. An explicit caller `minimal`
+        // is its own floor and left untouched.
         let default_minimum =
-            if cfg.min_compute_units == 0 { available } else { cfg.min_compute_units };
+            if cfg.min_compute_units == 0 { available + recovering } else { cfg.min_compute_units };
 
         let minimum_units = minimum.unwrap_or(default_minimum);
 
@@ -985,10 +989,12 @@ impl Coordinator {
         // Clamp to available — not an error to ask for more than is free right now.
         let resolved = requested_units.min(available);
 
-        // `resolved == 0` covers the empty-pool case (all defaults resolve to the
-        // available 0); treat it as a capacity shortage alongside `< minimum`.
+        // Shortage: the ready pool can't meet the floor (`resolved == 0` also
+        // covers the empty pool). `recovering > 0` means workers are setting up
+        // (possibly to close this very gap), so it's retryable rather than a
+        // hard failure — reuses the `recovering` snapshot read above.
         if resolved == 0 || resolved < minimum_units {
-            if self.workers_pool.setting_up_workers().await > 0 {
+            if recovering > 0 {
                 return Err(CoordinatorError::WorkersSettingUp);
             }
             if self.workers_pool.idle_workers().await > 0 {
@@ -4166,5 +4172,87 @@ mod tests {
             coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap();
         assert_eq!(resolved.compute_units, 8);
         assert_eq!(minimum.compute_units, 8);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_waits_for_recovering_workers_default_request() {
+        // 10 Ready + 2 recovering (SettingUp). A default (unspecified) request
+        // sizes to "all available", so it must hold back with WorkersSettingUp
+        // rather than admit at 10 and miss the two workers coming back.
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.min_compute_units = 0;
+            c.coordinator.default_compute_units = 0;
+        }));
+        add_worker(&coordinator, "w0", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w1", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w2", 1, WorkerState::SettingUp).await;
+        add_worker(&coordinator, "w3", 1, WorkerState::SettingUp).await;
+
+        let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
+        assert!(matches!(err, CoordinatorError::WorkersSettingUp), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_admits_once_recovery_completes() {
+        // Same pool as above but with all workers Ready: the job admits and
+        // sizes to the full fleet (no recovering capacity to wait for).
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.min_compute_units = 0;
+            c.coordinator.default_compute_units = 0;
+        }));
+        add_worker(&coordinator, "w0", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w1", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w2", 1, WorkerState::Ready).await;
+        add_worker(&coordinator, "w3", 1, WorkerState::Ready).await;
+
+        let (resolved, _) =
+            coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap();
+        assert_eq!(resolved.compute_units, 12);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_explicit_request_satisfiable_now_ignores_recovering() {
+        // A caller that pins a request already met by the ready pool is not
+        // asking for the recovering workers — admit immediately, don't wait.
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.min_compute_units = 0));
+        add_worker(&coordinator, "w0", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w1", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w2", 4, WorkerState::SettingUp).await;
+
+        let (resolved, _) =
+            coordinator.resolve_capacity(&capacity_request(Some(8), Some(8))).await.unwrap();
+        assert_eq!(resolved.compute_units, 8);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_explicit_min_below_ready_admits_despite_target() {
+        // A big target (12) with a low floor (min=1): the floor is met by the
+        // ready pool (10), so admit now at 10 — the caller accepted a partial
+        // fleet and must not be held back for recovering workers.
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.min_compute_units = 0));
+        add_worker(&coordinator, "w0", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w1", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w2", 4, WorkerState::SettingUp).await;
+
+        let (resolved, _) =
+            coordinator.resolve_capacity(&capacity_request(Some(12), Some(1))).await.unwrap();
+        assert_eq!(resolved.compute_units, 10);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_explicit_min_above_ready_waits_for_recovery() {
+        // Floor (min=12) exceeds the ready pool (10) but is reachable once
+        // recovery finishes (10 + 4 = 14): hold back until it can be met.
+        let coordinator =
+            Coordinator::new(test_config_with(|c| c.coordinator.min_compute_units = 0));
+        add_worker(&coordinator, "w0", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w1", 5, WorkerState::Ready).await;
+        add_worker(&coordinator, "w2", 4, WorkerState::SettingUp).await;
+
+        let err =
+            coordinator.resolve_capacity(&capacity_request(None, Some(12))).await.unwrap_err();
+        assert!(matches!(err, CoordinatorError::WorkersSettingUp), "got {err:?}");
     }
 }
