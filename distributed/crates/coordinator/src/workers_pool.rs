@@ -182,6 +182,23 @@ impl WorkersPool {
         ComputeCapacity::from(total_capacity)
     }
 
+    /// Capacity of `Computing` workers: currently busy on another job but will
+    /// return to the ready pool once it finishes. Lets `resolve_capacity` size a
+    /// whole-fleet job (`min_compute_units == 0`) against the entire set-up fleet
+    /// so it waits for busy workers instead of packing into freed capacity.
+    pub async fn busy_compute_capacity(&self) -> ComputeCapacity {
+        let total_capacity: u32 = self
+            .workers
+            .read()
+            .await
+            .values()
+            .filter(|p| matches!(p.state, WorkerState::Computing(_)))
+            .map(|p| p.compute_capacity.compute_units)
+            .sum();
+
+        ComputeCapacity::from(total_capacity)
+    }
+
     /// Returns (num_workers, compute_capacity, available_compute_capacity) under a single read lock.
     pub async fn pool_stats(&self) -> (usize, ComputeCapacity, ComputeCapacity) {
         let workers = self.workers.read().await;

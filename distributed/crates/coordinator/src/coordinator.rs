@@ -968,16 +968,19 @@ impl Coordinator {
 
         let available = self.workers_pool.available_compute_capacity().await.compute_units;
         let recovering = self.workers_pool.recovering_compute_capacity().await.compute_units;
+        let busy = self.workers_pool.busy_compute_capacity().await.compute_units;
 
         let default_requested =
             if cfg.default_compute_units == 0 { available } else { cfg.default_compute_units };
 
-        // `min_compute_units == 0` means "require all registered capacity",
-        // counting recovering workers, so a whole-fleet job waits for them
-        // instead of admitting on a short pool. An explicit caller `minimal`
-        // is its own floor and left untouched.
-        let default_minimum =
-            if cfg.min_compute_units == 0 { available + recovering } else { cfg.min_compute_units };
+        // `min_compute_units == 0` requires the whole set-up fleet: Ready +
+        // SettingUp + Computing. Counting `busy` makes a whole-fleet job wait for
+        // one already running on part of the fleet, so it runs at full width.
+        let default_minimum = if cfg.min_compute_units == 0 {
+            available.saturating_add(recovering).saturating_add(busy)
+        } else {
+            cfg.min_compute_units
+        };
 
         let minimum_units = minimum.unwrap_or(default_minimum);
 
@@ -989,13 +992,15 @@ impl Coordinator {
         // Clamp to available — not an error to ask for more than is free right now.
         let resolved = requested_units.min(available);
 
-        // Shortage: the ready pool can't meet the floor (`resolved == 0` also
-        // covers the empty pool). `recovering > 0` means workers are setting up
-        // (possibly to close this very gap), so it's retryable rather than a
-        // hard failure — reuses the `recovering` snapshot read above.
+        // Shortage: the ready pool can't meet the floor. `recovering` and `busy`
+        // are transient (they rejoin the ready pool), so the shortfall is
+        // retryable rather than a hard failure; `recovering` reports first.
         if resolved == 0 || resolved < minimum_units {
             if recovering > 0 {
                 return Err(CoordinatorError::WorkersSettingUp);
+            }
+            if busy > 0 {
+                return Err(CoordinatorError::WorkersBusy);
             }
             if self.workers_pool.idle_workers().await > 0 {
                 return Err(CoordinatorError::WorkersNotSetup);
@@ -4208,6 +4213,28 @@ mod tests {
         let (resolved, _) =
             coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap();
         assert_eq!(resolved.compute_units, 12);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_capacity_waits_for_busy_workers_default_request() {
+        // 6 Ready + 6 Computing (another job). A default whole-fleet request
+        // (min==0) sizes to the full set-up fleet, so it must hold back with
+        // WorkersBusy rather than pack into the 6 free workers.
+        let coordinator = Coordinator::new(test_config_with(|c| {
+            c.coordinator.min_compute_units = 0;
+            c.coordinator.default_compute_units = 0;
+        }));
+        add_worker(&coordinator, "w0", 6, WorkerState::Ready).await;
+        add_worker(
+            &coordinator,
+            "w1",
+            6,
+            WorkerState::Computing((JobId::new(), JobPhase::Prove)),
+        )
+        .await;
+
+        let err = coordinator.resolve_capacity(&capacity_request(None, None)).await.unwrap_err();
+        assert!(matches!(err, CoordinatorError::WorkersBusy), "got {err:?}");
     }
 
     #[tokio::test]
