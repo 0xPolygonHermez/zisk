@@ -158,7 +158,11 @@ do
 
     # Wait for the emulator server to finish and flush its output
     echo "Waiting for the emulator server to complete..."
-    wait "$BG_PID" || true
+    if ! wait "$BG_PID"; then
+        echo "❌ Emulator server (PID $BG_PID) exited with error"
+        cat output
+        exit 1
+    fi
 
     # Compare output vs reference
     REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"

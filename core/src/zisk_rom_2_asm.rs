@@ -3108,7 +3108,7 @@ impl ZiskRom2Asm {
             ZiskOp::Lt => {
                 assert!(ctx.store_a_in_a);
                 // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value >= 0x7fffffff) {
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3152,21 +3152,21 @@ impl ZiskRom2Asm {
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LtuW: a == b ?")
+                        ctx.comment_str("LtuW: a < b ?")
                     );
                 } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LtuW: a == b ?")
+                        ctx.comment_str("LtuW: a < b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LtuW: a == b ?")
+                        ctx.comment_str("LtuW: a < b ?")
                     );
                 }
                 *code += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
@@ -3197,21 +3197,21 @@ impl ZiskRom2Asm {
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LtW: a == b ?")
+                        ctx.comment_str("LtW: a < b ?")
                     );
                 } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LtW: a == b ?")
+                        ctx.comment_str("LtW: a < b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LtW: a == b")
+                        ctx.comment_str("LtW: a < b ?")
                     );
                 }
                 *code += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
@@ -3228,7 +3228,7 @@ impl ZiskRom2Asm {
             ZiskOp::Leu => {
                 assert!(ctx.store_a_in_a);
                 // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value >= 0x7fffffff) {
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3258,7 +3258,7 @@ impl ZiskRom2Asm {
             ZiskOp::Le => {
                 assert!(ctx.store_a_in_a);
                 // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value >= 0x7fffffff) {
+                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3302,21 +3302,21 @@ impl ZiskRom2Asm {
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LeuW: a == b ?")
+                        ctx.comment_str("LeuW: a <= b ?")
                     );
                 } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LeuW: a == b ?")
+                        ctx.comment_str("LeuW: a <= b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LeuW: a == b ?")
+                        ctx.comment_str("LeuW: a <= b ?")
                     );
                 }
                 *code += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
@@ -3347,21 +3347,21 @@ impl ZiskRom2Asm {
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LeW: a == b ?")
+                        ctx.comment_str("LeW: a <= b ?")
                     );
                 } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LeW: a == b ?")
+                        ctx.comment_str("LeW: a <= b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LeW: a == b ?")
+                        ctx.comment_str("LeW: a <= b ?")
                     );
                 }
                 *code += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);

@@ -3644,7 +3644,6 @@ impl Riscv2ZiskContext<'_> {
             zib.src_b("reg", i.rs1 as u64, false);
             zib.op("or").unwrap();
             zib.store("reg", 33, false, false);
-            ZiskInstBuilder::new_from_riscv(internal_address[1], i.inst_name.to_string());
             zib.set_next_internal_address(internal_address[2]);
             let jump_address = internal_address[2] as i64 - internal_address[1] as i64;
             zib.j(jump_address, jump_address);
