@@ -282,6 +282,7 @@ pub struct JobContext {
     pub executed_steps: u64,
     pub instances: u64,
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    pub metadata: Option<String>,
 }
 
 pub struct Worker<T: ZiskBackend + 'static> {
@@ -588,6 +589,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         allocation: Vec<u32>,
         total_compute_units: u32,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+        metadata: Option<String>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
@@ -601,6 +603,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             instances: 0,
+            metadata,
         }));
         self.current_job = Some(current_job.clone());
 

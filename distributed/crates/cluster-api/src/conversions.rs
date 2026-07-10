@@ -306,6 +306,7 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
             job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
+            metadata: dto.metadata,
         }
     }
 }

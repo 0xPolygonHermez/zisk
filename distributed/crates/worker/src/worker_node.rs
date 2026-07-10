@@ -1593,6 +1593,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // Cancel any existing computation
         self.worker.cancel_current_computation();
 
+        let metadata = request.metadata.clone();
+
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
@@ -1640,6 +1642,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
+            metadata,
         );
 
         // Start computation in background task
@@ -1660,6 +1663,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Cancel any existing computation
         self.worker.cancel_current_computation();
+
+        let metadata = request.metadata.clone();
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
@@ -1708,6 +1713,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
+            metadata,
         );
 
         // Start execution-only computation in background task

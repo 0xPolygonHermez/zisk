@@ -43,7 +43,16 @@ impl RemoteClient {
         subs: SubscriberList,
         metadata: Vec<u8>,
     ) -> Result<JobHandle<ProveResult>> {
-        self.submit_prove(program, stdin, hints, executor, proof_kind, timeout, subs, Some(metadata))
+        self.submit_prove(
+            program,
+            stdin,
+            hints,
+            executor,
+            proof_kind,
+            timeout,
+            subs,
+            Some(metadata),
+        )
     }
 
     /// Shared prove submission. `metadata` selects the transport: `Some` routes

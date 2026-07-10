@@ -18,8 +18,8 @@ use uuid::Uuid;
 use crate::backend::BackendService;
 use crate::errors::ApiError;
 use crate::handler::CoordinatorHandler;
-use crate::proto::zisk_coordinator_api_server::ZiskCoordinatorApi;
 use crate::proto::zisk_coordinator_api_ext_server::ZiskCoordinatorApiExt;
+use crate::proto::zisk_coordinator_api_server::ZiskCoordinatorApi;
 use crate::proto::*;
 use zisk_coordinator_api::dto::{
     RegisterAggregationProgramRequestDto, RegisterGuestProgramRequestDto,
@@ -142,7 +142,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
 
         let result = self
             .handler
-            .submit_job(kind)
+            .submit_job(kind, None)
             .await
             .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from);
@@ -318,9 +318,18 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
         request: Request<JobRequestExtMessage>,
     ) -> Result<Response<JobResponse>, Status> {
         let start = Instant::now();
-        // `metadata` is opaque and currently ignored; behaviour matches `job_request`.
-        let kind = request
-            .into_inner()
+        let msg = request.into_inner();
+        // Parse the opaque metadata bytes as a UTF-8 string (strict: reject
+        // non-UTF-8). Empty bytes mean "no metadata".
+        let metadata = if msg.metadata.is_empty() {
+            None
+        } else {
+            Some(
+                String::from_utf8(msg.metadata)
+                    .map_err(|_| Status::invalid_argument("metadata must be valid UTF-8"))?,
+            )
+        };
+        let kind = msg
             .job_kind
             .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
             .try_into()
@@ -328,7 +337,7 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
 
         let result = self
             .handler
-            .submit_job(kind)
+            .submit_job(kind, metadata)
             .await
             .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from);

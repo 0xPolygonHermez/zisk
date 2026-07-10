@@ -345,7 +345,11 @@ impl BackendService for MockBackend {
         Ok(recurser_id) // echoes id back without storing
     }
 
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
+    async fn submit_job(
+        &self,
+        kind: DomainJobKind,
+        _metadata: Option<String>,
+    ) -> ApiResult<SubmitJobResult> {
         // Validate program exists for kinds that reference a hash_id
         {
             let s = self.state.lock().await;
@@ -730,12 +734,15 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
-                hash_id: hash_id.clone(),
-                program_name: hash_id,
-                with_hints: false,
-                emulator_only: false,
-            }))
+            .submit_job(
+                DomainJobKind::Setup(DomainSetupRequest {
+                    hash_id: hash_id.clone(),
+                    program_name: hash_id,
+                    with_hints: false,
+                    emulator_only: false,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;
@@ -749,13 +756,16 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(DomainJobKind::Prove(DomainProveRequest {
-                hash_id,
-                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
-                hints: None,
-                proof_timeout: None,
-                proof_dest: DomainProofKind::Stark,
-            }))
+            .submit_job(
+                DomainJobKind::Prove(DomainProveRequest {
+                    hash_id,
+                    input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                    hints: None,
+                    proof_timeout: None,
+                    proof_dest: DomainProofKind::Stark,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;
@@ -774,12 +784,15 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(DomainJobKind::Execute(DomainExecuteRequest {
-                hash_id,
-                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
-                hints: None,
-                execute_timeout: None,
-            }))
+            .submit_job(
+                DomainJobKind::Execute(DomainExecuteRequest {
+                    hash_id,
+                    input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                    hints: None,
+                    execute_timeout: None,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;
@@ -795,12 +808,15 @@ mod tests {
     async fn program_not_found_error() {
         let b = MockBackend::default();
         let err = b
-            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
-                hash_id: "nonexistent".into(),
-                program_name: "nonexistent".into(),
-                with_hints: false,
-                emulator_only: false,
-            }))
+            .submit_job(
+                DomainJobKind::Setup(DomainSetupRequest {
+                    hash_id: "nonexistent".into(),
+                    program_name: "nonexistent".into(),
+                    with_hints: false,
+                    emulator_only: false,
+                }),
+                None,
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, ApiError::ProgramNotFound(_)));
@@ -829,11 +845,14 @@ mod tests {
             completed_at: Some(Utc::now()),
         };
         let job_id = b
-            .submit_job(DomainJobKind::Wrap(DomainWrapRequest {
-                proof: src_proof,
-                proof_dest: DomainProofKind::Plonk,
-                wrap_timeout: None,
-            }))
+            .submit_job(
+                DomainJobKind::Wrap(DomainWrapRequest {
+                    proof: src_proof,
+                    proof_dest: DomainProofKind::Plonk,
+                    wrap_timeout: None,
+                }),
+                None,
+            )
             .await
             .unwrap()
             .job_id;

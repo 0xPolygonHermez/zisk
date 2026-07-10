@@ -45,8 +45,12 @@ impl<B: BackendService> CoordinatorHandler<B> {
         Ok(RegisterAggregationProgramResponseDto { recurser_id })
     }
 
-    pub async fn submit_job(&self, job: DomainJobKind) -> ApiResult<SubmitJobResult> {
-        self.backend.submit_job(job).await
+    pub async fn submit_job(
+        &self,
+        job: DomainJobKind,
+        metadata: Option<String>,
+    ) -> ApiResult<SubmitJobResult> {
+        self.backend.submit_job(job, metadata).await
     }
 
     pub async fn wait_job_result(&self, job_id: Uuid, timeout: Duration) -> ApiResult<WaitResult> {

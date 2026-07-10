@@ -133,12 +133,9 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = if job.metadata.is_empty() {
-            String::new()
-        } else {
-            let pairs: Vec<String> =
-                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
-            format!(" {}", pairs.join(", "))
+        let metadata_str = match job.metadata.as_deref() {
+            Some(m) => format!(" {}", m),
+            None => String::new(),
         };
 
         info!(
@@ -498,6 +495,8 @@ impl Coordinator {
                 final_proof: all_done,
                 proof_type,
             }),
+            // Metadata is attached at job creation; later phases reuse the worker's job.
+            metadata: None,
         };
 
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);

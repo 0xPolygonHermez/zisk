@@ -46,7 +46,7 @@ pub struct LaunchProofRequestDto {
     pub inputs_mode: InputsModeDto,
     pub hints_mode: HintsModeDto,
     pub simulated_node: Option<u32>,
-    pub metadata: std::collections::BTreeMap<String, String>,
+    pub metadata: Option<String>,
     pub execution_only: bool,
     pub proof_type: ProofKind,
 }
@@ -213,6 +213,7 @@ pub struct ExecuteTaskRequestDto {
     pub worker_id: WorkerId,
     pub job_id: JobId,
     pub params: ExecuteTaskRequestTypeDto,
+    pub metadata: Option<String>,
 }
 
 pub enum ExecuteTaskRequestTypeDto {

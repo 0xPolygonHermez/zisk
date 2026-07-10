@@ -304,7 +304,11 @@ impl BackendService for CoordinatorBackend {
         Ok(recurser_id)
     }
 
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
+    async fn submit_job(
+        &self,
+        kind: DomainJobKind,
+        metadata: Option<String>,
+    ) -> ApiResult<SubmitJobResult> {
         match kind {
             DomainJobKind::Setup(r) => {
                 let job_id_internal = self
@@ -334,7 +338,7 @@ impl BackendService for CoordinatorBackend {
                         inputs_mode: domain_input_to_dto(&r.input),
                         hints_mode,
                         simulated_node: None,
-                        metadata: Default::default(),
+                        metadata,
                         execution_only: false,
                         proof_type,
                     })
@@ -358,7 +362,7 @@ impl BackendService for CoordinatorBackend {
                         inputs_mode: domain_input_to_dto(&r.input),
                         hints_mode,
                         simulated_node: None,
-                        metadata: Default::default(),
+                        metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
                     })

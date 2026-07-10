@@ -10,7 +10,7 @@ use proofman::{ContributionsInfo, ProvePhaseInputs, WitnessInfo};
 use proofman_common::ProofOptions;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{HashMap, VecDeque},
     fmt::{self, Debug, Display},
     ops::Range,
 };
@@ -292,7 +292,7 @@ pub struct Job {
     pub proof: Option<Proof>,
     pub executed_steps: Option<u64>,
     pub instances: Option<u64>,
-    pub metadata: BTreeMap<String, String>,
+    pub metadata: Option<String>,
     pub execution_only: bool,
     pub proof_type: ProofKind,
     /// Aggregation task currently in-flight to the recurser (sent, not yet acked).
@@ -314,7 +314,7 @@ impl Job {
         selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
-        metadata: BTreeMap<String, String>,
+        metadata: Option<String>,
         execution_only: bool,
         proof_type: ProofKind,
     ) -> Self {
@@ -605,7 +605,7 @@ mod tests {
             vec![],
             vec![],
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             crate::ProofKind::VadcopFinal,
         )

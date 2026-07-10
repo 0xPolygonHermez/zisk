@@ -92,7 +92,7 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
     /// Build an **extended** remote client.
     ///
     /// # Returns
-    /// 
+    ///
     /// [`RemoteClientExt`] — a wrapper around [`RemoteClient`] that overrides
     /// [`execute`](RemoteClient::execute) and [`prove`](RemoteClient::prove)
     /// to return builders that can carry extended features.
