@@ -9,6 +9,10 @@ pub mod proto {
     tonic::include_proto!("zisk.coordinator.v1");
 }
 
+pub use proto::zisk_coordinator_api_ext_client::ZiskCoordinatorApiExtClient;
+pub use proto::zisk_coordinator_api_ext_server::{
+    ZiskCoordinatorApiExt, ZiskCoordinatorApiExtServer,
+};
 pub use proto::zisk_coordinator_api_client::ZiskCoordinatorApiClient;
 pub use proto::zisk_coordinator_api_server::{ZiskCoordinatorApi, ZiskCoordinatorApiServer};
 

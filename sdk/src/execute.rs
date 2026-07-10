@@ -7,7 +7,7 @@ use zisk_prover_backend::{ExecuteOutput, GuestProgram};
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
 use crate::job_handle::{new_subscriber_list, JobHandle, JobId};
-use crate::{Client, ClientSync, ExecutorKind};
+use crate::{Client, ClientSync, ExecutorKind, RemoteClient};
 
 /// Result of an execute operation.
 pub struct ExecuteResult {
@@ -118,5 +118,83 @@ impl<'a, C: ClientSync> ExecuteRequest<'a, C> {
     pub fn run_sync(self) -> Result<ExecuteResult> {
         let subs = new_subscriber_list();
         self.client.run_execute_sync(self.program, self.stdin, self.hints, self.executor, subs)
+    }
+}
+
+/// Extended execute request builder — identical to [`ExecuteRequest`] but adds
+/// opt-in, job-level [`metadata`](Self::metadata).
+///
+/// Remote backend only; obtain via
+/// [`RemoteClientExt::execute`](crate::RemoteClientExt::execute).
+pub struct ExecuteRequestExt<'a> {
+    client: &'a RemoteClient,
+    program: &'a GuestProgram,
+    stdin: InputSource,
+    hints: Option<HintsSource>,
+    executor: ExecutorKind,
+    timeout: Option<Duration>,
+    metadata: Vec<u8>,
+}
+
+impl<'a> ExecuteRequestExt<'a> {
+    pub(crate) fn new(
+        client: &'a RemoteClient,
+        program: &'a GuestProgram,
+        stdin: impl Into<InputSource>,
+    ) -> Self {
+        Self {
+            client,
+            program,
+            stdin: stdin.into(),
+            hints: None,
+            executor: ExecutorKind::default(),
+            timeout: None,
+            metadata: Vec::new(),
+        }
+    }
+
+    /// Attach opaque, job-level metadata forwarded to the coordinator.
+    ///
+    /// The bytes are caller-defined (e.g. serde-serialized) and currently ignored
+    /// by the coordinator.
+    #[must_use]
+    pub fn metadata(mut self, metadata: impl Into<Vec<u8>>) -> Self {
+        self.metadata = metadata.into();
+        self
+    }
+
+    /// Attach a hints stream to this execute request.
+    #[must_use]
+    pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
+        self.hints = Some(hints.into());
+        self
+    }
+
+    /// Override the executor for this execute call.
+    #[must_use]
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
+        self.executor = executor;
+        self
+    }
+
+    /// Set a timeout for the execution.
+    #[must_use]
+    pub fn timeout(mut self, duration: Duration) -> Self {
+        self.timeout = Some(duration);
+        self
+    }
+
+    /// Submit the execution, returning a [`JobHandle<ExecuteResult>`].
+    pub fn run(self) -> Result<JobHandle<ExecuteResult>> {
+        let subs = new_subscriber_list();
+        self.client.do_execute_ext(
+            self.program,
+            self.stdin,
+            self.hints,
+            self.executor,
+            self.timeout,
+            subs,
+            self.metadata,
+        )
     }
 }

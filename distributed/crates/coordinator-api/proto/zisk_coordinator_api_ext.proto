@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package zisk.coordinator.v1;
+
+import "zisk_coordinator_api.proto";
+
+// ============================================================================
+// ZisK Coordinator Extended API
+//
+// Opt-in companion service carrying job-level metadata alongside the standard
+// job submission. Reuses the core `JobKind`/`JobResponse` types from
+// `zisk_coordinator_api.proto` (same package) so the base contract stays
+// untouched. Clients that don't need metadata use `ZiskCoordinatorApi`.
+// ============================================================================
+
+service ZiskCoordinatorApiExt {
+  // Submit a job with attached job-level metadata. Behaves exactly like
+  // `ZiskCoordinatorApi.JobRequest` for the enclosed `job_kind`; the
+  // `metadata` is opaque and currently ignored by the coordinator.
+  rpc JobRequestExt(JobRequestExtMessage)
+      returns (JobResponse);
+}
+
+message JobRequestExtMessage {
+  JobKind job_kind = 1;
+  // Opaque, caller-defined blob (e.g. serde-serialized). Applies to the whole
+  // job regardless of kind. Currently ignored by the coordinator.
+  bytes   metadata = 2;
+}

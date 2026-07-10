@@ -14,8 +14,42 @@ use zisk_prover_backend::GuestProgram;
 use crate::{Result, SdkError};
 
 impl RemoteClient {
+    /// Submit a prove job over the standard coordinator API.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_prove(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        proof_kind: ProofKind,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+    ) -> Result<JobHandle<ProveResult>> {
+        self.submit_prove(program, stdin, hints, executor, proof_kind, timeout, subs, None)
+    }
+
+    /// Submit a prove job over the extended coordinator API, attaching opaque
+    /// job-level `metadata` (currently ignored by the coordinator).
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn do_prove_ext(
+        &self,
+        program: &GuestProgram,
+        stdin: InputSource,
+        hints: Option<HintsSource>,
+        executor: ExecutorKind,
+        proof_kind: ProofKind,
+        timeout: Option<Duration>,
+        subs: SubscriberList,
+        metadata: Vec<u8>,
+    ) -> Result<JobHandle<ProveResult>> {
+        self.submit_prove(program, stdin, hints, executor, proof_kind, timeout, subs, Some(metadata))
+    }
+
+    /// Shared prove submission. `metadata` selects the transport: `Some` routes
+    /// through the extended API (`submit_job_ext`), `None` through the standard one.
+    #[allow(clippy::too_many_arguments)]
+    fn submit_prove(
         &self,
         program: &GuestProgram,
         stdin: InputSource,
@@ -24,6 +58,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
+        metadata: Option<Vec<u8>>,
     ) -> Result<JobHandle<ProveResult>> {
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 
@@ -48,7 +83,11 @@ impl RemoteClient {
             proof_dest,
         });
 
-        let remote_job = self.gw.submit_job(job_kind).map_err(SdkError::backend)?;
+        let remote_job = match metadata {
+            Some(metadata) => self.gw.submit_job_ext(job_kind, metadata),
+            None => self.gw.submit_job(job_kind),
+        }
+        .map_err(SdkError::backend)?;
 
         // gRPC streams need an InputSender injected after job submission.
         if let Some(ref stream) = maybe_stream {

@@ -19,6 +19,7 @@ use crate::backend::BackendService;
 use crate::errors::ApiError;
 use crate::handler::CoordinatorHandler;
 use crate::proto::zisk_coordinator_api_server::ZiskCoordinatorApi;
+use crate::proto::zisk_coordinator_api_ext_server::ZiskCoordinatorApiExt;
 use crate::proto::*;
 use zisk_coordinator_api::dto::{
     RegisterAggregationProgramRequestDto, RegisterGuestProgramRequestDto,
@@ -305,6 +306,34 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
             .map_err(Status::from);
 
         Self::log_call("CancelJob", start, result.as_ref().map(|_| ()));
+        result
+    }
+}
+
+#[tonic::async_trait]
+impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
+    #[instrument(level = "debug", skip(self, request))]
+    async fn job_request_ext(
+        &self,
+        request: Request<JobRequestExtMessage>,
+    ) -> Result<Response<JobResponse>, Status> {
+        let start = Instant::now();
+        // `metadata` is opaque and currently ignored; behaviour matches `job_request`.
+        let kind = request
+            .into_inner()
+            .job_kind
+            .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
+            .try_into()
+            .map_err(|e: String| Status::invalid_argument(e))?;
+
+        let result = self
+            .handler
+            .submit_job(kind)
+            .await
+            .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
+            .map_err(Status::from);
+
+        Self::log_call("JobRequestExt", start, result.as_ref().map(|_| ()));
         result
     }
 }

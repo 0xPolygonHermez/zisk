@@ -88,6 +88,20 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
             .map_err(SdkError::backend)?;
         Ok(RemoteClient { gw }.into())
     }
+
+    /// Build an **extended** remote client.
+    ///
+    /// # Returns
+    /// 
+    /// [`RemoteClientExt`] — a wrapper around [`RemoteClient`] that overrides
+    /// [`execute`](RemoteClient::execute) and [`prove`](RemoteClient::prove)
+    /// to return builders that can carry extended features.
+    pub fn build_ext(self) -> Result<RemoteClientExt> {
+        crate::client::ensure_single_instance();
+        let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
+            .map_err(SdkError::backend)?;
+        Ok(RemoteClientExt { inner: RemoteClient { gw } })
+    }
 }
 
 /// Remote client implementation.
@@ -257,6 +271,49 @@ impl RemoteClient {
         input_b: impl Into<AggregationInput<'a>>,
     ) -> AggregateProofsRequest<'a, Self> {
         AggregateProofsRequest::new(self, agg, input_a.into(), input_b.into())
+    }
+}
+
+/// Extended remote client with opt-in, job-level metadata on `execute`/`prove`.
+///
+/// Built via [`RemoteClientBuilder::build_ext`]. Dereferences to [`RemoteClient`],
+/// so every other operation (`setup`, `upload`, `wrap_proof`, `aggregate_proofs`,
+/// …) is available unchanged; only [`execute`](Self::execute) and
+/// [`prove`](Self::prove) are overridden to return metadata-capable builders.
+#[derive(Clone)]
+pub struct RemoteClientExt {
+    inner: RemoteClient,
+}
+
+impl std::ops::Deref for RemoteClientExt {
+    type Target = RemoteClient;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl RemoteClientExt {
+    /// Submit a prove request that can carry opaque job-level metadata via
+    /// [`ProveRequestExt::metadata`](crate::ProveRequestExt::metadata).
+    #[must_use]
+    pub fn prove<'a>(
+        &'a self,
+        program: &'a GuestProgram,
+        stdin: impl Into<InputSource>,
+    ) -> crate::prove::ProveRequestExt<'a> {
+        crate::prove::ProveRequestExt::new(&self.inner, program, stdin)
+    }
+
+    /// Submit an execute request (dry-run, no proof) that can carry opaque
+    /// job-level metadata via
+    /// [`ExecuteRequestExt::metadata`](crate::ExecuteRequestExt::metadata).
+    #[must_use]
+    pub fn execute<'a>(
+        &'a self,
+        program: &'a GuestProgram,
+        stdin: impl Into<InputSource>,
+    ) -> crate::execute::ExecuteRequestExt<'a> {
+        crate::execute::ExecuteRequestExt::new(&self.inner, program, stdin)
     }
 }
 
