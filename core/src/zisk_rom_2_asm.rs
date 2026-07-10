@@ -2702,8 +2702,10 @@ impl ZiskRom2Asm {
                 } else {
                     assert!(ctx.store_a_in_c);
                     *code += &ctx.full_line_comment("Add: c = a".to_string());
-                    // If B is too high for the x86_64 operation encoding, move it to a register
-                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
                             REG_B,
@@ -2751,8 +2753,10 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Sub: ignoring b since b = 0".to_string());
                 } else {
-                    // If B is too high for the x86_64 operation encoding, move it to a register
-                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
                             REG_B,
@@ -2785,8 +2789,10 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("SubW: ignoring b since b = 0".to_string());
                 } else {
-                    // If B is too high for the x86_64 operation encoding, move it to a register
-                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
                             REG_B,
@@ -2994,8 +3000,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Eq => {
                 assert!(ctx.store_a_in_a);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3033,8 +3041,10 @@ impl ZiskRom2Asm {
                     );
                 }
                 // Compare against b, either as a numeric constant or as a register
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3077,8 +3087,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Ltu => {
                 assert!(ctx.store_a_in_a);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3107,8 +3119,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Lt => {
                 assert!(ctx.store_a_in_a);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3138,8 +3152,10 @@ impl ZiskRom2Asm {
             ZiskOp::LtuW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3183,8 +3199,10 @@ impl ZiskRom2Asm {
             ZiskOp::LtW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3227,8 +3245,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Leu => {
                 assert!(ctx.store_a_in_a);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3257,8 +3277,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Le => {
                 assert!(ctx.store_a_in_a);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3288,8 +3310,10 @@ impl ZiskRom2Asm {
             ZiskOp::LeuW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3333,8 +3357,10 @@ impl ZiskRom2Asm {
             ZiskOp::LeW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -3380,8 +3406,10 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0xffffffffffffffff) {
                     *code += &ctx.full_line_comment("And: ignoring b since b = f's".to_string());
                 } else {
-                    // If B is too high for the x86_64 operation encoding, move it to a register
-                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
                             REG_B,
@@ -3406,8 +3434,10 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Or: ignoring b since b = 0".to_string());
                 } else {
-                    // If B is too high for the x86_64 operation encoding, move it to a register
-                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
                             REG_B,
@@ -3432,8 +3462,10 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Xor: ignoring b since b = 0".to_string());
                 } else {
-                    // If B is too high for the x86_64 operation encoding, move it to a register
-                    if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
                         *code += &format!(
                             "\tmov {}, {} {}\n",
                             REG_B,
@@ -4158,8 +4190,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Minu => {
                 assert!(ctx.store_a_in_c);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -4188,8 +4222,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Min => {
                 assert!(ctx.store_a_in_c);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -4250,8 +4286,10 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Maxu => {
                 assert!(ctx.store_a_in_c);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
@@ -4280,13 +4318,15 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Max => {
                 assert!(ctx.store_a_in_c);
-                // If B is too high for the x86_64 operation encoding, move it to a register
-                if ctx.b.is_constant && (ctx.b.constant_value > 0x7fffffff) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
                         ctx.b.string_value,
-                        ctx.comment_str("Maxu: b = constant")
+                        ctx.comment_str("Max: b = constant")
                     );
                     ctx.b.is_saved = true;
                     ctx.b.string_value = REG_B.to_string();
