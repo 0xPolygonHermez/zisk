@@ -7,7 +7,7 @@ use zisk_coordinator_api::dto::{
     DomainAggregationProgramSpec, DomainJobKind, RegisterAggregationProgramRequestDto,
     RegisterGuestProgramRequestDto,
 };
-use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobKind, JobRequestExtMessage};
+use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobKindExt, JobRequestExtMessage};
 use zisk_coordinator_api::grpc::{ZiskCoordinatorApiClient, ZiskCoordinatorApiExtClient};
 
 use crate::input_sender::InputSender;
@@ -83,9 +83,10 @@ impl CoordinatorClient {
 
     /// Submit an extended job
     pub fn submit_job_ext(&self, kind: DomainJobKind, metadata: Vec<u8>) -> Result<Job> {
+        let job_kind = JobKindExt::try_from(kind).map_err(|e| anyhow::anyhow!(e))?;
         let resp = block_on(async {
             let mut gw = self.ext.clone();
-            let req = JobRequestExtMessage { job_kind: Some(JobKind::from(kind)), metadata };
+            let req = JobRequestExtMessage { job_kind: Some(job_kind), metadata };
             let resp = gw.job_request_ext(req).await.context("JobRequestExt RPC failed")?;
             Ok::<_, anyhow::Error>(resp.into_inner())
         })?;
