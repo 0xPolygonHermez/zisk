@@ -186,7 +186,7 @@ impl WorkersPool {
         let mut snapshot = CapacitySnapshot::default();
         for w in workers.values() {
             let units = w.compute_capacity.compute_units;
-            match w.state {
+            match &w.state {
                 WorkerState::Ready => snapshot.available += units,
                 WorkerState::SettingUp => snapshot.recovering += units,
                 WorkerState::Computing(_) => snapshot.busy += units,

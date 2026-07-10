@@ -935,8 +935,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             // run is a synchronous round-trip, so when it returns the child has
             // reset and stopped touching the shmem the next job reuses. Bounded
             // so a stuck task can't wedge recovery.
-            Self::drain_cancelled_computation(compute_handle, &format!("[Recovery] {worker_id}"))
-                .await;
+            let recovery_context = format!("[Recovery] {worker_id}");
+            Self::drain_cancelled_computation(compute_handle, &recovery_context).await;
 
             let join = tokio::time::timeout(
                 Self::RECOVERY_TIMEOUT,

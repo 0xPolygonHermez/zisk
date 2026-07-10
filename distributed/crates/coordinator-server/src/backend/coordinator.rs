@@ -188,7 +188,7 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
     use zisk_coordinator::CoordinatorError;
     match e {
         CoordinatorError::InsufficientCapacity => {
-            ApiError::ClusterUnavailable { reason: "no workers connected" }
+            ApiError::ClusterUnavailable { reason: "insufficient ready capacity for the request" }
         }
         CoordinatorError::WorkersSettingUp => {
             ApiError::ClusterUnavailable { reason: "workers are setting up; retry shortly" }
