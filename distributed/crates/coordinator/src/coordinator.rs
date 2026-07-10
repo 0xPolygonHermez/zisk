@@ -966,9 +966,12 @@ impl Coordinator {
             }
         }
 
-        let available = self.workers_pool.available_compute_capacity().await.compute_units;
-        let recovering = self.workers_pool.recovering_compute_capacity().await.compute_units;
-        let busy = self.workers_pool.busy_compute_capacity().await.compute_units;
+        // Single-lock snapshot: reading these separately would let a worker's
+        // state transition between acquisitions, yielding an inconsistent view.
+        let snapshot = self.workers_pool.capacity_snapshot().await;
+        let available = snapshot.available;
+        let recovering = snapshot.recovering;
+        let busy = snapshot.busy;
 
         let default_requested =
             if cfg.default_compute_units == 0 { available } else { cfg.default_compute_units };
@@ -1002,7 +1005,7 @@ impl Coordinator {
             if busy > 0 {
                 return Err(CoordinatorError::WorkersBusy);
             }
-            if self.workers_pool.idle_workers().await > 0 {
+            if snapshot.idle_workers > 0 {
                 return Err(CoordinatorError::WorkersNotSetup);
             }
             return Err(CoordinatorError::InsufficientCapacity);
