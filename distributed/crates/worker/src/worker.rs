@@ -235,6 +235,9 @@ pub struct ProverConfig {
     /// Enable GPU acceleration
     pub gpu: bool,
 
+    /// Run mops planner on CPU even with GPU proving (leaves proof generation on GPU)
+    pub cpu_mops: bool,
+
     /// Enable PLONK proofs
     pub plonk: bool,
 
@@ -287,6 +290,7 @@ impl ProverConfig {
             asm_out_file: prover_service_config.asm_out_file,
             minimal_memory: prover_service_config.minimal_memory,
             gpu: prover_service_config.gpu,
+            cpu_mops: prover_service_config.cpu_mops,
             max_streams: prover_service_config.max_streams,
             max_recursive_streams: prover_service_config.max_recursive_streams,
             number_threads_witness: prover_service_config.number_threads_witness,
@@ -373,6 +377,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if prover_config.gpu {
             prover_options = prover_options.gpu();
         }
+        if prover_config.cpu_mops {
+            prover_options = prover_options.cpu_mops();
+        }
         if let Some(max_streams) = prover_config.max_streams {
             prover_options = prover_options.max_streams(max_streams);
         }
@@ -426,6 +433,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
         if prover_config.gpu {
             prover_options = prover_options.gpu();
+        }
+        if prover_config.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
         if let Some(max_streams) = prover_config.max_streams {
             prover_options = prover_options.max_streams(max_streams);
