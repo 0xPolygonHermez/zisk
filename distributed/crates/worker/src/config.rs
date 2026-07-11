@@ -140,6 +140,7 @@ pub struct ProverServiceConfigDto {
     pub max_witness_stored: Option<usize>,
     pub minimal_memory: bool,
     pub gpu: bool,
+    pub cpu_mops: bool,
     pub plonk: bool,
     pub preload_plonk: bool,
 }
