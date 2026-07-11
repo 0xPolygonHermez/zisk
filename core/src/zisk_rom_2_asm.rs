@@ -2537,6 +2537,8 @@ impl ZiskRom2Asm {
                 *code += "\tcall chunk_end\n";
             } else {
                 *code += &format!("\tjz pc_{:x}_step_zero\n", ctx.pc);
+
+                // If step == 0, then call chunk_end_and_start, setting pc to the next instruction
                 *unusual_code += &format!("\npc_{:x}_step_zero:\n", ctx.pc);
                 Self::set_pc(ctx, instruction, unusual_code, "z", rom);
                 // Store the value of jump_to_dynamic_pc before setting calling set_pc again
@@ -2555,12 +2557,13 @@ impl ZiskRom2Asm {
                 );
                 *unusual_code += "\tjae emu_end\n";
                 *unusual_code += &format!("\tjmp pc_{:x}_step_done\n", ctx.pc);
+
+                *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
                 Self::set_pc(ctx, instruction, code, "nz", rom);
                 // Restore, if needed, the value of jump_to_dynamic_pc after calling set_pc
                 if jump_to_dynamic_pc {
                     ctx.jump_to_dynamic_pc = true;
                 }
-                *code += &format!("pc_{:x}_step_done:\n", ctx.pc);
             }
         }
         if ctx.fast() || ctx.rom_histogram() {
@@ -5412,7 +5415,12 @@ impl ZiskRom2Asm {
                 }
 
                 // Set result
-                *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.a.string_value,
+                    ctx.comment_str("c = a = destination")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -5518,7 +5526,12 @@ impl ZiskRom2Asm {
                 }
 
                 // Set result
-                *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.a.string_value,
+                    ctx.comment_str("c = a = destination")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -5565,7 +5578,12 @@ impl ZiskRom2Asm {
                 }
 
                 // Set result
-                *code += &format!("\tmov {}, rax {}\n", REG_C, ctx.comment_str("c = rax"));
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C,
+                    ctx.a.string_value,
+                    ctx.comment_str("c = a = destination")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -5753,12 +5771,14 @@ impl ZiskRom2Asm {
             // Calculate the new pc if flag == 1
             *code += &format!("\tcmp {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag == 1 ?"));
             *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
-            *code += &format!(
-                "\tmov {}, 0x{:x} {}\n",
-                REG_PC,
-                (ctx.pc as i64 + instruction.jmp_offset1) as u64,
-                ctx.comment_str("pc += i.jmp_offset1")
-            );
+            if id == "z" {
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset1) as u64,
+                    ctx.comment_str("pc += i.jmp_offset1")
+                );
+            }
             if id == "nz" {
                 *code += &format!(
                     "\tjmp pc_{:x} {}\n",
@@ -5772,12 +5792,14 @@ impl ZiskRom2Asm {
 
             // Calculate the new pc if flag == 0
             *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
-            *code += &format!(
-                "\tmov {}, 0x{:x} {}\n",
-                REG_PC,
-                (ctx.pc as i64 + instruction.jmp_offset2) as u64,
-                ctx.comment_str("pc += i.jmp_offset2")
-            );
+            if id == "z" {
+                *code += &format!(
+                    "\tmov {}, 0x{:x} {}\n",
+                    REG_PC,
+                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                    ctx.comment_str("pc += i.jmp_offset2")
+                );
+            }
             if id == "nz" {
                 *code += &format!(
                     "\tjmp pc_{:x} {}\n",
@@ -5787,7 +5809,6 @@ impl ZiskRom2Asm {
             }
             if id == "z" {
                 *code += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
-                ctx.jump_to_dynamic_pc = true;
             }
         }
     }

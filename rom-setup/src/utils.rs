@@ -88,10 +88,10 @@ pub fn get_elf_bin_file_path_with_hash(
         "{}_{}_{}_{}_{}_{}{}.bin",
         hash,
         pilout_hash,
-        &n.to_string(),
+        n,
         hash_mode.file_tag(),
-        &hash_mode.blowup_factor().to_string(),
-        &hash_mode.merkle_tree_arity().to_string(),
+        hash_mode.blowup_factor(),
+        hash_mode.merkle_tree_arity(),
         gpu_suffix
     );
 
@@ -111,10 +111,10 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
         "{}_{}_{}_{}_{}_{}.verkey.bin",
         hash,
         pilout_hash,
-        &n.to_string(),
+        n,
         hash_mode.file_tag(),
-        &hash_mode.blowup_factor().to_string(),
-        &hash_mode.merkle_tree_arity().to_string(),
+        hash_mode.blowup_factor(),
+        hash_mode.merkle_tree_arity(),
     );
 
     Ok(default_cache_path.join(rom_cache_file_name))

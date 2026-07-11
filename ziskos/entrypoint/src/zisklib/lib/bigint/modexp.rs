@@ -1,4 +1,4 @@
-// TODO: It can be speed up by using Montgomery multiplication but knowning that divisions are "free"
+// TODO: The long path can be sped up by using Montgomery multiplication but knowing that divisions are "free"
 // For ref: https://www.microsoft.com/en-us/research/wp-content/uploads/1996/01/j37acmon.pdf
 
 #[cfg(zisk_guest)]
@@ -9,8 +9,8 @@ use crate::alloc_extern::vec::Vec;
 use crate::zisklib::fcall_bin_decomp;
 
 use super::{
-    mul_and_reduce_long, mul_and_reduce_short, rem_long_init, rem_short_init,
-    square_and_reduce_long, square_and_reduce_short, LongScratch, ShortScratch, U256,
+    mul_and_reduce_long, mulmod_short, rem_long_init, rem_short_init, square_and_reduce_long,
+    LongScratch, U256,
 };
 
 /// Modular exponentiation of three large numbers
@@ -130,9 +130,6 @@ fn modexp_short(
     }
     assert_eq!(rec_exp[..], *exp, "Exponent decomposition mismatch");
 
-    // Scratch space
-    let mut scratch = ShortScratch::new();
-
     // Initialize out = base
     let mut out = base;
     for &bit in bits.iter().skip(1) {
@@ -143,21 +140,20 @@ fn modexp_short(
         }
 
         // Compute out = out² (mod modulus)
-        out = square_and_reduce_short(
+        out = mulmod_short(
+            &out,
             &out,
             modulus,
-            &mut scratch,
             #[cfg(feature = "hints")]
             hints,
         );
 
         if bit == 1 {
             // Compute out = (out * base) (mod modulus)
-            out = mul_and_reduce_short(
+            out = mulmod_short(
                 &out,
                 &base,
                 modulus,
-                &mut scratch,
                 #[cfg(feature = "hints")]
                 hints,
             );
