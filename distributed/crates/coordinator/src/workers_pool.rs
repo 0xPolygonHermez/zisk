@@ -120,6 +120,37 @@ impl WorkersPool {
         self.workers.read().await.values().filter(|p| p.state == WorkerState::Idle).count()
     }
 
+    /// Atomically flips every currently-`Idle` worker to `SettingUp` and returns
+    /// their IDs — the back-fill analogue of [`Self::try_reserve_all_for_setup`],
+    /// but touching only `Idle` workers. Same refusal guard (rejects while any
+    /// worker is `Computing` or recovery is pending) and same lock order
+    /// (`workers` then `pending_recovery`). Single critical section so a
+    /// concurrent disconnect can't be clobbered back into `SettingUp`.
+    pub async fn reserve_idle_for_setup<V>(
+        &self,
+        pending_recovery: &RwLock<HashMap<WorkerId, V>>,
+    ) -> CoordinatorResult<Vec<WorkerId>> {
+        let mut workers = self.workers.write().await;
+        if workers.values().any(|w| matches!(w.state, WorkerState::Computing(_))) {
+            return Err(CoordinatorError::InvalidRequest(
+                "Cannot back-fill setup while workers are computing".to_string(),
+            ));
+        }
+        if !pending_recovery.read().await.is_empty() {
+            return Err(CoordinatorError::InvalidRequest(
+                "Cannot back-fill setup while workers are recovering".to_string(),
+            ));
+        }
+        let mut reserved = Vec::new();
+        for (wid, info) in workers.iter_mut() {
+            if info.state == WorkerState::Idle {
+                info.state = WorkerState::SettingUp;
+                reserved.push(wid.clone());
+            }
+        }
+        Ok(reserved)
+    }
+
     /// Returns the number of workers currently running setup (not yet eligible for jobs).
     pub async fn setting_up_workers(&self) -> usize {
         self.workers.read().await.values().filter(|p| p.state == WorkerState::SettingUp).count()
