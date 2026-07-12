@@ -16,7 +16,15 @@ require "opids.pil"
     SEXT_W   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20        + 2^12 + 2^11 => 2^22
 */
 
-const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 10 + P2_11 * 7;
+const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 10 + P2_11 * 10 + P2_17 * 4;
+
+// Row where the byte-chain blocks (CTZ, CTZ_W, CLZ, CLZ_W) start. Each chain op enumerates its
+// acc_in input (0..63, the "outer" dimension, stride P2_11) instead of the B operand, so each
+// block is 2^6 (acc_in) * 2^3 (offset) * 2^8 (byte) = P2_17 rows.
+const int CTZ_TABLE_OFFSET = P2_19 * 10 + P2_11 * 7;
+const int CTZ_W_TABLE_OFFSET = CTZ_TABLE_OFFSET + P2_17;
+const int CLZ_TABLE_OFFSET = CTZ_TABLE_OFFSET + P2_17 * 2;
+const int CLZ_W_TABLE_OFFSET = CTZ_TABLE_OFFSET + P2_17 * 3;
 
 airtemplate BinaryExtensionTable(const int N = 2**22) {
     if (N < BINARY_EXTENSION_TABLE_SIZE) {
@@ -33,18 +41,20 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
     const int LS_5_BITS = 0x1F;
     const int LS_6_BITS = 0x3F;
 
+    // Number of bytes of the 64-bit word (must match BYTES in binary_extension.pil).
+    const int BYTES = 8;
+
     // Input A    (8 bits)
     col fixed A = [0..255]...;
-
-    // Offset     (3 bits)
-    col fixed OFFSET = [0:P2_8..7:P2_8]...;
 
     // Input B    (8 bits)
     col fixed B = [[0:P2_11..255:P2_11]:3, // SLL, SRL, SRA
                    [0:P2_11..255:P2_11]:3, // SLL_W, SRL_W, SRA_W
                     0:(P2_11*5),           // SEXT_B, SEXT_H, SEXT_W, REV8, ORCB
                    [0:P2_11..255:P2_11]:4, // ROL, ROL_W, ROR, ROR_W (use B)
-                    0:(P2_11*2)]...;       // CPOP, CPOP_W (single input, B unused)
+                    0:(P2_11*2),           // CPOP, CPOP_W (single input, B unused)
+                    0:(P2_17*4),           // CTZ, CTZ_W, CLZ, CLZ_W (single input, B unused; acc_in in C1)
+                    0:(P2_11*3)]...;       // PACK, PACK_H, PACK_W (two inputs interleaved in free_in_a; B unused)
 
     // Operation opcode
     col fixed OP = [   OP_SLL:P2_19,    OP_SRL:P2_19,    OP_SRA:P2_19,     // SLL, SRL, SRA
@@ -53,18 +63,31 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                      OP_REV8:P2_11,   OP_ORCB:P2_11,                       // REV8, ORCB
                       OP_ROL:P2_19,   OP_ROL_W:P2_19,                      // ROL, ROL_W
                       OP_ROR:P2_19,   OP_ROR_W:P2_19,                      // ROR, ROR_W
-                     OP_CPOP:P2_11, OP_CPOP_W:P2_11]...;                   // CPOP, CPOP_W
+                     OP_CPOP:P2_11, OP_CPOP_W:P2_11,                       // CPOP, CPOP_W
+                      OP_CTZ:P2_17,  OP_CTZ_W:P2_17,                       // CTZ, CTZ_W
+                      OP_CLZ:P2_17,  OP_CLZ_W:P2_17,                       // CLZ, CLZ_W
+                     OP_PACK:P2_11, OP_PACK_H:P2_11, OP_PACK_W:P2_11]...;  // PACK, PACK_H, PACK_W
 
 
     col fixed C0; // Output C0  (32 bits)
     col fixed C1; // Output C1  (32 bits)
-    col fixed FLAGS; // Flags (1 bit): op_is_shift
+    // Position column: encodes both the byte offset and the operation flags in a single fixed
+    // column, POS = offset + BYTES * (op_is_shift + 2 * op_is_chain). This lets the caller send
+    // one combined value (j + BYTES * flags) instead of a separate offset plus two flag columns,
+    // saving fixed columns. flags is 0 (single-input), 1 (shift) or 2 (chain); never both.
+    col fixed POS;
 
     #pragma transpile
     for (int i = 0; i < N; i++) {
-        int [op, offset, a, b] = [OP[i], OFFSET[i], A[i], B[i]];
+        // offset is the middle dimension (stride P2_8, cycles 0..7); derived from the row index
+        // so no dedicated OFFSET column is needed.
+        const int offset = (i / P2_8) % BYTES;
+        int [op, a, b] = [OP[i], A[i], B[i]];
         int out = 0;
         int op_is_shift = 0;
+        int op_is_chain = 0;
+        int op_is_chain_rev = 0;
+        int op_is_combine = 0;
         const int a_pos = a << (8*offset);
         switch (op) {
             case OP_SLL: // SLL: Shift Left Logical
@@ -262,6 +285,114 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                 }
                 // op_is_shift stays 0 (single input, per-byte, like SEXT)
 
+            case OP_CTZ: // CTZ: count trailing zeros of the 64-bit value
+                // Byte-chain op. acc_in is the running count entering this byte, enumerated as
+                // the outer dimension (0..63) and carried in C1. The byte is "still counting"
+                // (all lower bytes were zero) iff acc_in == 8*offset. In that case it adds its
+                // own trailing-zero count (8 if the byte is zero, else 0..7); otherwise it is
+                // already past the first set bit and adds 0. Increments telescope to ctz.
+                const int ctz_acc_in = (i - CTZ_TABLE_OFFSET) / P2_11;
+                int ctz_tz = 0;
+                for (int k = 0; k < 8; k++) {
+                    if (ctz_tz == k && ((a >> k) & 0x01) == 0) {
+                        ctz_tz = ctz_tz + 1;
+                    }
+                }
+                int ctz_incr = (ctz_acc_in == 8 * offset) ? ctz_tz : 0;
+                // C0 = increment, C1 = acc_in
+                out = ctz_incr + (ctz_acc_in << 32);
+                op_is_chain = 1;
+
+            case OP_CTZ_W: // CTZ_W: count trailing zeros of the low 32 bits
+                // Same chain as CTZ but only the low 4 bytes participate; bytes at offset >= 4
+                // add nothing. If all 4 low bytes are zero the increments reach 32.
+                const int ctzw_acc_in = (i - CTZ_W_TABLE_OFFSET) / P2_11;
+                int ctzw_tz = 0;
+                for (int k = 0; k < 8; k++) {
+                    if (ctzw_tz == k && ((a >> k) & 0x01) == 0) {
+                        ctzw_tz = ctzw_tz + 1;
+                    }
+                }
+                int ctzw_incr = 0;
+                if (offset < 4) {
+                    ctzw_incr = (ctzw_acc_in == 8 * offset) ? ctzw_tz : 0;
+                }
+                out = ctzw_incr + (ctzw_acc_in << 32);
+                op_is_chain = 1;
+
+            case OP_CLZ: // CLZ: count leading zeros of the 64-bit value
+                // Reverse byte-chain op (scanned MSB -> LSB). The position threshold is measured
+                // from the top: the byte is "still counting" (all higher bytes were zero) iff
+                // acc_in == 8*(BYTES-1-offset). In that case it adds its own leading-zero count
+                // (8 if the byte is zero, else 0..7); otherwise it adds 0. Increments telescope
+                // to clz. acc_in is enumerated (0..63) as the outer dimension and carried in C1.
+                const int clz_acc_in = (i - CLZ_TABLE_OFFSET) / P2_11;
+                int clz_lz = 0;
+                for (int k = 0; k < 8; k++) {
+                    if (clz_lz == k && ((a >> (7 - k)) & 0x01) == 0) {
+                        clz_lz = clz_lz + 1;
+                    }
+                }
+                int clz_incr = (clz_acc_in == 8 * (BYTES - 1 - offset)) ? clz_lz : 0;
+                out = clz_incr + (clz_acc_in << 32);
+                op_is_chain_rev = 1;
+
+            case OP_CLZ_W: // CLZ_W: count leading zeros of the low 32 bits
+                // Same reverse chain as CLZ but over the low 4 bytes only; the top of the 32-bit
+                // word is byte offset 3. Bytes at offset >= 4 add nothing. If all 4 low bytes are
+                // zero the increments reach 32.
+                const int clzw_acc_in = (i - CLZ_W_TABLE_OFFSET) / P2_11;
+                int clzw_lz = 0;
+                for (int k = 0; k < 8; k++) {
+                    if (clzw_lz == k && ((a >> (7 - k)) & 0x01) == 0) {
+                        clzw_lz = clzw_lz + 1;
+                    }
+                }
+                int clzw_incr = 0;
+                if (offset < 4) {
+                    clzw_incr = (clzw_acc_in == 8 * (3 - offset)) ? clzw_lz : 0;
+                }
+                out = clzw_incr + (clzw_acc_in << 32);
+                op_is_chain_rev = 1;
+
+            case OP_PACK: // PACK: rd = rs1[31:0] | (rs2[31:0] << 32)
+                // Two-input op. free_in_a holds rs1[31:0] in its low 4 bytes and rs2[31:0] in its
+                // high 4 bytes, so each byte just lands at its own position (identity placement).
+                out = a_pos;
+                op_is_combine = 1;
+
+            case OP_PACK_H: // PACK_H: rd = rs1[7:0] | (rs2[7:0] << 8)
+                // Only byte 0 (rs1[7:0]) and byte 4 (rs2[7:0]) contribute; the latter moves to
+                // result byte 1. All other bytes are ignored.
+                if (offset == 0) {
+                    out = a;          // rs1[7:0] at byte 0
+                } else if (offset == 4) {
+                    out = a << 8;     // rs2[7:0] at byte 1
+                } else {
+                    out = 0;
+                }
+                op_is_combine = 1;
+
+            case OP_PACK_W: // PACK_W: rd = sext32(rs1[15:0] | (rs2[15:0] << 16))
+                // Bytes 0,1 (rs1[15:0]) land at result bytes 0,1; bytes 4,5 (rs2[15:0]) land at
+                // result bytes 2,3. The result is a 32-bit value sign-extended to 64 bits; the
+                // sign bit is bit 7 of byte 5 (bit 31 of the result).
+                if (offset == 0) {
+                    out = a;          // rs1[7:0]   at byte 0
+                } else if (offset == 1) {
+                    out = a << 8;     // rs1[15:8]  at byte 1
+                } else if (offset == 4) {
+                    out = a << 16;    // rs2[7:0]   at byte 2
+                } else if (offset == 5) {
+                    out = a << 24;    // rs2[15:8]  at byte 3
+                    if (a & SIGN_BYTE) {
+                        out = out | SE_MASK_32;
+                    }
+                } else {
+                    out = 0;
+                }
+                op_is_combine = 1;
+
             default:
                 error(`Invalid operation opcode: ${op} at row ${i}`);
         }
@@ -270,11 +401,11 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
         const int c1 = (out >> 32) & MASK_32;
         C0[i] = c0;
         C1[i] = c1;
-        const int flags = op_is_shift;
-        FLAGS[i] = flags;
-        log(`T[${i}] = [${op}, ${offset}, ${a}, ${b}, ${c0}, ${c1}, ${flags}]`);
+        const int pos = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev + 8 * op_is_combine);
+        POS[i] = pos;
+        log(`T[${i}] = [${op}, ${pos}, ${a}, ${b}, ${c0}, ${c1}]`);
     }
 
     col witness multiplicity;
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET, A, B, C0, C1, FLAGS], multiplicity);
+    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, POS, A, B, C0, C1], multiplicity);
 }

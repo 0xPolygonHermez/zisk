@@ -77,6 +77,13 @@ const int OP_ROR = 0x3b;
 const int OP_ROR_W = 0x3c;
 const int OP_CPOP = 0x41;
 const int OP_CPOP_W = 0x42;
+const int OP_CTZ = 0x3f;
+const int OP_CTZ_W = 0x40;
+const int OP_CLZ = 0x3d;
+const int OP_CLZ_W = 0x3e;
+const int OP_PACK = 0x36;
+const int OP_PACK_H = 0x37;
+const int OP_PACK_W = 0x38;
 
 const int OP_PUBOUT = 0x30;
 

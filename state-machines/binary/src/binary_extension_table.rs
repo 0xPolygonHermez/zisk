@@ -3,7 +3,7 @@
 //!
 //! This state machine is responsible for calculating extension binary table rows.
 
-use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_19, P2_8};
+use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_17, P2_19, P2_8};
 
 /// Represents operations supported by the Binary Extension Table.
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -26,6 +26,13 @@ pub enum BinaryExtensionTableOp {
     RorW = ZiskOp::RorW.code(),
     Cpop = ZiskOp::Cpop.code(),
     CpopW = ZiskOp::CpopW.code(),
+    Ctz = ZiskOp::Ctz.code(),
+    CtzW = ZiskOp::CtzW.code(),
+    Clz = ZiskOp::Clz.code(),
+    ClzW = ZiskOp::ClzW.code(),
+    Pack = ZiskOp::Pack.code(),
+    PackH = ZiskOp::PackH.code(),
+    PackW = ZiskOp::PackW.code(),
 }
 
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
@@ -90,6 +97,16 @@ impl BinaryExtensionTableSM {
             BinaryExtensionTableOp::RorW => 9 * P2_19 + 5 * P2_11,
             BinaryExtensionTableOp::Cpop => 10 * P2_19 + 5 * P2_11,
             BinaryExtensionTableOp::CpopW => 10 * P2_19 + 6 * P2_11,
+            // Chain ops: the fourth `calculate_table_row` argument carries acc_in (not B),
+            // contributing acc_in * P2_11 as the outer dimension within the block.
+            BinaryExtensionTableOp::Ctz => 10 * P2_19 + 7 * P2_11,
+            BinaryExtensionTableOp::CtzW => 10 * P2_19 + 7 * P2_11 + P2_17,
+            BinaryExtensionTableOp::Clz => 10 * P2_19 + 7 * P2_11 + 2 * P2_17,
+            BinaryExtensionTableOp::ClzW => 10 * P2_19 + 7 * P2_11 + 3 * P2_17,
+            // Pack ops are single-block (B unused), placed after the four chain blocks.
+            BinaryExtensionTableOp::Pack => 10 * P2_19 + 7 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::PackH => 10 * P2_19 + 8 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::PackW => 10 * P2_19 + 9 * P2_11 + 4 * P2_17,
         }
     }
 }
