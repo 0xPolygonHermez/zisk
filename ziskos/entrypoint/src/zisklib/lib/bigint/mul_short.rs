@@ -1,6 +1,8 @@
-use crate::syscalls::{syscall_arith256, SyscallArith256Params};
+use crate::syscalls::{
+    syscall_arith256, syscall_arith256_mod, SyscallArith256ModParams, SyscallArith256Params,
+};
 
-use super::{rem_short, ShortScratch, U256};
+use super::U256;
 
 /// Multiplies a large number by a short number: out = a · b
 ///
@@ -52,54 +54,12 @@ pub fn mul_short(
     }
 }
 
-/// Multiplies two single-limb numbers: returns (result, len)
-///
-/// # Returns
-/// A tuple of (result array, number of limbs used)
-pub fn mul_short_one_limb(
-    a: &U256,
-    b: &U256,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> ([U256; 2], usize) {
-    let mut out = [U256::ZERO; 2];
-
-    // Compute a * b
-    let mut dh = [0u64; 4];
-    let mut mul_params = SyscallArith256Params {
-        a: a.as_limbs(),
-        b: b.as_limbs(),
-        c: U256::ZERO.as_limbs(),
-        dl: out[0].as_limbs_mut(),
-        dh: &mut dh,
-    };
-    syscall_arith256(
-        &mut mul_params,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    let len = if dh == [0u64; 4] {
-        1
-    } else {
-        out[1] = U256::from_u64s(&dh);
-        2
-    };
-
-    (out, len)
-}
-
-/// Multiplies two short numbers and reduces modulo a short modulus
-///
-/// # Assumptions
-/// - `modulus > 0`
-///
-/// # Returns
-/// The remainder: `(a · b) mod modulus`
-pub fn mul_and_reduce_short(
+/// Computes `(a * b) mod modulus` for single-U256 operands
+#[inline(always)]
+pub fn mulmod_short(
     a: &U256,
     b: &U256,
     modulus: &U256,
-    scratch: &mut ShortScratch,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> U256 {
     #[cfg(debug_assertions)]
@@ -107,18 +67,18 @@ pub fn mul_and_reduce_short(
         assert!(!modulus.is_zero(), "Input 'modulus' must not be zero");
     }
 
-    let (mul, len) = mul_short_one_limb(
-        a,
-        b,
+    let mut d = [0u64; 4];
+    let mut params = SyscallArith256ModParams {
+        a: a.as_limbs(),
+        b: b.as_limbs(),
+        c: U256::ZERO.as_limbs(),
+        module: modulus.as_limbs(),
+        d: &mut d,
+    };
+    syscall_arith256_mod(
+        &mut params,
         #[cfg(feature = "hints")]
         hints,
     );
-
-    rem_short(
-        &mul[..len],
-        modulus,
-        scratch,
-        #[cfg(feature = "hints")]
-        hints,
-    )
+    U256::from_u64s(&d)
 }

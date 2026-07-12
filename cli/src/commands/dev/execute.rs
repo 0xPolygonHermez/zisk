@@ -29,6 +29,24 @@ fn should_use_emulator(asm: bool, is_macos: bool) -> bool {
     is_macos || !asm
 }
 
+/// Precompile hints are consumed only by the ASM backend; the emulator drops
+/// them silently. Rejects hints on the emulator path instead of misleading.
+pub(crate) fn hints_backend_error(
+    with_hints: bool,
+    emulator: bool,
+    is_macos: bool,
+) -> Option<&'static str> {
+    if with_hints && emulator {
+        Some(if is_macos {
+            "--hints requires the ASM backend, which is not available on macOS."
+        } else {
+            "--hints requires the ASM backend; re-run with --asm."
+        })
+    } else {
+        None
+    }
+}
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Execute the guest program through the same pipeline that prove command uses but without generating a proof
@@ -142,6 +160,12 @@ impl ExecuteCmd {
         }
         let emulator = should_use_emulator(self.asm, cfg!(target_os = "macos"));
 
+        if let Some(msg) =
+            hints_backend_error(hints_stream.is_some(), emulator, cfg!(target_os = "macos"))
+        {
+            anyhow::bail!(msg);
+        }
+
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         let prover_options = self.make_prover_options();
         let with_hints = hints_stream.is_some();
@@ -250,7 +274,7 @@ impl ExecuteCmd {
 
 #[cfg(test)]
 mod tests {
-    use super::{rank_zero_from_env, should_use_emulator};
+    use super::{hints_backend_error, rank_zero_from_env, should_use_emulator};
 
     #[test]
     fn rank_zero_defaults_true_without_env() {
@@ -274,5 +298,25 @@ mod tests {
     fn emulator_always_on_macos() {
         assert!(should_use_emulator(false, true));
         assert!(should_use_emulator(true, true)); // --asm ignored on macOS
+    }
+
+    #[test]
+    fn hints_rejected_on_emulator() {
+        // hints + emulator → error, phrased per platform
+        assert_eq!(
+            hints_backend_error(true, true, false),
+            Some("--hints requires the ASM backend; re-run with --asm.")
+        );
+        assert_eq!(
+            hints_backend_error(true, true, true),
+            Some("--hints requires the ASM backend, which is not available on macOS.")
+        );
+    }
+
+    #[test]
+    fn hints_allowed_on_asm_and_noop_without_hints() {
+        assert_eq!(hints_backend_error(true, false, false), None); // hints + asm → ok
+        assert_eq!(hints_backend_error(false, true, false), None); // no hints + emu → ok
+        assert_eq!(hints_backend_error(false, false, false), None); // neither → ok
     }
 }

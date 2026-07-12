@@ -5,7 +5,7 @@ use crate::alloc_extern::vec::Vec;
 
 use crate::zisklib::fcall_bigint_div;
 
-use super::{add_short, mul_short, ShortScratch, U256};
+use super::{add_short, mul_short, U256};
 
 /// Computes the remainder of a large number divided by a short number (initial call)
 ///
@@ -18,8 +18,7 @@ use super::{add_short, mul_short, ShortScratch, U256};
 /// The remainder: a mod b
 ///
 /// # Note
-/// Use this for the first reduction when `a` can be arbitrarily large.
-/// For subsequent reductions in a loop, use `rem_short` with scratch space.
+/// Use this to reduce an arbitrarily large `a` modulo a single-limb `b`.
 pub fn rem_short_init(
     a: &[U256],
     b: &U256,
@@ -77,79 +76,6 @@ pub fn rem_short_init(
         &rem,
         &mut q_b,
         &mut q_b_r,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-
-    rem
-}
-
-/// Computes the remainder of a large number divided by a short number (with scratch)
-///
-/// # Assumptions
-/// - `len(a) > 0`
-/// - `a` has no leading zeros (unless zero)
-/// - `b > 0`
-///
-/// # Returns
-/// The remainder: a mod b
-pub fn rem_short(
-    a: &[U256],
-    b: &U256,
-    scratch: &mut ShortScratch,
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> U256 {
-    let len_a = a.len();
-    #[cfg(debug_assertions)]
-    {
-        assert_ne!(len_a, 0, "Input 'a' must have at least one limb");
-        assert!(!b.is_zero(), "Input 'b' must be greater than zero");
-        if len_a > 1 {
-            assert!(!a[len_a - 1].is_zero(), "Input 'a' must not have leading zeros");
-        }
-    }
-
-    // Check if a = b, a < b or a > b
-    if len_a == 1 {
-        let a = a[0];
-        if a.is_zero() || a.lt(b) {
-            return a;
-        } else if a.eq(b) {
-            return U256::ZERO;
-        }
-    }
-    // We can assume a > b from here on
-
-    // Strategy: Hint the division result and then verify it satisfies Euclid's division lemma
-    let a_flat = U256::slice_to_flat(a);
-
-    // Hint the quotient and remainder
-    let (limbs_quo, limbs_rem) = fcall_bigint_div(
-        a_flat,
-        b.as_limbs(),
-        &mut scratch.quo,
-        &mut scratch.rem,
-        #[cfg(feature = "hints")]
-        hints,
-    );
-    assert!(
-        0 < limbs_quo && limbs_quo <= scratch.quo.len(),
-        "Quotient must fit in the allocated buffer"
-    );
-    assert!(limbs_quo % 4 == 0, "Quotient limbs must be a multiple of 4");
-    assert!(0 < limbs_rem && limbs_rem <= scratch.rem.len(), "Remainder must fit in a single U256");
-
-    let quo = U256::flat_to_slice(&scratch.quo[..limbs_quo]);
-    let rem = U256::from_u64s(&scratch.rem);
-
-    // Verify the division
-    verify_division(
-        a,
-        b,
-        quo,
-        &rem,
-        &mut scratch.q_b,
-        &mut scratch.q_b_r,
         #[cfg(feature = "hints")]
         hints,
     );

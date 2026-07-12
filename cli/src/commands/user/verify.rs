@@ -30,7 +30,7 @@ impl VerifyCmd {
         let start = std::time::Instant::now();
 
         let proof = Proof::load(&self.proof)
-            .map_err(|e| anyhow::anyhow!("Error loading proof from {}: {}", &self.proof, e))?;
+            .map_err(|e| anyhow::anyhow!("Error loading proof from {}: {}", self.proof, e))?;
 
         let proof_type = crate::proof::verify_kind_label(proof.kind());
 
