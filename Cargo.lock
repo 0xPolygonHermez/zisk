@@ -75,7 +75,7 @@ dependencies = [
  "keccak-asm",
  "paste",
  "proptest",
- "rand 0.9.4",
+ "rand 0.9.5",
  "rapidhash",
  "ruint",
  "rustc-hash",
@@ -567,7 +567,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1df2c09229cbc5a028b1d70e00fdb2acee28b1055dfb5ca73eea49c5a25c4e7c"
 dependencies = [
  "num-traits",
- "rand 0.8.6",
+ "rand 0.8.7",
 ]
 
 [[package]]
@@ -577,7 +577,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94893f1e0c6eeab764ade8dc4c0db24caf4fe7cbbaafc0eba0a9030f447b5185"
 dependencies = [
  "num-traits",
- "rand 0.8.6",
+ "rand 0.8.7",
 ]
 
 [[package]]
@@ -587,7 +587,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
  "num-traits",
- "rand 0.8.6",
+ "rand 0.8.7",
 ]
 
 [[package]]
@@ -597,7 +597,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "367c9c827ed431bff6868b7aa926e05b16eb46603cc8b6e768e4a5553fa1d155"
 dependencies = [
  "num-traits",
- "rand 0.8.6",
+ "rand 0.8.7",
 ]
 
 [[package]]
@@ -1125,7 +1125,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "futures",
  "hex",
  "indicatif",
@@ -1133,7 +1133,7 @@ dependencies = [
  "predicates",
  "proofman",
  "proofman-common",
- "rand 0.8.6",
+ "rand 0.8.7",
  "rayon",
  "reqwest",
  "rom-setup",
@@ -1176,9 +1176,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.2.66"
+version = "1.2.67"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f5d6cac793997bd970000024b2934968efe83b382de4fdcf4fcb46b6ee4ad996"
+checksum = "e17dd265a7d0f31ef544e1b20e03add05d3b45b491b633b10d67145d2acc1a38"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1757,9 +1757,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "num-bigint",
  "num-traits",
 ]
@@ -2193,7 +2193,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "mem-common",
  "named-sem",
  "paste",
@@ -2229,7 +2229,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2301,6 +2301,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fields"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2313,7 +2324,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "835c052cb0c08c1acf6ffd71c022172e18723949c8282f2b9f27efbc51e64534"
 dependencies = [
  "byteorder",
- "rand 0.8.6",
+ "rand 0.8.7",
  "rustc-hex",
  "static_assertions",
 ]
@@ -3486,7 +3497,7 @@ name = "mem-common"
 version = "1.1.0-alpha"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -3565,7 +3576,7 @@ dependencies = [
  "hashbrown 0.16.1",
  "metrics",
  "quanta",
- "rand 0.9.4",
+ "rand 0.9.5",
  "rand_xoshiro",
  "rapidhash",
  "sketches-ddsketch",
@@ -4075,7 +4086,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3c80231409c20246a13fddb31776fb942c38553c51e871f8cbd687a4cfb5843d"
 dependencies = [
  "phf_shared",
- "rand 0.8.6",
+ "rand 0.8.7",
 ]
 
 [[package]]
@@ -4090,10 +4101,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -4110,12 +4121,12 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "anyhow",
  "clap",
  "exps-codegen",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "indexmap 2.14.0",
  "mpi",
  "pilout",
@@ -4137,7 +4148,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4254,7 +4265,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "lazy_static",
  "lib-c",
  "num-bigint",
@@ -4283,7 +4294,7 @@ version = "1.1.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -4308,7 +4319,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "lib-c",
  "pil-std-lib",
  "precompiles-common",
@@ -4326,7 +4337,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4343,7 +4354,7 @@ dependencies = [
 name = "precomp-dma"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -4361,7 +4372,7 @@ name = "precomp-keccakf"
 version = "1.1.0-alpha"
 dependencies = [
  "circuit",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -4381,7 +4392,7 @@ dependencies = [
 name = "precomp-poseidon"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4398,7 +4409,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4415,7 +4426,7 @@ dependencies = [
 name = "precompiles-common"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -4548,7 +4559,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "bincode",
  "blake3",
@@ -4558,7 +4569,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4569,7 +4580,7 @@ dependencies = [
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "rayon",
  "serde",
  "serde_json",
@@ -4582,7 +4593,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "bincode",
  "borsh",
@@ -4591,7 +4602,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "lazy_static",
  "libc",
  "libloading",
@@ -4613,9 +4624,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4626,7 +4637,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4636,7 +4647,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4645,7 +4656,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "bincode",
  "colored",
@@ -4659,7 +4670,19 @@ version = "1.0.0-beta"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
 dependencies = [
  "bincode",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha)",
+ "num-traits",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+dependencies = [
+ "bincode",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "num-traits",
  "rayon",
  "serde",
@@ -4676,7 +4699,7 @@ dependencies = [
  "bit-vec 0.8.0",
  "bitflags",
  "num-traits",
- "rand 0.9.4",
+ "rand 0.9.5",
  "rand_chacha 0.9.0",
  "rand_xorshift",
  "regex-syntax",
@@ -4918,9 +4941,9 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rand"
-version = "0.8.6"
+version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ca0ecfa931c29007047d1bc58e623ab12e5590e8c7cc53200d5202b69266d8a"
+checksum = "22f6172bdec972074665ed81ed53b71da00bfc44b65a753cfde883ec4c702a1a"
 dependencies = [
  "libc",
  "rand_chacha 0.3.1",
@@ -4929,9 +4952,9 @@ dependencies = [
 
 [[package]]
 name = "rand"
-version = "0.9.4"
+version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "44c5af06bb1b7d3216d91932aed5265164bf384dc89cd6ba05cf59a35f5f76ea"
+checksum = "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
 dependencies = [
  "rand_chacha 0.9.0",
  "rand_core 0.9.5",
@@ -5079,11 +5102,11 @@ version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "pil2-stark-setup",
  "pilout",
  "proofman",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "serde",
  "serde_json",
  "stark-recurser",
@@ -5284,7 +5307,7 @@ version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "proofman-common",
  "riscv2zisk",
  "sm-rom",
@@ -5340,8 +5363,8 @@ dependencies = [
  "parity-scale-codec",
  "primitive-types",
  "proptest",
- "rand 0.8.6",
- "rand 0.9.4",
+ "rand 0.8.7",
+ "rand 0.9.5",
  "rlp",
  "ruint-macro",
  "serde_core",
@@ -5634,7 +5657,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c3c81b43dc2d8877c216a3fccf76677ee1ebccd429566d3e67447290d0c42b2"
 dependencies = [
  "bitcoin_hashes",
- "rand 0.9.4",
+ "rand 0.9.5",
  "secp256k1-sys",
 ]
 
@@ -6019,7 +6042,7 @@ dependencies = [
 name = "sm-arith"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -6035,7 +6058,7 @@ dependencies = [
 name = "sm-binary"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -6052,7 +6075,7 @@ name = "sm-frequent-ops"
 version = "1.1.0-alpha"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "proofman-common",
  "static_assertions",
  "zisk-core",
@@ -6062,7 +6085,7 @@ dependencies = [
 name = "sm-main"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -6080,7 +6103,7 @@ name = "sm-mem"
 version = "1.1.0-alpha"
 dependencies = [
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -6097,7 +6120,7 @@ name = "sm-rom"
 version = "1.1.0-alpha"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "mem-common",
  "proofman-common",
  "rayon",
@@ -6144,10 +6167,10 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "anyhow",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "indexmap 2.14.0",
  "num-bigint",
  "num-traits",
@@ -6350,7 +6373,7 @@ dependencies = [
  "percent-encoding",
  "pest",
  "pest_derive",
- "rand 0.8.6",
+ "rand 0.8.7",
  "regex",
  "serde",
  "serde_json",
@@ -6413,9 +6436,9 @@ dependencies = [
 
 [[package]]
 name = "thread_local"
-version = "1.1.9"
+version = "1.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
+checksum = "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070"
 dependencies = [
  "cfg-if",
 ]
@@ -6493,9 +6516,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.11.0"
+version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e61e67053d25a4e82c844e8424039d9745781b3fc4f32b8d55ed50f5f667ef3"
+checksum = "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f"
 dependencies = [
  "tinyvec_macros",
 ]
@@ -7630,10 +7653,10 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#2f34298194253fee6dd2645c37b9658563e925a6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7871,12 +7894,12 @@ dependencies = [
  "bincode",
  "clap",
  "dirs",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "num-bigint",
  "paste",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "serde",
  "serde_json",
  "sha2",
@@ -7987,7 +8010,7 @@ name = "zisk-core"
 version = "1.1.0-alpha"
 dependencies = [
  "elf",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "lib-c",
  "lib-float",
  "paste",
@@ -8007,7 +8030,7 @@ version = "1.1.0-alpha"
 name = "zisk-pil"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "proofman-common",
  "proofman-macros",
  "serde",
@@ -8050,12 +8073,12 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "recurser",
  "riscv2zisk",
  "rom-setup",
@@ -8074,10 +8097,10 @@ name = "zisk-sdk"
 version = "1.1.0-alpha"
 dependencies = [
  "bincode",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "rayon",
  "recurser",
  "rom-setup",
@@ -8112,7 +8135,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.1.0-alpha"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha)",
 ]
 
 [[package]]
@@ -8127,10 +8150,10 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "rayon",
  "recurser",
  "rom-setup",
@@ -8166,7 +8189,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "flate2",
  "mem-common",
  "memmap2",
@@ -8208,7 +8231,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -8219,7 +8242,7 @@ dependencies = [
  "once_cell",
  "paste",
  "precompiles-helpers",
- "rand 0.8.6",
+ "rand 0.8.7",
  "ripemd",
  "secp256k1",
  "serde",
@@ -8241,7 +8264,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -8250,7 +8273,7 @@ dependencies = [
  "num-traits",
  "paste",
  "precompiles-helpers",
- "rand 0.8.6",
+ "rand 0.8.7",
  "ripemd",
  "serde",
  "sha2",
