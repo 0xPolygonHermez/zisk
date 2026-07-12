@@ -66,6 +66,14 @@ airgroup Zisk {
     set_max_bits_virtual_tables(21);
     set_num_virtual_tables(2);
 
+
+    ArithEq(N: 2**20);
+    ArithEq(N: 2**20, equations: EQ_ARITH256) alias Arith256;
+    ArithEq(N: 2**20, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256X;
+    ArithEq(N: 2**20, equations: EQ_SECP256K1) alias ArithSecp256K1;
+    ArithEq(N: 2**20, equations: EQ_BN254_EC) alias ArithBn254Ec;
+    ArithEq(N: 2**20, equations: EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Complex;
+        
     // Main Program
     Main(N: 2**22);
     Rom(N: 2**22);
@@ -101,7 +109,6 @@ airgroup Zisk {
 
     // Precompiles
     BigIntAdd(N: 2**20, bits: 256, operation_code: OP_ADD256) alias Add256;
-    ArithEq(N: 2**20);
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
