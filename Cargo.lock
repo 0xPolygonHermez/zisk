@@ -1757,7 +1757,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "num-bigint",
@@ -2229,7 +2229,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2303,7 +2303,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -4101,7 +4101,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
@@ -4121,7 +4121,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "anyhow",
  "clap",
@@ -4148,7 +4148,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4559,7 +4559,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "bincode",
  "blake3",
@@ -4593,7 +4593,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "bincode",
  "borsh",
@@ -4624,7 +4624,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
  "itoa",
@@ -4637,7 +4637,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4647,7 +4647,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4656,7 +4656,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "bincode",
  "colored",
@@ -4679,7 +4679,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "bincode",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
@@ -6167,7 +6167,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "anyhow",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
@@ -7070,9 +7070,9 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.23.4"
+version = "1.23.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
+checksum = "ea5fab0d6c3c01ae70085a09cb03d4c7a1d6314e2b3e075392783396d724ca0a"
 dependencies = [
  "getrandom 0.4.3",
  "js-sys",
@@ -7653,7 +7653,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#9d94f5cb413179f1a4a78bc2593d58fe2618bb06"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned#1b7f7cec3358eec1b7e13c95baf8852e39baaa8f"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=tests%2Fremove-pinned)",
@@ -8299,6 +8299,6 @@ dependencies = [
 
 [[package]]
 name = "zmij"
-version = "1.0.21"
+version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+checksum = "bd2f034a4bebf216c9e4b7083603e024cf930873fd67830cfb083c9fa33129d9"
