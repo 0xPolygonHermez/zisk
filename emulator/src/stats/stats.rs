@@ -31,9 +31,9 @@ use zisk_definitions::{
 use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
-    CallPathProfiler, MemoryOperationsStats, OpsCosts, RamMonitor, RegionsOfInterest, StatsCosts,
-    StatsCoverageReport, StatsReport, BASE_COST, MAIN_COST, MEM_WRITE_COST, NO_ROI_ID,
-    ROM_READ_COST,
+    CallPathProfiler, MemoryOperationsStats, OpsCosts, OpsCount, RamMonitor, RegionsOfInterest,
+    StatsCosts, StatsCoverageReport, StatsReport, BASE_COST, MAIN_COST, MEM_ACCESS_INVALID,
+    MEM_ACCESS_MONITOR, MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
 };
 
 #[derive(Debug, Clone)]
@@ -49,6 +49,8 @@ pub struct CallStackEntry {
 }
 
 const OP_DATA_BUFFER_DEFAULT_CAPACITY: usize = 128 * 1024 * 1024;
+const CAT_MASK: [u64; 3] = [0xFFFF_FFFF_0000_0000, 0xFFFF_FFFF_FFFF_0000, 0x0000_0000_FFFF_FFFF];
+const OP_CATEGORIES: usize = 4 * 3;
 
 const REG_RA_IDX: u8 = 1;
 const REG_T0_IDX: u8 = 5;
@@ -95,6 +97,8 @@ pub struct Stats {
     /// Flag to indicate whether to store operation data in a buffer
     store_ops: bool,
     costs: StatsCosts,
+    // Global costs
+    op_categories: OpsCount<OP_CATEGORIES>,
     /// Buffer to store operation data before writing to file
     op_data_buffer: Vec<u8>,
     rois_by_pc: BTreeMap<u32, u32>,
@@ -162,6 +166,8 @@ pub struct Stats {
     inst_count: usize,
     rom_init_count: usize,
     ram_init_count: usize,
+    byte_reads: [u64; 8],
+    byte_writes: [u64; 8],
 }
 
 impl Default for Stats {
@@ -239,6 +245,9 @@ impl Default for Stats {
             inst_count: 0,
             rom_init_count: 0,
             ram_init_count: 0,
+            op_categories: OpsCount::<OP_CATEGORIES>::new(),
+            byte_reads: [0; 8],
+            byte_writes: [0; 8],
         }
     }
 }
@@ -270,33 +279,65 @@ impl Stats {
 
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
-        if !self.costs.memory_read(address, width) {
-            self.report_invalid_mem_access("read", address, width);
+        if width == 1 {
+            self.byte_reads[(address as usize) & 0x7] += 1;
         }
+        let status = self.costs.memory_read(address, width);
+        self.handle_mem_status(status, false, address, width, 0);
     }
 
     /// Called every time some data is writen to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
-        if !self.costs.memory_write(address, width, value) {
-            self.report_invalid_mem_access("write", address, width);
+        if width == 1 && value < 0x100 {
+            self.byte_writes[(address as usize) & 0x7] += 1;
         }
+        let status = self.costs.memory_write(address, width, value);
+        self.handle_mem_status(status, true, address, width, value);
+    }
+
+    /// Acts on the status code returned by `memory_read`/`memory_write`: an invalid access is an
+    /// error, and a monitored access is logged with its execution context.
+    fn handle_mem_status(&self, status: u32, is_write: bool, address: u64, width: u64, value: u64) {
+        if status & MEM_ACCESS_INVALID != 0 {
+            self.report_invalid_mem_access(is_write, address, width);
+        }
+        if status & MEM_ACCESS_MONITOR != 0 {
+            self.monitor_mem_access(is_write, address, width, value);
+        }
+    }
+
+    /// Resolves the enclosing function name for `pc` from the ROI map (falls back to `<unknown>`).
+    fn func_name_at(&self, pc: u32) -> &str {
+        self.rois_by_pc
+            .range(..=pc)
+            .next_back()
+            .map(|(_, &i)| self.rois[i as usize].name.as_str())
+            .unwrap_or("<unknown>")
     }
 
     /// Reports a memory access to an address outside every known region (an unauthorized access, which
     /// would fault on real hardware) with the execution context needed to locate it: the current pc,
-    /// step, decoded instruction and enclosing function.
-    fn report_invalid_mem_access(&self, kind: &str, address: u64, width: u64) {
+    /// step and enclosing function.
+    fn report_invalid_mem_access(&self, is_write: bool, address: u64, width: u64) {
         let pc = self.current_pc;
-        let func = self
-            .rois_by_pc
-            .range(..=(pc as u32))
-            .next_back()
-            .map(|(_, &i)| self.rois[i as usize].name.as_str())
-            .unwrap_or("<unknown>");
+        let kind = if is_write { "write" } else { "read" };
         panic!(
             "Invalid memory {kind} to 0x{address:08x} (width {width}) at pc=0x{pc:08x} \
-             step={} fn='{func}'",
-            self.costs.steps
+             step={} fn='{}'",
+            self.costs.steps,
+            self.func_name_at(pc as u32),
+        );
+    }
+
+    /// Logs a monitored memory access (e.g. a double 4/8-byte access) with its execution context:
+    /// pc, function, address, width, read/write, misalignment offset (`address % 8`) and value.
+    fn monitor_mem_access(&self, is_write: bool, address: u64, width: u64, value: u64) {
+        let pc = self.current_pc;
+        println!(
+            "MEM MONITOR pc=0x{pc:08x} fn='{}' addr=0x{address:016x} width={width} {} offset={} value=0x{value:016x}",
+            self.func_name_at(pc as u32),
+            if is_write { "write" } else { "read" },
+            address % 8,
         );
     }
 
@@ -882,6 +923,22 @@ impl Stats {
         }
         // Otherwise, increase the counter corresponding to this opcode
         else if self.current_variable_cost == 0 {
+            if !inst.is_precompiled {
+                for (i_mask, mask) in CAT_MASK.iter().enumerate() {
+                    if inst_ctx.a & mask == 0 && inst_ctx.b & mask == 0 && inst_ctx.c & mask == 0 {
+                        self.op_categories.inc(inst.op, i_mask * 4);
+                    }
+                    if inst_ctx.a & mask == 0 && inst_ctx.b & mask == *mask {
+                        self.op_categories.inc(inst.op, i_mask * 4 + 1);
+                    }
+                    if inst_ctx.a & mask == *mask && inst_ctx.b & mask == 0 {
+                        self.op_categories.inc(inst.op, i_mask * 4 + 2);
+                    }
+                    if inst_ctx.a & mask == *mask && inst_ctx.b & mask == *mask {
+                        self.op_categories.inc(inst.op, i_mask * 4 + 3);
+                    }
+                }
+            }
             self.costs.add_fixed_cost_op(inst.op);
         } else {
             self.costs.add_variable_cost_op(inst.op, self.current_variable_cost);
@@ -1087,12 +1144,26 @@ impl Stats {
     }
 
     pub fn get_top_rois(&self, by_step: bool) -> Vec<(usize, u64)> {
+        if by_step {
+            self.get_top_rois_by(|roi| roi.get_steps())
+        } else {
+            self.get_top_rois_by(|roi| roi.get_cost())
+        }
+    }
+
+    /// Ranks the ROIs (calls) by an arbitrary per-ROI metric, highest first, applying
+    /// the same selected-ROI filter, `main` skipping and `top_rois` truncation as
+    /// [`get_top_rois`]. Returns `(roi_index, metric)` pairs.
+    pub fn get_top_rois_by<F: Fn(&RegionsOfInterest) -> u64>(
+        &self,
+        metric: F,
+    ) -> Vec<(usize, u64)> {
         let mut top_rois: Vec<(usize, u64)> = self
             .rois
             .iter()
             .enumerate()
             .filter(|(_, roi)| !self.top_rois_filter || roi.is_selected_roi)
-            .map(|(index, roi)| (index, if by_step { roi.get_steps() } else { roi.get_cost() }))
+            .map(|(index, roi)| (index, metric(roi)))
             .collect();
         top_rois.sort_by_key(|a| std::cmp::Reverse(a.1));
 
@@ -1109,25 +1180,51 @@ impl Stats {
         top_rois
     }
 
-    pub fn report_opcodes(&self, report: &mut StatsReport, title: &str, ops: &OpsCosts) {
-        let top_opcodes = ops.top_cost_opcodes(5);
+    pub fn report_opcodes(
+        &self,
+        report: &mut StatsReport,
+        title: &str,
+        ops: &OpsCosts,
+        base: bool,
+        precompiled: bool,
+    ) {
+        let top_opcodes = ops.top_cost_opcodes(5, base, precompiled);
+        let extended = base && !ops.is_frops();
         for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
             if let Some((count, cost)) = ops.get_opcode_count_and_cost(opcode) {
                 if count == 0 {
                     continue;
                 }
                 if let Ok(inst) = ZiskOp::try_from_code(opcode) {
+                    if !base && !inst.is_precompiled() {
+                        continue;
+                    }
+                    if !precompiled && inst.is_precompiled() {
+                        continue;
+                    }
                     let rank = if let Some(pos) = top_opcodes.iter().position(|&op| op == opcode) {
                         format!(" #{}", pos + 1)
                     } else {
                         String::new()
                     };
-                    report.add_count_cost_perc2(
-                        &format!("{title} {:}", inst.name()),
-                        count as u64,
-                        cost,
-                        &rank,
-                    );
+                    if extended {
+                        let categories =
+                            self.op_categories.get_by_opcode(opcode).map(|c| &c[..]).unwrap_or(&[]);
+                        report.add_count_cost_perc2_extended(
+                            &format!("{title} {:}", inst.name()),
+                            count as u64,
+                            cost,
+                            &rank,
+                            categories,
+                        );
+                    } else {
+                        report.add_count_cost_perc2(
+                            &format!("{title} {:}", inst.name()),
+                            count as u64,
+                            cost,
+                            &rank,
+                        );
+                    }
                 }
             }
         }
@@ -1542,15 +1639,20 @@ impl Stats {
         }
 
         if self.mem_full_stats {
-            report.set_and_push_label_width(40);
+            report.set_and_push_label_width(55);
             report.title_count_cost_perc2("DETAILED MEM COST", "COUNT", "COST", "");
             self.report_detailed_mem(&mut report, &self.costs.mops, false);
             report.pop_label_width();
         }
 
+        println!("byte_reads: {:?}", self.byte_reads);
+        println!("byte_writes: {:?}", self.byte_writes);
         if show_opcodes {
-            report.title_count_cost_perc2("COST BY OPCODE", "COUNT", "COST", " RANK");
-            self.report_opcodes(&mut report, "OP", self.costs.ops_costs());
+            report.title_count_cost_perc2("COST BY BASE OPCODE", "COUNT", "COST", " RANK");
+            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), true, false);
+
+            report.title_count_cost_perc2("COST BY PRECOMPILED OPCODE", "COUNT", "COST", " RANK");
+            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), false, true);
 
             report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", " RANK");
             self.report_frops_hit(&mut report, "FROP");
@@ -1631,14 +1733,14 @@ impl Stats {
                     }
 
                     if self.mem_full_stats {
-                        roi_report.set_and_push_label_width(40);
+                        roi_report.set_and_push_label_width(55);
                         roi_report.title_count_cost_perc2("DETAILED MEM COST", "COUNT", "COST", "");
                         self.report_detailed_mem(&mut roi_report, &roi.costs.mops, true);
                         roi_report.pop_label_width();
                     }
 
                     roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
-                    self.report_opcodes(&mut roi_report, "OP", roi.ops_costs());
+                    self.report_opcodes(&mut roi_report, "OP", roi.ops_costs(), true, true);
 
                     roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
                     let mut callers: Vec<_> = roi.get_callers().collect();
@@ -1653,6 +1755,114 @@ impl Stats {
                         );
                     }
                     report.add(&roi_report.output);
+                }
+            }
+        }
+
+        // Memory-focused call rankings, shown with `--mem-stats` / `--mem-full-stats`
+        // whenever per-function ROIs are available.
+        if (self.mem_stats || self.mem_full_stats)
+            && self.is_rois_enabled()
+            && !self.disable_call_stack
+        {
+            // Costs are shown in millions by default (the totals are large); the SDK
+            // report keeps raw values. `(M)` marks the millions columns in the header.
+            let millions = !self.sdk;
+            let m = if millions { " (M)" } else { "" };
+
+            // Rank calls by total memory cost.
+            report.title_auto_width(&format!(
+                "TOP MEMORY COST FUNCTIONS (MEM COST{m}, % MEM COST, CALLS, COST/CALL{m}, FUNCTION)"
+            ));
+            let mem_divisor = self.costs.mops.get_cost() as f64 / 100.0;
+            for (index, _) in self.get_top_rois_by(|roi| roi.get_mem_cost()).iter() {
+                let roi = &self.rois[*index];
+                let mem_cost = roi.get_mem_cost();
+                if mem_cost == 0 {
+                    continue;
+                }
+                let formatted_name = self.format_roi_name(&roi.name);
+                report.add_top_mem_cost_calls(
+                    &formatted_name,
+                    mem_cost,
+                    mem_divisor,
+                    roi.calls,
+                    millions,
+                );
+            }
+
+            // Rank calls by unaligned memory cost, showing the aligned cost alongside.
+            report.title_auto_width(&format!(
+                "TOP UNALIGNED MEMORY FUNCTIONS (UNALIGNED{m}, ALIGNED{m}, % UNALIGNED, CALLS, FUNCTION)"
+            ));
+            for (index, _) in self.get_top_rois_by(|roi| roi.get_mem_unaligned_cost()).iter() {
+                let roi = &self.rois[*index];
+                let unaligned = roi.get_mem_unaligned_cost();
+                let aligned = roi.get_mem_aligned_cost();
+                if unaligned + aligned == 0 {
+                    continue;
+                }
+                let formatted_name = self.format_roi_name(&roi.name);
+                report.add_top_mem_align_calls(
+                    &formatted_name,
+                    unaligned,
+                    aligned,
+                    roi.calls,
+                    millions,
+                );
+            }
+
+            // Rank calls by how far their unaligned cost per step exceeds the global
+            // average (unaligned cost / step). Only functions accounting for more than
+            // 1% of the total unaligned cost are considered, to filter out low-volume
+            // outliers with a high ratio but negligible impact.
+            let total_unaligned = self.costs.mops.get_unaligned_cost();
+            if total_unaligned > 0 && total_steps > 0 {
+                let global_per_step = total_unaligned as f64 / total_steps as f64;
+                let min_unaligned = total_unaligned as f64 * 0.01; // 1% threshold
+
+                let mut ranked: Vec<(usize, f64)> = self
+                    .rois
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, roi)| !self.top_rois_filter || roi.is_selected_roi)
+                    .filter_map(|(index, roi)| {
+                        let unaligned = roi.get_mem_unaligned_cost();
+                        let steps = roi.get_steps();
+                        if steps == 0 || (unaligned as f64) < min_unaligned {
+                            return None;
+                        }
+                        let ratio = (unaligned as f64 / steps as f64) / global_per_step;
+                        Some((index, ratio))
+                    })
+                    .collect();
+                ranked.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
+                });
+                ranked.truncate(self.top_rois);
+
+                report.title_auto_width(&format!(
+                    "TOP UNALIGNED/STEP RATIO FUNCTIONS (RATIO vs GLOBAL AVG, UNALIGNED{m}, % UNALIGNED, UNALIGNED ACCESSES/CALL, CALLS, FUNCTION)"
+                ));
+                for (index, ratio) in ranked.iter() {
+                    let roi = &self.rois[*index];
+                    let unaligned = roi.get_mem_unaligned_cost();
+                    let unaligned_perc = unaligned as f64 * 100.0 / total_unaligned as f64;
+                    let unaligned_per_call = if roi.calls > 0 {
+                        roi.get_mem_unaligned_count() / roi.calls as u64
+                    } else {
+                        0
+                    };
+                    let formatted_name = self.format_roi_name(&roi.name);
+                    report.add_top_mem_ratio(
+                        &formatted_name,
+                        *ratio,
+                        unaligned,
+                        unaligned_perc,
+                        unaligned_per_call,
+                        roi.calls,
+                        millions,
+                    );
                 }
             }
         }
