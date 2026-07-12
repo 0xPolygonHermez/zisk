@@ -810,6 +810,10 @@ extern int _opcode_arith256(uint64_t * address)
     return 0;
 }
 
+// Fast assembly implementation of (a*b + c) mod module (emulator-asm/src/arith_eq/arith256_mod.asm).
+// Takes the same 5-pointer struct as this opcode; used in the compute (no-hints) path below.
+extern int arith256_mod(uint64_t * address);
+
 extern int _opcode_arith256_mod(uint64_t * address)
 {
 #ifdef ASM_CALL_METRICS
@@ -841,11 +845,11 @@ extern int _opcode_arith256_mod(uint64_t * address)
     if (precompile_cache_storing)
     {
 #endif
-        // Call arithmetic 256 module operation
-        int result = Arith256Mod (a, b, c, module, d);
+        // Compute (no-hints path): fast assembly implementation instead of the Rust Arith256Mod.
+        int result = arith256_mod (address);
         if (result != 0)
         {
-            asm_printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
+            asm_printf("_opcode_arith256_mod() failed callilng arith256_mod() result=%d;", result);
             exit(-1);
         }
 
