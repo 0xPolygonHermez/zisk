@@ -33,7 +33,7 @@ require "opids.pil"
     - SEXT_00, SEXT_FF are the only (unary) operation which are not a ZisK OP but are used to prove the rest
 */
 
-const int BINARY_TABLE_SIZE = P2_22 + P2_20 + P2_19 + P2_18;
+const int BINARY_TABLE_SIZE = P2_22 + P2_20 + P2_19 + P2_18 + P2_17 * 4;
 const int OP_SEXT_00 = 0x200;
 const int OP_SEXT_FF = 0x201;
 
@@ -63,7 +63,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                          [0:P2_16, 1:P2_16]:(2*2),          // LEU,LE
                          [0:P2_16, 1:P2_16]:3,              // AND,OR,XOR
                           0:(P2_17 + P2_16),                // SEXT_00
-                          0:(P2_17 + P2_16)]...;            // SEXT_FF
+                          0:(P2_17 + P2_16),                // SEXT_FF
+                         [0:P2_16, 1:P2_16]:4]...;          // ANDN,ORN,XNOR,BREV8
 
     // Input carry (<=2 bits)
     col fixed CIN = [[0:P2_16, 1:P2_16]:(3*2),        // MINU,MIN
@@ -75,7 +76,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                      [0:P2_17, 1:P2_17]:2,            // LEU,LE
                       0:(P2_17*3),                    // AND,OR,XOR
                      [0:P2_16, 1:P2_16, 0:P2_16],     // SEXT_00
-                     [0:P2_16, 1:P2_16, 0:P2_16]]...; // SEXT_FF
+                     [0:P2_16, 1:P2_16, 0:P2_16],     // SEXT_FF
+                      0:(P2_17*4)]...;                // ANDN,ORN,XNOR,BREV8
 
     // Operation opcode
     col fixed OP = [OP_MINU:(P2_18 + P2_17), OP_MIN:(P2_18 + P2_17),     // MINU,MIN
@@ -87,7 +89,9 @@ airtemplate BinaryTable(const int N = 2**23) {
                     OP_LEU:P2_18, OP_LE:P2_18,                           // LEU,LE
                     OP_AND:P2_17, OP_OR:P2_17, OP_XOR:P2_17,             // AND,OR,XOR
                     OP_SEXT_00:(P2_17 + P2_16),                          // SEXT_00
-                    OP_SEXT_FF:(P2_17 + P2_16)]...;                      // SEXT_FF
+                    OP_SEXT_FF:(P2_17 + P2_16),                          // SEXT_FF
+                    OP_ANDN:P2_17, OP_ORN:P2_17,                         // ANDN, ORN
+                    OP_XNOR:P2_17, OP_BREV8:P2_17]...;                   // XNOR, BREV8
 
     col fixed C;     // Output C (8 bits)
     col fixed FLAGS; // Combined flags (8 bits): cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
@@ -353,6 +357,21 @@ airtemplate BinaryTable(const int N = 2**23) {
 
                 result_is_a = (relative_index >= P2_17) ? 1 : 0;
                 c_is_signed = 1;
+
+            case OP_ANDN: // ANDN: bitwise AND with negated b -> a & ~b
+                c = a & (b ^ 0xFF);
+
+            case OP_ORN: // ORN: bitwise OR with negated b -> a | ~b
+                c = a | (b ^ 0xFF);
+
+            case OP_XNOR: // XNOR: bitwise NOT of XOR -> ~(a ^ b)
+                c = (a ^ b) ^ 0xFF;
+
+            case OP_BREV8: // BREV8: reverse the bit order within the byte (operand in b)
+                c = 0;
+                for (int k = 0; k < 8; k++) {
+                    c = c | (((b >> k) & 0x01) << (7 - k));
+                }
 
             default:
                 error(`Invalid operation opcode: ${op} at row ${i}`);

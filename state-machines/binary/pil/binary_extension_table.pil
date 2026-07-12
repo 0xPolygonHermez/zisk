@@ -16,7 +16,7 @@ require "opids.pil"
     SEXT_W   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20        + 2^12 + 2^11 => 2^22
 */
 
-const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 6 + P2_11 * 3;
+const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 10 + P2_11 * 7;
 
 airtemplate BinaryExtensionTable(const int N = 2**22) {
     if (N < BINARY_EXTENSION_TABLE_SIZE) {
@@ -42,12 +42,18 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
     // Input B    (8 bits)
     col fixed B = [[0:P2_11..255:P2_11]:3, // SLL, SRL, SRA
                    [0:P2_11..255:P2_11]:3, // SLL_W, SRL_W, SRA_W
-                    0:(P2_11*3)]...;       // SEXT_B, SEXT_H, SEXT_W
+                    0:(P2_11*5),           // SEXT_B, SEXT_H, SEXT_W, REV8, ORCB
+                   [0:P2_11..255:P2_11]:4, // ROL, ROL_W, ROR, ROR_W (use B)
+                    0:(P2_11*2)]...;       // CPOP, CPOP_W (single input, B unused)
 
     // Operation opcode
     col fixed OP = [   OP_SLL:P2_19,    OP_SRL:P2_19,    OP_SRA:P2_19,     // SLL, SRL, SRA
                      OP_SLL_W:P2_19,  OP_SRL_W:P2_19,  OP_SRA_W:P2_19,     // SLL_W, SRL_W, SRA_W
-                    OP_SEXT_B:P2_11, OP_SEXT_H:P2_11, OP_SEXT_W:P2_11]...; // SEXT_B, SEXT_H, SEXT_W
+                    OP_SEXT_B:P2_11, OP_SEXT_H:P2_11, OP_SEXT_W:P2_11,     // SEXT_B, SEXT_H, SEXT_W
+                     OP_REV8:P2_11,   OP_ORCB:P2_11,                       // REV8, ORCB
+                      OP_ROL:P2_19,   OP_ROL_W:P2_19,                      // ROL, ROL_W
+                      OP_ROR:P2_19,   OP_ROR_W:P2_19,                      // ROR, ROR_W
+                     OP_CPOP:P2_11, OP_CPOP_W:P2_11]...;                   // CPOP, CPOP_W
 
 
     col fixed C0; // Output C0  (32 bits)
@@ -187,6 +193,74 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                         }
                     }
                 }
+
+            case OP_REV8: // REV8: reverse the byte order of the 64-bit value
+                // Byte at position `offset` moves to position 7 - offset.
+                // Example: REV8(0x11, offset=0) contributes 0x1100000000000000
+                out = a << (8 * (7 - offset));
+                // op_is_shift stays 0 (single input, like SEXT)
+
+            case OP_ORCB: // ORC.B: OR-combine bits within each byte, in place
+                // Output byte is 0xFF if the input byte has any bit set, else 0x00.
+                out = ((a != 0) ? 0xFF : 0x00) << (8 * offset);
+                // op_is_shift stays 0 (single input, per-byte, like SEXT)
+
+            case OP_ROL: // ROL: rotate left the full 64-bit value by B (mod 64)
+                const int rol_s = b & LS_6_BITS;
+                out = (rol_s == 0) ? a_pos : (((a_pos << rol_s) | (a_pos >> (64 - rol_s))) & MASK_64);
+                op_is_shift = 1;
+
+            case OP_ROR: // ROR: rotate right the full 64-bit value by B (mod 64)
+                const int ror_s = b & LS_6_BITS;
+                out = (ror_s == 0) ? a_pos : (((a_pos >> ror_s) | (a_pos << (64 - ror_s))) & MASK_64);
+                op_is_shift = 1;
+
+            case OP_ROL_W: // ROL_W: rotate left low 32 bits by B (mod 32), sign-extend
+                if (offset >= 4) {
+                    out = 0;
+                } else {
+                    const int rolw_s = b & LS_5_BITS;
+                    const int rolw_lo = a_pos & MASK_32;
+                    out = (rolw_s == 0) ? rolw_lo : (((rolw_lo << rolw_s) | (rolw_lo >> (32 - rolw_s))) & MASK_32);
+                    if (out & SIGN_32_BIT) {
+                        out = out | SE_MASK_32;
+                    }
+                }
+                op_is_shift = 1;
+
+            case OP_ROR_W: // ROR_W: rotate right low 32 bits by B (mod 32), sign-extend
+                if (offset >= 4) {
+                    out = 0;
+                } else {
+                    const int rorw_s = b & LS_5_BITS;
+                    const int rorw_lo = a_pos & MASK_32;
+                    out = (rorw_s == 0) ? rorw_lo : (((rorw_lo >> rorw_s) | (rorw_lo << (32 - rorw_s))) & MASK_32);
+                    if (out & SIGN_32_BIT) {
+                        out = out | SE_MASK_32;
+                    }
+                }
+                op_is_shift = 1;
+
+            case OP_CPOP: // CPOP: population count (number of set bits), summed per byte
+                // Each byte contributes the count of its set bits (0..8), position-independent.
+                // The 8 per-byte contributions sum to the full 64-bit popcount (0..64).
+                out = 0;
+                for (int k = 0; k < 8; k++) {
+                    out = out + ((a >> k) & 0x01);
+                }
+                // op_is_shift stays 0 (single input, like SEXT)
+
+            case OP_CPOP_W: // CPOP_W: population count of the low 32 bits
+                // Only the low 4 bytes contribute; higher bytes are ignored.
+                if (offset >= 4) {
+                    out = 0;
+                } else {
+                    out = 0;
+                    for (int k = 0; k < 8; k++) {
+                        out = out + ((a >> k) & 0x01);
+                    }
+                }
+                // op_is_shift stays 0 (single input, per-byte, like SEXT)
 
             default:
                 error(`Invalid operation opcode: ${op} at row ${i}`);
