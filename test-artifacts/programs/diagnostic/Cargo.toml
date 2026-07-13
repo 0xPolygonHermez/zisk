@@ -11,6 +11,7 @@ workspace = true
 
 [features]
 default = []
-zbxx_native = []
-zbxx_soft = []
+zbc = []
+zbkc = []
+zbkx = []
 c_extension = []

@@ -21,6 +21,7 @@ lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-zbxx_native = ["transpilers-common/zbxx_native", "zisk-core/zbxx_native"]
-zbxx_soft = ["transpilers-common/zbxx_soft", "zisk-core/zbxx_soft"]
+zbc = ["transpilers-common/zbc", "zisk-core/zbc"]
+zbkc = ["transpilers-common/zbkc", "zisk-core/zbkc"]
+zbkx = ["transpilers-common/zbkx", "zisk-core/zbkx"]
 float = ["transpilers-common/float"]

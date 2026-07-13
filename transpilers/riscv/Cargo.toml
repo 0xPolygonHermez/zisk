@@ -17,5 +17,6 @@ lib-float = { workspace = true, optional = true }
 [features]
 default = []
 float = ["dep:lib-float", "lib-float/float"]
-zbxx_native = []
-zbxx_soft = []
+zbc = []
+zbkc = []
+zbkx = []

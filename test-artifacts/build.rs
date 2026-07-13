@@ -13,16 +13,22 @@ fn main() -> Result<()> {
     // Collect enabled features from the environment
     let mut features = Vec::new();
 
-    // Check for zbxx_native feature
-    let zbxx_native = env::var("CARGO_FEATURE_ZBXX_NATIVE").is_ok();
-    if zbxx_native {
-        features.push("zbxx_native");
+    // Check for zbc feature
+    let zbc = env::var("CARGO_FEATURE_ZBC").is_ok();
+    if zbc {
+        features.push("zbc");
     }
 
-    // Check for zbxx_soft feature
-    let zbxx_soft = env::var("CARGO_FEATURE_ZBXX_SOFT").is_ok();
-    if zbxx_soft {
-        features.push("zbxx_soft");
+    // Check for zbkc feature
+    let zbkc = env::var("CARGO_FEATURE_ZBKC").is_ok();
+    if zbkc {
+        features.push("zbkc");
+    }
+
+    // Check for zbkx feature
+    let zbkx = env::var("CARGO_FEATURE_ZBKX").is_ok();
+    if zbkx {
+        features.push("zbkx");
     }
 
     // Build guests with the same profile as the host so profiling/benchmarks

@@ -3,7 +3,6 @@
 //! the RISC-V spec, and generates a vector of RiscvInst's
 
 pub mod riscv2zisk_context;
-#[cfg(feature = "zbxx_soft")]
 pub mod riscv2zisk_context_b;
 pub mod riscv_decoder;
 pub mod riscv_inst;
