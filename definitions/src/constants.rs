@@ -18,10 +18,8 @@ mod tests {
     use zisk_definitions_generator::{meta, render, GenFile};
     use zisk_definitions_macros::constants;
 
-    /// Every constants group the generator renders. Adding a group is a one-line edit
-    /// here; the engine (`zisk-definitions-generator`) stays generic over this registry.
-    #[allow(dead_code)]
-    pub const CONSTANT_SAMPLES: &[(&meta::GroupMeta, &[meta::Export])] = &[
+    /// The demo groups, rendered by `sample_round_trips` to exercise every attribute.
+    const CONSTANT_SAMPLES: &[(&meta::GroupMeta, &[meta::Export])] = &[
         (&memory::GROUP, memory::EXPORTS),
         (&opcodes::GROUP, opcodes::EXPORTS),
         (&execution::GROUP, execution::EXPORTS),
