@@ -15,9 +15,14 @@ name = "zisk_definitions"
 path = "src/lib.rs"
 
 [dependencies]
-
-# QUIC networking
+# Optional: only pulled in for constant codegen (feature `gen`). Kept optional so
+# default builds stay a zero-dependency `no_std` leaf — the guest and downstream
+# consumers never see the macro or the codegen engine.
+zisk-definitions-macros = { workspace = true, optional = true }
+zisk-definitions-generator = { workspace = true, optional = true }
 
 [features]
 default = []
 stats = []
+# Compile the `#[constants]` definitions + `CONSTANT_GROUPS` for constant codegen.
+gen = ["dep:zisk-definitions-macros", "dep:zisk-definitions-generator"]
