@@ -369,23 +369,27 @@ void decode_emit_kernel(const MemOp* __restrict__ memops,
     decode_emit_inline(op, out_ptr, /*skip_block=*/d_spill_status[i] != 0);
 }
 
+
+constexpr uint32_t BLOCKOP_EMIT_GRID = 2048;
+
 __global__
 void blockop_emit_kernel(const BlockOpSpill* __restrict__ d_spill,
                          const uint32_t* __restrict__ d_spill_count,
                          const uint32_t* __restrict__ d_potential_offsets,
                          PotentialEmit* __restrict__ d_potentials) {
     const uint32_t cap = min(*d_spill_count, MAX_BLOCKOP_SPILL_PER_CHUNK);
-    if (blockIdx.x >= cap) return;
-    const BlockOpSpill s = d_spill[blockIdx.x];
-    const uint32_t base_addr   = s.aligned_base;
-    const uint32_t count       = s.count;
-    const uint32_t base_offset = d_potential_offsets[s.memop_idx];
-    PotentialEmit* base = d_potentials + base_offset;
-    const uint32_t kind_bit = (s.kind_w ? POT_FLAG_KIND_W : 0u);
-    for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
-        const uint32_t a = base_addr + i * 8u;
-        const uint32_t ram_bit = is_ram_addr(a) ? POT_FLAG_IS_RAM : 0u;
-        base[i].aligned_addr_packed = a | kind_bit | ram_bit;
+    for (uint32_t b = blockIdx.x; b < cap; b += gridDim.x) {
+        const BlockOpSpill s = d_spill[b];
+        const uint32_t base_addr   = s.aligned_base;
+        const uint32_t count       = s.count;
+        const uint32_t base_offset = d_potential_offsets[s.memop_idx];
+        PotentialEmit* base = d_potentials + base_offset;
+        const uint32_t kind_bit = (s.kind_w ? POT_FLAG_KIND_W : 0u);
+        for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
+            const uint32_t a = base_addr + i * 8u;
+            const uint32_t ram_bit = is_ram_addr(a) ? POT_FLAG_IS_RAM : 0u;
+            base[i].aligned_addr_packed = a | kind_bit | ram_bit;
+        }
     }
 }
 
@@ -1405,7 +1409,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
         d_memops_[s], n, d_potential_offsets_[s], d_spill_status_[s], d_potentials_[s]);
     CUDA_CHECK_LAUNCH();
 
-    blockop_emit_kernel<<<MAX_BLOCKOP_SPILL_PER_CHUNK, 256, 0, st>>>(
+    blockop_emit_kernel<<<BLOCKOP_EMIT_GRID, 256, 0, st>>>(
         d_spill_[s], d_spill_count_[s], d_potential_offsets_[s], d_potentials_[s]);
     CUDA_CHECK_LAUNCH();
 
