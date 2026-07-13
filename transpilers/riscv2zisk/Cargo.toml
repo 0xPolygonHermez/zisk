@@ -21,5 +21,6 @@ lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-bit_manipulation_extensions = []
+zbxx_native = ["transpilers-common/zbxx_native", "zisk-core/zbxx_native"]
+zbxx_soft = ["transpilers-common/zbxx_soft", "zisk-core/zbxx_soft"]
 float = ["transpilers-common/float"]

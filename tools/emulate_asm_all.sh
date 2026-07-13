@@ -70,7 +70,7 @@ fi
 
 # Build ZisK
 echo "Building ZisK..."
-cargo build --features float
+cargo build --features=float,zbxx_soft
 
 # Create an empty input file
 echo "Creating empty input file"
@@ -128,15 +128,41 @@ do
     build/ziskemuasm -s --gen=1 --output_riscof --silent > output 2>&1 &
 
     # Store the PID of the background process
-    # BG_PID=$!
-    echo "Sleeping for 8 seconds to let the emulator server initialize..."
-    sleep 8
-    build/ziskemuasm -c -i empty_input.bin --gen=1 --shutdown
-    echo "Sleeping for 2 seconds to let the emulator server complete..."
-    sleep 2
+    BG_PID=$!
 
-    #echo "Killing the background process..."
-    #kill $BG_PID
+    # Wait until the emulator server is listening on TCP port 23115
+    echo "Waiting for the emulator server to listen on port 23115..."
+    PORT=23115
+    TIMEOUT_SECS=30
+    MAX_TRIES=$((TIMEOUT_SECS * 10))  # one try every 0.1s
+    TRIES=0
+    until (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null; do
+        # Give up if the server process died before opening the port
+        if ! kill -0 "$BG_PID" 2>/dev/null; then
+            echo "❌ Emulator server (PID $BG_PID) exited before listening on port $PORT"
+            cat output
+            exit 1
+        fi
+        if [ $TRIES -ge $MAX_TRIES ]; then
+            echo "❌ Timed out after ${TIMEOUT_SECS}s waiting for port $PORT"
+            kill "$BG_PID" 2>/dev/null || true
+            exit 1
+        fi
+        sleep 0.1
+        TRIES=$((TRIES+1))
+    done
+    exec 3>&- 3<&-  # Close the probe connection
+    echo "Emulator server is listening on port $PORT"
+
+    build/ziskemuasm -c -i empty_input.bin --gen=1 --shutdown
+
+    # Wait for the emulator server to finish and flush its output
+    echo "Waiting for the emulator server to complete..."
+    if ! wait "$BG_PID"; then
+        echo "❌ Emulator server (PID $BG_PID) exited with error"
+        cat output
+        exit 1
+    fi
 
     # Compare output vs reference
     REFERENCE_FILE="$(realpath "${ELF_FILE_DIRECTORY}/../ref/Reference-sail_c_simulator.signature")"
