@@ -369,23 +369,27 @@ void decode_emit_kernel(const MemOp* __restrict__ memops,
     decode_emit_inline(op, out_ptr, /*skip_block=*/d_spill_status[i] != 0);
 }
 
+
+constexpr uint32_t BLOCKOP_EMIT_GRID = 2048;
+
 __global__
 void blockop_emit_kernel(const BlockOpSpill* __restrict__ d_spill,
                          const uint32_t* __restrict__ d_spill_count,
                          const uint32_t* __restrict__ d_potential_offsets,
                          PotentialEmit* __restrict__ d_potentials) {
     const uint32_t cap = min(*d_spill_count, MAX_BLOCKOP_SPILL_PER_CHUNK);
-    if (blockIdx.x >= cap) return;
-    const BlockOpSpill s = d_spill[blockIdx.x];
-    const uint32_t base_addr   = s.aligned_base;
-    const uint32_t count       = s.count;
-    const uint32_t base_offset = d_potential_offsets[s.memop_idx];
-    PotentialEmit* base = d_potentials + base_offset;
-    const uint32_t kind_bit = (s.kind_w ? POT_FLAG_KIND_W : 0u);
-    for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
-        const uint32_t a = base_addr + i * 8u;
-        const uint32_t ram_bit = is_ram_addr(a) ? POT_FLAG_IS_RAM : 0u;
-        base[i].aligned_addr_packed = a | kind_bit | ram_bit;
+    for (uint32_t b = blockIdx.x; b < cap; b += gridDim.x) {
+        const BlockOpSpill s = d_spill[b];
+        const uint32_t base_addr   = s.aligned_base;
+        const uint32_t count       = s.count;
+        const uint32_t base_offset = d_potential_offsets[s.memop_idx];
+        PotentialEmit* base = d_potentials + base_offset;
+        const uint32_t kind_bit = (s.kind_w ? POT_FLAG_KIND_W : 0u);
+        for (uint32_t i = threadIdx.x; i < count; i += blockDim.x) {
+            const uint32_t a = base_addr + i * 8u;
+            const uint32_t ram_bit = is_ram_addr(a) ? POT_FLAG_IS_RAM : 0u;
+            base[i].aligned_addr_packed = a | kind_bit | ram_bit;
+        }
     }
 }
 
@@ -584,7 +588,6 @@ __global__ void instance_boundaries_kernel(
     uint32_t instance_size,
     const uint32_t* active_ids,
     uint32_t* active_first, uint32_t* active_last,
-    uint32_t* offset_starts,
     uint32_t num_active)
 {
     uint32_t idx = threadIdx.x;
@@ -624,15 +627,6 @@ __global__ void instance_boundaries_kernel(
         lo = tlo;
     }
     active_last[idx] = lo;
-
-    __syncthreads();
-    if (idx == 0) {
-        uint32_t offset = 0;
-        for (uint32_t i = 0; i < num_active; i++) {
-            offset_starts[i] = offset;
-            offset += active_last[i] - active_first[i] + 1;
-        }
-    }
 }
 
 __global__ void chunk_fml_count_gappy_kernel(
@@ -894,43 +888,24 @@ __global__ void build_metas_kernel(
     }
 }
 
-__global__ void compute_addr_offsets_kernel(
-    const uint32_t* prefix,
-    uint32_t prefix_base_addr, uint32_t num_ops_region,
-    uint32_t instance_size,
-    const uint32_t* active_ids,
-    const uint32_t* active_first, const uint32_t* active_last,
-    uint32_t* addr_offsets, const uint32_t* offset_starts,
-    uint32_t num_active)
+// Dense addr-offsets value of slot j, computed on the fly from the global
+// prefix array:
+//   slot 0 → 1 iff the instance is its region's first (no halo), else 0;
+//   slot j → prefix[fa + j] - (base_pos - 1).
+__device__ __forceinline__ uint32_t addr_offset_at(
+    const uint32_t* __restrict__ prefix,
+    uint32_t fa, uint32_t base_pos, uint32_t inst_first, uint32_t j)
 {
-    uint32_t ai = blockIdx.x;
-    if (ai >= num_active) return;
-
-    uint32_t fa = active_first[ai];
-    uint32_t la = active_last[ai];
-    uint32_t num_addrs = la - fa + 1;
-
-    uint32_t local_inst   = active_ids[ai];
-    uint32_t region_start = prefix[prefix_base_addr];
-    uint32_t base_pos     = region_start + local_inst * instance_size;
-    uint32_t halo_base    = (local_inst == 0) ? base_pos : base_pos - 1;
-
-    uint32_t* out = addr_offsets + offset_starts[ai];
-    uint32_t tid = threadIdx.x;
-    uint32_t stride = blockDim.x;
-
-    if (tid == 0)
-        out[0] = (halo_base == base_pos) ? 1 : 0;
-
-    for (uint32_t j = tid + 1; j < num_addrs; j += stride)
-        out[j] = prefix[fa + j] - (base_pos - 1);
+    return (j == 0) ? inst_first : prefix[fa + j] - (base_pos - 1);
 }
 
-// Dense → paged compaction. One block per (instance, page); one thread per
-// slot. Precondition: present_counters[ai] must be zero on entry.
+// Paged compaction of the per-instance addr offsets. One block per
+// (instance, page); one thread per slot. Precondition: present_counters[ai]
+// must be zero on entry.
 __global__ void compact_paged_kernel(
-    const uint32_t* addr_offsets,
-    const uint32_t* offset_starts,        // [num_active]
+    const uint32_t* __restrict__ prefix,
+    const uint32_t* active_ids,           // [num_active] — region-local ids
+    const uint32_t* inst_base_pos,        // [num_active]
     const uint32_t* active_first,         // [num_active]
     const uint32_t* active_last,          // [num_active]
     const uint32_t* page_meta_starts,     // [num_active] — prefix sum of num_pages
@@ -951,20 +926,22 @@ __global__ void compact_paged_kernel(
     const uint32_t num_pages = (num_addrs + MEM_OFFSETS_PAGE_SIZE - 1) / MEM_OFFSETS_PAGE_SIZE;
     if (page >= num_pages) return;
 
-    const uint32_t* dense        = addr_offsets + offset_starts[ai];
+    const uint32_t  base_pos     = inst_base_pos[ai];
+    const uint32_t  inst_first   = (active_ids[ai] == 0) ? 1u : 0u;
     const uint32_t  page_start   = page * MEM_OFFSETS_PAGE_SIZE;
     const uint32_t  page_end_live = (page_start + MEM_OFFSETS_PAGE_SIZE < num_addrs)
                                         ? page_start + MEM_OFFSETS_PAGE_SIZE
                                         : num_addrs;
 
-    const uint32_t single_value = dense[page_start];
+    const uint32_t single_value = addr_offset_at(prefix, fa, base_pos, inst_first, page_start);
 
     const uint32_t tid = threadIdx.x;
     // Each thread checks one slot (slot = page_start + tid). Skip slot 0 (== single_value by definition).
     bool local_diff = false;
     if (tid > 0) {
         const uint32_t slot = page_start + tid;
-        if (slot < page_end_live && dense[slot] != single_value) {
+        if (slot < page_end_live &&
+            addr_offset_at(prefix, fa, base_pos, inst_first, slot) != single_value) {
             local_diff = true;
         }
     }
@@ -998,7 +975,9 @@ __global__ void compact_paged_kernel(
     const uint32_t dense_dst_page = pages_dense_starts[ai] + s_local_idx;
     uint32_t* out = pages_dense + (size_t)dense_dst_page * MEM_OFFSETS_PAGE_SIZE;
     const uint32_t src_slot = page_start + tid;
-    out[tid] = (src_slot < num_addrs) ? dense[src_slot] : single_value;
+    out[tid] = (src_slot < num_addrs)
+                   ? addr_offset_at(prefix, fa, base_pos, inst_first, src_slot)
+                   : single_value;
 }
 
 // =====================================================================
@@ -1101,8 +1080,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         take((size_t)max_active_ * MAX_CHUNKS * 3 * 4);
         take((size_t)max_active_ * MAX_CHUNKS * 4);
         take((size_t)max_active_ * 4 * 4);
-        take(((size_t)N_ADDR + max_active_) * 4);   // d_addr_offsets_
-        take((size_t)max_active_ * 4);               // d_offset_starts_
+        take((size_t)max_active_ * 4);               // d_inst_base_pos_
         take(max_total_pages * 4);                   // d_page_starts_
         take(max_total_pages * 4);                   // d_page_single_
         // d_pages_dense_ aliases d_histogram_ (counted above) — no take
@@ -1185,8 +1163,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_fml_                    = (uint32_t*)take((size_t)max_active_ * MAX_CHUNKS * 3 * 4);
     d_result_nops_            = (uint32_t*)take((size_t)max_active_ * MAX_CHUNKS * 4);
     d_meta_scalars_           = (uint32_t*)take((size_t)max_active_ * 4 * 4);
-    d_addr_offsets_           = (uint32_t*)take(((size_t)N_ADDR + max_active_) * 4);
-    d_offset_starts_          = (uint32_t*)take((size_t)max_active_ * 4);
+    d_inst_base_pos_          = (uint32_t*)take((size_t)max_active_ * 4);
     d_page_starts_            = (uint32_t*)take(max_total_pages * 4);
     d_page_single_            = (uint32_t*)take(max_total_pages * 4);
     // d_pages_dense_ aliases d_histogram_. Lifetimes are disjoint: the last
@@ -1405,7 +1382,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
         d_memops_[s], n, d_potential_offsets_[s], d_spill_status_[s], d_potentials_[s]);
     CUDA_CHECK_LAUNCH();
 
-    blockop_emit_kernel<<<MAX_BLOCKOP_SPILL_PER_CHUNK, 256, 0, st>>>(
+    blockop_emit_kernel<<<BLOCKOP_EMIT_GRID, 256, 0, st>>>(
         d_spill_[s], d_spill_count_[s], d_potential_offsets_[s], d_potentials_[s]);
     CUDA_CHECK_LAUNCH();
 
@@ -1759,7 +1736,7 @@ void CountAndPlan::process_worker_() {
             d_prefix_, REGION_ADDR_START[r], h_max_compact_[r] + 1,
             region_n_ops_[r], INSTANCE_SIZE[r],
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
-            d_offset_starts_ + off, na);
+            na);
         CUDA_CHECK_LAUNCH();
     }
 
@@ -1805,15 +1782,18 @@ void CountAndPlan::process_worker_() {
         CUDA_CHECK(cudaMallocHost(&h_pages_dense_buf_, h_pages_dense_buf_size_));
     }
 
-    // instance_boundaries_kernel writes d_offset_starts_ per-region (each region
-    // resets `offset = 0`). compute_addr_offsets_kernel writes into d_addr_offsets_
-    // at those offsets, but the host reads d_addr_offsets_ with cross-region
-    // cumulative indices (h_offset_starts) → without this push, RAM/INPUT
-    // instances overwrite the start of d_addr_offsets_ that ROM already filled,
-    // and downstream addr_offsets values are garbage. Sync d_offset_starts_ with
-    // the host's cross-region layout before launching compute_addr_offsets_kernel.
-    CUDA_CHECK(cudaMemcpy(d_offset_starts_, h_offset_starts.data(),
-                          num_active_ * 4, cudaMemcpyHostToDevice));
+    // Per-instance region base positions for the fused addr-offsets
+    // computation inside compact_paged_kernel.
+    std::vector<uint32_t> h_inst_base_pos(num_active_);
+    {
+        uint32_t ai = 0;
+        for (uint8_t r = 0; r < 3; r++)
+            for (uint32_t j = 0; j < num_active_per_[r]; j++, ai++)
+                h_inst_base_pos[ai] = region_ops_start_[r]
+                    + h_active_local_ids_[active_offset_[r] + j] * INSTANCE_SIZE[r];
+    }
+    CUDA_CHECK(cudaMemcpyAsync(d_inst_base_pos_, h_inst_base_pos.data(),
+                               num_active_ * 4, cudaMemcpyHostToDevice, d2h_stream_));
 
     for (uint8_t r = 0; r < 3; r++) {
         if (num_active_per_[r] == 0) continue;
@@ -1826,12 +1806,6 @@ void CountAndPlan::process_worker_() {
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
             d_result_nops_ + (size_t)off * n_chunks_,
             d_meta_scalars_ + off * 4, na, n_chunks_);
-        CUDA_CHECK_LAUNCH();
-
-        compute_addr_offsets_kernel<<<na, 1024, 0, d2h_stream_>>>(
-            d_prefix_, REGION_ADDR_START[r], region_n_ops_[r], INSTANCE_SIZE[r],
-            d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
-            d_addr_offsets_, d_offset_starts_ + off, na);
         CUDA_CHECK_LAUNCH();
     }
 
@@ -1869,7 +1843,7 @@ void CountAndPlan::process_worker_() {
     // One block per (instance, page); one thread per slot.
     dim3 compact_grid(max_pages_per_inst, num_active_);
     compact_paged_kernel<<<compact_grid, MEM_OFFSETS_PAGE_SIZE, 0, d2h_stream_>>>(
-        d_addr_offsets_, d_offset_starts_,
+        d_prefix_, d_active_ids_, d_inst_base_pos_,
         d_active_first_, d_active_last_,
         d_page_meta_starts_, d_pages_dense_starts_,
         num_active_,

@@ -136,8 +136,7 @@ private:
     uint32_t*      d_fml_                    = nullptr;
     uint32_t*      d_result_nops_            = nullptr;
     uint32_t*      d_meta_scalars_           = nullptr;
-    uint32_t*      d_addr_offsets_           = nullptr;
-    uint32_t*      d_offset_starts_          = nullptr;
+    uint32_t*      d_inst_base_pos_          = nullptr;
     uint32_t*      d_page_starts_            = nullptr;
     uint32_t*      d_page_single_            = nullptr;
     uint32_t*      d_pages_dense_            = nullptr;
