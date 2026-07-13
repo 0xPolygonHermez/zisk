@@ -26,7 +26,8 @@ fn main() {
     let generated = src.join("generated");
     let c = generated.join("c");
     let pil = generated.join("pil");
-    let dirs = Dirs { rust: &generated, c: &c, pil: &pil };
+    let asm = generated.join("asm");
+    let dirs = Dirs { rust: &generated, c: &c, pil: &pil, asm: &asm };
 
     zisk_definitions_generator::write(
         zisk_definitions::ZISK_CONSTANTS,

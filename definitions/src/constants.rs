@@ -25,8 +25,8 @@ mod tests {
         (&execution::GROUP, execution::EXPORTS),
     ];
 
-    /// Program memory map. 32-bit address space, shared by Rust, the C emulator, and PIL.
-    #[constants(group = "memory", to(rust, c, pil), hex, fits = 32)]
+    /// Program memory map. Shared by Rust, the C emulator, PIL, and the hand-written asm.
+    #[constants(group = "memory", to(rust, c, pil, asm), hex, fits = 32)]
     pub mod memory {
         /// First global RW memory address.
         pub const RAM_ADDR: u64 = 0xa000_0000;
@@ -90,6 +90,12 @@ mod tests {
         assert!(!mem_h.contains("#define EXTRA_PARAMS_ADDR"));
         assert!(mem_pil.contains("EXTRA_PARAMS_ADDR"));
         assert!(mem_pil.contains("0xA0400F00"));
+
+        // asm: memory is `to(rust, c, pil, asm)`, so it also emits a GAS `.equ` include.
+        let mem_inc = contents(&files, "memory.inc").expect("memory.inc missing");
+        assert!(mem_inc.contains(".equ RAM_ADDR, 0xA0000000"));
+        assert!(mem_inc.contains(".equ SYS_ADDR, 0xA0400000"));
+        assert!(mem_inc.contains("# RAM_ADDR + STACK_SIZE")); // provenance comment
 
         // Opcodes: PIL-only, with the `OP_` prefix.
         assert!(contents(&files, "opcodes.h").is_none());

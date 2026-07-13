@@ -28,6 +28,7 @@ pub mod meta {
         pub const RUST: Targets = Targets(1);
         pub const C: Targets = Targets(2);
         pub const PIL: Targets = Targets(4);
+        pub const ASM: Targets = Targets(8);
 
         /// True if `self` includes target `t`.
         #[inline]
@@ -57,12 +58,15 @@ pub mod meta {
         pub name: &'static str,
         pub c_prefix: &'static str,
         pub pil_prefix: &'static str,
+        pub asm_prefix: &'static str,
         /// Base name of the output C header in the C dir (no subdirectories);
         /// `None` = `<group>.h`.
         pub c_file: Option<&'static str>,
         /// Base name of the output PIL file in the PIL dir (no subdirectories);
         /// `None` = `<group>.pil`.
         pub pil_file: Option<&'static str>,
+        /// Base name of the output asm include in the asm dir; `None` = `<group>.inc`.
+        pub asm_file: Option<&'static str>,
     }
 
     /// One constant to emit, plus everything needed to render and validate it.
@@ -78,10 +82,11 @@ pub mod meta {
         pub fits: Option<u8>,
         /// Disable the fit check entirely (e.g. a full-width mask).
         pub no_fit: bool,
-        /// Per-target name used in place of the ident for C/PIL; the group prefix is
-        /// still prepended. `None` = the ident. (The Rust form always uses the ident.)
+        /// Per-target name used in place of the ident for C/PIL/asm; the group prefix
+        /// is still prepended. `None` = the ident. (The Rust form always uses the ident.)
         pub c_name: Option<&'static str>,
         pub pil_name: Option<&'static str>,
+        pub asm_name: Option<&'static str>,
         /// Source expression, carried as a provenance comment when derived; empty
         /// for bare literals.
         pub expr: &'static str,
@@ -97,6 +102,7 @@ pub enum Target {
     Rust,
     C,
     Pil,
+    Asm,
 }
 
 /// A rendered output file: its target, base name, and full contents.
@@ -112,13 +118,19 @@ pub struct Dirs<'a> {
     pub rust: &'a Path,
     pub c: &'a Path,
     pub pil: &'a Path,
+    pub asm: &'a Path,
 }
 
 impl Dirs<'_> {
     /// Each target with its output dir and file extension — the single source of the
     /// target↔dir↔ext mapping that `write` and `check` iterate.
-    fn each(&self) -> [(Target, &Path, &str); 3] {
-        [(Target::Rust, self.rust, "rs"), (Target::C, self.c, "h"), (Target::Pil, self.pil, "pil")]
+    fn each(&self) -> [(Target, &Path, &str); 4] {
+        [
+            (Target::Rust, self.rust, "rs"),
+            (Target::C, self.c, "h"),
+            (Target::Pil, self.pil, "pil"),
+            (Target::Asm, self.asm, "inc"),
+        ]
     }
 }
 
@@ -137,7 +149,7 @@ pub fn render(groups: &[(&GroupMeta, &[Export])], regen_cmd: &str) -> Result<Vec
             fit_check(e)?;
         }
     }
-    let mut files = render_c_pil(groups, regen_cmd)?;
+    let mut files = render_flat(groups, regen_cmd)?;
     files.extend(render_rust(groups, regen_cmd));
     Ok(files)
 }
@@ -329,6 +341,7 @@ fn fmt_value_rust(e: &Export) -> String {
 enum Kind {
     C,
     Pil,
+    Asm,
 }
 
 impl Kind {
@@ -336,23 +349,27 @@ impl Kind {
         match self {
             Kind::C => Target::C,
             Kind::Pil => Target::Pil,
+            Kind::Asm => Target::Asm,
         }
     }
 
-    /// A comment in this target's syntax: `/* body */` for C, `// body` for PIL.
+    /// A comment in this target's syntax: `/* body */` for C, `// body` for PIL,
+    /// `# body` for asm (GAS).
     fn comment(self, body: &str) -> String {
         match self {
             Kind::C => format!("/* {body} */"),
             Kind::Pil => format!("// {body}"),
+            Kind::Asm => format!("# {body}"),
         }
     }
 
-    /// A constant-definition line (no trailing newline); the name is left-aligned to
-    /// `width` so the values line up in a column.
+    /// A constant-definition line (no trailing newline). C/PIL left-align the name to
+    /// `width` so values line up in a column; asm uses GAS `.equ name, value`.
     fn define(self, name: &str, value: &str, width: usize) -> String {
         match self {
             Kind::C => format!("#define {name:<width$} {value}"),
             Kind::Pil => format!("const int {name:<width$} = {value};"),
+            Kind::Asm => format!(".equ {name}, {value}"),
         }
     }
 }
@@ -371,7 +388,7 @@ struct FileBuf {
     entries: Vec<Entry>,
 }
 
-fn render_c_pil(
+fn render_flat(
     groups: &[(&GroupMeta, &[Export])],
     regen_cmd: &str,
 ) -> Result<Vec<GenFile>, String> {
@@ -381,12 +398,31 @@ fn render_c_pil(
         let c_file = meta.c_file.map(String::from).unwrap_or_else(|| format!("{}.h", meta.name));
         let pil_file =
             meta.pil_file.map(String::from).unwrap_or_else(|| format!("{}.pil", meta.name));
+        let asm_file =
+            meta.asm_file.map(String::from).unwrap_or_else(|| format!("{}.inc", meta.name));
         for e in exports {
             if e.targets.contains(Targets::C) {
                 push_entry(&mut files, &c_file, Kind::C, meta, e, fmt_value_c(e))?;
             }
             if e.targets.contains(Targets::PIL) {
-                push_entry(&mut files, &pil_file, Kind::Pil, meta, e, fmt_value_pil(e)?)?;
+                push_entry(
+                    &mut files,
+                    &pil_file,
+                    Kind::Pil,
+                    meta,
+                    e,
+                    fmt_numeric_upper(e, "PIL")?,
+                )?;
+            }
+            if e.targets.contains(Targets::ASM) {
+                push_entry(
+                    &mut files,
+                    &asm_file,
+                    Kind::Asm,
+                    meta,
+                    e,
+                    fmt_numeric_upper(e, "asm")?,
+                )?;
             }
         }
     }
@@ -412,6 +448,7 @@ fn push_entry(
     let name = match kind {
         Kind::C => format!("{}{}", meta.c_prefix, e.c_name.unwrap_or(e.name)),
         Kind::Pil => format!("{}{}", meta.pil_prefix, e.pil_name.unwrap_or(e.name)),
+        Kind::Asm => format!("{}{}", meta.asm_prefix, e.asm_name.unwrap_or(e.name)),
     };
 
     let idx = match files.iter().position(|f| f.file_name == fname) {
@@ -444,7 +481,7 @@ fn render_file(fb: &FileBuf, regen_cmd: &str) -> String {
     );
 
     let mut out = String::new();
-    // C wraps the body in an include guard; PIL just carries the banner.
+    // C wraps the body in an include guard; PIL and asm just carry the banner.
     match kind {
         Kind::C => {
             let _ = write!(
@@ -452,7 +489,7 @@ fn render_file(fb: &FileBuf, regen_cmd: &str) -> String {
                 "{banner}\n#ifndef {guard}\n#define {guard}\n\n#include <stdint.h>\n\n"
             );
         }
-        Kind::Pil => {
+        Kind::Pil | Kind::Asm => {
             let _ = write!(out, "{banner}\n\n");
         }
     }
@@ -517,9 +554,11 @@ fn fmt_value_c(e: &Export) -> String {
     format!("(({}){})", c_type(e), fmt_number(&e.value, e.radix, false))
 }
 
-fn fmt_value_pil(e: &Export) -> Result<String, String> {
+/// Uppercase bare numeric literal for the PIL and asm targets (both use `0x…`
+/// uppercase and neither can hold a string). `target` names the caller for errors.
+fn fmt_numeric_upper(e: &Export, target: &str) -> Result<String, String> {
     if let Value::Str(_) = e.value {
-        return Err(format!("`{}`: string constants cannot be emitted to PIL", e.name));
+        return Err(format!("`{}`: string constants cannot be emitted to {target}", e.name));
     }
     Ok(fmt_number(&e.value, e.radix, true))
 }
@@ -576,13 +615,22 @@ mod tests {
             no_fit: false,
             c_name: None,
             pil_name: None,
+            asm_name: None,
             expr: "",
             doc: "",
         }
     }
 
     const fn group(name: &'static str, c_file: &'static str) -> GroupMeta {
-        GroupMeta { name, c_prefix: "", pil_prefix: "", c_file: Some(c_file), pil_file: None }
+        GroupMeta {
+            name,
+            c_prefix: "",
+            pil_prefix: "",
+            asm_prefix: "",
+            c_file: Some(c_file),
+            pil_file: None,
+            asm_file: None,
+        }
     }
 
     #[test]
@@ -632,6 +680,17 @@ mod tests {
     }
 
     #[test]
+    fn asm_target_emits_equ_include() {
+        static G: GroupMeta = group("mem", "mem.h");
+        static E: &[Export] =
+            &[export("RAM", Value::U(0xa000_0000), Targets(Targets::ASM.0), None)];
+        let files = render(&[(&G, E)], "test").expect("render");
+        let inc = files.iter().find(|f| f.name == "mem.inc").expect("mem.inc missing");
+        assert!(matches!(inc.target, super::Target::Asm));
+        assert!(inc.contents.contains(".equ RAM, 0xA0000000"), "{}", inc.contents);
+    }
+
+    #[test]
     fn check_flags_and_write_removes_orphans() {
         static G: GroupMeta = group("mem", "mem.h");
         static E: &[Export] = &[export("ONE", Value::U(1), Targets::C, None)];
@@ -639,8 +698,8 @@ mod tests {
 
         let base = std::env::temp_dir().join(format!("zisk-gen-orphan-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        let (r, c, p) = (base.join("rs"), base.join("c"), base.join("pil"));
-        let dirs = Dirs { rust: &r, c: &c, pil: &p };
+        let (r, c, p, a) = (base.join("rs"), base.join("c"), base.join("pil"), base.join("asm"));
+        let dirs = Dirs { rust: &r, c: &c, pil: &p, asm: &a };
 
         write(groups, &dirs, "test").expect("write");
         assert!(check(groups, &dirs, "test").is_ok(), "fresh write is up to date");

@@ -3,7 +3,8 @@
 //! `#[constants(..)]` on an inline module keeps every `pub const` exactly as written
 //! (so `rustc` evaluates the DAG) and *additionally* emits, in the same module, a
 //! `GROUP: GroupMeta` and an `EXPORTS: &[Export]` table. The generator crate
-//! (`zisk-definitions-generator`) reads that table to write the C header and PIL forms.
+//! (`zisk-definitions-generator`) reads that table to write the Rust, C-header, PIL
+//! and asm forms.
 //!
 //! `#[emit(..)]` on a single const overrides only the fields it names; everything
 //! else inherits the module-level defaults (serde-style cascade). A const marked
@@ -24,6 +25,7 @@ use syn::{
 const T_RUST: u8 = 1;
 const T_C: u8 = 2;
 const T_PIL: u8 = 4;
+const T_ASM: u8 = 8;
 
 #[derive(Clone, Copy)]
 enum Radix {
@@ -39,12 +41,16 @@ struct Container {
     fits: Option<u8>,
     c_prefix: String,
     pil_prefix: String,
+    asm_prefix: String,
     c_file: Option<String>,
     pil_file: Option<String>,
+    asm_file: Option<String>,
 }
 
 impl Default for Container {
     fn default() -> Self {
+        // asm is opt-in (not in the default target set): only the hand-written
+        // emulator asm needs a handful of constants, so groups add it explicitly.
         Container {
             group: None,
             targets: T_RUST | T_C | T_PIL,
@@ -52,8 +58,10 @@ impl Default for Container {
             fits: None,
             c_prefix: String::new(),
             pil_prefix: String::new(),
+            asm_prefix: String::new(),
             c_file: None,
             pil_file: None,
+            asm_file: None,
         }
     }
 }
@@ -75,10 +83,14 @@ impl Container {
             self.c_prefix = meta.value()?.parse::<LitStr>()?.value();
         } else if meta.path.is_ident("pil_prefix") {
             self.pil_prefix = meta.value()?.parse::<LitStr>()?.value();
+        } else if meta.path.is_ident("asm_prefix") {
+            self.asm_prefix = meta.value()?.parse::<LitStr>()?.value();
         } else if meta.path.is_ident("c_file") {
             self.c_file = Some(meta.value()?.parse::<LitStr>()?.value());
         } else if meta.path.is_ident("pil_file") {
             self.pil_file = Some(meta.value()?.parse::<LitStr>()?.value());
+        } else if meta.path.is_ident("asm_file") {
+            self.asm_file = Some(meta.value()?.parse::<LitStr>()?.value());
         } else {
             return Err(meta.error("unknown #[constants] argument"));
         }
@@ -97,6 +109,7 @@ struct Emit {
     fits: Option<Option<u8>>,
     c_name: Option<String>,
     pil_name: Option<String>,
+    asm_name: Option<String>,
 }
 
 impl Emit {
@@ -121,6 +134,8 @@ impl Emit {
             self.c_name = Some(meta.value()?.parse::<LitStr>()?.value());
         } else if meta.path.is_ident("pil_name") {
             self.pil_name = Some(meta.value()?.parse::<LitStr>()?.value());
+        } else if meta.path.is_ident("asm_name") {
+            self.asm_name = Some(meta.value()?.parse::<LitStr>()?.value());
         } else {
             return Err(meta.error("unknown #[emit] argument"));
         }
@@ -135,8 +150,10 @@ fn add_target(bits: &mut u8, m: &ParseNestedMeta) -> syn::Result<()> {
         *bits |= T_C;
     } else if m.path.is_ident("pil") {
         *bits |= T_PIL;
+    } else if m.path.is_ident("asm") {
+        *bits |= T_ASM;
     } else {
-        return Err(m.error("expected `rust`, `c`, or `pil`"));
+        return Err(m.error("expected `rust`, `c`, `pil`, or `asm`"));
     }
     Ok(())
 }
@@ -202,8 +219,10 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
 
     let c_prefix = &container.c_prefix;
     let pil_prefix = &container.pil_prefix;
+    let asm_prefix = &container.asm_prefix;
     let c_file = opt(&container.c_file);
     let pil_file = opt(&container.pil_file);
+    let asm_file = opt(&container.asm_file);
 
     Ok(quote! {
         #(#mod_attrs)*
@@ -214,8 +233,10 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
                 name: #group_name,
                 c_prefix: #c_prefix,
                 pil_prefix: #pil_prefix,
+                asm_prefix: #asm_prefix,
                 c_file: #c_file,
                 pil_file: #pil_file,
+                asm_file: #asm_file,
             };
 
             pub const EXPORTS: &[zisk_definitions_generator::meta::Export] = &[ #(#exports),* ];
@@ -248,6 +269,9 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
     if targets & T_PIL != 0 {
         target_parts.push(quote!(zisk_definitions_generator::meta::Targets::PIL.0));
     }
+    if targets & T_ASM != 0 {
+        target_parts.push(quote!(zisk_definitions_generator::meta::Targets::ASM.0));
+    }
     let targets_tok = if target_parts.is_empty() {
         quote!(zisk_definitions_generator::meta::Targets(0))
     } else {
@@ -269,6 +293,7 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
 
     let c_name = opt(&emit.c_name);
     let pil_name = opt(&emit.pil_name);
+    let asm_name = opt(&emit.asm_name);
 
     // Provenance: only carry the expression when it is derived (not a bare literal).
     let expr = &c.expr;
@@ -287,6 +312,7 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
             no_fit: #no_fit,
             c_name: #c_name,
             pil_name: #pil_name,
+            asm_name: #asm_name,
             expr: #expr_str,
             doc: #doc,
         }
