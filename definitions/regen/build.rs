@@ -2,7 +2,7 @@
 //! definitions, and only when those sources change.
 //!
 //! `zisk-definitions` (with `gen`) is a build-dependency, so it is compiled before
-//! this script runs — which is how we read the *evaluated* `CONSTANT_GROUPS` without
+//! this script runs — which is how we read the *evaluated* `ZISK_CONSTANTS` without
 //! tripping the build-script phase wall (a crate's own build.rs runs before its
 //! lib compiles, so this can't live in `zisk-definitions` itself).
 
@@ -29,7 +29,7 @@ fn main() {
     let dirs = Dirs { rust: &generated, c: &c, pil: &pil };
 
     zisk_definitions_generator::write(
-        zisk_definitions::CONSTANT_GROUPS,
+        zisk_definitions::ZISK_CONSTANTS,
         &dirs,
         "cargo build -p zisk-definitions-regen",
     )

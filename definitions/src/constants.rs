@@ -6,65 +6,66 @@
 //! inheritance, `#[emit(internal)]`, `skip(..)`, target restriction, a derived
 //! value, a per-target prefix, a radix override, and a `fits` override.
 
-// The emission schema, used to type `CONSTANT_GROUPS` below. The `#[constants]`
+// The emission schema, used to type `ZISK_CONSTANTS` below. The `#[constants]`
 // macro references `zisk_definitions_generator::meta::*` directly, so no re-export
 // is needed.
 use zisk_definitions_generator::meta;
 
-use zisk_definitions_macros::constants;
-
-/// Program memory map. 32-bit address space, shared by Rust, the C emulator, and PIL.
-#[constants(group = "memory", to(rust, c, pil), hex, fits = 32)]
-pub mod memory {
-    /// First global RW memory address.
-    pub const RAM_ADDR: u64 = 0xa000_0000;
-
-    /// Program stack size — derives `SYS_ADDR`; itself emitted nowhere.
-    #[emit(internal)]
-    pub const STACK_SIZE: u64 = 0x40_0000;
-
-    /// First system RW memory address.
-    pub const SYS_ADDR: u64 = RAM_ADDR + STACK_SIZE;
-
-    /// Extra precompile parameters (256 B → 32 params). Rust + PIL only.
-    #[emit(skip(c))]
-    pub const EXTRA_PARAMS_ADDR: u64 = SYS_ADDR + 0x0F00;
-}
-
-/// Operation codes. Shared by Rust and PIL; PIL wants an `OP_` prefix.
-#[constants(group = "opcodes", to(rust, pil), hex, pil_prefix = "OP_")]
-pub mod opcodes {
-    /// Addition.
-    pub const ADD: u8 = 0x0a;
-    /// Subtraction.
-    pub const SUB: u8 = 0x0b;
-}
-
-/// Execution-size parameters shared by the executor and the constraints.
-#[constants(group = "execution", to(rust, c, pil), hex)]
-pub mod execution {
-    /// log2 of the maximum step count. Reads better in decimal.
-    #[emit(dec)]
-    pub const MAIN_STEP_BITS: u32 = 36;
-
-    /// Maximum number of execution steps (a hard PIL constraint).
-    /// Exceeds 32 bits, so widen the inherited fit check.
-    #[emit(fits = 64)]
-    pub const MAX_STEPS: u64 = 1u64 << MAIN_STEP_BITS;
-}
-
-/// Every constants group the generator renders. Adding a group is a one-line edit
-/// here; the engine (`zisk-definitions-generator`) stays generic over this registry.
-pub const CONSTANT_GROUPS: &[(&meta::GroupMeta, &[meta::Export])] = &[
-    (&memory::GROUP, memory::EXPORTS),
-    (&opcodes::GROUP, opcodes::EXPORTS),
-    (&execution::GROUP, execution::EXPORTS),
-];
+pub const ZISK_CONSTANTS: &[(&meta::GroupMeta, &[meta::Export])] = &[];
 
 #[cfg(test)]
 mod tests {
-    use super::CONSTANT_GROUPS;
-    use zisk_definitions_generator::{render, GenFile};
+    use zisk_definitions_generator::{meta, render, GenFile};
+    use zisk_definitions_macros::constants;
+
+    /// Every constants group the generator renders. Adding a group is a one-line edit
+    /// here; the engine (`zisk-definitions-generator`) stays generic over this registry.
+    #[allow(dead_code)]
+    pub const CONSTANT_SAMPLES: &[(&meta::GroupMeta, &[meta::Export])] = &[
+        (&memory::GROUP, memory::EXPORTS),
+        (&opcodes::GROUP, opcodes::EXPORTS),
+        (&execution::GROUP, execution::EXPORTS),
+    ];
+
+    /// Program memory map. 32-bit address space, shared by Rust, the C emulator, and PIL.
+    #[constants(group = "memory", to(rust, c, pil), hex, fits = 32)]
+    pub mod memory {
+        /// First global RW memory address.
+        pub const RAM_ADDR: u64 = 0xa000_0000;
+
+        /// Program stack size — derives `SYS_ADDR`; itself emitted nowhere.
+        #[emit(internal)]
+        pub const STACK_SIZE: u64 = 0x40_0000;
+
+        /// First system RW memory address.
+        pub const SYS_ADDR: u64 = RAM_ADDR + STACK_SIZE;
+
+        /// Extra precompile parameters (256 B → 32 params). Rust + PIL only.
+        #[emit(skip(c))]
+        pub const EXTRA_PARAMS_ADDR: u64 = SYS_ADDR + 0x0F00;
+    }
+
+    /// Operation codes. Shared by Rust and PIL; PIL wants an `OP_` prefix.
+    #[constants(group = "opcodes", to(rust, pil), hex, pil_prefix = "OP_")]
+    pub mod opcodes {
+        /// Addition.
+        pub const ADD: u8 = 0x0a;
+        /// Subtraction.
+        pub const SUB: u8 = 0x0b;
+    }
+
+    /// Execution-size parameters shared by the executor and the constraints.
+    #[constants(group = "execution", to(rust, c, pil), hex)]
+    pub mod execution {
+        /// log2 of the maximum step count. Reads better in decimal.
+        #[emit(dec)]
+        pub const MAIN_STEP_BITS: u32 = 36;
+
+        /// Maximum number of execution steps (a hard PIL constraint).
+        /// Exceeds 32 bits, so widen the inherited fit check.
+        #[emit(fits = 64)]
+        pub const MAX_STEPS: u64 = 1u64 << MAIN_STEP_BITS;
+    }
 
     fn contents<'a>(files: &'a [GenFile], name: &str) -> Option<&'a str> {
         files.iter().find(|f| f.name == name).map(|f| f.contents.as_str())
@@ -72,7 +73,7 @@ mod tests {
 
     #[test]
     fn sample_round_trips() {
-        let files = render(CONSTANT_GROUPS, "test").expect("render");
+        let files = render(CONSTANT_SAMPLES, "test").expect("render");
 
         let mem_h = contents(&files, "memory.h").expect("memory.h missing");
         let mem_pil = contents(&files, "memory.pil").expect("memory.pil missing");

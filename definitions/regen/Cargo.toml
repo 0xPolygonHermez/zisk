@@ -12,11 +12,11 @@ categories = { workspace = true }
 
 # Dev-only build trigger; never published. Its build.rs writes into the source tree,
 # which is why this is a separate crate (the phase wall bars definitions' own
-# build.rs from reading its own CONSTANT_GROUPS, and publishing must never run it).
+# build.rs from reading its own ZISK_CONSTANTS, and publishing must never run it).
 publish = false
 
 [build-dependencies]
 # Compiled before this crate's build.rs runs, so build.rs can read the evaluated
-# CONSTANT_GROUPS (that's why this can't live in definitions itself).
+# ZISK_CONSTANTS (that's why this can't live in definitions itself).
 zisk-definitions = { workspace = true, features = ["gen"] }
 zisk-definitions-generator = { workspace = true }
