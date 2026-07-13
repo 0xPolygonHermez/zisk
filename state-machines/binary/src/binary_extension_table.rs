@@ -33,6 +33,10 @@ pub enum BinaryExtensionTableOp {
     Pack = ZiskOp::Pack.code(),
     PackH = ZiskOp::PackH.code(),
     PackW = ZiskOp::PackW.code(),
+    Bclr = ZiskOp::Bclr.code(),
+    Bext = ZiskOp::Bext.code(),
+    Binv = ZiskOp::Binv.code(),
+    Bset = ZiskOp::Bset.code(),
 }
 
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
@@ -107,6 +111,11 @@ impl BinaryExtensionTableSM {
             BinaryExtensionTableOp::Pack => 10 * P2_19 + 7 * P2_11 + 4 * P2_17,
             BinaryExtensionTableOp::PackH => 10 * P2_19 + 8 * P2_11 + 4 * P2_17,
             BinaryExtensionTableOp::PackW => 10 * P2_19 + 9 * P2_11 + 4 * P2_17,
+            // Single-bit ops are shift-family (full B range), placed after the pack blocks.
+            BinaryExtensionTableOp::Bclr => 10 * P2_19 + 10 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::Bext => 11 * P2_19 + 10 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::Binv => 12 * P2_19 + 10 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::Bset => 13 * P2_19 + 10 * P2_11 + 4 * P2_17,
         }
     }
 }

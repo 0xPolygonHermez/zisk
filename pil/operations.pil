@@ -84,6 +84,10 @@ const int OP_CLZ_W = 0x3e;
 const int OP_PACK = 0x36;
 const int OP_PACK_H = 0x37;
 const int OP_PACK_W = 0x38;
+const int OP_BCLR = 0x44;
+const int OP_BEXT = 0x45;
+const int OP_BINV = 0x46;
+const int OP_BSET = 0x47;
 
 const int OP_PUBOUT = 0x30;
 

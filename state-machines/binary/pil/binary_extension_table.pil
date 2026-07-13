@@ -16,7 +16,7 @@ require "opids.pil"
     SEXT_W   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20        + 2^12 + 2^11 => 2^22
 */
 
-const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 10 + P2_11 * 10 + P2_17 * 4;
+const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 14 + P2_11 * 10 + P2_17 * 4;
 
 // Row where the byte-chain blocks (CTZ, CTZ_W, CLZ, CLZ_W) start. Each chain op enumerates its
 // acc_in input (0..63, the "outer" dimension, stride P2_11) instead of the B operand, so each
@@ -54,7 +54,8 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                    [0:P2_11..255:P2_11]:4, // ROL, ROL_W, ROR, ROR_W (use B)
                     0:(P2_11*2),           // CPOP, CPOP_W (single input, B unused)
                     0:(P2_17*4),           // CTZ, CTZ_W, CLZ, CLZ_W (single input, B unused; acc_in in C1)
-                    0:(P2_11*3)]...;       // PACK, PACK_H, PACK_W (two inputs interleaved in free_in_a; B unused)
+                    0:(P2_11*3),           // PACK, PACK_H, PACK_W (two inputs interleaved in free_in_a; B unused)
+                   [0:P2_11..255:P2_11]:4]...; // BCLR, BEXT, BINV, BSET (shift family: B = bit index)
 
     // Operation opcode
     col fixed OP = [   OP_SLL:P2_19,    OP_SRL:P2_19,    OP_SRA:P2_19,     // SLL, SRL, SRA
@@ -66,7 +67,9 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                      OP_CPOP:P2_11, OP_CPOP_W:P2_11,                       // CPOP, CPOP_W
                       OP_CTZ:P2_17,  OP_CTZ_W:P2_17,                       // CTZ, CTZ_W
                       OP_CLZ:P2_17,  OP_CLZ_W:P2_17,                       // CLZ, CLZ_W
-                     OP_PACK:P2_11, OP_PACK_H:P2_11, OP_PACK_W:P2_11]...;  // PACK, PACK_H, PACK_W
+                     OP_PACK:P2_11, OP_PACK_H:P2_11, OP_PACK_W:P2_11,      // PACK, PACK_H, PACK_W
+                     OP_BCLR:P2_19, OP_BEXT:P2_19,                         // BCLR, BEXT
+                     OP_BINV:P2_19, OP_BSET:P2_19]...;                     // BINV, BSET
 
 
     col fixed C0; // Output C0  (32 bits)
@@ -392,6 +395,28 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                     out = 0;
                 }
                 op_is_combine = 1;
+
+            case OP_BCLR: // BCLR: rd = a & ~(1 << (b & 63))  (shift family: b is the bit index)
+                // Clearing bit `pos` only affects the byte that contains it; a_pos has no bits at
+                // `pos` for the other bytes, so masking is a no-op there (branch-free).
+                const int bclr_pos = b & LS_6_BITS;
+                out = a_pos & (MASK_64 ^ (1 << bclr_pos));
+                op_is_shift = 1;
+
+            case OP_BEXT: // BEXT: rd = (a >> (b & 63)) & 1  (result bit lands at position 0)
+                const int bext_pos = b & LS_6_BITS;
+                out = (offset == (bext_pos >> 3)) ? ((a >> (bext_pos & 0x07)) & 0x01) : 0;
+                op_is_shift = 1;
+
+            case OP_BINV: // BINV: rd = a ^ (1 << (b & 63))  (only the byte holding `pos` flips)
+                const int binv_pos = b & LS_6_BITS;
+                out = a_pos ^ ((offset == (binv_pos >> 3)) ? (1 << binv_pos) : 0);
+                op_is_shift = 1;
+
+            case OP_BSET: // BSET: rd = a | (1 << (b & 63))  (only the byte holding `pos` sets it)
+                const int bset_pos = b & LS_6_BITS;
+                out = a_pos | ((offset == (bset_pos >> 3)) ? (1 << bset_pos) : 0);
+                op_is_shift = 1;
 
             default:
                 error(`Invalid operation opcode: ${op} at row ${i}`);

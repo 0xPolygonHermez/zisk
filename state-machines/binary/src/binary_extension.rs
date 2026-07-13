@@ -75,7 +75,11 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             | ZiskOp::Rol
             | ZiskOp::RolW
             | ZiskOp::Ror
-            | ZiskOp::RorW => true,
+            | ZiskOp::RorW
+            | ZiskOp::Bclr
+            | ZiskOp::Bext
+            | ZiskOp::Binv
+            | ZiskOp::Bset => true,
 
             ZiskOp::SignExtendB
             | ZiskOp::SignExtendH
@@ -138,7 +142,11 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             | ZiskOp::ClzW
             | ZiskOp::Pack
             | ZiskOp::PackH
-            | ZiskOp::PackW => false,
+            | ZiskOp::PackW
+            | ZiskOp::Bclr
+            | ZiskOp::Bext
+            | ZiskOp::Binv
+            | ZiskOp::Bset => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={opcode:?}"),
         }
@@ -541,6 +549,46 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 t_out[5][0] = (a_bytes[5] as u32) << 24;
                 if a_bytes[5] & (SIGN_BYTE as u8) != 0 {
                     t_out[5][1] = MASK_32 as u32;
+                }
+            }
+            ZiskOp::Bclr => {
+                // rd = a & ~(1 << pos). Only the byte holding `pos` is affected; the mask is a
+                // no-op on the others, so it can be applied uniformly (branch-free).
+                binary_extension_table_op = BinaryExtensionTableOp::Bclr;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = a_pos & !(1u64 << b_low);
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::Bext => {
+                // rd = (a >> pos) & 1: the extracted bit lands at result bit 0.
+                binary_extension_table_op = BinaryExtensionTableOp::Bext;
+                let target = (b_low >> 3) as usize;
+                let bit = b_low & 0x07;
+                t_out[target][0] = (((a_bytes[target] as u64) >> bit) & 1) as u32;
+            }
+            ZiskOp::Binv => {
+                // rd = a ^ (1 << pos): only the byte holding `pos` flips it.
+                binary_extension_table_op = BinaryExtensionTableOp::Binv;
+                let target = (b_low >> 3) as usize;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = if j == target { a_pos ^ (1u64 << b_low) } else { a_pos };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::Bset => {
+                // rd = a | (1 << pos): only the byte holding `pos` sets it.
+                binary_extension_table_op = BinaryExtensionTableOp::Bset;
+                let target = (b_low >> 3) as usize;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = if j == target { a_pos | (1u64 << b_low) } else { a_pos };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
                 }
             }
             _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", input.op),
