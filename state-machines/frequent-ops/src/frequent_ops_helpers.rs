@@ -107,7 +107,7 @@ impl FrequentOpsHelpers {
     pub fn print_table_offsets(&self) {
         let (start, offsets) = self.generate_table_offsets();
         println!("const OP_TABLE_OFFSETS_START: usize = {start};");
-        println!("const OP_TABLE_OFFSETS: [usize; {}] = {:?};", offsets.len(), &offsets);
+        println!("const OP_TABLE_OFFSETS: [usize; {}] = {:?};", offsets.len(), offsets);
     }
 
     /// Generates opcode offset information for efficient table lookups.

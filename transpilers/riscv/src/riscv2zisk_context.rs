@@ -2913,7 +2913,7 @@ pub fn add_entry_exit_jmp(rom: &mut ZiskRom, addr: u64) {
     zib.op("eq").unwrap();
     zib.store("none", 0, false, false);
     zib.j(20, 4);
-    zib.verbose("If reg11==reg12 jumpt to end");
+    zib.verbose("If reg11==reg12 jump to end");
     zib.build(rom);
     rom.next_init_inst_addr += 4;
 
