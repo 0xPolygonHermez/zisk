@@ -898,6 +898,8 @@ __global__ void build_metas_kernel(
     }
 }
 
+constexpr uint32_t ADDR_OFFSETS_GRID_X = 256;
+
 __global__ void compute_addr_offsets_kernel(
     const uint32_t* prefix,
     uint32_t prefix_base_addr, uint32_t num_ops_region,
@@ -907,7 +909,7 @@ __global__ void compute_addr_offsets_kernel(
     uint32_t* addr_offsets, const uint32_t* offset_starts,
     uint32_t num_active)
 {
-    uint32_t ai = blockIdx.x;
+    uint32_t ai = blockIdx.y;
     if (ai >= num_active) return;
 
     uint32_t fa = active_first[ai];
@@ -920,8 +922,8 @@ __global__ void compute_addr_offsets_kernel(
     uint32_t halo_base    = (local_inst == 0) ? base_pos : base_pos - 1;
 
     uint32_t* out = addr_offsets + offset_starts[ai];
-    uint32_t tid = threadIdx.x;
-    uint32_t stride = blockDim.x;
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    uint32_t stride = gridDim.x * blockDim.x;
 
     if (tid == 0)
         out[0] = (halo_base == base_pos) ? 1 : 0;
@@ -1832,7 +1834,7 @@ void CountAndPlan::process_worker_() {
             d_meta_scalars_ + off * 4, na, n_chunks_);
         CUDA_CHECK_LAUNCH();
 
-        compute_addr_offsets_kernel<<<na, 1024, 0, d2h_stream_>>>(
+        compute_addr_offsets_kernel<<<dim3(ADDR_OFFSETS_GRID_X, na), 1024, 0, d2h_stream_>>>(
             d_prefix_, REGION_ADDR_START[r], region_n_ops_[r], INSTANCE_SIZE[r],
             d_active_ids_ + off, d_active_first_ + off, d_active_last_ + off,
             d_addr_offsets_, d_offset_starts_ + off, na);
