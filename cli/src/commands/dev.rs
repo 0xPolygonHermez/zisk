@@ -11,6 +11,7 @@ mod clean;
 mod execute;
 mod export_solidity_calldata;
 mod gen_ops;
+mod new_precompile;
 mod program_setup;
 mod proofman_setup;
 mod prove;
@@ -23,6 +24,7 @@ pub(crate) use clean::*;
 pub(crate) use execute::*;
 pub(crate) use export_solidity_calldata::*;
 pub(crate) use gen_ops::*;
+pub(crate) use new_precompile::*;
 pub(crate) use program_setup::*;
 pub(crate) use proofman_setup::*;
 pub(crate) use prove::*;
@@ -52,6 +54,7 @@ pub(crate) enum ZiskCliDevCmd {
     Execute(ExecuteCmd),
     ExportSolidityCalldata(ExportSolidityCalldataCmd),
     GenOps(GenOpsCmd),
+    NewPrecompile(NewPrecompileCmd),
     WrapProof(WrapCmd),
     Prove(ProveCmd),
     ProgramSetup(ProgramSetupCmd),
@@ -74,6 +77,7 @@ impl ZiskCliDevCmd {
             ZiskCliDevCmd::Execute(mut cmd) => cmd.run(),
             ZiskCliDevCmd::ExportSolidityCalldata(cmd) => cmd.run(),
             ZiskCliDevCmd::GenOps(cmd) => cmd.run(),
+            ZiskCliDevCmd::NewPrecompile(cmd) => cmd.run(),
             ZiskCliDevCmd::VerifyConstraints(mut cmd) => cmd.run(),
         }
     }

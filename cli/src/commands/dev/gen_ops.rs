@@ -58,12 +58,12 @@ struct RegistrySection {
 }
 
 #[derive(Deserialize)]
-struct Manifest {
-    precompile: Precompile,
+pub(crate) struct Manifest {
+    pub(crate) precompile: Precompile,
 }
 
 #[derive(Deserialize)]
-struct Precompile {
+pub(crate) struct Precompile {
     /// Type-name stem: `<name>Manager/Instance/Collector/CounterInputGen`, register variant.
     name: String,
     /// `ZiskOperationType` variant this precompile's ops share (define_ops! column).
@@ -220,7 +220,7 @@ fn emit_syscalls(precompiles: &[Precompile]) -> String {
 /// `register_precompiles!` variant + its `<Name>Manager/Instance/...` types, so a
 /// collision would emit duplicate items) and duplicate/out-of-window opcodes or
 /// syscall ids.
-fn validate(precompiles: &[Precompile]) -> Result<()> {
+pub(crate) fn validate(precompiles: &[Precompile]) -> Result<()> {
     let mut names = HashSet::new();
     let mut opcodes = HashSet::new();
     let mut syscall_ids = HashSet::new();
