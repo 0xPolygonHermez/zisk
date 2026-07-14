@@ -353,4 +353,45 @@ mod tests {
             syscall_path.display(),
         );
     }
+
+    /// `CSR_PRECOMPILED` in the riscv transpiler is a hand-written, order-sensitive
+    /// array indexed by `syscall_id - SYSCALL_KECCAKF_ID` (0x800), interleaving the
+    /// precompile ops with non-precompile ones (DMA, profile) — so it is not
+    /// generated. This guard enforces the "same order as syscall.rs" contract for
+    /// the precompile entries: each op's slot must hold its `str`. We text-parse the
+    /// array so the transpiler source stays untouched (no dep, no `pub` change).
+    #[test]
+    fn csr_precompiled_matches_manifests() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("cli crate dir has a parent (the repo root)");
+        let precompiles = load_precompiles(&root.join("zisk-precompiles.toml"), root)
+            .expect("load the enabled precompile manifests");
+
+        // Parse the `const CSR_PRECOMPILED: [&str; N] = [ "..", .. ];` string literals
+        // in order. Anchor on `=` first so the `[&str; N]` type bracket isn't matched.
+        let src = fs::read_to_string(root.join("transpilers/riscv/src/riscv2zisk_context.rs"))
+            .expect("read riscv2zisk_context.rs");
+        let decl = src.find("const CSR_PRECOMPILED").expect("CSR_PRECOMPILED declared");
+        let eq = decl + src[decl..].find('=').expect("array assignment");
+        let open = eq + src[eq..].find('[').expect("array open bracket");
+        let close = open + src[open..].find("];").expect("array close");
+        let entries: Vec<&str> = src[open..close].split('"').skip(1).step_by(2).collect();
+
+        const START: u64 = 0x800; // = SYSCALL_KECCAKF_ID; base of the CSR window.
+        for p in &precompiles {
+            for op in &p.op {
+                let idx = (op.syscall_id - START) as usize;
+                assert_eq!(
+                    entries.get(idx).copied(),
+                    Some(op.str.as_str()),
+                    "CSR_PRECOMPILED[{idx}] (syscall_id {:#x}) should be {:?} for op '{}' — \
+                     the array is out of sync with the manifests (see the ordering note in syscall.rs)",
+                    op.syscall_id,
+                    op.str,
+                    op.name,
+                );
+            }
+        }
+    }
 }
