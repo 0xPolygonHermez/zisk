@@ -2,7 +2,6 @@
 [precompile]
 name        = "Blake2"
 op_type     = "Blake2"
-op_type_id  = 0x1003
 op_type_id_const = "BLAKE2_OP_TYPE_ID"
 sm_crate    = "zisk_precomp_blake2"
 air_ids     = "BLAKE_2_BR_AIR_IDS"

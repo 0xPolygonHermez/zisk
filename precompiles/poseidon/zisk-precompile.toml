@@ -3,7 +3,6 @@
 [precompile]
 name        = "Poseidon"
 op_type     = "Poseidon"
-op_type_id  = 0x1002
 op_type_id_const = "POSEIDON_OP_TYPE_ID"
 sm_crate    = "zisk_precomp_poseidon"
 air_ids     = "POSEIDON_AIR_IDS"

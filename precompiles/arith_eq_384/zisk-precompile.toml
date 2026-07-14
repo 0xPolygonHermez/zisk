@@ -3,7 +3,6 @@
 [precompile]
 name        = "ArithEq384"
 op_type     = "ArithEq384"
-op_type_id  = 0x1005
 op_type_id_const = "ARITH_EQ_384_OP_TYPE_ID"
 sm_crate    = "zisk_precomp_arith_eq_384"
 air_ids     = "ARITH_EQ_384_AIR_IDS"

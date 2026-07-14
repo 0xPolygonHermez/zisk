@@ -3,7 +3,6 @@
 [precompile]
 name        = "ArithEq"
 op_type     = "ArithEq"
-op_type_id  = 0x1004
 op_type_id_const = "ARITH_EQ_OP_TYPE_ID"
 sm_crate    = "zisk_precomp_arith_eq"
 air_ids     = "ARITH_EQ_AIR_IDS"

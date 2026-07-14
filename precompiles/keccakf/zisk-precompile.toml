@@ -2,13 +2,12 @@
 #
 # `[precompile]` = crate-level facts (one op_type, one SM); `[[precompile.op]]` =
 # the ZiskOp(s) this precompile owns. All values here are the single source of
-# truth for the generated core/executor/PIL seams. `op_type_id` and each `opcode`
-# come from the reserved precompile bands and are validated for uniqueness at codegen.
+# truth for the generated core/executor/PIL seams. Each `opcode` and `syscall_id`
+# is explicit and validated for uniqueness at codegen.
 
 [precompile]
 name        = "Keccakf"          # type-name stem: KeccakfManager/Instance/Collector, AIR = KeccakfTrace
 op_type     = "Keccak"           # ZiskOperationType variant
-op_type_id  = 0x1000             # reserved op-type band (>= 0x1000); stable, unique
 op_type_id_const = "KECCAK_OP_TYPE_ID"  # core OP_TYPE_ID const name (register + routing)
 sm_crate    = "zisk_precomp_keccakf"  # crate exporting the *Manager/Instance/Collector types
 air_ids     = "KECCAKF_AIR_IDS"  # from generated zisk_pil traces

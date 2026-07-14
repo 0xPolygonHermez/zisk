@@ -2,7 +2,6 @@
 [precompile]
 name        = "Sha256f"
 op_type     = "Sha256"
-op_type_id  = 0x1001
 op_type_id_const = "SHA256_OP_TYPE_ID"
 sm_crate    = "zisk_precomp_sha256f"
 air_ids     = "SHA_256_F_AIR_IDS"

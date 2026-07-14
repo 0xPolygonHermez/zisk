@@ -2,7 +2,6 @@
 [precompile]
 name        = "Add256"
 op_type     = "BigInt"
-op_type_id  = 0x1006
 op_type_id_const = "BIG_INT_OP_TYPE_ID"
 sm_crate    = "zisk_precomp_big_int"
 air_ids     = "ADD_256_AIR_IDS"

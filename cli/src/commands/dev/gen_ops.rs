@@ -41,9 +41,6 @@ pub(crate) struct GenOpsCmd {
     definitions_src: PathBuf,
 }
 
-/// Lowest valid precompile `op_type_id` — the reserved band; base op-types are below.
-const OP_TYPE_ID_BAND: u64 = 0x1000;
-
 /// Syscall-id window shared with the hand-written non-precompile syscalls
 /// (DMA, profile) in `definitions/src/syscall.rs`. Precompile ids must land here
 /// and stay unique against each other (base ids are validated by the compiler).
@@ -69,9 +66,12 @@ struct Manifest {
 struct Precompile {
     /// Type-name stem: `<name>Manager/Instance/Collector/CounterInputGen`, register variant.
     name: String,
+    /// `ZiskOperationType` variant this precompile's ops share (define_ops! column).
     op_type: String,
-    op_type_id: u64,
     /// Core `*_OP_TYPE_ID` const name (used by the register invocation + op-type routing).
+    /// NOTE: today's op-type ids are the hand-written positional discriminants in
+    /// `zisk_inst.rs`; the reserved-band numeric id (design doc, Phase 0.2c) is added
+    /// here only when the band move lands (it changes the vk), so it is not declared yet.
     op_type_id_const: String,
     /// Crate exporting the per-precompile SM types (`precomp_*`).
     sm_crate: String,
@@ -216,23 +216,11 @@ fn emit_syscalls(precompiles: &[Precompile]) -> String {
     out
 }
 
-/// Reject duplicate/out-of-band opcodes, op-type ids, and syscall ids.
+/// Reject duplicate/out-of-band opcodes and syscall ids.
 fn validate(precompiles: &[Precompile]) -> Result<()> {
-    let mut op_type_ids = HashSet::new();
     let mut opcodes = HashSet::new();
     let mut syscall_ids = HashSet::new();
     for p in precompiles {
-        if p.op_type_id < OP_TYPE_ID_BAND {
-            bail!(
-                "op_type '{}': op_type_id {:#x} is below the reserved precompile band {:#x}",
-                p.op_type,
-                p.op_type_id,
-                OP_TYPE_ID_BAND
-            );
-        }
-        if !op_type_ids.insert(p.op_type_id) {
-            bail!("duplicate op_type_id {:#x} (op_type '{}')", p.op_type_id, p.op_type);
-        }
         for op in &p.op {
             if !opcodes.insert(op.opcode) {
                 bail!("duplicate opcode {:#x} (op '{}')", op.opcode, op.name);
@@ -324,7 +312,7 @@ mod tests {
 
         let precompiles = load_precompiles(&root.join("zisk-precompiles.toml"), root)
             .expect("load the enabled precompile manifests");
-        // Bad values (below the reserved band, duplicate op_type_id / opcode) fail here.
+        // Bad values (duplicate opcode, or out-of-window / duplicate syscall_id) fail here.
         validate(&precompiles).expect("precompile manifests pass id validation");
 
         // Drift guard: regenerate in memory and compare byte-for-byte with the
@@ -390,6 +378,43 @@ mod tests {
                     op.syscall_id,
                     op.str,
                     op.name,
+                );
+            }
+        }
+    }
+
+    /// The guest syscall wrappers (`ziskos/entrypoint/src/syscalls/*.rs`) are bespoke
+    /// per op (own param structs, host backends, docs) so they are hand-written, not
+    /// generated. This guard catches the real failure mode — a precompile enabled in
+    /// the registry with no guest wrapper — by asserting every op's `SYSCALL_<stem>_ID`
+    /// is referenced by some wrapper. Robust to the fn/file/const naming mismatches
+    /// (op `keccak` → file `keccakf.rs`, fn `syscall_keccak_f`, const `SYSCALL_KECCAKF_ID`).
+    #[test]
+    fn guest_wrappers_reference_precompile_syscalls() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("cli crate dir has a parent (the repo root)");
+        let precompiles = load_precompiles(&root.join("zisk-precompiles.toml"), root)
+            .expect("load the enabled precompile manifests");
+
+        let dir = root.join("ziskos/entrypoint/src/syscalls");
+        let mut sources = String::new();
+        for entry in fs::read_dir(&dir).expect("read guest syscalls dir") {
+            let path = entry.expect("dir entry").path();
+            if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                sources.push_str(&fs::read_to_string(&path).expect("read wrapper source"));
+            }
+        }
+
+        for p in &precompiles {
+            for op in &p.op {
+                let needle = format!("SYSCALL_{}_ID", op.syscall);
+                assert!(
+                    sources.contains(&needle),
+                    "no guest syscall wrapper references {needle} (op '{}') under {} — \
+                     every enabled precompile op needs a wrapper",
+                    op.name,
+                    dir.display(),
                 );
             }
         }
