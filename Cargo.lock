@@ -7521,6 +7521,7 @@ dependencies = [
  "proofman-macros",
  "serde",
  "serde_arrays",
+ "zisk-definitions",
 ]
 
 [[package]]

@@ -11,6 +11,7 @@ documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
+zisk-definitions = { workspace = true }
 proofman-common = { workspace = true }
 proofman-macros = { workspace = true }
 proofman-fields = { workspace = true }

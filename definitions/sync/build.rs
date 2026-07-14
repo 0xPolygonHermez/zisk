@@ -51,20 +51,23 @@ fn main() {
     // definitions/sync/src/constants.
     let defs = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("..");
 
-    use DirMode::Exclusive;
+    use DirMode::{Exclusive, Shared};
 
-    // `zisk-definitions`' own constants → one generated root under src: Rust at the top
-    // (compiled by consumers), C/PIL/asm in dedicated subdirs on the toolchains' include
-    // paths. All `Exclusive`: these dirs hold only generated files.
+    // `zisk-definitions`' own constants. Rust/C/asm go to a dedicated generated root
+    // under src (`Exclusive` — those dirs hold only generated files). PIL is emitted
+    // straight into the repo `pil/` dir (`Shared`) so `zisk.pil`'s `require "<group>.pil"`
+    // resolves with no include-path change; Shared only writes/removes `@generated`
+    // files there, leaving the hand-written PIL (zisk.pil, config.pil, …) untouched.
     let generated_folder = defs.join("src/generated");
     let source_folder = defs.join("src/constants");
+    let pil_folder = defs.join("../pil");
 
     let job1 = Job {
         watch: source_folder,
         constants: zisk_definitions::ZISK_CONSTANTS,
         rust: (generated_folder.clone(), Exclusive),
         c: (generated_folder.join("c"), Exclusive),
-        pil: (generated_folder.join("pil"), Exclusive),
+        pil: (pil_folder, Shared),
         asm: (generated_folder.join("asm"), Exclusive),
     };
 
