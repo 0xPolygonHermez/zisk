@@ -18,7 +18,12 @@ use zisk_definitions_generator::meta;
 
 /// Groups rendered to `src/generated/` by the sync build. Add a group here once its
 /// module is real (promote it out of `#[cfg(test)]` and list it below).
-pub const ZISK_CONSTANTS: &[(&meta::GroupMeta, &[meta::Export])] = &[];
+pub const ZISK_CONSTANTS: &[(&meta::GroupMeta, &[meta::Export])] =
+    &[(&syscall::GROUP, syscall::EXPORTS)];
+
+/// Syscall ids (guest ABI) — the first real group, migrated from the hand-written
+/// `definitions/src/syscall.rs` + the gen-ops `syscall_ids.gen.rs` seam.
+mod syscall;
 
 // Sample groups — the shape a real group takes, one module per file. Compiled under
 // `test` only until a group is real and wired into `ZISK_CONSTANTS` above.

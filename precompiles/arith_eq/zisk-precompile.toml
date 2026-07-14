@@ -17,7 +17,6 @@ input_size = 136
 output_size = 64
 stats = true
 syscall = "ARITH256"
-syscall_id = 0x801
 
 [[precompile.op]]
 name = "Arith256Mod"
@@ -28,7 +27,6 @@ input_size = 168
 output_size = 32
 stats = true
 syscall = "ARITH256_MOD"
-syscall_id = 0x802
 
 [[precompile.op]]
 name = "Secp256k1Add"
@@ -39,7 +37,6 @@ input_size = 144
 output_size = 64
 stats = true
 syscall = "SECP256K1_ADD"
-syscall_id = 0x803
 
 [[precompile.op]]
 name = "Secp256k1Dbl"
@@ -50,7 +47,6 @@ input_size = 64
 output_size = 64
 stats = true
 syscall = "SECP256K1_DBL"
-syscall_id = 0x804
 
 [[precompile.op]]
 name = "Secp256r1Add"
@@ -61,7 +57,6 @@ input_size = 144
 output_size = 64
 stats = true
 syscall = "SECP256R1_ADD"
-syscall_id = 0x817
 
 [[precompile.op]]
 name = "Secp256r1Dbl"
@@ -72,7 +67,6 @@ input_size = 64
 output_size = 64
 stats = true
 syscall = "SECP256R1_DBL"
-syscall_id = 0x818
 
 [[precompile.op]]
 name = "Bn254CurveAdd"
@@ -83,7 +77,6 @@ input_size = 144
 output_size = 64
 stats = true
 syscall = "BN254_CURVE_ADD"
-syscall_id = 0x806
 
 [[precompile.op]]
 name = "Bn254CurveDbl"
@@ -94,7 +87,6 @@ input_size = 64
 output_size = 64
 stats = true
 syscall = "BN254_CURVE_DBL"
-syscall_id = 0x807
 
 [[precompile.op]]
 name = "Bn254ComplexAdd"
@@ -105,7 +97,6 @@ input_size = 144
 output_size = 64
 stats = true
 syscall = "BN254_COMPLEX_ADD"
-syscall_id = 0x808
 
 [[precompile.op]]
 name = "Bn254ComplexSub"
@@ -116,7 +107,6 @@ input_size = 144
 output_size = 64
 stats = true
 syscall = "BN254_COMPLEX_SUB"
-syscall_id = 0x809
 
 [[precompile.op]]
 name = "Bn254ComplexMul"
@@ -127,4 +117,3 @@ input_size = 144
 output_size = 64
 stats = true
 syscall = "BN254_COMPLEX_MUL"
-syscall_id = 0x80A

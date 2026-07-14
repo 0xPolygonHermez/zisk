@@ -1,8 +1,5 @@
 #![no_std]
 
-mod syscall;
-pub use syscall::*;
-
 mod profile;
 pub use profile::*;
 
@@ -16,13 +13,17 @@ pub use hints::*;
 // generated plain `pub const`s (`generated`, zero-dep); with `gen`, the sync build
 // compiles the `#[constants]` source (`constants`, `ZISK_CONSTANTS`). Mutually
 // exclusive so the `gen` build never depends on files it is about to regenerate.
+// Syscall ids (and future constant groups) live here — generated from the
+// `#[constants]` source in `src/constants/` by the `zisk-definitions-sync` build.
 #[cfg(not(feature = "gen"))]
 mod generated;
-// The glob re-exports nothing while `generated` is an empty stub; the allow is a
-// no-op once real constants populate it.
 #[cfg(not(feature = "gen"))]
-#[allow(unused_imports)]
 pub use generated::*;
+// The syscall ids were historically flat at the crate root (`zisk_definitions::
+// SYSCALL_*_ID`); keep that path for the existing consumers. (Newer groups are
+// accessed group-qualified, e.g. `zisk_definitions::memory::*`.)
+#[cfg(not(feature = "gen"))]
+pub use generated::syscall::*;
 
 #[cfg(feature = "gen")]
 mod constants;
