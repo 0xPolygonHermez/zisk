@@ -36,7 +36,9 @@ enum Radix {
 /// Module-level defaults parsed from `#[constants(..)]`.
 struct Container {
     group: Option<String>,
-    targets: u8,
+    /// Targets the group emits to. `None` until `to(..)` is parsed; `to(..)` is required
+    /// (a group without it is a hard error in `expand`), so there is no implicit default.
+    targets: Option<u8>,
     radix: Radix,
     fits: Option<u8>,
     c_prefix: String,
@@ -49,11 +51,12 @@ struct Container {
 
 impl Default for Container {
     fn default() -> Self {
-        // asm is opt-in (not in the default target set): only the hand-written
-        // emulator asm needs a handful of constants, so groups add it explicitly.
+        // `to(..)` has no default: every group lists its targets explicitly (enforced in
+        // `expand`), so a group's fan-out — including whether it reaches asm — is always
+        // visible at the definition site.
         Container {
             group: None,
-            targets: T_RUST | T_C | T_PIL,
+            targets: None,
             radix: Radix::Hex,
             fits: None,
             c_prefix: String::new(),
@@ -71,8 +74,9 @@ impl Container {
         if meta.path.is_ident("group") {
             self.group = Some(meta.value()?.parse::<LitStr>()?.value());
         } else if meta.path.is_ident("to") {
-            self.targets = 0;
-            meta.parse_nested_meta(|m| add_target(&mut self.targets, &m))?;
+            let mut bits = 0u8;
+            meta.parse_nested_meta(|m| add_target(&mut bits, &m))?;
+            self.targets = Some(bits);
         } else if meta.path.is_ident("hex") {
             self.radix = Radix::Hex;
         } else if meta.path.is_ident("dec") {
@@ -187,6 +191,16 @@ fn expand(container: Container, item_mod: ItemMod) -> syn::Result<TokenStream2> 
         }
     };
 
+    // `to(..)` is mandatory: a group must state every target it emits to, so its fan-out
+    // is explicit at the definition site (no default set to memorize, no asm asymmetry).
+    if container.targets.is_none() {
+        return Err(syn::Error::new(
+            ident_span,
+            "#[constants] requires `to(..)`: list every target the group emits to, \
+             e.g. `to(rust, c, pil)`",
+        ));
+    }
+
     let group_name = container.group.clone().unwrap_or_else(|| ident.to_string());
 
     let mut out_items: Vec<TokenStream2> = Vec::new();
@@ -255,7 +269,9 @@ fn build_export(container: &Container, emit: &Emit, c: &ItemConst) -> syn::Resul
         Kind::Str => quote!( zisk_definitions_generator::meta::Value::Str(#id) ),
     };
 
-    let mut targets = emit.targets.unwrap_or(container.targets);
+    // `expand` rejected a group with no `to(..)`, so the container set is always present.
+    let container_targets = container.targets.expect("`to(..)` enforced in expand");
+    let mut targets = emit.targets.unwrap_or(container_targets);
     targets &= !emit.skip;
     // Emit the target set symbolically so `meta::Targets` remains the single
     // source of truth for the bit values (no duplicated 1/2/4 across crates).
