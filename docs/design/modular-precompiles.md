@@ -291,6 +291,23 @@ For a true plugin (add a precompile = folder + manifest, **zero core hand-edits*
 
 `ZiskOp`/`define_ops!`, costs, `register_precompiles!`, and the PIL are **append-safe** (opcodes are explicit in each row; enum discriminant isn't the ABI) → those generate as no-ops (opcodes preserved). Only the op-type band move changes the vk.
 
+### Grounded scope (post-0.3 investigation, 2026-07-14)
+0.3 landed: `register_precompiles!` + `define_ops!` rows + syscall-id consts are generated; `CSR_PRECOMPILED` and the guest wrappers are hand-written with `cargo test` drift guards; the premature `op_type_id` manifest field was removed (unused, and its `0x1000` value contradicted the real positional discriminant `5`). A code-level pass then refined the remaining 0.2 work into three parts, split by *what gates each* (they map onto the phasing above: **(i)** ≈ the "Decision" band move, **(ii)** ≈ 0.2a+0.2b, **(iii)** ≈ 0.2c-ASM):
+
+**Findings**
+- `precompiled_load_data` (+`_with_result`) already exists; 11/14 precompile `opc_*` use it, but `keccak`/`poseidon1`/`poseidon2` hand-roll all three `EmulationMode` arms (68–76 lines each).
+- **Band-move safety re-verified in code:** the only `[op as usize]` indexing (`frequent_ops_helpers.rs::table_by_op`) is opcode-indexed (`op: u8`, `[_; 256]`), not `ZiskOperationType` — confirms the "no op-type dense index" claim above.
+- Costs are 7 simple consts, referenced by name from the manifests.
+- `zisk_rom_2_asm.rs` carries `op_is_precompiled` + ~15 per-op `precompile_results_*` methods — extensive, hand-written.
+
+**(i) Op-type band move — the decoupling goal; vk-gated, low code-risk.** Generate the precompile slice of `ZiskOperationType` + `*_OP_TYPE_ID` from manifests with explicit reserved-band discriminants (base types stay hand-written at low ids). Reintroduce `op_type_id` in manifests (now truthful) + guard `<const> as u32 == op_type_id`. Cost: one-time vk regen + verifier redeploy; risk is *low code* (enum + consts, no hot-path logic). This is the meaningful "op-types become pluggable" step — **gated on the decision to spend the vk regen, not on complexity.**
+
+**(ii) `opc_*`/cost generation — no vk; hot path → deferred.** Needs (1) a behavior-preserving refactor of the 3 hand-rolled `opc_*` into the `precompiled_load_data` shape, then (2) manifests carrying each op's load layout + helper fn — and per-op post-load logic (`sha256`'s `split_at`, `add256`'s cout) still resists templating. High effort/risk on the perf-guarded hot path for low value (a new in-tree precompile only adds a hand-written `opc_` + a leaf-math dep). If touched, do just the uniformity refactor as its own no-op PR.
+
+**(iii) ASM tier — deferred (Tier-2).** External precompiles stay Rust-only; emit a `panic!` ASM stub. Data-driving the existing per-op ASM handling is a separate large effort; do it when a real external precompile needs native ASM.
+
+**Recommendation:** the Rust-seam work worth doing without a vk event is complete (0.3a–d). Part (i) is the remaining valuable decoupling and is gated on the vk-regen decision; parts (ii) and (iii) stay hand-written-and-guarded (generating them is high-risk, low-return).
+
 ## Open questions
 - Can `vadcop` aggregation be made config-agnostic to avoid vk churn when the set changes?
 - Add partial-airgroup support to pil2 (merge multiple `airgroup Zisk {}` blocks) to enable Mode B — check if already present; if not, scope the compiler change.

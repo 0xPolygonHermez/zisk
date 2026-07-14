@@ -216,11 +216,23 @@ fn emit_syscalls(precompiles: &[Precompile]) -> String {
     out
 }
 
-/// Reject duplicate/out-of-band opcodes and syscall ids.
+/// Reject a malformed enabled set: duplicate precompile names (each drives a
+/// `register_precompiles!` variant + its `<Name>Manager/Instance/...` types, so a
+/// collision would emit duplicate items) and duplicate/out-of-window opcodes or
+/// syscall ids.
 fn validate(precompiles: &[Precompile]) -> Result<()> {
+    let mut names = HashSet::new();
     let mut opcodes = HashSet::new();
     let mut syscall_ids = HashSet::new();
     for p in precompiles {
+        if !names.insert(p.name.as_str()) {
+            bail!(
+                "duplicate precompile name '{}' — it names a register_precompiles! variant \
+                 and the {}Manager/Instance/Collector types, so names must be unique",
+                p.name,
+                p.name,
+            );
+        }
         for op in &p.op {
             if !opcodes.insert(op.opcode) {
                 bail!("duplicate opcode {:#x} (op '{}')", op.opcode, op.name);
@@ -253,7 +265,11 @@ fn load_precompiles(registry_path: &Path, base_dir: &Path) -> Result<Vec<Precomp
     .with_context(|| format!("parsing registry {}", registry_path.display()))?;
 
     let mut precompiles = Vec::new();
+    let mut seen_entries = HashSet::new();
     for entry in &registry.precompiles.enabled {
+        if !seen_entries.insert(entry.as_str()) {
+            bail!("duplicate registry entry '{}' in {}", entry, registry_path.display());
+        }
         let manifest_path = base_dir.join(resolve_dir(entry)).join("zisk-precompile.toml");
         let manifest: Manifest = toml::from_str(
             &fs::read_to_string(&manifest_path)
@@ -312,7 +328,7 @@ mod tests {
 
         let precompiles = load_precompiles(&root.join("zisk-precompiles.toml"), root)
             .expect("load the enabled precompile manifests");
-        // Bad values (duplicate opcode, or out-of-window / duplicate syscall_id) fail here.
+        // Bad values (below the reserved band, duplicate op_type_id / opcode) fail here.
         validate(&precompiles).expect("precompile manifests pass id validation");
 
         // Drift guard: regenerate in memory and compare byte-for-byte with the
