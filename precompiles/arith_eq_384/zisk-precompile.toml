@@ -1,0 +1,64 @@
+# Definition of the arith_eq_384 precompile — read by `cargo-zisk-dev gen-ops`.
+# Multi-op: several ZiskOps share the ArithEq384 op_type + one AIR/SM.
+[precompile]
+name        = "ArithEq384"
+op_type     = "ArithEq384"
+op_type_id  = 0x1005
+op_type_id_const = "ARITH_EQ_384_OP_TYPE_ID"
+sm_crate    = "zisk_precomp_arith_eq_384"
+air_ids     = "ARITH_EQ_384_AIR_IDS"
+rank_assign = false
+
+[[precompile.op]]
+name = "Arith384Mod"
+str = "arith384_mod"
+opcode = 0xE2
+cost = "ARITH_EQ_384_COST"
+input_size = 232
+output_size = 48
+stats = true
+
+[[precompile.op]]
+name = "Bls12_381CurveAdd"
+str = "bls12_381_curve_add"
+opcode = 0xE3
+cost = "ARITH_EQ_384_COST"
+input_size = 208
+output_size = 96
+stats = true
+
+[[precompile.op]]
+name = "Bls12_381CurveDbl"
+str = "bls12_381_curve_dbl"
+opcode = 0xE4
+cost = "ARITH_EQ_384_COST"
+input_size = 96
+output_size = 96
+stats = true
+
+[[precompile.op]]
+name = "Bls12_381ComplexAdd"
+str = "bls12_381_complex_add"
+opcode = 0xE5
+cost = "ARITH_EQ_384_COST"
+input_size = 208
+output_size = 96
+stats = true
+
+[[precompile.op]]
+name = "Bls12_381ComplexSub"
+str = "bls12_381_complex_sub"
+opcode = 0xE6
+cost = "ARITH_EQ_384_COST"
+input_size = 208
+output_size = 96
+stats = true
+
+[[precompile.op]]
+name = "Bls12_381ComplexMul"
+str = "bls12_381_complex_mul"
+opcode = 0xE7
+cost = "ARITH_EQ_384_COST"
+input_size = 208
+output_size = 96
+stats = true

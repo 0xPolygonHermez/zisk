@@ -1,0 +1,18 @@
+# Definition of the big_int (add256) precompile — read by `cargo-zisk-dev gen-ops`.
+[precompile]
+name        = "Add256"
+op_type     = "BigInt"
+op_type_id  = 0x1006
+op_type_id_const = "BIG_INT_OP_TYPE_ID"
+sm_crate    = "zisk_precomp_big_int"
+air_ids     = "ADD_256_AIR_IDS"
+rank_assign = false
+
+[[precompile.op]]
+name        = "Add256"
+str         = "add256"
+opcode      = 0xF0
+cost        = "ADD256_COST"
+input_size  = 104
+output_size = 32
+stats       = true
