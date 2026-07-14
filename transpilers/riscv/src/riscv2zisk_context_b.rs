@@ -10,12 +10,6 @@ use zisk_core::ZiskInstBuilder;
 RISC-V B extensions.  Some instructions appear in multiple extensions, but they are only implemented
 once in ZisK.
 
-Zba — address generation (accelerates array indexing via shift-add)
-    sh1add, sh2add, sh3add
-    sh2add.uw, sh3add.uw, slli.uw
-    add.uw, sh1add.uw,
-    zext.w is a pseudoinstruction here (it maps to add.uw rd, rs, zero).
-
 Zbb — basic bit manipulation (the largest of the four)
     Logical-with-negate: andn, orn, xnor
     Count zeros: clz, ctz (plus RV64 clzw, ctzw)
@@ -26,9 +20,6 @@ Zbb — basic bit manipulation (the largest of the four)
     OR-combine byte: orc.b
     Rotate: rol, ror, rori (plus RV64 rolw, rorw, roriw)
 
-Zbc — carry-less multiplication
-    clmul, clmulh, clmulr
-
 Zbs — single-bit instructions (set/clear/invert/extract one bit)
     bclr, bclri, bext, bexti, binv, binvi, bset, bseti
 
@@ -36,6 +27,15 @@ Zbkb — bit manipulation for cryptography
     rol, ror, rori, andn, orn, xnor (all shared with Zbb; RV64 also has rolw, rorw, roriw)
     pack, packh, packw — pack low halves of two registers
     brev8 — bit-reverse within each byte
+
+Zba — address generation (accelerates array indexing via shift-add)
+    sh1add, sh2add, sh3add
+    sh1add.uw, sh2add.uw, sh3add.uw
+    add.uw, slli.uw
+    zext.w is a pseudoinstruction here (it maps to add.uw rd, rs, zero).
+
+Zbc — carry-less multiplication
+    clmul, clmulh, clmulr
 
 Zbkc — carry-less multiplication for cryptography
     clmul, clmulh
@@ -747,7 +747,13 @@ impl Riscv2ZiskContext<'_> {
             zib.set_next_internal_address(internal_address_1);
             let jump_address = internal_address_1 as i64 - i.rom_address as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{}, r{} 1/2", i.inst_name, i.rd, i.rs1, i.rs2));
+            zib.verbose(&format!(
+                "{} r{}, r{}, {} 1/2",
+                i.inst_name,
+                i.rd,
+                i.rs1,
+                if is_imm { format!("imm{}", i.imm) } else { format!("r{}", i.rs2) }
+            ));
             zib.build(self.rom);
         }
 
@@ -764,7 +770,13 @@ impl Riscv2ZiskContext<'_> {
             zib.store("reg", i.rd as i64, false, false);
             let jump_address = rom_address as i64 + 4 - internal_address_1 as i64;
             zib.j(jump_address, jump_address);
-            zib.verbose(&format!("{} r{}, r{}, r{} 2/2", i.inst_name, i.rd, i.rs1, i.rs2));
+            zib.verbose(&format!(
+                "{} r{}, r{}, {} 2/2",
+                i.inst_name,
+                i.rd,
+                i.rs1,
+                if is_imm { format!("imm{}", i.imm) } else { format!("r{}", i.rs2) }
+            ));
             zib.build(self.rom);
         }
     }

@@ -2,7 +2,6 @@
 ziskos::entrypoint!(main);
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
-#[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
 mod riscv_b;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 #[cfg(feature = "c_extension")]
@@ -23,7 +22,6 @@ fn main() {
         riscv_c::diagnostic_riscv_c();
         riscv_fd::diagnostic_riscv_fd();
         riscv_ima::diagnostic_riscv_ima();
-        #[cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
         riscv_b::diagnostic_riscv_b();
         //riscv_ima::diagnostic_riscv_ima_combinations(); // TODO
     }

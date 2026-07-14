@@ -92,8 +92,14 @@ pub fn execute_build_program(
     // Guest rustflags + linker script; keep the temp file alive until cargo
     // finishes. Env rustflags are NOT inherited: in this build-script context
     // they are the host build's flags, injected by the outer cargo.
-    let _linker_script =
-        crate::apply_guest_rustflags(&mut cmd, Some(program_dir.as_std_path()), false)?;
+    let target_features =
+        crate::target_features_from_features(args.features.as_deref(), args.all_features);
+    let _linker_script = crate::apply_guest_rustflags(
+        &mut cmd,
+        Some(program_dir.as_std_path()),
+        false,
+        &target_features,
+    )?;
 
     let target_elf_paths = generate_elf_paths(&program_metadata, Some(args))?;
 

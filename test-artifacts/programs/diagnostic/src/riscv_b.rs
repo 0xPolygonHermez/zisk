@@ -1,5 +1,3 @@
-#![cfg(any(feature = "zbxx_native", feature = "zbxx_soft"))]
-
 pub fn diagnostic_riscv_b() {
     // B bit manipulation extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
 
@@ -196,98 +194,116 @@ pub fn diagnostic_riscv_b() {
 
     bseti();
 
-    add_u_w(0x00000000FFFFFFFF, 0x0000000000000001, 0x0000000100000000);
-    add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000002);
-    add_u_w(0x0000000000000002, 0x0000000000000002, 0x0000000000000004);
-    add_u_w(0x0000000000000004, 0x0000000000000004, 0x0000000000000008);
-    add_u_w(0xFFFFFFFFFFFFFFFF, 0x0000000000000001, 0x0000000100000000);
-    add_u_w(0xFFFFFFFF00000001, 0x0000000000000001, 0x0000000000000002);
-    add_u_w(0xFFFFFFFF00000002, 0x0000000000000002, 0x0000000000000004);
-    add_u_w(0xFFFFFFFF00000004, 0x0000000000000004, 0x0000000000000008);
+    #[cfg(feature = "zba")]
+    {
+        add_u_w(0x00000000FFFFFFFF, 0x0000000000000001, 0x0000000100000000);
+        add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000002);
+        add_u_w(0x0000000000000002, 0x0000000000000002, 0x0000000000000004);
+        add_u_w(0x0000000000000004, 0x0000000000000004, 0x0000000000000008);
+        add_u_w(0xFFFFFFFFFFFFFFFF, 0x0000000000000001, 0x0000000100000000);
+        add_u_w(0xFFFFFFFF00000001, 0x0000000000000001, 0x0000000000000002);
+        add_u_w(0xFFFFFFFF00000002, 0x0000000000000002, 0x0000000000000004);
+        add_u_w(0xFFFFFFFF00000004, 0x0000000000000004, 0x0000000000000008);
 
-    sh1add(0x0000000000000001, 0x0000000000000001, 0x0000000000000003);
-    sh1add(0x0000000000000002, 0x0000000000000002, 0x0000000000000006);
-    sh1add(0x0000000000000004, 0x0000000000000004, 0x000000000000000C);
-    sh1add(0x0000000000000008, 0x0000000000000008, 0x0000000000000018);
-    sh1add(0x4000000000000000, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+        sh1add(0x0000000000000001, 0x0000000000000001, 0x0000000000000003);
+        sh1add(0x0000000000000002, 0x0000000000000002, 0x0000000000000006);
+        sh1add(0x0000000000000004, 0x0000000000000004, 0x000000000000000C);
+        sh1add(0x0000000000000008, 0x0000000000000008, 0x0000000000000018);
+        sh1add(0x4000000000000000, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
 
-    sh1add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000003);
-    sh1add_u_w(0x0000000000000002, 0x0000000000000002, 0x0000000000000006);
-    sh1add_u_w(0x0000000000000004, 0x0000000000000004, 0x000000000000000C);
-    sh1add_u_w(0x0000000000000008, 0x0000000000000008, 0x0000000000000018);
-    sh1add_u_w(0x4000000000000000, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF);
+        sh1add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000003);
+        sh1add_u_w(0x0000000000000002, 0x0000000000000002, 0x0000000000000006);
+        sh1add_u_w(0x0000000000000004, 0x0000000000000004, 0x000000000000000C);
+        sh1add_u_w(0x0000000000000008, 0x0000000000000008, 0x0000000000000018);
+        sh1add_u_w(0x4000000000000000, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF);
 
-    sh2add(0x0000000000000001, 0x0000000000000001, 0x0000000000000005);
-    sh2add(0x0000000000000002, 0x0000000000000002, 0x000000000000000A);
-    sh2add(0x0000000000000004, 0x0000000000000004, 0x0000000000000014);
-    sh2add(0x0000000000000008, 0x0000000000000008, 0x0000000000000028);
-    sh2add(0x2000000000000000, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+        sh2add(0x0000000000000001, 0x0000000000000001, 0x0000000000000005);
+        sh2add(0x0000000000000002, 0x0000000000000002, 0x000000000000000A);
+        sh2add(0x0000000000000004, 0x0000000000000004, 0x0000000000000014);
+        sh2add(0x0000000000000008, 0x0000000000000008, 0x0000000000000028);
+        sh2add(0x2000000000000000, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
 
-    sh2add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000005);
-    sh2add_u_w(0x0000000000000002, 0x0000000000000002, 0x000000000000000A);
-    sh2add_u_w(0x0000000000000004, 0x0000000000000004, 0x0000000000000014);
-    sh2add_u_w(0x0000000000000008, 0x0000000000000008, 0x0000000000000028);
-    sh2add_u_w(0x2000000000000000, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF);
+        sh2add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000005);
+        sh2add_u_w(0x0000000000000002, 0x0000000000000002, 0x000000000000000A);
+        sh2add_u_w(0x0000000000000004, 0x0000000000000004, 0x0000000000000014);
+        sh2add_u_w(0x0000000000000008, 0x0000000000000008, 0x0000000000000028);
+        sh2add_u_w(0x2000000000000000, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF);
 
-    sh3add(0x0000000000000001, 0x0000000000000001, 0x0000000000000009);
-    sh3add(0x0000000000000002, 0x0000000000000002, 0x0000000000000012);
-    sh3add(0x0000000000000004, 0x0000000000000004, 0x0000000000000024);
-    sh3add(0x0000000000000008, 0x0000000000000008, 0x0000000000000048);
-    sh3add(0x1000000000000000, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+        sh3add(0x0000000000000001, 0x0000000000000001, 0x0000000000000009);
+        sh3add(0x0000000000000002, 0x0000000000000002, 0x0000000000000012);
+        sh3add(0x0000000000000004, 0x0000000000000004, 0x0000000000000024);
+        sh3add(0x0000000000000008, 0x0000000000000008, 0x0000000000000048);
+        sh3add(0x1000000000000000, 0x7FFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
 
-    sh3add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000009);
-    sh3add_u_w(0x0000000000000002, 0x0000000000000002, 0x0000000000000012);
-    sh3add_u_w(0x0000000000000004, 0x0000000000000004, 0x0000000000000024);
-    sh3add_u_w(0x0000000000000008, 0x0000000000000008, 0x0000000000000048);
-    sh3add_u_w(0x1000000000000000, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF);
+        sh3add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000009);
+        sh3add_u_w(0x0000000000000002, 0x0000000000000002, 0x0000000000000012);
+        sh3add_u_w(0x0000000000000004, 0x0000000000000004, 0x0000000000000024);
+        sh3add_u_w(0x0000000000000008, 0x0000000000000008, 0x0000000000000048);
+        sh3add_u_w(0x1000000000000000, 0x7FFFFFFFFFFFFFFF, 0x7FFFFFFFFFFFFFFF);
 
-    slli_u_w();
+        slli_u_w();
+    }
 
     // CLMUL tests - lower 64 bits of carryless multiplication
-    clmul(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0 = 0
-    clmul(0x0000000000000001, 0x0000000000000001, 0x0000000000000001); // 1 * 1 = 1
-    clmul(0x0000000000000002, 0x0000000000000002, 0x0000000000000004); // 2 * 2 = 4
-    clmul(0x0000000000000003, 0x0000000000000003, 0x0000000000000005); // (x+1) * (x+1) = x^2 + 1
-    clmul(0x0000000000000005, 0x0000000000000003, 0x000000000000000F); // (x^2+1) * (x+1) = x^3 + x^2 + x + 1
-    clmul(0x000000000000000F, 0x000000000000000F, 0x0000000000000055); // Full nibble
-    clmul(0x00000000000000FF, 0x00000000000000FF, 0x0000000000005555); // Full byte
-    clmul(0x0000000000000101, 0x0000000000000101, 0x0000000000010001); // Sparse pattern
-    clmul(0xFFFFFFFFFFFFFFFF, 0x0000000000000001, 0xFFFFFFFFFFFFFFFF); // All 1s * 1
-    clmul(0xFFFFFFFFFFFFFFFF, 0x0000000000000002, 0xFFFFFFFFFFFFFFFE); // All 1s * 2
-    clmul(0x0123456789ABCDEF, 0x0000000000000001, 0x0123456789ABCDEF); // Identity
-    clmul(0x8000000000000000, 0x0000000000000002, 0x0000000000000000); // MSB overflow to upper
+    #[cfg(any(feature = "zbc", feature = "zbkc"))]
+    {
+        clmul(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0 = 0
+        clmul(0x0000000000000001, 0x0000000000000001, 0x0000000000000001); // 1 * 1 = 1
+        clmul(0x0000000000000002, 0x0000000000000002, 0x0000000000000004); // 2 * 2 = 4
+        clmul(0x0000000000000003, 0x0000000000000003, 0x0000000000000005); // (x+1) * (x+1) = x^2 + 1
+        clmul(0x0000000000000005, 0x0000000000000003, 0x000000000000000F); // (x^2+1) * (x+1) = x^3 + x^2 + x + 1
+        clmul(0x000000000000000F, 0x000000000000000F, 0x0000000000000055); // Full nibble
+        clmul(0x00000000000000FF, 0x00000000000000FF, 0x0000000000005555); // Full byte
+        clmul(0x0000000000000101, 0x0000000000000101, 0x0000000000010001); // Sparse pattern
+        clmul(0xFFFFFFFFFFFFFFFF, 0x0000000000000001, 0xFFFFFFFFFFFFFFFF); // All 1s * 1
+        clmul(0xFFFFFFFFFFFFFFFF, 0x0000000000000002, 0xFFFFFFFFFFFFFFFE); // All 1s * 2
+        clmul(0x0123456789ABCDEF, 0x0000000000000001, 0x0123456789ABCDEF); // Identity
+        clmul(0x8000000000000000, 0x0000000000000002, 0x0000000000000000); // MSB overflow to upper
+    }
 
     // CLMULH tests - upper 64 bits of carryless multiplication
-    clmul_h(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0
-    clmul_h(0x0000000000000001, 0x0000000000000001, 0x0000000000000000); // Small values (result in lower)
-    clmul_h(0x0000000000000002, 0x0000000000000002, 0x0000000000000000); // Result in lower bits
-    clmul_h(0x0000000000000003, 0x0000000000000003, 0x0000000000000000); // Result in lower bits
-    clmul_h(0x8000000000000000, 0x0000000000000002, 0x0000000000000001); // MSB * 2
-    clmul_h(0x8000000000000000, 0x8000000000000000, 0x4000000000000000); // MSB * MSB
-    clmul_h(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0x5555555555555555); // All 1s * all 1s
-    clmul_h(0xFFFFFFFFFFFFFFFF, 0x8000000000000000, 0x7FFFFFFFFFFFFFFF); // All 1s * MSB
-    clmul_h(0x0123456789ABCDEF, 0xFEDCBA9876543210, 0x00E038D8688850B0); // Complex pattern
-    clmul_h(0xAAAAAAAAAAAAAAAA, 0x5555555555555555, 0x2222222222222222); // Alternating bits
+    #[cfg(any(feature = "zbc", feature = "zbkc"))]
+    {
+        clmul_h(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0
+        clmul_h(0x0000000000000001, 0x0000000000000001, 0x0000000000000000); // Small values (result in lower)
+        clmul_h(0x0000000000000002, 0x0000000000000002, 0x0000000000000000); // Result in lower bits
+        clmul_h(0x0000000000000003, 0x0000000000000003, 0x0000000000000000); // Result in lower bits
+        clmul_h(0x8000000000000000, 0x0000000000000002, 0x0000000000000001); // MSB * 2
+        clmul_h(0x8000000000000000, 0x8000000000000000, 0x4000000000000000); // MSB * MSB
+        clmul_h(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0x5555555555555555); // All 1s * all 1s
+        clmul_h(0xFFFFFFFFFFFFFFFF, 0x8000000000000000, 0x7FFFFFFFFFFFFFFF); // All 1s * MSB
+        clmul_h(0x0123456789ABCDEF, 0xFEDCBA9876543210, 0x00E038D8688850B0); // Complex pattern
+        clmul_h(0xAAAAAAAAAAAAAAAA, 0x5555555555555555, 0x2222222222222222); // Alternating bits
+    }
 
     // CLMULR tests - reverse: bits [63:1] of upper 64 bits (shifted right by 1)
-    clmul_r(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0
-    clmul_r(0x0000000000000001, 0x0000000000000001, 0x0000000000000000); // Small values
-    clmul_r(0x0000000000000002, 0x0000000000000002, 0x0000000000000000); // Result in lower
-    clmul_r(0x0000000000000003, 0x0000000000000003, 0x0000000000000000); // Result in lower
-    clmul_r(0x8000000000000000, 0x0000000000000002, 0x0000000000000002); // MSB * 2 >> 1
-    clmul_r(0x8000000000000000, 0x8000000000000000, 0x8000000000000000); // MSB * MSB >> 1
-    clmul_r(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xAAAAAAAAAAAAAAAA); // All 1s * all 1s >> 1
-    clmul_r(0xFFFFFFFFFFFFFFFF, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF); // All 1s * MSB >> 1
-    clmul_r(0x0123456789ABCDEF, 0xFEDCBA9876543210, 0x01C071B0D110A160); // Complex >> 1
-    clmul_r(0xAAAAAAAAAAAAAAAA, 0x5555555555555555, 0x4444444444444444); // Alternating >> 1
+    #[cfg(feature = "zbc")]
+    {
+        clmul_r(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0
+        clmul_r(0x0000000000000001, 0x0000000000000001, 0x0000000000000000); // Small values
+        clmul_r(0x0000000000000002, 0x0000000000000002, 0x0000000000000000); // Result in lower
+        clmul_r(0x0000000000000003, 0x0000000000000003, 0x0000000000000000); // Result in lower
+        clmul_r(0x8000000000000000, 0x0000000000000002, 0x0000000000000002); // MSB * 2 >> 1
+        clmul_r(0x8000000000000000, 0x8000000000000000, 0x8000000000000000); // MSB * MSB >> 1
+        clmul_r(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xAAAAAAAAAAAAAAAA); // All 1s * all 1s >> 1
+        clmul_r(0xFFFFFFFFFFFFFFFF, 0x8000000000000000, 0xFFFFFFFFFFFFFFFF); // All 1s * MSB >> 1
+        clmul_r(0x0123456789ABCDEF, 0xFEDCBA9876543210, 0x01C071B0D110A160); // Complex >> 1
+        clmul_r(0xAAAAAAAAAAAAAAAA, 0x5555555555555555, 0x4444444444444444); // Alternating >> 1
+    }
 
-    xperm4(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
-    xperm4(0x0123456789ABCDEF, 0x0123456789ABCDEF, 0xFEDCBA9876543210);
-    xperm4(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+    #[cfg(feature = "zbkx")]
+    {
+        xperm4(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
+        xperm4(0x0123456789ABCDEF, 0x0123456789ABCDEF, 0xFEDCBA9876543210);
+        xperm4(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+    }
 
-    xperm8(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
-    xperm8(0x0102030405060708, 0x0001020304050607, 0x0807060504030201);
-    xperm8(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0x0000000000000000);
+    #[cfg(feature = "zbkx")]
+    {
+        xperm8(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
+        xperm8(0x0102030405060708, 0x0001020304050607, 0x0807060504030201);
+        xperm8(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0x0000000000000000);
+    }
 
     println!("All RISC-V B extension diagnostics passed!");
 }
@@ -936,6 +952,7 @@ fn bseti() {
     assert_eq!(c, 0x2);
 }
 
+#[cfg(feature = "zba")]
 fn add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -955,6 +972,7 @@ fn add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh1add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -974,6 +992,7 @@ fn sh1add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh1add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -993,6 +1012,7 @@ fn sh1add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh2add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1012,6 +1032,7 @@ fn sh2add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh2add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1031,6 +1052,7 @@ fn sh2add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh3add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1050,6 +1072,7 @@ fn sh3add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh3add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1069,6 +1092,7 @@ fn sh3add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn slli_u_w() {
     let a: u64 = 0xFFFFFFFF00000001;
     let c: u64;
@@ -1086,6 +1110,7 @@ fn slli_u_w() {
     assert_eq!(c, 0x0000000000000002);
 }
 
+#[cfg(any(feature = "zbc", feature = "zbkc"))]
 fn clmul(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1105,6 +1130,7 @@ fn clmul(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(any(feature = "zbc", feature = "zbkc"))]
 fn clmul_h(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1124,6 +1150,7 @@ fn clmul_h(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zbc")]
 fn clmul_r(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1143,6 +1170,7 @@ fn clmul_r(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zbkx")]
 fn xperm4(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1162,6 +1190,7 @@ fn xperm4(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zbkx")]
 fn xperm8(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
