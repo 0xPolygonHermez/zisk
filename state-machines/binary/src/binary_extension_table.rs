@@ -3,23 +3,40 @@
 //!
 //! This state machine is responsible for calculating extension binary table rows.
 
-use zisk_core::{P2_11, P2_19, P2_8};
-
-use crate::binary_constants::*;
+use zisk_core::{zisk_ops::ZiskOp, P2_11, P2_17, P2_19, P2_8};
 
 /// Represents operations supported by the Binary Extension Table.
 #[derive(Debug, Clone, PartialEq, Copy)]
 #[repr(u8)]
 pub enum BinaryExtensionTableOp {
-    Sll = SLL_OP,
-    Srl = SRL_OP,
-    Sra = SRA_OP,
-    SllW = SLLW_OP,
-    SrlW = SRLW_OP,
-    SraW = SRAW_OP,
-    SextB = SEXT_B_OP,
-    SextH = SEXT_H_OP,
-    SextW = SEXT_W_OP,
+    Sll = ZiskOp::Sll.code(),
+    Srl = ZiskOp::Srl.code(),
+    Sra = ZiskOp::Sra.code(),
+    SllW = ZiskOp::SllW.code(),
+    SrlW = ZiskOp::SrlW.code(),
+    SraW = ZiskOp::SraW.code(),
+    SextB = ZiskOp::SignExtendB.code(),
+    SextH = ZiskOp::SignExtendH.code(),
+    SextW = ZiskOp::SignExtendW.code(),
+    Rev8 = ZiskOp::Rev8.code(),
+    OrcB = ZiskOp::OrcB.code(),
+    Rol = ZiskOp::Rol.code(),
+    RolW = ZiskOp::RolW.code(),
+    Ror = ZiskOp::Ror.code(),
+    RorW = ZiskOp::RorW.code(),
+    Cpop = ZiskOp::Cpop.code(),
+    CpopW = ZiskOp::CpopW.code(),
+    Ctz = ZiskOp::Ctz.code(),
+    CtzW = ZiskOp::CtzW.code(),
+    Clz = ZiskOp::Clz.code(),
+    ClzW = ZiskOp::ClzW.code(),
+    Pack = ZiskOp::Pack.code(),
+    PackH = ZiskOp::PackH.code(),
+    PackW = ZiskOp::PackW.code(),
+    Bclr = ZiskOp::Bclr.code(),
+    Bext = ZiskOp::Bext.code(),
+    Binv = ZiskOp::Binv.code(),
+    Bset = ZiskOp::Bset.code(),
 }
 
 /// The `BinaryExtensionTableSM` struct encapsulates the Binary Extension Table's logic.
@@ -76,6 +93,29 @@ impl BinaryExtensionTableSM {
             BinaryExtensionTableOp::SextB => 6 * P2_19,
             BinaryExtensionTableOp::SextH => 6 * P2_19 + P2_11,
             BinaryExtensionTableOp::SextW => 6 * P2_19 + 2 * P2_11,
+            BinaryExtensionTableOp::Rev8 => 6 * P2_19 + 3 * P2_11,
+            BinaryExtensionTableOp::OrcB => 6 * P2_19 + 4 * P2_11,
+            BinaryExtensionTableOp::Rol => 6 * P2_19 + 5 * P2_11,
+            BinaryExtensionTableOp::RolW => 7 * P2_19 + 5 * P2_11,
+            BinaryExtensionTableOp::Ror => 8 * P2_19 + 5 * P2_11,
+            BinaryExtensionTableOp::RorW => 9 * P2_19 + 5 * P2_11,
+            BinaryExtensionTableOp::Cpop => 10 * P2_19 + 5 * P2_11,
+            BinaryExtensionTableOp::CpopW => 10 * P2_19 + 6 * P2_11,
+            // Chain ops: the fourth `calculate_table_row` argument carries acc_in (not B),
+            // contributing acc_in * P2_11 as the outer dimension within the block.
+            BinaryExtensionTableOp::Ctz => 10 * P2_19 + 7 * P2_11,
+            BinaryExtensionTableOp::CtzW => 10 * P2_19 + 7 * P2_11 + P2_17,
+            BinaryExtensionTableOp::Clz => 10 * P2_19 + 7 * P2_11 + 2 * P2_17,
+            BinaryExtensionTableOp::ClzW => 10 * P2_19 + 7 * P2_11 + 3 * P2_17,
+            // Pack ops are single-block (B unused), placed after the four chain blocks.
+            BinaryExtensionTableOp::Pack => 10 * P2_19 + 7 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::PackH => 10 * P2_19 + 8 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::PackW => 10 * P2_19 + 9 * P2_11 + 4 * P2_17,
+            // Single-bit ops are shift-family (full B range), placed after the pack blocks.
+            BinaryExtensionTableOp::Bclr => 10 * P2_19 + 10 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::Bext => 11 * P2_19 + 10 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::Binv => 12 * P2_19 + 10 * P2_11 + 4 * P2_17,
+            BinaryExtensionTableOp::Bset => 13 * P2_19 + 10 * P2_11 + 4 * P2_17,
         }
     }
 }

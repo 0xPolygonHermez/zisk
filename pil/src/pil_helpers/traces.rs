@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "e6ce1bcc1970586d925f2e1cef405fe864f03c69487c6b9ae8d01b7794fc851d";
+pub const PILOUT_HASH: &str = "6c2e3afabc69a0f496e2f1e62099fe1e2ad363ef9ee1710d552d9f614d93f94c";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -274,7 +274,7 @@ trace_row!(BinaryExtensionFixedRow<F> {
 pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
 trace_row!(BinaryExtensionTraceRow<F> {
- op:ubit(6), free_in_a:[u8; 8], free_in_b:u8, free_in_c:[[u32; 2]; 8], op_is_shift:bit, b:[u32; 2],
+ op:ubit(7), free_in_a:[u8; 8], free_in_b:u8, free_in_c:[[u32; 2]; 8], op_is_shift:bit, op_is_chain:bit, op_is_chain_rev:bit, op_is_combine:bit, b:[u32; 2],
 });
 
 pub type BinaryExtensionTrace<R> = GenericTrace<R, 4194304, 0, 12>;
@@ -489,23 +489,23 @@ trace_row!(DmaPrePostInputCpyTraceRow<F> {
 pub type DmaPrePostInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 31>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 22], column: [F; 59], __L1__: F,
+ UID: [F; 26], column: [F; 83], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 22],
+ multiplicity:[F; 26],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- UID: [F; 8], column: [F; 63], __L1__: F,
+ UID: [F; 11], column: [F; 88], __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 33>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
- multiplicity:[F; 8],
+ multiplicity:[F; 11],
 });
 
 pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 33>;
@@ -775,7 +775,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 12, PackedInfoConst {
         is_packed: true,
         num_packed_words: 11,
-        unpack_info: &[6, 8, 8, 8, 8, 8, 8, 8, 8, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 32, 32],
+        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 32, 32],
     }),
     (0, 13, PackedInfoConst {
         is_packed: true,

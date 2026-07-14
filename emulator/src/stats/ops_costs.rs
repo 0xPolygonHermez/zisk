@@ -33,7 +33,6 @@ static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
     }
     OpIndirectTable { base_count, precompiled_count, table }
 });
-
 #[derive(Debug, Clone)]
 pub struct OpsCosts {
     // for count and cost for operation or group of operation only store the count, the cost is calculated multiplying
@@ -66,6 +65,33 @@ impl OpsCosts {
             precompiled_count: 0,
         }
     }
+
+    pub fn get_op_index(op_code: u8) -> Option<usize> {
+        TABLE.table[op_code as usize].map(|(index, _)| index)
+    }
+    pub fn get_base_op_index(op_code: u8) -> Option<usize> {
+        if let Some((index, _)) = TABLE.table[op_code as usize] {
+            if index >= TABLE.base_count {
+                None
+            } else {
+                Some(index)
+            }
+        } else {
+            None
+        }
+    }
+    pub fn get_precompiled_op_index(op_code: u8) -> Option<usize> {
+        if let Some((index, _)) = TABLE.table[op_code as usize] {
+            if index < TABLE.base_count {
+                None
+            } else {
+                Some(index)
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn add_fixed_cost_op(&mut self, op_code: u8) {
         if let Some((index, fixed_cost)) = TABLE.table[op_code as usize] {
             // PubOut has a fixed cost of 0 but must still be counted, so that the
@@ -173,7 +199,7 @@ impl OpsCosts {
     ///
     /// # Returns
     /// A vector of opcodes (u8) sorted by cost in descending order, limited to k elements
-    pub fn top_cost_opcodes(&self, k: usize) -> Vec<u8> {
+    pub fn top_cost_opcodes(&self, k: usize, base: bool, precompiled: bool) -> Vec<u8> {
         if self.is_compact() || k == 0 {
             return Vec::new();
         }
@@ -188,6 +214,9 @@ impl OpsCosts {
             if let Some((index, _)) = TABLE.table[op_code as usize] {
                 if self.is_frops() && index >= TABLE.base_count {
                     continue; // Skip non-frops if this is a frops cost
+                }
+                if !precompiled && index >= TABLE.base_count || !base && index < TABLE.base_count {
+                    continue;
                 }
                 let cost = self.count_and_cost[index].1;
                 if cost > 0 {
@@ -212,7 +241,7 @@ impl OpsCosts {
     ///
     /// # Returns
     /// A vector of opcodes (u8) sorted by count in descending order, limited to k elements
-    pub fn top_count_opcodes(&self, k: usize) -> Vec<u8> {
+    pub fn top_count_opcodes(&self, k: usize, base: bool, precompiled: bool) -> Vec<u8> {
         if self.is_compact() || k == 0 {
             return Vec::new();
         }
@@ -227,6 +256,9 @@ impl OpsCosts {
             if let Some((index, _)) = TABLE.table[op_code as usize] {
                 if self.is_frops() && index >= TABLE.base_count {
                     continue; // Skip non-frops if this is a frops cost
+                }
+                if !precompiled && index >= TABLE.base_count || !base && index < TABLE.base_count {
+                    continue;
                 }
                 let count = self.count_and_cost[index].0;
                 if count > 0 {
@@ -292,6 +324,79 @@ impl Sub for OpsCosts {
         result.precompiled_cost = self.precompiled_cost - other.precompiled_cost;
         result.base_count = self.base_count - other.base_count;
         result.precompiled_count = self.precompiled_count - other.precompiled_count;
+        result
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OpsCount<const N: usize> {
+    count: Vec<[u64; N]>,
+}
+
+impl<const N: usize> Default for OpsCount<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> OpsCount<N> {
+    pub fn new() -> Self {
+        Self { count: Vec::new() }
+    }
+    pub fn inc(&mut self, op_code: u8, category: usize) {
+        if self.count.is_empty() {
+            self.count = vec![[0; N]; TABLE.base_count];
+        }
+        if let Some((index, _t)) = TABLE.table[op_code as usize] {
+            self.count[index][category] += 1;
+        }
+    }
+    pub fn get_by_opcode(&self, op_code: u8) -> Option<&[u64; N]> {
+        if let Some((index, _t)) = TABLE.table[op_code as usize] {
+            self.count.get(index)
+        } else {
+            None
+        }
+    }
+}
+
+impl<const N: usize> Add for OpsCount<N> {
+    type Output = Self;
+
+    fn add(self, other: Self) -> Self {
+        let mut result = Self::new();
+        if result.count.is_empty() {
+            result.count = vec![[0; N]; TABLE.base_count];
+        }
+        for i in 0..result.count.len() {
+            for j in 0..N {
+                result.count[i][j] = self.count[i][j] + other.count[i][j];
+            }
+        }
+        result
+    }
+}
+
+impl<const N: usize> AddAssign for OpsCount<N> {
+    fn add_assign(&mut self, other: Self) {
+        for i in 0..self.count.len() {
+            for j in 0..N {
+                self.count[i][j] += other.count[i][j];
+            }
+        }
+    }
+}
+
+impl<const N: usize> Sub for OpsCount<N> {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        let mut result = Self::new();
+        for i in 0..result.count.len() {
+            for j in 0..N {
+                result.count[i][j] = self.count[i][j] - other.count[i][j];
+            }
+        }
         result
     }
 }

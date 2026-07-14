@@ -79,17 +79,51 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
     const int BYTE_BASE = (1 << BYTES);
 
     // Primary columns
-    col witness bits(6)  op;                  // operation code
+    col witness bits(7)  op;                  // operation code (up to 0x43 = OP_ORCB)
     col witness bits(8)  free_in_a[BYTES];    // input A per byte
     col witness bits(8)  free_in_b;           // input B (only one byte)
     col witness bits(32) free_in_c[BYTES][2]; // output C byte, split in 2 parts
     
-    // Flags and helpers
-    col witness bits(1)  op_is_shift;         // 1 if operation is in the shift family; 0 otherwise
+    // Flags and helpers. Each is binary and the three are mutually exclusive (an op belongs to at
+    // most one family): shift, forward byte-chain (ctz/ctz_w) or reverse byte-chain (clz/clz_w).
+    col witness bits(1)  op_is_shift;         // 1 if operation is in the shift family
+    col witness bits(1)  op_is_chain;         // 1 for forward byte-chain (ctz/ctz_w, LSB -> MSB)
+    col witness bits(1)  op_is_chain_rev;     // 1 for reverse byte-chain (clz/clz_w, MSB -> LSB)
+    col witness bits(1)  op_is_combine;       // 1 for pack family (interleave low halves of a, b)
+
+    // The flags are combined into flags = op_is_shift + 2*op_is_chain + 4*op_is_chain_rev
+    // + 8*op_is_combine, which, together with the constant byte index j, is folded into a single
+    // lookup element j + BYTES * flags. This lets the table encode offset and flags in one fixed
+    // column (POS) instead of a separate offset column plus flag columns. The fold is injective
+    // only because every combined term is bounded: j is a compile-time constant in 0..BYTES-1 and
+    // flags is bounded by the binary constraints below. Legal flags are 0, 1, 2, 4, 8 (a single
+    // family bit); any two bits set has no table row, so the lookup itself enforces mutual
+    // exclusion.
+    op_is_shift * (1 - op_is_shift) === 0;
+    op_is_chain * (1 - op_is_chain) === 0;
+    op_is_chain_rev * (1 - op_is_chain_rev) === 0;
+    op_is_combine * (1 - op_is_combine) === 0;
+    const expr flags = op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev + 8 * op_is_combine;
 
     // Constraints to check the correctness of each binary operation
     for (int j = 0; j < BYTES; j++) {
-       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j, free_in_a[j], free_in_b, free_in_c[j][0], free_in_c[j][1], op_is_shift]);
+       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j + BYTES * flags, free_in_a[j], free_in_b, free_in_c[j][0], free_in_c[j][1]]);
+    }
+
+    // Byte-chain operations: free_in_c[j][0] holds the per-byte increment (summed to give the
+    // result) and free_in_c[j][1] holds the accumulated count entering byte j (acc_in). The chain
+    // forces acc_in to be the running sum of the increments already seen, so the table can tell
+    // whether byte j is still inside the run of zeros (offset provides the position threshold)
+    // without any degree-raising product across bytes.
+    // Forward (ctz): scan LSB -> MSB, acc_in[0] = 0, acc_in[j] = acc_in[j-1] + increment[j-1].
+    op_is_chain * free_in_c[0][1] === 0;
+    for (int j = 1; j < BYTES; j++) {
+       op_is_chain * (free_in_c[j][1] - free_in_c[j-1][1] - free_in_c[j-1][0]) === 0;
+    }
+    // Reverse (clz): scan MSB -> LSB, acc_in[BYTES-1] = 0, acc_in[j] = acc_in[j+1] + increment[j+1].
+    op_is_chain_rev * free_in_c[BYTES-1][1] === 0;
+    for (int j = 0; j < BYTES - 1; j++) {
+       op_is_chain_rev * (free_in_c[j][1] - free_in_c[j+1][1] - free_in_c[j+1][0]) === 0;
     }
 
     // Constraints to make sure that this component is called from the main component
@@ -113,11 +147,23 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
         c[1] += free_in_c[j][1];
     }
 
-    // if op_is_shift == 1 => [op, a[0],  a[1], free_in_b + 256 * b[0], b[1], sum(free_in_c[*][0]), sum(free_in_c[*][1]), 0]
-    // if op_is_shift == 0 => [op, b[0],  b[1], a[0],                   a[1], sum(free_in_c[*][0]), sum(free_in_c[*][1]), 0]
-    proves_operation(op:, a: [op_is_shift * (a[0] - b[0]) + b[0],  op_is_shift * (a[1] - b[1]) + b[1]],
-                          b: [op_is_shift * (free_in_b + BYTE_BASE * b[0] - a[0]) + a[0], op_is_shift * (b[1] - a[1]) + a[1]],
-                          c:);
+    // For byte-chain ops, c[1] carries the acc_in chain (an internal helper), not the real
+    // high part of the result, so it must be forced to 0 on the operation bus. c[0] already
+    // equals the result: sum of per-byte increments telescopes to the trailing/leading count.
+    expr c_res[2];
+    c_res[0] = c[0];
+    c_res[1] = (1 - op_is_chain - op_is_chain_rev) * c[1];
+
+    // Reconstruct the bus operands from the witness, selected by the flags (all mutually
+    // exclusive). a[]/b[] below are the two halves rebuilt from free_in_a; b[0]/b[1] are the
+    // b[] witness columns; free_in_b is the shared low byte.
+    //   shift   => a = [a0, a1],           b = [free_in_b + 256*b0, b1]   (value, shift amount)
+    //   plain   => a = [b0, b1],           b = [a0, a1]                   (single input in free_in_a)
+    //   combine => a = [a0, b0],           b = [a1, b1]                   (pack: a0/a1 = rs1_low/rs2_low,
+    //                                                                      b0/b1 = rs1_high/rs2_high)
+    proves_operation(op:, a: [(op_is_shift + op_is_combine) * (a[0] - b[0]) + b[0],  op_is_shift * (a[1] - b[1]) + op_is_combine * (b[0] - b[1]) + b[1]],
+                          b: [op_is_shift * (free_in_b + BYTE_BASE * b[0] - a[0]) + op_is_combine * (a[1] - a[0]) + a[0], (op_is_shift + op_is_combine) * (b[1] - a[1]) + a[1]],
+                          c: c_res);
 
     airval padding_size;
     assumes_padding_operation(op: OP_SEXT_B, padding_size:);

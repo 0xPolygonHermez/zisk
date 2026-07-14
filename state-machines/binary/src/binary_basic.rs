@@ -145,7 +145,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         // Execute the opcode
         let opcode = input.op;
-        let a = input.a;
+        let a = if opcode == ZiskOp::ADD_W { input.a } else { input.b };
+        // let a = input.a;
         let b = input.b;
 
         let (c, _) = Self::execute(input.op, input.a, input.b);
@@ -826,6 +827,37 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        0,
+                        plast[i],
+                        flags,
+                    );
+                    self.std.inc_virtual_row_one(self.table_id, row);
+                }
+            }
+            ANDN_OP | ORN_OP | XNOR_OP | BREV8_OP => {
+                // Bitwise ops with no carry, one table row per byte (like AND/OR/XOR).
+                // ANDN/ORN/XNOR use both operands; BREV8 is unary (operand in b, output
+                // depends only on b), which the table encodes independently of a.
+                row.set_use_first_byte(false);
+                row.set_result_is_a(false);
+                row.set_c_is_signed(false);
+
+                binary_basic_table_op = match opcode {
+                    ANDN_OP => BinaryBasicTableOp::Andn,
+                    ORN_OP => BinaryBasicTableOp::Orn,
+                    XNOR_OP => BinaryBasicTableOp::Xnor,
+                    _ => BinaryBasicTableOp::Brev8,
+                };
+
+                // No carry
+                row.set_all_carry(&[0u8; 8]);
+
+                for i in 0..8 {
+                    let flags = 0;
                     let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,
