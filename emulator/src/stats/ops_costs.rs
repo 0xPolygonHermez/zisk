@@ -333,6 +333,12 @@ pub struct OpsCount<const N: usize> {
     count: Vec<[u64; N]>,
 }
 
+impl<const N: usize> Default for OpsCount<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<const N: usize> OpsCount<N> {
     pub fn new() -> Self {
         Self { count: Vec::new() }

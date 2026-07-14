@@ -7,8 +7,10 @@
 
 use fields::Goldilocks;
 use riscv::RiscVRegisters;
-use sm_arith::ArithFrops;
-use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
+use sm_arith::{ArithFrops, ArithLegacyFrops};
+use sm_binary::{
+    BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
+};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs::File,
@@ -96,6 +98,8 @@ pub struct Stats {
     regs: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
     /// Flag to indicate whether to store operation data in a buffer
     store_ops: bool,
+    /// Flag to use the legacy FROPS tables when computing FROPS coverage statistics
+    legacy_frops: bool,
     costs: StatsCosts,
     // Global costs
     op_categories: OpsCount<OP_CATEGORIES>,
@@ -187,6 +191,7 @@ impl Default for Stats {
             regs: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             op_data_buffer: vec![],
             store_ops: false,
+            legacy_frops: false,
             rois,
             rois_by_pc,
             current_roi: None,
@@ -1092,6 +1097,11 @@ impl Stats {
         self.store_ops = store;
         self.op_data_buffer = Vec::with_capacity(OP_DATA_BUFFER_DEFAULT_CAPACITY);
     }
+    /// Selects the legacy FROPS tables (pre-overhaul snapshot) for FROPS coverage statistics,
+    /// so a new FROPS version can be compared against the previous (legacy) one.
+    pub fn set_legacy_frops(&mut self, legacy: bool) {
+        self.legacy_frops = legacy;
+    }
     /// Store operation data in memory buffer
     fn store_op_data(&mut self, op: u8, a: u64, b: u64) {
         // Reserve space for: 1 byte (op) + 8 bytes (a) + 8 bytes (b) = 17 bytes
@@ -1133,13 +1143,28 @@ impl Stats {
 
     /// Returns true if the provided operation is a usual operation
     fn is_frops(&self, instruction: &ZiskInst, a: u64, b: u64) -> bool {
-        match instruction.op_type {
-            ZiskOperationType::Arith => ArithFrops::is_frequent_op(instruction.op, a, b),
-            ZiskOperationType::Binary => BinaryBasicFrops::is_frequent_op(instruction.op, a, b),
-            ZiskOperationType::BinaryE => {
-                BinaryExtensionFrops::is_frequent_op(instruction.op, a, b)
+        if self.legacy_frops {
+            match instruction.op_type {
+                ZiskOperationType::Arith => ArithLegacyFrops::is_frequent_op(instruction.op, a, b),
+                ZiskOperationType::Binary => {
+                    BinaryBasicLegacyFrops::is_frequent_op(instruction.op, a, b)
+                }
+                ZiskOperationType::BinaryE => {
+                    BinaryExtensionLegacyFrops::is_frequent_op(instruction.op, a, b)
+                }
+                _ => false,
             }
-            _ => false,
+        } else {
+            match instruction.op_type {
+                ZiskOperationType::Arith => ArithFrops::is_frequent_op(instruction.op, a, b),
+                ZiskOperationType::Binary => {
+                    BinaryBasicFrops::is_frequent_op(instruction.op, a, b)
+                }
+                ZiskOperationType::BinaryE => {
+                    BinaryExtensionFrops::is_frequent_op(instruction.op, a, b)
+                }
+                _ => false,
+            }
         }
     }
 
