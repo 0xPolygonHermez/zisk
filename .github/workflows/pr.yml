@@ -55,12 +55,12 @@ jobs:
         run: cargo check --all-targets
 
       - name: Constants generated files up to date
-        # Building the regen crate re-renders the #[constants] definitions into
+        # Building the sync crate re-renders the #[constants] definitions into
         # definitions/src/generated (Rust at the top, C/PIL in c/ and pil/ subdirs)
         # via its build.rs; fail if that changed anything not committed (i.e. a
         # constant changed without rebuilding + committing).
         run: |
-          cargo build -p zisk-definitions-regen
+          cargo build -p zisk-definitions-sync
           git diff --exit-code definitions/src/generated
 
       - name: Run cargo test

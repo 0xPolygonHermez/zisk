@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use zisk_definitions_generator::Dirs;
 
 fn main() {
-    // definitions/regen/.. == definitions
+    // definitions/sync/.. == definitions
     let defs = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap()).join("..");
     let src = defs.join("src");
 
@@ -32,7 +32,7 @@ fn main() {
     zisk_definitions_generator::write(
         zisk_definitions::ZISK_CONSTANTS,
         &dirs,
-        "cargo build -p zisk-definitions-regen",
+        "cargo build -p zisk-definitions-sync",
     )
     .expect("regenerating zisk-definitions constants");
 }

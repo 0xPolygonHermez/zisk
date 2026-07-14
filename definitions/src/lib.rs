@@ -13,7 +13,7 @@ pub mod hints;
 pub use hints::*;
 
 // Constants, in two feature-gated views: without `gen`, consumers compile the
-// generated plain `pub const`s (`generated`, zero-dep); with `gen`, the regen build
+// generated plain `pub const`s (`generated`, zero-dep); with `gen`, the sync build
 // compiles the `#[constants]` source (`constants`, `ZISK_CONSTANTS`). Mutually
 // exclusive so the `gen` build never depends on files it is about to regenerate.
 #[cfg(not(feature = "gen"))]

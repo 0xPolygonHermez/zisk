@@ -1,6 +1,6 @@
 [package]
-name = "zisk-definitions-regen"
-description = "Build-time trigger that regenerates zisk-definitions' C/PIL files when its constants change"
+name = "zisk-definitions-sync"
+description = "Build-time step that syncs zisk-definitions' committed generated files (Rust/C/PIL/asm) with its #[constants] definitions"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

@@ -72,7 +72,7 @@ members = [
   "definitions",
   "definitions/macros",
   "definitions/generator",
-  "definitions/regen",
+  "definitions/sync",
   "zkvm-interface",
   "verifier",
   "recurser",
