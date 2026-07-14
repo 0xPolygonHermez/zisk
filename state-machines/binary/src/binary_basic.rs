@@ -145,8 +145,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
 
         // Execute the opcode
         let opcode = input.op;
-        let a = if opcode == ZiskOp::ADD_W { input.a } else { input.b };
-        // let a = input.a;
+        let a = input.a;
         let b = input.b;
 
         let (c, _) = Self::execute(input.op, input.a, input.b);

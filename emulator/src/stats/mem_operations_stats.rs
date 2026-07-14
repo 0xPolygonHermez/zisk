@@ -682,8 +682,6 @@ impl MemoryWriteZoneStatsData {
                 * (MEM_ALIGN_WRITE_UNALIGNED_1_COST + read_write_cost)
             + self.unaligned_4b_single_32_align_dirty
                 * (MEM_ALIGN_WRITE_UNALIGNED_1_COST + read_write_cost)
-            + self.unaligned_4b_single_32_align_dirty
-                * (MEM_ALIGN_WRITE_UNALIGNED_1_COST + read_write_cost)
             + self.unaligned_4b_single_non_32_align
                 * (MEM_ALIGN_WRITE_UNALIGNED_1_COST + read_write_cost)
             + self.unaligned_4b_double * (MEM_ALIGN_WRITE_UNALIGNED_2_COST + 2 * read_write_cost)
