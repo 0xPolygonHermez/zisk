@@ -1,0 +1,13 @@
+[package]
+name = "zisk-definitions-generator"
+description = "Reusable engine that renders #[constants]-style tables to C headers and PIL"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]

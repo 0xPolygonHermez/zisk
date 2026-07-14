@@ -7424,6 +7424,31 @@ dependencies = [
 [[package]]
 name = "zisk-definitions"
 version = "1.1.0-alpha"
+dependencies = [
+ "zisk-definitions-generator",
+ "zisk-definitions-macros",
+]
+
+[[package]]
+name = "zisk-definitions-generator"
+version = "1.1.0-alpha"
+
+[[package]]
+name = "zisk-definitions-macros"
+version = "1.1.0-alpha"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+]
+
+[[package]]
+name = "zisk-definitions-sync"
+version = "1.1.0-alpha"
+dependencies = [
+ "zisk-definitions",
+ "zisk-definitions-generator",
+]
 
 [[package]]
 name = "zisk-executor"
