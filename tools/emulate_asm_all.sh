@@ -70,7 +70,7 @@ fi
 
 # Build ZisK
 echo "Building ZisK..."
-cargo build --features=float,zbc,zbkc,zbkx
+cargo build --features=float,zba,zbc,zbkc,zbkx
 
 # Create an empty input file
 echo "Creating empty input file"

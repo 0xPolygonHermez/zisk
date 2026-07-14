@@ -18,6 +18,7 @@ zisk-sdk = { path = "../sdk" }
 
 [features]
 default = []
+zba = []
 zbc = []
 zbkc = []
 zbkx = []

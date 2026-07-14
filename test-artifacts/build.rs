@@ -13,6 +13,12 @@ fn main() -> Result<()> {
     // Collect enabled features from the environment
     let mut features = Vec::new();
 
+    // Check for zba feature
+    let zba = env::var("CARGO_FEATURE_ZBA").is_ok();
+    if zba {
+        features.push("zba");
+    }
+
     // Check for zbc feature
     let zbc = env::var("CARGO_FEATURE_ZBC").is_ok();
     if zbc {

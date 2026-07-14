@@ -623,13 +623,21 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
 
             // Address generation operations (Zba)
+            #[cfg(feature = "zba")]
             RiscvInstName::AddUw => self.add_u_w(riscv_instruction),
+            #[cfg(feature = "zba")]
             RiscvInstName::Sh1add => self.sh1add(riscv_instruction),
+            #[cfg(feature = "zba")]
             RiscvInstName::Sh1addUw => self.sh1add_u_w(riscv_instruction),
+            #[cfg(feature = "zba")]
             RiscvInstName::Sh2add => self.sh2add(riscv_instruction),
+            #[cfg(feature = "zba")]
             RiscvInstName::Sh2addUw => self.sh2add_u_w(riscv_instruction),
+            #[cfg(feature = "zba")]
             RiscvInstName::Sh3add => self.sh3add(riscv_instruction),
+            #[cfg(feature = "zba")]
             RiscvInstName::Sh3addUw => self.sh3add_u_w(riscv_instruction),
+            #[cfg(feature = "zba")]
             RiscvInstName::SlliUw => self.sll_u_w(riscv_instruction, true),
 
             // Carry-less multiplication operations (Zbc)
