@@ -1,0 +1,24 @@
+# Definition of the keccakf precompile — read by `cargo-zisk-dev gen-ops`.
+#
+# `[precompile]` = crate-level facts (one op_type, one SM); `[[precompile.op]]` =
+# the ZiskOp(s) this precompile owns. All values here are the single source of
+# truth for the generated core/executor/PIL seams. Each `opcode` and `syscall_id`
+# is explicit and validated for uniqueness at codegen.
+
+[precompile]
+name        = "Keccakf"          # type-name stem: KeccakfManager/Instance/Collector, AIR = KeccakfTrace
+op_type     = "Keccak"           # ZiskOperationType variant
+op_type_id_const = "KECCAK_OP_TYPE_ID"  # core OP_TYPE_ID const name (register + routing)
+sm_crate    = "zisk_precomp_keccakf"  # crate exporting the *Manager/Instance/Collector types
+air_ids     = "KECCAKF_AIR_IDS"  # from generated zisk_pil traces
+rank_assign = true               # needs pctx.add_instance_assign (rank-owned)
+
+[[precompile.op]]
+name        = "Keccak"           # ZiskOp variant
+str         = "keccak"           # define_ops! string / try_from_name key; also opc_<str>/op_<str>
+opcode      = 0xF1               # reserved opcode band; stable, unique
+cost        = "KECCAK_COST"
+input_size  = 200                # bytes read from memory
+output_size = 200                # bytes written back
+stats       = false              # false → ops_none; true → ops_<str> (stats fn)
+syscall     = "KECCAKF"          # SYSCALL_<syscall>_ID const stem (guest ABI)

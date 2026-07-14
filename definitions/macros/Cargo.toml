@@ -1,6 +1,6 @@
 [package]
-name = "zisk-pil"
-description = "PIL2 definitions for the ZisK zkVM"
+name = "zisk-definitions-macros"
+description = "Procedural macros for zisk-definitions: #[constants]/#[emit] multi-target constant codegen"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -10,10 +10,10 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
+[lib]
+proc-macro = true
+
 [dependencies]
-zisk-definitions = { workspace = true }
-proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
-proofman-fields = { workspace = true }
-serde = { workspace = true }
-serde_arrays = "0.2"
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"

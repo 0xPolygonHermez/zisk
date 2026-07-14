@@ -1,0 +1,24 @@
+# zisk-precompiles.toml — the enabled precompile set for THIS build.
+#
+# Selection + order for `cargo-zisk-dev gen-ops`, which reads this file, then each
+# enabled precompile's `zisk-precompile.toml`, and generates the compile-time seams
+# (core opcode/op-type tables, executor register list, PIL instantiations, …).
+#
+# A bare name resolves to `precompiles/<name>`; an entry with a path points at an
+# out-of-tree folder (its name comes from that folder's zisk-precompile.toml).
+# Per-precompile ids (opcode, syscall_id) are declared in each manifest and are
+# explicit, so they're stable and independent of this list's order.
+#
+# NOTE: the enabled set defines the proof-system identity (op-type ids + AIR set →
+# the verification key). Changing it requires a setup/verifier regeneration.
+[precompiles]
+enabled = [
+    "keccakf",
+    "sha256f",
+    "poseidon",
+    "blake2",
+    "arith_eq",
+    "arith_eq_384",
+    "big_int",
+    # "../my-precompiles/babyjubjub",   # out-of-tree precompile (goal 2)
+]

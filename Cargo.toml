@@ -70,6 +70,9 @@ members = [
   "sdk",
   "ziskbuild",
   "definitions",
+  "definitions/macros",
+  "definitions/generator",
+  "definitions/sync",
   "zkvm-interface",
   "verifier",
   "recurser",
@@ -129,6 +132,8 @@ zisk-build = { path = "ziskbuild", version = "1.1.0-alpha" }
 zisk-precomp-hints = { path = "precompiles/hints", version = "1.1.0-alpha" }
 zisk-verifier = { path = "verifier", version = "1.1.0-alpha" }
 zisk-definitions = { path = "definitions", version = "1.1.0-alpha" }
+zisk-definitions-macros = { path = "definitions/macros", version = "1.1.0-alpha" }
+zisk-definitions-generator = { path = "definitions/generator", version = "1.1.0-alpha" }
 zisk-recurser = { path = "recurser", version = "1.1.0-alpha" }
 
 # Distributed crates

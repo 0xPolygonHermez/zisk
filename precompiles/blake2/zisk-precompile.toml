@@ -1,0 +1,18 @@
+# Definition of the blake2 precompile — read by `cargo-zisk-dev gen-ops`.
+[precompile]
+name        = "Blake2"
+op_type     = "Blake2"
+op_type_id_const = "BLAKE2_OP_TYPE_ID"
+sm_crate    = "zisk_precomp_blake2"
+air_ids     = "BLAKE_2_BR_AIR_IDS"
+rank_assign = false
+
+[[precompile.op]]
+name        = "Blake2"
+str         = "blake2"
+opcode      = 0xEA
+cost        = "BLAKE2_COST"
+input_size  = 280
+output_size = 128
+stats       = true
+syscall     = "BLAKE2B_ROUND"

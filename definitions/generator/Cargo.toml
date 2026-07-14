@@ -1,6 +1,6 @@
 [package]
-name = "zisk-pil"
-description = "PIL2 definitions for the ZisK zkVM"
+name = "zisk-definitions-generator"
+description = "Reusable engine that renders #[constants]-style tables to C headers and PIL"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -11,9 +11,3 @@ documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-zisk-definitions = { workspace = true }
-proofman-common = { workspace = true }
-proofman-macros = { workspace = true }
-proofman-fields = { workspace = true }
-serde = { workspace = true }
-serde_arrays = "0.2"

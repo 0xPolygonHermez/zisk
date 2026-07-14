@@ -1,0 +1,119 @@
+# Definition of the arith_eq precompile — read by `cargo-zisk-dev gen-ops`.
+# Multi-op: several ZiskOps share the ArithEq op_type + one AIR/SM.
+[precompile]
+name        = "ArithEq"
+op_type     = "ArithEq"
+op_type_id_const = "ARITH_EQ_OP_TYPE_ID"
+sm_crate    = "zisk_precomp_arith_eq"
+air_ids     = "ARITH_EQ_AIR_IDS"
+rank_assign = false
+
+[[precompile.op]]
+name = "Arith256"
+str = "arith256"
+opcode = 0xF2
+cost = "ARITH_EQ_COST"
+input_size = 136
+output_size = 64
+stats = true
+syscall = "ARITH256"
+
+[[precompile.op]]
+name = "Arith256Mod"
+str = "arith256_mod"
+opcode = 0xF3
+cost = "ARITH_EQ_COST"
+input_size = 168
+output_size = 32
+stats = true
+syscall = "ARITH256_MOD"
+
+[[precompile.op]]
+name = "Secp256k1Add"
+str = "secp256k1_add"
+opcode = 0xF4
+cost = "ARITH_EQ_COST"
+input_size = 144
+output_size = 64
+stats = true
+syscall = "SECP256K1_ADD"
+
+[[precompile.op]]
+name = "Secp256k1Dbl"
+str = "secp256k1_dbl"
+opcode = 0xF5
+cost = "ARITH_EQ_COST"
+input_size = 64
+output_size = 64
+stats = true
+syscall = "SECP256K1_DBL"
+
+[[precompile.op]]
+name = "Secp256r1Add"
+str = "secp256r1_add"
+opcode = 0xE8
+cost = "ARITH_EQ_COST"
+input_size = 144
+output_size = 64
+stats = true
+syscall = "SECP256R1_ADD"
+
+[[precompile.op]]
+name = "Secp256r1Dbl"
+str = "secp256r1_dbl"
+opcode = 0xE9
+cost = "ARITH_EQ_COST"
+input_size = 64
+output_size = 64
+stats = true
+syscall = "SECP256R1_DBL"
+
+[[precompile.op]]
+name = "Bn254CurveAdd"
+str = "bn254_curve_add"
+opcode = 0xFA
+cost = "ARITH_EQ_COST"
+input_size = 144
+output_size = 64
+stats = true
+syscall = "BN254_CURVE_ADD"
+
+[[precompile.op]]
+name = "Bn254CurveDbl"
+str = "bn254_curve_dbl"
+opcode = 0xFB
+cost = "ARITH_EQ_COST"
+input_size = 64
+output_size = 64
+stats = true
+syscall = "BN254_CURVE_DBL"
+
+[[precompile.op]]
+name = "Bn254ComplexAdd"
+str = "bn254_complex_add"
+opcode = 0xFC
+cost = "ARITH_EQ_COST"
+input_size = 144
+output_size = 64
+stats = true
+syscall = "BN254_COMPLEX_ADD"
+
+[[precompile.op]]
+name = "Bn254ComplexSub"
+str = "bn254_complex_sub"
+opcode = 0xFD
+cost = "ARITH_EQ_COST"
+input_size = 144
+output_size = 64
+stats = true
+syscall = "BN254_COMPLEX_SUB"
+
+[[precompile.op]]
+name = "Bn254ComplexMul"
+str = "bn254_complex_mul"
+opcode = 0xFE
+cost = "ARITH_EQ_COST"
+input_size = 144
+output_size = 64
+stats = true
+syscall = "BN254_COMPLEX_MUL"

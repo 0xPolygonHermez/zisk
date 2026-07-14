@@ -1,0 +1,22 @@
+[package]
+name = "zisk-definitions-sync"
+description = "Build-time step that syncs zisk-definitions' committed generated files (Rust/C/PIL/asm) with its #[constants] definitions"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+# Dev-only build trigger; never published. Its build.rs writes into the source tree,
+# which is why this is a separate crate (the phase wall bars definitions' own
+# build.rs from reading its own ZISK_CONSTANTS, and publishing must never run it).
+publish = false
+
+[build-dependencies]
+# Compiled before this crate's build.rs runs, so build.rs can read the evaluated
+# ZISK_CONSTANTS (that's why this can't live in definitions itself).
+zisk-definitions = { workspace = true, features = ["gen"] }
+zisk-definitions-generator = { workspace = true }

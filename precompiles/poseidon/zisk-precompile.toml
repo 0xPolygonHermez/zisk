@@ -1,0 +1,29 @@
+# Definition of the poseidon precompile — read by `cargo-zisk-dev gen-ops`.
+# Two ops (poseidon2, poseidon1) share the Poseidon op_type and one AIR/SM.
+[precompile]
+name        = "Poseidon"
+op_type     = "Poseidon"
+op_type_id_const = "POSEIDON_OP_TYPE_ID"
+sm_crate    = "zisk_precomp_poseidon"
+air_ids     = "POSEIDON_AIR_IDS"
+rank_assign = false
+
+[[precompile.op]]
+name        = "Poseidon2"
+str         = "poseidon2"
+opcode      = 0xEB
+cost        = "POSEIDON_COST"
+input_size  = 128
+output_size = 128
+stats       = true
+syscall     = "POSEIDON2"
+
+[[precompile.op]]
+name        = "Poseidon1"
+str         = "poseidon1"
+opcode      = 0xEC
+cost        = "POSEIDON_COST"
+input_size  = 128
+output_size = 128
+stats       = true
+syscall     = "POSEIDON1"

@@ -1,0 +1,18 @@
+# Definition of the sha256f precompile — read by `cargo-zisk-dev gen-ops`.
+[precompile]
+name        = "Sha256f"
+op_type     = "Sha256"
+op_type_id_const = "SHA256_OP_TYPE_ID"
+sm_crate    = "zisk_precomp_sha256f"
+air_ids     = "SHA_256_F_AIR_IDS"
+rank_assign = false
+
+[[precompile.op]]
+name        = "Sha256"
+str         = "sha256"
+opcode      = 0xF9
+cost        = "SHA256_COST"
+input_size  = 112
+output_size = 112
+stats       = true
+syscall     = "SHA256F"

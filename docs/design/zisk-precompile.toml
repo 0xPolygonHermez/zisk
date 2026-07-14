@@ -1,0 +1,31 @@
+[precompile]
+name    = "BabyJubJub"        # type-name stem: BabyJubJubSM / *Manager / *Trace
+op_type = "BabyJubJub"        # ZiskOperationType variant + BABYJUBJUB_OP_TYPE_ID
+tier    = "rust-only"         # Tier 2 → sync emits the ASM panic stub
+
+[precompile.op]
+name        = "babyjubjub_add"   # ZiskOp::BabyJubJubAdd, define_ops! string
+opcode      = 0xEE               # MUST equal OP_BABYJUBJUB_ADD in babyjubjub_ids.pil
+syscall_id  = 0x81C              # definitions/src/syscall.rs (Rust-only)
+cost        = "ARITH_EQ_COST"    # 1424
+input_size  = 144                # bytes
+output_size = 64
+
+[precompile.bus]                 # → OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE + ExtOperationData variant
+indirections = 2                 # 2 pointer args
+points_256   = 2                 # p1, p2 (8×u64 each)
+# size = PRECOMPILED_BUS_DATA_SIZE(5) + 2*INDIRECTION_SIZE(1) + 2*POINT_256_BITS_SIZE(8) = 23
+
+[precompile.helper]              # pure arithmetic, shared by opc_* (emulator) and witness gen
+fn = "babyjubjub_add"            # fn(p1: &[u64;8], p2: &[u64;8], p3: &mut [u64;8])
+
+[precompile.guest]               # generates ziskos/entrypoint/src/syscalls/babyjubjub.rs
+params = [
+  { name = "p1", type = "point256", mutable = true  },  # result overwrites p1
+  { name = "p2", type = "point256", mutable = false },
+]
+hints = true                     # emit #[cfg(feature="hints")] output re-emit branch
+
+[precompile.pil]
+entry = "babyjubjub/pil/precompile.pil"   # consts + require(s) + airgroup Zisk { instances }
+trace = "BabyJubJubTrace"                 # main AIR → BABY_JUB_JUB_AIR_IDS (from generated traces.rs)
