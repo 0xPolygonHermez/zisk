@@ -664,7 +664,13 @@ impl Riscv2ZiskContext<'_> {
 
             // This arm is needed when some optional instruction subsets are disabled; when all are
             // enabled it can become unreachable, so silence that lint.
-            #[allow(unreachable_patterns)]
+            #[cfg(not(all(
+                feature = "zba",
+                feature = "zbc",
+                feature = "zbkc",
+                feature = "zbkx",
+                feature = "float"
+            )))]
             _ => {
                 panic!(
                     "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst_name={}",

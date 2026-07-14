@@ -3661,7 +3661,7 @@ impl ZiskRom2Asm {
                 *code += &format!(
                     "\txor {}, {} {}\n",
                     REG_C,
-                    ctx.b.string_value,
+                    REG_B,
                     ctx.comment_str("Xnor: c = c XOR b = a XOR b")
                 );
                 *code += &format!(
@@ -3685,7 +3685,7 @@ impl ZiskRom2Asm {
             ZiskOp::Brev8 => {
                 assert!(ctx.store_b_in_c);
                 // Reverse bits within each byte: 3 stages swapping bit groups of width 1,2,4.
-                // x=REG_C (a), t=REG_AUX, mask=REG_B.
+                // x=REG_C (a), t=REG_AUX, mask=REG_A.
                 for (w, mask) in [
                     (1u32, "0x5555555555555555"),
                     (2u32, "0x3333333333333333"),

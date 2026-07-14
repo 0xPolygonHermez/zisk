@@ -952,6 +952,7 @@ fn bseti() {
     assert_eq!(c, 0x2);
 }
 
+#[cfg(feature = "zba")]
 fn add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -971,6 +972,7 @@ fn add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh1add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -990,6 +992,7 @@ fn sh1add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh1add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1009,6 +1012,7 @@ fn sh1add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh2add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1028,6 +1032,7 @@ fn sh2add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh2add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1047,6 +1052,7 @@ fn sh2add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh3add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1066,6 +1072,7 @@ fn sh3add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn sh3add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1085,6 +1092,7 @@ fn sh3add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zba")]
 fn slli_u_w() {
     let a: u64 = 0xFFFFFFFF00000001;
     let c: u64;
@@ -1102,6 +1110,7 @@ fn slli_u_w() {
     assert_eq!(c, 0x0000000000000002);
 }
 
+#[cfg(any(feature = "zbc", feature = "zbkc"))]
 fn clmul(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1121,6 +1130,7 @@ fn clmul(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(any(feature = "zbc", feature = "zbkc"))]
 fn clmul_h(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1140,6 +1150,7 @@ fn clmul_h(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zbc")]
 fn clmul_r(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1159,6 +1170,7 @@ fn clmul_r(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zbkx")]
 fn xperm4(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1178,6 +1190,7 @@ fn xperm4(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
+#[cfg(feature = "zbkx")]
 fn xperm8(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;

@@ -115,6 +115,37 @@ impl BuildArgs {
     }
 }
 
+/// RISC-V extensions whose LLVM target-feature is gated behind a Cargo feature
+/// of the same name. The base guest target (`riscv64ima-...`) omits these, so a
+/// guest opts in with `--features <ext>`, which both flips its `#[cfg]` gates and
+/// (via `target_features_from_features`) permits rustc to emit those instructions.
+pub const GUEST_TARGET_FEATURES: &[&str] =
+    &["zba", "zbb", "zbc", "zbs", "zbkb", "zbkc", "zbkx"];
+
+/// Translate the requested Cargo features into `-C target-feature=+...` flags,
+/// keeping guest codegen in lockstep with the `#[cfg(feature = ...)]` gates.
+///
+/// `features` is cargo's space/comma-separated `--features` value; every name in
+/// [`GUEST_TARGET_FEATURES`] it selects (or all of them under `all_features`) is
+/// emitted as a `+ext`. Features that don't name a guest extension are ignored
+/// here — they still reach cargo as ordinary `--features`. Returns an empty vec
+/// when nothing matches, so no `target-feature` flag is added.
+pub fn target_features_from_features(features: Option<&str>, all_features: bool) -> Vec<String> {
+    let requested: Vec<&str> = features
+        .map(|f| f.split([',', ' ']).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+    let enabled: Vec<String> = GUEST_TARGET_FEATURES
+        .iter()
+        .filter(|ext| all_features || requested.contains(*ext))
+        .map(|ext| format!("+{ext}"))
+        .collect();
+    if enabled.is_empty() {
+        Vec::new()
+    } else {
+        vec!["-C".to_string(), format!("target-feature={}", enabled.join(","))]
+    }
+}
+
 /// Rustflags environment for compiling a Zisk guest: the flags
 /// `.cargo/config.toml` declares for the guest target (resolved from
 /// `program_dir`, defaulting to the current directory) plus `--cfg zisk_guest`
@@ -131,9 +162,14 @@ impl BuildArgs {
 /// apply the user's exported vars to the guest; pass `false` from build
 /// scripts, where the outer cargo sets `CARGO_ENCODED_RUSTFLAGS` to HOST flags
 /// whose link args (e.g. `-Wl,--export-dynamic`) break the guest link.
+///
+/// `extra_flags` are appended after config and env rustflags but before the ZisK
+/// linker/cfg flags — used to inject feature-derived `-C target-feature` flags
+/// (see `target_features_from_features`). Pass `&[]` when there are none.
 pub fn guest_rustflags(
     program_dir: Option<&std::path::Path>,
     inherit_env_rustflags: bool,
+    extra_flags: &[String],
 ) -> anyhow::Result<(tempfile::NamedTempFile, String)> {
     use anyhow::Context;
     use std::io::Write;
@@ -193,6 +229,9 @@ pub fn guest_rustflags(
     if inherit_env_rustflags {
         flags.extend(env_rustflags());
     }
+    // Feature-derived target-features next, so they compose with (and override)
+    // any target-feature the config/env already set for the same extension.
+    flags.extend(extra_flags.iter().cloned());
     flags.extend([
         "--cfg".to_string(),
         "zisk_guest".to_string(),
@@ -213,13 +252,15 @@ pub fn guest_rustflags(
 /// or shift precedence. Returns the linker-script temp file — the caller MUST
 /// keep it alive until `cargo` finishes. Pairing the set and scrub in one place
 /// keeps them from drifting apart across call sites. See `guest_rustflags` for
-/// `program_dir` / `inherit_env_rustflags`.
+/// `program_dir` / `inherit_env_rustflags` / `extra_flags`.
 pub fn apply_guest_rustflags(
     command: &mut std::process::Command,
     program_dir: Option<&std::path::Path>,
     inherit_env_rustflags: bool,
+    extra_flags: &[String],
 ) -> anyhow::Result<tempfile::NamedTempFile> {
-    let (linker_script, encoded_rustflags) = guest_rustflags(program_dir, inherit_env_rustflags)?;
+    let (linker_script, encoded_rustflags) =
+        guest_rustflags(program_dir, inherit_env_rustflags, extra_flags)?;
     command.env("CARGO_ENCODED_RUSTFLAGS", encoded_rustflags);
     // `CARGO_ENCODED_RUSTFLAGS` is the value we just set; scrub the rest.
     for var in all_rustflags_vars().filter(|v| v != "CARGO_ENCODED_RUSTFLAGS") {
@@ -304,7 +345,7 @@ mod tests {
         )
         .unwrap();
 
-        let (script, encoded) = guest_rustflags(Some(dir.path()), false).unwrap();
+        let (script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         let config_flag = flags
@@ -334,7 +375,7 @@ mod tests {
         )
         .unwrap();
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), false).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
         assert!(
             encoded.split('\u{1f}').all(|f| !f.is_empty()),
             "empty flag element in {encoded:?}"
@@ -353,7 +394,7 @@ mod tests {
         std::env::set_var("RUSTFLAGS", "-C target-cpu=native");
         std::env::set_var("CARGO_BUILD_RUSTFLAGS", "-C link-arg=--host-only-marker");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), false).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), false, &[]).unwrap();
         assert!(
             !encoded.contains("export-dynamic"),
             "host CARGO_ENCODED_RUSTFLAGS leaked into guest flags: {encoded:?}"
@@ -376,7 +417,7 @@ mod tests {
         let _env = EnvVarGuard::hermetic(dir.path());
         std::env::set_var("RUSTFLAGS", "--cfg my_guest_feature");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
         assert!(
             flags.contains(&"my_guest_feature"),
@@ -401,7 +442,7 @@ mod tests {
         .unwrap();
         std::env::set_var("RUSTFLAGS", "--cfg my_guest_feature");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         let config_flag = flags
@@ -433,7 +474,7 @@ mod tests {
         .unwrap();
         std::env::set_var(guest_target_rustflags_var(), "--cfg per_target_feature");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
 
         let config_flag = flags
@@ -458,7 +499,7 @@ mod tests {
         std::env::set_var("RUSTFLAGS", "--cfg global_source");
         std::env::set_var(guest_target_rustflags_var(), "--cfg per_target_source");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
         assert!(flags.contains(&"global_source"), "global RUSTFLAGS dropped: {encoded:?}");
         assert!(
@@ -476,11 +517,33 @@ mod tests {
         let _env = EnvVarGuard::hermetic(dir.path());
         std::env::set_var("CARGO_BUILD_RUSTFLAGS", "--cfg build_source");
 
-        let (_script, encoded) = guest_rustflags(Some(dir.path()), true).unwrap();
+        let (_script, encoded) = guest_rustflags(Some(dir.path()), true, &[]).unwrap();
         let flags: Vec<&str> = encoded.split('\u{1f}').collect();
         assert!(
             flags.contains(&"build_source"),
             "sole CARGO_BUILD_RUSTFLAGS dropped in inherit mode: {encoded:?}"
         );
+    }
+
+    /// Only the requested guest extensions become `+target-feature`s, joined into
+    /// a single `-C target-feature` flag; unrelated features are left to cargo.
+    #[test]
+    fn target_features_selects_only_requested_extensions() {
+        assert!(target_features_from_features(None, false).is_empty());
+        // A non-extension feature (e.g. `c_extension`) adds no target-feature.
+        assert!(target_features_from_features(Some("c_extension"), false).is_empty());
+
+        // Comma- and space-separated forms both parse; order follows the const.
+        let flags = target_features_from_features(Some("zbkx, zba c_extension"), false);
+        assert_eq!(flags, vec!["-C".to_string(), "target-feature=+zba,+zbkx".to_string()]);
+    }
+
+    /// `--all-features` enables every guest extension regardless of the list.
+    #[test]
+    fn target_features_all_features_enables_every_extension() {
+        let flags = target_features_from_features(None, true);
+        let expected: String =
+            GUEST_TARGET_FEATURES.iter().map(|e| format!("+{e}")).collect::<Vec<_>>().join(",");
+        assert_eq!(flags, vec!["-C".to_string(), format!("target-feature={expected}")]);
     }
 }

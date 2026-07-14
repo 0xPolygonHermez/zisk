@@ -1,6 +1,0 @@
-# Enable RISC-V bit-manipulation extensions for this guest.
-# The base target `riscv64ima-zisk-zkvm-elf` does not include these, so we
-# layer them on as LLVM target-features. ziskbuild's guest_rustflags()
-# preserves these config rustflags and appends the ZisK linker/cfg flags.
-[target.riscv64ima-zisk-zkvm-elf]
-rustflags = ["-C", "target-feature=+zba,+zbc,+zbkc,+zbkx"]
