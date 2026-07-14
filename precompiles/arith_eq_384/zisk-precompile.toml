@@ -17,6 +17,8 @@ cost = "ARITH_EQ_384_COST"
 input_size = 232
 output_size = 48
 stats = true
+syscall = "ARITH384_MOD"
+syscall_id = 0x80B
 
 [[precompile.op]]
 name = "Bls12_381CurveAdd"
@@ -26,6 +28,8 @@ cost = "ARITH_EQ_384_COST"
 input_size = 208
 output_size = 96
 stats = true
+syscall = "BLS12_381_CURVE_ADD"
+syscall_id = 0x80C
 
 [[precompile.op]]
 name = "Bls12_381CurveDbl"
@@ -35,6 +39,8 @@ cost = "ARITH_EQ_384_COST"
 input_size = 96
 output_size = 96
 stats = true
+syscall = "BLS12_381_CURVE_DBL"
+syscall_id = 0x80D
 
 [[precompile.op]]
 name = "Bls12_381ComplexAdd"
@@ -44,6 +50,8 @@ cost = "ARITH_EQ_384_COST"
 input_size = 208
 output_size = 96
 stats = true
+syscall = "BLS12_381_COMPLEX_ADD"
+syscall_id = 0x80E
 
 [[precompile.op]]
 name = "Bls12_381ComplexSub"
@@ -53,6 +61,8 @@ cost = "ARITH_EQ_384_COST"
 input_size = 208
 output_size = 96
 stats = true
+syscall = "BLS12_381_COMPLEX_SUB"
+syscall_id = 0x80F
 
 [[precompile.op]]
 name = "Bls12_381ComplexMul"
@@ -62,3 +72,5 @@ cost = "ARITH_EQ_384_COST"
 input_size = 208
 output_size = 96
 stats = true
+syscall = "BLS12_381_COMPLEX_MUL"
+syscall_id = 0x810

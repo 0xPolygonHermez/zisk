@@ -22,3 +22,5 @@ cost        = "KECCAK_COST"
 input_size  = 200                # bytes read from memory
 output_size = 200                # bytes written back
 stats       = false              # false → ops_none; true → ops_<str> (stats fn)
+syscall     = "KECCAKF"          # SYSCALL_<syscall>_ID const stem (guest ABI)
+syscall_id  = 0x800              # syscall id value; in the 0x800..=0x84F window

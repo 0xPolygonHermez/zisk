@@ -17,6 +17,8 @@ cost        = "POSEIDON_COST"
 input_size  = 128
 output_size = 128
 stats       = true
+syscall     = "POSEIDON2"
+syscall_id  = 0x812
 
 [[precompile.op]]
 name        = "Poseidon1"
@@ -26,3 +28,5 @@ cost        = "POSEIDON_COST"
 input_size  = 128
 output_size = 128
 stats       = true
+syscall     = "POSEIDON1"
+syscall_id  = 0x81B

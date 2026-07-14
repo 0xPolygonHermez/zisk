@@ -16,3 +16,5 @@ cost        = "ADD256_COST"
 input_size  = 104
 output_size = 32
 stats       = true
+syscall     = "ADD256"
+syscall_id  = 0x811

@@ -16,3 +16,5 @@ cost        = "BLAKE2_COST"
 input_size  = 280
 output_size = 128
 stats       = true
+syscall     = "BLAKE2B_ROUND"
+syscall_id  = 0x819

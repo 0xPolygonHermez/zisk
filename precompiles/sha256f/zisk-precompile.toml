@@ -16,3 +16,5 @@ cost        = "SHA256_COST"
 input_size  = 112
 output_size = 112
 stats       = true
+syscall     = "SHA256F"
+syscall_id  = 0x805
