@@ -36,80 +36,90 @@ impl ArithFrops {
     pub fn build_table(&mut self) {
         // op muluh
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 517 && b < 517
-        for a in 0..517 {
-            for b in 0..517 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 517 && b < 517
+            for a in 0..517 {
+                for b in 0..517 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-        for a in (0xFFFFF000..0x100001000).step_by(8) {
-            for b in 0..19 {
-                ops.push([a, b]);
+            // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+            for a in (0xFFFFF000..0x100001000).step_by(8) {
+                for b in 0..19 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
-        for a in (0x11BC4E7A1FF93003..0x11BC4E7A1FF94003).step_by(8) {
-            for b in 0..2 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
+            for a in (0x11BC4E7A1FF93003..0x11BC4E7A1FF94003).step_by(8) {
+                for b in 0..2 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
-        for a in (0x3FD8EE048ED3F003..0x3FD8EE048ED40003).step_by(8) {
-            for b in 0..2 {
-                ops.push([a, b]);
+            // mid_box: a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
+            for a in (0x3FD8EE048ED3F003..0x3FD8EE048ED40003).step_by(8) {
+                for b in 0..2 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_MULUH, &mut ops, true);
+            self.table.add_ops(OP_MULUH, &mut ops, true);
         }
         // op mul
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 2406 && b < 388
-        for a in 0..2406 {
-            for b in 0..388 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 2406 && b < 388
+            for a in 0..2406 {
+                for b in 0..388 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
-        for a in (0xFFFFF000..0x100001000).step_by(8) {
-            for b in 0..19 {
-                ops.push([a, b]);
+            // mid_box: a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+            for a in (0xFFFFF000..0x100001000).step_by(8) {
+                for b in 0..19 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
-        for a in (0x7FFFFFF001..0x8000001001).step_by(8) {
-            for b in 0x7FD..0x7FE {
-                ops.push([a, b]);
+            // mid_box: a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
+            for a in (0x7FFFFFF001..0x8000001001).step_by(8) {
+                for b in 0x7FD..0x7FE {
+                    ops.push([a, b]);
+                }
             }
-        }
-        // mid_box: a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
-        for a in 0x3FE8000000000..0x3FE8000001000 {
-            for b in 0x7FD..0x7FE {
-                ops.push([a, b]);
+            // mid_box: a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
+            for a in 0x3FE8000000000..0x3FE8000001000 {
+                for b in 0x7FD..0x7FE {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_MUL, &mut ops, true);
+            self.table.add_ops(OP_MUL, &mut ops, true);
         }
         // op divu
         {
-        let mut ops: Vec<[u64; 2]> = Vec::new();
-        // low_rect: a < 1601 && b < 513
-        for a in 0..1601 {
-            for b in 0..513 {
-                ops.push([a, b]);
+            let mut ops: Vec<[u64; 2]> = Vec::new();
+            // low_rect: a < 1601 && b < 513
+            for a in 0..1601 {
+                for b in 0..513 {
+                    ops.push([a, b]);
+                }
             }
-        }
-        self.table.add_ops(OP_DIVU, &mut ops, true);
+            self.table.add_ops(OP_DIVU, &mut ops, true);
         }
     }
 
     #[inline(always)]
     pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
         match op {
-            OP_MULUH => a < 517 && b < 517 || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 || a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2 || a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2,
-            OP_MUL => a < 2406 && b < 388 || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 || a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045 || a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045,
+            OP_MULUH => {
+                a < 517 && b < 517
+                    || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+                    || a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
+                    || a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
+            }
+            OP_MUL => {
+                a < 2406 && b < 388
+                    || a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19
+                    || a >= 0x7FFFFFF001 && a < 0x8000001001 && (a & 7) == 1 && b == 2045
+                    || a >= 0x3FE8000000000 && a < 0x3FE8000001000 && b == 2045
+            }
             OP_DIVU => a < 1601 && b < 513,
             _ => false,
         }
@@ -123,9 +133,11 @@ impl ArithFrops {
                     (a * 517 + b) as usize
                 } else if a >= 0xFFFFF000 && a < 0x100001000 && (a & 7) == 0 && b < 19 {
                     (((a - 0xFFFFF000) / 8) * 19 + b) as usize + 267289
-                } else if a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2 {
+                } else if a >= 0x11BC4E7A1FF93003 && a < 0x11BC4E7A1FF94003 && (a & 7) == 3 && b < 2
+                {
                     (((a - 0x11BC4E7A1FF93003) / 8) * 2 + b) as usize + 286745
-                } else if a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2 {
+                } else if a >= 0x3FD8EE048ED3F003 && a < 0x3FD8EE048ED40003 && (a & 7) == 3 && b < 2
+                {
                     (((a - 0x3FD8EE048ED3F003) / 8) * 2 + b) as usize + 287769
                 } else {
                     Self::NO_FROPS

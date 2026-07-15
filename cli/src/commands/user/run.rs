@@ -57,12 +57,8 @@ impl RunCmd {
                     self.features.as_deref(),
                     self.all_features,
                 );
-                let _linker_script = zisk_build::apply_guest_rustflags(
-                    &mut command,
-                    None,
-                    true,
-                    &target_features,
-                )?;
+                let _linker_script =
+                    zisk_build::apply_guest_rustflags(&mut command, None, true, &target_features)?;
 
                 command.stdout(Stdio::inherit());
                 command.stderr(Stdio::inherit());

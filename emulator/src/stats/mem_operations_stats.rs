@@ -16,7 +16,7 @@ use crate::{
 };
 
 /// Status code returned by `memory_read` / `memory_write` (u32):
-/// - bits 0..16 — classification code (`MEM_CODE_*`): the shape of the access.
+/// - bits 0..15 — classification code (`MEM_CODE_*`): the shape of the access.
 /// - bit 16 (`MEM_ACCESS_INVALID`) — the address is outside every known memory region; the caller
 ///   must treat it as an unauthorized access and error out.
 /// - bit 17 (`MEM_ACCESS_MONITOR`) — the caller should log the access with full execution context.
@@ -583,7 +583,6 @@ impl MemoryReadZoneStatsData {
                 count: self.unaligned_4b_single_non_32_align,
                 cost: self.unaligned_4b_single_non_32_align
                     * (MEM_ALIGN_READ_UNALIGNED_1_COST + read_cost),
-                dirty: true,
                 width: 4,
                 ..Default::default()
             });

@@ -107,6 +107,19 @@ impl StatsReport {
         line.push('\n');
         self.output += &line;
     }
+    /// Appends a line with `label` followed by each pre-formatted cell in `cells`, right-aligned to
+    /// `col_width` (the same width for every column). Unlike `add_values`, cells are arbitrary
+    /// strings, so a row can mix numbers and text (e.g. a header row ending in "total").
+    pub fn add_str_cells(&mut self, label: &str, cells: &[String], col_width: usize) {
+        let mut line =
+            format!("{}{:<label_width$}", self.identation, label, label_width = self.label_width);
+        for cell in cells {
+            line += &format!(" {cell:>col_width$}");
+        }
+        line.push('\n');
+        self.output += &line;
+    }
+
     pub fn title(&mut self, label: &str) {
         self.output += &format!("\n{}{label}\n{}\n", self.identation, "-".repeat(label.len()));
     }

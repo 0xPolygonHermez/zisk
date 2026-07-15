@@ -41,4 +41,3 @@ pub const ANDN_OP: u8 = ZiskOp::Andn.code();
 pub const ORN_OP: u8 = ZiskOp::Orn.code();
 pub const XNOR_OP: u8 = ZiskOp::Xnor.code();
 pub const BREV8_OP: u8 = ZiskOp::Brev8.code();
-

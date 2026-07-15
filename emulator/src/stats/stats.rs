@@ -171,7 +171,8 @@ pub struct Stats {
     rom_init_count: usize,
     ram_init_count: usize,
     byte_reads: [u64; 8],
-    byte_writes: [u64; 8],
+    byte_clean_writes: [u64; 8],
+    byte_dirty_writes: [u64; 8],
 }
 
 impl Default for Stats {
@@ -252,7 +253,8 @@ impl Default for Stats {
             ram_init_count: 0,
             op_categories: OpsCount::<OP_CATEGORIES>::new(),
             byte_reads: [0; 8],
-            byte_writes: [0; 8],
+            byte_clean_writes: [0; 8],
+            byte_dirty_writes: [0; 8],
         }
     }
 }
@@ -284,7 +286,7 @@ impl Stats {
 
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
-        if width == 1 {
+        if self.mem_full_stats && width == 1 {
             self.byte_reads[(address as usize) & 0x7] += 1;
         }
         let status = self.costs.memory_read(address, width);
@@ -293,8 +295,13 @@ impl Stats {
 
     /// Called every time some data is writen to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
-        if width == 1 && value < 0x100 {
-            self.byte_writes[(address as usize) & 0x7] += 1;
+        if self.mem_full_stats && width == 1 {
+            let offset = (address as usize) & 0x7;
+            if value < 0x100 {
+                self.byte_clean_writes[offset] += 1;
+            } else {
+                self.byte_dirty_writes[offset] += 1;
+            }
         }
         let status = self.costs.memory_write(address, width, value);
         self.handle_mem_status(status, true, address, width, value);
@@ -1157,9 +1164,7 @@ impl Stats {
         } else {
             match instruction.op_type {
                 ZiskOperationType::Arith => ArithFrops::is_frequent_op(instruction.op, a, b),
-                ZiskOperationType::Binary => {
-                    BinaryBasicFrops::is_frequent_op(instruction.op, a, b)
-                }
+                ZiskOperationType::Binary => BinaryBasicFrops::is_frequent_op(instruction.op, a, b),
                 ZiskOperationType::BinaryE => {
                     BinaryExtensionFrops::is_frequent_op(instruction.op, a, b)
                 }
@@ -1670,8 +1675,28 @@ impl Stats {
             report.pop_label_width();
         }
 
-        println!("byte_reads: {:?}", self.byte_reads);
-        println!("byte_writes: {:?}", self.byte_writes);
+        if self.mem_full_stats {
+            report.set_and_push_label_width(14);
+            report.title("DETAILED OFFSET BYTE MEMORY OPERATIONS");
+            report.add_str_cells(
+                "offset",
+                &["0", "1", "2", "3", "4", "5", "6", "7", "total"].map(String::from),
+                12,
+            );
+            for (label, vals) in [
+                ("reads", &self.byte_reads),
+                ("clean writes", &self.byte_clean_writes),
+                ("dirty writes", &self.byte_dirty_writes),
+            ] {
+                let total: u64 = vals.iter().sum();
+                let mut cells: Vec<String> =
+                    vals.iter().map(|v| report.format_number(*v)).collect();
+                cells.push(report.format_number(total));
+                report.add_str_cells(label, &cells, 12);
+            }
+            report.pop_label_width();
+        }
+
         if show_opcodes {
             report.title_count_cost_perc2("COST BY BASE OPCODE", "COUNT", "COST", " RANK");
             self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), true, false);
@@ -1861,9 +1886,7 @@ impl Stats {
                         Some((index, ratio))
                     })
                     .collect();
-                ranked.sort_by(|a, b| {
-                    b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-                });
+                ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
                 ranked.truncate(self.top_rois);
 
                 report.title_auto_width(&format!(

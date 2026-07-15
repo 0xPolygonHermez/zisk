@@ -374,8 +374,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                 // if input byte j has any bit set, else 0x00. Single input.
                 binary_extension_table_op = BinaryExtensionTableOp::OrcB;
                 for j in 0..8 {
-                    let out =
-                        if a_bytes[j] != 0 { 0xFFu64 << (8 * j as u64) } else { 0 };
+                    let out = if a_bytes[j] != 0 { 0xFFu64 << (8 * j as u64) } else { 0 };
                     t_out[j][0] = (out & 0xffffffff) as u32;
                     t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
                 }
