@@ -74,9 +74,20 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Guest-compilation flags, orthogonal to program selection.
+    // Restrict the build to specific packages only for a strict subset; with every
+    // program enabled we build the whole workspace with no `--package`.
+    let subset = enabled.len() < PROGRAMS.len();
+
+    // `bit_manipulation_extensions` exists only on the `diagnostic` guest, so
+    // forward it scoped to that package — and only in a subset build that includes
+    // `diagnostic`, so `--package diagnostic` is present and `--features` applies to
+    // a package that defines it. Forwarding it for the full build (no `--package`)
+    // or a subset without `diagnostic` makes Cargo error.
     let mut features = Vec::new();
-    if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok() {
+    if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok()
+        && subset
+        && enabled.iter().any(|p| p == "diagnostic")
+    {
         features.push("diagnostic/bit_manipulation_extensions");
     }
 
@@ -87,8 +98,7 @@ fn main() -> Result<()> {
     let release = env::var("PROFILE").map(|p| p == "release").unwrap_or(false);
     let mut build_args = BuildArgs::default().release(release);
     build_args.features = if features.is_empty() { None } else { Some(features.join(",")) };
-    // Only restrict the build to specific packages for a strict subset.
-    if enabled.len() < PROGRAMS.len() {
+    if subset {
         build_args.packages = enabled;
     }
 
