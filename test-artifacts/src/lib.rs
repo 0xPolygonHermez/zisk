@@ -16,6 +16,7 @@
 //! and to `PROGRAMS` in `build.rs`) and expose its ELF via a feature-gated
 //! `load_program!` constant below.
 
+#[allow(unused_imports)]
 use zisk_sdk::{load_program, GuestProgram};
 
 #[cfg(feature = "add256")]

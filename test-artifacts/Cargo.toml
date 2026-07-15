@@ -21,7 +21,7 @@ default = ["all"]
 
 # Build every guest program (the historical default). Consumers that only need a
 # subset should set `default-features = false` and enable just the programs they
-# use, e.g. `test-artifacts = { workspace = true, features = ["fib_mod"] }`.
+# use, e.g. `test-artifacts = { workspace = true, default-features = false, features = ["fib_mod"] }`.
 all = [
   "add256", "agg_verify", "arith256", "arith256_mod", "arith384_mod",
   "big_input", "bigint", "blake2", "bls12_381", "bls12_381_add",
@@ -76,6 +76,6 @@ secp256r1_dbl = []
 sha256 = []
 uint256 = []
 
-# Guest-compilation flag, orthogonal to program selection: builds guests with the
-# RISC-V bit-manipulation extensions enabled.
+# Guest-compilation flag: enables the RISC-V bit-manipulation extension code paths
+# in the `diagnostic` guest — the only program that defines this feature.
 bit_manipulation_extensions = []
