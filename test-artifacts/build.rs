@@ -77,7 +77,7 @@ fn main() -> Result<()> {
     // Guest-compilation flags, orthogonal to program selection.
     let mut features = Vec::new();
     if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok() {
-        features.push("bit_manipulation_extensions");
+        features.push("diagnostic/bit_manipulation_extensions");
     }
 
     // Build guests with the same profile as the host so profiling/benchmarks
