@@ -623,35 +623,77 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
 
             // Address generation operations (Zba)
-            #[cfg(feature = "zba")]
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_uw", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::AddUw => self.add_u_w(riscv_instruction),
-            #[cfg(feature = "zba")]
+
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::Sh1add => self.create_register_op(riscv_instruction, "sh1add", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh1add => self.sh1add(riscv_instruction),
-            #[cfg(feature = "zba")]
+
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::Sh1addUw => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh1addUw => self.sh1add_u_w(riscv_instruction),
-            #[cfg(feature = "zba")]
+
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::Sh2add => self.create_register_op(riscv_instruction, "sh2add", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh2add => self.sh2add(riscv_instruction),
-            #[cfg(feature = "zba")]
+
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::Sh2addUw => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh2addUw => self.sh2add_u_w(riscv_instruction),
-            #[cfg(feature = "zba")]
+
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::Sh3add => self.create_register_op(riscv_instruction, "sh3add", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh3add => self.sh3add(riscv_instruction),
-            #[cfg(feature = "zba")]
+
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::Sh3addUw => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh3addUw => self.sh3add_u_w(riscv_instruction),
-            #[cfg(feature = "zba")]
+
+            #[cfg(feature = "zba_native")]
+            RiscvInstName::SlliUw => self.create_register_op(riscv_instruction, "slli_u_w", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::SlliUw => self.sll_u_w(riscv_instruction, true),
 
             // Carry-less multiplication operations (Zbc)
-            #[cfg(any(feature = "zbc", feature = "zbkc"))]
+            #[cfg(any(feature = "zbc_native", feature = "zbkc_native"))]
+            RiscvInstName::Clmul => self.create_register_op(riscv_instruction, "clmul", 4),
+            #[cfg(all(
+                any(feature = "zbc", feature = "zbkc"),
+                not(any(feature = "zbc_native", feature = "zbkc_native"))
+            ))]
             RiscvInstName::Clmul => self.clmul(riscv_instruction),
-            #[cfg(any(feature = "zbc", feature = "zbkc"))]
+
+            #[cfg(any(feature = "zbc_native", feature = "zbkc_native"))]
+            RiscvInstName::Clmulh => self.create_register_op(riscv_instruction, "clmulh", 4),
+            #[cfg(all(
+                any(feature = "zbc", feature = "zbkc"),
+                not(any(feature = "zbc_native", feature = "zbkc_native"))
+            ))]
             RiscvInstName::Clmulh => self.clmul_h(riscv_instruction),
-            #[cfg(feature = "zbc")]
+
+            #[cfg(feature = "zbc_native")]
+            RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmulr", 4),
+            #[cfg(all(feature = "zbkc", not(feature = "zbc_native")))]
             RiscvInstName::Clmulr => self.clmul_r(riscv_instruction),
 
             // Crossbar permutations operations (Zbkx)
-            #[cfg(feature = "zbkx")]
+            #[cfg(feature = "zbkx_native")]
+            RiscvInstName::Xperm4 => self.create_register_op(riscv_instruction, "xperm4", 4),
+            #[cfg(all(feature = "zbkx", not(feature = "zbkx_native")))]
             RiscvInstName::Xperm4 => self.xperm4(riscv_instruction),
-            #[cfg(feature = "zbkx")]
+
+            #[cfg(feature = "zbkx_native")]
+            RiscvInstName::Xperm8 => self.create_register_op(riscv_instruction, "xperm8", 4),
+            #[cfg(all(feature = "zbkx", not(feature = "zbkx_native")))]
             RiscvInstName::Xperm8 => self.xperm8(riscv_instruction),
 
             // Special ZisK instructions

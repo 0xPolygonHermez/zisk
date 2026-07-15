@@ -125,8 +125,9 @@ pub const GUEST_TARGET_FEATURES: &[&str] = &["zba", "zbc", "zbkc", "zbkx"];
 /// keeping guest codegen in lockstep with the `#[cfg(feature = ...)]` gates.
 ///
 /// `features` is cargo's space/comma-separated `--features` value; every name in
-/// [`GUEST_TARGET_FEATURES`] it selects (or all of them under `all_features`) is
-/// emitted as a `+ext`. Features that don't name a guest extension are ignored
+/// [`GUEST_TARGET_FEATURES`] it selects — either as `ext` or as its `ext_native`
+/// variant — (or all of them under `all_features`) is emitted as a `+ext`.
+/// Features that don't name a guest extension are ignored
 /// here — they still reach cargo as ordinary `--features`. Returns an empty vec
 /// when nothing matches, so no `target-feature` flag is added.
 pub fn target_features_from_features(features: Option<&str>, all_features: bool) -> Vec<String> {
@@ -135,7 +136,11 @@ pub fn target_features_from_features(features: Option<&str>, all_features: bool)
         .unwrap_or_default();
     let enabled: Vec<String> = GUEST_TARGET_FEATURES
         .iter()
-        .filter(|ext| all_features || requested.contains(*ext))
+        .filter(|ext| {
+            all_features
+                || requested.contains(*ext)
+                || requested.contains(&format!("{ext}_native").as_str())
+        })
         .map(|ext| format!("+{ext}"))
         .collect();
     if enabled.is_empty() {

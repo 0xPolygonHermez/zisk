@@ -194,7 +194,7 @@ pub fn diagnostic_riscv_b() {
 
     bseti();
 
-    #[cfg(feature = "zba")]
+    #[cfg(any(feature = "zba", feature = "zba_native"))]
     {
         add_u_w(0x00000000FFFFFFFF, 0x0000000000000001, 0x0000000100000000);
         add_u_w(0x0000000000000001, 0x0000000000000001, 0x0000000000000002);
@@ -245,7 +245,7 @@ pub fn diagnostic_riscv_b() {
     }
 
     // CLMUL tests - lower 64 bits of carryless multiplication
-    #[cfg(any(feature = "zbc", feature = "zbkc"))]
+    #[cfg(any(feature = "zbc", feature = "zbc_native", feature = "zbkc", feature = "zbkc_native"))]
     {
         clmul(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0 = 0
         clmul(0x0000000000000001, 0x0000000000000001, 0x0000000000000001); // 1 * 1 = 1
@@ -262,7 +262,7 @@ pub fn diagnostic_riscv_b() {
     }
 
     // CLMULH tests - upper 64 bits of carryless multiplication
-    #[cfg(any(feature = "zbc", feature = "zbkc"))]
+    #[cfg(any(feature = "zbc", feature = "zbc_native", feature = "zbkc", feature = "zbkc_native"))]
     {
         clmul_h(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0
         clmul_h(0x0000000000000001, 0x0000000000000001, 0x0000000000000000); // Small values (result in lower)
@@ -277,7 +277,7 @@ pub fn diagnostic_riscv_b() {
     }
 
     // CLMULR tests - reverse: bits [63:1] of upper 64 bits (shifted right by 1)
-    #[cfg(feature = "zbc")]
+    #[cfg(any(feature = "zbc", feature = "zbc_native"))]
     {
         clmul_r(0x0000000000000000, 0x0000000000000000, 0x0000000000000000); // 0 * 0
         clmul_r(0x0000000000000001, 0x0000000000000001, 0x0000000000000000); // Small values
@@ -291,14 +291,14 @@ pub fn diagnostic_riscv_b() {
         clmul_r(0xAAAAAAAAAAAAAAAA, 0x5555555555555555, 0x4444444444444444); // Alternating >> 1
     }
 
-    #[cfg(feature = "zbkx")]
+    #[cfg(any(feature = "zbkx", feature = "zbkx_native"))]
     {
         xperm4(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
         xperm4(0x0123456789ABCDEF, 0x0123456789ABCDEF, 0xFEDCBA9876543210);
         xperm4(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
     }
 
-    #[cfg(feature = "zbkx")]
+    #[cfg(any(feature = "zbkx", feature = "zbkx_native"))]
     {
         xperm8(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
         xperm8(0x0102030405060708, 0x0001020304050607, 0x0807060504030201);
@@ -952,7 +952,7 @@ fn bseti() {
     assert_eq!(c, 0x2);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -972,7 +972,7 @@ fn add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn sh1add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -992,7 +992,7 @@ fn sh1add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn sh1add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1012,7 +1012,7 @@ fn sh1add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn sh2add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1032,7 +1032,7 @@ fn sh2add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn sh2add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1052,7 +1052,7 @@ fn sh2add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn sh3add(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1072,7 +1072,7 @@ fn sh3add(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn sh3add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1092,7 +1092,7 @@ fn sh3add_u_w(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zba")]
+#[cfg(any(feature = "zba", feature = "zba_native"))]
 fn slli_u_w() {
     let a: u64 = 0xFFFFFFFF00000001;
     let c: u64;
@@ -1110,7 +1110,7 @@ fn slli_u_w() {
     assert_eq!(c, 0x0000000000000002);
 }
 
-#[cfg(any(feature = "zbc", feature = "zbkc"))]
+#[cfg(any(feature = "zbc", feature = "zbc_native", feature = "zbkc", feature = "zbkc_native"))]
 fn clmul(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1130,7 +1130,7 @@ fn clmul(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(any(feature = "zbc", feature = "zbkc"))]
+#[cfg(any(feature = "zbc", feature = "zbc_native", feature = "zbkc", feature = "zbkc_native"))]
 fn clmul_h(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1150,7 +1150,7 @@ fn clmul_h(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zbc")]
+#[cfg(any(feature = "zbc", feature = "zbc_native"))]
 fn clmul_r(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1170,7 +1170,7 @@ fn clmul_r(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zbkx")]
+#[cfg(any(feature = "zbkx", feature = "zbkx_native"))]
 fn xperm4(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
@@ -1190,7 +1190,7 @@ fn xperm4(input_a: u64, input_b: u64, expected_c: u64) {
     assert_eq!(c, expected_c);
 }
 
-#[cfg(feature = "zbkx")]
+#[cfg(any(feature = "zbkx", feature = "zbkx_native"))]
 fn xperm8(input_a: u64, input_b: u64, expected_c: u64) {
     let a: u64 = input_a;
     let b: u64 = input_b;
