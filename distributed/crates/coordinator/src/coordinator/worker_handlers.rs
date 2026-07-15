@@ -5,7 +5,7 @@ use crate::{
 };
 use chrono::Utc;
 use std::sync::atomic::Ordering;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use zisk_cluster_common::JobState;
 use zisk_cluster_common::{
     CoordinatorMessageDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
@@ -81,12 +81,11 @@ impl Coordinator {
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);
-                    let hash_id = state.hash_id.clone();
+                    let key =
+                        SetupKey::new(state.hash_id.clone(), state.with_hints, state.emulator_only);
                     let program_name = state.program_name.clone();
-                    let with_hints = state.with_hints;
-                    let emulator_only = state.emulator_only;
                     pending.remove(&job_id);
-                    Some((vks, hash_id, program_name, with_hints, emulator_only))
+                    Some((vks, key, program_name))
                 } else {
                     None
                 }
@@ -96,9 +95,8 @@ impl Coordinator {
             }
         };
 
-        if let Some((vks, hash_id, program_name, with_hints, emulator_only)) = outcome {
-            self.finalize_setup(&job_id, vks, hash_id, program_name, with_hints, emulator_only)
-                .await;
+        if let Some((vks, key, program_name)) = outcome {
+            self.finalize_setup(&job_id, vks, key, program_name, /* backfill */ true).await;
             info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
         }
 
@@ -110,25 +108,33 @@ impl Coordinator {
     /// arrived). Shared by `handle_stream_setup_program_ack` (normal path)
     /// and `prune_setup_pending_for_lost_worker` (worker disappeared mid-
     /// setup).
+    ///
+    /// `backfill` is `true` only on the clean ack path, where a successful
+    /// finalize also reserves still-`Idle` workers for this program. A finalize
+    /// forced by a worker disconnect passes `false` — cleanup must not fan out a
+    /// fresh broadcast while the fleet is shedding workers.
     async fn finalize_setup(
         &self,
         job_id: &JobId,
         vks: Vec<(WorkerId, Vec<u8>, String)>,
-        hash_id: String,
+        key: SetupKey,
         program_name: String,
-        with_hints: bool,
-        emulator_only: bool,
+        backfill: bool,
     ) {
         let event = match validate_setup_vks(job_id.as_str(), vks) {
             Ok((vk, hash_mode)) => {
                 self.active_setups.write().await.insert(
-                    SetupKey::new(hash_id, with_hints, emulator_only),
+                    key.clone(),
                     crate::coordinator::ActiveSetup {
-                        program_name,
+                        program_name: program_name.clone(),
                         vk: vk.clone(),
                         hash_mode: hash_mode.clone(),
                     },
                 );
+                // Catch workers that registered Idle during this setup's window.
+                if backfill {
+                    self.backfill_setup_to_idle(&key, &program_name).await;
+                }
                 CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk, hash_mode })
             }
             Err(e) => {
@@ -159,14 +165,9 @@ impl Coordinator {
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);
-                    completions.push((
-                        job_id.clone(),
-                        vks,
-                        state.hash_id.clone(),
-                        state.program_name.clone(),
-                        state.with_hints,
-                        state.emulator_only,
-                    ));
+                    let key =
+                        SetupKey::new(state.hash_id.clone(), state.with_hints, state.emulator_only);
+                    completions.push((job_id.clone(), vks, key, state.program_name.clone()));
                     false
                 } else {
                     true
@@ -175,13 +176,13 @@ impl Coordinator {
             completions
         };
 
-        for (job_id, vks, hash_id, program_name, with_hints, emulator_only) in completions {
+        for (job_id, vks, key, program_name) in completions {
             info!(
                 "[Setup] Worker {} lost; finalizing in-flight setup {} with collected acks",
                 worker_id, job_id
             );
-            self.finalize_setup(&job_id, vks, hash_id, program_name, with_hints, emulator_only)
-                .await;
+            // Worker lost: cleanup only, no back-fill (see `finalize_setup`).
+            self.finalize_setup(&job_id, vks, key, program_name, /* backfill */ false).await;
         }
     }
 
@@ -383,7 +384,7 @@ impl Coordinator {
         if should_flip {
             let _ = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await;
             if was_pending {
-                info!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
+                debug!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
             } else {
                 info!(
                     "[Recovery] Worker {} RecoveryComplete with no pending-recovery record but parked SettingUp; flipping Ready (cross-stream race)",
@@ -396,7 +397,7 @@ impl Coordinator {
                 worker_id, state
             );
         } else {
-            warn!(
+            debug!(
                 "[Recovery] Worker {} sent RecoveryComplete with no pending-recovery record (state={:?}); ignoring",
                 worker_id, state
             );
@@ -814,7 +815,7 @@ impl Coordinator {
         job_id: &JobId,
     ) -> CoordinatorResult<()> {
         self.workers_pool.update_last_heartbeat(worker_id).await?;
-        info!("Worker {} acknowledged cancellation of job {}", worker_id, job_id);
+        debug!("Worker {} acknowledged cancellation of job {}", worker_id, job_id);
         Ok(())
     }
 
@@ -878,7 +879,7 @@ impl Coordinator {
                         .or_insert_with(Utc::now);
                 }
 
-                info!(
+                debug!(
                     "Late ExecuteTaskResponse from worker {} for resolved job {} \
                      (worker_in_recovery={}, state={:?}); awaiting WorkerRecoveryComplete",
                     message.worker_id, message.job_id, message.worker_in_recovery, current
