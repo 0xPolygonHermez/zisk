@@ -186,6 +186,7 @@ jobs:
               python3 tools/runpod-test/deploy_cluster.py \
                 --ssh-key ~/.ssh/runpod_ed25519 \
                 --work-dir "$WORKSPACE_DIR" \
+                --keep-on-error \
                 $RUN_TIME_FLAG \
                 $DISABLE_MPI_FLAG
             '
