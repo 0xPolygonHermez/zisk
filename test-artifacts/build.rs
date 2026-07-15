@@ -75,14 +75,19 @@ fn main() -> Result<()> {
     }
 
     // Restrict the build to specific packages only for a strict subset; with every
-    // program enabled we build the whole workspace with no `--package`.
+    // program enabled we build the whole workspace with no `--package`. That also
+    // avoids cargo's "package spec is ambiguous" error: some guest names collide
+    // with crates.io deps in `programs/` (e.g. `keccak`, `secp256k1`), so a bare
+    // `--package <name>` would be ambiguous — which also means a colliding-named
+    // guest cannot currently be selected as a strict subset.
     let subset = enabled.len() < PROGRAMS.len();
 
     // `bit_manipulation_extensions` exists only on the `diagnostic` guest, so
     // forward it scoped to that package — and only in a subset build that includes
     // `diagnostic`, so `--package diagnostic` is present and `--features` applies to
     // a package that defines it. Forwarding it for the full build (no `--package`)
-    // or a subset without `diagnostic` makes Cargo error.
+    // or a subset without `diagnostic` would make Cargo error, so in those cases it
+    // has no effect — enable it via a subset build that includes `diagnostic`.
     let mut features = Vec::new();
     if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok()
         && subset
