@@ -1124,7 +1124,7 @@ dependencies = [
  "assert_cmd",
  "clap",
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "futures",
  "hex",
  "indicatif",
@@ -1756,9 +1756,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "num-bigint",
  "num-traits",
 ]
@@ -2192,7 +2192,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "mem-common",
  "named-sem",
  "paste",
@@ -2228,7 +2228,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2286,6 +2286,17 @@ checksum = "c0b50bfb653653f9ca9095b427bed08ab8d75a137839d9ad64eb11810d5b6393"
 dependencies = [
  "rand_core 0.6.4",
  "subtle",
+]
+
+[[package]]
+name = "fields"
+version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
 ]
 
 [[package]]
@@ -3485,7 +3496,7 @@ name = "mem-common"
 version = "1.1.0-alpha"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -4089,10 +4100,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -4109,12 +4120,12 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "anyhow",
  "clap",
  "exps-codegen",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "indexmap 2.14.0",
  "mpi",
  "pilout",
@@ -4136,7 +4147,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4253,7 +4264,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "lazy_static",
  "lib-c",
  "num-bigint",
@@ -4282,7 +4293,7 @@ version = "1.1.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "lazy_static",
  "num-bigint",
  "num-traits",
@@ -4307,7 +4318,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "lib-c",
  "pil-std-lib",
  "precompiles-common",
@@ -4325,7 +4336,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4342,7 +4353,7 @@ dependencies = [
 name = "precomp-dma"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "pil-std-lib",
  "precompiles-common",
  "precompiles-helpers",
@@ -4360,7 +4371,7 @@ name = "precomp-keccakf"
 version = "1.1.0-alpha"
 dependencies = [
  "circuit",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -4380,7 +4391,7 @@ dependencies = [
 name = "precomp-poseidon"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4397,7 +4408,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "pil-std-lib",
  "precompiles-common",
  "proofman-common",
@@ -4414,7 +4425,7 @@ dependencies = [
 name = "precompiles-common"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -4547,7 +4558,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "bincode",
  "blake3",
@@ -4557,7 +4568,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4568,7 +4579,7 @@ dependencies = [
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "rayon",
  "serde",
  "serde_json",
@@ -4581,7 +4592,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "bincode",
  "borsh",
@@ -4590,7 +4601,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "lazy_static",
  "libc",
  "libloading",
@@ -4612,9 +4623,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4625,7 +4636,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4635,7 +4646,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4644,7 +4655,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "bincode",
  "colored",
@@ -4655,12 +4666,24 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
+dependencies = [
+ "bincode",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
+ "num-traits",
+ "rayon",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.0.0-beta"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
 dependencies = [
  "bincode",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha)",
  "num-traits",
- "rayon",
  "serde",
  "tracing",
 ]
@@ -5078,11 +5101,11 @@ version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "pil2-stark-setup",
  "pilout",
  "proofman",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "serde",
  "serde_json",
  "stark-recurser",
@@ -5283,7 +5306,7 @@ version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "proofman-common",
  "riscv2zisk",
  "sm-rom",
@@ -6018,7 +6041,7 @@ dependencies = [
 name = "sm-arith"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -6034,7 +6057,7 @@ dependencies = [
 name = "sm-binary"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "pil-std-lib",
  "proofman-common",
  "rayon",
@@ -6051,7 +6074,7 @@ name = "sm-frequent-ops"
 version = "1.1.0-alpha"
 dependencies = [
  "clap",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "proofman-common",
  "static_assertions",
  "zisk-core",
@@ -6061,7 +6084,7 @@ dependencies = [
 name = "sm-main"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -6079,7 +6102,7 @@ name = "sm-mem"
 version = "1.1.0-alpha"
 dependencies = [
  "env",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "mem-common",
  "pil-std-lib",
  "proofman-common",
@@ -6096,7 +6119,7 @@ name = "sm-rom"
 version = "1.1.0-alpha"
 dependencies = [
  "asm-runner",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "mem-common",
  "proofman-common",
  "rayon",
@@ -6143,10 +6166,10 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "anyhow",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "indexmap 2.14.0",
  "num-bigint",
  "num-traits",
@@ -7629,10 +7652,10 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#3b188b6082659c03015e827c59a68ba5bb41fc30"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt#1b4e19cc22eb92e658021b136581acd1ec813a1f"
 dependencies = [
  "colored",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7870,12 +7893,12 @@ dependencies = [
  "bincode",
  "clap",
  "dirs",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "num-bigint",
  "paste",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "serde",
  "serde_json",
  "sha2",
@@ -7986,7 +8009,7 @@ name = "zisk-core"
 version = "1.1.0-alpha"
 dependencies = [
  "elf",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "lib-c",
  "lib-float",
  "paste",
@@ -8006,7 +8029,7 @@ version = "1.1.0-alpha"
 name = "zisk-pil"
 version = "1.1.0-alpha"
 dependencies = [
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "proofman-common",
  "proofman-macros",
  "serde",
@@ -8049,12 +8072,12 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "recurser",
  "riscv2zisk",
  "rom-setup",
@@ -8073,10 +8096,10 @@ name = "zisk-sdk"
 version = "1.1.0-alpha"
 dependencies = [
  "bincode",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "rayon",
  "recurser",
  "rom-setup",
@@ -8111,7 +8134,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.1.0-alpha"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha)",
 ]
 
 [[package]]
@@ -8126,10 +8149,10 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "rayon",
  "recurser",
  "rom-setup",
@@ -8165,7 +8188,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "flate2",
  "mem-common",
  "memmap2",
@@ -8207,7 +8230,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -8240,7 +8263,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fdisable-ntt)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
