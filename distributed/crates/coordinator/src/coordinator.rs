@@ -872,7 +872,10 @@ impl Coordinator {
         let mut pending = self.setup_pending.write().await;
         if pending.get(&job_id).is_some_and(|s| s.pending.is_empty()) {
             pending.remove(&job_id);
-            debug!("[Setup] Back-fill for {} had no reachable workers; dropped empty entry", job_id);
+            debug!(
+                "[Setup] Back-fill for {} had no reachable workers; dropped empty entry",
+                job_id
+            );
         }
     }
 
