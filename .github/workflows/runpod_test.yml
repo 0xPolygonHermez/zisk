@@ -113,6 +113,22 @@ jobs:
               ./build_zisk.sh
             '
 
+      - name: Wait for pod deployment
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              echo "Waiting for the background deploy_pods.py to finish..."
+              while [ ! -f /tmp/deploy_pods.rc ]; do
+                sleep 5
+              done
+              rc="$(cat /tmp/deploy_pods.rc)"
+              echo "===== deploy_pods.py log ====="
+              cat /tmp/deploy_pods.log || true
+              echo "===== deploy_pods.py exit code: ${rc} ====="
+              exit "${rc}"
+            '
+            
       - name: Build zec-reth ELF
         run: |
           .github/scripts/docker_exec.sh \
@@ -136,22 +152,6 @@ jobs:
               export ENABLE_HINTS=1
               echo "Using zisk-ethproofs branch: ${ZISK_ETHPROOFS_BRANCH}"
               ./build_ethproofs.sh
-            '
-
-      - name: Wait for pod deployment
-        run: |
-          .github/scripts/docker_exec.sh \
-            -u ziskuser \
-            -- bash -lc '
-              echo "Waiting for the background deploy_pods.py to finish..."
-              while [ ! -f /tmp/deploy_pods.rc ]; do
-                sleep 5
-              done
-              rc="$(cat /tmp/deploy_pods.rc)"
-              echo "===== deploy_pods.py log ====="
-              cat /tmp/deploy_pods.log || true
-              echo "===== deploy_pods.py exit code: ${rc} ====="
-              exit "${rc}"
             '
 
       - name: Provision and run cluster
