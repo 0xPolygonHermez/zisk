@@ -87,7 +87,10 @@ fn main() -> Result<()> {
     let release = env::var("PROFILE").map(|p| p == "release").unwrap_or(false);
     let mut build_args = BuildArgs::default().release(release);
     build_args.features = if features.is_empty() { None } else { Some(features.join(",")) };
-    build_args.packages = enabled;
+    // Only restrict the build to specific packages for a strict subset.
+    if enabled.len() < PROGRAMS.len() {
+        build_args.packages = enabled;
+    }
 
     build_program_with_args(
         programs_path
