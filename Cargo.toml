@@ -140,17 +140,17 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-pinned" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
+stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/disable-transcript" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
