@@ -53,7 +53,7 @@ pub(crate) fn is_supported_target() -> bool {
 /// release published for `0xPolygonHermez/rust` (greatest minor, then patch),
 /// instead of whatever `releases/latest` happens to point at. Bump this when the
 /// toolchain moves to a new incompatible major.
-const TOOLCHAIN_MAJOR: u64 = 1;
+const TOOLCHAIN_MAJOR: u64 = 2;
 
 /// Git URL of the ZisK Rust fork, used to list toolchain tags with `git ls-remote`
 /// (git protocol, so no REST API rate limit).
