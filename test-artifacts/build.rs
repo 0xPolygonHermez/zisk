@@ -74,20 +74,20 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Restrict the build to specific packages only for a strict subset; with every
-    // program enabled we build the whole workspace with no `--package`. That also
-    // avoids cargo's "package spec is ambiguous" error: some guest names collide
-    // with crates.io deps in `programs/` (e.g. `keccak`, `secp256k1`), so a bare
-    // `--package <name>` would be ambiguous — which also means a colliding-named
-    // guest cannot currently be selected as a strict subset.
+    // Restrict a subset build to the requested guests by binary name (`--bin`),
+    // not by package (`--package`). Some guest names collide with crates.io
+    // dependency package names in `programs/` (e.g. `keccak`, `secp256k1`), which
+    // makes `--package <name>` ambiguous; `--bin <name>` is unambiguous because
+    // only the guest defines a binary of that name. With the default `all` feature
+    // every program is enabled and we build the whole workspace with no target
+    // selection (the historical behavior).
     let subset = enabled.len() < PROGRAMS.len();
 
     // `bit_manipulation_extensions` exists only on the `diagnostic` guest, so
-    // forward it scoped to that package — and only in a subset build that includes
-    // `diagnostic`, so `--package diagnostic` is present and `--features` applies to
-    // a package that defines it. Forwarding it for the full build (no `--package`)
-    // or a subset without `diagnostic` would make Cargo error, so in those cases it
-    // has no effect — enable it via a subset build that includes `diagnostic`.
+    // forward it scoped to that package (`diagnostic/...`) and only in a subset
+    // build that includes `diagnostic` (so `--bin diagnostic` is in the build).
+    // Forwarding it otherwise — the full build, or a subset without `diagnostic` —
+    // would make Cargo error, so it has no effect in those cases.
     let mut features = Vec::new();
     if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok()
         && subset
@@ -104,7 +104,7 @@ fn main() -> Result<()> {
     let mut build_args = BuildArgs::default().release(release);
     build_args.features = if features.is_empty() { None } else { Some(features.join(",")) };
     if subset {
-        build_args.packages = enabled;
+        build_args.binaries = enabled;
     }
 
     build_program_with_args(
