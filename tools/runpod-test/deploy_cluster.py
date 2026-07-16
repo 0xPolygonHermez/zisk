@@ -98,6 +98,43 @@ def terminate_pod(api_key: str, pod_id: str) -> None:
     api_request("DELETE", f"/pods/{pod_id}", api_key)
 
 
+def resolve_proving_key() -> str:
+    """Derive the proving key file name from the installed cargo-zisk version.
+
+    `cargo-zisk --version` prints e.g.:
+        cargo-zisk 1.1.0-alpha [gpu] (1793f6f 2026-07-08T18:32:06.480205429Z)
+
+    We take the token right after "cargo-zisk" (here "1.1.0-alpha") and build
+    the proving key name as "zisk-provingkey-pre-<version>.tar.gz".
+    """
+    try:
+        result = subprocess.run(
+            ["cargo-zisk", "--version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise RuntimeError(
+            "Could not run 'cargo-zisk --version' to derive the proving key "
+            "name. Pass --provingkey explicitly."
+        ) from error
+
+    output = result.stdout.strip()
+    match = re.search(r"^cargo-zisk\s+(\S+)", output)
+    if not match:
+        raise RuntimeError(
+            f"Could not parse cargo-zisk version from: {output!r}. "
+            "Pass --provingkey explicitly."
+        )
+
+    version = match.group(1)
+    proving_key = f"zisk-provingkey-pre-{version}.tar.gz"
+    print(f"Derived proving key from cargo-zisk {version}: {proving_key}")
+    return proving_key
+
+
 def load_pods_info(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         raise FileNotFoundError(f"Pods info file not found: {path}")
@@ -543,10 +580,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--provingkey",
-        default=DEFAULT_PROVING_KEY,
+        default=None,
         help=(
-            "Proving key file downloaded from the zisk-setup bucket. "
-            f"Default: {DEFAULT_PROVING_KEY}"
+            "Proving key file downloaded from the zisk-setup bucket. If not "
+            "given, it is derived from the installed cargo-zisk version as "
+            "zisk-provingkey-pre-<version>.tar.gz."
         ),
     )
     parser.add_argument(
@@ -595,6 +633,8 @@ def main() -> None:
     if not api_key:
         raise RuntimeError("Missing RUNPOD_API_KEY environment variable")
 
+    proving_key = args.provingkey or resolve_proving_key()
+
     private_key = str(Path(args.ssh_key).expanduser().resolve())
     work_dir = Path(args.work_dir).expanduser().resolve()
 
@@ -641,7 +681,7 @@ def main() -> None:
         private_key=private_key,
         local_zisk_dir=local_zisk_dir,
         workspace_bin_files=pod1_workspace_bin,
-        proving_key=args.provingkey,
+        proving_key=proving_key,
         is_coord=True,
         coord_host="127.0.0.1",
         coord_port=COORD_INTERNAL_PORT,
@@ -656,7 +696,7 @@ def main() -> None:
         private_key=private_key,
         local_zisk_dir=local_zisk_dir,
         workspace_bin_files=pod2_workspace_bin,
-        proving_key=args.provingkey,
+        proving_key=proving_key,
         is_coord=False,
         coord_host=pod1_internal_host,
         coord_port=COORD_INTERNAL_PORT,

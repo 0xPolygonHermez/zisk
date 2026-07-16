@@ -16,8 +16,7 @@ RUNPOD_API_URL = "https://rest.runpod.io/v1"
 
 GPU_TYPES = [
     "NVIDIA GeForce RTX 4090",
-    "NVIDIA GeForce RTX 5090",
-    "NVIDIA RTX PRO 4500 Blackwell"
+    "NVIDIA GeForce RTX 5090"
 ]
 
 POD_PORTS = [
