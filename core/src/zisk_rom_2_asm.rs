@@ -72,9 +72,8 @@ const FCALL_RESULT: u64 = FCALL_RESULT_SIZE + 1;
 const FCALL_RESULT_GOT: u64 = FCALL_RESULT + FCALL_RESULT_LENGTH;
 const FCALL_LENGTH: u64 = FCALL_RESULT_GOT + 1;
 
-// Which RISC-V registers are held in XMM registers is decided per-ROM from the
-// static register-access frequency; see ZiskRom2Asm::build_xmm_mapped_regs and
-// the ZiskAsmContext::xmm_mapped field.
+const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+//const XMM_MAPPED_REGS: [u64; 0] = []; // Used for debugging
 
 const F_MOPS_CLEAR_WRITE_BYTE: u64 = 1 << 37;
 
@@ -198,13 +197,6 @@ pub struct ZiskAsmContext {
     //assert_rsp_counter: u64,
     precompile_results: bool, // Set to true is we are consuming precompile results
     wait_for_prec_counter: u64, // Counter of wait_for_prec_avail calls, reset at every instruction
-
-    // RISC-V registers mapped to XMM registers, ordered by XMM slot: the register
-    // at position `i` lives in `xmm{i}`.  Computed once per ROM from the static
-    // register-access frequency (see build_xmm_mapped_regs), so the hottest
-    // registers avoid the memory round-trip.  Any register not in this list is
-    // kept in memory (reg_<n>).
-    xmm_mapped: Vec<u64>,
 }
 
 impl ZiskAsmContext {
@@ -219,20 +211,6 @@ impl ZiskAsmContext {
     }
     pub fn mem_op(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmMemOp
-    }
-
-    /// Returns true if the given RISC-V register is mapped to an XMM register
-    /// (as opposed to being kept in memory).
-    pub fn is_xmm_mapped(&self, reg: u64) -> bool {
-        self.xmm_mapped.contains(&reg)
-    }
-
-    /// Returns the XMM slot index (0..=15) that holds the given RISC-V register.
-    /// The register must be XMM-mapped (see is_xmm_mapped).
-    pub fn reg_to_xmm_index(&self, reg: u64) -> u64 {
-        self.xmm_mapped.iter().position(|&r| r == reg).unwrap_or_else(|| {
-            panic!("ZiskAsmContext::reg_to_xmm_index() found non-XMM-mapped reg={reg}")
-        }) as u64
     }
 
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
@@ -579,11 +557,6 @@ impl ZiskRom2Asm {
             ..Default::default()
         };
 
-        // Decide which RISC-V registers live in XMM registers for this ROM, based
-        // on their static access frequency (see build_xmm_mapped_regs).  Must be
-        // set before any register access or register declaration is generated.
-        ctx.xmm_mapped = Self::build_xmm_mapped_regs(rom);
-
         ctx.ptr = "ptr ".to_string();
         ctx.mem_step = format!("qword {}[MEM_STEP]", ctx.ptr);
         ctx.mem_sp = format!("qword {}[MEM_SP]", ctx.ptr);
@@ -623,9 +596,9 @@ impl ZiskRom2Asm {
             *code += ".comm MEM_PRECOMPILE_RESULTS_ADDRESS, 8, 8\n";
         }
 
-        // Allocate space for the registers that are not held in XMM registers
+        // Allocate space for the registers
         for r in 0u64..35u64 {
-            if !ctx.is_xmm_mapped(r) {
+            if !XMM_MAPPED_REGS.contains(&r) {
                 *code += &format!(".comm reg_{r}, 8, 8\n");
             }
         }
@@ -769,7 +742,7 @@ impl ZiskRom2Asm {
         *code += &ctx.full_line_comment("Set RISC-V registers to zero".to_string());
 
         for r in 0u64..35u64 {
-            if !ctx.is_xmm_mapped(r) {
+            if !XMM_MAPPED_REGS.contains(&r) {
                 *code += &format!("\tmov qword {}[reg_{}], 0\n", ctx.ptr, r);
             }
         }
@@ -8295,56 +8268,28 @@ impl ZiskRom2Asm {
     /* REGISTERS */
     /*************/
 
-    /// Chooses which RISC-V registers are held in XMM registers for this ROM.
-    ///
-    /// x86-64 has 16 XMM registers, so at most 16 RISC-V registers can be kept
-    /// there; the rest live in memory (reg_<n>) and pay a load and/or store on
-    /// every access.  We pick the 16 most-frequently-accessed registers, counting
-    /// each static occurrence as a source (a or b) or as a store destination
-    /// across the whole ROM, so the hottest registers avoid the memory
-    /// round-trip.
-    ///
-    /// Register 0 (the RISC-V zero register) is never mapped: reads must always
-    /// return 0 from memory.  Registers above 33 are also left in memory, since
-    /// only registers 1..=33 are part of the persistent per-chunk register state
-    /// (see chunk_start).  The returned list is ordered by register index, so the
-    /// XMM slot of a register is simply its position in the list; this keeps the
-    /// mapping deterministic and identical across all generation modes for a
-    /// given ROM.
-    fn build_xmm_mapped_regs(rom: &ZiskRom) -> Vec<u64> {
-        // Upper bound for the histogram array (offsets are asserted <= 34).
-        const MAX_REG: usize = 34;
-        // Highest register index eligible for XMM (chunk-persistent registers).
-        const MAX_CANDIDATE: u64 = 33;
-        // Number of XMM registers available on x86-64.
-        const XMM_COUNT: usize = 16;
-
-        let mut counts = [0u64; MAX_REG + 1];
-        for inst_builder in rom.insts.values() {
-            let inst = &inst_builder.i;
-            if inst.a_src == SRC_REG && (inst.a_offset_imm0 as usize) <= MAX_REG {
-                counts[inst.a_offset_imm0 as usize] += 1;
-            }
-            if inst.b_src == SRC_REG && (inst.b_offset_imm0 as usize) <= MAX_REG {
-                counts[inst.b_offset_imm0 as usize] += 1;
-            }
-            if inst.store == STORE_REG
-                && inst.store_offset >= 0
-                && (inst.store_offset as usize) <= MAX_REG
-            {
-                counts[inst.store_offset as usize] += 1;
+    fn reg_to_xmm_index(reg: u64) -> u64 {
+        match reg {
+            1 => 0,
+            2 => 1,
+            5 => 2,
+            6 => 3,
+            7 => 4,
+            8 => 5,
+            9 => 6,
+            10 => 7,
+            11 => 8,
+            12 => 9,
+            13 => 10,
+            14 => 11,
+            15 => 12,
+            16 => 13,
+            17 => 14,
+            18 => 15,
+            _ => {
+                panic!("ZiskRom2Asm::reg_to_xmm_index() found invalid source slot={reg}");
             }
         }
-
-        // Candidate registers: 1..=MAX_CANDIDATE (register 0 is always in memory).
-        let mut candidates: Vec<u64> = (1..=MAX_CANDIDATE).collect();
-        // Most-accessed first; ties broken by register index for determinism.
-        candidates.sort_by(|&a, &b| counts[b as usize].cmp(&counts[a as usize]).then(a.cmp(&b)));
-        candidates.truncate(XMM_COUNT);
-        // Order the chosen registers by index so the XMM slot mapping is stable
-        // and readable (slot = position in this list).
-        candidates.sort_unstable();
-        candidates
     }
 
     // fn reg_to_rsp_index(reg: u64) -> u64 {
@@ -8381,8 +8326,8 @@ impl ZiskRom2Asm {
         dest_reg: &str,
         dest_desc: &str,
     ) {
-        if ctx.is_xmm_mapped(src_slot) {
-            let xmm_index = ctx.reg_to_xmm_index(src_slot);
+        if XMM_MAPPED_REGS.contains(&src_slot) {
+            let xmm_index = Self::reg_to_xmm_index(src_slot);
             *code += &format!(
                 "\tmovq {}, xmm{} {}\n",
                 dest_reg,
@@ -8408,8 +8353,8 @@ impl ZiskRom2Asm {
         src_desc: &str,
     ) {
         let comment = format!("reg[{dest_slot}]={src_desc}");
-        if ctx.is_xmm_mapped(dest_slot) {
-            let xmm_index = ctx.reg_to_xmm_index(dest_slot);
+        if XMM_MAPPED_REGS.contains(&dest_slot) {
+            let xmm_index = Self::reg_to_xmm_index(dest_slot);
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, src_reg, ctx.comment(comment));
         } else {
             *code += &format!(
@@ -8430,8 +8375,8 @@ impl ZiskRom2Asm {
         value_desc: &str,
     ) {
         let comment = format!("reg[{dest_slot}]={value_desc}");
-        if ctx.is_xmm_mapped(dest_slot) {
-            let xmm_index = ctx.reg_to_xmm_index(dest_slot);
+        if XMM_MAPPED_REGS.contains(&dest_slot) {
+            let xmm_index = Self::reg_to_xmm_index(dest_slot);
             *code += &format!("\tmov {REG_AUX}, 0x{value:x}\n");
 
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, REG_AUX, ctx.comment(comment));
