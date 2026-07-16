@@ -682,7 +682,7 @@ impl Riscv2ZiskContext<'_> {
 
             #[cfg(feature = "zbc_native")]
             RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmul_r", 4),
-            #[cfg(all(feature = "zbkc", not(feature = "zbc_native")))]
+            #[cfg(all(feature = "zbc", not(feature = "zbc_native")))]
             RiscvInstName::Clmulr => self.clmul_r(riscv_instruction),
 
             // Crossbar permutations operations (Zbkx)
