@@ -32,6 +32,8 @@ const REG_C_W: &str = "r15d";
 const REG_C_H: &str = "r15w";
 const REG_C_B: &str = "r15b";
 const REG_FLAG: &str = "rdx";
+const REG_FLAG_W: &str = "edx";
+const REG_FLAG_B: &str = "dl";
 const REG_STEP: &str = "r14";
 const REG_VALUE: &str = "r9";
 const REG_VALUE_W: &str = "r9d";
@@ -70,8 +72,9 @@ const FCALL_RESULT: u64 = FCALL_RESULT_SIZE + 1;
 const FCALL_RESULT_GOT: u64 = FCALL_RESULT + FCALL_RESULT_LENGTH;
 const FCALL_LENGTH: u64 = FCALL_RESULT_GOT + 1;
 
-const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-//const XMM_MAPPED_REGS: [u64; 0] = []; // Used for debugging
+// Which RISC-V registers are held in XMM registers is decided per-ROM from the
+// static register-access frequency; see ZiskRom2Asm::build_xmm_mapped_regs and
+// the ZiskAsmContext::xmm_mapped field.
 
 const F_MOPS_CLEAR_WRITE_BYTE: u64 = 1 << 37;
 
@@ -195,6 +198,13 @@ pub struct ZiskAsmContext {
     //assert_rsp_counter: u64,
     precompile_results: bool, // Set to true is we are consuming precompile results
     wait_for_prec_counter: u64, // Counter of wait_for_prec_avail calls, reset at every instruction
+
+    // RISC-V registers mapped to XMM registers, ordered by XMM slot: the register
+    // at position `i` lives in `xmm{i}`.  Computed once per ROM from the static
+    // register-access frequency (see build_xmm_mapped_regs), so the hottest
+    // registers avoid the memory round-trip.  Any register not in this list is
+    // kept in memory (reg_<n>).
+    xmm_mapped: Vec<u64>,
 }
 
 impl ZiskAsmContext {
@@ -209,6 +219,20 @@ impl ZiskAsmContext {
     }
     pub fn mem_op(&self) -> bool {
         self.mode == AsmGenerationMethod::AsmMemOp
+    }
+
+    /// Returns true if the given RISC-V register is mapped to an XMM register
+    /// (as opposed to being kept in memory).
+    pub fn is_xmm_mapped(&self, reg: u64) -> bool {
+        self.xmm_mapped.contains(&reg)
+    }
+
+    /// Returns the XMM slot index (0..=15) that holds the given RISC-V register.
+    /// The register must be XMM-mapped (see is_xmm_mapped).
+    pub fn reg_to_xmm_index(&self, reg: u64) -> u64 {
+        self.xmm_mapped.iter().position(|&r| r == reg).unwrap_or_else(|| {
+            panic!("ZiskAsmContext::reg_to_xmm_index() found non-XMM-mapped reg={reg}")
+        }) as u64
     }
 
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
@@ -555,6 +579,11 @@ impl ZiskRom2Asm {
             ..Default::default()
         };
 
+        // Decide which RISC-V registers live in XMM registers for this ROM, based
+        // on their static access frequency (see build_xmm_mapped_regs).  Must be
+        // set before any register access or register declaration is generated.
+        ctx.xmm_mapped = Self::build_xmm_mapped_regs(rom);
+
         ctx.ptr = "ptr ".to_string();
         ctx.mem_step = format!("qword {}[MEM_STEP]", ctx.ptr);
         ctx.mem_sp = format!("qword {}[MEM_SP]", ctx.ptr);
@@ -594,9 +623,9 @@ impl ZiskRom2Asm {
             *code += ".comm MEM_PRECOMPILE_RESULTS_ADDRESS, 8, 8\n";
         }
 
-        // Allocate space for the registers
+        // Allocate space for the registers that are not held in XMM registers
         for r in 0u64..35u64 {
-            if !XMM_MAPPED_REGS.contains(&r) {
+            if !ctx.is_xmm_mapped(r) {
                 *code += &format!(".comm reg_{r}, 8, 8\n");
             }
         }
@@ -740,7 +769,7 @@ impl ZiskRom2Asm {
         *code += &ctx.full_line_comment("Set RISC-V registers to zero".to_string());
 
         for r in 0u64..35u64 {
-            if !XMM_MAPPED_REGS.contains(&r) {
+            if !ctx.is_xmm_mapped(r) {
                 *code += &format!("\tmov qword {}[reg_{}], 0\n", ctx.ptr, r);
             }
         }
@@ -3157,16 +3186,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Eq: a == b ?")
                 );
-                *code += &format!("\tje pc_{:x}_equal_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_equal_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_equal_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_equal_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "e");
             }
             ZiskOp::EqW => {
                 // Make sure a is in REG_A to compare it against b (constant, expression or reg)
@@ -3212,16 +3232,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("EqW: a == b ?")
                     );
                 }
-                *code += &format!("\tje pc_{:x}_equal_w_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_equal_w_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_equal_w_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_equal_w_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "e");
             }
             ZiskOp::Ltu => {
                 assert!(ctx.store_a_in_a);
@@ -3244,16 +3255,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Ltu: a == b ?")
                 );
-                *code += &format!("\tjb pc_{:x}_ltu_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_ltu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_ltu_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_ltu_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "b");
             }
             ZiskOp::Lt => {
                 assert!(ctx.store_a_in_a);
@@ -3276,16 +3278,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Lt: a == b ?")
                 );
-                *code += &format!("\tjl pc_{:x}_lt_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_lt_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_lt_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_lt_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "l");
             }
             ZiskOp::LtuW => {
                 assert!(ctx.store_a_in_a);
@@ -3323,16 +3316,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LtuW: a < b ?")
                     );
                 }
-                *code += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_ltuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_ltuw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_ltuw_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "b");
             }
             ZiskOp::LtW => {
                 assert!(ctx.store_a_in_a);
@@ -3370,16 +3354,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LtW: a < b ?")
                     );
                 }
-                *code += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_ltw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_ltw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_ltw_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "l");
             }
             ZiskOp::Leu => {
                 assert!(ctx.store_a_in_a);
@@ -3402,16 +3377,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Leu: a == b ?")
                 );
-                *code += &format!("\tjbe pc_{:x}_leu_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_leu_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_leu_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_leu_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "be");
             }
             ZiskOp::Le => {
                 assert!(ctx.store_a_in_a);
@@ -3434,16 +3400,7 @@ impl ZiskRom2Asm {
                     ctx.b.string_value,
                     ctx.comment_str("Le: a == b ?")
                 );
-                *code += &format!("\tjle pc_{:x}_le_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_le_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_le_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_le_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "le");
             }
             ZiskOp::LeuW => {
                 assert!(ctx.store_a_in_a);
@@ -3481,16 +3438,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LeuW: a <= b ?")
                     );
                 }
-                *code += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_leuw_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_leuw_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_leuw_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "be");
             }
             ZiskOp::LeW => {
                 assert!(ctx.store_a_in_a);
@@ -3528,16 +3476,7 @@ impl ZiskRom2Asm {
                         ctx.comment_str("LeW: a <= b ?")
                     );
                 }
-                *code += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);
-                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
-                *code +=
-                    &format!("\txor {}, {} {}\n", REG_FLAG, REG_FLAG, ctx.comment_str("flag = 0"));
-                *code += &format!("\tjmp pc_{:x}_lew_done\n", ctx.pc);
-                *code += &format!("pc_{:x}_lew_true:\n", ctx.pc);
-                *code += &format!("\tmov {}, 1 {}\n", REG_C, ctx.comment_str("c = 1"));
-                *code += &format!("\tmov {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag = 1"));
-                *code += &format!("pc_{:x}_lew_done:\n", ctx.pc);
-                ctx.c.is_saved = true;
+                Self::materialize_cmp_result(ctx, inst, code, "le");
             }
             ZiskOp::And => {
                 assert!(ctx.store_a_in_c);
@@ -6380,6 +6319,51 @@ impl ZiskRom2Asm {
         }
     }
 
+    /// Materialize the result of a comparison operation branchlessly using `setcc`.
+    ///
+    /// `cc` is the x86 condition-code suffix matching the preceding `cmp`
+    /// (e.g. "e" for equal, "b" for unsigned-below, "l" for signed-less-than,
+    /// "be", "le").  The `cmp` must already have set the CPU flags.
+    ///
+    /// Register `c` (REG_C) is persistent Zisk state: the next instruction can
+    /// read it via SRC_C and it is saved at chunk boundaries, so it is *always*
+    /// materialized.  The `flag` register (REG_FLAG) is only consumed by
+    /// `set_pc` when the instruction is a conditional branch (its two possible
+    /// jump offsets differ), so it is materialized only in that case.
+    ///
+    /// This replaces the previous branchy sequence
+    /// (`jcc _true / xor c / xor flag / jmp _done / _true: mov c,1 / mov flag,1`),
+    /// removing a data-dependent, frequently-mispredicted branch and skipping the
+    /// flag computation entirely for comparisons that only store their result.
+    fn materialize_cmp_result(
+        ctx: &mut ZiskAsmContext,
+        instruction: &ZiskInst,
+        code: &mut String,
+        cc: &str,
+    ) {
+        // c is always needed: it is persistent state (SRC_C / chunk save)
+        *code += &format!("\tset{} {} {}\n", cc, REG_C_B, ctx.comment_str("c = cond"));
+        *code +=
+            &format!("\tmovzx {}, {} {}\n", REG_C_W, REG_C_B, ctx.comment_str("zero-extend c"));
+
+        // flag is only consumed by a conditional-branch pc update (see set_pc)
+        let need_flag = !instruction.set_pc
+            && !ctx.flag_is_always_one
+            && !ctx.flag_is_always_zero
+            && (instruction.jmp_offset1 != instruction.jmp_offset2);
+        if need_flag {
+            *code += &format!("\tset{} {} {}\n", cc, REG_FLAG_B, ctx.comment_str("flag = cond"));
+            *code += &format!(
+                "\tmovzx {}, {} {}\n",
+                REG_FLAG_W,
+                REG_FLAG_B,
+                ctx.comment_str("zero-extend flag")
+            );
+        }
+
+        ctx.c.is_saved = true;
+    }
+
     /**********/
     /* SET PC */
     /**********/
@@ -6517,47 +6501,64 @@ impl ZiskRom2Asm {
         } else {
             *code += &ctx.full_line_comment("pc = f(flag)".to_string());
 
-            // Calculate the new pc if flag == 1
+            let target1 = (ctx.pc as i64 + instruction.jmp_offset1) as u64; // flag == 1
+            let target2 = (ctx.pc as i64 + instruction.jmp_offset2) as u64; // flag == 0
+
             *code += &format!("\tcmp {}, 1 {}\n", REG_FLAG, ctx.comment_str("flag == 1 ?"));
-            *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
+
             if id == "z" {
+                // Cold path (chunk boundary): compute the new pc into REG_PC for
+                // both outcomes; control returns to the hot path afterwards, so
+                // this must not fall through to the next instruction.
+                *code += &format!("\tjne pc_{:x}_{}_flag_false\n", ctx.pc, id);
                 *code += &format!(
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
-                    (ctx.pc as i64 + instruction.jmp_offset1) as u64,
+                    target1,
                     ctx.comment_str("pc += i.jmp_offset1")
                 );
-            }
-            if id == "nz" {
-                *code += &format!(
-                    "\tjmp pc_{:x} {}\n",
-                    (ctx.pc as i64 + instruction.jmp_offset1) as u64,
-                    ctx.comment_str("jump to static pc flag=1")
-                );
-            }
-            if id == "z" {
                 *code += &format!("\tjmp pc_{:x}_{}_flag_done\n", ctx.pc, id);
-            }
-
-            // Calculate the new pc if flag == 0
-            *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
-            if id == "z" {
+                *code += &format!("pc_{:x}_{}_flag_false:\n", ctx.pc, id);
                 *code += &format!(
                     "\tmov {}, 0x{:x} {}\n",
                     REG_PC,
-                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
+                    target2,
                     ctx.comment_str("pc += i.jmp_offset2")
                 );
-            }
-            if id == "nz" {
-                *code += &format!(
-                    "\tjmp pc_{:x} {}\n",
-                    (ctx.pc as i64 + instruction.jmp_offset2) as u64,
-                    ctx.comment_str("jump to static pc flag=0")
-                );
-            }
-            if id == "z" {
                 *code += &format!("pc_{:x}_{}_flag_done:\n", ctx.pc, id);
+            } else {
+                // Hot path: branch directly on the flag.  Whenever one of the two
+                // targets is the fall-through pc (ctx.next_pc, the block emitted
+                // right after this one), let it fall through instead of emitting a
+                // redundant unconditional jump to it.
+                if target2 == ctx.next_pc {
+                    // flag == 0 falls through to the next instruction
+                    *code += &format!(
+                        "\tje pc_{:x} {}\n",
+                        target1,
+                        ctx.comment_str("jump to static pc flag=1 (flag=0 falls through)")
+                    );
+                } else if target1 == ctx.next_pc {
+                    // flag == 1 falls through to the next instruction
+                    *code += &format!(
+                        "\tjne pc_{:x} {}\n",
+                        target2,
+                        ctx.comment_str("jump to static pc flag=0 (flag=1 falls through)")
+                    );
+                } else {
+                    // Neither target is the fall-through: one conditional jump to
+                    // the taken target, one unconditional to the other.
+                    *code += &format!(
+                        "\tje pc_{:x} {}\n",
+                        target1,
+                        ctx.comment_str("jump to static pc flag=1")
+                    );
+                    *code += &format!(
+                        "\tjmp pc_{:x} {}\n",
+                        target2,
+                        ctx.comment_str("jump to static pc flag=0")
+                    );
+                }
             }
         }
     }
@@ -8294,28 +8295,56 @@ impl ZiskRom2Asm {
     /* REGISTERS */
     /*************/
 
-    fn reg_to_xmm_index(reg: u64) -> u64 {
-        match reg {
-            1 => 0,
-            2 => 1,
-            5 => 2,
-            6 => 3,
-            7 => 4,
-            8 => 5,
-            9 => 6,
-            10 => 7,
-            11 => 8,
-            12 => 9,
-            13 => 10,
-            14 => 11,
-            15 => 12,
-            16 => 13,
-            17 => 14,
-            18 => 15,
-            _ => {
-                panic!("ZiskRom2Asm::reg_to_xmm_index() found invalid source slot={reg}");
+    /// Chooses which RISC-V registers are held in XMM registers for this ROM.
+    ///
+    /// x86-64 has 16 XMM registers, so at most 16 RISC-V registers can be kept
+    /// there; the rest live in memory (reg_<n>) and pay a load and/or store on
+    /// every access.  We pick the 16 most-frequently-accessed registers, counting
+    /// each static occurrence as a source (a or b) or as a store destination
+    /// across the whole ROM, so the hottest registers avoid the memory
+    /// round-trip.
+    ///
+    /// Register 0 (the RISC-V zero register) is never mapped: reads must always
+    /// return 0 from memory.  Registers above 33 are also left in memory, since
+    /// only registers 1..=33 are part of the persistent per-chunk register state
+    /// (see chunk_start).  The returned list is ordered by register index, so the
+    /// XMM slot of a register is simply its position in the list; this keeps the
+    /// mapping deterministic and identical across all generation modes for a
+    /// given ROM.
+    fn build_xmm_mapped_regs(rom: &ZiskRom) -> Vec<u64> {
+        // Upper bound for the histogram array (offsets are asserted <= 34).
+        const MAX_REG: usize = 34;
+        // Highest register index eligible for XMM (chunk-persistent registers).
+        const MAX_CANDIDATE: u64 = 33;
+        // Number of XMM registers available on x86-64.
+        const XMM_COUNT: usize = 16;
+
+        let mut counts = [0u64; MAX_REG + 1];
+        for inst_builder in rom.insts.values() {
+            let inst = &inst_builder.i;
+            if inst.a_src == SRC_REG && (inst.a_offset_imm0 as usize) <= MAX_REG {
+                counts[inst.a_offset_imm0 as usize] += 1;
+            }
+            if inst.b_src == SRC_REG && (inst.b_offset_imm0 as usize) <= MAX_REG {
+                counts[inst.b_offset_imm0 as usize] += 1;
+            }
+            if inst.store == STORE_REG
+                && inst.store_offset >= 0
+                && (inst.store_offset as usize) <= MAX_REG
+            {
+                counts[inst.store_offset as usize] += 1;
             }
         }
+
+        // Candidate registers: 1..=MAX_CANDIDATE (register 0 is always in memory).
+        let mut candidates: Vec<u64> = (1..=MAX_CANDIDATE).collect();
+        // Most-accessed first; ties broken by register index for determinism.
+        candidates.sort_by(|&a, &b| counts[b as usize].cmp(&counts[a as usize]).then(a.cmp(&b)));
+        candidates.truncate(XMM_COUNT);
+        // Order the chosen registers by index so the XMM slot mapping is stable
+        // and readable (slot = position in this list).
+        candidates.sort_unstable();
+        candidates
     }
 
     // fn reg_to_rsp_index(reg: u64) -> u64 {
@@ -8352,8 +8381,8 @@ impl ZiskRom2Asm {
         dest_reg: &str,
         dest_desc: &str,
     ) {
-        if XMM_MAPPED_REGS.contains(&src_slot) {
-            let xmm_index = Self::reg_to_xmm_index(src_slot);
+        if ctx.is_xmm_mapped(src_slot) {
+            let xmm_index = ctx.reg_to_xmm_index(src_slot);
             *code += &format!(
                 "\tmovq {}, xmm{} {}\n",
                 dest_reg,
@@ -8379,8 +8408,8 @@ impl ZiskRom2Asm {
         src_desc: &str,
     ) {
         let comment = format!("reg[{dest_slot}]={src_desc}");
-        if XMM_MAPPED_REGS.contains(&dest_slot) {
-            let xmm_index = Self::reg_to_xmm_index(dest_slot);
+        if ctx.is_xmm_mapped(dest_slot) {
+            let xmm_index = ctx.reg_to_xmm_index(dest_slot);
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, src_reg, ctx.comment(comment));
         } else {
             *code += &format!(
@@ -8401,8 +8430,8 @@ impl ZiskRom2Asm {
         value_desc: &str,
     ) {
         let comment = format!("reg[{dest_slot}]={value_desc}");
-        if XMM_MAPPED_REGS.contains(&dest_slot) {
-            let xmm_index = Self::reg_to_xmm_index(dest_slot);
+        if ctx.is_xmm_mapped(dest_slot) {
+            let xmm_index = ctx.reg_to_xmm_index(dest_slot);
             *code += &format!("\tmov {REG_AUX}, 0x{value:x}\n");
 
             *code += &format!("\tmovq xmm{}, {} {}\n", xmm_index, REG_AUX, ctx.comment(comment));
