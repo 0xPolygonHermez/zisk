@@ -624,7 +624,7 @@ impl Riscv2ZiskContext<'_> {
 
             // Address generation operations (Zba)
             #[cfg(feature = "zba_native")]
-            RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_uw", 4),
+            RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_u_w", 4),
             #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::AddUw => self.add_u_w(riscv_instruction),
 
@@ -659,7 +659,7 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::Sh3addUw => self.sh3add_u_w(riscv_instruction),
 
             #[cfg(feature = "zba_native")]
-            RiscvInstName::SlliUw => self.create_register_op(riscv_instruction, "slli_u_w", 4),
+            RiscvInstName::SlliUw => self.immediate_op(riscv_instruction, "sll_u_w", 4),
             #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::SlliUw => self.sll_u_w(riscv_instruction, true),
 
@@ -673,7 +673,7 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::Clmul => self.clmul(riscv_instruction),
 
             #[cfg(any(feature = "zbc_native", feature = "zbkc_native"))]
-            RiscvInstName::Clmulh => self.create_register_op(riscv_instruction, "clmulh", 4),
+            RiscvInstName::Clmulh => self.create_register_op(riscv_instruction, "clmul_h", 4),
             #[cfg(all(
                 any(feature = "zbc", feature = "zbkc"),
                 not(any(feature = "zbc_native", feature = "zbkc_native"))
@@ -681,7 +681,7 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::Clmulh => self.clmul_h(riscv_instruction),
 
             #[cfg(feature = "zbc_native")]
-            RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmulr", 4),
+            RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmul_r", 4),
             #[cfg(all(feature = "zbkc", not(feature = "zbc_native")))]
             RiscvInstName::Clmulr => self.clmul_r(riscv_instruction),
 
