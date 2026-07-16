@@ -113,6 +113,7 @@ airgroup Zisk {
     Poseidon(N: 2**17);
 
     Blake2br(N: 2**18);
+    virtual Blake2brTable(BLAKE2BR_TABLE_SIZE);
 
     Dma();
     Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;

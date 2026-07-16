@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "e6ce1bcc1970586d925f2e1cef405fe864f03c69487c6b9ae8d01b7794fc851d";
+pub const PILOUT_HASH: &str = "5a51fbb6ae8d314f1ac178df33aaf19602934471f6686ffcc1672516f7247840";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -351,7 +351,7 @@ trace_row!(Blake2brFixedRow<F> {
 pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 19>;
 
 trace_row!(Blake2brTraceRow<F> {
- in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:ubit(4), m_limbs:[[u16; 2]; 2], ms:[u32; 2], perm_active:bit, step_addr:ubit(40), op_step:ubit(40), g_active:bit, va_limbs:[[u16; 2]; 2], vc_limbs:[[u16; 2]; 2], vb:[[bit; 32]; 2], vd:[[bit; 32]; 2], in_use_clk_0:bit,
+ in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:[ubit(4); 2], x:[u16; 4], y:[u16; 4], xs:[u32; 2], ys:[u32; 2], step_addr:ubit(40), op_step:ubit(40), va:[u16; 4], vb:[u8; 8], vc:[u16; 4], vd:[u8; 8], va_prime:[u8; 8], vd_prime:[u8; 8], vc_prime:[u8; 8], vb_prime:[u8; 8], va_prime_prime:[u8; 8], vd_prime_prime:[u8; 8], vc_prime_prime:[u8; 8], vb_pp_xor:[u8; 8], vb_pp_t:[bit; 2], in_use_clk_0:bit,
 });
 
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 19>;
@@ -489,18 +489,18 @@ trace_row!(DmaPrePostInputCpyTraceRow<F> {
 pub type DmaPrePostInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 31>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 22], column: [F; 59], __L1__: F,
+ UID: [F; 23], column: [F; 64], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 22],
+ multiplicity:[F; 23],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 32>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- UID: [F; 8], column: [F; 63], __L1__: F,
+ UID: [F; 8], column: [F; 64], __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 33>;
 
@@ -809,8 +809,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 19, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 8,
-        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 16, 16, 16, 16, 32, 32, 1, 40, 40, 1, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        num_packed_words: 18,
+        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 40, 40, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1],
     }),
     (0, 20, PackedInfoConst {
         is_packed: true,
