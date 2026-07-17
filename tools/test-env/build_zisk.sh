@@ -114,6 +114,11 @@ main() {
     if [[ "${PLATFORM}" == "linux" ]]; then
         mkdir -p "${ZISK_DIR}/zisk/emulator-asm"
         ensure cp -r ./emulator-asm/src "${ZISK_DIR}/zisk/emulator-asm" || return 1
+        # Stage the generated constants header (canonical in definitions/src/generated/c,
+        # not shipped) next to emulator-asm; the installed-mode worker build has no
+        # definitions/ sibling. See emulator-asm/Makefile.
+        ensure mkdir -p "${ZISK_DIR}/zisk/emulator-asm/src/generated" || return 1
+        ensure cp ./definitions/src/generated/c/execution.gen.h "${ZISK_DIR}/zisk/emulator-asm/src/generated/" || return 1
         ensure cp ./emulator-asm/Makefile "${ZISK_DIR}/zisk/emulator-asm" || return 1
         ensure cp -r ./lib-c "${ZISK_DIR}/zisk" || return 1
     fi

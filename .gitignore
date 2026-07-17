@@ -17,6 +17,9 @@
 /emulator-asm/src/dma/test/test_dma
 /emulator-asm/src/dma/test/build
 /emulator-asm/src/emu.asm
+# Generated constants header. Canonical source is definitions/src/generated/c;
+# copied here (from the sibling in a repo build, or staged at package time) — never committed.
+/emulator-asm/src/generated/
 /cache
 /lib-c/c/build
 /lib-c/c/lib

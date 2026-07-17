@@ -56,9 +56,11 @@ jobs:
 
       - name: Constants generated files up to date
         # Building the sync crate re-renders the #[constants] definitions into
-        # definitions/src/generated (Rust at the top, C/PIL in c/ and pil/ subdirs)
-        # via its build.rs; fail if that changed anything not committed (i.e. a
-        # constant changed without rebuilding + committing).
+        # definitions/src/generated (Rust at the top, C/PIL/asm in c/, pil/, asm/
+        # subdirs) via its build.rs; fail if that changed anything not committed
+        # (i.e. a constant changed without rebuilding + committing). The C header
+        # is copied next to emulator-asm at package time, so only this canonical
+        # tree is committed and gated.
         run: |
           cargo build -p zisk-definitions-sync
           git diff --exit-code definitions/src/generated

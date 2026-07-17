@@ -21,9 +21,6 @@ else ifeq ($(TRACE_TARGET),RH)
     ASMFLAGS += --defsym TRACE_TARGET=2
 endif
 
-# ZisK generated constants.
-CFLAGS += -I../definitions/src/generated/c
-
 # Default EMU_PATH and OUT_PATH
 EMU_PATH ?= src/emu.asm
 OUT_PATH ?= build/ziskemuasm
@@ -43,6 +40,21 @@ DMA_OBJS = build/dma/fast_dma_encode.o \
 
 # Ensure the output directory exists
 OUT_DIR := $(dir $(OUT_PATH))
+
+# Generated constants header (included by src/constants.hpp as "generated/execution.gen.h").
+# Its single canonical source is definitions/src/generated/c, produced from the #[constants]
+# definitions by `cargo build -p zisk-definitions-sync`.
+#   - Repo build: definitions/ is a sibling, so copy it in (and refresh when it changes).
+#   - Installed/packaged build: no sibling exists, but the header was staged into
+#     src/generated at package time (release.yml / build_zisk.sh), so this copy is skipped.
+# Either way the compile below finds src/generated/execution.gen.h.
+GEN_HEADER := src/generated/execution.gen.h
+DEFS_GEN_HEADER := ../definitions/src/generated/c/execution.gen.h
+
+$(GEN_HEADER): $(wildcard $(DEFS_GEN_HEADER))
+	mkdir -p $(dir $(GEN_HEADER))
+	@if [ -f "$(DEFS_GEN_HEADER)" ]; then cp -f "$(DEFS_GEN_HEADER)" "$(GEN_HEADER)"; fi
+	@test -f "$(GEN_HEADER)" || { echo "ERROR: $(GEN_HEADER) missing and no definitions/ sibling to copy from (regenerate with: cargo build -p zisk-definitions-sync)"; exit 1; }
 
 all: $(OUT_PATH)
 
@@ -66,7 +78,7 @@ build/zisk.ld:
 	    > build/zisk.ld
 
 # Compile the final executable
-$(OUT_PATH): build/zisk.ld build/emu.o src/main.c src/constants.hpp src/globals.c src/globals.hpp src/configuration.c src/configuration.hpp src/trace_logs.c src/trace_logs.hpp src/server.c src/server.hpp src/client.c src/client.hpp src/c_provided.c src/c_provided.hpp src/asm_provided.hpp src/trace.c src/trace.hpp src/log.c src/log.hpp src/emu.c src/emu.hpp build/dma.o
+$(OUT_PATH): build/zisk.ld build/emu.o $(GEN_HEADER) src/main.c src/constants.hpp src/globals.c src/globals.hpp src/configuration.c src/configuration.hpp src/trace_logs.c src/trace_logs.hpp src/server.c src/server.hpp src/client.c src/client.hpp src/c_provided.c src/c_provided.hpp src/asm_provided.hpp src/trace.c src/trace.hpp src/log.c src/log.hpp src/emu.c src/emu.hpp build/dma.o
 	mkdir -p $(OUT_DIR)
 	gcc $(CFLAGS)  -Wl,-T,build/zisk.ld src/main.c src/globals.c src/configuration.c src/trace_logs.c src/server.c src/client.c src/c_provided.c src/trace.c src/log.c src/emu.c -L../target/zisk-libs -L../target/release -L../target/debug -L../../bin -lc build/emu.o -lc build/dma.o -lziskc -lziskclib -lgmp -lstdc++ -lgmpxx -o $@
 

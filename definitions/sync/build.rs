@@ -55,7 +55,10 @@ fn main() {
 
     // `zisk-definitions`' own constants → one generated root under src: Rust at the top
     // (compiled by consumers), C/PIL/asm in dedicated subdirs on the toolchains' include
-    // paths. All `Exclusive`: these dirs hold only generated files.
+    // paths. All `Exclusive`: these dirs hold only generated files. This is the single
+    // canonical location for every generated form; consumers that build outside the repo
+    // (emulator-asm in an installed/packaged tree) get the C header copied to them at
+    // package time — see release.yml / build_zisk.sh and emulator-asm/Makefile.
     let generated_folder = defs.join("src/generated");
     let source_folder = defs.join("src/constants");
 

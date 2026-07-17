@@ -77,6 +77,8 @@ cp "$ZISKC" "$SANDBOX/target/zisk-libs/libziskc.a"
 ln -s "$REPO/emulator-asm" "$SANDBOX/emulator-asm"
 ln -s "$REPO/lib-c"        "$SANDBOX/lib-c"
 ln -s "$REPO/ziskup"       "$SANDBOX/ziskup"
+# release.yml stages the generated constants header from here into emulator-asm.
+ln -s "$REPO/definitions"  "$SANDBOX/definitions"
 
 ( cd "$SANDBOX" && export TARGET="" PLATFORM_NAME="linux" ARCH="amd64" && eval "$SCRIPT" ) \
   || fail "release.yml 'Copy binaries' step failed to execute"

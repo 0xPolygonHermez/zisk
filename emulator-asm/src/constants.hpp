@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
-// ZisK generated execution constants.
-#include "execution.gen.h"
+// ZisK generated execution constants (single-sourced from definitions/, emitted here).
+#include "generated/execution.gen.h"
 
 /***************/
 /* Definitions */
