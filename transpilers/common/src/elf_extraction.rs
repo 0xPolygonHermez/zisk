@@ -2,8 +2,8 @@
 
 use elf::{
     abi::{
-        SHF_ALLOC, SHF_EXECINSTR, SHF_WRITE, SHT_FINI_ARRAY, SHT_INIT_ARRAY, SHT_NOBITS,
-        SHT_PREINIT_ARRAY, SHT_PROGBITS,
+        PF_R, PF_W, PF_X, SHF_ALLOC, SHF_EXECINSTR, SHF_WRITE, SHT_FINI_ARRAY, SHT_INIT_ARRAY,
+        SHT_NOBITS, SHT_PREINIT_ARRAY, SHT_PROGBITS,
     },
     endian::AnyEndian,
     ElfBytes,
@@ -49,91 +49,40 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
 
     let mut out = ElfPayload { entry_point: elf.ehdr.e_entry, ..Default::default() };
 
-    // Process all section headers
-    if let Some(shdrs) = elf.section_headers() {
-        for sh in shdrs {
-            // Must be allocated at runtime
-            //
-            // Essentially all sections that we need to load into memory when the program is loaded.
-            //
-            // Example of things this skips are the .debug_* related sections.
-            if (sh.sh_flags & SHF_ALLOC as u64) == 0 {
-                continue;
-            }
+    // Process all program headers
+    if let Some(phdrs) = elf.segments() {
+        for ph in phdrs {
+            println!(
+                "Program header at 0x{:08x} with size {} bytes (type: {}, flags: 0x{:x}, PF_R: 0x{:x}, PF_W: 0x{:x}, PF_X: 0x{:x})",
+                ph.p_vaddr, ph.p_memsz, ph.p_type, ph.p_flags, ph.p_flags & PF_R, ph.p_flags & PF_W, ph.p_flags & PF_X
+            );
 
-            // Spec says ignore if address is 0
-            if sh.sh_addr == 0 {
-                continue;
-            }
+            if ph.p_type == elf::abi::PT_LOAD {
+                let is_exec = (ph.p_flags & PF_X) != 0;
+                let is_write = (ph.p_flags & PF_W) != 0;
+                let in_ram =
+                    ph.p_vaddr >= RAM_START_ADDR && ph.p_vaddr + ph.p_memsz <= RAM_END_ADDR;
 
-            // Handle different section types
-            //
-            // INIT/FINI/PREINIT_ARRAY sections hold file-backed data (arrays of
-            // C++ static ctor/dtor function pointers) just like PROGBITS, so they
-            // must be loaded into memory too — otherwise the runtime reads null
-            // pointers from `.init_array` and jumps to address 0.
-            let data = if sh.sh_type == SHT_PROGBITS
-                || sh.sh_type == SHT_INIT_ARRAY
-                || sh.sh_type == SHT_FINI_ARRAY
-                || sh.sh_type == SHT_PREINIT_ARRAY
-            {
-                let (raw, _) = elf.section_data(&sh)?;
-                let mut data = raw.to_vec();
-                // Word-align by padding with zeros (trimming would remove valid data)
-                while data.len() % 4 != 0 {
-                    data.push(0);
-                }
-                data
-            } else if sh.sh_type == SHT_NOBITS {
-                // BSS sections - uninitialized data, should be zero-filled
-                // Create a zero-filled vector of the appropriate size
-                let size = sh.sh_size as usize;
-                if size > MAX_ELF_SECTION_SIZE {
+                if is_exec {
+                    // Executable code section
+                    let data = elf.segment_data(&ph)?.to_vec();
+                    out.exec.push(DataSection { addr: ph.p_vaddr, data });
+                } else if is_write && in_ram {
+                    // Read-write data that needs to be copied to RAM
+                    let data = elf.segment_data(&ph)?.to_vec();
+                    out.rw.push(DataSection { addr: ph.p_vaddr, data });
+                } else if is_write {
+                    // Writable data outside RAM is an error - it cannot be properly initialized
                     return Err(format!(
-                        "ELF section at 0x{:08x} has size {} which exceeds the maximum allowed size of {} bytes.",
-                        sh.sh_addr, size, MAX_ELF_SECTION_SIZE
+                        "ELF contains writable segment at 0x{:08x}-0x{:08x} outside RAM bounds (0x{:08x}-0x{:08x}). \
+                        Writable segments must be placed in RAM. Consider adjusting your linker script.",
+                        ph.p_vaddr, ph.p_vaddr + ph.p_memsz, RAM_START_ADDR, RAM_END_ADDR
                     ).into());
+                } else {
+                    // Read-only data (constants, strings, etc.)
+                    let data = elf.segment_data(&ph)?.to_vec();
+                    out.ro.push(DataSection { addr: ph.p_vaddr, data });
                 }
-                // Align size to 4 bytes
-                let aligned_size = (size + 3) & !3;
-                vec![0u8; aligned_size]
-            } else {
-                // Skip other section types (notes, etc.)
-                continue;
-            };
-
-            // Categorize the section based on its flags.
-            //
-            // INIT/FINI/PREINIT_ARRAY sections carry `SHF_WRITE` by ABI (for
-            // dynamic-relocation of their pointers), but in ZisK's static
-            // (`RelocModel::Static`) image their contents are link-time constants
-            // placed in ROM, so treat them as read-only — otherwise the
-            // writable-in-ROM guard below would reject them.
-            let is_array =
-                matches!(sh.sh_type, SHT_INIT_ARRAY | SHT_FINI_ARRAY | SHT_PREINIT_ARRAY);
-            let is_exec = (sh.sh_flags & SHF_EXECINSTR as u64) != 0;
-            let is_write = (sh.sh_flags & SHF_WRITE as u64) != 0 && !is_array;
-            let in_ram =
-                sh.sh_addr >= RAM_START_ADDR && sh.sh_addr + data.len() as u64 <= RAM_END_ADDR;
-
-            if is_exec {
-                // Executable code section
-                out.exec.push(DataSection { addr: sh.sh_addr, data });
-            } else if is_write && in_ram {
-                // Read-write data that needs to be copied to RAM
-                out.rw.push(DataSection { addr: sh.sh_addr, data });
-            } else if is_write {
-                // Writable data outside RAM is an error - it cannot be properly initialized
-                let section_type = if sh.sh_type == SHT_NOBITS { "BSS" } else { "data" };
-                let end_addr = sh.sh_addr + data.len() as u64;
-                return Err(format!(
-                    "ELF contains writable {} section at 0x{:08x}-0x{:08x} outside RAM bounds (0x{:08x}-0x{:08x}). \
-                    Writable sections must be placed in RAM. Consider adjusting your linker script.",
-                    section_type, sh.sh_addr, end_addr, RAM_START_ADDR, RAM_END_ADDR
-                ).into());
-            } else {
-                // Read-only data (constants, strings, etc.)
-                out.ro.push(DataSection { addr: sh.sh_addr, data });
             }
         }
     }
