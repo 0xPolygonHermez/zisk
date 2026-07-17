@@ -95,10 +95,9 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
         let seg_start = ph.p_vaddr;
         // p_memsz is the full memory footprint, including any zero-filled (.bss)
         // tail beyond p_filesz.
-        let seg_end = ph
-            .p_vaddr
-            .checked_add(ph.p_memsz)
-            .ok_or_else(|| format!("PT_LOAD segment at 0x{seg_start:x} overflows the address space"))?;
+        let seg_end = ph.p_vaddr.checked_add(ph.p_memsz).ok_or_else(|| {
+            format!("PT_LOAD segment at 0x{seg_start:x} overflows the address space")
+        })?;
 
         // W^X: a loadable segment must never be both writable and executable.
         if is_write && is_exec {
