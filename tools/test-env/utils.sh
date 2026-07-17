@@ -316,6 +316,10 @@ patch_cargo_dep() {
     local cargo_toml="$1"
     local crate="$2"
     local dep_path="$3"
+    # Optional: the real crate name at dep_path, when it differs from the dependency KEY
+    # used in cargo_toml. Emitted as Cargo's `package = ` rename so the manifest keeps its
+    # original key (and import name) while resolving to the renamed local crate.
+    local package="${4:-}"
 
     if [[ ! -f "${cargo_toml}" ]]; then
         err "Cargo.toml not found: ${cargo_toml}"
@@ -331,6 +335,9 @@ patch_cargo_dep() {
     crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
 
     local new_line="${crate} = { path = \"${dep_path}\" }"
+    if [[ -n "${package}" ]]; then
+        new_line="${crate} = { path = \"${dep_path}\", package = \"${package}\" }"
+    fi
 
     # Comment out the git dependency line and add a local path entry right below it, in a
     # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
