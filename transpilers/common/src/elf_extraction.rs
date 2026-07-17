@@ -93,6 +93,11 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
         let is_write = (ph.p_flags & PF_W) != 0;
         let is_read = (ph.p_flags & PF_R) != 0;
 
+        // println!(
+        //     "PHDR: type=0x{:x} flags=0x{:x} vaddr=0x{:x} memsz=0x{:x} filesz=0x{:x} PT_EXEC={} PT_WRITE={} PT_READ={}",
+        //     ph.p_type, ph.p_flags, ph.p_vaddr, ph.p_memsz, ph.p_filesz, is_exec, is_write, is_read
+        // );
+
         let seg_start = ph.p_vaddr;
         // p_memsz is the full memory footprint, including any zero-filled (.bss)
         // tail beyond p_filesz.
@@ -109,11 +114,11 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
         }
 
         // ZisK is an execute-and-read zkVM: every executable segment must be
-        // PF_X | PF_R. A PF_X-only (execute-only) segment is rejected.
-        if is_exec && !is_read {
+        // PF_X. A PF_X | PF_R (execute-and-read) segment is rejected.
+        if is_exec && is_read {
             return Err(format!(
-                "executable PT_LOAD segment at 0x{seg_start:x} is not readable; \
-                 ZisK requires PF_X | PF_R (execute-and-read) executable segments"
+                "executable PT_LOAD segment at 0x{seg_start:x} is readable; \
+                 ZisK requires PF_X (execute-and-not-read) executable segments"
             )
             .into());
         }
