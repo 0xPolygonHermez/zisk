@@ -32,39 +32,48 @@ pub fn create_atomic_vec<DT>(size: usize) -> Vec<DT> {
     }
 }
 
-/// Reinterprets a `Vec<T>` as a `Vec<U>` by transmuting the underlying memory.
+/// Reinterprets a `Vec<T>` as a `Vec<U>` by reusing the source allocation in place
+/// (zero-copy): the returned vector owns the same buffer, viewed as `U`.
 ///
-/// This function converts between vector types by reinterpreting the raw memory,
-/// adjusting length and capacity based on the size ratio between types.
-/// It performs internal unsafe operations but validates all safety requirements
-/// before the conversion.
+/// The byte length is zero-padded up to a multiple of `size_of::<U>()` (with
+/// `T::default()` elements) so the buffer divides evenly into `U` values.
 ///
 /// # Arguments
 /// * `v` - The source vector to reinterpret.
 ///
 /// # Returns
-/// * `Ok(Vec<U>)` - A new vector that owns the same memory as the input vector
-/// * `Err` - If validation fails (size incompatibility or alignment issues)
+/// * `Ok(Vec<U>)` - A vector that owns `v`'s buffer (zero-padded), viewed as `U`.
 ///
 /// # Type Parameters
 /// * `T` - Source element type
 /// * `U` - Destination element type
 ///
-/// # Safety / caller obligation
+/// # Preconditions (caller must uphold — this is zero-copy, nothing is validated)
 ///
-/// Although this function is not marked `unsafe`, the returned `Vec<U>` will be
-/// deallocated using `U`'s layout. For that to match the layout the buffer was
-/// allocated with, the caller must only use type pairs where
-/// `align_of::<U>() == align_of::<T>()` and the byte capacity divides evenly by
-/// `size_of::<U>()`. The runtime alignment check below only validates the pointer
-/// value, **not** the allocation layout, so a mismatched alignment (e.g. `u8` → `u64`)
-/// is undefined behaviour even when the `Ok` branch is taken.
+/// 1. **Byte length should already be a multiple of `size_of::<U>()`.** When it is
+///    not, the trailing partial `U` is silently zero-padded; for a chunked stream
+///    (e.g. `u8` → `u64` processed chunk-by-chunk) that shifts every subsequent
+///    value and corrupts the logical sequence. All current callers feed data whose
+///    byte length is a multiple of 8 — `u64` payloads cut on 8-byte boundaries by
+///    `ZiskStreamWriter` — so no padding ever occurs.
+/// 2. **Every bit pattern of `U` must be valid.** Integer types such as `u64`
+///    qualify; `bool`, niche enums, `NonZero*`, or `Drop` types do not — the bytes
+///    are reinterpreted without validation.
+/// 3. **Deallocation caveat.** The returned `Vec<U>` is freed under `U`'s layout
+///    although the buffer was allocated under `T`'s. When
+///    `align_of::<U>() != align_of::<T>()` (e.g. `u8` → `u64`) this violates the
+///    global allocator's layout contract and is *technically* undefined behaviour;
+///    it is sound in practice only because the system allocator (glibc `malloc`)
+///    ignores the layout alignment on free. Do not rely on this under a strict
+///    allocator (jemalloc/mimalloc/Miri) — reintroduce a copy for the
+///    align-increasing case if that ever becomes the runtime.
 ///
 /// # Errors
 ///
-/// - [`CommonError::Invalid`] if `U` is a zero-sized type (the reinterpretation is
-///   undefined for a ZST destination).
-/// - [`CommonError::Invalid`] if the resulting pointer is not properly aligned for `U`.
+/// - [`CommonError::Invalid`] if `U` is a zero-sized type.
+/// - [`CommonError::Invalid`] if the source pointer is not aligned for `U` (reads
+///   would be unsound). The system allocator over-aligns, so this does not trigger
+///   for the current callers.
 pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
@@ -79,24 +88,15 @@ pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
         )));
     }
 
-    // Total bytes in Vec<T>
-    let total_bytes = v.len() * size_t;
-
-    // Compute remainder to see if we need padding
-    let rem = total_bytes % size_u;
-
-    // If remainder exists, pad with zeroed T elements
+    // Zero-pad so the byte length is an exact multiple of `size_u` (see precondition 1).
+    let rem = (v.len() * size_t) % size_u;
     if rem != 0 {
-        // Number of extra bytes needed
         let pad_bytes = size_u - rem;
-
-        // Number of T elements to pad (round up)
         let pad_t = pad_bytes.div_ceil(size_t);
-
         v.extend(std::iter::repeat(T::default()).take(pad_t));
     }
 
-    // Check that the pointer is properly aligned for U
+    // Reject a misaligned source rather than produce unaligned `U` reads.
     if v.as_ptr() as usize % std::mem::align_of::<U>() != 0 {
         return Err(CommonError::Invalid(format!(
             "Vec<{}> is not properly aligned for Vec<{}> (requires {}-byte alignment)",
@@ -111,12 +111,12 @@ pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
     let ptr = v.as_ptr() as *mut U;
 
     std::mem::forget(v);
-    // SAFETY: `ptr` comes from `v`, which was allocated by the global allocator and is
-    // forgotten just above so its buffer is not freed twice. `len`/`cap` are recomputed
-    // for `U` from the byte size of the original allocation, and the padding loop ensures
-    // the byte length is an exact multiple of `size_of::<U>()`, so no partial element is
-    // exposed. The alignment check above guarantees `ptr` is suitably aligned for `U`.
-    // The remaining layout precondition (equal alignment of `T`/`U` for the eventual
-    // deallocation) is the caller's obligation — see this function's "caller obligation" docs.
+    // SAFETY: `ptr` comes from `v`'s allocation, which is forgotten just above so the
+    // buffer is freed exactly once (by the returned `Vec`). `len`/`cap` are the same
+    // byte span recomputed in units of `U`, and the padding above makes the byte
+    // length an exact multiple of `size_of::<U>()`, so no partial element is exposed.
+    // The alignment check guarantees `ptr` is aligned for reads of `U`. The one
+    // remaining obligation — that freeing under `U`'s layout matches the original
+    // allocation — is the caller's (precondition 3 above).
     Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) })
 }
