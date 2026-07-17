@@ -148,17 +148,24 @@ impl ZiskBuildToolchain {
             Err(_) => println!("No existing toolchain to remove."),
         }
 
-        // Find the toolchain directory.
+        // Find the built toolchain directory. Require `bin/rustc` so we never pick
+        // an empty `stage2` skeleton left behind by a failed build (e.g. build/host/
+        // stage2), which would otherwise be packaged into an empty tarball.
         let mut toolchain_dir = None;
         for wentry in std::fs::read_dir(rust_dir.join("build"))? {
             let entry = wentry?;
             let toolchain_dir_candidate = entry.path().join("stage2");
-            if toolchain_dir_candidate.is_dir() {
+            if toolchain_dir_candidate.join("bin").join("rustc").is_file() {
                 toolchain_dir = Some(toolchain_dir_candidate);
                 break;
             }
         }
-        let toolchain_dir = toolchain_dir.unwrap();
+        let toolchain_dir = toolchain_dir.ok_or_else(|| {
+            anyhow::anyhow!(
+                "no built toolchain found: no build/*/stage2 contains bin/rustc \
+                 (the Rust build likely failed); refusing to package an empty toolchain"
+            )
+        })?;
         println!(
             "Found built toolchain directory at {}.",
             toolchain_dir.as_path().to_str().unwrap()
