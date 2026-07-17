@@ -109,8 +109,10 @@ struct LiveState {
     /// thread captures the value at spawn; on every loop iteration (and on
     /// final state write-back) it compares against the current value and
     /// bails out if they differ. This prevents a stale bg thread from a
-    /// previous `start()` from clobbering a fresh `start()`'s `LiveState`
-    /// after a `finish()` → `start()` sequence.
+    /// previous `start()` from clobbering a fresh `start()`'s `LiveState`.
+    /// It is the sole mechanism guarding every overlap: a `finish()` → `start()`
+    /// sequence, a `start()` → `start()` reuse without an intervening
+    /// `finish()`, and two concurrent `start()` calls.
     start_generation: u64,
     /// Set when the bg thread's start handshake (connect-poll or initial
     /// drain) failed. `flush()` returns this so waiters don't block forever
@@ -432,10 +434,12 @@ impl ZiskStreamWriter {
         // drained the pre-buffered bytes and delivered them to the peer. A caller
         // that observed that delivery (e.g. the reader read the data) and then
         // called `start()` again for the next job could be swallowed as a no-op,
-        // skipping the teardown/rebind. The prior job's one-shot accept thread
-        // has already exited, so the next peer's connection would queue on the
-        // stale listener and never be accepted — hanging the next read forever.
-        // The generation guard makes unconditional superseding safe.
+        // skipping the teardown/rebind. Depending on the transport that leaves a
+        // stale connection in place; with the Unix socket transport, for
+        // example, the prior job's one-shot accept thread has already exited, so
+        // the next peer's connection would queue on the stale listener and never
+        // be accepted — hanging the next read forever. The generation guard
+        // makes unconditional superseding safe.
         let my_gen = {
             let mut guard = self.inner.live_state.lock().unwrap();
             guard.start_generation = guard.start_generation.wrapping_add(1);
@@ -879,8 +883,8 @@ mod tests {
         /// rationale there). Reusing a writer for a new job without `finish()`
         /// between jobs — and without waiting for `is_ready()` — is the sequence
         /// that used to race the bg thread's epilogue and skip the rebind. The
-        /// loop widens that window so the hang surfaces reliably rather than
-        /// ~1-in-N.
+        /// race is timing-dependent, so the loop repeats it to make the hang
+        /// surface reliably rather than ~1-in-N.
         #[test]
         fn start_reuse_without_finish_never_hangs() {
             run_with_timeout("start_reuse_without_finish", TEST_TIMEOUT, || {
