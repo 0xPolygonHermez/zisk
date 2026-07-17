@@ -60,12 +60,12 @@ pub mod meta {
         pub pil_prefix: &'static str,
         pub asm_prefix: &'static str,
         /// Base name of the output C header in the C dir (no subdirectories);
-        /// `None` = `<group>.h`.
+        /// `None` = `<group>.gen.h`.
         pub c_file: Option<&'static str>,
         /// Base name of the output PIL file in the PIL dir (no subdirectories);
-        /// `None` = `<group>.pil`.
+        /// `None` = `<group>.gen.pil`.
         pub pil_file: Option<&'static str>,
-        /// Base name of the output asm include in the asm dir; `None` = `<group>.inc`.
+        /// Base name of the output asm include in the asm dir; `None` = `<group>.gen.inc`.
         pub asm_file: Option<&'static str>,
     }
 
@@ -455,11 +455,12 @@ fn render_flat(
     let mut files: Vec<FileBuf> = Vec::new();
 
     for &(meta, exports) in groups {
-        let c_file = meta.c_file.map(String::from).unwrap_or_else(|| format!("{}.h", meta.name));
+        let c_file =
+            meta.c_file.map(String::from).unwrap_or_else(|| format!("{}.gen.h", meta.name));
         let pil_file =
-            meta.pil_file.map(String::from).unwrap_or_else(|| format!("{}.pil", meta.name));
+            meta.pil_file.map(String::from).unwrap_or_else(|| format!("{}.gen.pil", meta.name));
         let asm_file =
-            meta.asm_file.map(String::from).unwrap_or_else(|| format!("{}.inc", meta.name));
+            meta.asm_file.map(String::from).unwrap_or_else(|| format!("{}.gen.inc", meta.name));
         for e in exports {
             if e.targets.contains(Targets::C) {
                 push_entry(&mut files, &c_file, Kind::C, meta, e, fmt_value_c(e))?;
@@ -752,7 +753,7 @@ mod tests {
         static E: &[Export] =
             &[export("RAM", Value::U(0xa000_0000), Targets(Targets::ASM.0), None)];
         let files = render(&[(&G, E)], "test").expect("render");
-        let inc = files.iter().find(|f| f.name == "mem.inc").expect("mem.inc missing");
+        let inc = files.iter().find(|f| f.name == "mem.gen.inc").expect("mem.gen.inc missing");
         assert!(matches!(inc.target, super::Target::Asm));
         assert!(inc.contents.contains(".equ RAM, 0xA0000000"), "{}", inc.contents);
     }

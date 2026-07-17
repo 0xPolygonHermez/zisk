@@ -20,8 +20,8 @@ fn contents<'a>(files: &'a [GenFile], name: &str) -> Option<&'a str> {
 fn sample_round_trips() {
     let files = render(CONSTANT_SAMPLES, "test").expect("render");
 
-    let mem_h = contents(&files, "memory.h").expect("memory.h missing");
-    let mem_pil = contents(&files, "memory.pil").expect("memory.pil missing");
+    let mem_h = contents(&files, "memory.gen.h").expect("memory.gen.h missing");
+    let mem_pil = contents(&files, "memory.gen.pil").expect("memory.gen.pil missing");
 
     // `internal` is emitted as its own definition nowhere (it may still appear
     // inside a derived constant's provenance comment, which is intended).
@@ -39,19 +39,19 @@ fn sample_round_trips() {
     assert!(mem_pil.contains("0xA0400F00"));
 
     // asm: memory is `to(rust, c, pil, asm)`, so it also emits a GAS `.equ` include.
-    let mem_inc = contents(&files, "memory.inc").expect("memory.inc missing");
+    let mem_inc = contents(&files, "memory.gen.inc").expect("memory.gen.inc missing");
     assert!(mem_inc.contains(".equ RAM_ADDR, 0xA0000000"));
     assert!(mem_inc.contains(".equ SYS_ADDR, 0xA0400000"));
     assert!(mem_inc.contains("# RAM_ADDR + STACK_SIZE")); // provenance comment
 
     // Opcodes: PIL-only, with the `OP_` prefix.
-    assert!(contents(&files, "opcodes.h").is_none());
-    let op_pil = contents(&files, "opcodes.pil").expect("opcodes.pil missing");
+    assert!(contents(&files, "opcodes.gen.h").is_none());
+    let op_pil = contents(&files, "opcodes.gen.pil").expect("opcodes.gen.pil missing");
     assert!(op_pil.contains("const int OP_ADD = 0xA;"));
     assert!(op_pil.contains("const int OP_SUB = 0xB;"));
 
     // Execution: decimal radix override, and a 2^36 value in hex.
-    let ex_pil = contents(&files, "execution.pil").expect("execution.pil missing");
+    let ex_pil = contents(&files, "execution.gen.pil").expect("execution.gen.pil missing");
     assert!(ex_pil.contains("= 36;"));
     assert!(ex_pil.contains("= 0x1000000000;"));
 }
