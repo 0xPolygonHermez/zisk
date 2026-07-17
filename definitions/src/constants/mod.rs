@@ -18,12 +18,13 @@ use zisk_definitions_generator::meta;
 
 /// Groups rendered to `src/generated/` by the sync build. Add a group here once its
 /// module is real (promote it out of `#[cfg(test)]` and list it below).
-pub const ZISK_CONSTANTS: &[(&meta::GroupMeta, &[meta::Export])] = &[];
+pub const ZISK_CONSTANTS: &[(&meta::GroupMeta, &[meta::Export])] =
+    &[(&execution::GROUP, execution::EXPORTS)];
+
+mod execution;
 
 // Sample groups — the shape a real group takes, one module per file. Compiled under
 // `test` only until a group is real and wired into `ZISK_CONSTANTS` above.
-#[cfg(test)]
-mod execution;
 #[cfg(test)]
 mod memory;
 #[cfg(test)]

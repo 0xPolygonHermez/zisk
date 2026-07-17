@@ -21,6 +21,9 @@ else ifeq ($(TRACE_TARGET),RH)
     ASMFLAGS += --defsym TRACE_TARGET=2
 endif
 
+# ZisK generated constants.
+CFLAGS += -I../definitions/src/generated/c
+
 # Default EMU_PATH and OUT_PATH
 EMU_PATH ?= src/emu.asm
 OUT_PATH ?= build/ziskemuasm

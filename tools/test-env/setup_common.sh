@@ -73,7 +73,7 @@ PROOFMAN_DIR="$(resolve_proofman_dir)" || exit 1
 echo "proofman dir: $PROOFMAN_DIR" >&2
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
-INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
+INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles,definitions/src/generated/pil"
 
 # Required inputs to compile-pil and to the input-hash. Cheap to regenerate.
 # Skipped under SKIP_COMPILE_PIL=1: the on-disk *_fixed.bin files are paired

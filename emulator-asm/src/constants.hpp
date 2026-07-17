@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+// ZisK generated execution constants.
+#include "execution.gen.h"
+
 /***************/
 /* Definitions */
 /***************/
@@ -52,10 +55,6 @@
 #define CONTROL_OUTPUT_SIZE (uint64_t)0x1000 // 4kB
 #define CONTROL_RETRY_DELAY_US 1000 // 1ms
 #define CONTROL_NUMBER_OF_RETRIES 1000 // 1s max total
-
-// Maximum number of steps to execute, used by the client to limit the execution steps of the
-// assembly code.  This limit is set by the ZisK PIL constraints.
-#define MAX_STEPS (1ULL << 36)
 
 // Assembly service request/response types
 // Only the methods supported by the configured generation method will be implemented by the server,
