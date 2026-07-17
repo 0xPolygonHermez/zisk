@@ -15,19 +15,27 @@ use reqwest::{
     Client,
 };
 
-/// Run a [`Command`] inheriting stdio, turning a spawn/IO failure into an error.
+/// Run a [`Command`] inheriting stdio, turning a spawn/IO failure **or a non-zero
+/// exit status** into an error.
 pub(crate) trait CommandExecutor {
     fn run(&mut self) -> Result<()>;
 }
 
 impl CommandExecutor for Command {
     fn run(&mut self) -> Result<()> {
-        self.stderr(Stdio::inherit())
+        let status = self
+            .stderr(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stdin(Stdio::inherit())
-            .output()
-            .with_context(|| format!("while executing `{:?}`", self))
-            .map(|_| ())
+            .status()
+            .with_context(|| format!("while executing `{self:?}`"))?;
+        // A non-zero exit must be an error: otherwise a failed step (e.g. `x.py
+        // build` aborting because the LLVM patch did not apply) is silently
+        // treated as success and we go on to package/publish a broken toolchain.
+        if !status.success() {
+            anyhow::bail!("command exited with {status}: `{self:?}`");
+        }
+        Ok(())
     }
 }
 
