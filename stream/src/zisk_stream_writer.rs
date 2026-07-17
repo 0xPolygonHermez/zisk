@@ -105,9 +105,6 @@ struct LiveState {
     /// `true` after `start()` has opened the transport, drained any
     /// pre-buffered bytes, and seen the peer connect. `flush()` blocks on this.
     ready: bool,
-    /// `start()` is idempotent while this is set so two concurrent `start()`
-    /// calls share one bg thread instead of racing.
-    starting: bool,
     /// Monotonic counter bumped by `start()` and `finish()`. Each bg connect
     /// thread captures the value at spawn; on every loop iteration (and on
     /// final state write-back) it compares against the current value and
@@ -161,7 +158,6 @@ impl ZiskStreamWriter {
                 uri,
                 live_state: Mutex::new(LiveState {
                     ready: false,
-                    starting: false,
                     start_generation: 0,
                     last_start_error: None,
                     push_sender: None,
@@ -183,7 +179,6 @@ impl ZiskStreamWriter {
                 uri,
                 live_state: Mutex::new(LiveState {
                     ready: true,
-                    starting: false,
                     start_generation: 0,
                     last_start_error: None,
                     push_sender: None,
@@ -225,7 +220,6 @@ impl ZiskStreamWriter {
                 uri,
                 live_state: Mutex::new(LiveState {
                     ready: false,
-                    starting: false,
                     start_generation: 0,
                     last_start_error: None,
                     push_sender: None,
@@ -426,15 +420,24 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        // Idempotency: a concurrent `start()` becomes a no-op (`starting=true`
-        // → share the in-flight bg thread). Calling `start()` on an already-
-        // ready stream tears it down and rebinds.
+        // Every `start()` supersedes any previous one: bump the generation so an
+        // in-flight bg connect thread from a prior `start()` bails out on its
+        // next check instead of clobbering this call's `LiveState`, then tear
+        // down and rebind the transport below.
+        //
+        // This must be unconditional — in particular there is no "a start is
+        // already in flight, so no-op" fast path. Such a fast path would race
+        // with sequential reuse: a prior `start()`'s bg thread stays "in flight"
+        // until its epilogue runs, but that epilogue runs *after* it has already
+        // drained the pre-buffered bytes and delivered them to the peer. A caller
+        // that observed that delivery (e.g. the reader read the data) and then
+        // called `start()` again for the next job could be swallowed as a no-op,
+        // skipping the teardown/rebind. The prior job's one-shot accept thread
+        // has already exited, so the next peer's connection would queue on the
+        // stale listener and never be accepted — hanging the next read forever.
+        // The generation guard makes unconditional superseding safe.
         let my_gen = {
             let mut guard = self.inner.live_state.lock().unwrap();
-            if guard.starting {
-                return Ok(());
-            }
-            guard.starting = true;
             guard.start_generation = guard.start_generation.wrapping_add(1);
             // Starting fresh: flushers must wait for the new bg thread to drain.
             guard.ready = false;
@@ -456,7 +459,6 @@ impl ZiskStreamWriter {
                 // never flips and no bg thread will be spawned to set
                 // `last_start_error`.
                 let mut guard = self.inner.live_state.lock().unwrap();
-                guard.starting = false;
                 guard.last_start_error = Some(e.to_string());
                 self.inner.live_cond.notify_all();
                 return Err(e);
@@ -538,7 +540,6 @@ impl ZiskStreamWriter {
                 inner.live_cond.notify_all();
                 return;
             }
-            guard.starting = false;
             match result {
                 Ok(()) => {
                     guard.ready = true;
@@ -579,7 +580,6 @@ impl ZiskStreamWriter {
         {
             let mut guard = self.inner.live_state.lock().unwrap();
             guard.ready = false;
-            guard.starting = false;
             // Invalidate any in-flight bg connect thread so it bails out
             // instead of clobbering a future `start()`'s LiveState.
             guard.start_generation = guard.start_generation.wrapping_add(1);
@@ -872,6 +872,34 @@ mod tests {
                 assert_eq!(&msg, b"SECNDRUN");
                 w.finish().unwrap();
                 r2.close().unwrap();
+            });
+        }
+
+        /// Regression for the sequential-reuse hang fixed in `start()` (see the
+        /// rationale there). Reusing a writer for a new job without `finish()`
+        /// between jobs — and without waiting for `is_ready()` — is the sequence
+        /// that used to race the bg thread's epilogue and skip the rebind. The
+        /// loop widens that window so the hang surfaces reliably rather than
+        /// ~1-in-N.
+        #[test]
+        fn start_reuse_without_finish_never_hangs() {
+            run_with_timeout("start_reuse_without_finish", TEST_TIMEOUT, || {
+                let path = temp_path();
+                let w = ZiskStreamWriter::unix_at(&path).unwrap();
+
+                for i in 0u32..40 {
+                    // Unique 8-byte, u64-aligned payload encoding the job index.
+                    let payload = (i as u64).to_le_bytes();
+                    w.push_raw(&payload);
+                    w.start().unwrap();
+
+                    let mut reader = UnixSocketStreamReader::new(&path).unwrap();
+                    let msg = reader.next().unwrap().unwrap();
+                    assert_eq!(&msg, &payload, "job {i} delivered wrong/no data");
+                    reader.close().unwrap();
+                }
+
+                w.finish().unwrap();
             });
         }
 
