@@ -444,6 +444,11 @@ impl PrecompileHint {
     /// * `PrecompileHintParseResult::Complete` - Successfully parsed a complete hint
     /// * `PrecompileHintParseResult::Partial` - Parsed header but slice doesn't contain all data
     /// * `Err` - If the slice is empty, index is out of bounds or hint code is invalid
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::OutOfBounds`] if the slice is empty or the index is out of bounds.
+    /// - [`CommonError::InvalidHint`] if the hint code is unrecognized and `allow_custom` is `false`.
     #[inline(always)]
     pub fn from_u64_slice(
         slice: &[u64],

@@ -38,6 +38,11 @@ pub fn uninit_array<const N: usize>() -> MaybeUninit<[u64; N]> {
 /// # Type Parameters
 /// * `T` - Source element type
 /// * `U` - Destination element type
+///
+/// # Errors
+///
+/// Returns [`CommonError::Invalid`] if the resulting pointer is not properly aligned
+/// for `U`.
 pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
