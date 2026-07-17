@@ -169,6 +169,19 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
         let file_bytes = elf.segment_data(&ph)?;
 
         if is_exec {
+            // Executable code must live in the ROM window. Downstream the transpiler
+            // and emulator assume instruction addresses are in ROM (jump targets are
+            // asserted within ROM_ADDR..=ROM_ADDR_MAX, and PC lookups panic outside
+            // the ROM range), so an exec segment merely inside the RAM window would
+            // later panic or produce an invalid ROM.
+            if !in_rom {
+                return Err(format!(
+                    "executable PT_LOAD segment at 0x{seg_start:x}-0x{seg_end:x} is outside the ROM window \
+                     (0x{ROM_START_ADDR:x}-0x{ROM_END_ADDR:x}); executable code must be placed in ROM."
+                )
+                .into());
+            }
+
             // Executable segments carry instructions only: they must be fully
             // file-backed (no zero-fill tail) and have an even byte length, since
             // each 16-bit half-word is decoded as (part of) an instruction.
