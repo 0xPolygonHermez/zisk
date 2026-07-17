@@ -51,12 +51,13 @@ OUT_DIR := $(dir $(OUT_PATH))
 GEN_HEADER := src/generated/execution.gen.h
 DEFS_GEN_HEADER := ../definitions/src/generated/c/execution.gen.h
 
+# Keep `all` the first rule so a bare `make` builds the binary, not just the header.
+all: $(OUT_PATH)
+
 $(GEN_HEADER): $(wildcard $(DEFS_GEN_HEADER))
 	mkdir -p $(dir $(GEN_HEADER))
 	@if [ -f "$(DEFS_GEN_HEADER)" ]; then cp -f "$(DEFS_GEN_HEADER)" "$(GEN_HEADER)"; fi
 	@test -f "$(GEN_HEADER)" || { echo "ERROR: $(GEN_HEADER) missing and no definitions/ sibling to copy from (regenerate with: cargo build -p zisk-definitions-sync)"; exit 1; }
-
-all: $(OUT_PATH)
 
 # Compile the assembly file with a dynamic path
 build/emu.o: $(EMU_PATH)
