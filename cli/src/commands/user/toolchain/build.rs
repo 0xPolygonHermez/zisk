@@ -134,6 +134,10 @@ impl ZiskBuildToolchain {
                 "2",
                 "compiler/rustc",
                 "library",
+                // Build cargo too (host tool): explicit build paths override the
+                // `tools`/`extended` config, so without listing it here cargo is
+                // never produced and the packaged toolchain would lack it.
+                "cargo",
                 "--target",
                 &format!("riscv64ima-zisk-zkvm-elf,{}", get_target(),),
             ])
