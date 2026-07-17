@@ -71,9 +71,18 @@ info "Running worker install.sh (--no-mpi --no-enable -y)"
 # ── 2. bundle layout ──────────────────────────────────────────────────────────
 info "Bundle layout under $BUNDLE"
 [[ -d "$BUNDLE/bin" ]] && ok "$BUNDLE/bin exists" || fail "$BUNDLE/bin missing"
-for f in cargo-zisk ziskemu zisk-transpiler-riscv zisk-worker zisk-coordinator ziskup libziskclib.a; do
+for f in cargo-zisk ziskemu zisk-worker zisk-coordinator ziskup libziskclib.a; do
     [[ -f "$BUNDLE/bin/$f" ]] && ok "bundle has $f" || fail "missing $BUNDLE/bin/$f"
 done
+# The RISC-V transpiler was renamed riscv2zisk -> zisk-transpiler-riscv. Accept either so this
+# smoke passes against both the currently published release (riscv2zisk) and post-rename bundles.
+if [[ -f "$BUNDLE/bin/zisk-transpiler-riscv" ]]; then
+    ok "bundle has zisk-transpiler-riscv"
+elif [[ -f "$BUNDLE/bin/riscv2zisk" ]]; then
+    ok "bundle has riscv2zisk (pre-rename name)"
+else
+    fail "missing $BUNDLE/bin/zisk-transpiler-riscv (or riscv2zisk)"
+fi
 # Linux x86_64 ships emulator-asm + lib-c sources for runtime ASM build.
 if [[ "$ARCH" == "amd64" ]]; then
     [[ -d "$BUNDLE/zisk/emulator-asm" ]] && ok "bundle has zisk/emulator-asm" \
