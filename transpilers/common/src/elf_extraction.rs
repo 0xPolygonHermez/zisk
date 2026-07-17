@@ -118,7 +118,7 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
             .into());
         }
 
-        // Alignment: p_vaddr must be at least instruction-word (4-byte) aligned.
+        // Alignment: p_vaddr must be at least {INSTRUCTION_ALIGN}-byte (instruction) aligned.
         if seg_start % INSTRUCTION_ALIGN != 0 {
             return Err(format!(
                 "PT_LOAD segment virtual address 0x{seg_start:x} is not {INSTRUCTION_ALIGN}-byte aligned"
@@ -244,8 +244,11 @@ pub fn validate_entry_point(payload: &ElfPayload) -> Result<(), Box<dyn Error>> 
         )
         .into());
     }
-    let in_exec =
-        payload.exec.iter().any(|s| entry >= s.addr && entry < s.addr + s.data.len() as u64);
+    let in_exec = payload.exec.iter().any(|s| {
+        let len = u64::try_from(s.data.len()).unwrap_or(u64::MAX);
+        let end = s.addr.saturating_add(len);
+        entry >= s.addr && entry < end
+    });
     if !in_exec {
         return Err(format!(
             "entry point 0x{entry:x} does not fall within any loaded executable (PF_X) segment"
