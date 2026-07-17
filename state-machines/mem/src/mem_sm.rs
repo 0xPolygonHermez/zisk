@@ -60,7 +60,7 @@ impl<F: PrimeField64> MemSM<F> {
         for i in 0..num_rows {
             let addr = trace[i].get_addr() as u64 * 8;
             let step = trace[i].get_step();
-            let main_step = MemHelpers::mem_step_to_main_step(step);
+            let main_step = if step == 0 { 0 } else { MemHelpers::mem_step_to_main_step(step) };
             let op = if trace[i].get_wr() { 'W' } else { 'R' };
             let values = [trace[i].get_value(0) as u64, trace[i].get_value(1) as u64];
             let value = values[0] | (values[1] << 32);
