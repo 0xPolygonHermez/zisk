@@ -351,7 +351,14 @@ impl Plan {
     }
 }
 
+// SAFETY: The only field that prevents auto-derivation of `Send`/`Sync` is
+// `meta: Option<Box<dyn Any>>`, whose type erasure drops the auto-trait bounds.
+// In practice `meta` only ever holds `Send + Sync` payloads (plain collections of
+// plain data, e.g. `HashMap<ChunkId, (u64, CollectSkipper)>`), and a `Plan` is
+// owned by a single thread at a time rather than mutated through shared aliases.
 unsafe impl Send for Plan {}
+// SAFETY: See the `Send` impl above — `meta` only holds `Send + Sync` payloads and
+// `Plan` is never mutated through shared cross-thread aliases.
 unsafe impl Sync for Plan {}
 
 /// The `Planner` trait defines the interface for creating execution plans.

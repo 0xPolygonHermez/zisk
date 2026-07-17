@@ -32,7 +32,7 @@ impl InstanceCtx {
     }
 }
 
-/// # Safety
-/// This struct is marked as `Send` because its fields are safe to transfer across threads,
-/// assuming that the `Plan` type and its associated data are also thread-safe.
+// SAFETY: Both fields are safe to transfer across threads: `global_id: usize` is
+// `Send`, and `plan: Plan` carries its own documented `Send` impl. No interior
+// state is shared through aliases, so moving an `InstanceCtx` between threads is sound.
 unsafe impl Send for InstanceCtx {}

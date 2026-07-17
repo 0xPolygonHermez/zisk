@@ -2,10 +2,27 @@ use std::mem::MaybeUninit;
 
 use crate::error::{CommonError, Result};
 
-/// Creates a vector of the specified size, initialized to zero, and reinterpreted as `Vec<DT>`.
+/// Creates a vector of `size` elements, zero-initialized and reinterpreted as `Vec<DT>`.
+///
+/// This is a fast path that zeroes the backing allocation in bulk instead of
+/// constructing each element, intended for atomic integer element types.
+///
+/// # Safety / caller obligation
+///
+/// Although this function is not marked `unsafe`, it is only sound for a `DT` whose
+/// all-zero bit pattern is a valid value — e.g. atomic integer types such as
+/// [`AtomicU64`](std::sync::atomic::AtomicU64). Calling it with a `DT` that has no
+/// valid all-zero representation (e.g. a type with a niche, or a non-trivial `Drop`)
+/// is undefined behaviour.
 pub fn create_atomic_vec<DT>(size: usize) -> Vec<DT> {
     let mut vec: Vec<MaybeUninit<DT>> = Vec::with_capacity(size);
 
+    // SAFETY: `vec` has capacity for `size` elements, so the `size * size_of::<DT>()`
+    // bytes written by `write_bytes` lie within the allocation. After zeroing, those
+    // `size` elements are initialized, making `set_len(size)` sound. `MaybeUninit<DT>`
+    // shares `DT`'s layout, so transmuting `Vec<MaybeUninit<DT>>` to `Vec<DT>` preserves
+    // the allocation. The caller upholds that all-zero is a valid `DT` (see the
+    // function's "caller obligation" docs).
     unsafe {
         let ptr = vec.as_mut_ptr() as *mut u8;
         std::ptr::write_bytes(ptr, 0, size * std::mem::size_of::<DT>()); // Fast zeroing
@@ -13,12 +30,6 @@ pub fn create_atomic_vec<DT>(size: usize) -> Vec<DT> {
         vec.set_len(size);
         std::mem::transmute(vec) // Convert MaybeUninit<Vec> -> Vec<AtomicU64>
     }
-}
-
-/// Creates an uninitialized array of the specified size, intended for use with `create_atomic_vec`.
-#[inline(always)]
-pub fn uninit_array<const N: usize>() -> MaybeUninit<[u64; N]> {
-    MaybeUninit::uninit()
 }
 
 /// Reinterprets a `Vec<T>` as a `Vec<U>` by transmuting the underlying memory.
@@ -39,13 +50,34 @@ pub fn uninit_array<const N: usize>() -> MaybeUninit<[u64; N]> {
 /// * `T` - Source element type
 /// * `U` - Destination element type
 ///
+/// # Safety / caller obligation
+///
+/// Although this function is not marked `unsafe`, the returned `Vec<U>` will be
+/// deallocated using `U`'s layout. For that to match the layout the buffer was
+/// allocated with, the caller must only use type pairs where
+/// `align_of::<U>() == align_of::<T>()` and the byte capacity divides evenly by
+/// `size_of::<U>()`. The runtime alignment check below only validates the pointer
+/// value, **not** the allocation layout, so a mismatched alignment (e.g. `u8` → `u64`)
+/// is undefined behaviour even when the `Ok` branch is taken.
+///
 /// # Errors
 ///
-/// Returns [`CommonError::Invalid`] if the resulting pointer is not properly aligned
-/// for `U`.
+/// - [`CommonError::Invalid`] if `U` is a zero-sized type (the reinterpretation is
+///   undefined for a ZST destination).
+/// - [`CommonError::Invalid`] if the resulting pointer is not properly aligned for `U`.
 pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
+
+    // A zero-sized `U` would make the `% size_u` / `/ size_u` arithmetic below divide
+    // by zero; reject it explicitly rather than panic.
+    if size_u == 0 {
+        return Err(CommonError::Invalid(format!(
+            "cannot reinterpret Vec<{}> as Vec<{}>: destination type is zero-sized",
+            std::any::type_name::<T>(),
+            std::any::type_name::<U>()
+        )));
+    }
 
     // Total bytes in Vec<T>
     let total_bytes = v.len() * size_t;
@@ -79,5 +111,12 @@ pub fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
     let ptr = v.as_ptr() as *mut U;
 
     std::mem::forget(v);
+    // SAFETY: `ptr` comes from `v`, which was allocated by the global allocator and is
+    // forgotten just above so its buffer is not freed twice. `len`/`cap` are recomputed
+    // for `U` from the byte size of the original allocation, and the padding loop ensures
+    // the byte length is an exact multiple of `size_of::<U>()`, so no partial element is
+    // exposed. The alignment check above guarantees `ptr` is suitably aligned for `U`.
+    // The remaining layout precondition (equal alignment of `T`/`U` for the eventual
+    // deallocation) is the caller's obligation — see this function's "caller obligation" docs.
     Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) })
 }
