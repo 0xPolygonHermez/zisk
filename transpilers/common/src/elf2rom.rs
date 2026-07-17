@@ -42,8 +42,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             .into());
     }
 
-    // Validate the guest entry point: instruction-word aligned and inside a loaded
-    // executable segment (ZisK reads e_entry rather than booting from a fixed address).
+    // Validate the guest entry point: instruction-aligned (2 bytes, ZisK decodes
+    // compressed instructions) and inside a loaded executable segment (ZisK reads
+    // e_entry rather than booting from a fixed address).
     validate_entry_point(&payloads[elf_index])?;
 
     // Get DMA function addresses: (memcpy, memcmp, memset, memmove)

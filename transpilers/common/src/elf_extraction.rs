@@ -16,8 +16,10 @@ const RAM_END_ADDR: u64 = RAM_ADDR + RAM_SIZE;
 const ROM_START_ADDR: u64 = ROM_ADDR;
 const ROM_END_ADDR: u64 = ROM_ADDR + ROM_SIZE;
 /// Minimum alignment required for a loadable segment's virtual address and for the
-/// entry point: the RISC-V instruction word is 4 bytes.
-const INSTRUCTION_ALIGN: u64 = 4;
+/// entry point. ZisK decodes the RISC-V C (compressed) extension, whose instructions
+/// are 2-byte units, so the minimum instruction alignment is 2 bytes — a 4-byte
+/// requirement would reject valid entry points that land on a compressed instruction.
+const INSTRUCTION_ALIGN: u64 = 2;
 
 /// All sections that `ZiskRom` cares about in the ELF file, categorized
 #[derive(Debug, Default)]
@@ -75,8 +77,7 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
 
     let mut out = ElfPayload { entry_point: elf.ehdr.e_entry, ..Default::default() };
 
-    // Loaded segment ranges [start, end) with their exec flag, for cross-segment
-    // overlap detection and (downstream) entry-point validation.
+    // Loaded segment ranges [start, end), for cross-segment overlap detection.
     let mut loaded: Vec<(u64, u64)> = Vec::new();
 
     // --- Loadable image from program headers (PT_LOAD only) ---
@@ -149,14 +150,47 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
         }
         loaded.push((seg_start, seg_end));
 
+        // A segment's file image can never be larger than its memory image.
+        if ph.p_filesz > ph.p_memsz {
+            return Err(format!(
+                "PT_LOAD segment at 0x{seg_start:x} has p_filesz (0x{:x}) greater than p_memsz (0x{:x})",
+                ph.p_filesz, ph.p_memsz
+            )
+            .into());
+        }
+
         // Materialize the segment: the p_filesz file bytes, then a zero-filled
         // p_memsz > p_filesz tail (.bss and other zero-initialized regions).
+        // `p_memsz` is already bounded by the addressable-space check above; convert
+        // it with a checked cast anyway so a malformed value can never wrap `usize`.
+        let mem_size = usize::try_from(ph.p_memsz).map_err(|_| {
+            format!("PT_LOAD segment at 0x{seg_start:x} has p_memsz (0x{:x}) too large for this platform", ph.p_memsz)
+        })?;
         let file_bytes = elf.segment_data(&ph)?;
 
         if is_exec {
-            // Executable segments carry instructions only and have no zero-fill
-            // tail (p_memsz == p_filesz); keep exactly the file bytes so no spurious
-            // zero words are transpiled as instructions.
+            // Executable segments carry instructions only: they must be fully
+            // file-backed (no zero-fill tail) and have an even byte length, since
+            // each 16-bit half-word is decoded as (part of) an instruction.
+            // Rejecting here turns malformed code into a structured error instead of
+            // a later panic in `convert_vector` (which requires a multiple of 2).
+            if ph.p_memsz != ph.p_filesz {
+                return Err(format!(
+                    "executable PT_LOAD segment at 0x{seg_start:x} has a zero-fill tail \
+                     (p_memsz 0x{:x} != p_filesz 0x{:x}); code segments must be fully file-backed",
+                    ph.p_memsz, ph.p_filesz
+                )
+                .into());
+            }
+            if file_bytes.len() % 2 != 0 {
+                return Err(format!(
+                    "executable PT_LOAD segment at 0x{seg_start:x} has an odd byte length ({}); \
+                     RISC-V instructions are 2- or 4-byte units",
+                    file_bytes.len()
+                )
+                .into());
+            }
+            // Keep exactly the file bytes so no spurious zero words are transpiled.
             out.exec.push(DataSection { addr: seg_start, data: file_bytes.to_vec() });
         } else if is_write {
             // Writable data must live in RAM so it can be initialized there.
@@ -169,12 +203,12 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
                 .into());
             }
             let mut data = file_bytes.to_vec();
-            data.resize(ph.p_memsz as usize, 0);
+            data.resize(mem_size, 0);
             out.rw.push(DataSection { addr: seg_start, data });
         } else {
             // Read-only data (constants, strings, etc.).
             let mut data = file_bytes.to_vec();
-            data.resize(ph.p_memsz as usize, 0);
+            data.resize(mem_size, 0);
             out.ro.push(DataSection { addr: seg_start, data });
         }
     }
@@ -185,14 +219,15 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
 /// Validates the guest entry point against the payload's loaded executable segments.
 ///
 /// ZisK reads `e_entry` (it does not boot from a fixed address), so the entry must
-/// be instruction-word aligned and fall inside a loaded executable (`PF_X`) segment.
-/// This is applied only to the guest payload — a helper payload (e.g. the embedded
-/// float library) whose entry ZisK never jumps to is exempt.
+/// be instruction-aligned (2 bytes, since ZisK decodes compressed instructions) and
+/// fall inside a loaded executable (`PF_X`) segment. This is applied only to the
+/// guest payload — a helper payload (e.g. the embedded float library) whose entry
+/// ZisK never jumps to is exempt.
 pub fn validate_entry_point(payload: &ElfPayload) -> Result<(), Box<dyn Error>> {
     let entry = payload.entry_point;
     if entry % INSTRUCTION_ALIGN != 0 {
         return Err(format!(
-            "entry point 0x{entry:x} is not {INSTRUCTION_ALIGN}-byte (instruction-word) aligned"
+            "entry point 0x{entry:x} is not {INSTRUCTION_ALIGN}-byte (instruction) aligned"
         )
         .into());
     }
@@ -381,5 +416,72 @@ mod tests {
             DataSection { addr: 0x1004, data: vec![9, 10, 11, 12] },          // overlaps real data
         ];
         assert!(merge_ro_sections(sections).is_err());
+    }
+
+    /// Build a payload with the given entry point and executable segment ranges
+    /// (`(addr, byte_len)`), leaving ro/rw empty.
+    fn payload_with_exec(entry: u64, exec_ranges: &[(u64, usize)]) -> ElfPayload {
+        ElfPayload {
+            entry_point: entry,
+            exec: exec_ranges
+                .iter()
+                .map(|&(addr, len)| DataSection { addr, data: vec![0u8; len] })
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_entry_point_inside_exec_is_ok() {
+        // Entry in the interior of an executable segment.
+        let p = payload_with_exec(0x8000_0010, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_ok());
+    }
+
+    #[test]
+    fn test_entry_point_at_segment_start_is_ok() {
+        let p = payload_with_exec(0x8000_0000, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_ok());
+    }
+
+    #[test]
+    fn test_entry_point_at_last_instruction_is_ok() {
+        // Last addressable 2-byte slot in the segment [start, start+len).
+        let p = payload_with_exec(0x8000_00fe, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_ok());
+    }
+
+    #[test]
+    fn test_entry_point_at_segment_end_is_rejected() {
+        // start + len is one past the segment; the range is half-open, so this is out.
+        let p = payload_with_exec(0x8000_0100, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_err());
+    }
+
+    #[test]
+    fn test_entry_point_misaligned_is_rejected() {
+        // Odd address: not 2-byte aligned.
+        let p = payload_with_exec(0x8000_0011, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_err());
+    }
+
+    #[test]
+    fn test_entry_point_two_byte_aligned_is_ok() {
+        // A compressed-instruction entry (2-byte, not 4-byte aligned) must be accepted.
+        let p = payload_with_exec(0x8000_000a, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_ok());
+    }
+
+    #[test]
+    fn test_entry_point_outside_any_exec_segment_is_rejected() {
+        // Aligned, but not within any executable segment (e.g. points into RO/RW).
+        let p = payload_with_exec(0x9000_0000, &[(0x8000_0000, 0x100)]);
+        assert!(validate_entry_point(&p).is_err());
+    }
+
+    #[test]
+    fn test_entry_point_no_exec_segments_is_rejected() {
+        let p = payload_with_exec(0x8000_0000, &[]);
+        assert!(validate_entry_point(&p).is_err());
     }
 }
