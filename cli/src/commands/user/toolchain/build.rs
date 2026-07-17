@@ -172,6 +172,27 @@ impl ZiskBuildToolchain {
             .with_context(|| "while linking the toolchain to rustup")?;
         println!("Successfully linked the toolchain to rustup.");
 
+        // ZISK: `stage2/bin` has `rustc` but not `cargo` (cargo is built into the
+        // sibling `stage2-tools-bin/`). Copy it into the toolchain's `bin/` so the
+        // packaged tarball is self-contained: `cargo +<toolchain>` then uses this
+        // (version-matched) cargo directly instead of falling back to rustup's
+        // `nightly` toolchain.
+        if let Some(build_root) = toolchain_dir.parent() {
+            let cargo_src = build_root.join("stage2-tools-bin").join("cargo");
+            let cargo_dst = toolchain_dir.join("bin").join("cargo");
+            if cargo_src.is_file() && !cargo_dst.exists() {
+                std::fs::copy(&cargo_src, &cargo_dst).with_context(|| {
+                    format!("while copying cargo from {} into the toolchain", cargo_src.display())
+                })?;
+                println!("Copied cargo into the toolchain bin: {}", cargo_dst.display());
+            } else if !cargo_src.is_file() {
+                eprintln!(
+                    "Warning: {} not found; the packaged toolchain will lack cargo.",
+                    cargo_src.display()
+                );
+            }
+        }
+
         // Compressing toolchain directory to tar.gz.
         let target = get_target();
         let tar_gz_path = format!("rust-toolchain-{target}.tar.gz");
