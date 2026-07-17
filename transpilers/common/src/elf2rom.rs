@@ -1,7 +1,8 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::elf_extraction::{
-    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_ro_sections, ElfPayload,
+    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_ro_sections,
+    validate_entry_point, ElfPayload,
 };
 use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, add_zisk_code};
 use std::{error::Error, path::Path};
@@ -40,6 +41,10 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                     at the guest program root."
             .into());
     }
+
+    // Validate the guest entry point: instruction-word aligned and inside a loaded
+    // executable segment (ZisK reads e_entry rather than booting from a fixed address).
+    validate_entry_point(&payloads[elf_index])?;
 
     // Get DMA function addresses: (memcpy, memcmp, memset, memmove)
     let dma_addrs = get_dma_symbol_addresses(elf);

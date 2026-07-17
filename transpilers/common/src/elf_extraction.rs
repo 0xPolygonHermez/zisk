@@ -1,32 +1,34 @@
 //! ELF file extraction utilities for separating ELF parsing from ZiskRom population
 
 use elf::{
-    abi::{
-        PF_R, PF_W, PF_X, SHF_ALLOC, SHF_EXECINSTR, SHF_WRITE, SHT_FINI_ARRAY, SHT_INIT_ARRAY,
-        SHT_NOBITS, SHT_PREINIT_ARRAY, SHT_PROGBITS,
-    },
-    endian::AnyEndian,
+    abi::{EM_RISCV, ET_EXEC, PF_R, PF_W, PF_X, PT_LOAD},
+    endian::LittleEndian,
+    file::Class,
     ElfBytes,
 };
 use std::{collections::HashMap, error::Error, fs, path::Path};
 
-use zisk_core::mem::DataSection;
-use zisk_core::{is_elf_file, RAM_ADDR, RAM_SIZE};
+use zisk_core::is_elf_file;
+use zisk_core::mem::{DataSection, RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_SIZE};
 
 const RAM_START_ADDR: u64 = RAM_ADDR;
 const RAM_END_ADDR: u64 = RAM_ADDR + RAM_SIZE;
-const MAX_ELF_SECTION_SIZE: usize = 1024 * 1024 * 1024; // 1 GiB, arbitrary limit to prevent OOM from malformed ELFs
+const ROM_START_ADDR: u64 = ROM_ADDR;
+const ROM_END_ADDR: u64 = ROM_ADDR + ROM_SIZE;
+/// Minimum alignment required for a loadable segment's virtual address and for the
+/// entry point: the RISC-V instruction word is 4 bytes.
+const INSTRUCTION_ALIGN: u64 = 4;
 
 /// All sections that `ZiskRom` cares about in the ELF file, categorized
 #[derive(Debug, Default)]
 pub struct ElfPayload {
     /// Entry point address from ELF header
     pub entry_point: u64,
-    /// `SHF_ALLOC | SHF_EXECINSTR` - executable code sections
+    /// Executable `PT_LOAD` segments (`PF_X`)
     pub exec: Vec<DataSection>,
-    /// `SHF_ALLOC | SHF_WRITE` and inside the RAM window - read-write data
+    /// Writable `PT_LOAD` segments (`PF_W`), inside the RAM window
     pub rw: Vec<DataSection>,
-    /// `SHF_ALLOC` but not `SHF_WRITE` - read-only data
+    /// Read-only `PT_LOAD` segments (neither `PF_W` nor `PF_X`)
     pub ro: Vec<DataSection>,
 }
 
@@ -44,50 +46,166 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
         }
     }
 
-    // Parse the ELF
-    let elf = ElfBytes::<AnyEndian>::minimal_parse(file_data)?;
+    // Parse the ELF as little-endian. The target encoding is fixed to ELFDATA2LSB
+    // by the RISC-V target standard; parsing with a fixed `LittleEndian` rejects a
+    // big-endian file at parse time rather than adapting to it, as the standard
+    // requires ("the loader must not infer endianness from, or adapt endianness
+    // to, the file").
+    let elf = ElfBytes::<LittleEndian>::minimal_parse(file_data)?;
+
+    // --- Header validation ---
+    // Reject the file before constructing any state if a header field is wrong.
+    if elf.ehdr.class != Class::ELF64 {
+        return Err("ELF is not 64-bit (ELFCLASS64 required)".into());
+    }
+    if elf.ehdr.e_machine != EM_RISCV {
+        return Err(format!(
+            "ELF machine is 0x{:x}, expected EM_RISCV (0x{:x})",
+            elf.ehdr.e_machine, EM_RISCV
+        )
+        .into());
+    }
+    if elf.ehdr.e_type != ET_EXEC {
+        return Err(format!(
+            "ELF type is 0x{:x}, expected ET_EXEC (statically linked executable)",
+            elf.ehdr.e_type
+        )
+        .into());
+    }
 
     let mut out = ElfPayload { entry_point: elf.ehdr.e_entry, ..Default::default() };
 
-    // Process all program headers
-    if let Some(phdrs) = elf.segments() {
-        for ph in phdrs {
-            println!(
-                "Program header at 0x{:08x} with size {} bytes (type: {}, flags: 0x{:x}, PF_R: 0x{:x}, PF_W: 0x{:x}, PF_X: 0x{:x})",
-                ph.p_vaddr, ph.p_memsz, ph.p_type, ph.p_flags, ph.p_flags & PF_R, ph.p_flags & PF_W, ph.p_flags & PF_X
-            );
+    // Loaded segment ranges [start, end) with their exec flag, for cross-segment
+    // overlap detection and (downstream) entry-point validation.
+    let mut loaded: Vec<(u64, u64)> = Vec::new();
 
-            if ph.p_type == elf::abi::PT_LOAD {
-                let is_exec = (ph.p_flags & PF_X) != 0;
-                let is_write = (ph.p_flags & PF_W) != 0;
-                let in_ram =
-                    ph.p_vaddr >= RAM_START_ADDR && ph.p_vaddr + ph.p_memsz <= RAM_END_ADDR;
+    // --- Loadable image from program headers (PT_LOAD only) ---
+    // The image is built exclusively from PT_LOAD segments; section headers are
+    // never consulted for loading (they may be absent or stripped).
+    let segments = elf.segments().ok_or("ELF has no program header table")?;
+    for ph in segments {
+        if ph.p_type != PT_LOAD {
+            continue;
+        }
 
-                if is_exec {
-                    // Executable code section
-                    let data = elf.segment_data(&ph)?.to_vec();
-                    out.exec.push(DataSection { addr: ph.p_vaddr, data });
-                } else if is_write && in_ram {
-                    // Read-write data that needs to be copied to RAM
-                    let data = elf.segment_data(&ph)?.to_vec();
-                    out.rw.push(DataSection { addr: ph.p_vaddr, data });
-                } else if is_write {
-                    // Writable data outside RAM is an error - it cannot be properly initialized
-                    return Err(format!(
-                        "ELF contains writable segment at 0x{:08x}-0x{:08x} outside RAM bounds (0x{:08x}-0x{:08x}). \
-                        Writable segments must be placed in RAM. Consider adjusting your linker script.",
-                        ph.p_vaddr, ph.p_vaddr + ph.p_memsz, RAM_START_ADDR, RAM_END_ADDR
-                    ).into());
-                } else {
-                    // Read-only data (constants, strings, etc.)
-                    let data = elf.segment_data(&ph)?.to_vec();
-                    out.ro.push(DataSection { addr: ph.p_vaddr, data });
-                }
+        let is_exec = (ph.p_flags & PF_X) != 0;
+        let is_write = (ph.p_flags & PF_W) != 0;
+        let is_read = (ph.p_flags & PF_R) != 0;
+
+        let seg_start = ph.p_vaddr;
+        // p_memsz is the full memory footprint, including any zero-filled (.bss)
+        // tail beyond p_filesz.
+        let seg_end = ph
+            .p_vaddr
+            .checked_add(ph.p_memsz)
+            .ok_or_else(|| format!("PT_LOAD segment at 0x{seg_start:x} overflows the address space"))?;
+
+        // W^X: a loadable segment must never be both writable and executable.
+        if is_write && is_exec {
+            return Err(format!(
+                "PT_LOAD segment at 0x{seg_start:x} is both writable and executable (W^X violation)"
+            )
+            .into());
+        }
+
+        // ZisK is an execute-and-read zkVM: every executable segment must be
+        // PF_X | PF_R. A PF_X-only (execute-only) segment is rejected.
+        if is_exec && !is_read {
+            return Err(format!(
+                "executable PT_LOAD segment at 0x{seg_start:x} is not readable; \
+                 ZisK requires PF_X | PF_R (execute-and-read) executable segments"
+            )
+            .into());
+        }
+
+        // Alignment: p_vaddr must be at least instruction-word (4-byte) aligned.
+        if seg_start % INSTRUCTION_ALIGN != 0 {
+            return Err(format!(
+                "PT_LOAD segment virtual address 0x{seg_start:x} is not {INSTRUCTION_ALIGN}-byte aligned"
+            )
+            .into());
+        }
+
+        // Addressable space: the whole segment [p_vaddr, p_vaddr + p_memsz) must
+        // fit within the ROM window (code / read-only data) or the RAM window
+        // (read-write data).
+        let in_rom = seg_start >= ROM_START_ADDR && seg_end <= ROM_END_ADDR;
+        let in_ram = seg_start >= RAM_START_ADDR && seg_end <= RAM_END_ADDR;
+        if !in_rom && !in_ram {
+            return Err(format!(
+                "PT_LOAD segment 0x{seg_start:x}-0x{seg_end:x} is outside ZisK addressable space \
+                 (ROM 0x{ROM_START_ADDR:x}-0x{ROM_END_ADDR:x}, RAM 0x{RAM_START_ADDR:x}-0x{RAM_END_ADDR:x})"
+            )
+            .into());
+        }
+
+        // No overlap: loadable segments must be disjoint in virtual address space.
+        for &(o_start, o_end) in &loaded {
+            if seg_start < o_end && o_start < seg_end {
+                return Err(format!(
+                    "overlapping PT_LOAD segments: 0x{o_start:x}-0x{o_end:x} and 0x{seg_start:x}-0x{seg_end:x}"
+                )
+                .into());
             }
+        }
+        loaded.push((seg_start, seg_end));
+
+        // Materialize the segment: the p_filesz file bytes, then a zero-filled
+        // p_memsz > p_filesz tail (.bss and other zero-initialized regions).
+        let file_bytes = elf.segment_data(&ph)?;
+
+        if is_exec {
+            // Executable segments carry instructions only and have no zero-fill
+            // tail (p_memsz == p_filesz); keep exactly the file bytes so no spurious
+            // zero words are transpiled as instructions.
+            out.exec.push(DataSection { addr: seg_start, data: file_bytes.to_vec() });
+        } else if is_write {
+            // Writable data must live in RAM so it can be initialized there.
+            if !in_ram {
+                return Err(format!(
+                    "writable PT_LOAD segment at 0x{seg_start:x}-0x{seg_end:x} is outside RAM \
+                     (0x{RAM_START_ADDR:x}-0x{RAM_END_ADDR:x}); writable segments must be placed in RAM. \
+                     Consider adjusting your linker script."
+                )
+                .into());
+            }
+            let mut data = file_bytes.to_vec();
+            data.resize(ph.p_memsz as usize, 0);
+            out.rw.push(DataSection { addr: seg_start, data });
+        } else {
+            // Read-only data (constants, strings, etc.).
+            let mut data = file_bytes.to_vec();
+            data.resize(ph.p_memsz as usize, 0);
+            out.ro.push(DataSection { addr: seg_start, data });
         }
     }
 
     Ok(out)
+}
+
+/// Validates the guest entry point against the payload's loaded executable segments.
+///
+/// ZisK reads `e_entry` (it does not boot from a fixed address), so the entry must
+/// be instruction-word aligned and fall inside a loaded executable (`PF_X`) segment.
+/// This is applied only to the guest payload — a helper payload (e.g. the embedded
+/// float library) whose entry ZisK never jumps to is exempt.
+pub fn validate_entry_point(payload: &ElfPayload) -> Result<(), Box<dyn Error>> {
+    let entry = payload.entry_point;
+    if entry % INSTRUCTION_ALIGN != 0 {
+        return Err(format!(
+            "entry point 0x{entry:x} is not {INSTRUCTION_ALIGN}-byte (instruction-word) aligned"
+        )
+        .into());
+    }
+    let in_exec =
+        payload.exec.iter().any(|s| entry >= s.addr && entry < s.addr + s.data.len() as u64);
+    if !in_exec {
+        return Err(format!(
+            "entry point 0x{entry:x} does not fall within any loaded executable (PF_X) segment"
+        )
+        .into());
+    }
+    Ok(())
 }
 
 /// Byte alignment each RO section's length is padded to (the ROM-init row format).
@@ -148,7 +266,7 @@ pub fn get_symbol_addresses_from_bytes(
     file_data: &[u8],
     symbol_names: &[&str],
 ) -> Result<HashMap<String, u64>, Box<dyn Error>> {
-    let elf = ElfBytes::<AnyEndian>::minimal_parse(file_data)?;
+    let elf = ElfBytes::<LittleEndian>::minimal_parse(file_data)?;
     let mut result = HashMap::new();
     let names_set: std::collections::HashSet<&str> = symbol_names.iter().copied().collect();
 
