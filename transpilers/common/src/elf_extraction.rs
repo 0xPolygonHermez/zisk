@@ -221,11 +221,25 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
                 .into());
             }
             let mut data = file_bytes.to_vec();
+            if mem_size > RAM_SIZE.try_into().unwrap() {
+                return Err(format!(
+                    "writable PT_LOAD segment at 0x{seg_start:x} has p_memsz (0x{:x}) larger than RAM_SIZE (0x{:x})",
+                    ph.p_memsz, RAM_SIZE
+                )
+                .into());
+            }
             data.resize(mem_size, 0);
             out.rw.push(DataSection { addr: seg_start, data });
         } else {
             // Read-only data (constants, strings, etc.).
             let mut data = file_bytes.to_vec();
+            if mem_size > ROM_SIZE.try_into().unwrap() {
+                return Err(format!(
+                    "read-only PT_LOAD segment at 0x{seg_start:x} has p_memsz (0x{:x}) larger than ROM_SIZE (0x{:x})",
+                    ph.p_memsz, ROM_SIZE
+                )
+                .into());
+            }
             data.resize(mem_size, 0);
             out.ro.push(DataSection { addr: seg_start, data });
         }
