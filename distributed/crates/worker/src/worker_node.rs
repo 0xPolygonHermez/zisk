@@ -1901,6 +1901,19 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
+        // Idempotency guard: a duplicate Prove for a job whose computation is
+        // still running must NOT spawn a second concurrent prove_phase (it would
+        // rewrite the global challenge and race the first phase over the same
+        // GPU streams -> internally inconsistent proofs). Log loudly: if this
+        // ever fires, the coordinator double-dispatched a phase task.
+        if self.worker.has_live_computation() {
+            error!(
+                "[DUPLICATE-DISPATCH] Prove for {} received while a computation is still running — ignoring",
+                job_id
+            );
+            return Ok(());
+        }
+
         info!("Starting Prove for {}", job_id);
 
         // Extract the Prove params
@@ -1934,6 +1947,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ) -> Result<()> {
         if self.worker.current_job().is_none() {
             return Err(anyhow!("Aggregate received without current job context"));
+        }
+
+        // Idempotency guard (symmetric with `prove`): a duplicate/replayed
+        // Aggregate while the previous aggregation computation is still running
+        // must NOT spawn a second concurrent proofman task over the same GPU
+        // streams (set_current_computation overwrites the handle and a dropped
+        // JoinHandle DETACHES the running task). If this fires, the coordinator
+        // double-dispatched (agg_task_inflight race or reconnect replay).
+        if self.worker.has_live_computation() {
+            error!(
+                "[DUPLICATE-DISPATCH] Aggregate for {} received while a computation is still running — ignoring",
+                request.job_id
+            );
+            return Ok(());
         }
 
         let job = self.worker.current_job().clone().unwrap().clone();
