@@ -503,7 +503,26 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     }
 
     pub fn set_current_computation(&mut self, handle: JoinHandle<()>) {
+        if self.has_live_computation() {
+            // Overwriting a live handle DETACHES the running task (drop of a
+            // tokio JoinHandle does not abort): the old proofman computation
+            // keeps running, invisible to cancel/recovery, and can corrupt this
+            // or the next job's GPU work. The dispatch guards should make this
+            // unreachable; scream if it ever happens.
+            tracing::error!(
+                "[DETACHED-COMPUTATION] set_current_computation called while previous computation is still running — old task is now untracked"
+            );
+        }
         self.current_computation = Some(handle);
+    }
+
+    /// True while a previously dispatched computation task is still running.
+    /// Used to refuse duplicate phase dispatches: a second concurrent
+    /// `prove_phase`/contribution on the same proofman corrupts stream and
+    /// challenge state (proofs bound to mixed state -> spurious verification
+    /// failures at aggregation).
+    pub fn has_live_computation(&self) -> bool {
+        self.current_computation.as_ref().is_some_and(|h| !h.is_finished())
     }
 
     pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
@@ -567,6 +586,24 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .ok_or_else(|| anyhow::anyhow!("Guest program not found for hash_id={hash_id}"))?
             .program_id
             .clone();
+
+        // GATE: register_program/reset/set_active_services do NOT take proofman's
+        // `computing` mutex, so they can run concurrently with a still-live
+        // `_generate_proof` from a cancelled previous job (the CancelStaleJob
+        // reconnect path flips the worker Ready via SetupProgramAck without
+        // waiting for the cancelled compute to drain). Resetting proving state
+        // under a live proof corrupts it -> internally inconsistent proofs in
+        // the NEXT job. Block here until the prover is truly idle; log loudly
+        // if we actually had to wait — each occurrence is a caught overlap.
+        let wait_start = std::time::Instant::now();
+        self.prover.wait_until_proofman_ready();
+        let waited = wait_start.elapsed();
+        if waited.as_millis() > 50 {
+            tracing::error!(
+                "[LATE-DRAIN] prepare_for_new_job waited {:?} for a previous computation to exit before reset — premature-Ready overlap caught and prevented",
+                waited
+            );
+        }
 
         self.prover.register_program(&program_id, with_hints)?;
         self.prover.reset()?;
