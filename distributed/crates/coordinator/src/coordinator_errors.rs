@@ -28,6 +28,9 @@ pub enum CoordinatorError {
     #[error("Workers are connected but setup has not been done; call setup() first")]
     WorkersNotSetup,
 
+    #[error("Integrity violation: {0}")]
+    IntegrityViolation(String),
+
     // Internal errors - logged but not exposed to clients
     #[error("Internal service error: {0}")]
     Internal(String),
@@ -63,6 +66,7 @@ impl From<CoordinatorError> for Status {
                 Code::FailedPrecondition,
                 "Workers connected but setup not done; call setup() first",
             ),
+            CoordinatorError::IntegrityViolation(msg) => Status::new(Code::DataLoss, msg),
             // All internal errors return generic messages
             CoordinatorError::Internal(_) => {
                 Status::new(Code::Internal, "An internal error occurred")

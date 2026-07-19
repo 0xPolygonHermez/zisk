@@ -317,6 +317,9 @@ pub struct ProofStarkDto {
     pub worker_idx: u32,
     pub airgroup_id: u64,
     pub values: Vec<u64>,
+    /// End-to-end integrity digest computed by the producing worker
+    /// (see [`crate::integrity::proof_digest`]). Empty = not provided.
+    pub digest: Vec<u8>,
 }
 
 pub struct FinalProofDto {

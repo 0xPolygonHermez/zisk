@@ -7842,8 +7842,10 @@ name = "zisk-cluster-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "blake3",
  "borsh",
  "chrono",
+ "hex",
  "proofman",
  "proofman-common",
  "serde",

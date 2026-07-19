@@ -16,8 +16,8 @@ use zisk_cluster_api::contribution_params::InputSource;
 use zisk_cluster_api::execute_task_response::ResultData;
 use zisk_cluster_api::*;
 use zisk_cluster_common::{
-    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, JobPhase, ProofKind,
-    StreamDataDto, WorkerState,
+    check_proof_digest, proof_digest, AggProofData, AggregationParams, DataCtx, HintsSourceDto,
+    InputSourceDto, JobPhase, ProofDigestCheck, ProofKind, StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
 use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
@@ -727,13 +727,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
                 (
                     data.into_iter()
-                        .map(|v| ProofStark {
-                            airgroup_id: v.airgroup_id,
-                            values: v.proof,
+                        .map(|v| {
                             // NOTE: in this context we take always the first worker index
                             // because at this time at each send_proof call we are processing
                             // proofs for a single worker
-                            worker_idx: v.worker_indexes[0] as u32,
+                            let worker_idx = v.worker_indexes[0] as u32;
+                            // Integrity digest verified by the coordinator on receipt and
+                            // by the aggregator before registering the proof.
+                            let digest =
+                                proof_digest(v.airgroup_id, worker_idx, &v.proof).to_vec();
+                            ProofStark {
+                                airgroup_id: v.airgroup_id,
+                                values: v.proof,
+                                worker_idx,
+                                digest,
+                            }
                         })
                         .collect(),
                     String::new(),
@@ -1950,8 +1958,36 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 worker_idx: p.worker_idx,
                 airgroup_id: p.airgroup_id,
                 values: p.values,
+                digest: p.digest,
             })
             .collect();
+
+        // Verify each proof against the integrity digest computed by the
+        // producing worker, to catch corruption on the coordinator→aggregator
+        // hop (or while parked in coordinator memory) before it reaches the
+        // proofman and surfaces as an opaque aggregation failure.
+        for p in &agg_proofs {
+            match check_proof_digest(p.airgroup_id, p.worker_idx, &p.values, &p.digest) {
+                ProofDigestCheck::Ok => {}
+                ProofDigestCheck::Missing => warn!(
+                    "Agg proof (worker_idx={}, airgroup_id={}) for {} carries no integrity \
+                     digest; skipping verification (old coordinator version?)",
+                    p.worker_idx, p.airgroup_id, request.job_id
+                ),
+                ProofDigestCheck::Mismatch { expected, computed } => {
+                    return Err(anyhow!(
+                        "Proof integrity check failed at aggregator before registration for {}: \
+                         worker_idx={}, airgroup_id={}, {} values, expected digest {expected}…, \
+                         computed {computed}… — payload corrupted on coordinator→aggregator hop \
+                         or in coordinator memory",
+                        request.job_id,
+                        p.worker_idx,
+                        p.airgroup_id,
+                        p.values.len()
+                    ));
+                }
+            }
+        }
 
         let agg_params = AggregationParams {
             agg_proofs,

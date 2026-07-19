@@ -486,6 +486,7 @@ impl Coordinator {
                 airgroup_id: p.airgroup_id,
                 values: p.values,
                 worker_idx: p.worker_idx,
+                digest: p.digest,
             })
             .collect();
 

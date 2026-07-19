@@ -204,6 +204,9 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
         CoordinatorError::InvalidArgument(msg) | CoordinatorError::InvalidRequest(msg) => {
             ApiError::InvalidJobState { reason: msg }
         }
+        CoordinatorError::IntegrityViolation(msg) => {
+            ApiError::Internal(format!("Integrity violation: {msg}"))
+        }
         CoordinatorError::WorkerError(msg) | CoordinatorError::Internal(msg) => {
             ApiError::Internal(msg)
         }

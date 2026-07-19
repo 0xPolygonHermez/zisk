@@ -3283,6 +3283,186 @@ mod tests {
         );
     }
 
+    /// Helper: build a Phase-2 Proofs response with the given proofs.
+    fn proofs_response(
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        proofs: Vec<zisk_cluster_common::ProofStarkDto>,
+    ) -> zisk_cluster_common::ExecuteTaskResponseDto {
+        use zisk_cluster_common::{ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto};
+        ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: worker_id.clone(),
+            success: true,
+            error_message: None,
+            result_data: Some(ExecuteTaskResponseResultDataDto::Proofs(proofs)),
+            worker_in_recovery: false,
+        }
+    }
+
+    /// A Phase-2 proof whose payload does not match its integrity digest
+    /// (corruption on the worker→coordinator hop) must be rejected and fail
+    /// the job explicitly instead of being stored and aggregated.
+    #[tokio::test]
+    async fn test_proof_response_with_corrupted_digest_fails_job() {
+        use zisk_cluster_common::{proof_digest, ProofStarkDto};
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Prove, |_| {}).await;
+        let w0 = workers[0].0.clone();
+
+        let mut values = vec![1u64, 2, 3, 4];
+        let digest = proof_digest(0, 0, &values).to_vec();
+        // Corrupt the payload AFTER computing the digest.
+        values[2] ^= 1;
+
+        let response = proofs_response(
+            &job_id,
+            &w0,
+            vec![ProofStarkDto { worker_idx: 0, airgroup_id: 0, values, digest }],
+        );
+        let err = coordinator
+            .handle_stream_execute_task_response(response)
+            .await
+            .expect_err("corrupted proof payload must be rejected");
+        assert!(
+            matches!(err, CoordinatorError::IntegrityViolation(_)),
+            "expected IntegrityViolation, got {err:?}"
+        );
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let job = entry.read().await;
+        assert_eq!(job.state, JobState::Failed, "integrity violation must fail the job");
+        assert!(
+            job.results.get(&JobPhase::Prove).is_none_or(|r| !r.contains_key(&w0)),
+            "corrupted proof must not be stored in the job results"
+        );
+    }
+
+    /// A Phase-2 proof with a valid digest is stored, and the digest is
+    /// carried through — stored `AggProofData` → `PendingAggTask` queue →
+    /// ExecuteTaskRequest dispatched to the aggregator.
+    #[tokio::test]
+    async fn test_proof_response_with_valid_digest_stored_and_propagated() {
+        use zisk_cluster_common::{
+            proof_digest, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
+            ExecuteTaskResponseResultDataDto, FinalProofDto, ProofStarkDto,
+        };
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Prove, |_| {}).await;
+        let w0 = workers[0].0.clone();
+        let w1 = workers[1].0.clone();
+
+        // w0 completes first and becomes the aggregator; its own proofs stay
+        // local, so the dispatched agg task carries no proofs.
+        let values0 = vec![1u64, 2, 3];
+        coordinator
+            .handle_stream_execute_task_response(proofs_response(
+                &job_id,
+                &w0,
+                vec![ProofStarkDto {
+                    worker_idx: 0,
+                    airgroup_id: 0,
+                    digest: proof_digest(0, 0, &values0).to_vec(),
+                    values: values0,
+                }],
+            ))
+            .await
+            .unwrap();
+
+        // w1 completes second: its proofs (and digest) must travel to w0.
+        // The task is queued behind the in-flight one from w0's completion.
+        let values1 = vec![10u64, 20, 30];
+        let digest1 = proof_digest(0, 1, &values1).to_vec();
+        coordinator
+            .handle_stream_execute_task_response(proofs_response(
+                &job_id,
+                &w1,
+                vec![ProofStarkDto {
+                    worker_idx: 1,
+                    airgroup_id: 0,
+                    digest: digest1.clone(),
+                    values: values1,
+                }],
+            ))
+            .await
+            .unwrap();
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let job = entry.read().await;
+            let results = job.results.get(&JobPhase::Prove).unwrap();
+            assert!(results.contains_key(&w0) && results.contains_key(&w1));
+            // Digest rides along into the queued PendingAggTask.
+            assert_eq!(job.agg_task_queue.front().unwrap().proofs[0].digest, digest1);
+        }
+
+        // w0 acks the intermediate step (empty FinalProof) — the queued task
+        // with w1's proofs is dispatched to w0 over the wire.
+        coordinator
+            .handle_stream_execute_task_response(ExecuteTaskResponseDto {
+                job_id: job_id.clone(),
+                worker_id: w0.clone(),
+                success: true,
+                error_message: None,
+                result_data: Some(ExecuteTaskResponseResultDataDto::FinalProof(FinalProofDto {
+                    proof_data: vec![],
+                    executed_steps: 0,
+                    instances: 0,
+                })),
+                worker_in_recovery: false,
+            })
+            .await
+            .unwrap();
+
+        let sent_digests: Vec<Vec<u8>> = workers[0]
+            .1
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|m| match m {
+                CoordinatorMessageDto::ExecuteTaskRequest(req) => match &req.params {
+                    ExecuteTaskRequestTypeDto::AggParams(agg) => {
+                        Some(agg.agg_proofs.iter().map(|p| p.digest.clone()).collect::<Vec<_>>())
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .flatten()
+            .collect();
+        assert_eq!(sent_digests, vec![digest1], "digest must ride along to the aggregator");
+    }
+
+    /// A Phase-2 proof without a digest (older worker version) is accepted
+    /// permissively: verification is skipped and the job continues.
+    #[tokio::test]
+    async fn test_proof_response_without_digest_accepted() {
+        use zisk_cluster_common::ProofStarkDto;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Prove, |_| {}).await;
+        let w0 = workers[0].0.clone();
+
+        let response = proofs_response(
+            &job_id,
+            &w0,
+            vec![ProofStarkDto {
+                worker_idx: 0,
+                airgroup_id: 0,
+                values: vec![1u64, 2, 3],
+                digest: Vec::new(),
+            }],
+        );
+        coordinator.handle_stream_execute_task_response(response).await.unwrap();
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let job = entry.read().await;
+        assert!(matches!(job.state, JobState::Running(_)));
+        assert!(job.results.get(&JobPhase::Prove).unwrap().contains_key(&w0));
+    }
+
     /// Defensive: `WorkerError` from a worker not assigned to the job must
     /// not fail the job.
     #[tokio::test]

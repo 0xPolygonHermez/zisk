@@ -343,6 +343,9 @@ message ProofStark {
   uint32 worker_idx = 1;
   uint64 airgroup_id = 2;
   repeated uint64 values = 3;
+  // blake3(airgroup_id LE || worker_idx LE || values.len() LE || values LE),
+  // computed by the producing worker. Empty = sender predates digests.
+  bytes digest = 4;
 }
 
 message FinalProof {

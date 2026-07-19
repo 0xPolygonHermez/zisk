@@ -3,10 +3,10 @@ use chrono::Utc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 use zisk_cluster_common::{
-    AggProofData, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
+    check_proof_digest, AggProofData, ChallengesDto, CoordinatorMessageDto, ExecuteTaskRequestDto,
     ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, Job,
     JobId, JobPhase, JobResult, JobResultData, JobState, PendingAggTask, PhaseTimings,
-    ProveParamsDto, WorkerId, WorkerState,
+    ProofDigestCheck, ProveParamsDto, WorkerId, WorkerState,
 };
 
 use crate::Coordinator;
@@ -87,7 +87,17 @@ impl Coordinator {
         }
 
         // Store Proof response
-        self.store_proof_response(&mut job, execute_task_response).await?;
+        if let Err(e) = self.store_proof_response(&mut job, execute_task_response).await {
+            if matches!(e, CoordinatorError::IntegrityViolation(_)) {
+                // Fail the job explicitly: errors bubbling out of the stream
+                // handler are only logged, and the job would otherwise hang
+                // until the phase timeout. fail_job takes its own job locks,
+                // so release ours first.
+                drop(job);
+                let _ = self.fail_job(&job_id, e.to_string()).await;
+            }
+            return Err(e);
+        }
 
         // Assign aggregator worker if not already assigned
         let agg_worker_id = self.resolve_recurser_assignment(&mut job, &worker_id).await?;
@@ -160,12 +170,45 @@ impl Coordinator {
         // Extract and validate proofs data from Phase2 response
         let data = match execute_task_response.result_data {
             Some(ExecuteTaskResponseResultDataDto::Proofs(proof_list)) => {
+                // Verify each proof against the integrity digest computed by the
+                // producing worker, to catch corruption on the worker→coordinator hop.
+                for proof in &proof_list {
+                    match check_proof_digest(
+                        proof.airgroup_id,
+                        proof.worker_idx,
+                        &proof.values,
+                        &proof.digest,
+                    ) {
+                        ProofDigestCheck::Ok => {}
+                        ProofDigestCheck::Missing => warn!(
+                            "Proof from worker {worker_id} (worker_idx={}, airgroup_id={}) for \
+                             {job_id} carries no integrity digest; skipping verification (old \
+                             worker version?)",
+                            proof.worker_idx, proof.airgroup_id
+                        ),
+                        ProofDigestCheck::Mismatch { expected, computed } => {
+                            let msg = format!(
+                                "Proof integrity check failed at coordinator on receipt from \
+                                 worker {worker_id} for {job_id}: worker_idx={}, airgroup_id={}, \
+                                 {} values, expected digest {expected}…, computed {computed}… — \
+                                 payload corrupted on worker→coordinator hop",
+                                proof.worker_idx,
+                                proof.airgroup_id,
+                                proof.values.len()
+                            );
+                            error!(msg);
+                            return Err(CoordinatorError::IntegrityViolation(msg));
+                        }
+                    }
+                }
+
                 let agg_proofs: Vec<AggProofData> = proof_list
                     .into_iter()
                     .map(|proof| AggProofData {
                         airgroup_id: proof.airgroup_id,
                         values: proof.values,
                         worker_idx: proof.worker_idx,
+                        digest: proof.digest,
                     })
                     .collect();
                 JobResultData::AggProofs(agg_proofs)

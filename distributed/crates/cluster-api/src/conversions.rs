@@ -64,6 +64,7 @@ impl From<AggProofData> for ProofStark {
             airgroup_id: row_data.airgroup_id,
             values: row_data.values,
             worker_idx: row_data.worker_idx,
+            digest: row_data.digest,
         }
     }
 }
@@ -74,6 +75,7 @@ impl From<ProofStark> for AggProofData {
             airgroup_id: grpc_row_data.airgroup_id,
             values: grpc_row_data.values,
             worker_idx: grpc_row_data.worker_idx,
+            digest: grpc_row_data.digest,
         }
     }
 }
@@ -374,7 +376,12 @@ impl From<AggParamsDto> for AggParams {
 
 impl From<ProofStarkDto> for ProofStark {
     fn from(dto: ProofStarkDto) -> Self {
-        ProofStark { worker_idx: dto.worker_idx, airgroup_id: dto.airgroup_id, values: dto.values }
+        ProofStark {
+            worker_idx: dto.worker_idx,
+            airgroup_id: dto.airgroup_id,
+            values: dto.values,
+            digest: dto.digest,
+        }
     }
 }
 
@@ -462,6 +469,7 @@ impl From<ExecuteTaskResponse> for ExecuteTaskResponseDto {
                         worker_idx: p.worker_idx,
                         airgroup_id: p.airgroup_id,
                         values: p.values,
+                        digest: p.digest,
                     })
                     .collect();
                 Some(ExecuteTaskResponseResultDataDto::Proofs(proofs))
