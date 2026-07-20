@@ -68,7 +68,13 @@ fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPl
             return None;
         }
         GpuBufferSource::Borrowed { ptr, size, gpu_id } => {
-            (ptr as *mut c_void, size, gpu_id as i32)
+            let Ok(gpu_id) = i32::try_from(gpu_id) else {
+                tracing::error!(
+                    "[gpu] gpu_id {gpu_id} exceeds i32::MAX; using CPU mem_planner path"
+                );
+                return None;
+            };
+            (ptr as *mut c_void, size, gpu_id)
         }
         GpuBufferSource::SelfAllocated => (std::ptr::null_mut(), 0, -1),
     };
