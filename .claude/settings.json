@@ -1,0 +1,50 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dpkg -l)",
+      "Bash(apt-cache policy *)",
+      "Bash(sudo apt-get remove -y libnode-dev libnode72 nodejs)",
+      "Bash(sudo apt-get install -y nodejs)",
+      "Bash(npm --version)",
+      "Bash(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh)",
+      "Bash(sh /tmp/rustup-init.sh -y)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('tools/runpod-test/deploy_cluster.py'\\).read\\(\\)\\)\")",
+      "Bash(chmod +x /home/agnusmor/git/zisk/tools/test-env/build_ethproofs.sh)",
+      "Bash(bash -n /home/agnusmor/git/zisk/tools/test-env/build_ethproofs.sh)",
+      "Bash(bash -n /home/agnusmor/git/zisk/tools/test-env/test_ethproofs.sh)",
+      "Bash(command -v actionlint yamllint python3)",
+      "Bash(actionlint --version)",
+      "Bash(yamllint --version)",
+      "Bash(python3 -)",
+      "Bash(python3 -c \"import json; [print\\(p['publicIp'], p['sshPort'], p.get\\('sshUser', 'root'\\)\\) for p in json.load\\(open\\('pods.json'\\)\\)['pods']]\")",
+      "Bash(clang --version)",
+      "Read(//usr/bin/**)",
+      "Bash(python3 -c \"import yaml; yaml.safe_load\\(open\\('.github/workflows/runpod_test.yml'\\)\\); print\\('YAML OK'\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(bash -n .github/scripts/start_test_container.sh)",
+      "Bash(bash -n tools/test-env/utils.sh)",
+      "Bash(grep -n \"^[a-z_]*\\(\\) {\\\\|^local\\\\|return 1$\" tools/test-env/build_setup.sh)",
+      "Bash(awk '/^run_gen_exps\\\\\\(\\\\\\) \\\\{/,/^\\\\}/' tools/test-env/build_setup.sh)",
+      "Bash(bash -n /home/agnusmor/git/zisk/tools/test-env/setup_build.sh)",
+      "Bash(bash -n /home/agnusmor/git/zisk/tools/test-env/build_setup.sh)",
+      "Bash(bash -n /home/agnusmor/git/zisk/tools/test-env/upload_setup.sh)",
+      "Bash(git rm *)",
+      "Bash(python3 -m py_compile tools/runpod-test/deploy_cluster.py)",
+      "Bash(bash -n build_setup.sh)",
+      "Bash(bash -n upload_setup.sh)",
+      "Bash(python3 -c \"import yaml,sys; yaml.safe_load\\(open\\('.github/workflows/upload_setup.yml'\\)\\); print\\('YAML OK'\\)\")",
+      "Bash(bash -n utils.sh)",
+      "Bash(git ls-remote *)",
+      "Bash(git config *)",
+      "Bash(mkdir -p /home/agnusmor/.claude/plans)",
+      "Bash(cargo test *)",
+      "Bash(cargo build *)",
+      "Bash(cargo clippy *)",
+      "Bash(echo \"---exit: $?---\")"
+    ],
+    "additionalDirectories": [
+      "/tmp",
+      "/home/agnusmor/.claude"
+    ]
+  }
+}
