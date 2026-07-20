@@ -279,6 +279,10 @@ impl ExecutorStats {
     }
 
     /// Resets the executor stats by clearing all collected statistics and resetting the start time and last ID.
+    ///
+    /// # Preconditions
+    /// Must not be called concurrently with `add_stat`/`next_id`; otherwise the `pending`
+    /// drain loop may not terminate and recorded stats may be lost.
     pub fn reset(&self) {
         *self.start_time.lock().unwrap_or_else(|e| e.into_inner()) = None;
         self.last_id.store(0, Ordering::Relaxed);
@@ -335,6 +339,16 @@ impl ExecutorStats {
         self.witness_stats.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
+    /// Returns the reference start time used for relative timestamps.
+    ///
+    /// If `set_start_time` was never called, the reference is lazily initialized
+    /// to "now" and persisted, so subsequent report calls reuse the same value and
+    /// stay idempotent (rather than each picking a fresh `Instant::now()`).
+    fn resolved_start_time(&self) -> Instant {
+        let mut start_time = self.start_time.lock().unwrap_or_else(|e| e.into_inner());
+        *start_time.get_or_insert_with(Instant::now)
+    }
+
     /// Drains any pending entries into `finalized` and returns the full set,
     /// ordered by timestamp. Non-destructive across repeated calls.
     fn collect_sorted(&self) -> Vec<ExecutorStatsEntry> {
@@ -360,8 +374,7 @@ impl ExecutorStats {
             timestamp: u64,
         }
 
-        let start_time = (*self.start_time.lock().unwrap_or_else(|e| e.into_inner()))
-            .unwrap_or_else(Instant::now);
+        let start_time = self.resolved_start_time();
         let tasks: Vec<Task> = self
             .collect_sorted()
             .into_iter()
@@ -418,8 +431,7 @@ impl ExecutorStats {
 
     /// Prints stats
     pub fn print_stats(&self) {
-        let start_time = (*self.start_time.lock().unwrap_or_else(|e| e.into_inner()))
-            .unwrap_or_else(Instant::now);
+        let start_time = self.resolved_start_time();
         let entries = self.collect_sorted();
         println!("Collected a total of {} statistics", entries.len());
         for stat in &entries {
