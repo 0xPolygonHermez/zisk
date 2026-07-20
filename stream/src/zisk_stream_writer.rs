@@ -46,7 +46,8 @@ use crate::UnixSocketStreamWriter;
 const PUSH_DEFAULT_CHUNK_SIZE: usize = 64 * 1024;
 
 /// Background-connect poll interval. Short enough that `finish()` and
-/// `flush()` only ever wait one tick on `transport.lock()` between polls.
+/// `flush()` only ever wait one tick on the `state` lock between polls (the bg
+/// thread releases the lock while it sleeps for this interval).
 const CONNECT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
 
 // ── Push sender trait ──────────────────────────────────────────────────────
@@ -87,11 +88,10 @@ enum TransportKind {
     Push,
 }
 
-/// Mutex-free tag mirroring `TransportKind`'s discriminant. The bg connect
-/// thread only holds `transport.lock()` for the duration of a single
-/// non-blocking poll (≤ a few ms), but `is_external` / `is_push` are called
-/// from hot paths where even brief contention with the bg thread is wasteful;
-/// caching the discriminant here avoids the lock entirely.
+/// Mutex-free tag mirroring `TransportKind`'s discriminant. `is_external` /
+/// `is_push` are called from hot paths; caching the discriminant here lets them
+/// answer without taking the `state` lock (which the bg connect thread and
+/// `flush()` also contend on).
 #[derive(Copy, Clone, PartialEq)]
 enum TransportTag {
     Direct,
@@ -99,25 +99,38 @@ enum TransportTag {
     Push,
 }
 
-// ── Live state ─────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────
 
-struct LiveState {
-    /// `true` after `start()` has opened the transport, drained any
-    /// pre-buffered bytes, and seen the peer connect. `flush()` blocks on this.
+/// All mutable lifecycle state, behind ONE mutex.
+///
+/// The transport, the pending buffer, and the readiness/error/generation
+/// signals are deliberately kept under a single lock so that every operation
+/// — `start()`, `finish()`, `flush()`, and the background connect thread —
+/// sees a consistent snapshot and mutates atomically. An earlier design split
+/// these across three separate mutexes (`transport`, `pending`, `live_state`)
+/// and every gap between acquiring one and the next was a check-then-act race
+/// (a concurrent `finish()`/`start()` tearing down or rebinding the transport
+/// between a peer-connected check and the drain, a stale `start()` reopening a
+/// transport `finish()` had just closed, etc.). One lock removes that entire
+/// class: there is no second lock to be inconsistent with.
+struct State {
+    /// The transport (owned Direct writer, External marker, or Push).
+    transport: TransportKind,
+    /// Bytes buffered by `push_raw`, awaiting delivery on connect or `flush()`.
+    pending: Vec<u8>,
+    /// `true` once the peer has connected and any pre-buffered bytes have been
+    /// drained (Direct), or a push sender is set (Push). `flush()` blocks on it.
     ready: bool,
-    /// Monotonic counter bumped by `start()` and `finish()`. Each bg connect
-    /// thread captures the value at spawn; on every loop iteration (and on
-    /// final state write-back) it compares against the current value and
-    /// bails out if they differ. This prevents a stale bg thread from a
-    /// previous `start()` from clobbering a fresh `start()`'s `LiveState`.
-    /// It is the sole mechanism guarding every overlap: a `finish()` → `start()`
-    /// sequence, a `start()` → `start()` reuse without an intervening
-    /// `finish()`, and two concurrent `start()` calls.
-    start_generation: u64,
-    /// Set when the bg thread's start handshake (connect-poll or initial
-    /// drain) failed. `flush()` returns this so waiters don't block forever
-    /// after a connection timeout. Cleared by the next successful `start()`
-    /// or `finish()`.
+    /// Monotonic counter bumped by `start()` and `finish()`. The background
+    /// connect thread captures it at spawn and, on each poll iteration, bails
+    /// out if it no longer matches — that is how a stale thread from a superseded
+    /// `start()` is neutralized. Because it is read and bumped under the *same*
+    /// (single) lock that mutates the transport, there is no window in which the
+    /// generation and the transport can disagree.
+    generation: u64,
+    /// Set when the bg thread's start handshake (connect-poll or initial drain)
+    /// failed. `flush()` returns it so waiters don't block forever after a
+    /// connection timeout. Cleared by the next `start()`/`finish()`.
     last_start_error: Option<String>,
     /// Active push sender for the current job. Set/cleared in tandem with
     /// `ready` for [`TransportKind::Push`]; always `None` for other kinds.
@@ -127,12 +140,16 @@ struct LiveState {
 // ── Inner shared state ─────────────────────────────────────────────────────
 
 struct Inner {
-    transport: Mutex<TransportKind>,
+    /// The single lock guarding all mutable state (see [`State`]).
+    state: Mutex<State>,
+    /// Signalled whenever `ready`/`last_start_error` changes, so blocked
+    /// `flush()` callers wake up.
+    cond: Condvar,
+    /// Lock-free mirror of the transport discriminant, so `is_external()` /
+    /// `is_push()` need not take `state`.
     tag: TransportTag,
-    pending: Mutex<Vec<u8>>,
+    /// Immutable transport URI (metadata for callers; never parsed here).
     uri: String,
-    live_state: Mutex<LiveState>,
-    live_cond: Condvar,
 }
 
 // ── Public type ────────────────────────────────────────────────────────────
@@ -154,17 +171,17 @@ impl ZiskStreamWriter {
     pub fn from_writer(writer: Box<dyn StreamWrite>, uri: String) -> Self {
         Self {
             inner: Arc::new(Inner {
-                transport: Mutex::new(TransportKind::Direct(writer)),
-                tag: TransportTag::Direct,
-                pending: Mutex::new(Vec::new()),
-                uri,
-                live_state: Mutex::new(LiveState {
+                state: Mutex::new(State {
+                    transport: TransportKind::Direct(writer),
+                    pending: Vec::new(),
                     ready: false,
-                    start_generation: 0,
+                    generation: 0,
                     last_start_error: None,
                     push_sender: None,
                 }),
-                live_cond: Condvar::new(),
+                cond: Condvar::new(),
+                tag: TransportTag::Direct,
+                uri,
             }),
         }
     }
@@ -175,17 +192,17 @@ impl ZiskStreamWriter {
     pub fn unix_external(uri: String) -> Self {
         Self {
             inner: Arc::new(Inner {
-                transport: Mutex::new(TransportKind::External),
-                tag: TransportTag::External,
-                pending: Mutex::new(Vec::new()),
-                uri,
-                live_state: Mutex::new(LiveState {
+                state: Mutex::new(State {
+                    transport: TransportKind::External,
+                    pending: Vec::new(),
                     ready: true,
-                    start_generation: 0,
+                    generation: 0,
                     last_start_error: None,
                     push_sender: None,
                 }),
-                live_cond: Condvar::new(),
+                cond: Condvar::new(),
+                tag: TransportTag::External,
+                uri,
             }),
         }
     }
@@ -216,17 +233,17 @@ impl ZiskStreamWriter {
     pub fn push(uri: String) -> Self {
         Self {
             inner: Arc::new(Inner {
-                transport: Mutex::new(TransportKind::Push),
-                tag: TransportTag::Push,
-                pending: Mutex::new(Vec::new()),
-                uri,
-                live_state: Mutex::new(LiveState {
+                state: Mutex::new(State {
+                    transport: TransportKind::Push,
+                    pending: Vec::new(),
                     ready: false,
-                    start_generation: 0,
+                    generation: 0,
                     last_start_error: None,
                     push_sender: None,
                 }),
-                live_cond: Condvar::new(),
+                cond: Condvar::new(),
+                tag: TransportTag::Push,
+                uri,
             }),
         }
     }
@@ -252,11 +269,11 @@ impl ZiskStreamWriter {
     /// Useful for callers waiting until a flush would not block; primarily for
     /// tests and observability.
     pub fn is_ready(&self) -> bool {
-        self.inner.live_state.lock().unwrap().ready
+        self.inner.state.lock().unwrap().ready
     }
 
     /// Inject the push sender for a [`TransportKind::Push`] writer. Marks the
-    /// stream live and wakes any flushers blocked on `live_cond`.
+    /// stream live and wakes any flushers blocked on the condvar.
     ///
     /// Calling this on a non-Push writer is a no-op.
     pub fn set_push_sender(&self, sender: Box<dyn BytesPushSender>) {
@@ -264,11 +281,11 @@ impl ZiskStreamWriter {
             return;
         }
         {
-            let mut guard = self.inner.live_state.lock().unwrap();
+            let mut guard = self.inner.state.lock().unwrap();
             guard.push_sender = Some(sender);
             guard.ready = true;
         }
-        self.inner.live_cond.notify_all();
+        self.inner.cond.notify_all();
     }
 
     // ── Write / flush ──────────────────────────────────────────────────────
@@ -279,7 +296,7 @@ impl ZiskStreamWriter {
         if data.is_empty() {
             return;
         }
-        self.inner.pending.lock().unwrap().extend_from_slice(data);
+        self.inner.state.lock().unwrap().pending.extend_from_slice(data);
     }
 
     /// Send all pending bytes. Blocks until the stream is live.
@@ -298,9 +315,11 @@ impl ZiskStreamWriter {
         }
 
         // Wait until the background `start()` thread reports the peer connected
-        // and pre-buffered bytes (if any) have been drained. If the bg thread
-        // recorded a startup failure, surface it instead of looping forever.
-        let mut guard = self.inner.live_state.lock().unwrap();
+        // and pre-buffered bytes (if any) have been drained, then drain any
+        // bytes pushed since. All of it happens under the one `state` lock, so
+        // a concurrent `finish()`/`start()` cannot tear down or rebind the
+        // transport between the ready-wait and the write.
+        let mut guard = self.inner.state.lock().unwrap();
         while !guard.ready {
             if let Some(err) = &guard.last_start_error {
                 return Err(StreamError::Transport(format!(
@@ -308,50 +327,41 @@ impl ZiskStreamWriter {
                     err
                 )));
             }
-            let (g, _) = self
+            guard = self
                 .inner
-                .live_cond
+                .cond
                 .wait_timeout(guard, std::time::Duration::from_secs(5))
-                .unwrap();
-            guard = g;
-        }
-        drop(guard);
-
-        let mut pending = self.inner.pending.lock().unwrap();
-        if pending.is_empty() {
-            return Ok(());
+                .unwrap()
+                .0;
         }
 
-        let mut transport = self.inner.transport.lock().unwrap();
-        let TransportKind::Direct(writer) = &mut *transport else {
+        let state = &mut *guard;
+        let TransportKind::Direct(writer) = &mut state.transport else {
             // Already returned for External / Push above.
             unreachable!()
         };
-
-        let chunk_size = aligned_chunk_size(writer.max_message_size());
-
-        let mut sent = 0;
-        while sent < pending.len() {
-            let take = std::cmp::min(chunk_size, pending.len() - sent);
-            match writer.write(&pending[sent..sent + take]) {
-                Ok(_) => sent += take,
-                Err(e) => {
-                    // Drop successfully-sent bytes; leave the unsent tail.
-                    pending.drain(..sent);
-                    return Err(e);
-                }
-            }
-        }
-        pending.clear();
-        Ok(())
+        drain_into(&mut **writer, &mut state.pending)
     }
 
-    /// Push-transport flush. Holds `live_state` for the duration of the
-    /// chunk loop so concurrent `start()` / `finish()` / `set_push_sender()`
-    /// can't tear down the sender mid-flight (matches the pre-refactor SDK
-    /// gRPC behavior).
+    /// Push-transport flush. Holds `state` for the duration of the chunk loop
+    /// so concurrent `start()` / `finish()` / `set_push_sender()` can't tear
+    /// down the sender mid-flight (matches the pre-refactor SDK gRPC behavior).
+    ///
+    /// Blocks until the sender is injected via `set_push_sender()`, but only up
+    /// to [`CONNECT_DEADLINE`] — the same bound the Direct path applies to the
+    /// peer-connect wait. Without it a producer parked here would hang forever
+    /// if the sender never arrives (e.g. the job submission that would inject it
+    /// failed after `start()`), since nothing on the Push path sets
+    /// `last_start_error`.
     fn flush_push(&self) -> Result<()> {
-        let mut guard = self.inner.live_state.lock().unwrap();
+        self.flush_push_until(std::time::Instant::now() + CONNECT_DEADLINE)
+    }
+
+    /// [`flush_push`](Self::flush_push) with an explicit sender-wait deadline
+    /// (parameterized so tests can exercise the timeout without waiting
+    /// [`CONNECT_DEADLINE`]).
+    fn flush_push_until(&self, deadline: std::time::Instant) -> Result<()> {
+        let mut guard = self.inner.state.lock().unwrap();
         while !guard.ready {
             if let Some(err) = &guard.last_start_error {
                 return Err(StreamError::Transport(format!(
@@ -359,38 +369,45 @@ impl ZiskStreamWriter {
                     err
                 )));
             }
-            guard = self.inner.live_cond.wait(guard).unwrap();
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                return Err(StreamError::Transport(format!(
+                    "Push transport: timed out waiting for sender on {}",
+                    self.inner.uri
+                )));
+            }
+            guard = self.inner.cond.wait_timeout(guard, remaining).unwrap().0;
         }
 
-        let mut pending = self.inner.pending.lock().unwrap();
-        if pending.is_empty() {
+        let state = &mut *guard;
+        if state.pending.is_empty() {
             return Ok(());
         }
 
-        let sender = guard.push_sender.as_ref().ok_or_else(|| {
+        let sender = state.push_sender.as_ref().ok_or_else(|| {
             StreamError::Transport("Push transport: ready=true but sender not set".to_string())
         })?;
 
         let chunk_size = aligned_chunk_size(PUSH_DEFAULT_CHUNK_SIZE);
 
         let mut sent = 0;
-        while sent < pending.len() {
-            let take = std::cmp::min(chunk_size, pending.len() - sent);
-            match sender.send_blocking(pending[sent..sent + take].to_vec()) {
+        while sent < state.pending.len() {
+            let take = std::cmp::min(chunk_size, state.pending.len() - sent);
+            match sender.send_blocking(state.pending[sent..sent + take].to_vec()) {
                 Ok(_) => sent += take,
                 Err(e) => {
-                    pending.drain(..sent);
+                    state.pending.drain(..sent);
                     return Err(e);
                 }
             }
         }
-        pending.clear();
+        state.pending.clear();
         Ok(())
     }
 
     /// Discard buffered bytes that have not yet been sent.
     pub fn reset(&self) {
-        self.inner.pending.lock().unwrap().clear();
+        self.inner.state.lock().unwrap().pending.clear();
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
@@ -402,9 +419,9 @@ impl ZiskStreamWriter {
     pub fn start(&self) -> Result<()> {
         if self.is_external() {
             // External transports are live by construction.
-            let mut guard = self.inner.live_state.lock().unwrap();
+            let mut guard = self.inner.state.lock().unwrap();
             guard.ready = true;
-            self.inner.live_cond.notify_all();
+            self.inner.cond.notify_all();
             return Ok(());
         }
 
@@ -412,7 +429,7 @@ impl ZiskStreamWriter {
             // Push: tear down any previous sender; wait for a fresh one to
             // arrive via `set_push_sender()` before going ready again.
             let old_sender = {
-                let mut guard = self.inner.live_state.lock().unwrap();
+                let mut guard = self.inner.state.lock().unwrap();
                 guard.ready = false;
                 guard.push_sender.take()
             };
@@ -422,146 +439,93 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        // Every `start()` supersedes any previous one: bump the generation so an
-        // in-flight bg connect thread from a prior `start()` bails out on its
-        // next check instead of clobbering this call's `LiveState`, then tear
-        // down and rebind the transport below.
+        // Direct transport. Every `start()` unconditionally supersedes any
+        // previous one and rebinds — there is deliberately no "a start is
+        // already in flight, so no-op" fast path (such a path raced sequential
+        // reuse: a prior job's bg thread could still be between delivering data
+        // and clearing a flag, and a `start()` for the next job that hit that
+        // flag would skip the rebind, leaving the next peer's connection to
+        // queue on a stale listener whose one-shot accept thread had exited —
+        // hanging forever).
         //
-        // This must be unconditional — in particular there is no "a start is
-        // already in flight, so no-op" fast path. Such a fast path would race
-        // with sequential reuse: a prior `start()`'s bg thread stays "in flight"
-        // until its epilogue runs, but that epilogue runs *after* it has already
-        // drained the pre-buffered bytes and delivered them to the peer. A caller
-        // that observed that delivery (e.g. the reader read the data) and then
-        // called `start()` again for the next job could be swallowed as a no-op,
-        // skipping the teardown/rebind. Depending on the transport that leaves a
-        // stale connection in place; with the Unix socket transport, for
-        // example, the prior job's one-shot accept thread has already exited, so
-        // the next peer's connection would queue on the stale listener and never
-        // be accepted — hanging the next read forever. The generation guard
-        // makes unconditional superseding safe.
+        // The generation bump AND the transport teardown/rebind happen in ONE
+        // `state` lock hold, so the whole transition is atomic with respect to
+        // any concurrent `start()`/`finish()` and with respect to a superseded
+        // bg thread (which re-checks the generation under this same lock).
         let my_gen = {
-            let mut guard = self.inner.live_state.lock().unwrap();
-            guard.start_generation = guard.start_generation.wrapping_add(1);
+            let mut guard = self.inner.state.lock().unwrap();
+            guard.generation = guard.generation.wrapping_add(1);
             // Starting fresh: flushers must wait for the new bg thread to drain.
             guard.ready = false;
             guard.last_start_error = None;
-            guard.start_generation
-        };
+            let my_gen = guard.generation;
 
-        // Open (or reopen) the transport synchronously so the path is bindable
-        // before this function returns.
-        {
-            let mut transport = self.inner.transport.lock().unwrap();
-            let TransportKind::Direct(writer) = &mut *transport else { unreachable!() };
+            let TransportKind::Direct(writer) = &mut guard.transport else { unreachable!() };
             if writer.is_active() {
                 let _ = writer.close();
             }
             if let Err(e) = writer.open() {
-                // Surface the failure to any flusher already blocked on
-                // `live_cond` — otherwise they'd wait forever, since `ready`
-                // never flips and no bg thread will be spawned to set
-                // `last_start_error`.
-                let mut guard = self.inner.live_state.lock().unwrap();
+                // Surface the failure to any flusher already blocked on the
+                // condvar — otherwise they'd wait forever, since `ready` never
+                // flips and no bg thread will be spawned to set an error.
                 guard.last_start_error = Some(e.to_string());
-                self.inner.live_cond.notify_all();
+                self.inner.cond.notify_all();
                 return Err(e);
             }
-        }
+            my_gen
+        };
 
-        // Background thread: poll for peer connection without holding the
-        // transport mutex across the full wait. Each poll briefly locks
-        // `transport` to ask `is_client_connected()`, then releases for 5 ms
-        // — so callers contending on `transport.lock()` (e.g. `finish()`)
-        // only wait the duration of one poll, not the 60 s connection
-        // deadline. The loop also observes `start_generation` so a concurrent
-        // `finish()` (or a re-start) tears the thread down on the next tick
-        // instead of letting it spin for the remainder of the deadline.
+        // Background thread: poll for the peer to connect, then drain the
+        // pre-buffered bytes and mark the stream ready. It takes `state` only
+        // briefly per poll (releasing it while it sleeps between polls, so
+        // lifecycle callers never wait more than one poll on the lock), and on
+        // connect it does the generation check, the drain, and the ready flip
+        // all in a SINGLE lock hold — no concurrent `start()`/`finish()` can
+        // slip in between. If a newer `start()`/`finish()` superseded us, the
+        // generation no longer matches and we simply exit (that caller owns the
+        // state and notifies waiters itself).
         //
-        // NOTE: once the peer connects, this thread acquires `transport` and
-        // `pending` simultaneously to drain the pre-buffered bytes. For
-        // pending payloads larger than the transport chunk size this can
-        // span multiple `write()` calls — `finish()` blocks on
-        // `transport.lock()` for the duration of the drain. In practice the
-        // drain is tens of ms on Unix and can reach hundreds of ms on QUIC.
+        // NOTE: the drain holds `state` for its duration; for pending payloads
+        // larger than the transport chunk size this spans multiple `write()`
+        // calls (tens of ms on Unix, up to hundreds on QUIC), during which
+        // lifecycle callers block — same as before, now under the one lock.
         let inner = Arc::clone(&self.inner);
         std::thread::spawn(move || {
             let deadline = std::time::Instant::now() + CONNECT_DEADLINE;
-            let result = loop {
-                if inner.live_state.lock().unwrap().start_generation != my_gen {
-                    break Err(StreamError::Transport(
-                        "start superseded before peer connected".to_string(),
-                    ));
-                }
-                // Hold `transport` across BOTH the connection check and the
-                // drain. Releasing it between them would let a concurrent
-                // `finish()`/`start()` close or rebind the transport in the gap,
-                // after which this thread could drain into a torn-down or
-                // superseded transport. When no peer has connected yet we release
-                // before sleeping (below), so lifecycle callers still only ever
-                // wait one poll on `transport.lock()`.
+            loop {
                 {
-                    let mut transport = inner.transport.lock().unwrap();
-                    let TransportKind::Direct(writer) = &mut *transport else {
-                        break Err(StreamError::Transport(
-                            "transport closed before peer connected".to_string(),
-                        ));
+                    let mut guard = inner.state.lock().unwrap();
+                    if guard.generation != my_gen {
+                        return; // superseded; the newer call owns state + notifies
+                    }
+                    let state = &mut *guard;
+                    let TransportKind::Direct(writer) = &mut state.transport else {
+                        state.last_start_error =
+                            Some("transport closed before peer connected".to_string());
+                        inner.cond.notify_all();
+                        return;
                     };
                     if writer.is_client_connected() {
-                        // Re-check the generation while holding `transport`: a
-                        // concurrent `finish()`/`start()` bumps it before taking
-                        // this lock, so if we were superseded we must skip the
-                        // drain rather than deliver stale bytes or race the
-                        // rebind. The epilogue then discards our result.
-                        if inner.live_state.lock().unwrap().start_generation != my_gen {
-                            break Err(StreamError::Transport(
-                                "start superseded before drain".to_string(),
-                            ));
-                        }
-                        let mut pending = inner.pending.lock().unwrap();
-                        let chunk_size = aligned_chunk_size(writer.max_message_size());
-                        let mut sent = 0;
-                        let mut drain_err: Option<StreamError> = None;
-                        while sent < pending.len() {
-                            let take = std::cmp::min(chunk_size, pending.len() - sent);
-                            if let Err(e) = writer.write(&pending[sent..sent + take]) {
-                                drain_err = Some(e);
-                                break;
+                        match drain_into(&mut **writer, &mut state.pending) {
+                            Ok(()) => state.ready = true,
+                            Err(e) => {
+                                tracing::error!("ZiskStreamWriter start failed: {}", e);
+                                state.last_start_error = Some(e.to_string());
                             }
-                            sent += take;
                         }
-                        if let Some(e) = drain_err {
-                            pending.drain(..sent);
-                            break Err(e);
-                        }
-                        pending.clear();
-                        break Ok(());
+                        inner.cond.notify_all();
+                        return;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        state.last_start_error = Some(format!(
+                            "Timed out waiting for peer to connect to {}",
+                            inner.uri
+                        ));
+                        inner.cond.notify_all();
+                        return;
                     }
                 }
-                if std::time::Instant::now() >= deadline {
-                    break Err(StreamError::Transport(format!(
-                        "Timed out waiting for peer to connect to {}",
-                        inner.uri
-                    )));
-                }
                 std::thread::sleep(CONNECT_POLL_INTERVAL);
-            };
-
-            let mut guard = inner.live_state.lock().unwrap();
-            if guard.start_generation != my_gen {
-                inner.live_cond.notify_all();
-                return;
-            }
-            match result {
-                Ok(()) => {
-                    guard.ready = true;
-                    inner.live_cond.notify_all();
-                }
-                Err(e) => {
-                    tracing::error!("ZiskStreamWriter start failed: {}", e);
-                    guard.last_start_error = Some(e.to_string());
-                    inner.live_cond.notify_all();
-                }
             }
         });
 
@@ -578,7 +542,7 @@ impl ZiskStreamWriter {
 
         if self.is_push() {
             let old_sender = {
-                let mut guard = self.inner.live_state.lock().unwrap();
+                let mut guard = self.inner.state.lock().unwrap();
                 guard.ready = false;
                 guard.push_sender.take()
             };
@@ -589,22 +553,20 @@ impl ZiskStreamWriter {
             return Ok(());
         }
 
-        {
-            let mut guard = self.inner.live_state.lock().unwrap();
-            guard.ready = false;
-            // Invalidate any in-flight bg connect thread so it bails out
-            // instead of clobbering a future `start()`'s LiveState.
-            guard.start_generation = guard.start_generation.wrapping_add(1);
-            guard.last_start_error = None;
-            self.inner.live_cond.notify_all();
-        }
-
-        let mut transport = self.inner.transport.lock().unwrap();
-        if let TransportKind::Direct(writer) = &mut *transport {
+        // Bump the generation (invalidating any in-flight bg connect thread) and
+        // close the transport in ONE lock hold, so the teardown is atomic w.r.t.
+        // a concurrent `start()` and a superseded bg thread cannot reopen or
+        // drain in between.
+        let mut guard = self.inner.state.lock().unwrap();
+        guard.ready = false;
+        guard.generation = guard.generation.wrapping_add(1);
+        guard.last_start_error = None;
+        if let TransportKind::Direct(writer) = &mut guard.transport {
             if writer.is_active() {
                 let _ = writer.close();
             }
         }
+        self.inner.cond.notify_all();
         Ok(())
     }
 }
@@ -613,14 +575,15 @@ impl ZiskStreamWriter {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        match self.transport.get_mut().unwrap() {
+        let state = self.state.get_mut().unwrap();
+        match &mut state.transport {
             TransportKind::Direct(writer) => {
                 if writer.is_active() {
                     let _ = writer.close();
                 }
             }
             TransportKind::Push => {
-                if let Some(sender) = self.live_state.get_mut().unwrap().push_sender.take() {
+                if let Some(sender) = state.push_sender.take() {
                     let _ = sender.close_blocking();
                 }
             }
@@ -630,6 +593,31 @@ impl Drop for Inner {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+/// Drain `pending` into a Direct `writer` in u64-aligned wire chunks.
+///
+/// Shared by `flush()` and the background connect thread. On a partial-write
+/// error the successfully-sent prefix is dropped from `pending` and the unsent
+/// tail is retained for the next attempt; on success `pending` is cleared.
+fn drain_into(writer: &mut dyn StreamWrite, pending: &mut Vec<u8>) -> Result<()> {
+    if pending.is_empty() {
+        return Ok(());
+    }
+    let chunk_size = aligned_chunk_size(writer.max_message_size());
+    let mut sent = 0;
+    while sent < pending.len() {
+        let take = std::cmp::min(chunk_size, pending.len() - sent);
+        match writer.write(&pending[sent..sent + take]) {
+            Ok(_) => sent += take,
+            Err(e) => {
+                pending.drain(..sent);
+                return Err(e);
+            }
+        }
+    }
+    pending.clear();
+    Ok(())
+}
 
 /// Round `max` down to the largest u64-aligned chunk size, but never below 8.
 #[inline]
@@ -752,7 +740,7 @@ mod tests {
                 // Wait for live
                 let deadline = std::time::Instant::now() + Duration::from_secs(5);
                 loop {
-                    if w.inner.live_state.lock().unwrap().ready {
+                    if w.inner.state.lock().unwrap().ready {
                         break;
                     }
                     assert!(std::time::Instant::now() < deadline, "stream never went live");
@@ -781,7 +769,7 @@ mod tests {
 
                 // Wait live
                 let deadline = std::time::Instant::now() + Duration::from_secs(5);
-                while !w.inner.live_state.lock().unwrap().ready {
+                while !w.inner.state.lock().unwrap().ready {
                     assert!(std::time::Instant::now() < deadline);
                     thread::sleep(Duration::from_millis(10));
                 }
@@ -848,14 +836,14 @@ mod tests {
                 reader.open().unwrap();
 
                 let deadline = std::time::Instant::now() + Duration::from_secs(5);
-                while !w.inner.live_state.lock().unwrap().ready {
+                while !w.inner.state.lock().unwrap().ready {
                     assert!(std::time::Instant::now() < deadline);
                     thread::sleep(Duration::from_millis(10));
                 }
-                assert!(w.inner.live_state.lock().unwrap().ready);
+                assert!(w.inner.state.lock().unwrap().ready);
 
                 w.finish().unwrap();
-                assert!(!w.inner.live_state.lock().unwrap().ready);
+                assert!(!w.inner.state.lock().unwrap().ready);
 
                 reader.close().unwrap();
             });
@@ -1003,7 +991,7 @@ mod tests {
         let w = ZiskStreamWriter::from_writer(Box::new(writer), "mock://test".into());
 
         // Skip the start handshake: mark live by hand.
-        w.inner.live_state.lock().unwrap().ready = true;
+        w.inner.state.lock().unwrap().ready = true;
 
         // 5 chunks worth (40 bytes). Writes 0 and 1 succeed (16 bytes sent),
         // write 2 fails. Pending should retain the unsent 24 bytes.
@@ -1013,7 +1001,8 @@ mod tests {
         let err = w.flush();
         assert!(err.is_err(), "flush should propagate the mock failure");
 
-        let pending = w.inner.pending.lock().unwrap();
+        let guard = w.inner.state.lock().unwrap();
+        let pending = &guard.pending;
         assert_eq!(pending.len(), 40 - 16, "only successfully-sent bytes drained");
         assert_eq!(&pending[..], &payload[16..], "unsent tail preserved exactly");
     }
@@ -1023,13 +1012,14 @@ mod tests {
         // Fail on the very first write.
         let writer = FailingWriter::new(0, 8);
         let w = ZiskStreamWriter::from_writer(Box::new(writer), "mock://test".into());
-        w.inner.live_state.lock().unwrap().ready = true;
+        w.inner.state.lock().unwrap().ready = true;
 
         let payload: Vec<u8> = (0..16u8).collect();
         w.push_raw(&payload);
 
         assert!(w.flush().is_err());
-        let pending = w.inner.pending.lock().unwrap();
+        let guard = w.inner.state.lock().unwrap();
+        let pending = &guard.pending;
         assert_eq!(&pending[..], &payload[..], "no bytes consumed on first-write failure");
     }
 
@@ -1146,6 +1136,22 @@ mod tests {
     }
 
     #[test]
+    fn push_flush_times_out_if_sender_never_set() {
+        // A Push flush must not hang forever when the sender is never injected
+        // (e.g. the job submission that would call set_push_sender() failed after
+        // start()). It waits up to the deadline, then returns an error — the same
+        // bounded-wait guarantee the Direct path has via CONNECT_DEADLINE.
+        let w = ZiskStreamWriter::push("grpc://test".into());
+        w.push_raw(b"stranded");
+
+        let start = std::time::Instant::now();
+        let res = w.flush_push_until(start + Duration::from_millis(100));
+        assert!(res.is_err(), "flush_push must time out, not hang, without a sender");
+        assert!(start.elapsed() >= Duration::from_millis(100), "should wait the full deadline");
+        assert!(start.elapsed() < Duration::from_secs(5), "should not block far past the deadline");
+    }
+
+    #[test]
     fn push_flush_error_keeps_unsent_tail() {
         let w = ZiskStreamWriter::push("grpc://test".into());
         // Fail on the 3rd send — first two (64 KB each) succeed, then we lose.
@@ -1160,7 +1166,7 @@ mod tests {
         assert!(w.flush().is_err());
 
         let sent_total: usize = recorded.lock().unwrap().iter().map(|c| c.len()).sum();
-        let pending_len = w.inner.pending.lock().unwrap().len();
+        let pending_len = w.inner.state.lock().unwrap().pending.len();
         assert_eq!(
             sent_total + pending_len,
             payload.len(),
@@ -1175,11 +1181,11 @@ mod tests {
         let w = ZiskStreamWriter::push("grpc://test".into());
         let (sender1, _recorded1, closed1) = MockPushSender::new();
         w.set_push_sender(sender1);
-        assert!(w.inner.live_state.lock().unwrap().ready);
+        assert!(w.inner.state.lock().unwrap().ready);
 
         // start() between jobs: drops the old sender (closing it) and clears ready.
         w.start().unwrap();
-        assert!(!w.inner.live_state.lock().unwrap().ready);
+        assert!(!w.inner.state.lock().unwrap().ready);
         assert!(closed1.load(Ordering::Relaxed), "old sender should be closed");
 
         // New sender for the next job.
