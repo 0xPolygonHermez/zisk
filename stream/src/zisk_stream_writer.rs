@@ -1051,7 +1051,10 @@ mod tests {
         // error rather than silently advancing past the unsent bytes — AND must
         // not drop the partial chunk, because a message transport can't resume a
         // half-sent message (the peer frames by message, not byte offset).
-        let w = ZiskStreamWriter::from_writer(Box::new(ShortWriter { max_msg: 8 }), "mock://short".into());
+        let w = ZiskStreamWriter::from_writer(
+            Box::new(ShortWriter { max_msg: 8 }),
+            "mock://short".into(),
+        );
         w.inner.state.lock().unwrap().ready = true;
 
         let payload: Vec<u8> = (0..8u8).collect();
