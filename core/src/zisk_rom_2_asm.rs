@@ -6382,7 +6382,9 @@ impl ZiskRom2Asm {
             | ZiskOp::ClmulH
             | ZiskOp::ClmulR
             | ZiskOp::Xperm4
-            | ZiskOp::Xperm8 => {
+            | ZiskOp::Xperm8
+            | ZiskOp::CzeroEqz
+            | ZiskOp::CzeroNez => {
                 panic!("B extension opcode {:?} not supported in assembly emulator", inst.op);
             }
         }

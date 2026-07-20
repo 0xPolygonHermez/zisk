@@ -119,7 +119,7 @@ impl BuildArgs {
 /// of the same name. The base guest target (`riscv64ima-...`) omits these, so a
 /// guest opts in with `--features <ext>`, which both flips its `#[cfg]` gates and
 /// (via `target_features_from_features`) permits rustc to emit those instructions.
-pub const GUEST_TARGET_FEATURES: &[&str] = &["zba", "zbc", "zbkc", "zbkx"];
+pub const GUEST_TARGET_FEATURES: &[&str] = &["zba", "zbc", "zbkc", "zbkx", "zicond"];
 
 /// Translate the requested Cargo features into `-C target-feature=+...` flags,
 /// keeping guest codegen in lockstep with the `#[cfg(feature = ...)]` gates.

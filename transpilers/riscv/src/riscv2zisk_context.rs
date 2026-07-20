@@ -696,6 +696,12 @@ impl Riscv2ZiskContext<'_> {
             #[cfg(all(feature = "zbkx", not(feature = "zbkx_native")))]
             RiscvInstName::Xperm8 => self.xperm8(riscv_instruction),
 
+            // Integer conditional operations (Zicond)
+            #[cfg(feature = "zicond_native")]
+            RiscvInstName::CzeroEqz => self.create_register_op(riscv_instruction, "czero_eqz", 4),
+            #[cfg(feature = "zicond_native")]
+            RiscvInstName::CzeroNez => self.create_register_op(riscv_instruction, "czero_nez", 4),
+
             // Special ZisK instructions
             ////////////////////////////
 

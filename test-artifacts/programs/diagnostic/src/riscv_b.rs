@@ -305,6 +305,22 @@ pub fn diagnostic_riscv_b() {
         xperm8(0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF, 0x0000000000000000);
     }
 
+    #[cfg(feature = "zicond_native")]
+    {
+        czero_eqz(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
+        czero_eqz(0x0000000000000000, 0xFFFFFFFFFFFFFFFF, 0x0000000000000000);
+        czero_eqz(0x0000000000000001, 0x8000000000000000, 0x8000000000000000);
+        czero_eqz(0xFFFFFFFFFFFFFFFF, 0x0000000000000002, 0x0000000000000002);
+    }
+
+    #[cfg(feature = "zicond_native")]
+    {
+        czero_nez(0x0000000000000000, 0x0000000000000000, 0x0000000000000000);
+        czero_nez(0x0000000000000000, 0xFFFFFFFFFFFFFFFF, 0xFFFFFFFFFFFFFFFF);
+        czero_nez(0x0000000000000001, 0x8000000000000000, 0x0000000000000000);
+        czero_nez(0xFFFFFFFFFFFFFFFF, 0x0000000000000002, 0x0000000000000000);
+    }
+
     println!("All RISC-V B extension diagnostics passed!");
 }
 
@@ -1200,6 +1216,46 @@ fn xperm8(input_a: u64, input_b: u64, expected_c: u64) {
     unsafe {
         std::arch::asm!(
             "xperm8 {result}, {input1}, {input2}",
+            result = out(reg) c,
+            input1 = in(reg) a,
+            input2 = in(reg) b,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(c, expected_c);
+}
+
+#[cfg(feature = "zicond_native")]
+fn czero_eqz(input_a: u64, input_b: u64, expected_c: u64) {
+    let a: u64 = input_a;
+    let b: u64 = input_b;
+    let c: u64;
+
+    // Use RISCV inline assembly to ensure ZisK instruction is called
+    unsafe {
+        std::arch::asm!(
+            "czero.eqz {result}, {input1}, {input2}",
+            result = out(reg) c,
+            input1 = in(reg) a,
+            input2 = in(reg) b,
+        );
+    }
+
+    // Check result is as expected
+    assert_eq!(c, expected_c);
+}
+
+#[cfg(feature = "zicond_native")]
+fn czero_nez(input_a: u64, input_b: u64, expected_c: u64) {
+    let a: u64 = input_a;
+    let b: u64 = input_b;
+    let c: u64;
+
+    // Use RISCV inline assembly to ensure ZisK instruction is called
+    unsafe {
+        std::arch::asm!(
+            "czero.nez {result}, {input1}, {input2}",
             result = out(reg) c,
             input1 = in(reg) a,
             input2 = in(reg) b,
