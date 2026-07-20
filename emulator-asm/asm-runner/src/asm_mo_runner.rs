@@ -55,25 +55,28 @@ fn register_mo_shmem_pinned(
 
 #[cfg(gpu)]
 fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPlan> {
-    let (d_buf, bytes): (*mut c_void, usize) = match gpu_buffer {
+    // gpu_id: device to bind; negative = keep current device (self-allocated).
+    let (d_buf, bytes, gpu_id): (*mut c_void, usize, i32) = match gpu_buffer {
         GpuBufferSource::Cpu => {
             tracing::info!("[gpu] no GPU buffer requested; using CPU mem_planner path");
             return None;
         }
-        GpuBufferSource::Borrowed { ptr, size } if ptr == 0 || size == 0 => {
+        GpuBufferSource::Borrowed { ptr, size, .. } if ptr == 0 || size == 0 => {
             tracing::info!(
                 "[gpu] borrowed buffer is empty (--gpu not set at runtime); using CPU mem_planner path"
             );
             return None;
         }
-        GpuBufferSource::Borrowed { ptr, size } => (ptr as *mut c_void, size),
-        GpuBufferSource::SelfAllocated => (std::ptr::null_mut(), 0),
+        GpuBufferSource::Borrowed { ptr, size, gpu_id } => {
+            (ptr as *mut c_void, size, gpu_id as i32)
+        }
+        GpuBufferSource::SelfAllocated => (std::ptr::null_mut(), 0, -1),
     };
 
     let gpu_count_and_plan = GpuCountAndPlan::new();
     // SAFETY: `d_buf` is either null (self-allocated) or a device buffer of
     // `bytes` bytes borrowed from the prover, which outlives this planner.
-    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0) } {
+    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0, gpu_id) } {
         tracing::error!("[gpu] GpuCountAndPlan::setup returned false; falling back to CPU");
         return None;
     }

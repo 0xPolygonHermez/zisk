@@ -125,6 +125,23 @@ static_assert((((uint64_t)(ZISK_RAM_SIZE_BYTES >> 3) - 1) << COMPACT_ADDR_SHIFT)
 // misattributed, at a later synchronizing CUDA call.
 #define CUDA_CHECK_LAUNCH() CUDA_CHECK(cudaGetLastError())
 
+// Binds `dev` for the scope, restores the prior device on exit. Lets our entry
+// points run correct device work when called from a thread bound to another GPU
+// (e.g. proofman's MO runner) without leaking the change back to the caller.
+namespace {
+struct DeviceScope {
+    int prev_ = -1;
+    explicit DeviceScope(int dev) {
+        CUDA_CHECK(cudaGetDevice(&prev_));
+        if (dev >= 0 && dev != prev_) CUDA_CHECK(cudaSetDevice(dev));
+        else prev_ = -1;  // nothing to restore
+    }
+    ~DeviceScope() { if (prev_ >= 0) cudaSetDevice(prev_); }
+    DeviceScope(const DeviceScope&) = delete;
+    DeviceScope& operator=(const DeviceScope&) = delete;
+};
+}  // namespace
+
 __host__ __device__ __forceinline__
 bool is_ram_addr(uint32_t addr) {
     return (addr >= ZISK_RAM_ADDR_BASE) && (addr < ZISK_RAM_ADDR_END);
@@ -1046,7 +1063,8 @@ CountAndPlan::CountAndPlan()
 CountAndPlan::~CountAndPlan() { free_all_(); }
 
 bool CountAndPlan::setup(void* d_buf, size_t bytes,
-                         uint32_t n_workers, uint32_t worker_id) {
+                         uint32_t n_workers, uint32_t worker_id,
+                         int gpu_id) {
     free_all_();
 
     if (n_workers == 0 || worker_id >= n_workers) {
@@ -1055,6 +1073,25 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 n_workers, worker_id);
         return false;
     }
+
+    // gpu_id = proofman's my_gpu_ids[0], the GPU our buffer/kernels must use
+    // (NOT always device 0 — NUMA can reorder). Captured into gpu_device_ for
+    // all worker threads. A negative gpu_id is only valid on the self-allocated
+    // path (d_buf == nullptr), where we allocate on the current device; with a
+    // borrowed buffer it means the caller failed to resolve the device — abort
+    // rather than silently allocate on the wrong GPU.
+    if (gpu_id >= 0) {
+        gpu_device_ = gpu_id;
+    } else if (d_buf == nullptr) {
+        CUDA_CHECK(cudaGetDevice(&gpu_device_));
+    } else {
+        fprintf(stderr,
+                "CountAndPlan::setup FATAL: borrowed buffer %p but gpu_id=%d "
+                "(< 0) — device unresolved\n", d_buf, gpu_id);
+        std::abort();
+    }
+    DeviceScope guard(gpu_device_);
+
     n_workers_  = n_workers;
     worker_id_  = worker_id;
     max_active_ = (MAX_INSTANCES + n_workers - 1) / n_workers;
@@ -1245,9 +1282,6 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     for (int s = 0; s < N_STREAMS; s++)
         CUDA_CHECK(cudaMallocHost(&h_n_emits_[s], sizeof(uint32_t)));
 
-    // Capture the device the caller bound so pool workers can attach to it. - fix this when multi-GPU suport is available
-    CUDA_CHECK(cudaGetDevice(&gpu_device_));
-
     pool_enabled_ = (ZISK_MOPS_POOL != 0);
     if (pool_enabled_) {
         fprintf(stderr, "[mops-pool] enabled (%d stream workers, device %d)\n",
@@ -1286,6 +1320,8 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
 }
 
 bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) {
+    DeviceScope guard(gpu_device_);  // covers non-pool caller; no-op on pool workers
+
     const int s = c % N_STREAMS;
 
     //add potencial emission
@@ -1472,6 +1508,8 @@ void CountAndPlan::pool_stop_() {
 }
 
 bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
+    DeviceScope guard(gpu_device_);
+
     if (pool_enabled_) pool_stop_();
     if (n_chunks_ == 0) {
         fprintf(stderr, "CountAndPlan::run ERROR: no chunks added\n");
@@ -1546,6 +1584,8 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
 }
 
 void CountAndPlan::reset() {
+    DeviceScope guard(gpu_device_);
+
     n_chunks_              = 0;
     num_ops_               = 0;
     d_ops_pool_used_u32_   = 0;
@@ -1573,10 +1613,10 @@ void CountAndPlan::reset() {
 
 bool CountAndPlan::register_input_pinned(void* ptr, size_t bytes) {
     if (!ptr || bytes == 0) return false;
-    cudaSetDevice(gpu_device_);
+    DeviceScope guard(gpu_device_);
     cudaError_t e = cudaHostRegister(ptr, bytes, cudaHostRegisterDefault);
     if (e != cudaSuccess) {
-        cudaGetLastError(); 
+        cudaGetLastError();
         fprintf(stderr,
                 "[mops-pinned] cudaHostRegister(%p, %zu, Default) failed: %s "
                 "— H2D will use the synchronous pageable fallback\n",
@@ -1588,7 +1628,7 @@ bool CountAndPlan::register_input_pinned(void* ptr, size_t bytes) {
 
 void CountAndPlan::unregister_input_pinned(void* ptr) {
     if (!ptr) return;
-    cudaSetDevice(gpu_device_);
+    DeviceScope guard(gpu_device_);
     cudaHostUnregister(ptr);
     cudaGetLastError();  // ignore "not registered"
 }
