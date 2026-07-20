@@ -493,42 +493,50 @@ impl ZiskStreamWriter {
                         "start superseded before peer connected".to_string(),
                     ));
                 }
-                let connected = {
-                    let mut transport = inner.transport.lock().unwrap();
-                    match &mut *transport {
-                        TransportKind::Direct(writer) => writer.is_client_connected(),
-                        _ => {
-                            break Err(StreamError::Transport(
-                                "transport closed before peer connected".to_string(),
-                            ))
-                        }
-                    }
-                };
-                if connected {
+                // Hold `transport` across BOTH the connection check and the
+                // drain. Releasing it between them would let a concurrent
+                // `finish()`/`start()` close or rebind the transport in the gap,
+                // after which this thread could drain into a torn-down or
+                // superseded transport. When no peer has connected yet we release
+                // before sleeping (below), so lifecycle callers still only ever
+                // wait one poll on `transport.lock()`.
+                {
                     let mut transport = inner.transport.lock().unwrap();
                     let TransportKind::Direct(writer) = &mut *transport else {
                         break Err(StreamError::Transport(
-                            "transport closed before drain".to_string(),
+                            "transport closed before peer connected".to_string(),
                         ));
                     };
-                    let mut pending = inner.pending.lock().unwrap();
-                    let chunk_size = aligned_chunk_size(writer.max_message_size());
-                    let mut sent = 0;
-                    let mut drain_err: Option<StreamError> = None;
-                    while sent < pending.len() {
-                        let take = std::cmp::min(chunk_size, pending.len() - sent);
-                        if let Err(e) = writer.write(&pending[sent..sent + take]) {
-                            drain_err = Some(e);
-                            break;
+                    if writer.is_client_connected() {
+                        // Re-check the generation while holding `transport`: a
+                        // concurrent `finish()`/`start()` bumps it before taking
+                        // this lock, so if we were superseded we must skip the
+                        // drain rather than deliver stale bytes or race the
+                        // rebind. The epilogue then discards our result.
+                        if inner.live_state.lock().unwrap().start_generation != my_gen {
+                            break Err(StreamError::Transport(
+                                "start superseded before drain".to_string(),
+                            ));
                         }
-                        sent += take;
+                        let mut pending = inner.pending.lock().unwrap();
+                        let chunk_size = aligned_chunk_size(writer.max_message_size());
+                        let mut sent = 0;
+                        let mut drain_err: Option<StreamError> = None;
+                        while sent < pending.len() {
+                            let take = std::cmp::min(chunk_size, pending.len() - sent);
+                            if let Err(e) = writer.write(&pending[sent..sent + take]) {
+                                drain_err = Some(e);
+                                break;
+                            }
+                            sent += take;
+                        }
+                        if let Some(e) = drain_err {
+                            pending.drain(..sent);
+                            break Err(e);
+                        }
+                        pending.clear();
+                        break Ok(());
                     }
-                    if let Some(e) = drain_err {
-                        pending.drain(..sent);
-                        break Err(e);
-                    }
-                    pending.clear();
-                    break Ok(());
                 }
                 if std::time::Instant::now() >= deadline {
                     break Err(StreamError::Transport(format!(
