@@ -593,9 +593,16 @@ impl Drop for Inner {
 
 /// Drain `pending` into a Direct `writer` in u64-aligned wire chunks.
 ///
-/// Shared by `flush()` and the background connect thread. On a partial-write
-/// error the successfully-sent prefix is dropped from `pending` and the unsent
-/// tail is retained for the next attempt; on success `pending` is cleared.
+/// Shared by `flush()` and the background connect thread. On error the fully
+/// sent whole chunks are dropped from `pending` and the rest is retained for the
+/// next attempt; on success `pending` is cleared.
+///
+/// Each chunk is one atomic message on the wire: `chunk_size` never exceeds the
+/// transport's `max_message_size()`, and every `StreamWrite` impl sends the whole
+/// chunk or errors (returning `n == take`). A partial write (`n < take`) would
+/// violate that message-atomic contract — the peer frames by message, not by
+/// byte offset, so a half-sent message is unrecoverable here (resending the tail
+/// as a new message would corrupt framing).
 fn drain_into(writer: &mut dyn StreamWrite, pending: &mut Vec<u8>) -> Result<()> {
     if pending.is_empty() {
         return Ok(());
@@ -605,7 +612,16 @@ fn drain_into(writer: &mut dyn StreamWrite, pending: &mut Vec<u8>) -> Result<()>
     while sent < pending.len() {
         let take = std::cmp::min(chunk_size, pending.len() - sent);
         match writer.write(&pending[sent..sent + take]) {
-            Ok(_) => sent += take,
+            Ok(n) if n == take => sent += take,
+            Ok(n) => {
+                // Contract violation: a message transport must not partially
+                // send. Drop only the confirmed fully-sent chunks and fail loud.
+                pending.drain(..sent);
+                return Err(StreamError::Transport(format!(
+                    "StreamWrite short write ({n} of {take} bytes): \
+                     transport must send each chunk atomically"
+                )));
+            }
             Err(e) => {
                 pending.drain(..sent);
                 return Err(e);
@@ -1002,6 +1018,50 @@ mod tests {
         let pending = &guard.pending;
         assert_eq!(pending.len(), 40 - 16, "only successfully-sent bytes drained");
         assert_eq!(&pending[..], &payload[16..], "unsent tail preserved exactly");
+    }
+
+    /// A mock writer that reports one fewer byte than requested (a short write).
+    struct ShortWriter {
+        max_msg: usize,
+    }
+    impl StreamWrite for ShortWriter {
+        fn open(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn write(&mut self, item: &[u8]) -> Result<usize> {
+            Ok(item.len().saturating_sub(1))
+        }
+        fn flush(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn close(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn is_active(&self) -> bool {
+            true
+        }
+        fn max_message_size(&self) -> usize {
+            self.max_msg
+        }
+    }
+
+    #[test]
+    fn drain_treats_short_write_as_error() {
+        // A transport that writes fewer bytes than requested must surface an
+        // error rather than silently advancing past the unsent bytes — AND must
+        // not drop the partial chunk, because a message transport can't resume a
+        // half-sent message (the peer frames by message, not byte offset).
+        let w = ZiskStreamWriter::from_writer(Box::new(ShortWriter { max_msg: 8 }), "mock://short".into());
+        w.inner.state.lock().unwrap().ready = true;
+
+        let payload: Vec<u8> = (0..8u8).collect();
+        w.push_raw(&payload);
+
+        assert!(w.flush().is_err(), "short write must surface an error");
+        let guard = w.inner.state.lock().unwrap();
+        // No confirmed full chunk was sent, so nothing is dropped: the whole
+        // chunk stays and the error signals the (unrecoverable) breakage.
+        assert_eq!(&guard.pending[..], &payload[..], "short write drops no bytes");
     }
 
     #[test]
