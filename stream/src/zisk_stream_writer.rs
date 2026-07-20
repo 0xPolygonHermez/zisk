@@ -327,12 +327,8 @@ impl ZiskStreamWriter {
                     err
                 )));
             }
-            guard = self
-                .inner
-                .cond
-                .wait_timeout(guard, std::time::Duration::from_secs(5))
-                .unwrap()
-                .0;
+            guard =
+                self.inner.cond.wait_timeout(guard, std::time::Duration::from_secs(5)).unwrap().0;
         }
 
         let state = &mut *guard;
@@ -517,10 +513,8 @@ impl ZiskStreamWriter {
                         return;
                     }
                     if std::time::Instant::now() >= deadline {
-                        state.last_start_error = Some(format!(
-                            "Timed out waiting for peer to connect to {}",
-                            inner.uri
-                        ));
+                        state.last_start_error =
+                            Some(format!("Timed out waiting for peer to connect to {}", inner.uri));
                         inner.cond.notify_all();
                         return;
                     }
