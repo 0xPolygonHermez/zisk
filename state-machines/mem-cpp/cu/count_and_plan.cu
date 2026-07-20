@@ -4,6 +4,8 @@
 
 #include "count_and_plan.cuh"
 
+#include <cuda.h>
+
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/device/device_run_length_encode.cuh>
 #include <cub/device/device_scan.cuh>
@@ -125,16 +127,25 @@ static_assert((((uint64_t)(ZISK_RAM_SIZE_BYTES >> 3) - 1) << COMPACT_ADDR_SHIFT)
 // misattributed, at a later synchronizing CUDA call.
 #define CUDA_CHECK_LAUNCH() CUDA_CHECK(cudaGetLastError())
 
-// Binds `dev` for the scope, restores the prior device on exit. Lets our entry
-// points run correct device work when called from a thread bound to another GPU
-// (e.g. proofman's MO runner) without leaking the change back to the caller.
+// Binds `dev` (the GPU that owns our buffers) for the scope, restoring the
+// caller's device on exit — but only when the caller had a *real* binding,
+// i.e. its device's primary context is live. A thread that never touched CUDA
+// reports the default device 0 from cudaGetDevice; "restoring" that would
+// create a ~0.5-1 GB context on a GPU owned by another MPI rank (CUDA >= 12
+// cudaSetDevice initializes the device eagerly) — OOM once that rank fills
+// its GPU. cuDevicePrimaryCtxGetState distinguishes the two without creating
+// a context.
 namespace {
 struct DeviceScope {
     int prev_ = -1;
     explicit DeviceScope(int dev) {
-        CUDA_CHECK(cudaGetDevice(&prev_));
-        if (dev >= 0 && dev != prev_) CUDA_CHECK(cudaSetDevice(dev));
-        else prev_ = -1;  // nothing to restore
+        int cur = -1;
+        CUDA_CHECK(cudaGetDevice(&cur));
+        if (dev < 0 || dev == cur) return;
+        unsigned flags; int active = 0;
+        if (cuDevicePrimaryCtxGetState(cur, &flags, &active) == CUDA_SUCCESS && active)
+            prev_ = cur;
+        CUDA_CHECK(cudaSetDevice(dev));
     }
     ~DeviceScope() { if (prev_ >= 0) CUDA_CHECK(cudaSetDevice(prev_)); }
     DeviceScope(const DeviceScope&) = delete;
@@ -1103,6 +1114,9 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
         std::abort();
     }
     DeviceScope guard(gpu_device_);
+    // Eagerly create the primary context on our GPU so no later implicit
+    // initialization can land anywhere else.
+    CUDA_CHECK(cudaFree(0));
 
     n_workers_  = n_workers;
     worker_id_  = worker_id;
@@ -1488,7 +1502,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
 // ─── add_chunk worker pool (ZISK_MOPS_POOL) ──────────────────────────
 
 void CountAndPlan::pool_thread_loop_(int s) {
-    cudaSetDevice(gpu_device_);
+    CUDA_CHECK(cudaSetDevice(gpu_device_));
     for (;;) {
         ChunkJob job;
         {
