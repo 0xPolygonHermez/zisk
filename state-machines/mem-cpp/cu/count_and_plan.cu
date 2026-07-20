@@ -1329,12 +1329,11 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
         pool_cv_[s].notify_one();
         return true;
     }
+    bind_device(gpu_device_);  // pool workers bind once at thread start instead
     return add_chunk_core_(memops, n, c);
 }
 
 bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) {
-    bind_device(gpu_device_);  // covers non-pool caller; no-op on pool workers
-
     const int s = c % N_STREAMS;
 
     //add potencial emission
