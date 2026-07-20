@@ -136,7 +136,7 @@ struct DeviceScope {
         if (dev >= 0 && dev != prev_) CUDA_CHECK(cudaSetDevice(dev));
         else prev_ = -1;  // nothing to restore
     }
-    ~DeviceScope() { if (prev_ >= 0) cudaSetDevice(prev_); }
+    ~DeviceScope() { if (prev_ >= 0) CUDA_CHECK(cudaSetDevice(prev_)); }
     DeviceScope(const DeviceScope&) = delete;
     DeviceScope& operator=(const DeviceScope&) = delete;
 };
