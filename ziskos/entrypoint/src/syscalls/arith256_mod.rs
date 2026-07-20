@@ -44,9 +44,5 @@ pub extern "C" fn syscall_arith256_mod(
     #[cfg(not(zisk_guest))]
     {
         precompiles_helpers::arith256_mod(params.a, params.b, params.c, params.module, params.d);
-        #[cfg(feature = "hints")]
-        {
-            hints.extend_from_slice(params.d);
-        }
     }
 }

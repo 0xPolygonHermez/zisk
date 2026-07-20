@@ -278,7 +278,8 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_arith256mod(&self) -> bool {
-        self.precompile_results()
+        //self.precompile_results()
+        false
     }
     pub fn precompile_results_secp256k1add(&self) -> bool {
         self.precompile_results()
