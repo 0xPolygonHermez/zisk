@@ -7124,6 +7124,7 @@ dependencies = [
  "alloy-sol-types",
  "bincode",
  "clap",
+ "crossbeam-queue",
  "dirs",
  "fields",
  "num-bigint",

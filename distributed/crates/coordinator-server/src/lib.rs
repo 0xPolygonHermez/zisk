@@ -13,13 +13,25 @@
 //!   suitable for testing.
 //! - [`backend::coordinator::CoordinatorBackend`] — runs the coordinator in-process.
 
+#![warn(missing_docs)]
+#![warn(rustdoc::all)]
+#![deny(rustdoc::missing_crate_level_docs)]
+
+/// Backend abstraction and its mock / in-process coordinator implementations.
 pub mod backend;
+/// Server configuration.
 pub mod config;
+/// API error and result types.
 pub mod errors;
+/// gRPC adapter wiring the service to a [`backend::BackendService`].
 pub mod grpc;
+/// Request handler translating API calls into backend operations.
 pub mod handler;
+/// Prometheus metrics.
 pub mod metrics;
+/// Server bootstrap and lifecycle.
 pub mod server;
+/// Graceful-shutdown coordination.
 pub mod shutdown;
 
 /// Proto-generated types for `zisk.coordinator.v1`.

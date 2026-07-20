@@ -81,6 +81,7 @@ impl InputSender {
         Self { job_id, tx: Some(tx), task: Some(task) }
     }
 
+    /// The job this sender streams input to.
     pub fn job_id(&self) -> Uuid {
         self.job_id
     }
@@ -139,7 +140,7 @@ impl Drop for InputSender {
 /// Adapter that lets [`InputSender`] plug into [`zisk_common::io::ZiskStreamWriter`]'s
 /// `Push` transport variant.
 ///
-/// `ZiskStreamWriter` calls the [`BytesPushSender`] trait synchronously; this
+/// `ZiskStreamWriter` calls the [`BytesPushSender`](zisk_common::io::BytesPushSender) trait synchronously; this
 /// adapter bridges to `InputSender`'s async API by capturing a
 /// [`tokio::runtime::Handle`] at construction and using `block_on`
 /// (with `block_in_place` when the caller is already on a runtime thread).
