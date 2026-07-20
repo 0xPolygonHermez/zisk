@@ -210,9 +210,9 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
+            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_first_gpu_buffer();
             let gpu_id = pctx.first_gpu_id();
-            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
+            GpuBufferSource:: { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
 
         let shared = Arc::new(AsmSharedResources::new(
@@ -232,7 +232,7 @@ impl AsmProver {
         self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
         self.program_cache.write().unwrap().insert(
             SetupKey::new(&*elf.program_id.hash_id, with_hints, false),
-            ProgramEntry { zisk_rom, resources: Some(resources), program_vk: program_vk.clone() },
+            ProgramEntry { zisk_romBorrowed, resources: Some(resources), program_vk: program_vk.clone() },
         );
 
         Ok(())
