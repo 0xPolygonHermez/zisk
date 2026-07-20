@@ -45,9 +45,11 @@ use crate::UnixSocketStreamWriter;
 /// hint pipeline's existing flush threshold.
 const PUSH_DEFAULT_CHUNK_SIZE: usize = 64 * 1024;
 
-/// Background-connect poll interval. Short enough that `finish()` and
-/// `flush()` only ever wait one tick on the `state` lock between polls (the bg
-/// thread releases the lock while it sleeps for this interval).
+/// Background-connect poll interval. While *waiting for the peer to connect*
+/// the bg thread holds the `state` lock only for a brief non-blocking poll and
+/// releases it while it sleeps for this interval, so lifecycle callers contend
+/// for at most one tick during that phase. (Once the peer connects, the drain
+/// holds `state` across its `write()` calls — see the note in `start()`.)
 const CONNECT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(5);
 
 // ── Push sender trait ──────────────────────────────────────────────────────
@@ -472,14 +474,15 @@ impl ZiskStreamWriter {
         };
 
         // Background thread: poll for the peer to connect, then drain the
-        // pre-buffered bytes and mark the stream ready. It takes `state` only
-        // briefly per poll (releasing it while it sleeps between polls, so
-        // lifecycle callers never wait more than one poll on the lock), and on
-        // connect it does the generation check, the drain, and the ready flip
-        // all in a SINGLE lock hold — no concurrent `start()`/`finish()` can
-        // slip in between. If a newer `start()`/`finish()` superseded us, the
-        // generation no longer matches and we simply exit (that caller owns the
-        // state and notifies waiters itself).
+        // pre-buffered bytes and mark the stream ready. While waiting for the
+        // connection it takes `state` only briefly per poll and releases it
+        // while it sleeps between polls, so during that phase lifecycle callers
+        // contend for at most one tick. On connect it does the generation check,
+        // the drain, and the ready flip all in a SINGLE lock hold — no
+        // concurrent `start()`/`finish()` can slip in between. If a newer
+        // `start()`/`finish()` superseded us, the generation no longer matches
+        // and we simply exit (that caller owns the state and notifies waiters
+        // itself).
         //
         // NOTE: the drain holds `state` for its duration; for pending payloads
         // larger than the transport chunk size this spans multiple `write()`
