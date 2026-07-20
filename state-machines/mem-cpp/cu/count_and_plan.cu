@@ -1060,12 +1060,24 @@ CountAndPlan::CountAndPlan()
       metas_(MAX_INSTANCES)
 {}
 
-CountAndPlan::~CountAndPlan() { free_all_(); }
+// Free on the device the resources were created on: the calling thread may be
+// bound to another GPU. Skip the bind when nothing was allocated (CUDA may be
+// absent, and DeviceScope's cudaGetDevice would be fatal there).
+void CountAndPlan::free_all_bound_() {
+    if (arena_ || streams_[0] || d2h_stream_ || meta_stream_) {
+        DeviceScope guard(gpu_device_);
+        free_all_();
+    } else {
+        free_all_();
+    }
+}
+
+CountAndPlan::~CountAndPlan() { free_all_bound_(); }
 
 bool CountAndPlan::setup(void* d_buf, size_t bytes,
                          uint32_t n_workers, uint32_t worker_id,
                          int gpu_id) {
-    free_all_();
+    free_all_bound_();
 
     if (n_workers == 0 || worker_id >= n_workers) {
         fprintf(stderr,

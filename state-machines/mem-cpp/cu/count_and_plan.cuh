@@ -253,6 +253,7 @@ private:
     // ─── Internal helpers
 
     void   free_all_();
+    void   free_all_bound_();
     void   free_pinned_();
     void   query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
                             size_t& scan_runs_b,   size_t& sort_b,
