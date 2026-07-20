@@ -856,8 +856,14 @@ impl Coordinator {
                     s.pending.remove(&worker_id);
                 });
                 if let Some(gen) = self.workers_pool.connection_generation(&worker_id).await {
-                    let _ =
-                        self.workers_pool.disconnect_worker_if_generation(&worker_id, gen).await;
+                    if let Err(de) =
+                        self.workers_pool.disconnect_worker_if_generation(&worker_id, gen).await
+                    {
+                        warn!(
+                            "[Setup] Failed to disconnect {} after failed back-fill send: {}",
+                            worker_id, de
+                        );
+                    }
                 }
                 continue;
             }
