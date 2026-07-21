@@ -64,6 +64,7 @@ extern "C" {
         bytes: usize,
         n_workers: u32,
         worker_id: u32,
+        gpu_id: i32,
     ) -> bool;
     pub fn count_and_plan_add_chunk(
         h: *mut CountAndPlanHandle,

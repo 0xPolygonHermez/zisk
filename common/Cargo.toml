@@ -29,6 +29,7 @@ alloy-sol-types = { version = "1.5.7" }
 
 bincode = { workspace = true }
 paste = { workspace = true }
+crossbeam-queue = "0.3"
 
 [features]
 default = []
