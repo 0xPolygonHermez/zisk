@@ -125,21 +125,19 @@ static_assert((((uint64_t)(ZISK_RAM_SIZE_BYTES >> 3) - 1) << COMPACT_ADDR_SHIFT)
 // misattributed, at a later synchronizing CUDA call.
 #define CUDA_CHECK_LAUNCH() CUDA_CHECK(cudaGetLastError())
 
-// Binds `dev` for the scope, restores the prior device on exit. Lets our entry
-// points run correct device work when called from a thread bound to another GPU
-// (e.g. proofman's MO runner) without leaking the change back to the caller.
+// Binds `dev` (the GPU that owns our buffers) for the calling thread and
+// leaves it bound; negative = keep the current device. Deliberately no
+// save/restore of the caller's device: cudaGetDevice on a thread that never
+// touched CUDA reports the default device 0, and re-binding that on exit
+// would create a ~0.5-1 GB context on a GPU owned by another MPI rank
+// (CUDA >= 12 cudaSetDevice initializes the device eagerly) — OOM once that
+// rank fills its GPU. Contract (same as proofman): every entry point may
+// leave the thread on gpu_device_; callers running their own CUDA work bind
+// their device explicitly, never relying on inherited thread state.
 namespace {
-struct DeviceScope {
-    int prev_ = -1;
-    explicit DeviceScope(int dev) {
-        CUDA_CHECK(cudaGetDevice(&prev_));
-        if (dev >= 0 && dev != prev_) CUDA_CHECK(cudaSetDevice(dev));
-        else prev_ = -1;  // nothing to restore
-    }
-    ~DeviceScope() { if (prev_ >= 0) CUDA_CHECK(cudaSetDevice(prev_)); }
-    DeviceScope(const DeviceScope&) = delete;
-    DeviceScope& operator=(const DeviceScope&) = delete;
-};
+inline void bind_device(int dev) {
+    if (dev >= 0) CUDA_CHECK(cudaSetDevice(dev));
+}
 }  // namespace
 
 __host__ __device__ __forceinline__
@@ -1062,10 +1060,10 @@ CountAndPlan::CountAndPlan()
 
 // Free on the device the resources were created on: the calling thread may be
 // bound to another GPU. Skip the bind when nothing was allocated (CUDA may be
-// absent, and DeviceScope's cudaGetDevice would be fatal there).
+// absent, and bind_device's cudaSetDevice would be fatal there).
 void CountAndPlan::free_all_bound_() {
     if (arena_ || streams_[0] || d2h_stream_ || meta_stream_) {
-        DeviceScope guard(gpu_device_);
+        bind_device(gpu_device_);
         free_all_();
     } else {
         free_all_();
@@ -1102,7 +1100,10 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
                 "(< 0) — device unresolved\n", d_buf, gpu_id);
         std::abort();
     }
-    DeviceScope guard(gpu_device_);
+    bind_device(gpu_device_);
+    // Eagerly create the primary context on our GPU so no later implicit
+    // initialization can land anywhere else.
+    CUDA_CHECK(cudaFree(0));
 
     n_workers_  = n_workers;
     worker_id_  = worker_id;
@@ -1328,12 +1329,11 @@ bool CountAndPlan::add_chunk(const MemOp* memops, uint32_t n) {
         pool_cv_[s].notify_one();
         return true;
     }
+    bind_device(gpu_device_);  // pool workers bind once at thread start instead
     return add_chunk_core_(memops, n, c);
 }
 
 bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) {
-    DeviceScope guard(gpu_device_);  // covers non-pool caller; no-op on pool workers
-
     const int s = c % N_STREAMS;
 
     //add potencial emission
@@ -1488,7 +1488,7 @@ bool CountAndPlan::add_chunk_core_(const MemOp* memops, uint32_t n, uint32_t c) 
 // ─── add_chunk worker pool (ZISK_MOPS_POOL) ──────────────────────────
 
 void CountAndPlan::pool_thread_loop_(int s) {
-    cudaSetDevice(gpu_device_);
+    CUDA_CHECK(cudaSetDevice(gpu_device_));
     for (;;) {
         ChunkJob job;
         {
@@ -1520,7 +1520,7 @@ void CountAndPlan::pool_stop_() {
 }
 
 bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
-    DeviceScope guard(gpu_device_);
+    bind_device(gpu_device_);
 
     if (pool_enabled_) pool_stop_();
     if (n_chunks_ == 0) {
@@ -1596,7 +1596,7 @@ bool CountAndPlan::run(InstanceMeta** metas_out, uint32_t& n_metas) {
 }
 
 void CountAndPlan::reset() {
-    DeviceScope guard(gpu_device_);
+    bind_device(gpu_device_);
 
     n_chunks_              = 0;
     num_ops_               = 0;
@@ -1625,7 +1625,7 @@ void CountAndPlan::reset() {
 
 bool CountAndPlan::register_input_pinned(void* ptr, size_t bytes) {
     if (!ptr || bytes == 0) return false;
-    DeviceScope guard(gpu_device_);
+    bind_device(gpu_device_);
     cudaError_t e = cudaHostRegister(ptr, bytes, cudaHostRegisterDefault);
     if (e != cudaSuccess) {
         cudaGetLastError();
@@ -1640,7 +1640,7 @@ bool CountAndPlan::register_input_pinned(void* ptr, size_t bytes) {
 
 void CountAndPlan::unregister_input_pinned(void* ptr) {
     if (!ptr) return;
-    DeviceScope guard(gpu_device_);
+    bind_device(gpu_device_);
     cudaHostUnregister(ptr);
     cudaGetLastError();  // ignore "not registered"
 }
