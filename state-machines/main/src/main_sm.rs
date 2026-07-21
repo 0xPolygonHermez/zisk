@@ -206,6 +206,7 @@ impl<F: PrimeField64> MainInstance<F> {
             &mut large_range_checks,
         );
         self.update_std_range_checks(segment_id, step_range_check, &large_range_checks)?;
+
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
         Ok(AirInstance::new_from_trace(from_trace))

@@ -239,11 +239,47 @@ impl ProveCmd {
             anyhow::bail!(msg);
         }
 
-        let (result, executor_time) = if emulator {
-            self.run_emu(stdin, prover_options)?
+        let proof_result = if emulator {
+            self.run_emu(stdin, prover_options)
         } else {
-            self.run_asm(stdin, hints_stream, prover_options)?
+            self.run_asm(stdin, hints_stream, prover_options)
         };
+
+        // WC-dump lifecycle (ZISK_WC_DUMP=<dir>): the witness generator staged this run's
+        // per-instance packed witnesses under `staging_<pid>/`. Promote the whole dir by
+        // the verify outcome, keeping disk bounded: the FIRST verifying run becomes the
+        // single `reference/`; later verifying runs are discarded; a run that fails to
+        // verify is kept as `bad_<pid>/` for byte-comparison against the reference.
+        if let Ok(dir) = std::env::var("ZISK_WC_DUMP") {
+            let pid = std::process::id();
+            let staging = std::path::Path::new(&dir).join(format!("staging_{pid}"));
+            if staging.is_dir() {
+                let verified = proof_result.is_ok();
+                if verified {
+                    let reference = std::path::Path::new(&dir).join("reference");
+                    if reference.exists() {
+                        let _ = std::fs::remove_dir_all(&staging);
+                        info!("[WC-DUMP] verified; reference already exists, discarded this run's WC");
+                    } else {
+                        match std::fs::rename(&staging, &reference) {
+                            Ok(()) => info!("[WC-DUMP] verified; stored reference WC at {}", reference.display()),
+                            Err(e) => warn!("[WC-DUMP] failed to store reference: {e}"),
+                        }
+                    }
+                } else {
+                    let bad = std::path::Path::new(&dir).join(format!("bad_{pid}"));
+                    match std::fs::rename(&staging, &bad) {
+                        Ok(()) => warn!(
+                            "[WC-DUMP] proof did NOT verify; kept this run's WC at {} (compare vs reference/)",
+                            bad.display()
+                        ),
+                        Err(e) => warn!("[WC-DUMP] failed to keep bad WC: {e}"),
+                    }
+                }
+            }
+        }
+
+        let (result, executor_time) = proof_result?;
 
         if !result.get_proof().is_empty() {
             info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
