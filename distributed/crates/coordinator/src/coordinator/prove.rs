@@ -103,20 +103,28 @@ impl Coordinator {
         let task = PendingAggTask { proofs, all_done, proof_type: job.proof_type };
 
         if job.agg_task_inflight.is_none() {
-            // Nothing in-flight — dispatch immediately. Only mark in-flight
-            // AFTER the send succeeds; otherwise a failed send would leave the
-            // slot stuck `Some` forever and subsequent completions would queue
-            // tasks that never get dispatched.
+            // Claim the in-flight slot WHILE STILL HOLDING the job write lock,
+            // then send. Claiming after the send (previous code) opened a TOCTOU:
+            // two workers' Prove completions racing through this handler both saw
+            // the slot empty and both dispatched an Aggregate to the recurser —
+            // the duplicate then ran a second concurrent proofman task over the
+            // same GPU streams, corrupting in-flight proofs. On send failure we
+            // clear the slot before propagating, so it cannot get stuck `Some`.
+            job.agg_task_inflight = Some(task.clone());
             drop(job);
-            self.send_recurser_task(
-                &job_id,
-                &agg_worker_id,
-                task.proofs.clone(),
-                task.all_done,
-                task.proof_type,
-            )
-            .await?;
-            job_entry.write().await.agg_task_inflight = Some(task);
+            if let Err(e) = self
+                .send_recurser_task(
+                    &job_id,
+                    &agg_worker_id,
+                    task.proofs.clone(),
+                    task.all_done,
+                    task.proof_type,
+                )
+                .await
+            {
+                job_entry.write().await.agg_task_inflight = None;
+                return Err(e);
+            }
         } else {
             // Task in-flight — queue this one; it will be sent after the ack.
             job.agg_task_queue.push_back(task);

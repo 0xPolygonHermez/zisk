@@ -17,7 +17,7 @@ recurser-hash-common = { path = "../common" }
 zisk-sdk = { workspace = true }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # Timing macros (expand to `tracing::info!`), matching the prover's log style.
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
 tracing = "0.1"
 
 [build-dependencies]

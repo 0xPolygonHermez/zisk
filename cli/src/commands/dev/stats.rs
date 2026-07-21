@@ -150,13 +150,7 @@ impl StatsCmd {
         );
 
         if let Some(stats) = &stats {
-            Self::print_stats(
-                &stats
-                    .get_inner()
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))?
-                    .witness_stats,
-            );
+            Self::print_stats(&stats.witness_stats());
             stats.print_stats();
         }
 

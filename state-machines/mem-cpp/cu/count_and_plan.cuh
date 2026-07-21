@@ -77,8 +77,11 @@ public:
     // n_workers ≥ 1 splits the MAX_INSTANCES space into n_workers slices via
     // (gid % n_workers); worker_id ∈ [0, n_workers) selects this instance's slice.
     // Each CountAndPlan object computes metas for its slice only.
+    // gpu_id: device the buffer lives on (proofman's my_gpu_ids[0]); negative
+    // keeps the current device (self-allocated path).
     bool setup(void* d_buf, size_t bytes,
-               uint32_t n_workers, uint32_t worker_id);
+               uint32_t n_workers, uint32_t worker_id,
+               int gpu_id);
 
     // Submit one chunk's memops.
     bool add_chunk(const MemOp* memops, uint32_t n);
@@ -250,6 +253,7 @@ private:
     // ─── Internal helpers
 
     void   free_all_();
+    void   free_all_bound_();
     void   free_pinned_();
     void   query_cub_sizes_(size_t& scan_counts_b, size_t& scan_emit_b,
                             size_t& scan_runs_b,   size_t& sort_b,
