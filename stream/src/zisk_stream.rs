@@ -222,14 +222,16 @@ impl<P: StreamProcessor> Drop for ZiskStream<P> {
     }
 }
 
-/// Marker for types with no invalid bit patterns, so an arbitrary byte buffer can be
-/// reinterpreted into them without validation. Mirror of `zisk_common::AnyBitPattern`
-/// (this crate cannot depend on `zisk-common`).
+/// Marker for types that are sound to reinterpret raw bytes as, in either direction: an
+/// arbitrary byte buffer can be read as them, and their own bytes can be read raw. Mirror
+/// of `zisk_common::AnyBitPattern` (this crate cannot depend on `zisk-common`).
 ///
 /// # Safety
 ///
-/// Implementors must accept every bit pattern as a valid value (integer types qualify;
-/// `bool`, `char`, `NonZero*`, niche enums, and references do not).
+/// Implementors must both accept every bit pattern as a valid value (the destination
+/// requirement) and contain no padding or otherwise uninitialized bytes (the source
+/// requirement). Integer types qualify; `bool`, `char`, `NonZero*`, niche enums,
+/// references, and structs with padding do not.
 unsafe trait AnyBitPattern {}
 
 // SAFETY: `u8` has no invalid bit patterns.
@@ -250,13 +252,14 @@ unsafe impl AnyBitPattern for u64 {}
 /// result is sound to drop on any global allocator. A trailing partial `U` is
 /// zero-padded.
 ///
-/// The `U: AnyBitPattern` bound guarantees the reinterpreted bytes form valid `U`
-/// values, so this function is safe.
+/// The `T: AnyBitPattern` bound guarantees the source bytes are fully initialized (no
+/// padding to read as uninitialized memory) and the `U: AnyBitPattern` bound guarantees
+/// the reinterpreted bytes form valid `U` values, so this function is safe.
 ///
 /// # Errors
 ///
 /// Returns [`StreamError::Invalid`] if `U` is a zero-sized type.
-fn reinterpret_vec<T: Copy, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
+fn reinterpret_vec<T: Copy + AnyBitPattern, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
 

@@ -15,16 +15,22 @@ pub(crate) unsafe trait Zeroable {}
 // has no `Drop` glue.
 unsafe impl Zeroable for std::sync::atomic::AtomicU64 {}
 
-/// Marker for types with no invalid bit patterns, so an arbitrary byte buffer can be
-/// reinterpreted into them without validation.
+/// Marker for types that are sound to reinterpret raw bytes as, in either direction:
+/// an arbitrary byte buffer can be read as them, and their own bytes can be read raw.
 ///
 /// A private mirror of this trait lives in `zisk-stream` (`zisk_stream.rs`), which cannot
 /// depend on `zisk-common`; keep the two in sync.
 ///
 /// # Safety
 ///
-/// Implementors must accept *every* bit pattern as a valid value. Integer types qualify;
-/// `bool`, `char`, `NonZero*`, niche enums, and references do not.
+/// Implementors must both:
+/// - accept *every* bit pattern as a valid value (so an arbitrary byte buffer can be
+///   reinterpreted into them — the destination requirement), and
+/// - contain no padding or otherwise uninitialized bytes (so reading their own bytes is
+///   never a read of uninitialized memory — the source requirement).
+///
+/// Integer types qualify; `bool`, `char`, `NonZero*`, niche enums, references, and structs
+/// with padding do not.
 pub(crate) unsafe trait AnyBitPattern {}
 
 // SAFETY: `u8` has no invalid bit patterns.
@@ -72,23 +78,25 @@ pub fn create_atomic_vec<DT: Zeroable>(size: usize) -> Vec<DT> {
 /// zero-padded. Callers streaming data in chunks must therefore cut on `size_of::<U>()`
 /// boundaries, or the padding will shift every subsequent value.
 ///
-/// The `U: AnyBitPattern` bound guarantees the reinterpreted bytes form valid `U`
-/// values, so this function is safe.
+/// The `T: AnyBitPattern` bound guarantees the source bytes are fully initialized (no
+/// padding to read as uninitialized memory) and the `U: AnyBitPattern` bound guarantees
+/// the reinterpreted bytes form valid `U` values, so this function is safe.
 ///
 /// # Arguments
 /// * `v` - The source vector to reinterpret.
 ///
 /// # Type Parameters
-/// * `T` - Source element type; must be `Copy` (destructor-free and bitwise-copyable),
-///   so drop behavior is identical on the zero-copy and copy paths.
-/// * `U` - Destination element type
+/// * `T` - Source element type; must be `Copy` (destructor-free and bitwise-copyable, so
+///   drop behavior is identical on the zero-copy and copy paths) and `AnyBitPattern` (no
+///   padding/uninitialized bytes, so reading its raw bytes is sound).
+/// * `U` - Destination element type; must be `AnyBitPattern`.
 ///
 /// # Errors
 ///
 /// - [`CommonError::Invalid`] if `U` is a zero-sized type.
 // `AnyBitPattern` is a crate-internal soundness marker, deliberately not part of the public API.
 #[allow(private_bounds)]
-pub fn reinterpret_vec<T: Copy, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
+pub fn reinterpret_vec<T: Copy + AnyBitPattern, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
 
