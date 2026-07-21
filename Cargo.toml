@@ -140,17 +140,17 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
+stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/race-dump" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
