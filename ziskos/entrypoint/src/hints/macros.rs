@@ -183,7 +183,42 @@ macro_rules! register_hint_meta {
     };
 }
 
+/// Disabled hint: same `hint_<name>` symbol as `define_hint!`, empty body.
+/// Unused fields kept intentionally so enable/disable is a one-word macro swap.
+macro_rules! define_hint_disabled {
+    // Fixed-length params, mirrors `define_hint!`.
+    (
+        $name:ident => {
+            hint_id: $hint_id:expr,
+            params: ( $( $arg:ident : $len:literal ),+ $(,)? ),
+            is_result: $is_result:expr,
+        }
+    ) => {
+        paste::paste! {
+            #[no_mangle]
+            pub unsafe extern "C" fn [<hint_ $name>]($( [<_ $arg>]: *const u8 ),+) {}
+        }
+    };
+    // Single ptr+len param, mirrors `define_hint_ptr!` (`param: $arg`).
+    (
+        $name:ident => {
+            hint_id: $hint_id:expr,
+            param: $arg:ident,
+            is_result: $is_result:expr,
+        }
+    ) => {
+        paste::paste! {
+            #[no_mangle]
+            pub unsafe extern "C" fn [<hint_ $name>](
+                [<_ $arg _ptr>]: *const u8,
+                [<_ $arg _len>]: usize,
+            ) {}
+        }
+    };
+}
+
 pub(crate) use define_hint;
+pub(crate) use define_hint_disabled;
 pub(crate) use define_hint_pairs;
 pub(crate) use define_hint_ptr;
 pub(crate) use register_hint_meta;
