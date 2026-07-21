@@ -24,9 +24,9 @@ pub mod config;
 /// API error and result types.
 pub mod errors;
 /// gRPC adapter wiring the service to a [`backend::BackendService`].
-pub mod grpc;
+mod grpc;
 /// Request handler translating API calls into backend operations.
-pub mod handler;
+mod handler;
 /// Prometheus metrics.
 pub mod metrics;
 /// Server bootstrap and lifecycle.
@@ -34,8 +34,9 @@ pub mod server;
 /// Graceful-shutdown coordination.
 pub mod shutdown;
 
-/// Proto-generated types for `zisk.coordinator.v1`.
-pub use zisk_coordinator_api::grpc::proto;
+/// Proto-generated types for `zisk.coordinator.v1` (crate-internal; external
+/// consumers should depend on `zisk_coordinator_api::grpc::proto` directly).
+pub(crate) use zisk_coordinator_api::grpc::proto;
 
 pub use config::Config as CoordinatorServerConfig;
 pub use errors::{ApiError, ApiResult};

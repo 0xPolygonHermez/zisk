@@ -25,7 +25,7 @@ pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     };
 
     let output_path = fs::canonicalize(&output_path)
-        .unwrap_or_else(|_| panic!("Failed to get absolute path for {output_path:?}"));
+        .with_context(|| format!("Failed to get absolute path for {output_path:?}"))?;
 
     Ok(output_path)
 }
@@ -143,7 +143,7 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
 /// # Panics
 /// Panics if the directory cannot be created for a reason other than it
 /// already existing.
-pub fn ensure_dir_exists(path: &PathBuf) {
+pub fn ensure_dir_exists(path: &Path) {
     if let Err(e) = std::fs::create_dir_all(path) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
             panic!("Failed to create cache directory {path:?}: {e}");
