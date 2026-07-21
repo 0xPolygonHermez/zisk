@@ -61,7 +61,7 @@ const CONNECT_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_mil
 ///
 /// All methods are blocking from the caller's point of view. Implementations
 /// own any async runtime they need (typically by capturing a
-/// [`tokio::runtime::Handle`] at construction).
+/// `tokio::runtime::Handle` at construction).
 ///
 /// # Atomicity
 ///

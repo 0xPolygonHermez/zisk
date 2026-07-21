@@ -12,7 +12,9 @@ pub use ziskemu::{EmuOptions, ProfilingMode};
 /// Program identifier containing name and hash
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProgramId {
+    /// Human-readable program name (used in diagnostics).
     pub name: Cow<'static, str>,
+    /// Blake3 hash of the ELF, hex-encoded. Content-addresses the program.
     pub hash_id: Cow<'static, str>,
 }
 
@@ -22,10 +24,12 @@ impl ProgramId {
         Self { name: Cow::Borrowed(name), hash_id: Cow::Borrowed(hash_id) }
     }
 
+    /// The ELF hash (hex-encoded).
     pub fn get_hash(&self) -> &str {
         &self.hash_id
     }
 
+    /// The program name.
     pub fn get_name(&self) -> &str {
         &self.name
     }
@@ -40,6 +44,7 @@ impl std::fmt::Display for ProgramId {
 /// ELF binary data
 #[derive(Debug, Clone)]
 pub struct Elf {
+    /// The raw ELF bytes, either embedded (`'static`) or owned.
     pub data: Cow<'static, [u8]>,
 }
 
@@ -58,7 +63,9 @@ impl Elf {
 /// Guest program that can be executed and proven with Zisk
 #[derive(Clone, Debug)]
 pub struct GuestProgram {
+    /// Name and content hash identifying this program.
     pub program_id: ProgramId,
+    /// The program's ELF binary.
     pub elf: Elf,
 }
 

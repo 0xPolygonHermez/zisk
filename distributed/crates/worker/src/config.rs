@@ -21,6 +21,7 @@ pub struct WorkerServiceConfig {
     pub logging: LoggingConfig,
 }
 
+/// Worker identity and capacity settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkerConfig {
     /// Worker ID (optional, will auto-generate if not provided)
@@ -36,12 +37,14 @@ pub struct WorkerConfig {
     pub inputs_folder: PathBuf,
 }
 
+/// Which coordinator the worker connects to.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CoordinatorConfig {
     /// Coordinator URL to connect to
     pub url: String,
 }
 
+/// Connection resilience settings (reconnect interval, heartbeat timeout).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
     /// Reconnection interval in seconds
@@ -58,10 +61,12 @@ impl ConnectionConfig {
     const DEFAULT_HEARTBEAT_TIMEOUT: u64 = 30;
 
     // These are needed for serde's `default` attribute
+    /// Default reconnection interval, in seconds (serde default).
     pub const fn default_reconnect_interval() -> u64 {
         Self::DEFAULT_RECONNECT_INTERVAL
     }
 
+    /// Default heartbeat timeout, in seconds (serde default).
     pub const fn default_heartbeat_timeout() -> u64 {
         Self::DEFAULT_HEARTBEAT_TIMEOUT
     }
@@ -77,6 +82,9 @@ impl Default for ConnectionConfig {
 }
 
 impl WorkerServiceConfig {
+    /// Load the worker configuration from built-in defaults, an optional TOML
+    /// file (or `ZISK_WORKER_CONFIG_PATH`), and the given argument overrides.
+    /// A random worker id is generated when none is provided.
     pub async fn load(
         config: Option<String>,
         coordinator_url: Option<String>,
@@ -126,20 +134,36 @@ impl WorkerServiceConfig {
 /// Configuration for initializing a Prover Service
 #[derive(Debug, Default, Clone)]
 pub struct ProverServiceConfigDto {
+    /// Path to prebuilt ASM binaries; `None` uses the default cache.
     pub asm: Option<PathBuf>,
+    /// Use the pure-Rust emulator backend instead of ASM.
     pub emulator: bool,
+    /// Path to the proving key; `None` uses the default.
     pub proving_key: Option<PathBuf>,
+    /// Path to the SNARK proving key; `None` uses the default.
     pub proving_key_snark: Option<PathBuf>,
+    /// Unlock mapped memory for the ASM shared-memory regions.
     pub unlock_mapped_memory: bool,
+    /// Write the ASM emulator output to a file instead of shared memory.
     pub asm_out_file: bool,
+    /// Verbosity level (`0` = quiet).
     pub verbose: u8,
+    /// Constraint-debug selector (see the prover backend's debug info).
     pub debug: Option<Option<String>>,
+    /// Cap on concurrent proving streams.
     pub max_streams: Option<usize>,
+    /// Cap on concurrent recursive (aggregation) streams.
     pub max_recursive_streams: Option<usize>,
+    /// Size of the witness-generation thread pool.
     pub number_threads_witness: Option<usize>,
+    /// Cap on witnesses kept in memory at once.
     pub max_witness_stored: Option<usize>,
+    /// Prefer lower memory usage over speed.
     pub minimal_memory: bool,
+    /// Use the GPU proving path.
     pub gpu: bool,
+    /// Enable PLONK/SNARK proof generation.
     pub plonk: bool,
+    /// Preload the PLONK/SNARK proving keys.
     pub preload_plonk: bool,
 }
