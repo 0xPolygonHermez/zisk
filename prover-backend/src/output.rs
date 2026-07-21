@@ -45,16 +45,19 @@ impl ExecutionSummary {
 macro_rules! impl_public_outputs {
     ($type:ty, $field:ident $(. $rest:ident)*) => {
         impl $type {
+            /// The program's raw public values.
             pub fn get_publics(&self) -> &PublicValues {
                 &self.$field$(.$rest)*
             }
 
+            /// Deserialize the public values into `T` (serde).
             pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
                 &self,
             ) -> Result<T> {
                 Ok(self.$field$(.$rest)*.read()?)
             }
 
+            /// Decode the public values into `T` using its Solidity ABI encoding.
             pub fn get_public_values_abi<T>(&self) -> Result<T>
             where
                 T: alloy_sol_types::SolValue
@@ -63,6 +66,7 @@ macro_rules! impl_public_outputs {
                 Ok(self.$field$(.$rest)*.read_abi()?)
             }
 
+            /// Copy the raw public-value bytes into `slice`.
             pub fn get_public_values_slice(&self, slice: &mut [u8]) {
                 self.$field$(.$rest)*.read_slice(slice);
             }
@@ -70,6 +74,8 @@ macro_rules! impl_public_outputs {
     };
 }
 
+/// Result of executing a program (without proving): step count, timing, and
+/// public outputs, plus an optional per-AIR plan summary in standalone mode.
 pub struct ExecuteOutput {
     steps: u64,
     time: u64,
@@ -80,6 +86,8 @@ pub struct ExecuteOutput {
 }
 
 impl ExecuteOutput {
+    /// Construct from a full (proofman) execution: cost is derived from the
+    /// summary's cost weights.
     pub fn new(
         execution_time: Duration,
         executor_summary: ZiskExecutorSummary,
@@ -114,6 +122,7 @@ impl ExecuteOutput {
         }
     }
 
+    /// Number of executed steps.
     pub fn get_execution_steps(&self) -> u64 {
         self.steps
     }
@@ -124,6 +133,7 @@ impl ExecuteOutput {
         self.cost
     }
 
+    /// Wall-clock execution time, in milliseconds.
     pub fn get_execution_time(&self) -> u64 {
         self.time
     }
@@ -175,16 +185,21 @@ impl ExecuteOutput {
 
 impl_public_outputs!(ExecuteOutput, publics);
 
+/// Result of proving a program: the generated [`Proof`] plus execution
+/// statistics (steps, cost, proving time).
 pub struct ProveOutput {
     summary: ExecutionSummary,
     proof: Proof,
 }
 
 impl ProveOutput {
+    /// Construct from a completed proof and its execution summary.
     pub fn new(execution: ZiskExecutorSummary, proving_time: Duration, proof: Proof) -> Self {
         Self { summary: ExecutionSummary::new(proving_time, &execution), proof }
     }
 
+    /// Construct with an empty (default) proof — used when only the execution
+    /// statistics are wanted, not a real proof.
     pub fn new_null(execution: ZiskExecutorSummary, proving_time: Duration) -> Self {
         Self { summary: ExecutionSummary::new(proving_time, &execution), proof: Proof::default() }
     }
@@ -199,46 +214,58 @@ impl ProveOutput {
         Self { summary: ExecutionSummary::from_remote(proving_time, steps, &cost_per_type), proof }
     }
 
+    /// Proving time, in milliseconds.
     pub fn get_proving_time(&self) -> u64 {
         self.summary.time
     }
 
+    /// Number of executed steps.
     pub fn get_execution_steps(&self) -> u64 {
         self.summary.steps
     }
 
+    /// Total execution cost.
     pub fn get_execution_cost(&self) -> u64 {
         self.summary.cost
     }
 
+    /// The generated proof.
     pub fn get_proof(&self) -> &Proof {
         &self.proof
     }
 
+    /// The proof serialized as a `u64` field-element vector.
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
         Ok(self.proof.get_proof_u64()?)
     }
 
+    /// The proof serialized as raw bytes.
     pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
         Ok(self.proof.get_proof_bytes()?)
     }
 
+    /// The program verification key this proof was produced against.
     pub fn get_program_vk(&self) -> &ProgramVK {
         &self.proof.program_vk
     }
 
+    /// Write the proof to `path`.
     pub fn save_proof(&self, path: impl AsRef<Path>) -> Result<()> {
         Ok(self.proof.save(path)?)
     }
 
+    /// Verify the proof against its embedded public values and verification key.
     pub fn verify(&self) -> Result<()> {
         Ok(self.proof.verify()?)
     }
 
+    /// Start a verification with the given public values (overriding the ones
+    /// embedded in the proof).
     pub fn with_publics<'a>(&'a self, publics: &'a PublicValues) -> ZiskVerifyBuilder<'a> {
         self.proof.with_publics(publics)
     }
 
+    /// Start a verification against the given program verification key.
     pub fn with_program_vk<'a>(&'a self, program_vk: &'a ProgramVK) -> ZiskVerifyBuilder<'a> {
         self.proof.with_program_vk(program_vk)
     }
@@ -248,16 +275,19 @@ impl ProveOutput {
 // Vadcop proof's full publics, or a Plonk proof's stored u32 publics), so
 // `get_publics` returns an owned value rather than a borrow.
 impl ProveOutput {
+    /// The public values, derived from the proof body (returned by value).
     pub fn get_publics(&self) -> PublicValues {
         self.proof.publics()
     }
 
+    /// Deserialize the public values into `T` (serde).
     pub fn get_public_values<T: serde::Serialize + serde::de::DeserializeOwned>(
         &self,
     ) -> Result<T> {
         Ok(self.proof.publics().read()?)
     }
 
+    /// Decode the public values into `T` using its Solidity ABI encoding.
     pub fn get_public_values_abi<T>(&self) -> Result<T>
     where
         T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
@@ -265,11 +295,14 @@ impl ProveOutput {
         Ok(self.proof.publics().read_abi()?)
     }
 
+    /// Copy the raw public-value bytes into `slice`.
     pub fn get_public_values_slice(&self, slice: &mut [u8]) {
         self.proof.publics().read_slice(slice);
     }
 }
 
+/// Result of a constraint-verification run: execution statistics, per-phase
+/// timing, per-type cost breakdown, and public outputs. No proof is produced.
 pub struct VerifyConstraintsOutput {
     summary: ExecutionSummary,
     executor_time: ZiskExecutorTime,
@@ -278,6 +311,7 @@ pub struct VerifyConstraintsOutput {
 }
 
 impl VerifyConstraintsOutput {
+    /// Construct from an execution summary and the run `duration` (ms).
     pub fn new(executor_summary: ZiskExecutorSummary, duration: u64, publics: &[u8]) -> Self {
         let summary = ExecutionSummary::new(Duration::from_millis(duration), &executor_summary);
         Self {
@@ -288,22 +322,27 @@ impl VerifyConstraintsOutput {
         }
     }
 
+    /// Number of executed steps.
     pub fn get_execution_steps(&self) -> u64 {
         self.summary.steps
     }
 
+    /// Total execution cost across all types.
     pub fn get_execution_total_cost(&self) -> u64 {
         self.summary.cost
     }
 
+    /// Per-type cost breakdown.
     pub fn get_execution_cost_per_type(&self) -> &StatsCostPerType {
         &self.cost_per_type
     }
 
+    /// Per-phase executor timing breakdown.
     pub fn get_executor_time(&self) -> &ZiskExecutorTime {
         &self.executor_time
     }
 
+    /// Run duration, in milliseconds.
     pub fn get_duration(&self) -> u64 {
         self.summary.time
     }

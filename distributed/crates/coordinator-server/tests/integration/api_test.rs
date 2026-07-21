@@ -11,18 +11,15 @@ use tokio::net::TcpListener;
 use tonic::transport::{Channel, Server};
 
 use zisk_coordinator_api::dto::RegisterGuestProgramRequestDto;
-use zisk_coordinator_server::{
-    backend::mock::MockBackend,
-    proto::{
-        input_kind, job_event, job_kind, job_status,
-        zisk_coordinator_api_client::ZiskCoordinatorApiClient,
-        zisk_coordinator_api_server::ZiskCoordinatorApiServer, CancelJobRequest, ExecuteRequest,
-        InputChunk, InputKind, JobKind, JobRequestMessage, ProofKind, ProveRequest,
-        PushJobHintsInputRequest, PushJobInputRequest, SetupRequest, WaitJobResultRequest,
-        WatchJobRequest, WrapRequest,
-    },
-    CoordinatorHandler, GrpcAdapter,
+use zisk_coordinator_api::grpc::proto::{
+    input_kind, job_event, job_kind, job_status,
+    zisk_coordinator_api_client::ZiskCoordinatorApiClient,
+    zisk_coordinator_api_server::ZiskCoordinatorApiServer, CancelJobRequest, ExecuteRequest,
+    InputChunk, InputKind, JobKind, JobRequestMessage, ProofKind, ProveRequest,
+    PushJobHintsInputRequest, PushJobInputRequest, SetupRequest, WaitJobResultRequest,
+    WatchJobRequest, WrapRequest,
 };
+use zisk_coordinator_server::{backend::mock::MockBackend, CoordinatorHandler, GrpcAdapter};
 
 use std::sync::Arc;
 
@@ -260,7 +257,7 @@ async fn execute_job_completes() {
 
 #[tokio::test]
 async fn wrap_job_completes() {
-    use zisk_coordinator_server::proto::job_kind_response;
+    use zisk_coordinator_api::grpc::proto::job_kind_response;
 
     let mut client = start_test_server().await;
 

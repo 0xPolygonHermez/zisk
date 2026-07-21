@@ -119,7 +119,7 @@ fn derive_program_vks(programs: &[&GuestProgram]) -> Result<Vec<[String; 4]>> {
 /// Client-independent builder for a [`Recurser`] — the proof-folding
 /// sibling of [`GuestProgram`].
 ///
-/// Most users never construct this directly: [`load_aggregation_program!`]
+/// Most users never construct this directly: [`load_aggregation_program!`](crate::load_aggregation_program)
 /// expands a TOML definition into exactly this builder call. Build it by
 /// hand when the circuits are only known at runtime.
 ///
@@ -273,12 +273,12 @@ impl<'a> AggregationProgramBuilder<'a> {
 }
 
 /// A lazily-built [`Recurser`] for module-level declaration via
-/// [`load_aggregation_program!`]. Derefs to [`Recurser`], so a `static` of
+/// [`load_aggregation_program!`](crate::load_aggregation_program). Derefs to [`Recurser`], so a `static` of
 /// this type is used exactly like a `Recurser` reference.
 pub struct AggregationProgram(std::sync::LazyLock<Recurser>);
 
 impl AggregationProgram {
-    /// Used by [`load_aggregation_program!`]; `init` runs on first use.
+    /// Used by [`load_aggregation_program!`](crate::load_aggregation_program); `init` runs on first use.
     pub const fn new(init: fn() -> Recurser) -> Self {
         Self(std::sync::LazyLock::new(init))
     }

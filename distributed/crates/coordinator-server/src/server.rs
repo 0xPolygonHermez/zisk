@@ -20,6 +20,8 @@ use crate::shutdown::shutdown_signal;
 /// `DomainInputKind::MAX_INLINE_BYTES` in coordinator-api.
 const MAX_MESSAGE_SIZE: usize = 128 * 1024 * 1024; // 128 MB
 
+/// The coordinator gRPC server: binds the API (and metrics) endpoints and runs
+/// until cancelled.
 pub struct CoordinatorServer<B: BackendService> {
     config: CoordinatorServerConfig,
     backend: Arc<B>,
@@ -27,10 +29,13 @@ pub struct CoordinatorServer<B: BackendService> {
 }
 
 impl<B: BackendService> CoordinatorServer<B> {
+    /// Create a server from its config, backend, and cancellation token.
     pub fn new(config: CoordinatorServerConfig, backend: B, cancel: CancellationToken) -> Self {
         Self { config, backend: Arc::new(backend), cancel }
     }
 
+    /// Run the server until the cancellation token fires, then shut down
+    /// gracefully within the configured timeout.
     pub async fn run(self) -> Result<()> {
         metrics::start(&self.config.metrics, self.cancel.clone()).await?;
 

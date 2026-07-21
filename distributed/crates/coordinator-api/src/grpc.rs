@@ -4,8 +4,11 @@
 //! The blocking client wrapper and job lifecycle types live in the SDK
 //! (`sdk/src/remote/client.rs` and `sdk/src/remote/job.rs`).
 
+/// Tonic-generated proto types for `zisk.coordinator.v1`.
 pub mod proto {
     #![allow(clippy::large_enum_variant)]
+    // Generated code — the proto definitions are the source of truth.
+    #![allow(missing_docs)]
     tonic::include_proto!("zisk.coordinator.v1");
 }
 
