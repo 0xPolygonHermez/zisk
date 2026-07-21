@@ -24,24 +24,37 @@ use crate::{
 /// workers.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct CapacitySnapshot {
+    /// Compute units in the `Ready` state.
     pub available: u32,
+    /// Compute units in the `SettingUp` state.
     pub recovering: u32,
+    /// Compute units in the `Computing` state.
     pub busy: u32,
+    /// Count of connected but not-yet-set-up workers.
     pub idle_workers: usize,
 }
 
 /// Information about a connected worker
 pub struct WorkerInfo {
+    /// The worker's unique id.
     pub worker_id: WorkerId,
+    /// Current lifecycle state.
     pub state: WorkerState,
+    /// The worker's advertised compute capacity.
     pub compute_capacity: ComputeCapacity,
+    /// When the worker connected.
     pub connected_at: DateTime<Utc>,
+    /// Timestamp of the most recent heartbeat.
     pub last_heartbeat: DateTime<Utc>,
+    /// Increments each time the worker reconnects (to detect stale connections).
     pub connection_generation: u64,
+    /// Channel used to push messages to this worker.
     pub msg_sender: Box<dyn MessageSender + Send + Sync>,
 }
 
 impl WorkerInfo {
+    /// Create a worker record in the given initial state, stamping the connect
+    /// and heartbeat times to now.
     pub fn new(
         worker_id: WorkerId,
         compute_capacity: ComputeCapacity,
@@ -60,6 +73,7 @@ impl WorkerInfo {
         }
     }
 
+    /// Record that a heartbeat was just received (sets `last_heartbeat` to now).
     pub fn update_last_heartbeat(&mut self) {
         self.last_heartbeat = Utc::now();
     }

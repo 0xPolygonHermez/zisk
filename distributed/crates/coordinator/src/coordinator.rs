@@ -1287,7 +1287,7 @@ impl Coordinator {
     /// `SettingUp` and adds them to `pending_recovery`. Each worker will
     /// receive `JobCancelled`, tear down its in-flight task, and emit
     /// `WorkerRecoveryComplete` — that signal is what flips the worker back
-    /// to `Ready` (see [`handle_stream_recovery_complete`]). Until then the
+    /// to `Ready` (see `handle_stream_recovery_complete`). Until then the
     /// dispatcher cannot re-task them, which is what prevents a stale
     /// `ExecuteTaskResponse` for the failed job from racing a fresh
     /// `Computing(new_job, _)` state on the same worker.

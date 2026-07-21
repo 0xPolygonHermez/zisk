@@ -4,6 +4,8 @@ use crate::zisklib;
 
 use anyhow::Result;
 
+/// Process a `MULMOD256` hint: decode the three 256-bit operands `a`, `b`, `m`
+/// from `data` and return `(a * b) mod m` as `u64` words.
 #[inline]
 pub fn mulmod256_hint(data: &[u64]) -> Result<Vec<u64>> {
     // a, b, m: each 32 bytes = 4 u64 words (big-endian operands).

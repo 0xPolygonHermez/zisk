@@ -12,7 +12,11 @@ use zisk_common::ZiskPaths;
 use anyhow::Result;
 
 // Typestate markers
+/// Typestate marker: EMU backend selected (full proving). Reached via
+/// `ProverClientBuilder::new().emu()`.
 pub struct EmuB;
+/// Typestate marker: ASM backend selected (full proving). Reached via
+/// `ProverClientBuilder::new().asm()`.
 pub struct AsmB;
 /// EMU backend + execute-only mode (no proving keys, no `Std`, no `SetupCtx`).
 /// Reached via `ProverClientBuilder::new().emu().execute_only()`.
@@ -62,6 +66,8 @@ pub struct ProverClientBuilder<Backend = ()> {
 }
 
 impl ProverClientBuilder<()> {
+    /// Start a new builder in the unconfigured state. Choose a backend with
+    /// [`emu`](Self::emu) or [`asm`](Self::asm).
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -84,6 +90,7 @@ impl ProverClientBuilder<()> {
         self.into()
     }
 
+    /// Build with the default backend (EMU) when none was selected explicitly.
     pub fn build(self) -> Result<ZiskProver<Emu>> {
         let builder: ProverClientBuilder<EmuB> = self.emu();
         builder.build_emu()
@@ -112,12 +119,14 @@ impl<Backend> ProverClientBuilder<Backend> {
         self.operation_mode = OperationMode::Prove;
         self
     }
+    /// Replace the backend prover options wholesale.
     #[must_use]
     pub fn with_prover_options(mut self, opts: BackendProverOpts) -> Self {
         self.prover_options = opts;
         self
     }
 
+    /// Set the logging configuration (e.g. for distributed runs).
     #[must_use]
     pub fn logging_config(mut self, logging_config: LoggingConfig) -> Self {
         self.logging_config = Some(logging_config);
@@ -280,6 +289,7 @@ impl ProverClientBuilder<AsmB> {
 
 // Build methods for execute-only EMU
 impl ProverClientBuilder<EmuExecOnlyB> {
+    /// Build an execute-only EMU client (no proving keys loaded).
     pub fn build(self) -> Result<EmuExecClient> {
         let verbose: VerboseMode = self.prover_options.verbose.into();
         EmuExecClient::new(verbose)
@@ -288,6 +298,8 @@ impl ProverClientBuilder<EmuExecOnlyB> {
 
 // Build methods for execute-only ASM
 impl ProverClientBuilder<AsmExecOnlyB> {
+    /// Build an execute-only ASM client (no proving keys; ASM binaries are
+    /// generated on first execute if not cached).
     pub fn build(self) -> Result<AsmExecClient> {
         let verbose: VerboseMode = self.prover_options.verbose.into();
         let cache = self.prover_options.asm_options.asm_path.clone();

@@ -1,6 +1,6 @@
 //! gRPC transport adapter.
 //!
-//! [`GrpcAdapter`] implements the tonic-generated [`ZiskCoordinatorApi`] trait.
+//! [`GrpcAdapter`] implements the tonic-generated `ZiskCoordinatorApi` trait.
 //! Its only responsibilities are proto ↔ domain conversion, input validation
 //! at the wire boundary, and call-level observability. All business logic lives
 //! in [`crate::handler::CoordinatorHandler`].
@@ -28,13 +28,17 @@ const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 5;
 const WAIT_TIMEOUT_MIN_SECS: u32 = 1;
 const WAIT_TIMEOUT_MAX_SECS: u32 = 3600;
 
+/// Server-streaming type for the `WatchJob` RPC.
 pub type WatchJobStream = Pin<Box<dyn Stream<Item = Result<JobEvent, Status>> + Send + 'static>>;
 
+/// gRPC adapter: implements the `ZiskCoordinatorApi` service by converting
+/// proto messages to/from domain types and delegating to a [`CoordinatorHandler`].
 pub struct GrpcAdapter<B: BackendService> {
     handler: CoordinatorHandler<B>,
 }
 
 impl<B: BackendService> GrpcAdapter<B> {
+    /// Wrap a handler in the gRPC adapter.
     pub fn new(handler: CoordinatorHandler<B>) -> Self {
         Self { handler }
     }

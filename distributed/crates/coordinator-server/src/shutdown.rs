@@ -1,6 +1,6 @@
 //! Graceful shutdown signal — resolves on SIGTERM or SIGINT (Ctrl-C).
 //!
-//! Pass the future returned by [`shutdown_signal`] to
+//! Pass the future returned by [`shutdown_signal`](crate::shutdown::shutdown_signal) to
 //! `tonic::Server::serve_with_shutdown` so the server drains in-flight
 //! requests before exiting.
 

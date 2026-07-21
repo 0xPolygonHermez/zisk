@@ -31,12 +31,22 @@ fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     None
 }
 
+/// Where the `emulator-asm` toolchain used to build ASM binaries comes from.
 #[derive(Clone, Copy, Debug)]
 pub enum EmulatorAsmSource {
+    /// The `emulator-asm` sources found in the current cargo workspace (built
+    /// on demand). Preferred during local development.
     Workspace,
+    /// The pre-built `emulator-asm` installed by `ziskup`.
     Installed,
 }
 
+/// Locate the `emulator-asm` toolchain, returning its path and which source it
+/// came from.
+///
+/// Uses the installed copy when `ZISK_USE_INSTALLED` is set; otherwise prefers
+/// the workspace sources (when cargo and both `emulator-asm` and `ziskclib` are
+/// present) and falls back to the installed copy. Errors if neither exists.
 pub fn resolve_emulator_asm() -> Result<(PathBuf, EmulatorAsmSource)> {
     if std::env::var_os("ZISK_USE_INSTALLED").is_some_and(|v| !v.is_empty()) {
         let installed_asm_path = ZiskPaths::global().emulator_asm.clone();
@@ -94,6 +104,12 @@ pub fn resolve_emulator_asm() -> Result<(PathBuf, EmulatorAsmSource)> {
     Ok((emulator_asm_path, source))
 }
 
+/// Ensure `libziskclib.a` is available for linking the ASM emulator.
+///
+/// For a [`Workspace`](EmulatorAsmSource::Workspace) source this builds
+/// `ziskclib` (and `lib-c` on Linux) via cargo; for an
+/// [`Installed`](EmulatorAsmSource::Installed) source it verifies the pre-built
+/// library is present. Errors if the library is missing after this runs.
 pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> {
     let emulator_parent =
         emu_dir.parent().context("Failed to get parent directory of emulator-asm")?;
@@ -209,6 +225,12 @@ pub fn assembly_files_exist(elf: &Path, output_path: &Path, hints: bool) -> Resu
     Ok(files.iter().all(|f| f.exists()))
 }
 
+/// Generate the ASM binaries for the ELF at `_elf`, resolving the output
+/// directory from `_output_dir` (defaulting to the ZisK cache).
+///
+/// A no-op on macOS, which does not support ASM generation. For the in-memory
+/// variant that takes ELF bytes and an explicit output path, see
+/// [`generate_assembly`].
 pub fn gen_assembly(
     _elf: &Path,
     _output_dir: &Option<PathBuf>,
@@ -228,6 +250,12 @@ pub fn gen_assembly(
     Ok(())
 }
 
+/// Generate the three ASM binaries — minimal traces (`-mt`), ROM histogram
+/// (`-rh`), and memory ops (`-mo`) — for `elf` into `output_path`.
+///
+/// Resolves and prepares the `emulator-asm` toolchain, transpiles the ELF to
+/// assembly for each trace target, and builds each binary via `make`. `hints`
+/// selects the hints-enabled artifact variant; `verbose` forwards build output.
 pub fn generate_assembly(
     elf: &[u8],
     output_path: &Path,
