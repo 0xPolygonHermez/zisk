@@ -2469,17 +2469,18 @@ mod tests {
             coordinator.workers_pool.worker_state(&late_id).await,
             Some(WorkerState::SettingUp)
         );
-        let msgs = late_msgs.lock().unwrap();
-        assert_eq!(msgs.len(), 1, "expected exactly one message");
-        match &msgs[0] {
-            CoordinatorMessageDto::SetupProgram(dto) => {
-                assert_eq!(dto.hash_id, hash_id);
-                assert!(!dto.with_hints);
-                assert!(!dto.emulator_only);
+        {
+            let msgs = late_msgs.lock().unwrap();
+            assert_eq!(msgs.len(), 1, "expected exactly one message");
+            match &msgs[0] {
+                CoordinatorMessageDto::SetupProgram(dto) => {
+                    assert_eq!(dto.hash_id, hash_id);
+                    assert!(!dto.with_hints);
+                    assert!(!dto.emulator_only);
+                }
+                _ => panic!("expected a SetupProgram message"),
             }
-            _ => panic!("expected a SetupProgram message"),
         }
-        drop(msgs);
 
         // The reserved worker must be TRACKED in a setup_pending entry — this is
         // what lets disconnect cleanup and completion accounting own its state,
