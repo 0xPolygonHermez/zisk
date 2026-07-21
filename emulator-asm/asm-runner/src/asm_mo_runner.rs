@@ -143,8 +143,14 @@ impl MOShmemReader {
             // When the caller opted out of MAP_LOCKED, the user can't afford
             // pinned pages, the `usize::MAX` sentinel is the existing
             // "give up" mechanism in `register_mo_shmem_pinned`
+            
+            
             #[cfg(gpu)]
-            registered_bytes: if unlock_mapped_memory { usize::MAX } else { 0 },
+            registered_bytes = usize::MAX, // always give up on pinned pages for now, we have
+            // seen identical performance with and without pinned pages, and pinned pages are 
+            // not supported on all devices, also we avoid the cost of registering and
+            // unregistering pinned pages on every run, which is a performance hit, previous 
+            // code was: registered_bytes: if unlock_mapped_memory { usize::MAX } else { 0 },
         })
     }
 }
