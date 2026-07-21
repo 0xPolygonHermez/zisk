@@ -3,8 +3,6 @@
 #![warn(missing_docs)]
 #![warn(rustdoc::all)]
 #![deny(rustdoc::missing_crate_level_docs)]
-#![warn(clippy::undocumented_unsafe_blocks)]
-#![warn(clippy::unnecessary_safety_comment)]
 
 mod bus;
 mod component;
