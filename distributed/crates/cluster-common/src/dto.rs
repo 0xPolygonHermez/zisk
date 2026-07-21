@@ -415,7 +415,7 @@ pub struct ZiskExecutorTimeDto {
     pub count_and_plan_duration: f32,
     /// Count and plan memory operations duration in milliseconds
     pub count_and_plan_mo_duration: f32,
-    /// ASM execution info (time in milliseconds)
+    /// ASM execution info (time in seconds)
     pub asm_execution_duration: Option<AsmExecutionInfoDto>,
     /// Time when task was received by worker (milliseconds since UNIX epoch, f64 for precision)
     pub task_received_time: f64,
@@ -424,7 +424,7 @@ pub struct ZiskExecutorTimeDto {
 /// ASM emulator timing metrics.
 #[derive(Clone)]
 pub struct AsmExecutionInfoDto {
-    /// Wall-clock time, in milliseconds.
+    /// Wall-clock time, in seconds.
     pub time: f32,
     /// Effective execution rate, in MHz.
     pub mhz: f32,
