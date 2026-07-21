@@ -210,8 +210,9 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
-            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
+            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_first_gpu_buffer();
+            let gpu_id = pctx.first_gpu_id();
+            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
 
         let shared = Arc::new(AsmSharedResources::new(

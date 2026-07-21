@@ -18,6 +18,18 @@ use crate::{
     worker_handlers::MessageSender,
 };
 
+/// One consistent view of the pool's capacity, captured under a single lock.
+/// `available`/`recovering`/`busy` are compute units in the `Ready`/`SettingUp`/
+/// `Computing` states respectively; `idle_workers` counts connected-but-unset-up
+/// workers.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct CapacitySnapshot {
+    pub available: u32,
+    pub recovering: u32,
+    pub busy: u32,
+    pub idle_workers: usize,
+}
+
 /// Information about a connected worker
 pub struct WorkerInfo {
     pub worker_id: WorkerId,
@@ -163,6 +175,27 @@ impl WorkersPool {
             .sum();
 
         ComputeCapacity::from(total_capacity)
+    }
+
+    /// Snapshot of the capacity figures `resolve_capacity` needs, captured under a
+    /// single read lock so they describe one consistent view of the pool. Reading
+    /// them via separate `*_compute_capacity` calls would let a worker's state
+    /// transition between acquisitions, double-counting or dropping its capacity.
+    pub async fn capacity_snapshot(&self) -> CapacitySnapshot {
+        let workers = self.workers.read().await;
+        let mut snapshot = CapacitySnapshot::default();
+        for w in workers.values() {
+            let units = w.compute_capacity.compute_units;
+            match &w.state {
+                WorkerState::Ready => snapshot.available += units,
+                WorkerState::SettingUp => snapshot.recovering += units,
+                WorkerState::Computing(_) => snapshot.busy += units,
+                WorkerState::Idle => snapshot.idle_workers += 1,
+                // Disconnected / Connecting / Error contribute to no capacity bucket.
+                _ => {}
+            }
+        }
+        snapshot
     }
 
     /// Returns (num_workers, compute_capacity, available_compute_capacity) under a single read lock.

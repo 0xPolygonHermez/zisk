@@ -7,6 +7,7 @@ use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
 use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
@@ -50,10 +51,12 @@ impl<T: ZiskBackend + 'static> RecoveryActions for ZiskProver<T> {
 // queued behind the cancelled task.
 //
 pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()> {
-    // ASM cleanup runs inside `executor::execute`'s Err arm; the wake-up
-    // signal is sent from `worker::cancel_current_computation`. All this
-    // task has to do is notify peers, drain any zombie proofman thread, and
-    // barrier with the cluster before advertising `Ready`.
+    // ASM cleanup runs inside `executor::execute`'s Err arm; the wake-up signal
+    // is sent from `worker::cancel_current_computation`. A caller that clobbered a
+    // live compute task should await its handle (so the ASM child has finished +
+    // reset) before invoking this; callers with nothing in flight can call it
+    // directly. All this task does is notify peers, drain any zombie proofman
+    // thread, and barrier with the cluster before advertising `Ready`.
     prover.notify_cluster_cancellation();
     prover.wait_until_proofman_ready();
     prover.cluster_barrier();
@@ -573,7 +576,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(message)?;
 
         if worker_in_recovery {
-            self.spawn_post_failure_recovery(loop_tx.clone());
+            // Compute task already awaited at the top of this handler; nothing
+            // left to drain, so pass no handle.
+            self.spawn_post_failure_recovery(loop_tx.clone(), None);
             // Drop `current_job` so a coordinator-originated `JobCancelled`
             // for the same job_id does not race a still-running
             // `spawn_post_failure_recovery` and emit a premature
@@ -692,7 +697,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(message)?;
 
         if worker_in_recovery {
-            self.spawn_post_failure_recovery(loop_tx.clone());
+            // Compute task already awaited at the top of this handler.
+            self.spawn_post_failure_recovery(loop_tx.clone(), None);
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -760,7 +766,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(message)?;
 
         if worker_in_recovery {
-            self.spawn_post_failure_recovery(loop_tx.clone());
+            // Compute task already awaited at the top of this handler.
+            self.spawn_post_failure_recovery(loop_tx.clone(), None);
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -915,11 +922,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// On `RECOVERY_TIMEOUT` we log loudly and drop the completion: the worker
     /// stays wedged `SettingUp` (still heartbeating, so the stale-disconnected
     /// sweep won't reap it), so operator action is required.
-    fn spawn_post_failure_recovery(&self, loop_tx: LoopEventSender) {
+    fn spawn_post_failure_recovery(
+        &self,
+        loop_tx: LoopEventSender,
+        compute_handle: Option<JoinHandle<()>>,
+    ) {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
         tokio::spawn(async move {
             warn!("[Recovery] {worker_id}: running cluster cancellation handshake");
+
+            // Await the in-flight compute task before the barrier: its ASM MO
+            // run is a synchronous round-trip, so when it returns the child has
+            // reset and stopped touching the shmem the next job reuses. Bounded
+            // so a stuck task can't wedge recovery.
+            let recovery_context = format!("[Recovery] {worker_id}");
+            Self::drain_cancelled_computation(compute_handle, &recovery_context).await;
+
             let join = tokio::time::timeout(
                 Self::RECOVERY_TIMEOUT,
                 tokio::task::spawn_blocking(move || run_recovery(&*prover)),
@@ -947,8 +966,28 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         });
     }
 
+    /// Await a compute handle (bounded) so the ASM child finishes resetting
+    /// before we reuse its shmem. No-op when nothing was running. `context`
+    /// prefixes the log lines so callers can be told apart.
+    async fn drain_cancelled_computation(handle: Option<JoinHandle<()>>, context: &str) {
+        let Some(handle) = handle else { return };
+        match tokio::time::timeout(Self::COMPUTE_DRAIN_TIMEOUT, handle).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => warn!("{context}: in-flight compute task join error: {e}"),
+            Err(_) => warn!(
+                "{context}: in-flight compute task did not drain within {:?}; proceeding — \
+                 the ASM child may still be resetting",
+                Self::COMPUTE_DRAIN_TIMEOUT
+            ),
+        }
+    }
+
     /// Healthy reset is sub-second; this only fires when the prover is stuck.
     const RECOVERY_TIMEOUT: Duration = Duration::from_secs(300);
+
+    /// Bound on awaiting the in-flight compute task; above the ASM child's ≤5 s
+    /// reset-flag observation window. Past this we proceed rather than wedge.
+    const COMPUTE_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
     async fn send_heartbeat_ack(
         &self,
@@ -980,19 +1019,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 if response.accepted {
                     info!("Registration accepted: {}", response.message);
 
-                    // `clear_current_job` detaches any in-flight `spawn_blocking`;
-                    // if we then accept a new dispatch, `prepare_for_new_job`'s
-                    // `prover.reset()` would race the still-unwinding task.
-                    // Schedule the recovery driver whenever we clobbered a live
-                    // computation: it joins the prover (`wait_until_proofman_ready`)
-                    // then emits `WorkerRecoveryComplete`, parking us `SettingUp`
-                    // on the coordinator side until the drain finishes.
-                    let mut needs_recovery_drain = false;
+                    // If we clobbered a live computation, hand its handle to the
+                    // recovery driver so it awaits the drain before the barrier
+                    // (else a new dispatch's `prover.reset()` races the unwinding
+                    // task), then emits `WorkerRecoveryComplete`.
+                    let mut recovery_handle: Option<JoinHandle<()>> = None;
                     match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
                         Some(Ok(ReconnectionAction::CancelStaleJob)) => {
                             info!("Coordinator directed cancellation of stale job");
-                            needs_recovery_drain = self.worker.has_current_computation();
-                            self.worker.clear_current_job();
+                            recovery_handle = self.worker.clear_current_job();
                         }
                         Some(Ok(ReconnectionAction::KeepComputing)) => {
                             info!("Coordinator confirmed active job; keep computing");
@@ -1000,20 +1035,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Some(Ok(ReconnectionAction::Idle)) | None => {
                             if self.worker.current_job().is_some() {
                                 warn!("No cancel directive but worker has stale job; clearing");
-                                needs_recovery_drain = self.worker.has_current_computation();
-                                self.worker.clear_current_job();
+                                recovery_handle = self.worker.clear_current_job();
                             }
                         }
                         Some(Err(_)) => {
                             warn!(
                                 "Unknown reconciliation action; clearing stale state defensively"
                             );
-                            needs_recovery_drain = self.worker.has_current_computation();
-                            self.worker.clear_current_job();
+                            recovery_handle = self.worker.clear_current_job();
                         }
                     }
-                    if needs_recovery_drain {
-                        self.spawn_post_failure_recovery(loop_tx.clone());
+                    // Only drain when a live computation was actually clobbered —
+                    // i.e. `clear_current_job` handed back its compute handle.
+                    if recovery_handle.is_some() {
+                        self.spawn_post_failure_recovery(loop_tx.clone(), recovery_handle);
                     }
 
                     // If the coordinator attached setup info, run setup now — before entering
@@ -1124,15 +1159,19 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 //    `WorkerRecoveryComplete`.
                 let mut spawn_recovery = false;
                 let mut emit_recovery_complete_directly = false;
+                let mut recovery_handle: Option<JoinHandle<()>> = None;
                 if let Some(ref job) = self.worker.current_job() {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        let had_computation = self.worker.has_current_computation();
-                        self.worker.clear_current_job();
+                        // Keep the detached compute handle so recovery can await
+                        // the ASM child finishing its reset before the barrier.
+                        // A returned handle is the authoritative "had a live
+                        // computation" signal — no separate state query needed.
+                        recovery_handle = self.worker.clear_current_job();
                         self.worker.set_state(WorkerState::Ready);
 
-                        if had_computation {
+                        if recovery_handle.is_some() {
                             spawn_recovery = true;
                         } else {
                             emit_recovery_complete_directly = true;
@@ -1151,7 +1190,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 }
 
                 if spawn_recovery {
-                    self.spawn_post_failure_recovery(loop_tx.clone());
+                    self.spawn_post_failure_recovery(loop_tx.clone(), recovery_handle);
                 } else if emit_recovery_complete_directly {
                     let rc = WorkerRecoveryComplete {
                         worker_id: self.worker_config.worker.worker_id.as_string(),
@@ -1590,8 +1629,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let task_received_time = chrono::Utc::now();
         info!("Starting Partial Contribution for {}", request.job_id);
 
-        // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        // Defensive: the coordinator won't dispatch here until we emit
+        // `WorkerRecoveryComplete` (which already drained any prior task), so
+        // this is normally a no-op. If a stale computation is somehow still
+        // live, drain it before `prepare_for_new_job`'s `prover.reset()` reuses
+        // the ASM shmem the child may still be writing.
+        let cancelled = self.worker.cancel_current_computation();
+        Self::drain_cancelled_computation(cancelled, "partial_contribution").await;
 
         let metadata = request.metadata.clone();
 
@@ -1661,8 +1705,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let task_received_time = chrono::Utc::now();
         info!("Starting Execution-only for {}", request.job_id);
 
-        // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        // Defensive drain before `prepare_for_new_job`'s `prover.reset()` reuses
+        // the ASM shmem — normally a no-op (see `partial_contribution`).
+        let cancelled = self.worker.cancel_current_computation();
+        Self::drain_cancelled_computation(cancelled, "execute_only").await;
 
         let metadata = request.metadata.clone();
 
