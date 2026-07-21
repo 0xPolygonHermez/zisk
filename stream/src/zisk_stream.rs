@@ -222,36 +222,96 @@ impl<P: StreamProcessor> Drop for ZiskStream<P> {
     }
 }
 
-/// Reinterpret a `Vec<T>` as a `Vec<U>` in place, zero-padding to a whole
-/// number of `U` elements when needed.
+/// Marker for types with no invalid bit patterns, so an arbitrary byte buffer can be
+/// reinterpreted into them without validation. Mirror of `zisk_common::AnyBitPattern`
+/// (this crate cannot depend on `zisk-common`).
 ///
-/// Returns an error if the backing allocation is not aligned for `U`.
-fn reinterpret_vec<T: Default + Clone, U>(mut v: Vec<T>) -> Result<Vec<U>> {
+/// # Safety
+///
+/// Implementors must accept every bit pattern as a valid value (integer types qualify;
+/// `bool`, `char`, `NonZero*`, niche enums, and references do not).
+unsafe trait AnyBitPattern {}
+
+// SAFETY: `u8` has no invalid bit patterns.
+unsafe impl AnyBitPattern for u8 {}
+// SAFETY: `u64` has no invalid bit patterns.
+unsafe impl AnyBitPattern for u64 {}
+
+/// Reinterprets a `Vec<T>` as a `Vec<U>` over the same bytes.
+///
+/// Mirror of `zisk_common::reinterpret_vec`, duplicated here because `zisk-common`
+/// depends on `zisk-stream` and so this crate cannot import it back — keep the two in
+/// sync.
+///
+/// When the source allocation matches `Vec<U>`'s layout (identical alignment and a byte
+/// length/capacity that are whole numbers of `U`) the buffer is reused in place;
+/// otherwise (e.g. `u8` → `u64`, where the alignment differs) the bytes are copied into
+/// a fresh `Vec<U>` allocated — and therefore freed — under `U`'s own layout, so the
+/// result is sound to drop on any global allocator. A trailing partial `U` is
+/// zero-padded.
+///
+/// The `U: AnyBitPattern` bound guarantees the reinterpreted bytes form valid `U`
+/// values, so this function is safe.
+///
+/// # Errors
+///
+/// Returns [`StreamError::Invalid`] if `U` is a zero-sized type.
+fn reinterpret_vec<T, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
 
-    let total_bytes = v.len() * size_t;
-    let rem = total_bytes % size_u;
-
-    if rem != 0 {
-        let pad_bytes = size_u - rem;
-        let pad_t = pad_bytes.div_ceil(size_t);
-        v.extend(std::iter::repeat(T::default()).take(pad_t));
-    }
-
-    if v.as_ptr() as usize % std::mem::align_of::<U>() != 0 {
+    // A zero-sized `U` would make the `% size_u` / `/ size_u` arithmetic below divide by
+    // zero; reject it explicitly rather than panic.
+    if size_u == 0 {
         return Err(StreamError::Invalid(format!(
-            "Vec<{}> is not properly aligned for Vec<{}> (requires {}-byte alignment)",
+            "cannot reinterpret Vec<{}> as Vec<{}>: destination type is zero-sized",
             std::any::type_name::<T>(),
-            std::any::type_name::<U>(),
-            std::mem::align_of::<U>()
+            std::any::type_name::<U>()
         )));
     }
 
-    let len = (v.len() * size_t) / size_u;
-    let cap = (v.capacity() * size_t) / size_u;
-    let ptr = v.as_ptr() as *mut U;
+    let byte_len = v.len() * size_t;
+    let byte_cap = v.capacity() * size_t;
+    let len = byte_len.div_ceil(size_u); // whole `U` count, rounding a partial tail up
 
-    std::mem::forget(v);
-    Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) })
+    // Zero-copy is sound only when the source allocation matches `Vec<U>`'s layout
+    // exactly: identical alignment (so `ptr` is aligned for `U` and the free-time
+    // `Layout` matches the allocation), a byte capacity that is a whole number of `U` (so
+    // `cap` is not truncated), and a byte length already a whole number of `U` (a reused
+    // buffer cannot grow to pad a partial tail).
+    if std::mem::align_of::<T>() == std::mem::align_of::<U>()
+        && byte_cap % size_u == 0
+        && byte_len % size_u == 0
+    {
+        let cap = byte_cap / size_u;
+        let ptr = v.as_ptr() as *mut U;
+        std::mem::forget(v);
+        // SAFETY: `ptr` comes from `v`'s allocation, forgotten just above so it is freed
+        // exactly once — by the returned `Vec`. Equal alignment makes `ptr` aligned for
+        // `U` and the layout identical under either type; `byte_cap % size_u == 0` makes
+        // `cap * size_u == byte_cap`, so the returned `Vec` frees precisely the original
+        // allocation, and `byte_len % size_u == 0` makes `len` cover it with no partial
+        // element. `U: AnyBitPattern` makes every byte a valid `U`.
+        return Ok(unsafe { Vec::from_raw_parts(ptr, len, cap) });
+    }
+
+    // Layouts differ (e.g. `u8` → `u64`): reusing the buffer would free it under a
+    // different `Layout` than it was allocated with — undefined behaviour, and not merely
+    // theoretical under jemalloc/mimalloc/Miri or a non-glibc libc. Copy into a fresh
+    // `Vec<U>` owned end-to-end under `U`'s own layout, zero-filling any partial trailing
+    // `U`. The source `v` is left untouched and dropped normally at end of scope.
+    let mut out: Vec<U> = Vec::with_capacity(len);
+    let out_bytes = len * size_u;
+    // SAFETY: `out` reserves `out_bytes >= byte_len` bytes in a distinct allocation, so
+    // copying the `byte_len` source bytes is in-bounds and non-overlapping; the remaining
+    // `[byte_len, out_bytes)` tail is then zeroed, so all `out_bytes` bytes are
+    // initialized and `set_len(len)` is sound. `U: AnyBitPattern` makes every byte
+    // pattern (source data and zero padding alike) a valid `U`.
+    unsafe {
+        let dst = out.as_mut_ptr() as *mut u8;
+        std::ptr::copy_nonoverlapping(v.as_ptr() as *const u8, dst, byte_len);
+        std::ptr::write_bytes(dst.add(byte_len), 0, out_bytes - byte_len);
+        out.set_len(len);
+    }
+    Ok(out)
 }

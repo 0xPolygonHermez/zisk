@@ -31,8 +31,3 @@ impl InstanceCtx {
         Self { plan, global_id }
     }
 }
-
-// SAFETY: Both fields are safe to transfer across threads: `global_id: usize` is
-// `Send`, and `plan: Plan` carries its own documented `Send` impl. No interior
-// state is shared through aliases, so moving an `InstanceCtx` between threads is sound.
-unsafe impl Send for InstanceCtx {}

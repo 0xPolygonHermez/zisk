@@ -311,7 +311,12 @@ pub struct Plan {
     pub check_point: CheckPoint,
 
     /// Additional metadata associated with the plan.
-    pub meta: Option<Box<dyn Any>>,
+    ///
+    /// Bounded to `Send + Sync` so that `Plan` (and everything that embeds it, e.g.
+    /// [`InstanceCtx`](crate::InstanceCtx)) auto-derives `Send`/`Sync` instead of
+    /// relying on a hand-written `unsafe impl` whose invariant the type system could
+    /// not enforce.
+    pub meta: Option<Box<dyn Any + Send + Sync>>,
 
     /// The global instance ID associated with this plan.
     pub global_id: Option<usize>,
@@ -337,7 +342,7 @@ impl Plan {
         segment_id: Option<SegmentId>,
         instance_type: InstanceType,
         check_point: CheckPoint,
-        meta: Option<Box<dyn Any>>,
+        meta: Option<Box<dyn Any + Send + Sync>>,
     ) -> Self {
         Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
     }
@@ -350,16 +355,6 @@ impl Plan {
         self.global_id = Some(global_id);
     }
 }
-
-// SAFETY: The only field that prevents auto-derivation of `Send`/`Sync` is
-// `meta: Option<Box<dyn Any>>`, whose type erasure drops the auto-trait bounds.
-// In practice `meta` only ever holds `Send + Sync` payloads (plain collections of
-// plain data, e.g. `HashMap<ChunkId, (u64, CollectSkipper)>`), and a `Plan` is
-// owned by a single thread at a time rather than mutated through shared aliases.
-unsafe impl Send for Plan {}
-// SAFETY: See the `Send` impl above — `meta` only holds `Send + Sync` payloads and
-// `Plan` is never mutated through shared cross-thread aliases.
-unsafe impl Sync for Plan {}
 
 /// The `Planner` trait defines the interface for creating execution plans.
 ///

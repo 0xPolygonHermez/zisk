@@ -458,7 +458,7 @@ impl PrecompileHint {
     ) -> Result<(PrecompileHintParseResult, usize)> {
         // If we have a partial hint, continue accumulating from it
         if let Some(partial_hint) = partial {
-            let available = slice.len() - idx;
+            let available = slice.len().checked_sub(idx).ok_or(CommonError::OutOfBounds)?;
 
             if available >= partial_hint.remaining_u64s {
                 // We have enough data to complete the hint
