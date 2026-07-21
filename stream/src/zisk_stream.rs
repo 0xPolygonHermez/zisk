@@ -256,7 +256,7 @@ unsafe impl AnyBitPattern for u64 {}
 /// # Errors
 ///
 /// Returns [`StreamError::Invalid`] if `U` is a zero-sized type.
-fn reinterpret_vec<T, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
+fn reinterpret_vec<T: Copy, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
 

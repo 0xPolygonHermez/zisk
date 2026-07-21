@@ -79,7 +79,8 @@ pub fn create_atomic_vec<DT: Zeroable>(size: usize) -> Vec<DT> {
 /// * `v` - The source vector to reinterpret.
 ///
 /// # Type Parameters
-/// * `T` - Source element type
+/// * `T` - Source element type; must be `Copy` (destructor-free and bitwise-copyable),
+///   so drop behavior is identical on the zero-copy and copy paths.
 /// * `U` - Destination element type
 ///
 /// # Errors
@@ -87,7 +88,7 @@ pub fn create_atomic_vec<DT: Zeroable>(size: usize) -> Vec<DT> {
 /// - [`CommonError::Invalid`] if `U` is a zero-sized type.
 // `AnyBitPattern` is a crate-internal soundness marker, deliberately not part of the public API.
 #[allow(private_bounds)]
-pub fn reinterpret_vec<T, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
+pub fn reinterpret_vec<T: Copy, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
 
