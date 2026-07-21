@@ -1,7 +1,7 @@
 //! Transport-agnostic coordinator handler.
 //!
 //! [`CoordinatorHandler`] contains all business logic, operating exclusively on
-//! domain types. Transport adapters ([`crate::grpc::GrpcAdapter`],
+//! domain types. Transport adapters — currently just [`crate::grpc::GrpcAdapter`] —
 //! own the format-conversion layer and delegate here.
 
 use std::sync::Arc;
