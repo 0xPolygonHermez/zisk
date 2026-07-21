@@ -112,7 +112,8 @@ impl Default for BackendProverOpts {
             preload_plonk: false,
             plonk: false,
             gpu: false,
-            cpu_mops: false,
+            // Hardcoded: GPU MOps disabled, MOps always run on CPU
+            cpu_mops: true,
             packed: false,
             max_witness_stored: None,
             number_threads_witness: None,
