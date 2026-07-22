@@ -79,6 +79,59 @@ where
     }
 }
 
+/// WC-dump harness (ZISK_WC_DUMP): announce to proofman which job the witnesses
+/// about to be dumped belong to, so it names the staging dir `staging_<job_id>`
+/// instead of `staging_<pid>`. The worker is a long-lived daemon (one stable pid
+/// across many jobs), so pid-keying would intermix witnesses across jobs; job-id
+/// keying gives one clean staging dir per job. No-op unless ZISK_WC_DUMP is set.
+///
+/// Safe to set process-globally: worker computations are serialized (see
+/// `has_live_computation`), so only one job's contribution runs at a time.
+fn wc_dump_begin(job_id: &JobId) {
+    if std::env::var_os("ZISK_WC_DUMP").is_some() {
+        std::env::set_var("ZISK_WC_JOB", job_id.to_string());
+    }
+}
+
+/// WC-dump harness: promote this job's `staging_<job_id>` dir by the contribution
+/// outcome. A "failing" run here means proofman returned an `Err` (an internal
+/// error building the witness/proof) — that staging dir is kept as `bad_<job_id>/`
+/// for byte-comparison. A successful run seeds the single golden `reference/` if
+/// none exists yet, otherwise its staging dir is discarded to keep disk bounded.
+/// No-op unless ZISK_WC_DUMP is set.
+fn wc_dump_finalize(job_id: &JobId, failed: bool) {
+    let Some(dir) = std::env::var_os("ZISK_WC_DUMP") else { return };
+    let base = std::path::Path::new(&dir);
+    let staging = base.join(format!("staging_{job_id}"));
+    if !staging.exists() {
+        return;
+    }
+    if failed {
+        let bad = base.join(format!("bad_{job_id}"));
+        let _ = std::fs::remove_dir_all(&bad);
+        match std::fs::rename(&staging, &bad) {
+            Ok(()) => error!(
+                "[WC-DUMP] contribution FAILED for {job_id}; kept witnesses at {} (compare vs reference/)",
+                bad.display()
+            ),
+            Err(e) => warn!("[WC-DUMP] failed to keep bad dump for {job_id}: {e}"),
+        }
+    } else {
+        let reference = base.join("reference");
+        if reference.exists() {
+            let _ = std::fs::remove_dir_all(&staging);
+            info!("[WC-DUMP] contribution ok for {job_id}; reference exists, discarded this run");
+        } else {
+            match std::fs::rename(&staging, &reference) {
+                Ok(()) => {
+                    info!("[WC-DUMP] contribution ok for {job_id}; stored reference at {}", reference.display())
+                }
+                Err(e) => warn!("[WC-DUMP] failed to store reference for {job_id}: {e}"),
+            }
+        }
+    }
+}
+
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
@@ -798,6 +851,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         worker_idx: guard.rank_id as usize,
                     };
                     drop(guard);
+                    wc_dump_begin(&job_id);
                     let result = Self::execute_contribution_task(
                         job_id.clone(),
                         &prover,
@@ -807,6 +861,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                         partition_info,
                         options,
                     );
+                    wc_dump_finalize(&job_id, result.is_err());
 
                     let (witness_info, zisk_execution_time) = prover
                         .get_execution_info()
@@ -848,6 +903,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     }
                 },
                 || {
+                    // A panic is a failure too: keep the partial dump as bad_<job_id>.
+                    wc_dump_finalize(&job_id_panic, true);
                     let _ = tx_panic.send_computation(ComputationResult::Contribution {
                         job_id: job_id_panic,
                         success: false,
