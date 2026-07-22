@@ -115,10 +115,10 @@ impl BuildArgs {
     }
 }
 
-/// RISC-V extensions whose LLVM target-feature is gated behind a Cargo feature
-/// of the same name. The base guest target (`riscv64ima-...`) omits these, so a
-/// guest opts in with `--features <ext>`, which both flips its `#[cfg]` gates and
-/// (via `target_features_from_features`) permits rustc to emit those instructions.
+/// RISC-V extensions whose LLVM `target-feature` can be enabled for guest builds.
+/// The base guest target (`riscv64ima-...`) omits these; enabling `ext` or `ext_native`
+/// as a Cargo feature makes `target_features_from_features` emit `-C target-feature=+ext`.
+/// Note: `zicond` is enabled via Cargo feature `zicond_native` (there is no `zicond` feature).
 pub const GUEST_TARGET_FEATURES: &[&str] = &["zba", "zbc", "zbkc", "zbkx", "zicond"];
 
 /// Translate the requested Cargo features into `-C target-feature=+...` flags,

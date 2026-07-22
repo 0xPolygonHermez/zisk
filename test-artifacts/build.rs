@@ -10,26 +10,6 @@ fn main() -> Result<()> {
     let programs_path =
         [env!("CARGO_MANIFEST_DIR"), "programs"].iter().collect::<PathBuf>().canonicalize()?;
 
-    // Re-run this build script (and thus rebuild the guest) whenever any extension
-    // feature is toggled. Cargo does NOT track `CARGO_FEATURE_*` as a build-script
-    // input on its own: because we read them at runtime rather than `#[cfg]`-gating,
-    // toggling `--features` neither recompiles this script nor trips the
-    // `rerun-if-changed` source triggers, so without this the guest ELF goes stale
-    // (e.g. `--features=zicond_native` would leave a prior featureless ELF in place).
-    // for feature in [
-    //     "CARGO_FEATURE_ZBA",
-    //     "CARGO_FEATURE_ZBA_NATIVE",
-    //     "CARGO_FEATURE_ZBC",
-    //     "CARGO_FEATURE_ZBC_NATIVE",
-    //     "CARGO_FEATURE_ZBKC",
-    //     "CARGO_FEATURE_ZBKC_NATIVE",
-    //     "CARGO_FEATURE_ZBKX",
-    //     "CARGO_FEATURE_ZBKX_NATIVE",
-    //     "CARGO_FEATURE_ZICOND_NATIVE",
-    // ] {
-    //     println!("cargo:rerun-if-env-changed={feature}");
-    // }
-
     // Collect enabled features from the environment
     let mut features = Vec::new();
 
