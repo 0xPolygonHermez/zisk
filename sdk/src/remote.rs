@@ -77,16 +77,23 @@ impl<Out> RemoteClientBuilder<Out> {
 }
 
 impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
+    /// Connect the gateway and construct the base client. Shared by
+    /// [`build`](Self::build) and [`build_ext`](Self::build_ext) so the
+    /// connection path stays in one place.
+    fn connect(self) -> Result<RemoteClient> {
+        crate::client::ensure_single_instance();
+        let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
+            .map_err(SdkError::backend)?;
+        Ok(RemoteClient { gw })
+    }
+
     /// Build the client.
     ///
     /// Returns the type fixed by the constructor: a [`RemoteClient`] via
     /// [`ProverClient::remote`](crate::ProverClient::remote), or an
     /// [`ZiskClient`](crate::ZiskClient) via [`ZiskClient::remote`](crate::ZiskClient::remote).
     pub fn build(self) -> Result<Out> {
-        crate::client::ensure_single_instance();
-        let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
-            .map_err(SdkError::backend)?;
-        Ok(RemoteClient { gw }.into())
+        Ok(self.connect()?.into())
     }
 
     /// Build an **extended** remote client.
@@ -97,10 +104,7 @@ impl<Out: From<RemoteClient>> RemoteClientBuilder<Out> {
     /// [`execute`](RemoteClient::execute) and [`prove`](RemoteClient::prove)
     /// to return builders that can carry extended features.
     pub fn build_ext(self) -> Result<RemoteClientExt> {
-        crate::client::ensure_single_instance();
-        let gw = CoordinatorClient::connect(self.url, self.connect_timeout, self.request_timeout)
-            .map_err(SdkError::backend)?;
-        Ok(RemoteClientExt { inner: RemoteClient { gw } })
+        Ok(RemoteClientExt { inner: self.connect()? })
     }
 }
 
