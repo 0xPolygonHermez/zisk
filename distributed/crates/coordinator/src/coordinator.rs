@@ -1591,35 +1591,46 @@ impl Coordinator {
     /// replaced with spaces to prevent log injection, and the returned string is
     /// capped at `MAX_LEN` bytes — including the leading space and any trailing
     /// `…` — so a large blob can't produce an unbounded log line.
+    ///
+    /// Sanitized characters are streamed straight into the output under a byte
+    /// budget and iteration stops the moment it is exhausted, so the work is
+    /// bounded by `MAX_LEN` rather than by the (client-controlled) metadata size.
     fn format_job_metadata(metadata: &std::collections::BTreeMap<String, String>) -> String {
         if metadata.is_empty() {
             return String::new();
         }
 
         const MAX_LEN: usize = 512;
-        let sanitize = |s: &str| -> String {
-            s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
-        };
+        let ellipsis = '…';
+        // Always leave room for the trailing ellipsis within the total budget.
+        let budget = MAX_LEN - ellipsis.len_utf8();
+        let sanitize = |c: char| if c.is_control() { ' ' } else { c };
 
-        let joined = metadata
-            .iter()
-            .map(|(k, v)| format!("{}: {}", sanitize(k), sanitize(v)))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let mut out = String::with_capacity(MAX_LEN);
+        out.push(' ');
+        let mut first = true;
+        let mut truncated = false;
 
-        // Cap the whole returned string at MAX_LEN bytes — the leading space
-        // and any trailing '…' both count against the budget — backing off to
-        // the nearest char boundary so a multi-byte character is never split.
-        if joined.len() < MAX_LEN {
-            format!(" {joined}")
-        } else {
-            let ellipsis = '…';
-            let mut end = MAX_LEN - 1 - ellipsis.len_utf8();
-            while end > 0 && !joined.is_char_boundary(end) {
-                end -= 1;
+        'entries: for (k, v) in metadata {
+            let sep = if first { "" } else { ", " };
+            first = false;
+            // Push "sep + k: v" char by char, stopping the moment we'd exceed
+            // the budget — so we never read or allocate more than ~MAX_LEN bytes
+            // of input, and never split a multi-byte character.
+            for part in [sep, k.as_str(), ": ", v.as_str()] {
+                for c in part.chars().map(sanitize) {
+                    if out.len() + c.len_utf8() > budget {
+                        truncated = true;
+                        break 'entries;
+                    }
+                    out.push(c);
+                }
             }
-            format!(" {}{}", &joined[..end], ellipsis)
         }
+        if truncated {
+            out.push(ellipsis);
+        }
+        out
     }
 
     // MONITOR METHODS
