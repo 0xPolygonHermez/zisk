@@ -47,7 +47,7 @@ use crate::{
 };
 use chrono::{DateTime, Utc};
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fs,
     sync::{atomic::AtomicU64, Arc},
     time::Duration,
@@ -717,7 +717,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             Vec::<Vec<u32>>::new(),
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             ProofKind::VadcopFinal,
         );
@@ -1284,7 +1284,7 @@ impl Coordinator {
         inputs_mode: InputsModeDto,
         hints_mode: HintsModeDto,
         simulated_node: Option<u32>,
-        metadata: std::collections::BTreeMap<String, String>,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
         execution_only: bool,
         proof_type: ProofKind,
     ) -> CoordinatorResult<Job> {
@@ -1584,6 +1584,57 @@ impl Coordinator {
         result
     }
 
+    /// Render caller-supplied job metadata for a single log line as a leading
+    /// `" k: v, k: v"` string (empty when there is no metadata).
+    ///
+    /// Values come from clients, so control characters (newlines, tabs, …) are
+    /// replaced with spaces to prevent log injection, and the returned string is
+    /// capped at `MAX_LEN` bytes — including the leading space and any trailing
+    /// `…` — so a large blob can't produce an unbounded log line.
+    ///
+    /// Sanitized characters are streamed straight into the output under a byte
+    /// budget and iteration stops the moment it is exhausted, so the work is
+    /// bounded by `MAX_LEN` rather than by the (client-controlled) metadata size.
+    fn format_job_metadata(
+        metadata: Option<&std::collections::BTreeMap<String, String>>,
+    ) -> String {
+        let Some(metadata) = metadata.filter(|m| !m.is_empty()) else {
+            return String::new();
+        };
+
+        const MAX_LEN: usize = 512;
+        let ellipsis = '…';
+        // Always leave room for the trailing ellipsis within the total budget.
+        let budget = MAX_LEN - ellipsis.len_utf8();
+        let sanitize = |c: char| if c.is_control() { ' ' } else { c };
+
+        let mut out = String::with_capacity(MAX_LEN);
+        out.push(' ');
+        let mut first = true;
+        let mut truncated = false;
+
+        'entries: for (k, v) in metadata {
+            let sep = if first { "" } else { ", " };
+            first = false;
+            // Push "sep + k: v" char by char, stopping the moment we'd exceed
+            // the budget — so we never read or allocate more than ~MAX_LEN bytes
+            // of input, and never split a multi-byte character.
+            for part in [sep, k.as_str(), ": ", v.as_str()] {
+                for c in part.chars().map(sanitize) {
+                    if out.len() + c.len_utf8() > budget {
+                        truncated = true;
+                        break 'entries;
+                    }
+                    out.push(c);
+                }
+            }
+        }
+        if truncated {
+            out.push(ellipsis);
+        }
+        out
+    }
+
     // MONITOR METHODS
     // ---------------------------------------------------------------
 
@@ -1843,7 +1894,6 @@ impl Coordinator {
 mod tests {
     use super::*;
     use crate::test_utils::*;
-    use std::collections::BTreeMap;
     use zisk_cluster_common::{
         ComputeCapacity, HintsModeDto, InputsModeDto, Job, JobExecutionMode, JobPhase, JobState,
         PhaseTimings, WorkerState,
@@ -1870,7 +1920,7 @@ mod tests {
             workers.to_vec(),
             partitions,
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             ProofKind::VadcopFinal,
         )
@@ -2733,7 +2783,7 @@ mod tests {
             inputs_mode: zisk_cluster_common::InputsModeDto::InputsNone,
             hints_mode: zisk_cluster_common::HintsModeDto::HintsNone,
             simulated_node: None,
-            metadata: std::collections::BTreeMap::new(),
+            metadata: None,
             execution_only: false,
             proof_type: zisk_cluster_common::ProofKind::VadcopFinal,
         };
@@ -3137,7 +3187,7 @@ mod tests {
                 zisk_cluster_common::InputsModeDto::InputsNone,
                 zisk_cluster_common::HintsModeDto::HintsNone,
                 None,
-                std::collections::BTreeMap::new(),
+                None,
                 false,
                 zisk_cluster_common::ProofKind::VadcopFinal,
             )
@@ -3184,7 +3234,7 @@ mod tests {
                     zisk_cluster_common::InputsModeDto::InputsNone,
                     zisk_cluster_common::HintsModeDto::HintsNone,
                     None,
-                    std::collections::BTreeMap::new(),
+                    None,
                     false,
                     zisk_cluster_common::ProofKind::VadcopFinal,
                 )
@@ -3201,7 +3251,7 @@ mod tests {
                     zisk_cluster_common::InputsModeDto::InputsNone,
                     zisk_cluster_common::HintsModeDto::HintsNone,
                     None,
-                    std::collections::BTreeMap::new(),
+                    None,
                     false,
                     zisk_cluster_common::ProofKind::VadcopFinal,
                 )
@@ -4368,7 +4418,7 @@ mod tests {
             inputs_mode: InputsModeDto::InputsNone,
             hints_mode: HintsModeDto::HintsNone,
             simulated_node: None,
-            metadata: BTreeMap::new(),
+            metadata: None,
             execution_only: false,
             proof_type: ProofKind::VadcopFinal,
         }

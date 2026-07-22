@@ -13,6 +13,7 @@ use crate::config::Config as CoordinatorServerConfig;
 use crate::grpc::GrpcAdapter;
 use crate::handler::CoordinatorHandler;
 use crate::metrics;
+use crate::proto::zisk_coordinator_api_ext_server::ZiskCoordinatorApiExtServer;
 use crate::proto::zisk_coordinator_api_server::ZiskCoordinatorApiServer;
 use crate::shutdown::shutdown_signal;
 
@@ -53,6 +54,12 @@ impl<B: BackendService> CoordinatorServer<B> {
             .max_decoding_message_size(MAX_MESSAGE_SIZE)
             .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
+        // Extended API: same handler, carries opt-in job-level metadata.
+        let ext_service = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&self.backend)));
+        let ext_svc = ZiskCoordinatorApiExtServer::new(ext_service)
+            .max_decoding_message_size(MAX_MESSAGE_SIZE)
+            .max_encoding_message_size(MAX_MESSAGE_SIZE);
+
         // Standard grpc.health.v1.Health service — used by grpc_health_probe / k8s.
         let (health_reporter, health_svc) = tonic_health::server::health_reporter();
         health_reporter.set_service_status("", tonic_health::ServingStatus::Serving).await;
@@ -71,6 +78,7 @@ impl<B: BackendService> CoordinatorServer<B> {
             .http2_keepalive_timeout(Some(Duration::from_secs(10)))
             .add_service(health_svc)
             .add_service(svc)
+            .add_service(ext_svc)
             .serve_with_shutdown(addr, async move {
                 shutdown_signal().await;
                 info!("shutdown signal received — draining in-flight requests");

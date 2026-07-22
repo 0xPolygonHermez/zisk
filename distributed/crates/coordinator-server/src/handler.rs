@@ -49,9 +49,18 @@ impl<B: BackendService> CoordinatorHandler<B> {
         Ok(RegisterAggregationProgramResponseDto { recurser_id })
     }
 
-    /// Submit a job and return its assigned id.
+    /// Submit a base job and return its assigned id.
     pub async fn submit_job(&self, job: DomainJobKind) -> ApiResult<SubmitJobResult> {
         self.backend.submit_job(job).await
+    }
+
+    /// Submit a job with caller-defined key/value metadata.
+    pub async fn submit_job_ext(
+        &self,
+        job: DomainJobKind,
+        metadata: std::collections::BTreeMap<String, String>,
+    ) -> ApiResult<SubmitJobResult> {
+        self.backend.submit_job_ext(job, metadata).await
     }
 
     /// Wait up to `timeout` for the job to reach a terminal state.

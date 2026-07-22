@@ -337,7 +337,7 @@ pub struct Job {
     /// Number of AIR instances, once known.
     pub instances: Option<u64>,
     /// Arbitrary client-supplied metadata.
-    pub metadata: BTreeMap<String, String>,
+    pub metadata: Option<BTreeMap<String, String>>,
     /// Whether this is an execute-only job (no proof).
     pub execution_only: bool,
     /// The kind of proof requested.
@@ -363,7 +363,7 @@ impl Job {
         selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
-        metadata: BTreeMap<String, String>,
+        metadata: Option<BTreeMap<String, String>>,
         execution_only: bool,
         proof_type: ProofKind,
     ) -> Self {
@@ -735,7 +735,7 @@ mod tests {
             vec![],
             vec![],
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             crate::ProofKind::VadcopFinal,
         )

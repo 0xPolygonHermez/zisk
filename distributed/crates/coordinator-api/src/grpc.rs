@@ -13,6 +13,10 @@ pub mod proto {
 }
 
 pub use proto::zisk_coordinator_api_client::ZiskCoordinatorApiClient;
+pub use proto::zisk_coordinator_api_ext_client::ZiskCoordinatorApiExtClient;
+pub use proto::zisk_coordinator_api_ext_server::{
+    ZiskCoordinatorApiExt, ZiskCoordinatorApiExtServer,
+};
 pub use proto::zisk_coordinator_api_server::{ZiskCoordinatorApi, ZiskCoordinatorApiServer};
 
 use crate::dto::{
@@ -287,24 +291,7 @@ impl TryFrom<JobKind> for DomainJobKind {
                 with_hints: r.with_hints,
                 emulator_only: r.emulator_only,
             })),
-            job_kind::Kind::Prove(r) => {
-                let input = r
-                    .input
-                    .ok_or_else(|| "input must be set".to_string())?
-                    .try_into()
-                    .map_err(|e: String| e)?;
-                let proof_timeout = r.proof_timeout.and_then(ts_to_datetime);
-                let proof_dest =
-                    DomainProofKind::try_from(r.proof_dest).unwrap_or(DomainProofKind::Stark);
-                let hints = r.hints.map(|h| h.try_into()).transpose().map_err(|e: String| e)?;
-                Ok(DomainJobKind::Prove(DomainProveRequest {
-                    hash_id: r.hash_id,
-                    input,
-                    hints,
-                    proof_timeout,
-                    proof_dest,
-                }))
-            }
+            job_kind::Kind::Prove(r) => Ok(DomainJobKind::Prove(r.try_into()?)),
             job_kind::Kind::Wrap(r) => {
                 let proof = DomainProof::try_from(
                     r.proof.ok_or_else(|| "wrap.proof must be set".to_string())?,
@@ -315,21 +302,7 @@ impl TryFrom<JobKind> for DomainJobKind {
                 let wrap_timeout = r.wrap_timeout.and_then(ts_to_datetime);
                 Ok(DomainJobKind::Wrap(DomainWrapRequest { proof, proof_dest, wrap_timeout }))
             }
-            job_kind::Kind::Execute(r) => {
-                let input = r
-                    .input
-                    .ok_or_else(|| "input must be set".to_string())?
-                    .try_into()
-                    .map_err(|e: String| e)?;
-                let execute_timeout = r.execute_timeout.and_then(ts_to_datetime);
-                let hints = r.hints.map(|h| h.try_into()).transpose().map_err(|e: String| e)?;
-                Ok(DomainJobKind::Execute(DomainExecuteRequest {
-                    hash_id: r.hash_id,
-                    input,
-                    hints,
-                    execute_timeout,
-                }))
-            }
+            job_kind::Kind::Execute(r) => Ok(DomainJobKind::Execute(r.try_into()?)),
             job_kind::Kind::SetupAggregationProgram(r) => {
                 Ok(DomainJobKind::SetupAggregationProgram(DomainSetupAggregationProgramRequest {
                     recurser_id: r.recurser_id,
@@ -374,24 +347,13 @@ impl From<DomainJobKind> for JobKind {
                 with_hints: r.with_hints,
                 emulator_only: r.emulator_only,
             }),
-            DomainJobKind::Prove(r) => Kind::Prove(ProveRequest {
-                hash_id: r.hash_id,
-                input: Some(InputKind::from(r.input)),
-                proof_timeout: r.proof_timeout.map(datetime_to_ts),
-                proof_dest: ProofKind::from(r.proof_dest).into(),
-                hints: r.hints.map(InputKind::from),
-            }),
+            DomainJobKind::Prove(r) => Kind::Prove(r.into()),
             DomainJobKind::Wrap(r) => Kind::Wrap(WrapRequest {
                 proof: Some(r.proof.into()),
                 proof_dest: ProofKind::from(r.proof_dest).into(),
                 wrap_timeout: r.wrap_timeout.map(datetime_to_ts),
             }),
-            DomainJobKind::Execute(r) => Kind::Execute(ExecuteRequest {
-                hash_id: r.hash_id,
-                input: Some(InputKind::from(r.input)),
-                execute_timeout: r.execute_timeout.map(datetime_to_ts),
-                hints: r.hints.map(InputKind::from),
-            }),
+            DomainJobKind::Execute(r) => Kind::Execute(r.into()),
             DomainJobKind::SetupAggregationProgram(r) => {
                 Kind::SetupAggregationProgram(SetupAggregationProgramRequest {
                     recurser_id: r.recurser_id,
@@ -407,6 +369,78 @@ impl From<DomainJobKind> for JobKind {
             }),
         };
         JobKind { kind: Some(kind) }
+    }
+}
+
+impl From<DomainProveRequest> for ProveRequest {
+    fn from(r: DomainProveRequest) -> Self {
+        ProveRequest {
+            hash_id: r.hash_id,
+            input: Some(InputKind::from(r.input)),
+            proof_timeout: r.proof_timeout.map(datetime_to_ts),
+            proof_dest: ProofKind::from(r.proof_dest).into(),
+            hints: r.hints.map(InputKind::from),
+        }
+    }
+}
+
+impl TryFrom<ProveRequest> for DomainProveRequest {
+    type Error = String;
+
+    fn try_from(r: ProveRequest) -> std::result::Result<Self, Self::Error> {
+        let input = r.input.ok_or_else(|| "input must be set".to_string())?.try_into()?;
+        let proof_timeout = r.proof_timeout.and_then(ts_to_datetime);
+        let proof_dest = DomainProofKind::try_from(r.proof_dest).unwrap_or(DomainProofKind::Stark);
+        let hints = r.hints.map(|h| h.try_into()).transpose()?;
+        Ok(DomainProveRequest { hash_id: r.hash_id, input, hints, proof_timeout, proof_dest })
+    }
+}
+
+impl From<DomainExecuteRequest> for ExecuteRequest {
+    fn from(r: DomainExecuteRequest) -> Self {
+        ExecuteRequest {
+            hash_id: r.hash_id,
+            input: Some(InputKind::from(r.input)),
+            execute_timeout: r.execute_timeout.map(datetime_to_ts),
+            hints: r.hints.map(InputKind::from),
+        }
+    }
+}
+
+impl TryFrom<ExecuteRequest> for DomainExecuteRequest {
+    type Error = String;
+
+    fn try_from(r: ExecuteRequest) -> std::result::Result<Self, Self::Error> {
+        let input = r.input.ok_or_else(|| "input must be set".to_string())?.try_into()?;
+        let execute_timeout = r.execute_timeout.and_then(ts_to_datetime);
+        let hints = r.hints.map(|h| h.try_into()).transpose()?;
+        Ok(DomainExecuteRequest { hash_id: r.hash_id, input, hints, execute_timeout })
+    }
+}
+
+impl TryFrom<DomainJobKind> for JobKindExt {
+    type Error = String;
+
+    fn try_from(domain: DomainJobKind) -> std::result::Result<Self, Self::Error> {
+        use job_kind_ext::Kind;
+        let kind = match domain {
+            DomainJobKind::Prove(r) => Kind::Prove(r.into()),
+            DomainJobKind::Execute(r) => Kind::Execute(r.into()),
+            _ => return Err("extended API accepts only prove or execute jobs".to_string()),
+        };
+        Ok(JobKindExt { kind: Some(kind) })
+    }
+}
+
+impl TryFrom<JobKindExt> for DomainJobKind {
+    type Error = String;
+
+    fn try_from(ext: JobKindExt) -> std::result::Result<Self, Self::Error> {
+        use job_kind_ext::Kind;
+        match ext.kind.ok_or_else(|| "job_kind must be set".to_string())? {
+            Kind::Prove(r) => Ok(DomainJobKind::Prove(r.try_into()?)),
+            Kind::Execute(r) => Ok(DomainJobKind::Execute(r.try_into()?)),
+        }
     }
 }
 

@@ -1658,6 +1658,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let cancelled = self.worker.cancel_current_computation();
         Self::drain_cancelled_computation(cancelled, "partial_contribution").await;
 
+        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
+        let metadata = (!request.metadata.is_empty())
+            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
+
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
             return Err(anyhow!("Expected ContributionParams for Partial Contribution task"));
@@ -1705,6 +1709,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
+            metadata,
         );
 
         // Start computation in background task
@@ -1729,6 +1734,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // the ASM shmem — normally a no-op (see `partial_contribution`).
         let cancelled = self.worker.cancel_current_computation();
         Self::drain_cancelled_computation(cancelled, "execute_only").await;
+
+        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
+        let metadata = (!request.metadata.is_empty())
+            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
@@ -1777,6 +1786,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
+            metadata,
         );
 
         // Start execution-only computation in background task

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -7,8 +8,8 @@ use zisk_coordinator_api::dto::{
     DomainAggregationProgramSpec, DomainJobKind, RegisterAggregationProgramRequestDto,
     RegisterGuestProgramRequestDto,
 };
-use zisk_coordinator_api::grpc::proto::CancelJobRequest;
-use zisk_coordinator_api::grpc::ZiskCoordinatorApiClient;
+use zisk_coordinator_api::grpc::proto::{CancelJobRequest, JobKindExt, JobRequestExtMessage};
+use zisk_coordinator_api::grpc::{ZiskCoordinatorApiClient, ZiskCoordinatorApiExtClient};
 
 use crate::input_sender::InputSender;
 use crate::job::Job;
@@ -21,6 +22,7 @@ use crate::job::Job;
 #[derive(Clone)]
 pub struct CoordinatorClient {
     inner: ZiskCoordinatorApiClient<Channel>,
+    ext: ZiskCoordinatorApiExtClient<Channel>,
 }
 
 impl CoordinatorClient {
@@ -41,7 +43,10 @@ impl CoordinatorClient {
                 .context("Failed to connect to coordinator")
         })?;
         Ok(Self {
-            inner: ZiskCoordinatorApiClient::new(channel)
+            inner: ZiskCoordinatorApiClient::new(channel.clone())
+                .max_decoding_message_size(128 * 1024 * 1024)
+                .max_encoding_message_size(128 * 1024 * 1024),
+            ext: ZiskCoordinatorApiExtClient::new(channel)
                 .max_decoding_message_size(128 * 1024 * 1024)
                 .max_encoding_message_size(128 * 1024 * 1024),
         })
@@ -81,6 +86,25 @@ impl CoordinatorClient {
         let resp = block_on(async {
             let mut gw = self.inner.clone();
             let resp = gw.job_request(kind).await.context("JobRequest RPC failed")?;
+            Ok::<_, anyhow::Error>(resp.into_inner())
+        })?;
+        Job::new(resp.job_id, self.clone())
+    }
+
+    /// Submit an extended job with caller-defined key/value metadata.
+    pub fn submit_job_ext(
+        &self,
+        kind: DomainJobKind,
+        metadata: BTreeMap<String, String>,
+    ) -> Result<Job> {
+        let job_kind = JobKindExt::try_from(kind).map_err(|e| anyhow::anyhow!(e))?;
+        let resp = block_on(async {
+            let mut gw = self.ext.clone();
+            let req = JobRequestExtMessage {
+                job_kind: Some(job_kind),
+                metadata: metadata.into_iter().collect(),
+            };
+            let resp = gw.job_request_ext(req).await.context("JobRequestExt RPC failed")?;
             Ok::<_, anyhow::Error>(resp.into_inner())
         })?;
         Job::new(resp.job_id, self.clone())

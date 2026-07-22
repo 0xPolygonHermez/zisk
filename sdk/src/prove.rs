@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,7 +10,7 @@ use zisk_prover_backend::{GuestProgram, ProveOutput};
 use crate::hints::HintsSource;
 use crate::input_source::InputSource;
 use crate::job_handle::{subscriber_list_from, JobHandle, JobId, Subscriber, SubscriberList};
-use crate::{Client, ClientSync, ExecutorKind};
+use crate::{Client, ClientSync, ExecutorKind, RemoteClient};
 
 /// Result of a prove operation.
 pub struct ProveResult {
@@ -171,6 +172,103 @@ impl<'a, C: ClientSync> ProveRequest<'a, C> {
             self.executor,
             self.proof_kind,
             subs,
+        )
+    }
+}
+
+/// Extended prove request builder — identical to [`ProveRequest`] but adds
+/// opt-in, job-level [`metadata`](Self::metadata).
+///
+/// Remote backend only; obtain via
+/// [`RemoteClientExt::prove`](crate::RemoteClientExt::prove).
+pub struct ProveRequestExt<'a> {
+    client: &'a RemoteClient,
+    program: &'a GuestProgram,
+    stdin: InputSource,
+    hints: Option<HintsSource>,
+    executor: ExecutorKind,
+    timeout: Option<Duration>,
+    proof_kind: ProofKind,
+    subscribers: Vec<Subscriber>,
+    metadata: BTreeMap<String, String>,
+}
+
+impl<'a> ProveRequestExt<'a> {
+    pub(crate) fn new(
+        client: &'a RemoteClient,
+        program: &'a GuestProgram,
+        stdin: impl Into<InputSource>,
+    ) -> Self {
+        Self {
+            client,
+            program,
+            stdin: stdin.into(),
+            hints: None,
+            executor: ExecutorKind::default(),
+            timeout: None,
+            proof_kind: ProofKind::default(),
+            subscribers: Vec::new(),
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    /// Attach a job-level metadata key/value pair forwarded to the coordinator.
+    /// Call repeatedly to attach multiple pairs; an empty map means no metadata.
+    #[must_use]
+    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
+        self
+    }
+
+    /// Attach a hints stream to this prove request.
+    #[must_use]
+    pub fn hints(mut self, hints: impl Into<HintsSource>) -> Self {
+        self.hints = Some(hints.into());
+        self
+    }
+
+    /// Override the executor for this prove call.
+    #[must_use]
+    pub fn executor(mut self, executor: ExecutorKind) -> Self {
+        self.executor = executor;
+        self
+    }
+
+    /// Set a timeout for proof generation.
+    #[must_use]
+    pub fn timeout(mut self, duration: Duration) -> Self {
+        self.timeout = Some(duration);
+        self
+    }
+
+    /// Set the proof wrapping mode.
+    #[must_use]
+    pub fn wrap(mut self, kind: ProofKind) -> Self {
+        self.proof_kind = kind;
+        self
+    }
+
+    /// Register a pre-submit event callback.
+    ///
+    /// Use [`JobEvent::All`] to subscribe to all events.
+    #[must_use]
+    pub fn on(mut self, event: JobEvent, cb: impl Fn(JobEvent) + Send + Sync + 'static) -> Self {
+        self.subscribers.push((event, Arc::new(cb)));
+        self
+    }
+
+    /// Submit proof generation, returning a [`JobHandle<ProveResult>`] immediately.
+    pub fn run(self) -> Result<JobHandle<ProveResult>> {
+        let subs: SubscriberList = subscriber_list_from(self.subscribers);
+        self.client.do_prove_ext(
+            self.program,
+            self.stdin,
+            self.hints,
+            self.executor,
+            self.proof_kind,
+            self.timeout,
+            subs,
+            self.metadata,
         )
     }
 }

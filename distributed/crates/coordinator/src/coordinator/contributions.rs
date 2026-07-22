@@ -93,6 +93,7 @@ impl Coordinator {
             let hints_source = hints_source.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
+            let job_metadata = job.metadata.clone();
             let workers_pool = &self.workers_pool;
 
             async move {
@@ -117,6 +118,7 @@ impl Coordinator {
                     worker_id: worker_id.clone(),
                     job_id: job_id.clone(),
                     params,
+                    metadata: job_metadata,
                 };
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
@@ -516,13 +518,7 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = if job.metadata.is_empty() {
-            String::new()
-        } else {
-            let pairs: Vec<String> =
-                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
-            format!(" {}", pairs.join(", "))
-        };
+        let metadata_str = Self::format_job_metadata(job.metadata.as_ref());
 
         info!(
             "{} {} {} {} Capacity: {}{}",
