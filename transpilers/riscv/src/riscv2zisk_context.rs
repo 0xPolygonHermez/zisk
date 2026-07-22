@@ -713,11 +713,12 @@ impl Riscv2ZiskContext<'_> {
             // This arm is needed when some optional instruction subsets are disabled; when all are
             // enabled it can become unreachable, so silence that lint.
             #[cfg(not(all(
-                feature = "zba",
-                feature = "zbc",
-                feature = "zbkc",
-                feature = "zbkx",
-                feature = "float"
+                any(feature = "zba", feature = "zba_native"),
+                any(feature = "zbc", feature = "zbc_native"),
+                any(feature = "zbkc", feature = "zbkc_native"),
+                any(feature = "zbkx", feature = "zbkx_native"),
+                feature = "float",
+                feature = "zicond_native"
             )))]
             _ => {
                 panic!(
