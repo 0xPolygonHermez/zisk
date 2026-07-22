@@ -68,7 +68,7 @@ impl<const N: usize> AddAssign for OpsCount<N> {
             return;
         }
         if self.count.is_empty() {
-            self.count = other.count.clone();
+            self.count = other.count;
         } else {
             assert!(
                 self.count.len() == other.count.len(),
@@ -88,17 +88,13 @@ impl<const N: usize> Sub for OpsCount<N> {
 
     fn sub(self, other: Self) -> Self {
         if other.count.is_empty() {
-            if self.count.is_empty() {
-                Self::new()
-            } else {
-                self.clone()
-            }
+            self
         } else {
             assert!(
                 !self.count.is_empty(),
                 "OpsCount subtraction: cannot subtract non empty OpsCount from an empty OpsCount"
             );
-            let mut result = self.clone();
+            let mut result = self;
             assert!(
                 result.count.len() == other.count.len(),
                 "OpsCount subtraction: count lengths do not match"

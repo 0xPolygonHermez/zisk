@@ -345,12 +345,19 @@ impl Stats {
     /// pc, function, address, width, read/write, misalignment offset (`address % 8`) and value.
     fn monitor_mem_access(&self, is_write: bool, address: u64, width: u64, value: u64) {
         let pc = self.current_pc;
-        println!(
-            "MEM MONITOR pc=0x{pc:08x} fn='{}' addr=0x{address:016x} width={width} {} offset={} value=0x{value:016x}",
-            self.func_name_at(pc as u32),
-            if is_write { "write" } else { "read" },
-            address % 8,
-        );
+        if is_write {
+            println!(
+                 "MEM MONITOR pc=0x{pc:08x} fn='{}' addr=0x{address:016x} width={width} write offset={} value=0x{value:016x}",
+                 self.func_name_at(pc as u32),
+                 address % 8,
+             );
+        } else {
+            println!(
+                 "MEM MONITOR pc=0x{pc:08x} fn='{}' addr=0x{address:016x} width={width} read offset={}",
+                 self.func_name_at(pc as u32),
+                 address % 8,
+             );
+        }
     }
 
     /// Called every time a register is read, if statistics are enabled
