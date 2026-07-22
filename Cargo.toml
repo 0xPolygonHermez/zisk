@@ -140,17 +140,17 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/fix_profman_build" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
