@@ -1,19 +1,7 @@
 use std::mem::MaybeUninit;
+use std::sync::atomic::AtomicU64;
 
 use crate::error::{CommonError, Result};
-
-/// Marker for types whose all-zero bit pattern is a valid, fully-initialized value and
-/// that carry no `Drop` glue — so a bulk-zeroed allocation is a valid `Vec<Self>`.
-///
-/// # Safety
-///
-/// Implementors must be valid when zero-initialized: no niche, no reference, no field
-/// that forbids the all-zero pattern, and no `Drop` implementation.
-pub(crate) unsafe trait Zeroable {}
-
-// SAFETY: `AtomicU64` wraps a `u64` whose all-zero pattern is the valid value `0`, and it
-// has no `Drop` glue.
-unsafe impl Zeroable for std::sync::atomic::AtomicU64 {}
 
 /// Marker for types that are sound to reinterpret raw bytes as, in either direction:
 /// an arbitrary byte buffer can be read as them, and their own bytes can be read raw.
@@ -31,34 +19,30 @@ unsafe impl Zeroable for std::sync::atomic::AtomicU64 {}
 ///
 /// Integer types qualify; `bool`, `char`, `NonZero*`, niche enums, references, and structs
 /// with padding do not.
-pub(crate) unsafe trait AnyBitPattern {}
+pub unsafe trait AnyBitPattern {}
 
 // SAFETY: `u8` has no invalid bit patterns.
 unsafe impl AnyBitPattern for u8 {}
 // SAFETY: `u64` has no invalid bit patterns.
 unsafe impl AnyBitPattern for u64 {}
 
-/// Creates a `Vec<DT>` of `size` elements by zeroing the backing allocation in bulk
-/// instead of constructing each element — a fast path for atomic integer element types.
-///
-/// The `DT: Zeroable` bound guarantees the zeroed bytes form valid `DT` values, so this
-/// function is safe.
-// `Zeroable` is a crate-internal soundness marker, deliberately not part of the public API.
-#[allow(private_bounds)]
-pub fn create_atomic_vec<DT: Zeroable>(size: usize) -> Vec<DT> {
-    let mut vec: Vec<MaybeUninit<DT>> = Vec::with_capacity(size);
+/// Creates a `Vec<AtomicU64>` of `size` elements by zeroing the backing allocation in
+/// bulk instead of constructing each element — a fast path for atomic counters.
+pub fn create_atomic_vec(size: usize) -> Vec<AtomicU64> {
+    let mut vec: Vec<MaybeUninit<AtomicU64>> = Vec::with_capacity(size);
 
-    // SAFETY: `vec` has capacity for `size` elements, so the `size * size_of::<DT>()`
-    // bytes zeroed by `write_bytes` lie within the allocation. `DT: Zeroable` makes the
-    // all-zero pattern a valid `DT`, so afterwards those `size` elements are initialized
-    // and `set_len(size)` is sound. `MaybeUninit<DT>` shares `DT`'s layout, so
-    // transmuting `Vec<MaybeUninit<DT>>` to `Vec<DT>` preserves the allocation.
+    // SAFETY: `vec` has capacity for `size` elements, so the `size * size_of::<AtomicU64>()`
+    // bytes zeroed by `write_bytes` lie within the allocation. `AtomicU64`'s all-zero
+    // pattern is the valid value `0` and it has no `Drop` glue, so afterwards those `size`
+    // elements are initialized and `set_len(size)` is sound. `MaybeUninit<AtomicU64>` shares
+    // `AtomicU64`'s layout, so transmuting `Vec<MaybeUninit<AtomicU64>>` to `Vec<AtomicU64>`
+    // preserves the allocation.
     unsafe {
         let ptr = vec.as_mut_ptr() as *mut u8;
-        std::ptr::write_bytes(ptr, 0, size * std::mem::size_of::<DT>()); // Fast zeroing
+        std::ptr::write_bytes(ptr, 0, size * std::mem::size_of::<AtomicU64>()); // Fast zeroing
 
         vec.set_len(size);
-        std::mem::transmute(vec) // Convert Vec<MaybeUninit<DT>> -> Vec<DT>
+        std::mem::transmute(vec) // Convert Vec<MaybeUninit<AtomicU64>> -> Vec<AtomicU64>
     }
 }
 
@@ -94,8 +78,7 @@ pub fn create_atomic_vec<DT: Zeroable>(size: usize) -> Vec<DT> {
 /// # Errors
 ///
 /// - [`CommonError::Invalid`] if `U` is a zero-sized type.
-// `AnyBitPattern` is a crate-internal soundness marker, deliberately not part of the public API.
-#[allow(private_bounds)]
+// `AnyBitPattern` is sealed, so the set of valid `T`/`U` is fixed by this crate.
 pub fn reinterpret_vec<T: Copy + AnyBitPattern, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
