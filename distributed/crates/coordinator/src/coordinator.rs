@@ -784,6 +784,107 @@ impl Coordinator {
         result
     }
 
+    /// Deliver a just-completed setup to workers still `Idle`, via the same
+    /// tracked reservation `setup_program` uses. Workers that register between a
+    /// setup being reserved and completing miss the original broadcast
+    /// (`active_setups` was empty then) and nothing else back-fills them, so
+    /// without this they stay Idle forever while whole-fleet jobs size against
+    /// the lone set-up worker. Tracking them in `setup_pending` (not raw
+    /// `SettingUp`) means disconnect cleanup and completion accounting own their
+    /// state. Self-terminating: the resulting acks re-run this, but no worker is
+    /// Idle by then (post-setup registrations replay as `SettingUp`).
+    pub(crate) async fn backfill_setup_to_idle(&self, key: &SetupKey, program_name: &str) {
+        // Reserve first (guarded + atomic); bail on the Computing/recovery guard
+        // or when there's nothing to do.
+        let reserved = match self.workers_pool.reserve_idle_for_setup(&self.pending_recovery).await
+        {
+            Ok(reserved) if reserved.is_empty() => return,
+            Ok(reserved) => reserved,
+            Err(e) => {
+                debug!("[Setup] Back-fill skipped: {}", e);
+                return;
+            }
+        };
+
+        // Async read: this runs on the ack handler's task, so a blocking
+        // std::fs::read of a large ELF would stall the executor.
+        let path = ZiskPaths::global().elf_cache(&key.hash_id);
+        let elf_bytes = match tokio::fs::read(&path).await {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                // Cache unreadable: release the reservation so it isn't stranded.
+                warn!(
+                    "[Setup] Back-fill aborted; cached ELF unreadable for {}: {}",
+                    key.hash_id, e
+                );
+                // Guarded release: only workers still `SettingUp` (this
+                // reservation) are reverted to `Idle`. A worker that
+                // disconnected in the meantime is left `Disconnected` — an
+                // unconditional set would resurrect it as a zombie.
+                self.workers_pool.release_settingup_to_idle(&reserved).await;
+                return;
+            }
+        };
+
+        let job_id = JobId::new();
+        self.setup_pending.write().await.insert(
+            job_id.clone(),
+            SetupPendingState {
+                pending: reserved.iter().cloned().collect(),
+                vks: Vec::new(),
+                hash_id: key.hash_id.clone(),
+                program_name: program_name.to_string(),
+                with_hints: key.with_hints,
+                emulator_only: key.emulator_only,
+            },
+        );
+
+        for worker_id in reserved {
+            let msg = CoordinatorMessageDto::SetupProgram(SetupProgramDto {
+                job_id: job_id.as_string(),
+                elf_bytes: elf_bytes.clone(),
+                hash_id: key.hash_id.clone(),
+                program_name: program_name.to_string(),
+                with_hints: key.with_hints,
+                emulator_only: key.emulator_only,
+            });
+            if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+                // Unreachable: drop from pending + disconnect so it can't hang the
+                // entry (same failed-send handling as `setup_program`).
+                warn!("[Setup] Failed to back-fill setup to worker {}: {}", worker_id, e);
+                self.setup_pending.write().await.entry(job_id.clone()).and_modify(|s| {
+                    s.pending.remove(&worker_id);
+                });
+                if let Some(gen) = self.workers_pool.connection_generation(&worker_id).await {
+                    if let Err(de) =
+                        self.workers_pool.disconnect_worker_if_generation(&worker_id, gen).await
+                    {
+                        warn!(
+                            "[Setup] Failed to disconnect {} after failed back-fill send: {}",
+                            worker_id, de
+                        );
+                    }
+                }
+                continue;
+            }
+            debug!("[Setup] Back-filling setup to late-joined worker {}", worker_id);
+        }
+
+        // Edge case: every send failed, so no ack will ever arrive to drain this
+        // entry (mirrors `setup_program`'s all-unreachable handling). Drop the
+        // now-empty entry so it doesn't linger untracked — `active_setups` is
+        // already recorded and no client subscribes to a back-fill job, so
+        // there's no event to fire, just cleanup.
+        let mut pending = self.setup_pending.write().await;
+        if pending.get(&job_id).is_some_and(|s| s.pending.is_empty()) {
+            pending.remove(&job_id);
+            debug!(
+                "[Setup] Back-fill for {} had no reachable workers; dropped empty entry",
+                job_id
+            );
+        }
+    }
+
     /// Returns all active setups as `SetupProgramDto`s (reading ELF bytes from the on-disk cache).
     /// Used to re-send all programs to reconnecting workers.
     async fn read_all_setup_dtos(&self) -> Vec<SetupProgramDto> {
@@ -1287,7 +1388,7 @@ impl Coordinator {
     /// `SettingUp` and adds them to `pending_recovery`. Each worker will
     /// receive `JobCancelled`, tear down its in-flight task, and emit
     /// `WorkerRecoveryComplete` — that signal is what flips the worker back
-    /// to `Ready` (see [`handle_stream_recovery_complete`]). Until then the
+    /// to `Ready` (see `handle_stream_recovery_complete`). Until then the
     /// dispatcher cannot re-task them, which is what prevents a stale
     /// `ExecuteTaskResponse` for the failed job from racing a fresh
     /// `Computing(new_job, _)` state on the same worker.
@@ -2336,6 +2437,219 @@ mod tests {
             }
             other => panic!("expected Completed(Setup), got {other:?}"),
         }
+    }
+
+    /// A worker that registered `Idle` during a setup's window (so it missed
+    /// the original broadcast) must receive the program once that setup
+    /// completes, flipping to `SettingUp`. Without this back-fill it would
+    /// stay Idle forever and a whole-fleet job would size against only the
+    /// worker that was set up.
+    #[tokio::test]
+    async fn test_backfill_setup_reaches_late_idle_worker() {
+        use crate::test_utils::register_test_worker;
+
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        // Stage the ELF the completed setup refers to.
+        let elf_bytes = b"backfill-elf".to_vec();
+        let hash_id = coordinator.register_guest_program(elf_bytes).unwrap();
+
+        // A worker that joined late — still Idle, no setup delivered yet.
+        let (late_id, late_msgs) =
+            register_test_worker(&coordinator.workers_pool, "late-idle").await;
+        assert_eq!(coordinator.workers_pool.worker_state(&late_id).await, Some(WorkerState::Idle));
+
+        // The setup completes and is recorded; back-fill fires for Idle workers.
+        let key = SetupKey::new(hash_id.clone(), false, false);
+        coordinator.backfill_setup_to_idle(&key, "backfill-program").await;
+
+        // Worker was flipped to SettingUp and handed the exact program.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&late_id).await,
+            Some(WorkerState::SettingUp)
+        );
+        {
+            let msgs = late_msgs.lock().unwrap();
+            assert_eq!(msgs.len(), 1, "expected exactly one message");
+            match &msgs[0] {
+                CoordinatorMessageDto::SetupProgram(dto) => {
+                    assert_eq!(dto.hash_id, hash_id);
+                    assert!(!dto.with_hints);
+                    assert!(!dto.emulator_only);
+                }
+                _ => panic!("expected a SetupProgram message"),
+            }
+        }
+
+        // The reserved worker must be TRACKED in a setup_pending entry — this is
+        // what lets disconnect cleanup and completion accounting own its state,
+        // rather than leaving an untracked SettingUp zombie with no timeout path.
+        let pending = coordinator.setup_pending.read().await;
+        let tracked = pending.values().any(|s| s.pending.contains(&late_id));
+        assert!(tracked, "back-filled worker must be tracked in setup_pending");
+    }
+
+    /// Back-fill must refuse while a worker is `Computing`: flipping an Idle
+    /// worker to `SettingUp` during a running job would break the invariant
+    /// (enforced by `setup_program`) that setup never overlaps computation.
+    #[tokio::test]
+    async fn test_backfill_setup_refused_while_computing() {
+        use crate::test_utils::register_test_worker;
+
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+        let hash_id = coordinator.register_guest_program(b"backfill-busy-elf".to_vec()).unwrap();
+
+        // One Idle worker (back-fill candidate) and one Computing worker.
+        let (idle_id, idle_msgs) = register_test_worker(&coordinator.workers_pool, "idle").await;
+        let busy_id = WorkerId::from("busy".to_string());
+        let (sender, _m) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(busy_id.clone(), 1u32, Box::new(sender), WorkerState::Idle)
+            .await
+            .unwrap();
+        coordinator
+            .workers_pool
+            .mark_worker_with_state(
+                &busy_id,
+                WorkerState::Computing((JobId::new(), JobPhase::Contributions)),
+            )
+            .await
+            .unwrap();
+
+        let key = SetupKey::new(hash_id, false, false);
+        coordinator.backfill_setup_to_idle(&key, "p").await;
+
+        // The Idle worker must be left untouched — no reservation, no message.
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&idle_id).await,
+            Some(WorkerState::Idle),
+            "back-fill must not reserve while a worker is Computing"
+        );
+        assert!(idle_msgs.lock().unwrap().is_empty(), "no SetupProgram may be sent");
+        assert!(
+            coordinator.setup_pending.read().await.is_empty(),
+            "no setup_pending entry may be created when back-fill is refused"
+        );
+    }
+
+    /// Back-fill is a no-op when there are no Idle workers — Ready/Computing
+    /// workers must not be disturbed by a completing setup.
+    #[tokio::test]
+    async fn test_backfill_setup_ignores_non_idle_workers() {
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        let elf_bytes = b"backfill-noop-elf".to_vec();
+        let hash_id = coordinator.register_guest_program(elf_bytes).unwrap();
+
+        // A Ready worker (already set up) — back-fill must leave it alone.
+        let ready_id = WorkerId::from("ready".to_string());
+        let (sender, ready_msgs) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(ready_id.clone(), 1u32, Box::new(sender), WorkerState::Ready)
+            .await
+            .unwrap();
+
+        let key = SetupKey::new(hash_id, false, false);
+        coordinator.backfill_setup_to_idle(&key, "p").await;
+
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&ready_id).await,
+            Some(WorkerState::Ready)
+        );
+        assert!(ready_msgs.lock().unwrap().is_empty(), "Ready worker must receive nothing");
+    }
+
+    /// Race safety: back-fill must reserve ONLY workers that are still `Idle`.
+    /// A worker that disconnected before the setup completed must not be
+    /// resurrected into `SettingUp` (a zombie that would never ack and would
+    /// wedge future setups). Exercises the single-lock reserve directly.
+    #[tokio::test]
+    async fn test_backfill_setup_skips_disconnected_worker() {
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        let idle_id = WorkerId::from("idle".to_string());
+        let (s1, _m1) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(idle_id.clone(), 1u32, Box::new(s1), WorkerState::Idle)
+            .await
+            .unwrap();
+
+        let gone_id = WorkerId::from("gone".to_string());
+        let (s2, _m2) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(gone_id.clone(), 1u32, Box::new(s2), WorkerState::Disconnected)
+            .await
+            .unwrap();
+
+        let reserved = coordinator
+            .workers_pool
+            .reserve_idle_for_setup(&coordinator.pending_recovery)
+            .await
+            .expect("no worker is Computing, so reserve must succeed");
+
+        assert_eq!(reserved, vec![idle_id.clone()], "only the Idle worker is reserved");
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&idle_id).await,
+            Some(WorkerState::SettingUp)
+        );
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&gone_id).await,
+            Some(WorkerState::Disconnected),
+            "Disconnected worker must not be resurrected"
+        );
+    }
+
+    /// Rolling back a back-fill reservation (e.g. cached ELF turned out to be
+    /// unreadable) must revert workers still `SettingUp` to `Idle`, but must
+    /// NOT touch a worker that disconnected in the meantime — an unconditional
+    /// write would resurrect it into `Idle` as a zombie.
+    #[tokio::test]
+    async fn test_backfill_release_skips_disconnected_worker() {
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        // Worker still holding the SettingUp reservation this release undoes.
+        let held_id = WorkerId::from("held".to_string());
+        let (s1, _m1) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(held_id.clone(), 1u32, Box::new(s1), WorkerState::SettingUp)
+            .await
+            .unwrap();
+
+        // Worker that disconnected after being reserved but before the release.
+        let gone_id = WorkerId::from("gone".to_string());
+        let (s2, _m2) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(gone_id.clone(), 1u32, Box::new(s2), WorkerState::Disconnected)
+            .await
+            .unwrap();
+
+        let released = coordinator
+            .workers_pool
+            .release_settingup_to_idle(&[held_id.clone(), gone_id.clone()])
+            .await;
+
+        assert_eq!(released, vec![held_id.clone()], "only the still-SettingUp worker is released");
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&held_id).await,
+            Some(WorkerState::Idle),
+            "the held reservation must revert to Idle"
+        );
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&gone_id).await,
+            Some(WorkerState::Disconnected),
+            "Disconnected worker must not be resurrected into Idle"
+        );
     }
 
     /// `setup_program` must refuse if any worker is `Computing(_)`. The

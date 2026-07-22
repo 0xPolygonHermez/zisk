@@ -9,11 +9,15 @@ use tracing_subscriber::{
 // Re-export the WorkerGuard type for convenience
 pub use tracing_appender::non_blocking::WorkerGuard;
 
+/// Deployment environment of a cluster service.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Environment {
+    /// Local development.
     Development,
+    /// Pre-production staging.
     Staging,
+    /// Production.
     Production,
 }
 
@@ -28,19 +32,27 @@ impl Display for Environment {
     }
 }
 
+/// Logging configuration for a cluster service.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
+    /// Log level filter (e.g. `"info"`, `"debug"`, `"trace"`).
     pub level: String,
+    /// Output format.
     pub format: LogFormat,
+    /// Optional file to also write logs to (daily-rolling under `./logs`).
     pub file_path: Option<String>,
 }
 
+/// Log output format.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LogFormat {
+    /// Structured JSON.
     #[serde(rename = "json")]
     Json,
+    /// Human-readable, multi-line.
     #[serde(rename = "pretty")]
     Pretty,
+    /// Human-readable, single-line.
     #[serde(rename = "compact")]
     Compact,
 }

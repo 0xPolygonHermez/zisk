@@ -78,6 +78,7 @@ const JOB_TTL: Duration = Duration::from_secs(5 * 60);
 
 // ── MockBackend ───────────────────────────────────────────────────────────────
 
+/// In-memory [`BackendService`] for testing — no coordinator required.
 #[derive(Clone)]
 pub struct MockBackend {
     state: Arc<Mutex<MockState>>,
@@ -85,6 +86,7 @@ pub struct MockBackend {
 }
 
 impl MockBackend {
+    /// Create a mock backend with empty state.
     pub fn new(cancel: CancellationToken) -> Self {
         Self { state: Arc::new(Mutex::new(MockState::new())), cancel }
     }
