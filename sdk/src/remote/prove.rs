@@ -44,16 +44,10 @@ impl RemoteClient {
         subs: SubscriberList,
         metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ProveResult>> {
-        self.submit_prove(
-            program,
-            stdin,
-            hints,
-            executor,
-            proof_kind,
-            timeout,
-            subs,
-            Some(metadata),
-        )
+        // Empty metadata routes through the standard API so callers that set no
+        // metadata don't hard-require the extended service to be deployed.
+        let metadata = if metadata.is_empty() { None } else { Some(metadata) };
+        self.submit_prove(program, stdin, hints, executor, proof_kind, timeout, subs, metadata)
     }
 
     /// Shared prove submission. `metadata` selects the transport: `Some` routes

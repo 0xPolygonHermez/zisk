@@ -518,13 +518,7 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = if job.metadata.is_empty() {
-            String::new()
-        } else {
-            let pairs: Vec<String> =
-                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
-            format!(" {}", pairs.join(", "))
-        };
+        let metadata_str = Self::format_job_metadata(&job.metadata);
 
         info!(
             "{} {} {} {} Capacity: {}{}",

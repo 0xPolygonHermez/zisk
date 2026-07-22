@@ -1584,6 +1584,35 @@ impl Coordinator {
         result
     }
 
+    /// Render caller-supplied job metadata for a single log line as a leading
+    /// `" k: v, k: v"` string (empty when there is no metadata).
+    ///
+    /// Values come from clients, so control characters (newlines, tabs, …) are
+    /// replaced with spaces to prevent log injection and the result is bounded
+    /// in length to avoid unbounded log lines from large blobs.
+    fn format_job_metadata(metadata: &std::collections::BTreeMap<String, String>) -> String {
+        if metadata.is_empty() {
+            return String::new();
+        }
+
+        const MAX_LEN: usize = 512;
+        let sanitize = |s: &str| -> String {
+            s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
+        };
+
+        let joined = metadata
+            .iter()
+            .map(|(k, v)| format!("{}: {}", sanitize(k), sanitize(v)))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let mut truncated: String = joined.chars().take(MAX_LEN).collect();
+        if truncated.len() < joined.len() {
+            truncated.push('…');
+        }
+        format!(" {}", truncated)
+    }
+
     // MONITOR METHODS
     // ---------------------------------------------------------------
 

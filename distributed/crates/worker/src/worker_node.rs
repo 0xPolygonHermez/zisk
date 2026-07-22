@@ -1660,7 +1660,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Proto `map<string, string>` (a HashMap) into the domain's ordered map.
         let metadata: std::collections::BTreeMap<String, String> =
-            request.metadata.clone().into_iter().collect();
+            request.metadata.into_iter().collect();
 
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
@@ -1737,7 +1737,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
 
         // Proto `map<string, string>` (a HashMap) into the domain's ordered map.
         let metadata: std::collections::BTreeMap<String, String> =
-            request.metadata.clone().into_iter().collect();
+            request.metadata.into_iter().collect();
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {

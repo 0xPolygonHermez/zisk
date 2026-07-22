@@ -12,12 +12,14 @@ use tonic::transport::{Channel, Server};
 
 use zisk_coordinator_api::dto::RegisterGuestProgramRequestDto;
 use zisk_coordinator_api::grpc::proto::{
-    input_kind, job_event, job_kind, job_status,
+    input_kind, job_event, job_kind, job_kind_ext, job_status,
     zisk_coordinator_api_client::ZiskCoordinatorApiClient,
+    zisk_coordinator_api_ext_client::ZiskCoordinatorApiExtClient,
+    zisk_coordinator_api_ext_server::ZiskCoordinatorApiExtServer,
     zisk_coordinator_api_server::ZiskCoordinatorApiServer, CancelJobRequest, ExecuteRequest,
-    InputChunk, InputKind, JobKind, JobRequestMessage, ProofKind, ProveRequest,
-    PushJobHintsInputRequest, PushJobInputRequest, SetupRequest, WaitJobResultRequest,
-    WatchJobRequest, WrapRequest,
+    InputChunk, InputKind, JobKind, JobKindExt, JobRequestExtMessage, JobRequestMessage, ProofKind,
+    ProveRequest, PushJobHintsInputRequest, PushJobInputRequest, SetupRequest,
+    WaitJobResultRequest, WatchJobRequest, WrapRequest,
 };
 use zisk_coordinator_server::{backend::mock::MockBackend, CoordinatorHandler, GrpcAdapter};
 
@@ -57,6 +59,36 @@ async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>,
     (client, backend_clone)
 }
 
+/// Start a coordinator server exposing BOTH the base and extended APIs over a
+/// single shared `MockBackend`. Returns a base client (for register/wait), an
+/// extended client (for `job_request_ext`), and the backend for assertions.
+async fn start_test_server_ext(
+) -> (ZiskCoordinatorApiClient<Channel>, ZiskCoordinatorApiExtClient<Channel>, Arc<MockBackend>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+
+    let backend = Arc::new(MockBackend::default());
+    // One adapter per registered service, both over the same backend state.
+    let base = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&backend)));
+    let ext = GrpcAdapter::new(CoordinatorHandler::new(Arc::clone(&backend)));
+
+    tokio::spawn(async move {
+        Server::builder()
+            .add_service(ZiskCoordinatorApiServer::new(base))
+            .add_service(ZiskCoordinatorApiExtServer::new(ext))
+            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+            .await
+            .unwrap();
+    });
+
+    tokio::time::sleep(Duration::from_millis(10)).await;
+
+    let endpoint = format!("http://{addr}");
+    let base_client = ZiskCoordinatorApiClient::connect(endpoint.clone()).await.unwrap();
+    let ext_client = ZiskCoordinatorApiExtClient::connect(endpoint).await.unwrap();
+    (base_client, ext_client, backend)
+}
+
 fn dummy_elf() -> Vec<u8> {
     vec![0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01, 0x02, 0x03]
 }
@@ -71,6 +103,60 @@ async fn register_program(client: &mut ZiskCoordinatorApiClient<Channel>) -> Str
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn job_request_ext_round_trips_metadata() {
+    let (mut base_client, mut ext_client, backend) = start_test_server_ext().await;
+    let hash_id = register_program(&mut base_client).await;
+
+    let metadata = std::collections::HashMap::from([
+        ("team".to_string(), "zkvm".to_string()),
+        ("run".to_string(), "42".to_string()),
+    ]);
+
+    // Submit via the extended service, carrying job-level metadata.
+    let job_id = ext_client
+        .job_request_ext(JobRequestExtMessage {
+            job_kind: Some(JobKindExt {
+                kind: Some(job_kind_ext::Kind::Execute(ExecuteRequest {
+                    hash_id,
+                    input: inline_input(),
+                    hints: None,
+                    execute_timeout: None,
+                })),
+            }),
+            metadata: metadata.clone(),
+        })
+        .await
+        .unwrap()
+        .into_inner()
+        .job_id;
+
+    assert!(!job_id.is_empty(), "extended submit must return a job id");
+
+    // Metadata must have propagated through grpc → handler → backend.
+    let seen = backend.last_submit_metadata().await;
+    let expected: std::collections::BTreeMap<String, String> = metadata.into_iter().collect();
+    assert_eq!(seen, expected, "submitted metadata must reach the backend");
+
+    // The job created via the extended API is visible on the base API and runs
+    // to completion.
+    loop {
+        let r = base_client
+            .wait_job_result(WaitJobResultRequest {
+                job_id: job_id.clone(),
+                timeout_seconds: Some(2),
+            })
+            .await
+            .unwrap()
+            .into_inner();
+        if let Some(s) = &r.job_status {
+            if matches!(s.status, Some(job_status::Status::Completed(_))) {
+                return;
+            }
+        }
+    }
+}
 
 #[tokio::test]
 async fn register_idempotent() {
