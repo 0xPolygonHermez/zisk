@@ -1588,9 +1588,9 @@ impl Coordinator {
     /// `" k: v, k: v"` string (empty when there is no metadata).
     ///
     /// Values come from clients, so control characters (newlines, tabs, …) are
-    /// replaced with spaces to prevent log injection, and the line is capped at
-    /// `MAX_LEN` bytes (including a trailing `…`) so a large blob can't produce
-    /// an unbounded log line.
+    /// replaced with spaces to prevent log injection, and the returned string is
+    /// capped at `MAX_LEN` bytes — including the leading space and any trailing
+    /// `…` — so a large blob can't produce an unbounded log line.
     fn format_job_metadata(metadata: &std::collections::BTreeMap<String, String>) -> String {
         if metadata.is_empty() {
             return String::new();
@@ -1607,13 +1607,14 @@ impl Coordinator {
             .collect::<Vec<_>>()
             .join(", ");
 
-        // Cap the line at MAX_LEN bytes, backing off to the nearest char
-        // boundary so a multi-byte character is never split.
-        if joined.len() <= MAX_LEN {
+        // Cap the whole returned string at MAX_LEN bytes — the leading space
+        // and any trailing '…' both count against the budget — backing off to
+        // the nearest char boundary so a multi-byte character is never split.
+        if joined.len() < MAX_LEN {
             format!(" {joined}")
         } else {
             let ellipsis = '…';
-            let mut end = MAX_LEN - ellipsis.len_utf8();
+            let mut end = MAX_LEN - 1 - ellipsis.len_utf8();
             while end > 0 && !joined.is_char_boundary(end) {
                 end -= 1;
             }

@@ -140,22 +140,26 @@ async fn job_request_ext_round_trips_metadata() {
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 
     // The job created via the extended API is visible on the base API and runs
-    // to completion.
-    loop {
-        let r = base_client
-            .wait_job_result(WaitJobResultRequest {
-                job_id: job_id.clone(),
-                timeout_seconds: Some(2),
-            })
-            .await
-            .unwrap()
-            .into_inner();
-        if let Some(s) = &r.job_status {
-            if matches!(s.status, Some(job_status::Status::Completed(_))) {
-                return;
+    // to completion. Bound the poll so a regression can't hang CI.
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let r = base_client
+                .wait_job_result(WaitJobResultRequest {
+                    job_id: job_id.clone(),
+                    timeout_seconds: Some(2),
+                })
+                .await
+                .unwrap()
+                .into_inner();
+            if let Some(s) = &r.job_status {
+                if matches!(s.status, Some(job_status::Status::Completed(_))) {
+                    break;
+                }
             }
         }
-    }
+    })
+    .await
+    .expect("job did not complete within timeout");
 }
 
 #[tokio::test]
