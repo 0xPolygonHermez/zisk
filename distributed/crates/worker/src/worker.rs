@@ -89,7 +89,10 @@ where
 /// `has_live_computation`), so only one job's contribution runs at a time.
 fn wc_dump_begin(job_id: &JobId) {
     if std::env::var_os("ZISK_WC_DUMP").is_some() {
-        std::env::set_var("ZISK_WC_JOB", job_id.to_string());
+        // as_str(), not to_string(): JobId's Display wraps and truncates
+        // ("JobId(80ae0cab…)"), which would become a shell-hostile, lossy
+        // dir name. proofman names bad_<ZISK_WC_JOB>/ from this verbatim.
+        std::env::set_var("ZISK_WC_JOB", job_id.as_str());
     }
 }
 
@@ -101,7 +104,7 @@ fn wc_dump_begin(job_id: &JobId) {
 fn wc_dump_finalize(job_id: &JobId, failed: bool) {
     let Some(dir) = std::env::var_os("ZISK_WC_DUMP") else { return };
     if failed {
-        let bad = std::path::Path::new(&dir).join(format!("bad_{job_id}"));
+        let bad = std::path::Path::new(&dir).join(format!("bad_{}", job_id.as_str()));
         error!("[WC-DUMP] contribution FAILED for {job_id}; any bad basic witness is at {}", bad.display());
     }
 }
