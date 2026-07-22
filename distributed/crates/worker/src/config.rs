@@ -166,4 +166,6 @@ pub struct ProverServiceConfigDto {
     pub plonk: bool,
     /// Preload the PLONK/SNARK proving keys.
     pub preload_plonk: bool,
+    /// Use the CPU MOPs
+    pub cpu_mops: bool,
 }

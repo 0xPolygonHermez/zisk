@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 use std::fmt::Display;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, JobExecutionMode, JobId, JobPhase, WorkerId,
     WorkerState,
@@ -132,6 +132,57 @@ impl WorkersPool {
     /// Returns the number of workers connected but without setup (Idle state).
     pub async fn idle_workers(&self) -> usize {
         self.workers.read().await.values().filter(|p| p.state == WorkerState::Idle).count()
+    }
+
+    /// Atomically flips every currently-`Idle` worker to `SettingUp` and returns
+    /// their IDs — the back-fill analogue of [`Self::try_reserve_all_for_setup`],
+    /// but touching only `Idle` workers. Same refusal guard (rejects while any
+    /// worker is `Computing` or recovery is pending) and same lock order
+    /// (`workers` then `pending_recovery`). Single critical section so a
+    /// concurrent disconnect can't be clobbered back into `SettingUp`.
+    pub async fn reserve_idle_for_setup<V>(
+        &self,
+        pending_recovery: &RwLock<HashMap<WorkerId, V>>,
+    ) -> CoordinatorResult<Vec<WorkerId>> {
+        let mut workers = self.workers.write().await;
+        if workers.values().any(|w| matches!(w.state, WorkerState::Computing(_))) {
+            return Err(CoordinatorError::InvalidRequest(
+                "Cannot back-fill setup while workers are computing".to_string(),
+            ));
+        }
+        if !pending_recovery.read().await.is_empty() {
+            return Err(CoordinatorError::InvalidRequest(
+                "Cannot back-fill setup while workers are recovering".to_string(),
+            ));
+        }
+        let mut reserved = Vec::new();
+        for (wid, info) in workers.iter_mut() {
+            if info.state == WorkerState::Idle {
+                info.state = WorkerState::SettingUp;
+                reserved.push(wid.clone());
+            }
+        }
+        Ok(reserved)
+    }
+
+    /// Reverts a back-fill reservation: flips each worker back to `Idle`, but
+    /// ONLY if it is still `SettingUp` (i.e. still the reservation this call is
+    /// undoing). The guard mirrors [`Self::release_reservation`] — a worker that
+    /// disconnected between `reserve_idle_for_setup` and this release is now
+    /// `Disconnected`, and an unconditional write (e.g. `mark_worker_with_state`)
+    /// would resurrect it into `Idle`. Returns the workers actually released.
+    pub async fn release_settingup_to_idle(&self, worker_ids: &[WorkerId]) -> Vec<WorkerId> {
+        let mut workers = self.workers.write().await;
+        let mut released = Vec::new();
+        for wid in worker_ids {
+            if let Some(info) = workers.get_mut(wid) {
+                if info.state == WorkerState::SettingUp {
+                    info.state = WorkerState::Idle;
+                    released.push(wid.clone());
+                }
+            }
+        }
+        released
     }
 
     /// Returns the number of workers currently running setup (not yet eligible for jobs).
@@ -571,7 +622,7 @@ impl WorkersPool {
         if !transitioned.is_empty() {
             let (total, cc, acc) = self.pool_stats().await;
             for wid in &transitioned {
-                info!(
+                debug!(
                     "Worker {} parked in SettingUp pending tear-down (total: {} CC: {} ACC: {})",
                     wid, total, cc, acc
                 );
@@ -599,7 +650,7 @@ impl WorkersPool {
 
         if matches!(state, WorkerState::Ready | WorkerState::Idle) {
             let (total, cc, acc) = self.pool_stats().await;
-            info!("Worker {} {} (total: {} CC: {} ACC: {})", worker_id, state, total, cc, acc);
+            debug!("Worker {} {} (total: {} CC: {} ACC: {})", worker_id, state, total, cc, acc);
         }
         Ok(())
     }
