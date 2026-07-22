@@ -58,8 +58,8 @@ struct MockState {
     received_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
     /// Chunks received via `push_job_hints_input`, keyed by job_id. For test assertions.
     received_hints_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
-    /// Metadata passed to the most recent `submit_job`. For test assertions.
-    last_submit_metadata: std::collections::BTreeMap<String, String>,
+    /// Metadata passed to `submit_job`, keyed by job_id. For test assertions.
+    submit_metadata: HashMap<Uuid, std::collections::BTreeMap<String, String>>,
 }
 
 impl MockState {
@@ -71,7 +71,7 @@ impl MockState {
             event_txs: HashMap::new(),
             received_chunks: HashMap::new(),
             received_hints_chunks: HashMap::new(),
-            last_submit_metadata: std::collections::BTreeMap::new(),
+            submit_metadata: HashMap::new(),
         }
     }
 }
@@ -99,9 +99,12 @@ impl MockBackend {
         self.state.lock().await.received_hints_chunks.get(&job_id).cloned().unwrap_or_default()
     }
 
-    /// Return the metadata passed to the most recent `submit_job`. For test assertions.
-    pub async fn last_submit_metadata(&self) -> std::collections::BTreeMap<String, String> {
-        self.state.lock().await.last_submit_metadata.clone()
+    /// Return the metadata `submit_job` received for `job_id`. For test assertions.
+    pub async fn submit_metadata(
+        &self,
+        job_id: Uuid,
+    ) -> std::collections::BTreeMap<String, String> {
+        self.state.lock().await.submit_metadata.get(&job_id).cloned().unwrap_or_default()
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
@@ -362,13 +365,12 @@ impl BackendService for MockBackend {
     ) -> ApiResult<SubmitJobResult> {
         // Validate program exists for kinds that reference a hash_id
         {
-            let mut s = self.state.lock().await;
+            let s = self.state.lock().await;
             if let Some(hash_id) = kind.hash_id() {
                 if !s.programs.contains(hash_id) {
                     return Err(ApiError::ProgramNotFound(hash_id.to_owned()));
                 }
             }
-            s.last_submit_metadata = metadata;
         }
 
         // Track setup jobs so list_active_setups can return them.
@@ -397,6 +399,7 @@ impl BackendService for MockBackend {
             let mut s = self.state.lock().await;
             s.jobs.insert(job_id, record);
             s.event_txs.insert(job_id, event_tx);
+            s.submit_metadata.insert(job_id, metadata);
         }
 
         Self::spawn_job_task(Arc::clone(&self.state), self.cancel.clone(), job_id, kind);

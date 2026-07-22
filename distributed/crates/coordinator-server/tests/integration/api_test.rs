@@ -135,7 +135,7 @@ async fn job_request_ext_round_trips_metadata() {
     assert!(!job_id.is_empty(), "extended submit must return a job id");
 
     // Metadata must have propagated through grpc → handler → backend.
-    let seen = backend.last_submit_metadata().await;
+    let seen = backend.submit_metadata(job_id.parse().unwrap()).await;
     let expected: std::collections::BTreeMap<String, String> = metadata.into_iter().collect();
     assert_eq!(seen, expected, "submitted metadata must reach the backend");
 

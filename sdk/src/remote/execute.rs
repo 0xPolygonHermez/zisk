@@ -41,10 +41,7 @@ impl RemoteClient {
         subs: SubscriberList,
         metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
-        // Empty metadata routes through the standard API so callers that set no
-        // metadata don't hard-require the extended service to be deployed.
-        let metadata = if metadata.is_empty() { None } else { Some(metadata) };
-        self.submit_execute(program, stdin, hints, executor, timeout, subs, metadata)
+        self.submit_execute(program, stdin, hints, executor, timeout, subs, Some(metadata))
     }
 
     /// Shared execute submission. `metadata` selects the transport: `Some` routes
@@ -60,6 +57,7 @@ impl RemoteClient {
         subs: SubscriberList,
         metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ExecuteResult>> {
+        let metadata = metadata.filter(|m| !m.is_empty());
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 
         let hash_id = program.program_id.hash_id.to_string();
