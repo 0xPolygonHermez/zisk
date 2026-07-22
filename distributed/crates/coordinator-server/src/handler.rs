@@ -49,12 +49,12 @@ impl<B: BackendService> CoordinatorHandler<B> {
         Ok(RegisterAggregationProgramResponseDto { recurser_id })
     }
 
-    /// Submit a base job (no caller metadata) and return its assigned id.
+    /// Submit a base job and return its assigned id.
     pub async fn submit_job(&self, job: DomainJobKind) -> ApiResult<SubmitJobResult> {
         self.backend.submit_job(job).await
     }
 
-    /// Submit a job with caller-defined key/value metadata (the extended API).
+    /// Submit a job with caller-defined key/value metadata.
     pub async fn submit_job_ext(
         &self,
         job: DomainJobKind,

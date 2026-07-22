@@ -56,7 +56,7 @@ pub struct LaunchProofRequestDto {
     pub hints_mode: HintsModeDto,
     /// Simulated worker count, if running in simulation mode.
     pub simulated_node: Option<u32>,
-    /// Arbitrary client metadata (`None` when the caller supplied none).
+    /// Arbitrary client metadata.
     pub metadata: Option<std::collections::BTreeMap<String, String>>,
     /// Whether to execute only (no proof).
     pub execution_only: bool,
@@ -315,7 +315,7 @@ pub struct ExecuteTaskRequestDto {
     pub job_id: JobId,
     /// The phase-specific parameters.
     pub params: ExecuteTaskRequestTypeDto,
-    /// Job-level metadata propagated to the worker (`None` when there is none).
+    /// Job-level metadata propagated to the worker.
     pub metadata: Option<std::collections::BTreeMap<String, String>>,
 }
 

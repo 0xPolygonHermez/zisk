@@ -336,7 +336,7 @@ pub struct Job {
     pub executed_steps: Option<u64>,
     /// Number of AIR instances, once known.
     pub instances: Option<u64>,
-    /// Arbitrary client-supplied metadata (`None` when the caller supplied none).
+    /// Arbitrary client-supplied metadata.
     pub metadata: Option<BTreeMap<String, String>>,
     /// Whether this is an execute-only job (no proof).
     pub execution_only: bool,

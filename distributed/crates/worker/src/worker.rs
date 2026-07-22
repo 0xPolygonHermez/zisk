@@ -326,7 +326,7 @@ pub struct JobContext {
     pub instances: u64,
     /// When the current task was received (for latency accounting).
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-    /// Job-level metadata propagated from the coordinator (`None` when there is none).
+    /// Job-level metadata propagated from the coordinator.
     pub metadata: Option<BTreeMap<String, String>>,
 }
 

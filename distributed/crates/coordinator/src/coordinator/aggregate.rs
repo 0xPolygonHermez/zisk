@@ -492,7 +492,6 @@ impl Coordinator {
                 final_proof: all_done,
                 proof_type,
             }),
-            // Metadata is attached at job creation; later phases reuse the worker's job.
             metadata: None,
         };
 
