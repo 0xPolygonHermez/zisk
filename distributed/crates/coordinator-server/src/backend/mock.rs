@@ -58,7 +58,8 @@ struct MockState {
     received_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
     /// Chunks received via `push_job_hints_input`, keyed by job_id. For test assertions.
     received_hints_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
-    /// Metadata passed to `submit_job`, keyed by job_id. For test assertions.
+    /// Metadata recorded at job submission (base or extended), keyed by job_id.
+    /// For test assertions.
     submit_metadata: HashMap<Uuid, std::collections::BTreeMap<String, String>>,
 }
 
@@ -99,7 +100,8 @@ impl MockBackend {
         self.state.lock().await.received_hints_chunks.get(&job_id).cloned().unwrap_or_default()
     }
 
-    /// Return the metadata `submit_job` received for `job_id`. For test assertions.
+    /// Return the metadata recorded at submission for `job_id` (empty for a
+    /// base job, the supplied map for an extended one). For test assertions.
     pub async fn submit_metadata(
         &self,
         job_id: Uuid,
