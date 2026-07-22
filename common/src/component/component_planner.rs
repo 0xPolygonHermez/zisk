@@ -331,7 +331,6 @@ impl Plan {
     /// * `segment_id` - The segment ID (if any).
     /// * `instance_type` - The type of instance.
     /// * `check_point` - The checkpoint type.
-    /// * `collect_info` - Optional input collection information.
     /// * `meta` - Optional additional metadata.
     ///
     /// # Returns
