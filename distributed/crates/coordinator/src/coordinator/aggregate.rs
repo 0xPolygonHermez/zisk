@@ -140,7 +140,7 @@ impl Coordinator {
                 job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
             format!(" {}", pairs.join(", "))
         };
-        
+
         info!(
             "{} {} ({:.3}s+{:.3}s+{:.3}s) {} {} Capacity: {}{}",
             header,
