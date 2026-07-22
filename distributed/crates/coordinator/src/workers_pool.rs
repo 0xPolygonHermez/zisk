@@ -810,13 +810,24 @@ impl WorkersPool {
                 if minimal_compute_capacity.compute_units > available_capacity {
                     return Err(CoordinatorError::InsufficientCapacity);
                 }
+                // Select over the Ready workers in deterministic WorkerId order.
+                // `workers` is a HashMap, so its native iteration order is
+                // nondeterministic; ordering by id here makes both which
+                // workers are selected and the resulting `rank_id` (the
+                // enumerate() index over this list in
+                // dispatch_contributions_messages) stable across jobs instead
+                // of arbitrary. rank_id stays dense (0..N-1) and aligned with
+                // the positionally-computed partitions.
+                let mut ready: Vec<(&WorkerId, &WorkerInfo)> = workers
+                    .iter()
+                    .filter(|(_, info)| matches!(info.state, WorkerState::Ready))
+                    .collect();
+                ready.sort_by(|(a, _), (b, _)| a.as_str().cmp(b.as_str()));
+
                 let mut selected = Vec::new();
                 let mut caps = Vec::new();
                 let mut total: u32 = 0;
-                for (wid, info) in workers.iter() {
-                    if !matches!(info.state, WorkerState::Ready) {
-                        continue;
-                    }
+                for (wid, info) in ready {
                     selected.push(wid.clone());
                     caps.push(info.compute_capacity.compute_units);
                     total = total.saturating_add(info.compute_capacity.compute_units);
