@@ -93,42 +93,16 @@ fn wc_dump_begin(job_id: &JobId) {
     }
 }
 
-/// WC-dump harness: promote this job's `staging_<job_id>` dir by the contribution
-/// outcome. A "failing" run here means proofman returned an `Err` (an internal
-/// error building the witness/proof) — that staging dir is kept as `bad_<job_id>/`
-/// for byte-comparison. A successful run seeds the single golden `reference/` if
-/// none exists yet, otherwise its staging dir is discarded to keep disk bounded.
-/// No-op unless ZISK_WC_DUMP is set.
+/// WC-dump harness: proofman now writes the bad basic witness itself, directly to
+/// `<ZISK_WC_DUMP>/bad_<ZISK_WC_JOB>/inst….bin`, the moment its recursive verify
+/// fails (VerifyEvaluations0). There is no per-run staging dir to promote anymore,
+/// so this only logs where to look on a failing contribution. No-op unless
+/// ZISK_WC_DUMP is set.
 fn wc_dump_finalize(job_id: &JobId, failed: bool) {
     let Some(dir) = std::env::var_os("ZISK_WC_DUMP") else { return };
-    let base = std::path::Path::new(&dir);
-    let staging = base.join(format!("staging_{job_id}"));
-    if !staging.exists() {
-        return;
-    }
     if failed {
-        let bad = base.join(format!("bad_{job_id}"));
-        let _ = std::fs::remove_dir_all(&bad);
-        match std::fs::rename(&staging, &bad) {
-            Ok(()) => error!(
-                "[WC-DUMP] contribution FAILED for {job_id}; kept witnesses at {} (compare vs reference/)",
-                bad.display()
-            ),
-            Err(e) => warn!("[WC-DUMP] failed to keep bad dump for {job_id}: {e}"),
-        }
-    } else {
-        let reference = base.join("reference");
-        if reference.exists() {
-            let _ = std::fs::remove_dir_all(&staging);
-            info!("[WC-DUMP] contribution ok for {job_id}; reference exists, discarded this run");
-        } else {
-            match std::fs::rename(&staging, &reference) {
-                Ok(()) => {
-                    info!("[WC-DUMP] contribution ok for {job_id}; stored reference at {}", reference.display())
-                }
-                Err(e) => warn!("[WC-DUMP] failed to store reference for {job_id}: {e}"),
-            }
-        }
+        let bad = std::path::Path::new(&dir).join(format!("bad_{job_id}"));
+        error!("[WC-DUMP] contribution FAILED for {job_id}; any bad basic witness is at {}", bad.display());
     }
 }
 

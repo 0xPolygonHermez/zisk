@@ -245,37 +245,14 @@ impl ProveCmd {
             self.run_asm(stdin, hints_stream, prover_options)
         };
 
-        // WC-dump lifecycle (ZISK_WC_DUMP=<dir>): the witness generator staged this run's
-        // per-instance packed witnesses under `staging_<pid>/`. Promote the whole dir by
-        // the verify outcome, keeping disk bounded: the FIRST verifying run becomes the
-        // single `reference/`; later verifying runs are discarded; a run that fails to
-        // verify is kept as `bad_<pid>/` for byte-comparison against the reference.
+        // WC-dump (ZISK_WC_DUMP=<dir>): proofman writes the bad basic witness itself to
+        // `<dir>/bad_<pid>/inst….bin` at the moment its recursive verify fails (this CLI
+        // path sets no ZISK_WC_JOB, so proofman keys the dir by pid). Nothing to promote
+        // here — just point at it on a failing run.
         if let Ok(dir) = std::env::var("ZISK_WC_DUMP") {
-            let pid = std::process::id();
-            let staging = std::path::Path::new(&dir).join(format!("staging_{pid}"));
-            if staging.is_dir() {
-                let verified = proof_result.is_ok();
-                if verified {
-                    let reference = std::path::Path::new(&dir).join("reference");
-                    if reference.exists() {
-                        let _ = std::fs::remove_dir_all(&staging);
-                        info!("[WC-DUMP] verified; reference already exists, discarded this run's WC");
-                    } else {
-                        match std::fs::rename(&staging, &reference) {
-                            Ok(()) => info!("[WC-DUMP] verified; stored reference WC at {}", reference.display()),
-                            Err(e) => warn!("[WC-DUMP] failed to store reference: {e}"),
-                        }
-                    }
-                } else {
-                    let bad = std::path::Path::new(&dir).join(format!("bad_{pid}"));
-                    match std::fs::rename(&staging, &bad) {
-                        Ok(()) => warn!(
-                            "[WC-DUMP] proof did NOT verify; kept this run's WC at {} (compare vs reference/)",
-                            bad.display()
-                        ),
-                        Err(e) => warn!("[WC-DUMP] failed to keep bad WC: {e}"),
-                    }
-                }
+            if proof_result.is_err() {
+                let bad = std::path::Path::new(&dir).join(format!("bad_{}", std::process::id()));
+                warn!("[WC-DUMP] proof did NOT verify; any bad basic witness is at {}", bad.display());
             }
         }
 
