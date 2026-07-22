@@ -5,13 +5,13 @@ use std::{
 
 use zisk_core::zisk_ops::ZiskOp;
 
-struct OpIndirectTable {
-    base_count: usize,
+pub(super) struct OpIndirectTable {
+    pub(super) base_count: usize,
     precompiled_count: usize,
-    table: [Option<(usize, u64)>; 256],
+    pub(super) table: [Option<(usize, u64)>; 256],
 }
 
-static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
+pub(super) static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
     let mut table: [Option<(usize, u64)>; 256] = [None; 256];
     let mut base_count = 0;
     let mut precompiled_count = 0;
@@ -324,79 +324,6 @@ impl Sub for OpsCosts {
         result.precompiled_cost = self.precompiled_cost - other.precompiled_cost;
         result.base_count = self.base_count - other.base_count;
         result.precompiled_count = self.precompiled_count - other.precompiled_count;
-        result
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct OpsCount<const N: usize> {
-    count: Vec<[u64; N]>,
-}
-
-impl<const N: usize> Default for OpsCount<N> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<const N: usize> OpsCount<N> {
-    pub fn new() -> Self {
-        Self { count: Vec::new() }
-    }
-    pub fn inc(&mut self, op_code: u8, category: usize) {
-        if self.count.is_empty() {
-            self.count = vec![[0; N]; TABLE.base_count];
-        }
-        if let Some((index, _t)) = TABLE.table[op_code as usize] {
-            self.count[index][category] += 1;
-        }
-    }
-    pub fn get_by_opcode(&self, op_code: u8) -> Option<&[u64; N]> {
-        if let Some((index, _t)) = TABLE.table[op_code as usize] {
-            self.count.get(index)
-        } else {
-            None
-        }
-    }
-}
-
-impl<const N: usize> Add for OpsCount<N> {
-    type Output = Self;
-
-    fn add(self, other: Self) -> Self {
-        let mut result = Self::new();
-        if result.count.is_empty() {
-            result.count = vec![[0; N]; TABLE.base_count];
-        }
-        for i in 0..result.count.len() {
-            for j in 0..N {
-                result.count[i][j] = self.count[i][j] + other.count[i][j];
-            }
-        }
-        result
-    }
-}
-
-impl<const N: usize> AddAssign for OpsCount<N> {
-    fn add_assign(&mut self, other: Self) {
-        for i in 0..self.count.len() {
-            for j in 0..N {
-                self.count[i][j] += other.count[i][j];
-            }
-        }
-    }
-}
-
-impl<const N: usize> Sub for OpsCount<N> {
-    type Output = Self;
-
-    fn sub(self, other: Self) -> Self {
-        let mut result = Self::new();
-        for i in 0..result.count.len() {
-            for j in 0..N {
-                result.count[i][j] = self.count[i][j] - other.count[i][j];
-            }
-        }
         result
     }
 }

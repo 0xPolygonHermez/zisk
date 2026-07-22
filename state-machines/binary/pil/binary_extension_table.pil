@@ -75,9 +75,10 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
     col fixed C0; // Output C0  (32 bits)
     col fixed C1; // Output C1  (32 bits)
     // Position column: encodes both the byte offset and the operation flags in a single fixed
-    // column, POS = offset + BYTES * (op_is_shift + 2 * op_is_chain). This lets the caller send
-    // one combined value (j + BYTES * flags) instead of a separate offset plus two flag columns,
-    // saving fixed columns. flags is 0 (single-input), 1 (shift) or 2 (chain); never both.
+    // column, POS = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev
+    // + 8 * op_is_combine). This lets the caller send one combined value (j + BYTES * flags)
+    // instead of a separate offset plus four flag columns, saving fixed columns. flags is
+    // 0 (single-input), 1 (shift), 2 (chain), 4 (chain_rev) or 8 (combine); never more than one.
     col fixed POS;
 
     #pragma transpile

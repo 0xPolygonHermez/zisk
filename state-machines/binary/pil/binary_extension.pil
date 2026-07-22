@@ -7,20 +7,41 @@ require "binary_extension_table.pil"
 // Coprocessor in charge of performing standard RISCV binary operations
 
 /*
-List:
-    ┼──────────┼────────┼──────────┼
-    │  name    │  bits  │   op     │
-    ┼──────────┼────────┼──────────┼
-    │  SLL     │   64   │   0x21   │
-    │  SRL     │   64   │   0x22   │
-    │  SRA     │   64   │   0x23   │
-    │  SLL_W   │   32   │   0x24   │
-    │  SRL_W   │   32   │   0x25   │
-    │  SRA_W   │   32   │   0x26   │
-    │  SEXT_B  │   32   │   0x27   │
-    │  SEXT_H  │   32   │   0x28   │
-    │  SEXT_W  │   32   │   0x29   │
-    ┼──────────┼────────┼──────────┼
+List. `family` selects how the byte lookup is folded (flags=0 for the "plain"
+single-input ops; see the flags block below). `bits` is the operand width: 64 for
+full-doubleword ops, 32 for word/sub-word ops (the *_W variants and the sign-extends).
+    ┌────────┬───────────┬──────┬──────┐
+    │  name  │   family  │ bits │  op  │
+    ├────────┼───────────┼──────┼──────┤
+    │  SLL   │   shift   │  64  │ 0x21 │
+    │  SRL   │   shift   │  64  │ 0x22 │
+    │  SRA   │   shift   │  64  │ 0x23 │
+    │ SLL_W  │   shift   │  32  │ 0x24 │
+    │ SRL_W  │   shift   │  32  │ 0x25 │
+    │ SRA_W  │   shift   │  32  │ 0x26 │
+    │ SEXT_B │   plain   │  32  │ 0x27 │
+    │ SEXT_H │   plain   │  32  │ 0x28 │
+    │ SEXT_W │   plain   │  32  │ 0x29 │
+    │  REV8  │   plain   │  64  │ 0x31 │
+    │  PACK  │  combine  │  64  │ 0x36 │
+    │ PACK_H │  combine  │  32  │ 0x37 │
+    │ PACK_W │  combine  │  32  │ 0x38 │
+    │  ROL   │   shift   │  64  │ 0x39 │
+    │ ROL_W  │   shift   │  32  │ 0x3a │
+    │  ROR   │   shift   │  64  │ 0x3b │
+    │ ROR_W  │   shift   │  32  │ 0x3c │
+    │  CLZ   │ chain_rev │  64  │ 0x3d │
+    │ CLZ_W  │ chain_rev │  32  │ 0x3e │
+    │  CTZ   │   chain   │  64  │ 0x3f │
+    │ CTZ_W  │   chain   │  32  │ 0x40 │
+    │  CPOP  │   plain   │  64  │ 0x41 │
+    │ CPOP_W │   plain   │  32  │ 0x42 │
+    │  ORCB  │   plain   │  64  │ 0x43 │
+    │  BCLR  │   shift   │  64  │ 0x44 │
+    │  BEXT  │   shift   │  64  │ 0x45 │
+    │  BINV  │   shift   │  64  │ 0x46 │
+    │  BSET  │   shift   │  64  │ 0x47 │
+    └────────┴───────────┴──────┴──────┘
 
 Examples:
 =======================================
@@ -79,13 +100,14 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
     const int BYTE_BASE = (1 << BYTES);
 
     // Primary columns
-    col witness bits(7)  op;                  // operation code (up to 0x43 = OP_ORCB)
+    col witness bits(7)  op;                  // operation code (up to 0x47 = OP_BSET)
     col witness bits(8)  free_in_a[BYTES];    // input A per byte
     col witness bits(8)  free_in_b;           // input B (only one byte)
     col witness bits(32) free_in_c[BYTES][2]; // output C byte, split in 2 parts
     
-    // Flags and helpers. Each is binary and the three are mutually exclusive (an op belongs to at
-    // most one family): shift, forward byte-chain (ctz/ctz_w) or reverse byte-chain (clz/clz_w).
+    // Flags and helpers. Each is binary and the four are mutually exclusive (an op belongs to at
+    // most one family): shift, forward byte-chain (ctz/ctz_w), reverse byte-chain (clz/clz_w) or
+    // combine/pack (pack/pack_h/pack_w). An op in no family (e.g. sext/rev8/orcb) has flags = 0.
     col witness bits(1)  op_is_shift;         // 1 if operation is in the shift family
     col witness bits(1)  op_is_chain;         // 1 for forward byte-chain (ctz/ctz_w, LSB -> MSB)
     col witness bits(1)  op_is_chain_rev;     // 1 for reverse byte-chain (clz/clz_w, MSB -> LSB)
@@ -99,6 +121,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
     // flags is bounded by the binary constraints below. Legal flags are 0, 1, 2, 4, 8 (a single
     // family bit); any two bits set has no table row, so the lookup itself enforces mutual
     // exclusion.
+    
     op_is_shift * (1 - op_is_shift) === 0;
     op_is_chain * (1 - op_is_chain) === 0;
     op_is_chain_rev * (1 - op_is_chain_rev) === 0;
