@@ -78,7 +78,6 @@ pub fn create_atomic_vec(size: usize) -> Vec<AtomicU64> {
 /// # Errors
 ///
 /// - [`CommonError::Invalid`] if `U` is a zero-sized type.
-// `AnyBitPattern` is sealed, so the set of valid `T`/`U` is fixed by this crate.
 pub fn reinterpret_vec<T: Copy + AnyBitPattern, U: AnyBitPattern>(v: Vec<T>) -> Result<Vec<U>> {
     let size_t = std::mem::size_of::<T>();
     let size_u = std::mem::size_of::<U>();
