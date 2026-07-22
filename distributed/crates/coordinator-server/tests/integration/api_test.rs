@@ -27,6 +27,23 @@ use std::sync::Arc;
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
 
+/// Connect a generated client to `endpoint`, retrying under a bounded timeout so
+/// the test is deterministic on slow runners: it returns as soon as the server
+/// is accepting connections, and fails cleanly if it never comes up (instead of
+/// racing a fixed sleep against server startup).
+async fn connect_with_retry<C, Fut>(connect: impl Fn(String) -> Fut, endpoint: &str) -> C
+where
+    Fut: std::future::Future<Output = Result<C, tonic::transport::Error>>,
+{
+    for _ in 0..100 {
+        if let Ok(client) = connect(endpoint.to_string()).await {
+            return client;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    connect(endpoint.to_string()).await.expect("server did not become ready within timeout")
+}
+
 /// Start a coordinator server on a random local port and return a connected client.
 async fn start_test_server() -> ZiskCoordinatorApiClient<Channel> {
     let (client, _) = start_test_server_with_backend().await;
@@ -51,11 +68,9 @@ async fn start_test_server_with_backend() -> (ZiskCoordinatorApiClient<Channel>,
             .unwrap();
     });
 
-    // Brief pause to let the server start accepting connections
-    tokio::time::sleep(Duration::from_millis(10)).await;
-
     let endpoint = format!("http://{addr}");
-    let client = ZiskCoordinatorApiClient::connect(endpoint).await.unwrap();
+    let client =
+        connect_with_retry(|e: String| ZiskCoordinatorApiClient::connect(e), &endpoint).await;
     (client, backend_clone)
 }
 
@@ -81,11 +96,11 @@ async fn start_test_server_ext(
             .unwrap();
     });
 
-    tokio::time::sleep(Duration::from_millis(10)).await;
-
     let endpoint = format!("http://{addr}");
-    let base_client = ZiskCoordinatorApiClient::connect(endpoint.clone()).await.unwrap();
-    let ext_client = ZiskCoordinatorApiExtClient::connect(endpoint).await.unwrap();
+    let base_client =
+        connect_with_retry(|e: String| ZiskCoordinatorApiClient::connect(e), &endpoint).await;
+    let ext_client =
+        connect_with_retry(|e: String| ZiskCoordinatorApiExtClient::connect(e), &endpoint).await;
     (base_client, ext_client, backend)
 }
 
