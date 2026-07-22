@@ -6,6 +6,7 @@ use crate::{
     prove::ProveResult,
     ExecutorKind,
 };
+use std::collections::BTreeMap;
 use std::time::Duration;
 use zisk_common::ProofKind;
 use zisk_coordinator_api::dto::{deadline_from_now, DomainJobKind, DomainProveRequest};
@@ -29,8 +30,8 @@ impl RemoteClient {
         self.submit_prove(program, stdin, hints, executor, proof_kind, timeout, subs, None)
     }
 
-    /// Submit a prove job over the extended coordinator API, attaching opaque
-    /// job-level `metadata` (currently ignored by the coordinator).
+    /// Submit a prove job over the extended coordinator API, attaching
+    /// job-level `metadata` key/value pairs.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_prove_ext(
         &self,
@@ -41,7 +42,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: String,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ProveResult>> {
         self.submit_prove(
             program,
@@ -67,7 +68,7 @@ impl RemoteClient {
         proof_kind: ProofKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: Option<String>,
+        metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ProveResult>> {
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 

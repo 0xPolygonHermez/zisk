@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
@@ -189,7 +190,7 @@ pub struct ProveRequestExt<'a> {
     timeout: Option<Duration>,
     proof_kind: ProofKind,
     subscribers: Vec<Subscriber>,
-    metadata: String,
+    metadata: BTreeMap<String, String>,
 }
 
 impl<'a> ProveRequestExt<'a> {
@@ -207,15 +208,15 @@ impl<'a> ProveRequestExt<'a> {
             timeout: None,
             proof_kind: ProofKind::default(),
             subscribers: Vec::new(),
-            metadata: String::new(),
+            metadata: BTreeMap::new(),
         }
     }
 
-    /// Attach job-level metadata forwarded to the coordinator (e.g. a tag or a
-    /// JSON string). Empty means no metadata.
+    /// Attach a job-level metadata key/value pair forwarded to the coordinator.
+    /// Call repeatedly to attach multiple pairs; an empty map means no metadata.
     #[must_use]
-    pub fn metadata(mut self, metadata: impl Into<String>) -> Self {
-        self.metadata = metadata.into();
+    pub fn metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata.insert(key.into(), value.into());
         self
     }
 

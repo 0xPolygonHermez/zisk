@@ -7,6 +7,7 @@ use crate::job_handle::{JobHandle, SubscriberList};
 use crate::ExecutorKind;
 use crate::SdkError;
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 use zisk_coordinator_api::dto::{deadline_from_now, DomainExecuteRequest, DomainJobKind};
 use zisk_prover_backend::GuestProgram;
@@ -27,8 +28,8 @@ impl RemoteClient {
         self.submit_execute(program, stdin, hints, executor, timeout, subs, None)
     }
 
-    /// Submit an execute job over the extended coordinator API, attaching opaque
-    /// job-level `metadata` (currently ignored by the coordinator).
+    /// Submit an execute job over the extended coordinator API, attaching
+    /// job-level `metadata` key/value pairs.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_execute_ext(
         &self,
@@ -38,7 +39,7 @@ impl RemoteClient {
         executor: ExecutorKind,
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: String,
+        metadata: BTreeMap<String, String>,
     ) -> Result<JobHandle<ExecuteResult>> {
         self.submit_execute(program, stdin, hints, executor, timeout, subs, Some(metadata))
     }
@@ -54,7 +55,7 @@ impl RemoteClient {
         _executor: ExecutorKind, // remote: coordinator uses its configured executor; hint ignored
         timeout: Option<Duration>,
         subs: SubscriberList,
-        metadata: Option<String>,
+        metadata: Option<BTreeMap<String, String>>,
     ) -> Result<JobHandle<ExecuteResult>> {
         let (hints, maybe_hints_stream) = hints_to_input_kind(hints)?;
 

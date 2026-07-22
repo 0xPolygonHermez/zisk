@@ -67,7 +67,7 @@ pub fn create_test_job(workers: &[WorkerId]) -> Job {
         workers.to_vec(),
         partitions,
         JobExecutionMode::Standard,
-        None,
+        std::collections::BTreeMap::new(),
         false,
         zisk_common::ProofKind::VadcopFinal,
     )

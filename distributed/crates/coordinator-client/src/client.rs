@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -13,6 +14,11 @@ use zisk_coordinator_api::grpc::{ZiskCoordinatorApiClient, ZiskCoordinatorApiExt
 use crate::input_sender::InputSender;
 use crate::job::Job;
 
+/// Synchronous client for the ZisK coordinator gRPC API.
+///
+/// Wraps the async tonic client and exposes blocking methods (register
+/// programs, submit/cancel jobs, open input/hints streams). Cheap to
+/// [`Clone`] — clones share the same underlying channel.
 #[derive(Clone)]
 pub struct CoordinatorClient {
     inner: ZiskCoordinatorApiClient<Channel>,
@@ -20,6 +26,8 @@ pub struct CoordinatorClient {
 }
 
 impl CoordinatorClient {
+    /// Connect to the coordinator at `url` with the given connect and
+    /// per-request timeouts.
     pub fn connect(
         url: impl Into<String>,
         connect_timeout: Duration,
@@ -44,6 +52,7 @@ impl CoordinatorClient {
         })
     }
 
+    /// Register a guest ELF and return its content hash id.
     pub fn register_program(&self, elf: Vec<u8>) -> Result<String> {
         block_on(async {
             let mut gw = self.inner.clone();
@@ -72,6 +81,7 @@ impl CoordinatorClient {
         })
     }
 
+    /// Submit a job of the given kind and return a [`Job`] handle for tracking it.
     pub fn submit_job(&self, kind: DomainJobKind) -> Result<Job> {
         let resp = block_on(async {
             let mut gw = self.inner.clone();
@@ -81,12 +91,19 @@ impl CoordinatorClient {
         Job::new(resp.job_id, self.clone())
     }
 
-    /// Submit an extended job
-    pub fn submit_job_ext(&self, kind: DomainJobKind, metadata: String) -> Result<Job> {
+    /// Submit an extended job with caller-defined key/value metadata.
+    pub fn submit_job_ext(
+        &self,
+        kind: DomainJobKind,
+        metadata: BTreeMap<String, String>,
+    ) -> Result<Job> {
         let job_kind = JobKindExt::try_from(kind).map_err(|e| anyhow::anyhow!(e))?;
         let resp = block_on(async {
             let mut gw = self.ext.clone();
-            let req = JobRequestExtMessage { job_kind: Some(job_kind), metadata };
+            let req = JobRequestExtMessage {
+                job_kind: Some(job_kind),
+                metadata: metadata.into_iter().collect(),
+            };
             let resp = gw.job_request_ext(req).await.context("JobRequestExt RPC failed")?;
             Ok::<_, anyhow::Error>(resp.into_inner())
         })?;
@@ -107,6 +124,8 @@ impl CoordinatorClient {
         })
     }
 
+    /// A clone of the underlying async tonic client, for callers that need to
+    /// drive RPCs directly on a runtime.
     pub fn async_client(&self) -> ZiskCoordinatorApiClient<Channel> {
         self.inner.clone()
     }

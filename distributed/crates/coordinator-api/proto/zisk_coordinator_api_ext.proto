@@ -16,16 +16,16 @@ import "zisk_coordinator_api.proto";
 service ZiskCoordinatorApiExt {
   // Submit a job with attached job-level metadata. Behaves exactly like
   // `ZiskCoordinatorApi.JobRequest` for the enclosed `job_kind`; the
-  // `metadata` is opaque to the wire (parsed to a string by the coordinator).
+  // `metadata` is a set of caller-defined key/value pairs.
   rpc JobRequestExt(JobRequestExtMessage)
       returns (JobResponse);
 }
 
 message JobRequestExtMessage {
   JobKindExt job_kind = 1;
-  // Caller-defined job-level metadata (e.g. a tag or a JSON string). Empty
-  // means no metadata.
-  string     metadata = 2;
+  // Caller-defined job-level metadata as key/value pairs. Empty map means no
+  // metadata.
+  map<string, string> metadata = 2;
 }
 
 // Restricted job-kind set for the extended API: only jobs that can carry

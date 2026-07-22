@@ -63,12 +63,17 @@ pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()
     Ok(())
 }
 
+/// A worker process, specialized by MPI role: rank 0 talks to the coordinator
+/// over gRPC, secondary ranks only service MPI broadcasts.
 pub enum WorkerNode<T: ZiskBackend + 'static> {
+    /// Rank-0 node with a gRPC connection to the coordinator.
     WorkerGrpc(WorkerNodeGrpc<T>),
+    /// Secondary-rank node driven purely by MPI broadcasts.
     WorkerMpi(WorkerNodeMpi<T>),
 }
 
 impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    /// This node's global MPI rank.
     pub fn world_rank(&self) -> i32 {
         match self {
             WorkerNode::WorkerGrpc(worker) => worker.world_rank(),
@@ -78,6 +83,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
 }
 
 impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    /// Build an emulator-backed node, choosing the gRPC or MPI variant by rank.
     pub async fn new_emu(
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
@@ -91,6 +97,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         }
     }
 
+    /// Build an ASM-backed node, choosing the gRPC or MPI variant by rank.
     pub async fn new_asm(
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
@@ -104,6 +111,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         }
     }
 
+    /// Run the node to completion (dispatches to the gRPC or MPI variant).
     pub async fn run(&mut self) -> Result<()> {
         match self {
             WorkerNode::WorkerGrpc(worker) => worker.run().await,
@@ -112,15 +120,19 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
     }
 }
 
+/// Secondary-rank worker node: has no coordinator connection and only services
+/// MPI broadcasts from rank 0.
 pub struct WorkerNodeMpi<T: ZiskBackend + 'static> {
     worker: Worker<T>,
 }
 
 impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
+    /// Wrap a worker as a secondary-rank MPI node.
     pub async fn new(worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker })
     }
 
+    /// This node's global MPI rank.
     pub fn world_rank(&self) -> i32 {
         self.worker.world_rank()
     }
@@ -135,20 +147,25 @@ impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
     }
 }
 
+/// Rank-0 worker node: maintains the gRPC connection to the coordinator and
+/// drives the full job lifecycle (registration, heartbeats, task dispatch).
 pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker_config: WorkerServiceConfig,
     worker: Worker<T>,
 }
 
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
+    /// Wrap a worker as the rank-0 gRPC node with the given config.
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker_config, worker })
     }
 
+    /// This node's global MPI rank.
     pub fn world_rank(&self) -> i32 {
         self.worker.world_rank()
     }
 
+    /// Connect to the coordinator and run the worker event loop until shutdown.
     pub async fn run(&mut self) -> Result<()> {
         assert!(self.worker.local_rank() == 0, "WorkerNodeGrpc should only be run by rank 0");
 
@@ -374,6 +391,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Process a finished computation result: report it to the coordinator and
+    /// advance or finalize the job.
     pub async fn handle_computation_result(
         &mut self,
         result: ComputationResult,
@@ -1621,6 +1640,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(bytes)
     }
 
+    /// Handle a coordinator contribution request: set up the job and spawn the
+    /// contribution computation.
     pub async fn partial_contribution(
         &mut self,
         request: ExecuteTaskRequest,
@@ -1637,7 +1658,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let cancelled = self.worker.cancel_current_computation();
         Self::drain_cancelled_computation(cancelled, "partial_contribution").await;
 
-        let metadata = request.metadata.clone();
+        // Proto `map<string, string>` (a HashMap) into the domain's ordered map.
+        let metadata: std::collections::BTreeMap<String, String> =
+            request.metadata.clone().into_iter().collect();
 
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
@@ -1697,6 +1720,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Handle a coordinator execute-only request: set up the job and spawn the
+    /// execution.
     pub async fn execute_only(
         &mut self,
         request: ExecuteTaskRequest,
@@ -1710,7 +1735,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let cancelled = self.worker.cancel_current_computation();
         Self::drain_cancelled_computation(cancelled, "execute_only").await;
 
-        let metadata = request.metadata.clone();
+        // Proto `map<string, string>` (a HashMap) into the domain's ordered map.
+        let metadata: std::collections::BTreeMap<String, String> =
+            request.metadata.clone().into_iter().collect();
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
@@ -1851,6 +1878,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
     }
 
+    /// Handle a coordinator prove request: spawn the prove computation from the
+    /// supplied challenges.
     pub async fn prove(
         &mut self,
         request: ExecuteTaskRequest,
@@ -1896,6 +1925,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Handle a coordinator aggregate request: spawn the join/aggregate of the
+    /// supplied worker proofs.
     pub async fn aggregate(
         &mut self,
         request: ExecuteTaskRequest,

@@ -38,7 +38,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            None,
+            std::collections::BTreeMap::new(),
             false,
             ProofKind::VadcopFinal,
         );
@@ -59,7 +59,7 @@ impl Coordinator {
                 proof_data: request.proof_data,
                 proof_dest: request.proof_dest,
             }),
-            metadata: None,
+            metadata: std::collections::BTreeMap::new(),
         };
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
         if let Err(e) = self.workers_pool.send_message(&worker_id, message).await {

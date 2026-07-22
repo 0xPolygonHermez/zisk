@@ -1,6 +1,6 @@
 //! gRPC transport adapter.
 //!
-//! [`GrpcAdapter`] implements the tonic-generated [`ZiskCoordinatorApi`] trait.
+//! [`GrpcAdapter`] implements the tonic-generated `ZiskCoordinatorApi` trait.
 //! Its only responsibilities are proto ↔ domain conversion, input validation
 //! at the wire boundary, and call-level observability. All business logic lives
 //! in [`crate::handler::CoordinatorHandler`].
@@ -29,13 +29,17 @@ const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 5;
 const WAIT_TIMEOUT_MIN_SECS: u32 = 1;
 const WAIT_TIMEOUT_MAX_SECS: u32 = 3600;
 
+/// Server-streaming type for the `WatchJob` RPC.
 pub type WatchJobStream = Pin<Box<dyn Stream<Item = Result<JobEvent, Status>> + Send + 'static>>;
 
+/// gRPC adapter: implements the `ZiskCoordinatorApi` service by converting
+/// proto messages to/from domain types and delegating to a [`CoordinatorHandler`].
 pub struct GrpcAdapter<B: BackendService> {
     handler: CoordinatorHandler<B>,
 }
 
 impl<B: BackendService> GrpcAdapter<B> {
+    /// Wrap a handler in the gRPC adapter.
     pub fn new(handler: CoordinatorHandler<B>) -> Self {
         Self { handler }
     }
@@ -142,7 +146,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
 
         let result = self
             .handler
-            .submit_job(kind, None)
+            .submit_job(kind, std::collections::BTreeMap::new())
             .await
             .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from);
@@ -319,8 +323,10 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
     ) -> Result<Response<JobResponse>, Status> {
         let start = Instant::now();
         let msg = request.into_inner();
-        // Empty string means "no metadata".
-        let metadata = if msg.metadata.is_empty() { None } else { Some(msg.metadata) };
+        // Proto `map<string, string>` (a HashMap on the wire) into the domain's
+        // ordered map. Empty map means "no metadata".
+        let metadata: std::collections::BTreeMap<String, String> =
+            msg.metadata.into_iter().collect();
         let kind = msg
             .job_kind
             .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?

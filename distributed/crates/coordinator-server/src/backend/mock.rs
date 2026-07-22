@@ -78,6 +78,7 @@ const JOB_TTL: Duration = Duration::from_secs(5 * 60);
 
 // ── MockBackend ───────────────────────────────────────────────────────────────
 
+/// In-memory [`BackendService`] for testing — no coordinator required.
 #[derive(Clone)]
 pub struct MockBackend {
     state: Arc<Mutex<MockState>>,
@@ -85,6 +86,7 @@ pub struct MockBackend {
 }
 
 impl MockBackend {
+    /// Create a mock backend with empty state.
     pub fn new(cancel: CancellationToken) -> Self {
         Self { state: Arc::new(Mutex::new(MockState::new())), cancel }
     }
@@ -348,7 +350,7 @@ impl BackendService for MockBackend {
     async fn submit_job(
         &self,
         kind: DomainJobKind,
-        _metadata: Option<String>,
+        _metadata: std::collections::BTreeMap<String, String>,
     ) -> ApiResult<SubmitJobResult> {
         // Validate program exists for kinds that reference a hash_id
         {
@@ -741,7 +743,7 @@ mod tests {
                     with_hints: false,
                     emulator_only: false,
                 }),
-                None,
+                std::collections::BTreeMap::new(),
             )
             .await
             .unwrap()
@@ -764,7 +766,7 @@ mod tests {
                     proof_timeout: None,
                     proof_dest: DomainProofKind::Stark,
                 }),
-                None,
+                std::collections::BTreeMap::new(),
             )
             .await
             .unwrap()
@@ -791,7 +793,7 @@ mod tests {
                     hints: None,
                     execute_timeout: None,
                 }),
-                None,
+                std::collections::BTreeMap::new(),
             )
             .await
             .unwrap()
@@ -815,7 +817,7 @@ mod tests {
                     with_hints: false,
                     emulator_only: false,
                 }),
-                None,
+                std::collections::BTreeMap::new(),
             )
             .await
             .unwrap_err();
@@ -851,7 +853,7 @@ mod tests {
                     proof_dest: DomainProofKind::Plonk,
                     wrap_timeout: None,
                 }),
-                None,
+                std::collections::BTreeMap::new(),
             )
             .await
             .unwrap()

@@ -1,10 +1,10 @@
 //! Backend abstraction layer.
 //!
-//! [`BackendService`] is the single trait that decouples the gRPC handlers
+//! [`BackendService`](crate::backend::BackendService) is the single trait that decouples the gRPC handlers
 //! from the underlying implementation. Two implementations exist:
 //!
-//! - [`CoordinatorBackend`] — runs the coordinator in-process.
-//! - [`MockBackend`] — in-memory, auto-progresses jobs; used for testing only.
+//! - [`CoordinatorBackend`](crate::backend::coordinator::CoordinatorBackend) — runs the coordinator in-process.
+//! - [`MockBackend`](crate::backend::mock::MockBackend) — in-memory, auto-progresses jobs; used for testing only.
 
 pub mod coordinator;
 pub mod mock;
@@ -23,14 +23,16 @@ pub use zisk_coordinator_api::dto::*;
 
 // ── Stream type aliases ───────────────────────────────────────────────────────
 
+/// Stream of job lifecycle events produced by `watch_job`.
 pub type JobEventStream = Pin<Box<dyn Stream<Item = ApiResult<DomainJobEvent>> + Send>>;
+/// Stream of input/hint chunks consumed by the `push_job_*_input` operations.
 pub type InputChunkStream = Pin<Box<dyn Stream<Item = ApiResult<DomainInputChunk>> + Send>>;
 
 // ── BackendService trait ──────────────────────────────────────────────────────
 
 /// The single integration point between the gRPC handlers and the backend.
 ///
-/// Swap [`MockBackend`] for [`CoordinatorBackend`] at startup — no handler
+/// Swap [`MockBackend`](crate::backend::mock::MockBackend) for [`CoordinatorBackend`](crate::backend::coordinator::CoordinatorBackend) at startup — no handler
 /// code changes required.
 #[async_trait]
 pub trait BackendService: Send + Sync + 'static {
@@ -48,11 +50,12 @@ pub trait BackendService: Send + Sync + 'static {
 
     /// Submit a new job. Returns the job UUID.
     ///
-    /// `metadata` is the optional string supplied via the extended API.
+    /// `metadata` carries the caller-defined key/value pairs supplied via the
+    /// extended API (empty map for the base API).
     async fn submit_job(
         &self,
         kind: DomainJobKind,
-        metadata: Option<String>,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> ApiResult<SubmitJobResult>;
 
     /// Long-poll: block until the job reaches a terminal state or `timeout`

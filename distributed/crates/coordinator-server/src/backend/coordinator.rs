@@ -32,6 +32,7 @@ use zisk_cluster_common::{
     LaunchWrapRequestDto, ProofKind,
 };
 
+/// [`BackendService`] backed by an in-process `Coordinator`.
 pub struct CoordinatorBackend {
     coordinator: Arc<Coordinator>,
     /// job_id (UUID string) → hash_id: needed to populate `DomainProof.hash_id`.
@@ -40,6 +41,7 @@ pub struct CoordinatorBackend {
 }
 
 impl CoordinatorBackend {
+    /// Wrap an existing coordinator as a backend.
     pub fn new(coordinator: Arc<Coordinator>) -> Self {
         Self { coordinator, job_hash: Arc::new(RwLock::new(HashMap::new())) }
     }
@@ -310,7 +312,7 @@ impl BackendService for CoordinatorBackend {
     async fn submit_job(
         &self,
         kind: DomainJobKind,
-        metadata: Option<String>,
+        metadata: std::collections::BTreeMap<String, String>,
     ) -> ApiResult<SubmitJobResult> {
         match kind {
             DomainJobKind::Setup(r) => {

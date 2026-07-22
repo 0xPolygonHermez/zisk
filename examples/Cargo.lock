@@ -14,7 +14,6 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "test-artifacts",
- "tokio",
  "zisk-sdk",
 ]
 
@@ -803,7 +802,6 @@ name = "big-program-host"
 version = "0.1.0"
 dependencies = [
  "test-artifacts",
- "tokio",
  "zisk-sdk",
 ]
 
@@ -2449,7 +2447,6 @@ name = "hints-host"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "tokio",
  "zisk-sdk",
 ]
 
@@ -2724,9 +2721,9 @@ dependencies = [
 
 [[package]]
 name = "ignore"
-version = "0.4.30"
+version = "0.4.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b009b6744c1445efd7244084e25e498636412effb6760b55067553baa925cc7"
+checksum = "7f8a7b8211e695a1d0cd91cace480d4d0bd57667ab10277cc412c5f7f4884f83"
 dependencies = [
  "crossbeam-deque",
  "globset",
@@ -2950,9 +2947,9 @@ version = "1.1.0-alpha"
 
 [[package]]
 name = "libc"
-version = "0.2.186"
+version = "0.2.187"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68ab91017fe16c622486840e4c83c9a37afeff978bd239b5293d61ece587de66"
+checksum = "a7743783ea728ef5c31194c6590797eed286449b4a4e87d626d8a51f0a94e732"
 
 [[package]]
 name = "libffi"
@@ -3213,7 +3210,6 @@ name = "multiple-programs-host"
 version = "0.1.0"
 dependencies = [
  "test-artifacts",
- "tokio",
  "zisk-sdk",
 ]
 
@@ -6967,18 +6963,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.54"
+version = "0.8.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7cbbc0a705a0fd05cc3676525980d2bf5a9bc4adac6d6475209a7887cf59d19"
+checksum = "b5a105cd7b140f6eeec8acff2ea38135d3cab283ada58540f629fe51e46696eb"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.54"
+version = "0.8.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2e817b7b52d0c7358d3246da9d69935ebb18116b2b102b4230dac079b4862f5"
+checksum = "0fe976fb70c78cd64cccfe3a6fc142244e8a77b70959b30faf9d0ac37ee228eb"
 dependencies = [
  "proc-macro2",
  "quote",
