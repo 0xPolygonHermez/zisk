@@ -231,8 +231,7 @@ macro_rules! zisk_precompile_explicit {
                             $crate::plan(&count[idx], instance.num_ops as u64)
                                 .into_iter()
                                 .map(|(check_point, collect_info)| {
-                                    let converted: ::std::boxed::Box<dyn ::std::any::Any> =
-                                        ::std::boxed::Box::new(collect_info);
+                                    let converted = ::std::boxed::Box::new(collect_info);
                                     $crate::Plan::new(
                                         instance.airgroup_id,
                                         instance.air_id,
