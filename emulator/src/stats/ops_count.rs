@@ -98,10 +98,14 @@ impl<const N: usize> Sub for OpsCount<N> {
                 !self.count.is_empty(),
                 "OpsCount subtraction: cannot subtract non empty OpsCount from an empty OpsCount"
             );
-            let mut result = Self::new();
+            let mut result = self.clone();
+            assert!(
+                result.count.len() == other.count.len(),
+                "OpsCount subtraction: count lengths do not match"
+            );
             for i in 0..result.count.len() {
                 for j in 0..N {
-                    result.count[i][j] = self.count[i][j] - other.count[i][j];
+                    result.count[i][j] -= other.count[i][j];
                 }
             }
             result
