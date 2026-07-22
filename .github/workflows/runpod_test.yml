@@ -8,9 +8,6 @@ on:
         required: true
         type: string
 
-  schedule:
-    - cron: "0 1 * * *"
-
 jobs:
   runpod-test:
     runs-on:
