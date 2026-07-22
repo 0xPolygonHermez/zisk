@@ -309,10 +309,10 @@ impl BackendService for CoordinatorBackend {
         Ok(recurser_id)
     }
 
-    async fn submit_job(
+    async fn submit_job_with_metadata(
         &self,
         kind: DomainJobKind,
-        metadata: std::collections::BTreeMap<String, String>,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> ApiResult<SubmitJobResult> {
         match kind {
             DomainJobKind::Setup(r) => {

@@ -717,7 +717,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             Vec::<Vec<u32>>::new(),
             JobExecutionMode::Standard,
-            std::collections::BTreeMap::new(),
+            None,
             false,
             ProofKind::VadcopFinal,
         );
@@ -1284,7 +1284,7 @@ impl Coordinator {
         inputs_mode: InputsModeDto,
         hints_mode: HintsModeDto,
         simulated_node: Option<u32>,
-        metadata: std::collections::BTreeMap<String, String>,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
         execution_only: bool,
         proof_type: ProofKind,
     ) -> CoordinatorResult<Job> {
@@ -1595,10 +1595,12 @@ impl Coordinator {
     /// Sanitized characters are streamed straight into the output under a byte
     /// budget and iteration stops the moment it is exhausted, so the work is
     /// bounded by `MAX_LEN` rather than by the (client-controlled) metadata size.
-    fn format_job_metadata(metadata: &std::collections::BTreeMap<String, String>) -> String {
-        if metadata.is_empty() {
+    fn format_job_metadata(
+        metadata: Option<&std::collections::BTreeMap<String, String>>,
+    ) -> String {
+        let Some(metadata) = metadata.filter(|m| !m.is_empty()) else {
             return String::new();
-        }
+        };
 
         const MAX_LEN: usize = 512;
         let ellipsis = '…';
@@ -1918,7 +1920,7 @@ mod tests {
             workers.to_vec(),
             partitions,
             JobExecutionMode::Standard,
-            std::collections::BTreeMap::new(),
+            None,
             false,
             ProofKind::VadcopFinal,
         )
@@ -2781,7 +2783,7 @@ mod tests {
             inputs_mode: zisk_cluster_common::InputsModeDto::InputsNone,
             hints_mode: zisk_cluster_common::HintsModeDto::HintsNone,
             simulated_node: None,
-            metadata: std::collections::BTreeMap::new(),
+            metadata: None,
             execution_only: false,
             proof_type: zisk_cluster_common::ProofKind::VadcopFinal,
         };
@@ -3185,7 +3187,7 @@ mod tests {
                 zisk_cluster_common::InputsModeDto::InputsNone,
                 zisk_cluster_common::HintsModeDto::HintsNone,
                 None,
-                std::collections::BTreeMap::new(),
+                None,
                 false,
                 zisk_cluster_common::ProofKind::VadcopFinal,
             )
@@ -3232,7 +3234,7 @@ mod tests {
                     zisk_cluster_common::InputsModeDto::InputsNone,
                     zisk_cluster_common::HintsModeDto::HintsNone,
                     None,
-                    std::collections::BTreeMap::new(),
+                    None,
                     false,
                     zisk_cluster_common::ProofKind::VadcopFinal,
                 )
@@ -3249,7 +3251,7 @@ mod tests {
                     zisk_cluster_common::InputsModeDto::InputsNone,
                     zisk_cluster_common::HintsModeDto::HintsNone,
                     None,
-                    std::collections::BTreeMap::new(),
+                    None,
                     false,
                     zisk_cluster_common::ProofKind::VadcopFinal,
                 )
@@ -4416,7 +4418,7 @@ mod tests {
             inputs_mode: InputsModeDto::InputsNone,
             hints_mode: HintsModeDto::HintsNone,
             simulated_node: None,
-            metadata: std::collections::BTreeMap::new(),
+            metadata: None,
             execution_only: false,
             proof_type: ProofKind::VadcopFinal,
         }

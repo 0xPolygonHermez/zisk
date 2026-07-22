@@ -358,10 +358,10 @@ impl BackendService for MockBackend {
         Ok(recurser_id) // echoes id back without storing
     }
 
-    async fn submit_job(
+    async fn submit_job_with_metadata(
         &self,
         kind: DomainJobKind,
-        metadata: std::collections::BTreeMap<String, String>,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> ApiResult<SubmitJobResult> {
         // Validate program exists for kinds that reference a hash_id
         {
@@ -399,7 +399,7 @@ impl BackendService for MockBackend {
             let mut s = self.state.lock().await;
             s.jobs.insert(job_id, record);
             s.event_txs.insert(job_id, event_tx);
-            s.submit_metadata.insert(job_id, metadata);
+            s.submit_metadata.insert(job_id, metadata.unwrap_or_default());
         }
 
         Self::spawn_job_task(Arc::clone(&self.state), self.cancel.clone(), job_id, kind);
@@ -748,15 +748,12 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(
-                DomainJobKind::Setup(DomainSetupRequest {
-                    hash_id: hash_id.clone(),
-                    program_name: hash_id,
-                    with_hints: false,
-                    emulator_only: false,
-                }),
-                std::collections::BTreeMap::new(),
-            )
+            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
+                hash_id: hash_id.clone(),
+                program_name: hash_id,
+                with_hints: false,
+                emulator_only: false,
+            }))
             .await
             .unwrap()
             .job_id;
@@ -770,16 +767,13 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(
-                DomainJobKind::Prove(DomainProveRequest {
-                    hash_id,
-                    input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
-                    hints: None,
-                    proof_timeout: None,
-                    proof_dest: DomainProofKind::Stark,
-                }),
-                std::collections::BTreeMap::new(),
-            )
+            .submit_job(DomainJobKind::Prove(DomainProveRequest {
+                hash_id,
+                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                hints: None,
+                proof_timeout: None,
+                proof_dest: DomainProofKind::Stark,
+            }))
             .await
             .unwrap()
             .job_id;
@@ -798,15 +792,12 @@ mod tests {
         let b = MockBackend::default();
         let hash_id = b.register_guest_program(vec![0u8; 8]).await.unwrap();
         let job_id = b
-            .submit_job(
-                DomainJobKind::Execute(DomainExecuteRequest {
-                    hash_id,
-                    input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
-                    hints: None,
-                    execute_timeout: None,
-                }),
-                std::collections::BTreeMap::new(),
-            )
+            .submit_job(DomainJobKind::Execute(DomainExecuteRequest {
+                hash_id,
+                input: DomainInputKind::Inline(DomainInputChunk { data: vec![] }),
+                hints: None,
+                execute_timeout: None,
+            }))
             .await
             .unwrap()
             .job_id;
@@ -822,15 +813,12 @@ mod tests {
     async fn program_not_found_error() {
         let b = MockBackend::default();
         let err = b
-            .submit_job(
-                DomainJobKind::Setup(DomainSetupRequest {
-                    hash_id: "nonexistent".into(),
-                    program_name: "nonexistent".into(),
-                    with_hints: false,
-                    emulator_only: false,
-                }),
-                std::collections::BTreeMap::new(),
-            )
+            .submit_job(DomainJobKind::Setup(DomainSetupRequest {
+                hash_id: "nonexistent".into(),
+                program_name: "nonexistent".into(),
+                with_hints: false,
+                emulator_only: false,
+            }))
             .await
             .unwrap_err();
         assert!(matches!(err, ApiError::ProgramNotFound(_)));
@@ -859,14 +847,11 @@ mod tests {
             completed_at: Some(Utc::now()),
         };
         let job_id = b
-            .submit_job(
-                DomainJobKind::Wrap(DomainWrapRequest {
-                    proof: src_proof,
-                    proof_dest: DomainProofKind::Plonk,
-                    wrap_timeout: None,
-                }),
-                std::collections::BTreeMap::new(),
-            )
+            .submit_job(DomainJobKind::Wrap(DomainWrapRequest {
+                proof: src_proof,
+                proof_dest: DomainProofKind::Plonk,
+                wrap_timeout: None,
+            }))
             .await
             .unwrap()
             .job_id;

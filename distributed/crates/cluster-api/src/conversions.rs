@@ -306,8 +306,9 @@ impl From<ExecuteTaskRequestDto> for ExecuteTaskRequest {
             job_id: dto.job_id.into(),
             task_type: task_type as i32,
             params: Some(params),
-            // Domain's ordered map into the proto `map<string, string>` (a HashMap).
-            metadata: dto.metadata.into_iter().collect(),
+            // Domain's ordered map into the proto `map<string, string>` (a HashMap);
+            // absence (`None`) collapses to an empty map on the wire.
+            metadata: dto.metadata.unwrap_or_default().into_iter().collect(),
         }
     }
 }

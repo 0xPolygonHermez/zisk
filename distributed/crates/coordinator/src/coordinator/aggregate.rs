@@ -133,7 +133,7 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = Self::format_job_metadata(&job.metadata);
+        let metadata_str = Self::format_job_metadata(job.metadata.as_ref());
 
         info!(
             "{} {} ({:.3}s+{:.3}s+{:.3}s) {} {} Capacity: {}{}",
@@ -493,7 +493,7 @@ impl Coordinator {
                 proof_type,
             }),
             // Metadata is attached at job creation; later phases reuse the worker's job.
-            metadata: std::collections::BTreeMap::new(),
+            metadata: None,
         };
 
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);

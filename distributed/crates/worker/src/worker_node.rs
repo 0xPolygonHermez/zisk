@@ -1658,9 +1658,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let cancelled = self.worker.cancel_current_computation();
         Self::drain_cancelled_computation(cancelled, "partial_contribution").await;
 
-        // Proto `map<string, string>` (a HashMap) into the domain's ordered map.
-        let metadata: std::collections::BTreeMap<String, String> =
-            request.metadata.into_iter().collect();
+        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
+        let metadata = (!request.metadata.is_empty())
+            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
 
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
@@ -1735,9 +1735,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let cancelled = self.worker.cancel_current_computation();
         Self::drain_cancelled_computation(cancelled, "execute_only").await;
 
-        // Proto `map<string, string>` (a HashMap) into the domain's ordered map.
-        let metadata: std::collections::BTreeMap<String, String> =
-            request.metadata.into_iter().collect();
+        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
+        let metadata = (!request.metadata.is_empty())
+            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {

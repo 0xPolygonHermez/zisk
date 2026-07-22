@@ -180,7 +180,7 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
 
         let result = self
             .handler
-            .submit_job(kind, std::collections::BTreeMap::new())
+            .submit_job(kind)
             .await
             .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from);
@@ -358,7 +358,7 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
         let start = Instant::now();
         let msg = request.into_inner();
         // Proto `map<string, string>` (a HashMap on the wire) into the domain's
-        // ordered map. Empty map means "no metadata".
+        // ordered map. An empty map means "no metadata" → route through the base path.
         validate_metadata(&msg.metadata)?;
         let metadata: std::collections::BTreeMap<String, String> =
             msg.metadata.into_iter().collect();
@@ -368,10 +368,12 @@ impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
             .try_into()
             .map_err(|e: String| Status::invalid_argument(e))?;
 
-        let result = self
-            .handler
-            .submit_job(kind, metadata)
-            .await
+        let submitted = if metadata.is_empty() {
+            self.handler.submit_job(kind).await
+        } else {
+            self.handler.submit_job_ext(kind, metadata).await
+        };
+        let result = submitted
             .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
             .map_err(Status::from);
 

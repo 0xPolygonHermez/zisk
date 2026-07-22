@@ -326,8 +326,8 @@ pub struct JobContext {
     pub instances: u64,
     /// When the current task was received (for latency accounting).
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-    /// Job-level metadata propagated from the coordinator (empty map means none).
-    pub metadata: BTreeMap<String, String>,
+    /// Job-level metadata propagated from the coordinator (`None` when there is none).
+    pub metadata: Option<BTreeMap<String, String>>,
 }
 
 /// A ZisK worker over backend `T`: holds the prover, the current job context
@@ -659,7 +659,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         allocation: Vec<u32>,
         total_compute_units: u32,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
-        metadata: BTreeMap<String, String>,
+        metadata: Option<BTreeMap<String, String>>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),

@@ -47,7 +47,7 @@ impl Coordinator {
                 params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
                     challenges: challenges.clone(),
                 }),
-                metadata: std::collections::BTreeMap::new(),
+                metadata: None,
             };
             let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 

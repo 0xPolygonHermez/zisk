@@ -50,12 +50,26 @@ pub trait BackendService: Send + Sync + 'static {
 
     /// Submit a new job. Returns the job UUID.
     ///
-    /// `metadata` carries the caller-defined key/value pairs supplied via the
-    /// extended API (empty map for the base API).
-    async fn submit_job(
+    /// Submit a base job. The base API carries no caller metadata.
+    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
+        self.submit_job_with_metadata(kind, None).await
+    }
+
+    /// Submit a job with caller-defined key/value metadata (the extended API).
+    async fn submit_job_ext(
         &self,
         kind: DomainJobKind,
         metadata: std::collections::BTreeMap<String, String>,
+    ) -> ApiResult<SubmitJobResult> {
+        self.submit_job_with_metadata(kind, Some(metadata)).await
+    }
+
+    /// Implementation seam shared by [`submit_job`](Self::submit_job) and
+    /// [`submit_job_ext`](Self::submit_job_ext); backends implement this one.
+    async fn submit_job_with_metadata(
+        &self,
+        kind: DomainJobKind,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
     ) -> ApiResult<SubmitJobResult>;
 
     /// Long-poll: block until the job reaches a terminal state or `timeout`

@@ -518,7 +518,7 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = Self::format_job_metadata(&job.metadata);
+        let metadata_str = Self::format_job_metadata(job.metadata.as_ref());
 
         info!(
             "{} {} {} {} Capacity: {}{}",
