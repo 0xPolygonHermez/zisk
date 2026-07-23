@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "0f4effebdea9b25d190677b7bb341a0aa7bad8ea810d06b669ab92e4e08ed2b9";
+pub const PILOUT_HASH: &str = "b6ed9b79dd50db8dc90e6db9836f7a61d80ffa5e9aacf4ec1d700aed55fc1b12";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -147,7 +147,7 @@ values!(ZiskProofValues<F> {
 });
  
 trace_row!(MainFixedRow<F> {
- SEGMENT_L1: F, SEGMENT_STEP: F, __L1__: F,
+ SEGMENT_STEP: F, __L1__: F,
 });
 pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 4194304, 0, 0>;
 
@@ -169,7 +169,7 @@ trace_row!(RomTraceRow<F> {
 pub type RomTrace<F> = GenericTrace<RomTraceRow<F>, 4194304, 0, 1>;
 
 trace_row!(MemFixedRow<F> {
- SEGMENT_L1: F, __L1__: F,
+ __L1__: F,
 });
 pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 4194304, 0, 2>;
 
@@ -180,7 +180,7 @@ trace_row!(MemTraceRow<F> {
 pub type MemTrace<R> = GenericTrace<R, 4194304, 0, 2>;
 
 trace_row!(InputDataFixedRow<F> {
- SEGMENT_L1: F, __L1__: F,
+ __L1__: F,
 });
 pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 2097152, 0, 3>;
 
@@ -202,7 +202,7 @@ trace_row!(RomDataTraceRow<F> {
 pub type RomDataTrace<R> = GenericTrace<R, 2097152, 0, 4>;
 
 trace_row!(MemAlignFixedRow<F> {
- L1: F, __L1__: F,
+ __L1__: F,
 });
 pub type MemAlignFixed<F> = GenericTrace<MemAlignFixedRow<F>, 2097152, 0, 5>;
 
