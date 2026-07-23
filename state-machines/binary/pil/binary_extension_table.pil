@@ -4,30 +4,55 @@ require "operations.pil"
 require "opids.pil"
 
 /* PIL Binary Operations Table used by Binary Extension
-                                                       Running Total
-    SLL      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |               2^19
-    SRL      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20
-    SRA      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 |       2^20  + 2^19
-    SLL_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21
-    SRL_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21        + 2^19 
-    SRA_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)  = 2^19 | 2^21 + 2^20 
-    SEXT_B   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20               + 2^11
-    SEXT_H   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20        + 2^12
-    SEXT_W   2^8 (A) * 2^3 (OFFSET)            = 2^11 | 2^21 + 2^20        + 2^12 + 2^11 => 2^22
+                                                             Accumulated rows
+    SLL      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |       524,288
+    SRL      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     1,048,576
+    SRA      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     1,572,864
+    SLL_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     2,097,152
+    SRL_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     2,621,440
+    SRA_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     3,145,728
+    SEXT_B   2^8 (A) * 2^3 (OFFSET)             = 2^11 |     3,147,776
+    SEXT_H   2^8 (A) * 2^3 (OFFSET)             = 2^11 |     3,149,824
+    SEXT_W   2^8 (A) * 2^3 (OFFSET)             = 2^11 |     3,151,872
+    REV8     2^8 (A) * 2^3 (OFFSET)             = 2^11 |     3,153,920
+    ORCB     2^8 (A) * 2^3 (OFFSET)             = 2^11 |     3,155,968
+    ROL      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     3,680,256
+    ROL_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     4,204,544
+    ROR      2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     4,728,832
+    ROR_W    2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     5,253,120
+    CPOP     2^8 (A) * 2^3 (OFFSET)             = 2^11 |     5,255,168
+    CPOP_W   2^8 (A) * 2^3 (OFFSET)             = 2^11 |     5,257,216
+    CTZ      2^6 (ACC) * 2^3 (OFFSET) * 2^8 (A) = 2^17 |     5,388,288
+    CTZ_W    2^6 (ACC) * 2^3 (OFFSET) * 2^8 (A) = 2^17 |     5,519,360
+    CLZ      2^6 (ACC) * 2^3 (OFFSET) * 2^8 (A) = 2^17 |     5,650,432
+    CLZ_W    2^6 (ACC) * 2^3 (OFFSET) * 2^8 (A) = 2^17 |     5,781,504
+    PACK     2^8 (A) * 2^3 (OFFSET)             = 2^11 |     5,783,552
+    PACK_H   2^8 (A) * 2^3 (OFFSET)             = 2^11 |     5,785,600
+    PACK_W   2^8 (A) * 2^3 (OFFSET)             = 2^11 |     5,787,648
+    BCLR     2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     6,311,936
+    BEXT     2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     6,836,224
+    BINV     2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     7,360,512
+    BSET     2^8 (A) * 2^3 (OFFSET) * 2^8 (B)   = 2^19 |     7,884,800  => BINARY_EXTENSION_TABLE_SIZE
+
+    Total N = 7,884,800 rows, with 2^22 (4,194,304) < N < 2^23 (8,388,608)
 */
 
-const int BINARY_EXTENSION_TABLE_SIZE = P2_19 * 14 + P2_11 * 10 + P2_17 * 4;
+const int BINARY_EXTENSION_TABLE_SIZE = 7_884_800;
+const int BINARY_EXTENSION_TABLE_SIZE_P2 = 2**23;
 
 // Row where the byte-chain blocks (CTZ, CTZ_W, CLZ, CLZ_W) start. Each chain op enumerates its
 // acc_in input (0..63, the "outer" dimension, stride P2_11) instead of the B operand, so each
 // block is 2^6 (acc_in) * 2^3 (offset) * 2^8 (byte) = P2_17 rows.
-const int CTZ_TABLE_OFFSET = P2_19 * 10 + P2_11 * 7;
+
+const int CTZ_TABLE_OFFSET = 5_257_216;
 const int CTZ_W_TABLE_OFFSET = CTZ_TABLE_OFFSET + P2_17;
 const int CLZ_TABLE_OFFSET = CTZ_TABLE_OFFSET + P2_17 * 2;
 const int CLZ_W_TABLE_OFFSET = CTZ_TABLE_OFFSET + P2_17 * 3;
 
-airtemplate BinaryExtensionTable(const int N = 2**22) {
-    if (N < BINARY_EXTENSION_TABLE_SIZE) {
+airtemplate BinaryExtensionTable(int N = 0) {
+    if (N == 0) {
+        N = VIRTUAL ? BINARY_EXTENSION_TABLE_SIZE : BINARY_EXTENSION_TABLE_SIZE_P2;
+    } else if (N < BINARY_EXTENSION_TABLE_SIZE) {
         error(`N must be at least ${BINARY_EXTENSION_TABLE_SIZE}, but N=${N} was provided`);
     }
 
@@ -58,28 +83,29 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
                    [0:P2_11..255:P2_11]:4]...; // BCLR, BEXT, BINV, BSET (shift family: B = bit index)
 
     // Operation opcode
-    col fixed OP = [   OP_SLL:P2_19,    OP_SRL:P2_19,    OP_SRA:P2_19,     // SLL, SRL, SRA
-                     OP_SLL_W:P2_19,  OP_SRL_W:P2_19,  OP_SRA_W:P2_19,     // SLL_W, SRL_W, SRA_W
-                    OP_SEXT_B:P2_11, OP_SEXT_H:P2_11, OP_SEXT_W:P2_11,     // SEXT_B, SEXT_H, SEXT_W
-                     OP_REV8:P2_11,   OP_ORCB:P2_11,                       // REV8, ORCB
-                      OP_ROL:P2_19,   OP_ROL_W:P2_19,                      // ROL, ROL_W
-                      OP_ROR:P2_19,   OP_ROR_W:P2_19,                      // ROR, ROR_W
-                     OP_CPOP:P2_11, OP_CPOP_W:P2_11,                       // CPOP, CPOP_W
-                      OP_CTZ:P2_17,  OP_CTZ_W:P2_17,                       // CTZ, CTZ_W
-                      OP_CLZ:P2_17,  OP_CLZ_W:P2_17,                       // CLZ, CLZ_W
-                     OP_PACK:P2_11, OP_PACK_H:P2_11, OP_PACK_W:P2_11,      // PACK, PACK_H, PACK_W
-                     OP_BCLR:P2_19, OP_BEXT:P2_19,                         // BCLR, BEXT
-                     OP_BINV:P2_19, OP_BSET:P2_19]...;                     // BINV, BSET
+    col fixed OP = [ OP_SLL:P2_19,    OP_SRL:P2_19,    OP_SRA:P2_19,      // SLL, SRL, SRA
+                     OP_SLL_W:P2_19,  OP_SRL_W:P2_19,  OP_SRA_W:P2_19,    // SLL_W, SRL_W, SRA_W
+                     OP_SEXT_B:P2_11, OP_SEXT_H:P2_11, OP_SEXT_W:P2_11,   // SEXT_B, SEXT_H, SEXT_W
+                     OP_REV8:P2_11,   OP_ORCB:P2_11,                      // REV8, ORCB
+                     OP_ROL:P2_19,    OP_ROL_W:P2_19,                     // ROL, ROL_W
+                     OP_ROR:P2_19,    OP_ROR_W:P2_19,                     // ROR, ROR_W
+                     OP_CPOP:P2_11,   OP_CPOP_W:P2_11,                    // CPOP, CPOP_W
+                     OP_CTZ:P2_17,    OP_CTZ_W:P2_17,                     // CTZ, CTZ_W
+                     OP_CLZ:P2_17,    OP_CLZ_W:P2_17,                     // CLZ, CLZ_W
+                     OP_PACK:P2_11,   OP_PACK_H:P2_11, OP_PACK_W:P2_11,   // PACK, PACK_H, PACK_W
+                     OP_BCLR:P2_19,   OP_BEXT:P2_19,                      // BCLR, BEXT
+                     OP_BINV:P2_19,   OP_BSET:P2_19]...;                  // BINV, BSET
 
 
     col fixed C0; // Output C0  (32 bits)
     col fixed C1; // Output C1  (32 bits)
-    // Position column: encodes both the byte offset and the operation flags in a single fixed
-    // column, POS = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev
-    // + 8 * op_is_combine). This lets the caller send one combined value (j + BYTES * flags)
-    // instead of a separate offset plus four flag columns, saving fixed columns. flags is
-    // 0 (single-input), 1 (shift), 2 (chain), 4 (chain_rev) or 8 (combine); never more than one.
-    col fixed POS;
+    // Offset and flags column: encodes both the byte offset and the operation flags in a single
+    // fixed column, OFFSET_AND_FLAGS = offset + BYTES * (op_is_shift + 2 * op_is_chain
+    // + 4 * op_is_chain_rev + 8 * op_is_combine). This lets the caller send one combined value
+    // (j + BYTES * flags) instead of a separate offset plus four flag columns, saving fixed
+    // columns. flags is 0 (single-input), 1 (shift), 2 (chain), 4 (chain_rev) or 8 (combine);
+    // never more than one.
+    col fixed OFFSET_AND_FLAGS;
 
     #pragma transpile
     for (int i = 0; i < N; i++) {
@@ -427,11 +453,11 @@ airtemplate BinaryExtensionTable(const int N = 2**22) {
         const int c1 = (out >> 32) & MASK_32;
         C0[i] = c0;
         C1[i] = c1;
-        const int pos = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev + 8 * op_is_combine);
-        POS[i] = pos;
-        log(`T[${i}] = [${op}, ${pos}, ${a}, ${b}, ${c0}, ${c1}]`);
+        const int offset_and_flags = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev + 8 * op_is_combine);
+        OFFSET_AND_FLAGS[i] = offset_and_flags;
+        log(`T[${i}] = [${op}, ${offset_and_flags}, ${a}, ${b}, ${c0}, ${c1}]`);
     }
 
     col witness multiplicity;
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, POS, A, B, C0, C1], multiplicity);
+    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET_AND_FLAGS, A, B, C0, C1], multiplicity);
 }
