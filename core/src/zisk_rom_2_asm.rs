@@ -5195,6 +5195,32 @@ impl ZiskRom2Asm {
                     *code += "\tcall _opcode_arith256_mod\n";
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
+
+                    // --- Minimal-wrapper variant (disabled; enable after reviewing the hints) ---
+                    // The compute path of _opcode_arith256_mod now uses our assembly arith256_mod,
+                    // which is a *known* routine: it uses NO vector registers (so the 16 xmm saves
+                    // are unnecessary) and preserves rbx/rbp/r12-r15 itself. So the caller only needs
+                    // to preserve the volatile GPRs it keeps live across the call. Measured saving is
+                    // small (~6-7 cyc, the wrapper overlaps with the body), so this is optional.
+                    //
+                    // Preconditions to verify before enabling:
+                    //   * this stays on the compute path (precompile_results_arith256mod() == false);
+                    //   * r8, r9 and r11 are dead here (not needed after the call) in the register
+                    //     allocation — arith256_mod does clobber them.
+                    //
+                    // *code += "\tpush rax\n";
+                    // *code += "\tpush rcx\n";
+                    // *code += "\tpush rdx\n";
+                    // *code += "\tpush rdi\n";
+                    // *code += "\tpush r10\n";
+                    // *code += "\tsub rsp, 8\n";            // keep rsp 16-aligned for the ABI call
+                    // *code += "\tcall _opcode_arith256_mod\n";
+                    // *code += "\tadd rsp, 8\n";
+                    // *code += "\tpop r10\n";
+                    // *code += "\tpop rdi\n";
+                    // *code += "\tpop rdx\n";
+                    // *code += "\tpop rcx\n";
+                    // *code += "\tpop rax\n";
                 }
 
                 // Set result

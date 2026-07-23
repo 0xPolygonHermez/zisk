@@ -9,7 +9,7 @@
 // terms_by_clock: 2
 
 
-const expr eq_arith256_mod_chunks[47];
+const expr air.eq_arith256_mod_chunks[47];
 
 // clock #0
 

@@ -13,7 +13,7 @@
 // terms_by_clock: 2
 
 
-const expr eq_secp256k1_dbl_chunks[32];
+const expr air.eq_secp256k1_dbl_chunks[32];
 
 // clock #0
 
