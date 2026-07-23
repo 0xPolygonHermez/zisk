@@ -176,6 +176,11 @@ impl ArithEqCollector {
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
+        // Gate on OP_TYPE first (like the counter/input-gen path), so a non-ArithEq bus entry can
+        // never advance a sub-op window even if it reused an ArithEq opcode value.
+        if data[OP_TYPE] as u32 != ZiskOperationType::ArithEq as u32 {
+            return true;
+        }
         let Some(op) = ArithEqOp::from_opcode(data[OP] as u8) else {
             return true;
         };

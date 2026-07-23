@@ -830,9 +830,9 @@ extern int _opcode_arith256_mod(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("opcode_arith256_mod() calling Arith256Mod() counter=%lu address=%p\n", asm_call_metrics.arith256_mod_counter, address);
+        asm_printf("opcode_arith256_mod() calling arith256_mod() counter=%lu address=%p\n", asm_call_metrics.arith256_mod_counter, address);
 #else
-        asm_printf("opcode_arith256_mod() calling Arith256Mod() address=%p\n", address);
+        asm_printf("opcode_arith256_mod() calling arith256_mod() address=%p\n", address);
 #endif
         asm_printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
         asm_printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
@@ -849,7 +849,7 @@ extern int _opcode_arith256_mod(uint64_t * address)
         int result = arith256_mod (address);
         if (result != 0)
         {
-            asm_printf("_opcode_arith256_mod() failed callilng arith256_mod() result=%d;", result);
+            asm_printf("_opcode_arith256_mod() failed calling arith256_mod() result=%d;", result);
             exit(-1);
         }
 
@@ -865,7 +865,7 @@ extern int _opcode_arith256_mod(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) asm_printf("opcode_arith256_mod() called Arith256Mod()\n");
+    if (emu_verbose) asm_printf("opcode_arith256_mod() called arith256_mod()\n");
     if (emu_verbose)
     {
         asm_printf("d = %lx:%lx:%lx:%lx\n", d[3], d[2], d[1], d[0]);
