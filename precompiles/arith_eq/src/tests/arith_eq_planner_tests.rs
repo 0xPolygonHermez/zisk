@@ -3,7 +3,10 @@
 //! so it stays a child module of `arith_eq_planner` and keeps `super::` access to privates.
 
 use super::*;
-use zisk_pil::{Arith256Trace, Arith256XTrace, ArithEqTrace, ArithSecp256K1Trace};
+use zisk_pil::{
+    Arith256Trace, Arith256XTrace, ArithBn254ComplexTrace, ArithBn254EcTrace, ArithEqTrace,
+    ArithSecp256K1Trace,
+};
 
 fn counts(pairs: &[(ArithEqOp, u64)]) -> [u64; ARITH_EQ_OP_NUM] {
     let mut c = [0u64; ARITH_EQ_OP_NUM];
@@ -26,8 +29,19 @@ fn plan_area(plan: &[ArithEqAirPlan]) -> u64 {
         .sum()
 }
 
-// The 6 config airs present in `pil/zisk.pil` (AIR_IDs 0..=5).
-const ALL6: [usize; 6] = [0, 1, 2, 3, 4, 5];
+// Config-air ids taken straight from the generated `zisk_pil` trace types (pil_helpers/traces.rs),
+// the pilout source of truth — so the test tracks AIR_ID renumbering automatically and validates the
+// planner against the real airs rather than against `air_metas()`.
+fn all_air_ids() -> Vec<usize> {
+    vec![
+        ArithEqTrace::<()>::AIR_ID,
+        Arith256Trace::<()>::AIR_ID,
+        Arith256XTrace::<()>::AIR_ID,
+        ArithSecp256K1Trace::<()>::AIR_ID,
+        ArithBn254EcTrace::<()>::AIR_ID,
+        ArithBn254ComplexTrace::<()>::AIR_ID,
+    ]
+}
 
 fn assert_conserves(plan: &[ArithEqAirPlan], totals: &[u64; ARITH_EQ_OP_NUM]) {
     let mut summed = [0u64; ARITH_EQ_OP_NUM];
@@ -42,7 +56,7 @@ fn assert_conserves(plan: &[ArithEqAirPlan], totals: &[u64; ARITH_EQ_OP_NUM]) {
 #[test]
 fn single_small_family_stays_specialized() {
     let totals = counts(&[(ArithEqOp::Arith256, 3)]);
-    let plan = plan_air_strategy(&ALL6, &totals);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
     assert_eq!(plan.len(), 1);
     assert_eq!(plan[0].air_id, Arith256Trace::<()>::AIR_ID);
@@ -52,7 +66,7 @@ fn single_small_family_stays_specialized() {
 #[test]
 fn one_family_two_ops_uses_single_covering_air() {
     let totals = counts(&[(ArithEqOp::Arith256, 2), (ArithEqOp::Arith256Mod, 1)]);
-    let plan = plan_air_strategy(&ALL6, &totals);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
     assert_eq!(plan.len(), 1);
     assert_eq!(plan[0].air_id, Arith256XTrace::<()>::AIR_ID);
@@ -61,7 +75,7 @@ fn one_family_two_ops_uses_single_covering_air() {
 #[test]
 fn small_leftovers_consolidate_into_least_area() {
     let totals = counts(&[(ArithEqOp::Arith256Mod, 4), (ArithEqOp::Secp256k1Add, 5)]);
-    let plan = plan_air_strategy(&ALL6, &totals);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
 
     let all_specialized = area(&meta_of(Arith256XTrace::<()>::AIR_ID), 4)
@@ -78,7 +92,7 @@ fn small_leftovers_consolidate_into_least_area() {
 fn large_family_fills_specialized() {
     let cap_arith = cap(&meta_of(Arith256Trace::<()>::AIR_ID));
     let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_arith)]);
-    let plan = plan_air_strategy(&ALL6, &totals);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
     assert_eq!(plan.len(), 1);
     assert_eq!(plan[0].air_id, Arith256Trace::<()>::AIR_ID);
@@ -94,7 +108,7 @@ fn full_instances_specialized_remainder_pooled() {
     let cap_secp = cap(&meta_of(ArithSecp256K1Trace::<()>::AIR_ID));
     let totals =
         counts(&[(ArithEqOp::Secp256k1Add, 2 * cap_secp + 10), (ArithEqOp::Arith256Mod, 7)]);
-    let plan = plan_air_strategy(&ALL6, &totals);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
 
     let secp = plan.iter().find(|p| p.air_id == ArithSecp256K1Trace::<()>::AIR_ID);
