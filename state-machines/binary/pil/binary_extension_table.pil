@@ -99,12 +99,13 @@ airtemplate BinaryExtensionTable(int N = 0) {
 
     col fixed C0; // Output C0  (32 bits)
     col fixed C1; // Output C1  (32 bits)
-    // Pos and flags column: encodes both the byte offset and the operation flags in a single fixed
-    // column, POS = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev
-    // + 8 * op_is_combine). This lets the caller send one combined value (j + BYTES * flags)
-    // instead of a separate offset plus four flag columns, saving fixed columns. flags is
-    // 0 (single-input), 1 (shift), 2 (chain), 4 (chain_rev) or 8 (combine); never more than one.
-    col fixed POS_AND_FLAGS;
+    // Offset and flags column: encodes both the byte offset and the operation flags in a single
+    // fixed column, OFFSET_AND_FLAGS = offset + BYTES * (op_is_shift + 2 * op_is_chain
+    // + 4 * op_is_chain_rev + 8 * op_is_combine). This lets the caller send one combined value
+    // (j + BYTES * flags) instead of a separate offset plus four flag columns, saving fixed
+    // columns. flags is 0 (single-input), 1 (shift), 2 (chain), 4 (chain_rev) or 8 (combine);
+    // never more than one.
+    col fixed OFFSET_AND_FLAGS;
 
     #pragma transpile
     for (int i = 0; i < N; i++) {
@@ -452,11 +453,11 @@ airtemplate BinaryExtensionTable(int N = 0) {
         const int c1 = (out >> 32) & MASK_32;
         C0[i] = c0;
         C1[i] = c1;
-        const int pos_and_flags = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev + 8 * op_is_combine);
-        POS_AND_FLAGS[i] = pos_and_flags;
-        log(`T[${i}] = [${op}, ${pos_and_flags}, ${a}, ${b}, ${c0}, ${c1}]`);
+        const int offset_and_flags = offset + BYTES * (op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev + 8 * op_is_combine);
+        OFFSET_AND_FLAGS[i] = offset_and_flags;
+        log(`T[${i}] = [${op}, ${offset_and_flags}, ${a}, ${b}, ${c0}, ${c1}]`);
     }
 
     col witness multiplicity;
-    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, POS_AND_FLAGS, A, B, C0, C1], multiplicity);
+    lookup_proves(BINARY_EXTENSION_TABLE_ID, [OP, OFFSET_AND_FLAGS, A, B, C0, C1], multiplicity);
 }

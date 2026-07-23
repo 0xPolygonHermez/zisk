@@ -116,7 +116,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64) {
     // The flags are combined into flags = op_is_shift + 2*op_is_chain + 4*op_is_chain_rev
     // + 8*op_is_combine, which, together with the constant byte index j, is folded into a single
     // lookup element j + BYTES * flags. This lets the table encode offset and flags in one fixed
-    // column (POS) instead of a separate offset column plus flag columns. The fold is injective
+    // column (OFFSET_AND_FLAGS) instead of a separate offset column plus flag columns. The fold is injective
     // only because every combined term is bounded: j is a compile-time constant in 0..BYTES-1 and
     // flags is bounded by the binary constraints below. Legal flags are 0, 1, 2, 4, 8 (a single
     // family bit); any two bits set has no table row, so the lookup itself enforces mutual
