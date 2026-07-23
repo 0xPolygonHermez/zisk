@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use zisk_sdk::{ProverClient, ZiskStdin};
 use zisk_test_artifacts::ELF_BIG_INPUT;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...");
 
     // Read the input size that was configured during build
@@ -24,9 +23,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let builder = builder.gpu();
     let client = builder.build()?;
 
-    client.setup(&ELF_BIG_INPUT).run()?.await?;
+    client.setup(&ELF_BIG_INPUT).run_sync()?;
 
-    let result = client.execute(&ELF_BIG_INPUT, &stdin).run()?.await?;
+    let result = client.execute(&ELF_BIG_INPUT, &stdin).run_sync()?;
 
     println!(
         "ZisK has executed program with {} cycles in {} ms",
@@ -35,7 +34,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     println!("Generating proof...");
-    client.prove(&ELF_BIG_INPUT, &stdin).run()?.await?;
+    client.prove(&ELF_BIG_INPUT, &stdin).run_sync()?;
 
     println!("\u{2713} Prove completed successfully!");
 

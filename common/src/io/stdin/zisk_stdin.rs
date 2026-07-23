@@ -39,6 +39,10 @@ impl ZiskStdin {
     }
 
     /// Creates a `ZiskStdin` instance by reading data from a file at the specified path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Io`] if the file cannot be read.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self> {
         let data = std::fs::read(path.as_ref()).map_err(|e| {
             CommonError::Io(format!("Failed to read input file {:?}: {}", path.as_ref(), e))
@@ -51,6 +55,12 @@ impl ZiskStdin {
     /// - `"file://path"` → read from file
     /// - `"inline://[[1,2],[3]]"` → inline input, a JSON array of u64 arrays
     /// - No scheme → treated as a file path
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::UnknownScheme`] if the URI carries an unrecognized scheme.
+    /// - Any error from [`from_file`](Self::from_file) or [`from_inline`](Self::from_inline)
+    ///   when reading the referenced input.
     pub fn from_uri<S: Into<String>>(stdin_uri: Option<S>) -> Result<ZiskStdin> {
         let Some(uri) = stdin_uri else { return Ok(ZiskStdin::new()) };
         let uri = uri.into();
@@ -74,6 +84,10 @@ impl ZiskStdin {
     /// 8-byte little-endian length prefix and is padded to an 8-byte boundary.
     ///
     /// Example: `"[[1,2],[3],[4,5,6]]"` produces three frames.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Invalid`] if the input is not a valid JSON array of u64 arrays.
     pub fn from_inline(json: &str) -> Result<ZiskStdin> {
         let frames: Vec<Vec<u64>> = serde_json::from_str(json).map_err(|e| {
             CommonError::Invalid(format!(
@@ -92,16 +106,30 @@ impl ZiskStdin {
     }
 
     /// Read the raw byte data from the `ZiskStdin` buffer.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn read_data(&self) -> Vec<u8> {
         self.inner.data.lock().unwrap().clone()
     }
 
     /// Read the next frame of data from the `ZiskStdin` buffer as a vector of bytes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned or if reading the next frame fails.
     pub fn read_bytes(&self) -> Vec<u8> {
         self.read_raw().expect("Failed to read from stdin buffer")
     }
 
-    /// Read the next frame of data from the `ZiskStdin` buffer and deserialize it into a value of type `T`.
+    /// Reads the next frame of data from the [`ZiskStdin`] buffer and deserializes
+    /// it into a value of type `T`.
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::Io`] if reading from the buffer fails.
+    /// - [`CommonError::Deserialization`] if deserialization fails.
     pub fn read<T: DeserializeOwned>(&self) -> Result<T> {
         let data = self
             .read_raw()
@@ -112,6 +140,10 @@ impl ZiskStdin {
     }
 
     /// Write a serializable value of type `T` to the `ZiskStdin` buffer as a new frame.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `data` cannot be serialized, or if the internal mutex is poisoned.
     pub fn write<T: Serialize>(&self, data: &T) {
         let bytes = bincode::serde::encode_to_vec(data, bincode::config::standard())
             .expect("Failed to serialize");
@@ -119,6 +151,10 @@ impl ZiskStdin {
     }
 
     /// Write a raw slice of bytes to the `ZiskStdin` buffer as a new frame, prefixed with its length and padded to an 8-byte boundary.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn write_slice(&self, data: &[u8]) {
         let data_len = data.len();
         let total_len = 8 + data_len;
@@ -141,6 +177,14 @@ impl ZiskStdin {
     }
 
     /// Save the `ZiskStdin` buffer to a file at the specified path.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Io`] if the parent directory cannot be created or the file cannot be written.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
@@ -157,6 +201,10 @@ impl ZiskStdin {
     }
 
     /// Reset the read cursor to the beginning.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn rewind(&self) {
         self.inner.cursor.lock().unwrap().set_position(0);
     }
@@ -167,6 +215,10 @@ impl ZiskStdin {
     }
 
     /// Clear the `ZiskStdin` buffer and reset the cursor.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
     pub fn clear(&self) {
         self.inner.data.lock().unwrap().clear();
         let mut cursor = self.inner.cursor.lock().unwrap();

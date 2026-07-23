@@ -37,6 +37,8 @@ impl EmuExecClient {
         Ok(Self { executor, program: Mutex::new(None) })
     }
 
+    /// Parse the program's ELF into a `ZiskRom` and cache it, so the cost is
+    /// paid once and amortized across repeated [`execute`](Self::execute) calls.
     pub fn setup(&self, program: &GuestProgram) -> Result<()> {
         tracing::info!("Setting up EmuExecClient for ELF '{}'", program.name());
         tracing::debug!("Parsing ELF into ZiskRom");
@@ -49,6 +51,8 @@ impl EmuExecClient {
         Ok(())
     }
 
+    /// Run the program set up by [`setup`](Self::setup) once with the given
+    /// stdin. Returns an error if `setup` has not been called.
     pub fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program) before execute(stdin)")?;

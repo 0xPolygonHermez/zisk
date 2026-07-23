@@ -41,6 +41,10 @@ fn validate_custom_commit_file_size(elf_bin_path: &Path, hash_mode: HashMode) ->
     Ok(())
 }
 
+/// Resolve the path of the cached ROM custom-commit binary for `elf_hash`.
+///
+/// Errors if the ROM binary or its verkey file has not been generated yet (run
+/// [`rom_merkle_setup`] first).
 pub fn get_rom_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf_hash: &str,
@@ -66,6 +70,12 @@ pub fn get_rom_path<F: PrimeField64>(
 
     Ok(elf_bin_path)
 }
+/// Perform the ROM Merkle setup for `elf` and return its program verification
+/// key.
+///
+/// Builds the ROM custom commit and derives the verkey from its Merkle root,
+/// writing both to the cache. When `force` is false and valid cached artifacts
+/// already exist, the cached verkey is returned instead of regenerating.
 pub fn rom_merkle_setup<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &[u8],
@@ -103,6 +113,10 @@ pub fn rom_merkle_setup<F: PrimeField64>(
     Ok(ProgramVK { vk, hash_mode })
 }
 
+/// Read the program verification key for `elf` from the cache.
+///
+/// Unlike [`rom_merkle_setup`], this never regenerates: it errors if the verkey
+/// file does not already exist.
 pub fn rom_merkle_setup_verkey(
     elf: &[u8],
     output_dir: &Option<PathBuf>,

@@ -2,7 +2,6 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator, CoordinatorError, CoordinatorResult,
 };
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use zisk_cluster_common::{
@@ -39,7 +38,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             ProofKind::VadcopFinal,
         );
@@ -60,6 +59,7 @@ impl Coordinator {
                 proof_data: request.proof_data,
                 proof_dest: request.proof_dest,
             }),
+            metadata: None,
         };
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
         if let Err(e) = self.workers_pool.send_message(&worker_id, message).await {

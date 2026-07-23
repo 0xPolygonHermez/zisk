@@ -29,7 +29,7 @@ opt-level = 3
 [workspace.dependencies]
 ziskos = { path = "../ziskos/entrypoint" }
 zisk-sdk = { path = "../sdk" }
-zisk-test-artifacts = { path = "../test-artifacts" }
+zisk-test-artifacts = { path = "../test-artifacts", default-features = false }
 examples-utils = { path = "utils"}
 proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
