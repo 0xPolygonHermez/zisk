@@ -457,7 +457,7 @@ define_ops! {
     (Bset, "bset", BinaryE, BINARY_E_COST, 0x47, 0, 0, opc_bset, op_bset, ops_none),
     (AddUW, "add_u_w", BinaryE, ADD_U_W_COST, 0x48, 0, 0, opc_add_u_w, op_add_u_w, ops_none),
     (Sh1add, "sh1add", BinaryE, SH_ADD_COST, 0x49, 0, 0, opc_sh1add, op_sh1add, ops_none),
-    (Sh1addUW, "sh1add_u_w", BinaryE, SH_ADD_COST, 0x4a, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
+    (Sh1addUW, "sh1add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4a, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
     (Sh2add, "sh2add", BinaryE, SH_ADD_COST, 0x4b, 0, 0, opc_sh2add, op_sh2add, ops_none),
     (Sh2addUW, "sh2add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4c, 0, 0, opc_sh2add_u_w, op_sh2add_u_w, ops_none),
     (Sh3add, "sh3add", BinaryE, SH_ADD_U_W_COST, 0x4d, 0, 0, opc_sh3add, op_sh3add, ops_none),
