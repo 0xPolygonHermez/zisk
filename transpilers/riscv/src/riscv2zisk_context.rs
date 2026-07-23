@@ -544,53 +544,35 @@ impl Riscv2ZiskContext<'_> {
             // RISC-V Bit manipulation Extensions: Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx
 
             // Byte and bit reverse operations
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Rev8 => {
                 self.create_single_source_register_op(riscv_instruction, "rev8", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Brev8 => {
                 self.create_single_source_register_op(riscv_instruction, "brev8", 4, 1)
             }
 
             // Negate logical operations
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Andn => self.create_register_op(riscv_instruction, "andn", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Orn => self.create_register_op(riscv_instruction, "orn", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Xnor => self.create_register_op(riscv_instruction, "xnor", 4),
 
             // Pack operations
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Pack => self.create_register_op(riscv_instruction, "pack", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Packh => self.create_register_op(riscv_instruction, "pack_h", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Packw => self.create_register_op(riscv_instruction, "pack_w", 4),
 
             // Rotate operations
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Rol => self.create_register_op(riscv_instruction, "rol", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Rolw => self.create_register_op(riscv_instruction, "rol_w", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Ror => self.create_register_op(riscv_instruction, "ror", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Rorw => self.create_register_op(riscv_instruction, "ror_w", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Rori => self.immediate_op(riscv_instruction, "ror", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Roriw => self.immediate_op(riscv_instruction, "ror_w", 4),
 
             // Min and max operations
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Min => self.create_register_op(riscv_instruction, "min", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Minu => self.create_register_op(riscv_instruction, "minu", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Max => self.create_register_op(riscv_instruction, "max", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Maxu => self.create_register_op(riscv_instruction, "maxu", 4),
 
             // Sign-extend / zero-extend operations.
@@ -598,97 +580,127 @@ impl Riscv2ZiskContext<'_> {
             // extend the low byte/half of rs1, so they use the single-source
             // register path (signature is (op, inst_size, rs), rs=1 -> rs1).
             // Using load_op here would (wrongly) read memory at rs1 + imm.
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::SextB => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_b", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::SextH => {
                 self.create_single_source_register_op(riscv_instruction, "signextend_h", 4, 1)
             }
             // zext.h zero-extends the low 16 bits of rs1: rd = rs1 & 0xFFFF.
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::ZextH => self.zero_extend_h(riscv_instruction, 4),
 
             // Bit count operations
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Clz => {
                 self.create_single_source_register_op(riscv_instruction, "clz", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Clzw => {
                 self.create_single_source_register_op(riscv_instruction, "clz_w", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Ctz => {
                 self.create_single_source_register_op(riscv_instruction, "ctz", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Ctzw => {
                 self.create_single_source_register_op(riscv_instruction, "ctz_w", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Cpop => {
                 self.create_single_source_register_op(riscv_instruction, "cpop", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Cpopw => {
                 self.create_single_source_register_op(riscv_instruction, "cpop_w", 4, 1)
             }
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::OrcB => {
                 self.create_single_source_register_op(riscv_instruction, "orc_b", 4, 1)
             }
 
             // Single bit operations (Zbs)
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Bclr => self.create_register_op(riscv_instruction, "bclr", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Bclri => self.immediate_op(riscv_instruction, "bclr", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Bext => self.create_register_op(riscv_instruction, "bext", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Bexti => self.immediate_op(riscv_instruction, "bext", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Binv => self.create_register_op(riscv_instruction, "binv", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Binvi => self.immediate_op(riscv_instruction, "binv", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Bset => self.create_register_op(riscv_instruction, "bset", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
             RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
 
             // Address generation operations (Zba)
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(feature = "zba_native")]
             RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_u_w", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::AddUw => self.add_u_w(riscv_instruction),
+
+            #[cfg(feature = "zba_native")]
             RiscvInstName::Sh1add => self.create_register_op(riscv_instruction, "sh1add", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::Sh1add => self.sh1add(riscv_instruction),
+
+            #[cfg(feature = "zba_native")]
             RiscvInstName::Sh1addUw => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::Sh1addUw => self.sh1add_u_w(riscv_instruction),
+
+            #[cfg(feature = "zba_native")]
             RiscvInstName::Sh2add => self.create_register_op(riscv_instruction, "sh2add", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::Sh2add => self.sh2add(riscv_instruction),
+
+            #[cfg(feature = "zba_native")]
             RiscvInstName::Sh2addUw => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::Sh2addUw => self.sh2add_u_w(riscv_instruction),
+
+            #[cfg(feature = "zba_native")]
             RiscvInstName::Sh3add => self.create_register_op(riscv_instruction, "sh3add", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::Sh3add => self.sh3add(riscv_instruction),
+
+            #[cfg(feature = "zba_native")]
             RiscvInstName::Sh3addUw => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::Sh3addUw => self.sh3add_u_w(riscv_instruction),
+
+            #[cfg(feature = "zba_native")]
             RiscvInstName::SlliUw => self.immediate_op(riscv_instruction, "sll_u_w", 4),
+            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            RiscvInstName::SlliUw => self.sll_u_w(riscv_instruction, true),
 
             // Carry-less multiplication operations (Zbc)
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(any(feature = "zbc_native", feature = "zbkc_native"))]
             RiscvInstName::Clmul => self.create_register_op(riscv_instruction, "clmul", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(
+                any(feature = "zbc", feature = "zbkc"),
+                not(any(feature = "zbc_native", feature = "zbkc_native"))
+            ))]
+            RiscvInstName::Clmul => self.clmul(riscv_instruction),
+
+            #[cfg(any(feature = "zbc_native", feature = "zbkc_native"))]
             RiscvInstName::Clmulh => self.create_register_op(riscv_instruction, "clmul_h", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(
+                any(feature = "zbc", feature = "zbkc"),
+                not(any(feature = "zbc_native", feature = "zbkc_native"))
+            ))]
+            RiscvInstName::Clmulh => self.clmul_h(riscv_instruction),
+
+            #[cfg(feature = "zbc_native")]
             RiscvInstName::Clmulr => self.create_register_op(riscv_instruction, "clmul_r", 4),
+            #[cfg(all(feature = "zbc", not(feature = "zbc_native")))]
+            RiscvInstName::Clmulr => self.clmul_r(riscv_instruction),
 
             // Crossbar permutations operations (Zbkx)
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(feature = "zbkx_native")]
             RiscvInstName::Xperm4 => self.create_register_op(riscv_instruction, "xperm4", 4),
-            #[cfg(feature = "bit_manipulation_extensions")]
+            #[cfg(all(feature = "zbkx", not(feature = "zbkx_native")))]
+            RiscvInstName::Xperm4 => self.xperm4(riscv_instruction),
+
+            #[cfg(feature = "zbkx_native")]
             RiscvInstName::Xperm8 => self.create_register_op(riscv_instruction, "xperm8", 4),
+            #[cfg(all(feature = "zbkx", not(feature = "zbkx_native")))]
+            RiscvInstName::Xperm8 => self.xperm8(riscv_instruction),
+
+            // Integer conditional operations (Zicond)
+            #[cfg(feature = "zicond_native")]
+            RiscvInstName::CzeroEqz => self.create_register_op(riscv_instruction, "czero_eqz", 4),
+            #[cfg(feature = "zicond_native")]
+            RiscvInstName::CzeroNez => self.create_register_op(riscv_instruction, "czero_nez", 4),
 
             // Special ZisK instructions
             ////////////////////////////
@@ -698,7 +710,16 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::CHalt => self.halt_with_error(riscv_instruction, 2),
             RiscvInstName::Reserved => self.halt_with_error(riscv_instruction, 4),
 
-            #[cfg(not(feature = "bit_manipulation_extensions"))]
+            // This arm is needed when some optional instruction subsets are disabled; when all are
+            // enabled it can become unreachable, so silence that lint.
+            #[cfg(not(all(
+                any(feature = "zba", feature = "zba_native"),
+                any(feature = "zbc", feature = "zbc_native"),
+                any(feature = "zbkc", feature = "zbkc_native"),
+                any(feature = "zbkx", feature = "zbkx_native"),
+                feature = "float",
+                feature = "zicond_native"
+            )))]
             _ => {
                 panic!(
                     "Riscv2ZiskContext::convert() found invalid riscv_instruction.inst_name={}",

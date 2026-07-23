@@ -866,6 +866,7 @@ void client_run (void)
     /*****************/
     /* Minimal trace */
     /*****************/
+    uint64_t total_duration = 0;
     for (uint64_t i=0; i<number_of_mt_requests; i++)
     {
         switch (gen_method)
@@ -905,7 +906,8 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (MT)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -947,7 +949,8 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (RH)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (RH)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -989,7 +992,8 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (MO)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (MO)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -1026,7 +1030,8 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (FA)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (FA)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
