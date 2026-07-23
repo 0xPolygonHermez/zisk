@@ -7,8 +7,8 @@ use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
     zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
-    INPUT_ADDR, M64, P2_32, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG,
-    SRC_STEP, STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
+    INPUT_ADDR, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
+    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -1262,7 +1262,15 @@ impl ZiskRom2Asm {
             | ZiskOp::PubOut
             | ZiskOp::FcallParam
             | ZiskOp::Fcall
-            | ZiskOp::FcallGet => ctx.store_b_in_c = true,
+            | ZiskOp::FcallGet
+            | ZiskOp::Rev8
+            | ZiskOp::Brev8
+            | ZiskOp::Clz
+            | ZiskOp::ClzW
+            | ZiskOp::Ctz
+            | ZiskOp::CtzW
+            | ZiskOp::Cpop
+            | ZiskOp::CpopW => ctx.store_b_in_c = true,
             ZiskOp::Xor
             | ZiskOp::And
             | ZiskOp::Or
@@ -1273,14 +1281,33 @@ impl ZiskRom2Asm {
             | ZiskOp::Min
             | ZiskOp::Minu
             | ZiskOp::Max
-            | ZiskOp::Maxu => ctx.store_a_in_c = true,
-            ZiskOp::MinuW | ZiskOp::MinW | ZiskOp::MaxuW | ZiskOp::MaxW => {
+            | ZiskOp::Maxu
+            | ZiskOp::Bclr
+            | ZiskOp::Bset
+            | ZiskOp::Binv
+            | ZiskOp::Bext
+            | ZiskOp::Rol
+            | ZiskOp::RolW
+            | ZiskOp::Ror
+            | ZiskOp::RorW => ctx.store_a_in_c = true,
+            ZiskOp::MinuW
+            | ZiskOp::MinW
+            | ZiskOp::MaxuW
+            | ZiskOp::MaxW
+            | ZiskOp::Andn
+            | ZiskOp::Orn
+            | ZiskOp::Xnor
+            | ZiskOp::Pack
+            | ZiskOp::PackW
+            | ZiskOp::PackH => {
                 ctx.store_a_in_c = true;
                 ctx.store_b_in_b = true;
             }
-            ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW | ZiskOp::AddW => {
-                ctx.store_b_in_b = true
-            }
+            ZiskOp::SignExtendB
+            | ZiskOp::SignExtendH
+            | ZiskOp::SignExtendW
+            | ZiskOp::AddW
+            | ZiskOp::OrcB => ctx.store_b_in_b = true,
             ZiskOp::SubW
             | ZiskOp::Eq
             | ZiskOp::Ltu
@@ -1518,6 +1545,7 @@ impl ZiskRom2Asm {
                 let dest_reg = if ctx.store_b_in_c { REG_C } else { REG_B };
                 let dest_desc = if ctx.store_b_in_c { "c" } else { "b" };
                 Self::read_riscv_reg(ctx, code, instruction.b_offset_imm0, dest_reg, dest_desc);
+                ctx.b.is_saved = !ctx.store_b_in_c;
             }
             SRC_MEM => {
                 *code += &ctx.full_line_comment("b=SRC_MEM".to_string());
@@ -2705,6 +2733,19 @@ impl ZiskRom2Asm {
                 } else {
                     assert!(ctx.store_a_in_c);
                     *code += &ctx.full_line_comment("Add: c = a".to_string());
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Add: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tadd {}, {} {}\n",
                         REG_C,
@@ -2743,6 +2784,19 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Sub: ignoring b since b = 0".to_string());
                 } else {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Sub: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tsub {}, {} {}\n",
                         REG_C,
@@ -2766,6 +2820,19 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("SubW: ignoring b since b = 0".to_string());
                 } else {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("SubW: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tsub {}, {} {}\n",
                         REG_A,
@@ -2962,8 +3029,128 @@ impl ZiskRom2Asm {
                 //s += &format!("\tmov {}, {} {}\n", REG_C, REG_VALUE, ctx.comment_str("SrlW: c = value"));
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Rol => {
+                assert!(ctx.store_a_in_c);
+                // rd = rotl64(a, b & 63)
+                if ctx.b.is_constant {
+                    let sh = ctx.b.constant_value & 63;
+                    *code += &format!(
+                        "\trol {}, {} {}\n",
+                        REG_C,
+                        sh,
+                        ctx.comment_str("Rol: c = rotl64(a, b & 63)")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    *code += &format!("\tmov rcx, {} {}\n", REG_B, ctx.comment_str("Rol: rcx = b"));
+                    *code += &format!(
+                        "\trol {}, cl {}\n",
+                        REG_C,
+                        ctx.comment_str("Rol: c = rotl64(a, b & 63)")
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::RolW => {
+                assert!(ctx.store_a_in_c);
+                // rd = sext32( rotl32(a[31:0], b & 31) )
+                if ctx.b.is_constant {
+                    let sh = ctx.b.constant_value & 31;
+                    *code += &format!(
+                        "\trol {}, {} {}\n",
+                        REG_C_W,
+                        sh,
+                        ctx.comment_str("RolW: rotate low32 of a by (b & 31)")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    *code +=
+                        &format!("\tmov rcx, {} {}\n", REG_B, ctx.comment_str("RolW: rcx = b"));
+                    *code += &format!(
+                        "\trol {}, cl {}\n",
+                        REG_C_W,
+                        ctx.comment_str("RolW: rotate low32 of a by (b & 31)")
+                    );
+                }
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_C_W,
+                    ctx.comment_str("RolW: sign-extend bit 31 to 64")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Ror => {
+                assert!(ctx.store_a_in_c);
+                // rd = rotr64(a, b & 63)
+                if ctx.b.is_constant {
+                    let sh = ctx.b.constant_value & 63;
+                    *code += &format!(
+                        "\tror {}, {} {}\n",
+                        REG_C,
+                        sh,
+                        ctx.comment_str("Ror: c = rotr64(a, b & 63)")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    *code += &format!("\tmov rcx, {} {}\n", REG_B, ctx.comment_str("Ror: rcx = b"));
+                    *code += &format!(
+                        "\tror {}, cl {}\n",
+                        REG_C,
+                        ctx.comment_str("Ror: c = rotr64(a, b & 63)")
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::RorW => {
+                assert!(ctx.store_a_in_c);
+                // rd = sext32( rotr32(a[31:0], b & 31) )
+                if ctx.b.is_constant {
+                    let sh = ctx.b.constant_value & 31;
+                    *code += &format!(
+                        "\tror {}, {} {}\n",
+                        REG_C_W,
+                        sh,
+                        ctx.comment_str("RorW: rotate low32 of a by (b & 31)")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    *code +=
+                        &format!("\tmov rcx, {} {}\n", REG_B, ctx.comment_str("RorW: rcx = b"));
+                    *code += &format!(
+                        "\tror {}, cl {}\n",
+                        REG_C_W,
+                        ctx.comment_str("RorW: rotate low32 of a by (b & 31)")
+                    );
+                }
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_C_W,
+                    ctx.comment_str("RorW: sign-extend bit 31 to 64")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+
             ZiskOp::Eq => {
                 assert!(ctx.store_a_in_a);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Eq: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_A,
@@ -2992,7 +3179,25 @@ impl ZiskRom2Asm {
                     );
                 }
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("EqW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("EqW: a == b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
@@ -3020,6 +3225,19 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Ltu => {
                 assert!(ctx.store_a_in_a);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Ltu: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_A,
@@ -3039,15 +3257,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Lt => {
                 assert!(ctx.store_a_in_a);
-                // If b is constant and too big, move it to its register
-                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
                         ctx.b.string_value,
                         ctx.comment_str("Lt: b = constant")
                     );
-                    ctx.b.is_constant = false;
+                    ctx.b.is_saved = true;
                     ctx.b.string_value = REG_B.to_string();
                 }
                 *code += &format!(
@@ -3070,19 +3290,37 @@ impl ZiskRom2Asm {
             ZiskOp::LtuW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LtuW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LtuW: a < b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LtuW: a == b ?")
+                        ctx.comment_str("LtuW: a < b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LtuW: a == b ?")
+                        ctx.comment_str("LtuW: a < b ?")
                     );
                 }
                 *code += &format!("\tjb pc_{:x}_ltuw_true\n", ctx.pc);
@@ -3099,19 +3337,37 @@ impl ZiskRom2Asm {
             ZiskOp::LtW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LtW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LtW: a < b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LtW: a == b ?")
+                        ctx.comment_str("LtW: a < b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LtW: a == b")
+                        ctx.comment_str("LtW: a < b ?")
                     );
                 }
                 *code += &format!("\tjl pc_{:x}_ltw_true\n", ctx.pc);
@@ -3127,15 +3383,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Leu => {
                 assert!(ctx.store_a_in_a);
-                // If b is constant and too big, move it to its register
-                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
                         ctx.b.string_value,
                         ctx.comment_str("Leu: b = const_value")
                     );
-                    ctx.b.is_constant = false;
+                    ctx.b.is_saved = true;
                     ctx.b.string_value = REG_B.to_string();
                 }
                 *code += &format!(
@@ -3157,15 +3415,17 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Le => {
                 assert!(ctx.store_a_in_a);
-                // If b is constant and too big, move it to its register
-                if ctx.b.is_constant && (ctx.b.constant_value >= P2_32) {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
                     *code += &format!(
                         "\tmov {}, {} {}\n",
                         REG_B,
                         ctx.b.string_value,
                         ctx.comment_str("Le: b = const_value")
                     );
-                    ctx.b.is_constant = false;
+                    ctx.b.is_saved = true;
                     ctx.b.string_value = REG_B.to_string();
                 }
                 *code += &format!(
@@ -3188,19 +3448,37 @@ impl ZiskRom2Asm {
             ZiskOp::LeuW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LeuW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LeuW: a <= b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LeuW: a == b ?")
+                        ctx.comment_str("LeuW: a <= b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LeuW: a == b ?")
+                        ctx.comment_str("LeuW: a <= b ?")
                     );
                 }
                 *code += &format!("\tjbe pc_{:x}_leuw_true\n", ctx.pc);
@@ -3217,19 +3495,37 @@ impl ZiskRom2Asm {
             ZiskOp::LeW => {
                 assert!(ctx.store_a_in_a);
                 // Compare against b, either as a numeric constant or as a register
-                if ctx.b.is_constant {
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("LeW: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                    *code += &format!(
+                        "\tcmp {}, {} {}\n",
+                        REG_A_W,
+                        REG_B_W,
+                        ctx.comment_str("LeW: a <= b ?")
+                    );
+                } else if ctx.b.is_constant {
                     *code += &format!(
                         "\tcmp {}, 0x{:x} {}\n",
                         REG_A_W,
                         ctx.b.constant_value & 0xffffffff,
-                        ctx.comment_str("LeW: a == b ?")
+                        ctx.comment_str("LeW: a <= b ?")
                     );
                 } else {
                     *code += &format!(
                         "\tcmp {}, {} {}\n",
                         REG_A_W,
                         REG_B_W,
-                        ctx.comment_str("LeW: a == b ?")
+                        ctx.comment_str("LeW: a <= b ?")
                     );
                 }
                 *code += &format!("\tjle pc_{:x}_lew_true\n", ctx.pc);
@@ -3248,6 +3544,19 @@ impl ZiskRom2Asm {
                 if ctx.b.is_constant && (ctx.b.constant_value == 0xffffffffffffffff) {
                     *code += &ctx.full_line_comment("And: ignoring b since b = f's".to_string());
                 } else {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("And: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tand {}, {} {}\n",
                         REG_C,
@@ -3258,11 +3567,37 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Andn => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                *code += &format!(
+                    "\tandn {}, {}, {} {}\n",
+                    REG_C, // dst
+                    REG_B, // src1 (negated)  = b
+                    REG_C, // src2            = a
+                    ctx.comment_str("Andn: c = a AND (NOT b)")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::Or => {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Or: ignoring b since b = 0".to_string());
                 } else {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Or: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\tor {}, {} {}\n",
                         REG_C,
@@ -3273,11 +3608,43 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::Orn => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                // a | ~b = ~(~a & b)
+                *code += &format!(
+                    "\tandn {}, {}, {} {}\n",
+                    REG_C, // dst
+                    REG_C, // src1 (negated) = a
+                    REG_B, // src2           = b
+                    ctx.comment_str("Orn: c = ~a AND b")
+                );
+                *code += &format!(
+                    "\tnot {} {}\n",
+                    REG_C,
+                    ctx.comment_str("Orn: c = NOT(~a AND b) = a OR (NOT b)")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::Xor => {
                 assert!(ctx.store_a_in_c);
                 if ctx.b.is_constant && (ctx.b.constant_value == 0) {
                     *code += &ctx.full_line_comment("Xor: ignoring b since b = 0".to_string());
                 } else {
+                    // If B can't be encoded as a sign-extended imm32, move it to a register
+                    if ctx.b.is_constant
+                        && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                    {
+                        *code += &format!(
+                            "\tmov {}, {} {}\n",
+                            REG_B,
+                            ctx.b.string_value,
+                            ctx.comment_str("Xor: b = constant")
+                        );
+                        ctx.b.is_saved = true;
+                        ctx.b.string_value = REG_B.to_string();
+                    }
                     *code += &format!(
                         "\txor {}, {} {}\n",
                         REG_C,
@@ -3285,6 +3652,253 @@ impl ZiskRom2Asm {
                         ctx.comment_str("Xor: c = c XOR b = a XOR b")
                     );
                 }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Xnor => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                *code += &format!(
+                    "\txor {}, {} {}\n",
+                    REG_C,
+                    REG_B,
+                    ctx.comment_str("Xnor: c = c XOR b = a XOR b")
+                );
+                *code += &format!(
+                    "\tnot {} {}\n",
+                    REG_C,
+                    ctx.comment_str("Xnor: c = NOT(c XOR b) = a XNOR b")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Rev8 => {
+                assert!(ctx.store_b_in_c);
+                *code += &format!(
+                    "\tbswap {} {}\n",
+                    REG_C,
+                    ctx.comment_str("Rev8: c = byte-reverse(a)")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Brev8 => {
+                assert!(ctx.store_b_in_c);
+                // Reverse bits within each byte: 3 stages swapping bit groups of width 1,2,4.
+                // x=REG_C (a), t=REG_AUX, mask=REG_A.
+                for (w, mask) in [
+                    (1u32, "0x5555555555555555"),
+                    (2u32, "0x3333333333333333"),
+                    (4u32, "0x0f0f0f0f0f0f0f0f"),
+                ] {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_AUX,
+                        REG_C,
+                        ctx.comment_str("Brev8: t = x")
+                    );
+                    *code += &format!("\tshr {}, {}\n", REG_AUX, w); // t = x >> w
+                    *code += &format!("\tmov {}, {}\n", REG_A, mask); // m
+                    *code += &format!("\tand {}, {}\n", REG_AUX, REG_A); // t = (x>>w) & m
+                    *code += &format!("\tand {}, {}\n", REG_C, REG_A); // x = x & m
+                    *code += &format!("\tshl {}, {}\n", REG_C, w); // x = (x & m) << w
+                    *code += &format!(
+                        "\tor  {}, {} {}\n",
+                        REG_C,
+                        REG_AUX,
+                        ctx.comment_str("Brev8: x = ((x&m)<<w) | ((x>>w)&m)")
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bclr => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant {
+                    // btr r/m64, imm8 — index masked to 0..63 by the CPU
+                    *code += &format!(
+                        "\tbtr {}, {} {}\n",
+                        REG_C,
+                        ctx.b.constant_value & 63,
+                        ctx.comment_str("Bclr: clear bit (b mod 64) of a")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    // btr r/m64, r64 — index taken mod 64 for register base
+                    *code += &format!(
+                        "\tbtr {}, {} {}\n",
+                        REG_C,
+                        REG_B,
+                        ctx.comment_str("Bclr: clear bit (b mod 64) of a")
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bset => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant {
+                    // bts r/m64, imm8 — index masked to 0..63 by the CPU
+                    *code += &format!(
+                        "\tbts {}, {} {}\n",
+                        REG_C,
+                        ctx.b.constant_value & 63,
+                        ctx.comment_str("Bset: set bit (b mod 64) of a")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    // bts r/m64, r64 — index taken mod 64 for register base
+                    *code += &format!(
+                        "\tbts {}, {} {}\n",
+                        REG_C,
+                        REG_B,
+                        ctx.comment_str("Bset: set bit (b mod 64) of a")
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Binv => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant {
+                    // btc r/m64, imm8 — index masked to 0..63 by the CPU
+                    *code += &format!(
+                        "\tbtc {}, {} {}\n",
+                        REG_C,
+                        ctx.b.constant_value & 63,
+                        ctx.comment_str("Binv: invert bit (b mod 64) of a")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    // btc r/m64, r64 — index taken mod 64 for register base
+                    *code += &format!(
+                        "\tbtc {}, {} {}\n",
+                        REG_C,
+                        REG_B,
+                        ctx.comment_str("Binv: invert bit (b mod 64) of a")
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Bext => {
+                assert!(ctx.store_a_in_c);
+                if ctx.b.is_constant {
+                    let sh = ctx.b.constant_value & 63;
+                    if sh != 0 {
+                        *code += &format!(
+                            "\tshr {}, {} {}\n",
+                            REG_C,
+                            sh,
+                            ctx.comment_str("Bext: a >> (b mod 64)")
+                        );
+                    }
+                    *code += &format!(
+                        "\tand {}, 1 {}\n",
+                        REG_C,
+                        ctx.comment_str("Bext: c = bit b of a")
+                    );
+                } else {
+                    assert!(ctx.b.is_saved);
+                    // bt r/m64, r64 — index taken mod 64 for register base; result in CF
+                    *code += &format!(
+                        "\tbt {}, {} {}\n",
+                        REG_C,
+                        REG_B,
+                        ctx.comment_str("Bext: CF = bit (b mod 64) of a")
+                    );
+                    *code += &format!(
+                        "\tsetc {} {}\n",
+                        REG_B_B, // al — b is already consumed
+                        ctx.comment_str("Bext: al = CF")
+                    );
+                    *code += &format!(
+                        "\tmovzx {}, {} {}\n",
+                        REG_C,
+                        REG_B_B,
+                        ctx.comment_str("Bext: c = zero-extended bit")
+                    );
+                }
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Pack => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                *code += &format!(
+                    "\tshl {}, 32 {}\n",
+                    REG_B,
+                    ctx.comment_str("Pack: high = b[31:0] << 32")
+                );
+                *code += &format!(
+                    "\tmov {}, {} {}\n",
+                    REG_C_W,
+                    REG_C_W,
+                    ctx.comment_str("Pack: low = a[31:0], clear upper 32")
+                );
+                *code += &format!(
+                    "\tor {}, {} {}\n",
+                    REG_C,
+                    REG_B,
+                    ctx.comment_str("Pack: c = (b[31:0]<<32) | a[31:0]")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::PackW => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                *code += &format!(
+                    "\tmovzx {}, {} {}\n",
+                    REG_C,
+                    REG_C_H,
+                    ctx.comment_str("PackW: c = a[15:0]")
+                );
+                *code += &format!(
+                    "\tmovzx {}, {} {}\n",
+                    REG_B,
+                    REG_B_H,
+                    ctx.comment_str("PackW: b = b[15:0]")
+                );
+                *code +=
+                    &format!("\tshl {}, 16 {}\n", REG_B, ctx.comment_str("PackW: b[15:0] << 16"));
+                *code += &format!(
+                    "\tor {}, {} {}\n",
+                    REG_C,
+                    REG_B,
+                    ctx.comment_str("PackW: low32 = (b[15:0]<<16) | a[15:0]")
+                );
+                *code += &format!(
+                    "\tmovsxd {}, {} {}\n",
+                    REG_C,
+                    REG_C_W,
+                    ctx.comment_str("PackW: sign-extend bit 31 to 64")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::PackH => {
+                assert!(ctx.store_a_in_c);
+                assert!(ctx.store_b_in_b);
+                *code += &format!(
+                    "\tmovzx {}, {} {}\n",
+                    REG_C,
+                    REG_C_B,
+                    ctx.comment_str("PackH: c = a[7:0]")
+                );
+                *code += &format!(
+                    "\tmovzx {}, {} {}\n",
+                    REG_B,
+                    REG_B_B,
+                    ctx.comment_str("PackH: b = b[7:0]")
+                );
+                *code += &format!("\tshl {}, 8 {}\n", REG_B, ctx.comment_str("PackH: b[7:0] << 8"));
+                *code += &format!(
+                    "\tor {}, {} {}\n",
+                    REG_C,
+                    REG_B,
+                    ctx.comment_str("PackH: c = (b[7:0]<<8) | a[7:0]")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -3993,6 +4607,19 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Minu => {
                 assert!(ctx.store_a_in_c);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Minu: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
@@ -4012,6 +4639,19 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Min => {
                 assert!(ctx.store_a_in_c);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Min: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
@@ -4063,6 +4703,19 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Maxu => {
                 assert!(ctx.store_a_in_c);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Maxu: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
@@ -4082,6 +4735,19 @@ impl ZiskRom2Asm {
             }
             ZiskOp::Max => {
                 assert!(ctx.store_a_in_c);
+                // If B can't be encoded as a sign-extended imm32, move it to a register
+                if ctx.b.is_constant
+                    && ((ctx.b.constant_value as i64) != (ctx.b.constant_value as i32 as i64))
+                {
+                    *code += &format!(
+                        "\tmov {}, {} {}\n",
+                        REG_B,
+                        ctx.b.string_value,
+                        ctx.comment_str("Max: b = constant")
+                    );
+                    ctx.b.is_saved = true;
+                    ctx.b.string_value = REG_B.to_string();
+                }
                 *code += &format!(
                     "\tcmp {}, {} {}\n",
                     REG_C,
@@ -4128,6 +4794,112 @@ impl ZiskRom2Asm {
                 *code +=
                     &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("MaxW: c = b"));
                 *code += &format!("pc_{:x}_maxw_a_is_above_b:\n", ctx.pc);
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Clz => {
+                assert!(ctx.store_b_in_c);
+                *code += &format!(
+                    "\tlzcnt {}, {} {}\n",
+                    REG_C,
+                    REG_C,
+                    ctx.comment_str("Clz: c = count leading zeros of a (64 if a==0)")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::ClzW => {
+                assert!(ctx.store_b_in_c);
+                *code += &format!(
+                    "\tlzcnt {}, {} {}\n",
+                    REG_C_W,
+                    REG_C_W,
+                    ctx.comment_str("ClzW: c = count leading zeros of a[31:0] (32 if low word==0)")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Ctz => {
+                assert!(ctx.store_b_in_c);
+                *code += &format!(
+                    "\ttzcnt {}, {} {}\n",
+                    REG_C,
+                    REG_C,
+                    ctx.comment_str("Ctz: c = count trailing zeros of a (64 if a==0)")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::CtzW => {
+                assert!(ctx.store_b_in_c);
+                *code += &format!(
+                    "\ttzcnt {}, {} {}\n",
+                    REG_C_W,
+                    REG_C_W,
+                    ctx.comment_str(
+                        "CtzW: c = count trailing zeros of a[31:0] (32 if low word==0)"
+                    )
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Cpop => {
+                assert!(ctx.store_b_in_c);
+                *code += &format!(
+                    "\tpopcnt {}, {} {}\n",
+                    REG_C,
+                    REG_C,
+                    ctx.comment_str("Cpop: c = population count of a")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::CpopW => {
+                assert!(ctx.store_b_in_c);
+                *code += &format!(
+                    "\tpopcnt {}, {} {}\n",
+                    REG_C_W,
+                    REG_C_W,
+                    ctx.comment_str("CpopW: c = population count of a[31:0]")
+                );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::OrcB => {
+                assert!(ctx.store_b_in_b);
+                // For each byte: 0xFF if byte(b) != 0 else 0x00.
+                // Detect nonzero bytes -> 0x80 mask, then expand to 0xFF.
+                *code += &format!(
+                    "\tmov {}, 0x7f7f7f7f7f7f7f7f {}\n",
+                    REG_AUX,
+                    ctx.comment_str("OrcB: mask_lo")
+                );
+                *code +=
+                    &format!("\tmov {}, {} {}\n", REG_C, REG_B, ctx.comment_str("OrcB: c = b"));
+                *code += &format!("\tand {}, {}\n", REG_C, REG_AUX); // b & 0x7F..
+                *code += &format!("\tadd {}, {}\n", REG_C, REG_AUX); // + 0x7F..
+                *code += &format!("\tor  {}, {}\n", REG_C, REG_B); // | b
+                *code += &format!(
+                    "\tmov {}, 0x8080808080808080 {}\n",
+                    REG_AUX,
+                    ctx.comment_str("OrcB: mask_hi")
+                );
+                *code += &format!(
+                    "\tand {}, {} {}\n",
+                    REG_C,
+                    REG_AUX,
+                    ctx.comment_str("OrcB: h = 0x80 per nonzero byte")
+                );
+                *code += &format!("\tmov {}, {}\n", REG_B, REG_C); // b = h (b free now)
+                *code += &format!("\tshr {}, 7\n", REG_B); // h >> 7
+                *code += &format!("\tmov {}, {}\n", REG_AUX, REG_C); // aux = h
+                *code += &format!("\tsub {}, {}\n", REG_AUX, REG_B); // h - (h>>7) = 0x7F..
+                *code += &format!(
+                    "\tor  {}, {} {}\n",
+                    REG_C,
+                    REG_AUX,
+                    ctx.comment_str("OrcB: c = 0xFF per nonzero byte")
+                );
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
@@ -4423,6 +5195,32 @@ impl ZiskRom2Asm {
                     *code += "\tcall _opcode_arith256_mod\n";
                     Self::pop_internal_registers(ctx, code, false);
                     //Self::assert_rsp_is_aligned(ctx, code);
+
+                    // --- Minimal-wrapper variant (disabled; enable after reviewing the hints) ---
+                    // The compute path of _opcode_arith256_mod now uses our assembly arith256_mod,
+                    // which is a *known* routine: it uses NO vector registers (so the 16 xmm saves
+                    // are unnecessary) and preserves rbx/rbp/r12-r15 itself. So the caller only needs
+                    // to preserve the volatile GPRs it keeps live across the call. Measured saving is
+                    // small (~6-7 cyc, the wrapper overlaps with the body), so this is optional.
+                    //
+                    // Preconditions to verify before enabling:
+                    //   * this stays on the compute path (precompile_results_arith256mod() == false);
+                    //   * r8, r9 and r11 are dead here (not needed after the call) in the register
+                    //     allocation — arith256_mod does clobber them.
+                    //
+                    // *code += "\tpush rax\n";
+                    // *code += "\tpush rcx\n";
+                    // *code += "\tpush rdx\n";
+                    // *code += "\tpush rdi\n";
+                    // *code += "\tpush r10\n";
+                    // *code += "\tsub rsp, 8\n";            // keep rsp 16-aligned for the ABI call
+                    // *code += "\tcall _opcode_arith256_mod\n";
+                    // *code += "\tadd rsp, 8\n";
+                    // *code += "\tpop r10\n";
+                    // *code += "\tpop rdi\n";
+                    // *code += "\tpop rdx\n";
+                    // *code += "\tpop rcx\n";
+                    // *code += "\tpop rax\n";
                 }
 
                 // Set result
@@ -5410,7 +6208,11 @@ impl ZiskRom2Asm {
                         // of address only send one address as block. The maximum number of mops
                         // generated by memcpy is 6, means that no need check size.
                         //   2 pre-reads + 2 src-reads + 1 src-loop + 1 write block = 6 mops
-                        *code += "\tcall direct_dma_memcpy_mops\n";
+                        if inst.op == ZiskOp::DMA_MEMCPY {
+                            *code += "\tcall direct_dma_memcpy_mops\n";
+                        } else {
+                            *code += "\tcall direct_dma_xmemcpy_mops\n";
+                        }
                     }
                 }
 
@@ -5474,7 +6276,11 @@ impl ZiskRom2Asm {
                         // of address only send one address as block. The maximum number of mops
                         // generated by memcmp is 6, means that no need check size.
                         //   2 pre-reads + 2 src-reads + 1 src-loop + 1 read block = 6 mops
-                        *code += "\tcall direct_dma_memcmp_mops\n";
+                        if inst.op == ZiskOp::DMA_MEMCMP {
+                            *code += "\tcall direct_dma_memcmp_mops\n";
+                        } else {
+                            *code += "\tcall direct_dma_xmemcmp_mops\n";
+                        }
                     }
                 }
 
@@ -5590,30 +6396,7 @@ impl ZiskRom2Asm {
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
-            ZiskOp::Rev8
-            | ZiskOp::Brev8
-            | ZiskOp::Andn
-            | ZiskOp::Orn
-            | ZiskOp::Xnor
-            | ZiskOp::Pack
-            | ZiskOp::PackH
-            | ZiskOp::PackW
-            | ZiskOp::Rol
-            | ZiskOp::RolW
-            | ZiskOp::Ror
-            | ZiskOp::RorW
-            | ZiskOp::Clz
-            | ZiskOp::ClzW
-            | ZiskOp::Ctz
-            | ZiskOp::CtzW
-            | ZiskOp::Cpop
-            | ZiskOp::CpopW
-            | ZiskOp::OrcB
-            | ZiskOp::Bclr
-            | ZiskOp::Bext
-            | ZiskOp::Binv
-            | ZiskOp::Bset
-            | ZiskOp::AddUW
+            ZiskOp::AddUW
             | ZiskOp::Sh1add
             | ZiskOp::Sh1addUW
             | ZiskOp::Sh2add
@@ -5625,7 +6408,9 @@ impl ZiskRom2Asm {
             | ZiskOp::ClmulH
             | ZiskOp::ClmulR
             | ZiskOp::Xperm4
-            | ZiskOp::Xperm8 => {
+            | ZiskOp::Xperm8
+            | ZiskOp::CzeroEqz
+            | ZiskOp::CzeroNez => {
                 panic!("B extension opcode {:?} not supported in assembly emulator", inst.op);
             }
         }

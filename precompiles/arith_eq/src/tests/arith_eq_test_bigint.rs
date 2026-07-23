@@ -4,7 +4,9 @@ use test_data::{
     get_secp256k1_dbl_test_data, get_secp256r1_add_test_data, get_secp256r1_dbl_test_data,
 };
 
+#[path = "../equations/mod.rs"]
 mod equations;
+#[path = "../executors/mod.rs"]
 mod executors;
 use executors::{
     arith256::Arith256, arith256_mod::Arith256Mod, secp256k1::Secp256k1, secp256r1::Secp256r1,
