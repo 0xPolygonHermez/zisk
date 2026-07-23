@@ -524,7 +524,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn run_setup(
         &mut self,
         hash_id: &str,
-        elf_bytes: &[u8],
         with_hints: bool,
         emulator_only: bool,
         new_guest_program: Arc<GuestProgram>,
@@ -541,7 +540,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let vk = Self::setup_compute(
             self.prover.as_ref(),
             hash_id,
-            elf_bytes,
             with_hints,
             emulator_only,
             &new_guest_program,
@@ -583,7 +581,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn setup_compute(
         prover: &ZiskProver<T>,
         hash_id: &str,
-        elf_bytes: &[u8],
         with_hints: bool,
         emulator_only: bool,
         guest_program: &Arc<GuestProgram>,
@@ -592,7 +589,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let message = SetupMessage {
             hash_id: hash_id.to_string(),
             program_name: guest_program.name().to_string(),
-            elf_bytes: elf_bytes.to_vec(),
+            elf_bytes: guest_program.elf().to_vec(),
             with_hints,
             emulator_only,
         };
