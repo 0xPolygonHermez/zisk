@@ -65,7 +65,7 @@ airgroup Zisk {
     set_range_check_tables_virtual();
     set_max_bits_virtual_tables(21);
     set_num_virtual_tables(2);
-
+    
     // Main Program
     Main(N: 2**22);
     Rom(N: 2**22);
@@ -90,9 +90,9 @@ airgroup Zisk {
 
     Binary(N: 2**22);
     BinaryAdd(N: 2**22);
-    virtual BinaryTable(BINARY_TABLE_SIZE);
+    virtual BinaryTable();
     BinaryExtension(N: 2**22);
-    virtual BinaryExtensionTable(BINARY_EXTENSION_TABLE_SIZE);
+    virtual BinaryExtensionTable();
 
     virtual FrequentOps(table_id: BINARY_FROPS_TABLE_ID, 
                         bin_file: "state-machines/binary/src/binary_basic_frops_fixed.bin") alias BinaryBasicFrops;

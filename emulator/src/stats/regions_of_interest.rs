@@ -180,6 +180,15 @@ impl RegionsOfInterest {
     pub fn get_mem_cost(&self) -> u64 {
         self.costs.mops.get_cost()
     }
+    pub fn get_mem_aligned_cost(&self) -> u64 {
+        self.costs.mops.get_aligned_cost()
+    }
+    pub fn get_mem_unaligned_cost(&self) -> u64 {
+        self.costs.mops.get_unaligned_cost()
+    }
+    pub fn get_mem_unaligned_count(&self) -> u64 {
+        self.costs.mops.get_unaligned_count()
+    }
     pub fn get_steps(&self) -> u64 {
         self.costs.steps
     }
