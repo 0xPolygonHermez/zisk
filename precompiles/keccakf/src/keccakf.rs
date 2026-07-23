@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
+use proofman_fields::PrimeField64;
 
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
-use precompiles_helpers::{
-    keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
-};
 use zisk_common::OperationKeccakData;
 use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
+use zisk_precomp_helpers::{
+    keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
+};
 
 use super::{keccakf_constants::*, KeccakfTableSM};
 

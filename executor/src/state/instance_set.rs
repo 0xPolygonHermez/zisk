@@ -3,9 +3,9 @@
 use std::collections::HashMap;
 use std::sync::{PoisonError, RwLock};
 
-use fields::PrimeField64;
-use sm_main::MainInstance;
+use proofman_fields::PrimeField64;
 use zisk_common::Instance;
+use zisk_sm_main::MainInstance;
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
 pub struct InstanceSet<F: PrimeField64> {
@@ -51,7 +51,7 @@ impl<F: PrimeField64> Default for InstanceSet<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
 
     type F = Goldilocks;
 

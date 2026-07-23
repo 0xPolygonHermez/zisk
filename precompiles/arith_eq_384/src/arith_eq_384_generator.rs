@@ -1,7 +1,7 @@
 use path_clean::PathClean;
 use std::path::Path;
 
-use precomp_arith_eq::generator::{Equation, EquationConfig};
+use zisk_precomp_arith_eq::generator::{Equation, EquationConfig};
 
 mod arith_eq_384_constants;
 use arith_eq_384_constants::{ARITH_EQ_384_CHUNKS, ARITH_EQ_384_CHUNK_BITS};

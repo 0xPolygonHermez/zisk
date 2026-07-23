@@ -1,5 +1,5 @@
 use crate::MemAlignInput;
-use mem_common::{MemAlignCheckPoint, MemHelpers};
+use zisk_sm_mem_common::{MemAlignCheckPoint, MemHelpers};
 
 use zisk_common::{BusDevice, BusId, ChunkId, CollectCounter, MemBusData, MEM_BUS_ID};
 

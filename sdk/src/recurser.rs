@@ -17,7 +17,7 @@ use crate::{Result, SdkError};
 #[derive(Clone)]
 pub struct Recurser {
     pub(crate) recurser_id: String,
-    pub(crate) templates: recurser::CircomTemplates,
+    pub(crate) templates: zisk_recurser::CircomTemplates,
     // SDK-managed paths — not exposed to the user.
     pub(crate) setup_dir: String,
     pub(crate) output_dir: String,
@@ -44,7 +44,7 @@ impl Recurser {
         if let Some(vk) = self.vk_cache.get() {
             return Ok(vk.clone());
         }
-        let artifacts = recurser::RecurserArtifacts::new(&self.output_dir, &self.recurser_id);
+        let artifacts = zisk_recurser::RecurserArtifacts::new(&self.output_dir, &self.recurser_id);
         let limbs = artifacts.read_verkey().map_err(|e| {
             SdkError::Recurser(format!(
                 "failed to read recurser verkey ({e}). \
@@ -64,7 +64,7 @@ impl Recurser {
 /// Read the recurser's hash family from the proving key's `globalInfo.json`,
 /// the same source `run_setup_recurser_aggregator` uses.
 fn read_setup_hash_mode(setup_dir: &str) -> Result<HashMode> {
-    recurser::setup::read_proving_key_hash(setup_dir)
+    zisk_recurser::setup::read_proving_key_hash(setup_dir)
         .map_err(SdkError::backend)?
         .parse::<HashMode>()
         .map_err(SdkError::backend)
@@ -208,7 +208,7 @@ impl<'a> AggregationProgramBuilder<'a> {
         // Range-check here so a bad width fails at the client boundary rather
         // than deep in setup after `recurser_id` is already computed/registered.
         let n_publics_agg = self.n_publics_agg;
-        let max_publics = recurser::templates::ZISK_PUBLICS;
+        let max_publics = zisk_recurser::templates::ZISK_PUBLICS;
         if n_publics_agg == 0 || n_publics_agg > max_publics {
             return Err(SdkError::Recurser(format!(
                 "n_publics_agg must be in 1..={max_publics}, got {n_publics_agg}"
@@ -218,13 +218,13 @@ impl<'a> AggregationProgramBuilder<'a> {
         let normalize = self
             .normalize
             .as_ref()
-            .map(|c| recurser::NormalizeCircuit { body: c.source().to_string() });
+            .map(|c| zisk_recurser::NormalizeCircuit { body: c.source().to_string() });
 
         // Derive the optional leaf allow-list VKs. Only touches ELFs when a
         // `programs` list was supplied — the VK-agnostic default stays cheap.
         let program_vks = derive_program_vks(&self.programs)?;
 
-        let templates = recurser::CircomTemplates {
+        let templates = zisk_recurser::CircomTemplates {
             normalize: normalize.clone(),
             aggregate_publics: self.aggregate.source().to_string(),
             n_free: self.n_free,
@@ -244,7 +244,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             .ok_or_else(|| SdkError::Recurser("~/.zisk/recurser path is not valid UTF-8".into()))?
             .to_string();
 
-        let zisk_vk = recurser::setup::read_vadcop_final_verkey(&setup_dir).map_err(|e| {
+        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_dir).map_err(|e| {
             SdkError::Recurser(format!(
                 "failed to locate local vadcop_final verkey ({e}). \
                  Run `cargo-zisk setup --recursive` on this machine \
@@ -252,7 +252,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             ))
         })?;
 
-        let inputs = recurser::RecurserManifestInputs::new(
+        let inputs = zisk_recurser::RecurserManifestInputs::new(
             zisk_vk,
             program_vks,
             normalize.as_ref(),
@@ -355,7 +355,7 @@ mod tests {
     fn dummy_agg() -> Recurser {
         Recurser {
             recurser_id: "rid".into(),
-            templates: recurser::CircomTemplates {
+            templates: zisk_recurser::CircomTemplates {
                 normalize: None,
                 aggregate_publics: "// body".into(),
                 n_free: 0,

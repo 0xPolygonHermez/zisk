@@ -4,25 +4,19 @@ use crate::{
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use anyhow::Result;
-use asm_runner::HintsShmem;
 use colored::Colorize;
-use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
-use fields::Goldilocks;
-use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
     SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
+use proofman_fields::Goldilocks;
 use proofman_verifier::VadcopFinalProof;
-use recurser::prove::{
-    prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
-    RegisteredRecurser,
-};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
@@ -31,6 +25,12 @@ use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
+};
+use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
+use zisk_precomp_hints::HintsProcessor;
+use zisk_recurser::prove::{
+    prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
+    RegisteredRecurser,
 };
 
 pub(crate) struct ProverBackend {

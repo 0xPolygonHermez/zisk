@@ -1,30 +1,33 @@
 [package]
-name = "asm-runner"
+name = "zisk-asm-runner"
+description = "Runtime for managing the ZisK assembly emulator process and its shared-memory I/O"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 build = "build.rs"
 
 [lib]
-name = "asm_runner"
+name = "zisk_asm_runner"
 path = "src/lib.rs"
 
 [dependencies]
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 proofman-util = { workspace = true }
-mem-planner-cpp = { workspace = true }
-mem-common = { workspace = true }
+zisk-sm-mem-planner = { workspace = true }
+zisk-sm-mem-common = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }
 anyhow = { workspace = true }
 
-libc = "0.2"
+libc = { workspace = true }
 thiserror = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
@@ -33,7 +36,7 @@ named-sem = { workspace = true }
 [features]
 stats = []
 save_mem_plans = []
-cpu-only = ["mem-planner-cpp/cpu-only"]
+cpu-only = ["zisk-sm-mem-planner/cpu-only"]
 
 [lints.rust]
 # `gpu` is set by build.rs only when CUDA is detected; declare it so the

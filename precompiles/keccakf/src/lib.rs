@@ -24,8 +24,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod keccakf_tests {
-    use test_artifacts::ELF_KECCAK;
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::ELF_KECCAK;
 
     /// Number of `syscall_keccak_f` invocations the guest will perform.
     const NUM_KECCAKFS: u64 = 10;

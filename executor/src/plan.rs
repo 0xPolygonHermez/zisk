@@ -12,10 +12,10 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use crate::error::ExecutorResult;
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use sm_main::MainPlanner;
 use zisk_common::{stats_begin, stats_end, EmuTrace, ExecutorStatsHandle, Plan, StatsScope};
+use zisk_sm_main::MainPlanner;
 
 use crate::sm::{extend_mem_plans, plan_sec};
 use crate::{BackendArtifacts, CountersChunkMetrics};
@@ -117,7 +117,7 @@ impl<F: PrimeField64> PlanPhase<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
     type F = Goldilocks;

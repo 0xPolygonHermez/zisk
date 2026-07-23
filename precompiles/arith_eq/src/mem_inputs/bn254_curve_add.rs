@@ -1,6 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Curve;
-use precompiles_common::MemProcessor;
+use zisk_precomp_common::MemProcessor;
 
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 

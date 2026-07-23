@@ -1,4 +1,4 @@
-use recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, NormalizeCircuit};
+use zisk_recurser::{gen_recurser, templates::StarkInputBlocks, CircomTemplates, NormalizeCircuit};
 
 mod common;
 use common::{
@@ -329,7 +329,7 @@ fn normalize_arity_mismatch_1param_but_nfree1() {
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "arity mismatch (1-param body, n_free=1) must return Err");
     assert!(
-        matches!(result.unwrap_err(), recurser::RecurserError::InvalidTemplates(_)),
+        matches!(result.unwrap_err(), zisk_recurser::RecurserError::InvalidTemplates(_)),
         "error must be InvalidTemplates variant"
     );
 }
@@ -349,7 +349,7 @@ fn normalize_arity_mismatch_2param_but_nfree0() {
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "arity mismatch (2-param body, n_free=0) must return Err");
     assert!(
-        matches!(result.unwrap_err(), recurser::RecurserError::InvalidTemplates(_)),
+        matches!(result.unwrap_err(), zisk_recurser::RecurserError::InvalidTemplates(_)),
         "error must be InvalidTemplates variant"
     );
 }
@@ -370,7 +370,7 @@ fn normalize_missing_free_outputs_but_nfree_gt0() {
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "NormalizePublics missing free_outputs with n_free>0 must return Err");
     assert!(
-        matches!(result.unwrap_err(), recurser::RecurserError::InvalidTemplates(_)),
+        matches!(result.unwrap_err(), zisk_recurser::RecurserError::InvalidTemplates(_)),
         "error must be InvalidTemplates variant"
     );
 }
@@ -390,7 +390,7 @@ fn aggregate_arity_mismatch_0param_but_nfree1() {
     let result = gen_recurser("v.circom", &zisk_vk(), &empty_stark(), &templates);
     assert!(result.is_err(), "arity mismatch (aggregate 0-param body, n_free=1) must return Err");
     assert!(
-        matches!(result.unwrap_err(), recurser::RecurserError::InvalidTemplates(_)),
+        matches!(result.unwrap_err(), zisk_recurser::RecurserError::InvalidTemplates(_)),
         "error must be InvalidTemplates variant"
     );
 }

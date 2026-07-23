@@ -102,7 +102,7 @@ ELF=guest/target/elf/riscv64ima-zisk-zkvm-elf/release/recurser_l2_guest
 
 # 2. Write the leaf inputs (a.bin/b.bin/c.bin) with the exact ABI bytes each
 #    segment encodes to. The workspace target dir is examples/target.
-cargo run --release -p recurser-l2-host --bin gen-inputs
+cargo run --release -p recurser-l2-host --bin gen-inputs-l2
 
 # 3. Set up the recurser.
 $CARGO_ZISK setup --aggregation guest/aggregations/l2.toml

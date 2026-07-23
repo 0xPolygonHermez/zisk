@@ -1,4 +1,4 @@
-use zkvm_interface::{zkvm_sha256, zkvm_sha256_hash, zkvm_status_ZKVM_EOK as ZKVM_EOK};
+use zisk_zkvm_interface::{zkvm_sha256, zkvm_sha256_hash, zkvm_status_ZKVM_EOK as ZKVM_EOK};
 
 pub fn diagnostic_zkvm_sha256() {
     // SHA-256("") = e3b0c442 98fc1c14 9afbf4c8 996fb924 27ae41e4 649b934c a495991b 7852b855

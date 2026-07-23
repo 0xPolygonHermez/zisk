@@ -1,9 +1,11 @@
 [workspace.package]
 version = "1.1.0-alpha"
 edition = "2021"
-license = "Apache-2.0 or MIT"
+license = "MIT OR Apache-2.0"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
+homepage = "https://github.com/0xPolygonHermez/zisk"
 repository = "https://github.com/0xPolygonHermez/zisk"
+documentation = "https://0xpolygonhermez.github.io/zisk-docs/"
 categories = ["cryptography"]
 
 [workspace.metadata]
@@ -18,7 +20,6 @@ members = [
   "cli",
   "core",
   "integration-tests",
-  "data-bus",
   "emulator",
   "executor",
   "pil",
@@ -69,6 +70,9 @@ members = [
   "sdk",
   "ziskbuild",
   "definitions",
+  "definitions/macros",
+  "definitions/generator",
+  "definitions/sync",
   "zkvm-interface",
   "verifier",
   "recurser",
@@ -84,86 +88,101 @@ opt-level = 3
 
 [workspace.dependencies]
 # Internal crates
-zisk-common = { path = "common" }
-zisk-stream = { path = "stream" }
-zisk-core = { path = "core" }
-data-bus = { path = "data-bus" }
-ziskemu = { path = "emulator" }
-asm-runner = { path = "emulator-asm/asm-runner" }
-executor = { path = "executor" }
-lib-c = { path = "lib-c" }
-lib-float = { path = "lib-float" }
-zisk-pil = { path = "pil" }
-precomp-arith-eq = { path = "precompiles/arith_eq" }
-precomp-arith-eq-384 = { path = "precompiles/arith_eq_384" }
-precompiles-common = { path = "precompiles/common" }
-precompiles-helpers = { path = "precompiles/helpers" }
-precomp-keccakf = { path = "precompiles/keccakf" }
-precomp-sha256f = { path = "precompiles/sha256f" }
-precomp-blake2 = { path = "precompiles/blake2" }
-precomp-poseidon = { path = "precompiles/poseidon" }
-precomp-big-int = { path = "precompiles/big_int" }
-precomp-dma = { path = "precompiles/dma" }
-riscv = { path = "transpilers/riscv" }
-transpilers-common = { path = "transpilers/common" }
-riscv2zisk = { path = "transpilers/riscv2zisk" }
-rom-setup = { path = "rom-setup" }
-sm-arith = { path = "state-machines/arith" }
-sm-binary = { path = "state-machines/binary" }
-sm-main = { path = "state-machines/main" }
-sm-mem = { path = "state-machines/mem" }
-sm-frequent-ops = { path = "state-machines/frequent-ops" }
-mem-common = { path = "state-machines/mem-common" }
-mem-planner-cpp = { path = "state-machines/mem-cpp" }
-sm-rom = { path = "state-machines/rom" }
-test-artifacts = { path = "test-artifacts" }
-ziskclib = { path = "ziskclib" }
-zkvm-interface = { path = "zkvm-interface" }
-ziskos = { path = "ziskos/entrypoint" }
-ziskos-hints = { path = "ziskos-hints" }
-circuit = { path = "tools/circuit" }
-zisk-sdk = { path = "sdk" }
-zisk-prover-backend = { path = "prover-backend" }
-zisk-build = { path = "ziskbuild" }
-precompiles-hints = { path = "precompiles/hints" }
-zisk-verifier = { path = "verifier" }
-zisk-definitions = { path = "definitions" }
-recurser = { path = "recurser" }
+zisk-common = { path = "common", version = "1.1.0-alpha" }
+zisk-stream = { path = "stream", version = "1.1.0-alpha" }
+zisk-core = { path = "core", version = "1.1.0-alpha" }
+ziskemu = { path = "emulator", version = "1.1.0-alpha" }
+zisk-asm-runner = { path = "emulator-asm/asm-runner", version = "1.1.0-alpha" }
+zisk-executor = { path = "executor", version = "1.1.0-alpha" }
+zisk-lib-c = { path = "lib-c", version = "1.1.0-alpha" }
+zisk-lib-float = { path = "lib-float", version = "1.1.0-alpha" }
+zisk-pil = { path = "pil", version = "1.1.0-alpha" }
+zisk-precomp-arith-eq = { path = "precompiles/arith_eq", version = "1.1.0-alpha" }
+zisk-precomp-arith-eq-384 = { path = "precompiles/arith_eq_384", version = "1.1.0-alpha" }
+zisk-precomp-common = { path = "precompiles/common", version = "1.1.0-alpha" }
+zisk-precomp-helpers = { path = "precompiles/helpers", version = "1.1.0-alpha" }
+zisk-precomp-keccakf = { path = "precompiles/keccakf", version = "1.1.0-alpha" }
+zisk-precomp-sha256f = { path = "precompiles/sha256f", version = "1.1.0-alpha" }
+zisk-precomp-blake2 = { path = "precompiles/blake2", version = "1.1.0-alpha" }
+zisk-precomp-poseidon = { path = "precompiles/poseidon", version = "1.1.0-alpha" }
+zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.1.0-alpha" }
+zisk-precomp-dma = { path = "precompiles/dma", version = "1.1.0-alpha" }
+zisk-riscv = { path = "transpilers/riscv", version = "1.1.0-alpha" }
+zisk-transpiler-common = { path = "transpilers/common", version = "1.1.0-alpha" }
+zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.1.0-alpha" }
+zisk-rom-setup = { path = "rom-setup", version = "1.1.0-alpha" }
+zisk-sm-arith = { path = "state-machines/arith", version = "1.1.0-alpha" }
+zisk-sm-binary = { path = "state-machines/binary", version = "1.1.0-alpha" }
+zisk-sm-main = { path = "state-machines/main", version = "1.1.0-alpha" }
+zisk-sm-mem = { path = "state-machines/mem", version = "1.1.0-alpha" }
+zisk-sm-frequent-ops = { path = "state-machines/frequent-ops", version = "1.1.0-alpha" }
+zisk-sm-mem-common = { path = "state-machines/mem-common", version = "1.1.0-alpha" }
+zisk-sm-mem-planner = { path = "state-machines/mem-cpp", version = "1.1.0-alpha" }
+zisk-sm-rom = { path = "state-machines/rom", version = "1.1.0-alpha" }
+zisk-test-artifacts = { path = "test-artifacts", version = "1.0.0" }
+ziskclib = { path = "ziskclib", version = "1.1.0-alpha" }
+zisk-zkvm-interface = { path = "zkvm-interface", version = "1.1.0-alpha" }
+ziskos = { path = "ziskos/entrypoint", version = "1.1.0-alpha" }
+ziskos-hints = { path = "ziskos-hints", version = "1.1.0-alpha" }
+zisk-circuit = { path = "tools/circuit", version = "1.1.0-alpha" }
+zisk-sdk = { path = "sdk", version = "1.1.0-alpha" }
+zisk-prover-backend = { path = "prover-backend", version = "1.1.0-alpha" }
+zisk-program-macros = { path = "prover-backend/macros", version = "1.1.0-alpha" }
+zisk-build = { path = "ziskbuild", version = "1.1.0-alpha" }
+zisk-precomp-hints = { path = "precompiles/hints", version = "1.1.0-alpha" }
+zisk-verifier = { path = "verifier", version = "1.1.0-alpha" }
+zisk-definitions = { path = "definitions", version = "1.1.0-alpha" }
+zisk-definitions-macros = { path = "definitions/macros", version = "1.1.0-alpha" }
+zisk-definitions-generator = { path = "definitions/generator", version = "1.1.0-alpha" }
+zisk-recurser = { path = "recurser", version = "1.1.0-alpha" }
 
 # Distributed crates
-zisk-cluster-common = { path = "distributed/crates/cluster-common" }
-zisk-coordinator = { path = "distributed/crates/coordinator" }
-zisk-cluster-api = { path = "distributed/crates/cluster-api" }
-zisk-worker = { path = "distributed/crates/worker" }
-zisk-coordinator-server = { path = "distributed/crates/coordinator-server" }
-zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
-zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
+zisk-cluster-common = { path = "distributed/crates/cluster-common", version = "1.1.0-alpha" }
+zisk-coordinator = { path = "distributed/crates/coordinator", version = "1.1.0-alpha" }
+zisk-cluster-api = { path = "distributed/crates/cluster-api", version = "1.1.0-alpha" }
+zisk-worker = { path = "distributed/crates/worker", version = "1.1.0-alpha" }
+zisk-coordinator-server = { path = "distributed/crates/coordinator-server", version = "1.1.0-alpha" }
+zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.1.0-alpha" }
+zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.1.0-alpha" }
 
-# Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+# Proofman git
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+
+# Proofman crates.io (enable once pil2-proofman is published; use instead of the path/git blocks)
+# proofman = { version = "1.1.0-alpha" }
+# proofman-common = { version = "1.1.0-alpha" }
+# proofman-macros = { version = "1.1.0-alpha" }
+# proofman-verifier = { version = "1.1.0-alpha" }
+# proofman-util = { version = "1.1.0-alpha" }
+# pil2-std-lib = { version = "1.1.0-alpha" }
+# proofman-witness = { version = "1.1.0-alpha" }
+# proofman-fields = { version = "1.1.0-alpha" }
+# pil2-stark-setup = { version = "1.1.0-alpha" }
+# pil2-stark-recurser = { version = "1.1.0-alpha" }
+# pil2-pilout = { version = "1.1.0-alpha" }
 
 # Proofman Local development
-# proofman = { path = "../pil2-proofman/proofman" }
-# proofman-common = { path = "../pil2-proofman/common" }
-# proofman-macros = { path = "../pil2-proofman/macros" }
-# proofman-verifier = { path = "../pil2-proofman/verifier" }
-# proofman-util = { path = "../pil2-proofman/util" }
-# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
-# witness = { path = "../pil2-proofman/witness" }
-# fields = { path = "../pil2-proofman/fields" }
-# pil2-stark-setup = { path = "../pil2-proofman/setup/pil2-stark" }
-# pilout = { path = "../pil2-proofman/pilout" }
-# stark-recurser = { path = "../pil2-proofman/setup/stark-recurser" }
+# proofman = { path = "../pil2-proofman/proofman", version = "1.1.0-alpha" }
+# proofman-common = { path = "../pil2-proofman/common", version = "1.1.0-alpha" }
+# proofman-macros = { path = "../pil2-proofman/macros", version = "1.1.0-alpha" }
+# proofman-verifier = { path = "../pil2-proofman/verifier", version = "1.1.0-alpha" }
+# proofman-util = { path = "../pil2-proofman/util", version = "1.1.0-alpha" }
+# pil2-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs", version = "1.1.0-alpha" }
+# proofman-witness = { path = "../pil2-proofman/witness", version = "1.1.0-alpha" }
+# proofman-fields = { path = "../pil2-proofman/fields", version = "1.1.0-alpha" }
+# pil2-stark-setup = { path = "../pil2-proofman/setup/pil2-stark", version = "1.1.0-alpha" }
+# pil2-stark-recurser = { path = "../pil2-proofman/setup/stark-recurser", version = "1.1.0-alpha" }
+# pil2-pilout = { path = "../pil2-proofman/pilout", version = "1.1.0-alpha" }
 
 # External dependencies
 arc-swap = "1"
@@ -171,7 +190,6 @@ rayon = "1.10"
 num-bigint = "0.4"
 num-traits = "0.2"
 num-integer = "0.1"
-itertools = "0.14"
 colored = "3"
 ark-ff = "0.5.0"
 ark-std = "0.5.0"
@@ -182,6 +200,7 @@ ark-bls12-381 = "0.5.0"
 sysinfo = "0.38"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
+toml = "0.8"
 anyhow = "1.0"
 named-sem = "0.2.2"
 tracing = "0.1"
@@ -220,13 +239,11 @@ paste = "1.0"
 tonic = "0.14"
 tonic-health = "0.14"
 tonic-prost = "0.14"
-tonic-build = "0.14"
 tonic-prost-build = "0.14"
 # Protocol Buffers support - match tonic's prost version
 prost = "0.14"
 prost-types = "0.14"
 config = "0.15"
-toml = "0.9.8"
 serial_test = "3.4"
 borsh = { version = "1.5", features = ["derive"] }
 reqwest = { version = "0.12", features = [
@@ -240,3 +257,19 @@ env = "1.0.1"
 # alongside rcgen 0.14.x. 0.3.47 is the newest version that satisfies
 # vergen-git2's `time ^0.3.45` and avoids the bug. Consumed by cli (workspace=true).
 time = "=0.3.47"
+
+alloy-sol-types = "1.5.7"
+async-stream = "0.3"
+cfg-if = "1.0"
+getrandom = { version = "0.2", features = ["custom"] }
+lazy_static = "1.5.0"
+libc = "0.2"
+metrics = "0.24"
+path-clean = "1.0"
+regex = "1.11.1"
+rustfmt-wrapper = "0.2.1"
+rustls = { version = "0.23", features = ["ring"] }
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+signal-hook = "0.4"
+signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
+criterion = { version = "0.8", features = ["html_reports"] }

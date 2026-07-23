@@ -4,8 +4,8 @@ use crate::{
     Asm, AsmExecClient, AsmProver, BackendProverOpts, Emu, EmuExecClient, EmuProver, ZiskProver,
 };
 use colored::Colorize;
-use fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use proofman_common::VerboseMode;
+use proofman_fields::{ExtensionField, GoldilocksQuinticExtension, PrimeField64};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::ZiskPaths;
 

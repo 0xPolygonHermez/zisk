@@ -54,8 +54,11 @@ main() {
     patch_cargo_dep "${GUEST_CARGO_TOML}" "ziskos" "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
     # Client Cargo.toml: depends on zisk-sdk, zkvm-interface and ziskos.
+    # The local crate was renamed zkvm-interface -> zisk-zkvm-interface (dir still zkvm-interface),
+    # but the pinned zisk-eth-client still declares the dependency under the old key
+    # `zkvm-interface`. Match that key and bridge to the renamed local crate via `package = `.
     patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"       "${ZISK_REPO_DIR}/sdk"               || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface" "zisk-zkvm-interface" || return 1
     patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"         "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
     step "Building zec-reth ELF..."

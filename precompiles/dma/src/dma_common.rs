@@ -1,4 +1,4 @@
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use zisk_pil::{
     Dma64AlignedInputCpyTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemSetTrace,
     Dma64AlignedMemTrace, Dma64AlignedTrace, DmaInputCpyTrace, DmaMemCpyTrace,

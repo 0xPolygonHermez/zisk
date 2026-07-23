@@ -7,7 +7,7 @@ pub use chunk_collector_store::*;
 pub use instance_set::*;
 
 use arc_swap::ArcSwap;
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc, Mutex, PoisonError, RwLock,

@@ -34,12 +34,12 @@ python3 -c 'import yaml' 2>/dev/null \
   || fail "Python PyYAML required to parse release.yml (pip install pyyaml / apt install python3-yaml)"
 
 # Build the artifacts the staged step copies and the test exercises: ziskclib +
-# lib-c (libziskclib.a / libziskc.a) and riscv2zisk (used to generate emu.asm).
-step "Building libziskclib.a + libziskc.a + riscv2zisk"
-cargo build --release -p ziskclib -p lib-c --manifest-path "$REPO/Cargo.toml" \
+# lib-c (libziskclib.a / libziskc.a) and zisk-transpiler-riscv (used to generate emu.asm).
+step "Building libziskclib.a + libziskc.a + zisk-transpiler-riscv"
+cargo build --release -p ziskclib -p zisk-lib-c --manifest-path "$REPO/Cargo.toml" \
   || fail "cargo build of ziskclib/lib-c failed"
-cargo build --release -p riscv2zisk --bin riscv2zisk --manifest-path "$REPO/Cargo.toml" \
-  || fail "cargo build of riscv2zisk failed"
+cargo build --release -p zisk-transpiler-riscv --bin zisk-transpiler-riscv --manifest-path "$REPO/Cargo.toml" \
+  || fail "cargo build of zisk-transpiler-riscv failed"
 
 ZISKC="$REPO/target/zisk-libs/libziskc.a"
 [[ -f "$ZISKC" ]] || ZISKC="$(find "$REPO/target/release/build" -path '*lib-c-*/out/lib/libziskc.a' -print -quit 2>/dev/null)"
@@ -63,8 +63,8 @@ PY
 SANDBOX="$WORK/repo"
 mkdir -p "$SANDBOX/target/release"
 
-cp "$REPO/target/release/riscv2zisk" "$SANDBOX/target/release/" \
-  || fail "riscv2zisk not built at target/release/riscv2zisk"
+cp "$REPO/target/release/zisk-transpiler-riscv" "$SANDBOX/target/release/" \
+  || fail "zisk-transpiler-riscv not built at target/release/zisk-transpiler-riscv"
 ZCLIB="$REPO/target/release/libziskclib.a"
 [[ -f "$ZCLIB" ]] || ZCLIB="$(find "$REPO/target/release/deps" -maxdepth 1 -name 'libziskclib-*.a' -print -quit 2>/dev/null)"
 [[ -n "$ZCLIB" && -f "$ZCLIB" ]] || fail "libziskclib.a not built (cargo build -p ziskclib didn't produce it)"
@@ -77,6 +77,8 @@ cp "$ZISKC" "$SANDBOX/target/zisk-libs/libziskc.a"
 ln -s "$REPO/emulator-asm" "$SANDBOX/emulator-asm"
 ln -s "$REPO/lib-c"        "$SANDBOX/lib-c"
 ln -s "$REPO/ziskup"       "$SANDBOX/ziskup"
+# release.yml stages the generated constants header from here into emulator-asm.
+ln -s "$REPO/definitions"  "$SANDBOX/definitions"
 
 ( cd "$SANDBOX" && export TARGET="" PLATFORM_NAME="linux" ARCH="amd64" && eval "$SCRIPT" ) \
   || fail "release.yml 'Copy binaries' step failed to execute"
@@ -84,13 +86,13 @@ DIST="$SANDBOX/zisk-dist"
 [[ -f "$DIST/bin/libziskc.a" ]] \
   || fail "release.yml did NOT stage libziskc.a into bin/ (the installed worker links it via -L../../bin)"
 
-# Use the riscv2zisk the step STAGED (zisk-dist/bin), matching the installed
+# Use the zisk-transpiler-riscv the step STAGED (zisk-dist/bin), matching the installed
 # worker and confirming release.yml ships a runnable one.
-step "Generating emu.asm with staged riscv2zisk (--gen=1)"
-RISCV2ZISK="$DIST/bin/riscv2zisk"
-[[ -x "$RISCV2ZISK" ]] || fail "release.yml did NOT stage a runnable riscv2zisk into bin/"
+step "Generating emu.asm with staged zisk-transpiler-riscv (--gen=1)"
+RISCV2ZISK="$DIST/bin/zisk-transpiler-riscv"
+[[ -x "$RISCV2ZISK" ]] || fail "release.yml did NOT stage a runnable zisk-transpiler-riscv into bin/"
 "$RISCV2ZISK" "$ELF" "$DIST/zisk/emulator-asm/src/emu.asm" --gen=1 >/dev/null \
-  || fail "staged riscv2zisk failed to generate emu.asm"
+  || fail "staged zisk-transpiler-riscv failed to generate emu.asm"
 
 # The worker's exact step: `make` in the staged emulator-asm, no cargo. Links
 # -lziskc only if the staging above placed libziskc.a where the Makefile's -L looks.

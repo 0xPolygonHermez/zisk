@@ -1,4 +1,4 @@
-use zkvm_interface::{
+use zisk_zkvm_interface::{
     zkvm_bls12_381_fp, zkvm_bls12_381_g1_point, zkvm_bls12_map_fp_to_g1,
     zkvm_status_ZKVM_EOK as ZKVM_EOK,
 };

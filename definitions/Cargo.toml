@@ -1,10 +1,13 @@
 [package]
 name = "zisk-definitions"
+description = "Shared low-level definitions (syscalls, hints, labels) for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [lib]
@@ -12,9 +15,14 @@ name = "zisk_definitions"
 path = "src/lib.rs"
 
 [dependencies]
-
-# QUIC networking
+# Optional: only pulled in for constant codegen (feature `gen`). Kept optional so
+# default builds stay a zero-dependency `no_std` leaf — the guest and downstream
+# consumers never see the macro or the codegen engine.
+zisk-definitions-macros = { workspace = true, optional = true }
+zisk-definitions-generator = { workspace = true, optional = true }
 
 [features]
 default = []
 stats = []
+# Compile the `#[constants]` definitions + `ZISK_CONSTANTS` for constant codegen.
+gen = ["dep:zisk-definitions-macros", "dep:zisk-definitions-generator"]

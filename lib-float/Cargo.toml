@@ -1,11 +1,15 @@
 [package]
-name = "lib-float"
+name = "zisk-lib-float"
+description = "Software floating-point library for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
+publish = false
 
 build = "build.rs"
 

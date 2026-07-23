@@ -54,6 +54,26 @@ jobs:
       - name: Run cargo check
         run: cargo check --all-targets
 
+      - name: Constants generated files up to date
+        # Building the sync crate re-renders the #[constants] definitions into
+        # definitions/src/generated (Rust at the top, C/PIL/asm in c/, pil/, asm/
+        # subdirs) via its build.rs; fail if that changed anything not committed
+        # (i.e. a constant changed without rebuilding + committing). The C header
+        # is copied next to emulator-asm at package time, so only this canonical
+        # tree is committed and gated.
+        #
+        # NOTE: this job's container has no git at checkout time, so actions/checkout
+        # downloads a source tarball (no .git) — `git diff` can't run here. Compare
+        # the committed tree (snapshot) against the freshly regenerated one instead.
+        run: |
+          snapshot="$(mktemp -d)"
+          cp -a definitions/src/generated/. "$snapshot"/
+          cargo build -p zisk-definitions-sync
+          diff -ru "$snapshot" definitions/src/generated || {
+            echo "::error::definitions/src/generated is stale. Run 'cargo build -p zisk-definitions-sync' and commit the result."
+            exit 1
+          }
+
       - name: Run cargo test
         run: cargo test --workspace --release
         env:

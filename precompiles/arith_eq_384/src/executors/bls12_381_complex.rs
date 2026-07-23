@@ -3,7 +3,7 @@ use lazy_static::lazy_static;
 use num_bigint::BigInt;
 use num_traits::Zero;
 
-use precompiles_helpers::{bigint2_to_12_u64, bigint_from_field, bigint_to_24_chunks};
+use zisk_precomp_helpers::{bigint2_to_12_u64, bigint_from_field, bigint_to_24_chunks};
 
 use super::ArithEq384Data;
 use crate::{equations, ARITH_EQ_384_CHUNKS_DOUBLE, ARITH_EQ_384_U64S_DOUBLE};

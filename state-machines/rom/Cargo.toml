@@ -1,21 +1,24 @@
 [package]
-name = "sm-rom"
+name = "zisk-sm-rom"
+description = "ROM state machine for the ZisK proving pipeline"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
-riscv2zisk = { workspace = true }
-asm-runner = { workspace = true }
-mem-common = { workspace = true }
+zisk-transpiler-riscv = { workspace = true }
+zisk-asm-runner = { workspace = true }
+zisk-sm-mem-common = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 proofman-common = { workspace = true }
 
 tracing = { workspace = true }

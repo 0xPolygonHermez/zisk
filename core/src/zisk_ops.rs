@@ -9,7 +9,7 @@
 
 #![allow(unused)]
 
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 use ziskos::zisklib::fcall_proxy;
 
 use crate::{
@@ -20,10 +20,10 @@ use crate::{
     DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
     INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, SHA256_COST, SYS_ADDR,
 };
-use fields::{
+use paste::paste;
+use proofman_fields::{
     poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
 };
-use paste::paste;
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -1101,7 +1101,7 @@ pub fn opc_add256(ctx: &mut InstContext) {
         let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
         let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
         let mut c = [0u64; 4];
-        let cout = precompiles_helpers::add256(a, b, cin, &mut c);
+        let cout = zisk_precomp_helpers::add256(a, b, cin, &mut c);
 
         let c_addr = params[3];
         for (i, c_item) in c.iter().enumerate() {
@@ -1151,7 +1151,7 @@ pub fn opc_arith256(ctx: &mut InstContext) {
         let mut dl = [0u64; 4];
         let mut dh = [0u64; 4];
 
-        precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+        zisk_precomp_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
         // [a,b,c,3:dl,4:dh]
         for (i, dl_item) in dl.iter().enumerate() {
@@ -1200,7 +1200,7 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
 
         let mut d = [0u64; 4];
 
-        precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+        zisk_precomp_helpers::arith256_mod(a, b, c, module, &mut d);
 
         // [a,b,c,module,4:d]
         for (i, d) in d.iter().enumerate() {
@@ -1240,7 +1240,7 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::secp256k1_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1274,7 +1274,7 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256k1_dbl(p1, &mut p3);
+        zisk_precomp_helpers::secp256k1_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1313,7 +1313,7 @@ pub fn opc_secp256r1_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_secp256r1_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256r1_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::secp256r1_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1347,7 +1347,7 @@ pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256r1_dbl(p1, &mut p3);
+        zisk_precomp_helpers::secp256r1_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1386,7 +1386,7 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::bn254_curve_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1421,7 +1421,7 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
+        zisk_precomp_helpers::bn254_curve_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1460,7 +1460,7 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
+        zisk_precomp_helpers::bn254_complex_add(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1500,7 +1500,7 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
+        zisk_precomp_helpers::bn254_complex_sub(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1540,7 +1540,7 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
+        zisk_precomp_helpers::bn254_complex_mul(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1586,7 +1586,7 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
 
         let mut d = [0u64; 6];
 
-        precompiles_helpers::arith384_mod(a, b, c, module, &mut d);
+        zisk_precomp_helpers::arith384_mod(a, b, c, module, &mut d);
 
         // [a,b,c,module,4:d]
         for (i, d) in d.iter().enumerate() {
@@ -1626,7 +1626,7 @@ pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
         let p2: &[u64; 12] = p2.try_into().expect("opc_bls12_381_curve_add: p2.len != 12");
         let mut p3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_curve_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::bls12_381_curve_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1661,7 +1661,7 @@ pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 12] = &data;
         let mut p3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_curve_dbl(p1, &mut p3);
+        zisk_precomp_helpers::bls12_381_curve_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1700,7 +1700,7 @@ pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_add: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_add(f1, f2, &mut f3);
+        zisk_precomp_helpers::bls12_381_complex_add(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1740,7 +1740,7 @@ pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_sub: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
+        zisk_precomp_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1780,7 +1780,7 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_mul: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
+        zisk_precomp_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {

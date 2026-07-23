@@ -1,8 +1,8 @@
 use std::os::raw::c_void;
 use std::sync::Arc;
 
-use mem_common::{MemAlignCounters, MemAlignPlanner};
 use zisk_common::Plan;
+use zisk_sm_mem_common::{MemAlignCounters, MemAlignPlanner};
 
 use crate::gpu_bindings;
 

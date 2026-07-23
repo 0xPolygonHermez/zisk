@@ -1,4 +1,4 @@
-use circuit::ExpressionManager;
+use zisk_circuit::ExpressionManager;
 
 use super::bit_position;
 

@@ -1,15 +1,22 @@
 [package]
 name = "zisk-verifier"
+description = "Proof verifier for the ZisK zkVM proofs"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha", default-features = false, features = [
-  "verify",
+# Declared directly (not via `workspace = true`) so this crate alone can disable
+# proofman-verifier's default features; the workspace entry stays at defaults for
+# every other consumer. NOTE: keep this proofman source in sync with the git/
+# crates.io/local blocks in the root Cargo.toml.
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha", default-features = false, features = [
+    "verify",
 ] }
 
 [features]

@@ -20,7 +20,7 @@
 
 use std::thread::JoinHandle;
 
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
+use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use zisk_common::{EmuTrace, Plan};
 
 use crate::error::{ExecutorError, ExecutorResult};
@@ -119,7 +119,7 @@ impl BackendArtifacts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use asm_runner::AsmRHData;
+    use zisk_asm_runner::AsmRHData;
 
     #[test]
     fn rust_await_mem_plans_yields_empty() {

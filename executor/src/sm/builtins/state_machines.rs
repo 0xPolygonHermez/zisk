@@ -2,16 +2,16 @@
 //! (`configure_instances`, `build_instance`) and plan-time static
 //! dispatch (`planner_for_position`).
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
-use precomp_dma::DmaManager;
+use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
-use sm_arith::ArithSM;
-use sm_binary::BinarySM;
-use sm_mem::Mem;
-use sm_rom::RomSM;
+use proofman_fields::PrimeField64;
 use std::borrow::Cow;
 use std::sync::Arc;
+use zisk_precomp_dma::DmaManager;
+use zisk_sm_arith::ArithSM;
+use zisk_sm_binary::BinarySM;
+use zisk_sm_mem::Mem;
+use zisk_sm_rom::RomSM;
 
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{

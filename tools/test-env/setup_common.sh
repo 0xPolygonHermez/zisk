@@ -61,7 +61,7 @@ resolve_proofman_dir() {
     return 1
   fi
   root="$(cd "${manifest%/Cargo.toml}/.." && pwd)"
-  if [ -f "$root/package.json" ] && [ -d "$root/pil2-components/lib/std/pil" ]; then
+  if [ -f "$root/setup/pil2-stark/package.json" ] && [ -d "$root/pil2-components/lib/std/pil" ]; then
     printf '%s\n' "$root"
     return 0
   fi
@@ -73,7 +73,7 @@ PROOFMAN_DIR="$(resolve_proofman_dir)" || exit 1
 echo "proofman dir: $PROOFMAN_DIR" >&2
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
-INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
+INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles,definitions/src/generated/pil"
 
 # Required inputs to compile-pil and to the input-hash. Cheap to regenerate.
 # Skipped under SKIP_COMPILE_PIL=1: the on-disk *_fixed.bin files are paired
@@ -86,9 +86,9 @@ generate_frops() {
     return
   fi
   echo "==> generating frops fixed data"
-  cargo run --release --bin arith_frops_fixed_gen
-  cargo run --release --bin binary_basic_frops_fixed_gen
-  cargo run --release --bin binary_extension_frops_fixed_gen
+  cargo run --release --bin zisk-arith-frops-fixed-gen
+  cargo run --release --bin zisk-binary-basic-frops-fixed-gen
+  cargo run --release --bin zisk-binary-extension-frops-fixed-gen
 }
 
 compute_input_hash() (
@@ -121,9 +121,9 @@ compute_input_hash() (
   if [ -n "$pil2_compiler_override" ]; then
     pil2_compiler_version="$pil2_compiler_override"
   else
-    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
+    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/setup/pil2-stark/package.json" | head -n1)"
     [ -n "$pil2_compiler_version" ] || \
-      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/setup/pil2-stark/package.json" >&2; exit 1; }
   fi
 
   # pil2-stark-setup is a transitive dep, not a workspace member. Prefer its

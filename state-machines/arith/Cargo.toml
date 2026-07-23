@@ -1,26 +1,29 @@
 [package]
-name = "sm-arith"
+name = "zisk-sm-arith"
+description = "Arithmetic state machine for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "arith_frops_fixed_gen"
+name = "zisk-arith-frops-fixed-gen"
 path = "src/arith_frops_fixed_gen.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
 zisk-pil = { workspace = true }
-sm-binary = { workspace = true }
-sm-frequent-ops = { workspace = true }
+zisk-sm-binary = { workspace = true }
+zisk-sm-frequent-ops = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 proofman-common = { workspace = true }
-pil-std-lib = { workspace = true }
+pil2-std-lib = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }

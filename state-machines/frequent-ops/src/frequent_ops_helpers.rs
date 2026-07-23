@@ -2,8 +2,8 @@
 use clap::{Arg, Command};
 use std::error::Error;
 
-use fields::{Field, Goldilocks, PrimeField64};
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
+use proofman_fields::{Field, Goldilocks, PrimeField64};
 use zisk_core::zisk_ops::ZiskOp;
 
 type F = Goldilocks;

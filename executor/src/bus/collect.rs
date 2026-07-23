@@ -3,24 +3,24 @@
 //! counterpart.
 use std::collections::VecDeque;
 
-use data_bus::DataBusTrait;
-use fields::PrimeField64;
-use precomp_dma::Dma64AlignedCollector;
-use precomp_dma::DmaCollector;
-use precomp_dma::DmaCounterInputGen;
-use precomp_dma::DmaPrePostCollector;
-use precomp_dma::DmaUnalignedCollector;
-use precompiles_common::{MemCollectorProcessor, MemProcessor};
-use sm_arith::ArithCounterInputGen;
-use sm_arith::ArithInstanceCollector;
-use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
-use sm_mem::{MemAlignCollector, MemModuleCollector};
-use sm_rom::RomCollector;
+use proofman_fields::PrimeField64;
 use zisk_common::ChunkId;
+use zisk_common::DataBusTrait;
 use zisk_common::{
     BusDevice, BusId, PayloadType, MEM_BUS_ID, OPERATION_BUS_ID, OP_TYPE, ROM_BUS_ID,
 };
 use zisk_core::ZiskOperationType;
+use zisk_precomp_common::{MemCollectorProcessor, MemProcessor};
+use zisk_precomp_dma::Dma64AlignedCollector;
+use zisk_precomp_dma::DmaCollector;
+use zisk_precomp_dma::DmaCounterInputGen;
+use zisk_precomp_dma::DmaPrePostCollector;
+use zisk_precomp_dma::DmaUnalignedCollector;
+use zisk_sm_arith::ArithCounterInputGen;
+use zisk_sm_arith::ArithInstanceCollector;
+use zisk_sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
+use zisk_sm_mem::{MemAlignCollector, MemModuleCollector};
+use zisk_sm_rom::RomCollector;
 
 use crate::error::{ExecutorError, ExecutorResult};
 use crate::{BuiltinCollectors, PrecompileCollectors};

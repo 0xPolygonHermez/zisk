@@ -11,7 +11,7 @@ use zisk_coordinator_api::dto::{
 use zisk_prover_backend::GuestProgram;
 
 use crate::{Result, SdkError};
-use rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
+use zisk_rom_setup::{get_elf_bin_verkey_file_path_with_hash, get_output_path, HashMode};
 
 impl RemoteClient {
     pub(crate) fn do_setup(

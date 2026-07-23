@@ -10,7 +10,7 @@ use proofman_common::GenericTrace;
 use proofman_common::PackedInfoConst;
 pub use proofman_macros::trace_row;
 pub use proofman_macros::values;
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use std::fmt;
 
 #[allow(dead_code)]

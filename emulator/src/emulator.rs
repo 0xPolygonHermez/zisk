@@ -17,17 +17,16 @@
 
 use crate::{Emu, EmuOptions, ErrWrongArguments, ParEmuOptions, ZiskEmulatorErr};
 
-use data_bus::DataBusTrait;
-use fields::PrimeField;
-use riscv2zisk::Riscv2zisk;
+use proofman_fields::PrimeField;
 use std::{
     fs,
     path::{Path, PathBuf},
     time::Instant,
 };
 use sysinfo::System;
-use zisk_common::EmuTrace;
+use zisk_common::{DataBusTrait, EmuTrace};
 use zisk_core::ZiskRom;
+use zisk_transpiler_riscv::Riscv2zisk;
 
 pub trait Emulator {
     fn emulate(
@@ -82,10 +81,11 @@ impl ZiskEmulator {
 
         // Create an instance of the RISC-V -> ZisK program transpiler (Riscv2zisk) with the ELF
         // file name
-        let riscv2zisk = Riscv2zisk::new(&elf);
+        let zisk_transpiler_riscv = Riscv2zisk::new(&elf);
 
         // Convert the ELF file to ZisK ROM calling the transpiler run() method
-        let zisk_rom = riscv2zisk.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
+        let zisk_rom =
+            zisk_transpiler_riscv.run().map_err(|err| ZiskEmulatorErr::Unknown(err.to_string()))?;
 
         // Process the Zisk rom with the provided inputs, according to the configured options
         Self::process_rom(&zisk_rom, inputs, options, callback)

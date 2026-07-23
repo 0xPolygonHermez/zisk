@@ -5,7 +5,7 @@
 //! leveraging binary operation counts by operation and metadata to construct detailed plans.
 
 use crate::BinaryCounter;
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use std::any::Any;
 use zisk_common::{
     plan_with_frops, BusDeviceMetrics, ChunkId, InstFropsCount, InstanceType, Metrics, Plan,

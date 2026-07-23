@@ -1,6 +1,6 @@
 use super::ArithEqMemInputConfig;
 use crate::executors::Bn254Complex;
-use precompiles_common::MemProcessor;
+use zisk_precomp_common::MemProcessor;
 
 pub const BN254_COMPLEX_MUL_MEM_CONFIG: ArithEqMemInputConfig = ArithEqMemInputConfig {
     indirect_params: 2,

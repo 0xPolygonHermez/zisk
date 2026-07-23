@@ -3,8 +3,8 @@ use test_data::{get_secp256k1_add_test_data, get_secp256k1_dbl_test_data};
 
 mod equations;
 mod executors;
-use lib_c::add_point_ec_p_c;
 use std::time::Instant;
+use zisk_lib_c::add_point_ec_p_c;
 
 // cargo run --release --features="test_data" --bin arith_eq_test_c
 

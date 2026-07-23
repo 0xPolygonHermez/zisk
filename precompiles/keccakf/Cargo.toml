@@ -1,14 +1,17 @@
 [package]
-name = "precomp-keccakf"
+name = "zisk-precomp-keccakf"
+description = "Keccak-f permutation precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "keccakf_expr_generator"
+name = "zisk-keccakf-expr-generator"
 path = "src/keccakf_expr_generator.rs"
 
 [dependencies]
@@ -19,19 +22,19 @@ zisk-pil = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 
-precompiles-common = { workspace = true }
-precompiles-helpers = { workspace = true }
+zisk-precomp-common = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
 
-pil-std-lib = { workspace = true }
+pil2-std-lib = { workspace = true }
 
-circuit = { workspace = true }
+zisk-circuit = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 
-path-clean = "1.0"
-tiny-keccak = { version = "2.0.2", features = ["keccak"] }
+path-clean = { workspace = true }
+tiny-keccak = { workspace = true, features = ["keccak"] }
 
 [dev-dependencies]
-test-artifacts = { workspace = true }
+zisk-test-artifacts = { workspace = true }

@@ -5,15 +5,15 @@ use crate::{
     MemAlignReadByteInstance, MemAlignSM, MemAlignWriteByteInstance, MemModuleInstance, MemPlanner,
     MemSM, RomDataSM,
 };
-use fields::PrimeField64;
-use mem_common::MemCounters;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
     InputDataTrace, MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace,
     MemAlignWriteByteTrace, MemTrace, RomDataTrace, ZiskProofValues,
 };
+use zisk_sm_mem_common::MemCounters;
 
 pub struct Mem<F: PrimeField64> {
     // Secondary State machines

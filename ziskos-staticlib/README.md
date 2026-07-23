@@ -191,7 +191,7 @@ To expose an internal ziskos function through the staticlib:
    ```
 
    - Signatures use the C types from `zkvm_interface` (already imported above).
-     If you need a new type, add it to the `use zkvm_interface::{…}` block.
+     If you need a new type, add it to the `use zisk_zkvm_interface::{…}` block.
    - The first identifier (`new_function`) is the **exported symbol**; the path
      on the right is the real implementation.
 
