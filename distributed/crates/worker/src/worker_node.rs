@@ -1027,6 +1027,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         });
     }
 
+    /// Drain a cancelled job's in-flight work off the event loop. If a compute
+    /// task was live, run the full recovery handshake (drains compute + stream,
+    /// cluster barrier, emits `WorkerRecoveryComplete`) and return `true`.
+    /// Otherwise just drain any stream-ordering shutdown and return `false` — the
+    /// caller decides whether a completion signal still needs emitting.
+    fn drive_cancellation(&self, loop_tx: &LoopEventSender, cancelled: CancelledWork) -> bool {
+        if cancelled.compute.is_some() {
+            self.spawn_post_failure_recovery(loop_tx.clone(), cancelled);
+            true
+        } else {
+            self.spawn_stream_drain(cancelled.stream);
+            false
+        }
+    }
+
     /// Builds a `SetupProgramAck`: `Ok(vk)` → success with the encoded VK,
     /// `Err(msg)` → failure with the error message. Shared by the setup fast
     /// path, the off-loop completion, and the reconnection setup path.
@@ -1137,14 +1152,11 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             cancelled_work = self.worker.clear_current_job();
                         }
                     }
-                    // A live compute task → full recovery handshake (drains compute
-                    // + stream). Otherwise still drain any stream shutdown so it
-                    // can't race the next job's reset.
-                    if cancelled_work.compute.is_some() {
-                        self.spawn_post_failure_recovery(loop_tx.clone(), cancelled_work);
-                    } else {
-                        self.spawn_stream_drain(cancelled_work.stream);
-                    }
+                    // Drain the clobbered job's work off the loop (full recovery
+                    // handshake if a compute task was live, else just the stream
+                    // shutdown). Reconnect never emits WorkerRecoveryComplete
+                    // itself, so the return is ignored.
+                    self.drive_cancellation(loop_tx, cancelled_work);
 
                     // If the coordinator attached setup info, run setup now — before entering
                     // the main event loop so no compute task can be processed without a guest program.
@@ -1235,31 +1247,22 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
                 // Two outcomes once we've matched the cancelled job to ours:
-                //  - had_computation=true  → spawn ASM soft-reset so the
-                //    wedged spawn_blocking task (likely stuck in MPI/ASM sync
-                //    with peer ranks) actually unwinds.
-                //  - had_computation=false → no task to soft-reset, but the
-                //    coordinator parked us SettingUp and is waiting for a
-                //    `WorkerRecoveryComplete`.
-                let mut spawn_recovery = false;
-                let mut emit_recovery_complete_directly = false;
+                //  - a live computation → the recovery driver does the ASM
+                //    soft-reset handshake and emits `WorkerRecoveryComplete` itself.
+                //  - no live computation → nothing to soft-reset, but the
+                //    coordinator parked us SettingUp awaiting `WorkerRecoveryComplete`,
+                //    so we emit it directly below.
+                // A returned compute handle is the authoritative "had a live
+                // computation" signal — no separate state query needed.
+                let mut matched = false;
                 let mut cancelled_work = CancelledWork::default();
                 if let Some(ref job) = self.worker.current_job() {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        // Keep the detached compute handle so recovery can await
-                        // the ASM child finishing its reset before the barrier.
-                        // A returned compute handle is the authoritative "had a
-                        // live computation" signal — no separate state query needed.
                         cancelled_work = self.worker.clear_current_job();
                         self.worker.set_state(WorkerState::Ready);
-
-                        if cancelled_work.compute.is_some() {
-                            spawn_recovery = true;
-                        } else {
-                            emit_recovery_complete_directly = true;
-                        }
+                        matched = true;
                     }
                 }
 
@@ -1273,13 +1276,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     warn!("Failed to send JobCancelledAck: {}", e);
                 }
 
-                if spawn_recovery {
-                    self.spawn_post_failure_recovery(loop_tx.clone(), cancelled_work);
-                } else if emit_recovery_complete_directly {
-                    // No live compute → no handshake needed, but a stream thread
-                    // may still be shutting down; drain it off-loop before the
-                    // next job's reset.
-                    self.spawn_stream_drain(cancelled_work.stream);
+                // Drain the clobbered work off-loop; the recovery driver emits
+                // WorkerRecoveryComplete when a compute task was live. Otherwise,
+                // if we matched the job, emit it directly (coordinator parked us
+                // SettingUp awaiting it).
+                let recovery_spawned = self.drive_cancellation(loop_tx, cancelled_work);
+                if !recovery_spawned && matched {
                     let rc = WorkerRecoveryComplete {
                         worker_id: self.worker_config.worker.worker_id.as_string(),
                     };
@@ -1321,24 +1323,14 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     let tx = loop_tx.clone();
                     let handle = tokio::task::spawn_blocking(move || {
                         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            // Write the ELF to the content-addressed cache (idempotent).
-                            let elf_path = ZiskPaths::global().elf_cache(&setup.hash_id);
-                            if !elf_path.exists() {
-                                if let Some(parent) = elf_path.parent() {
-                                    std::fs::create_dir_all(parent)?;
-                                }
-                                std::fs::write(&elf_path, &setup.elf_bytes)?;
-                            }
-                            // Move the ELF bytes into the guest program (no clone);
-                            // `setup_compute` reads them back via `guest_program.elf()`.
-                            let guest_program = std::sync::Arc::new(GuestProgram::from_bytes(
+                            let guest_program = Self::stage_guest_program(
+                                &setup.hash_id,
                                 setup.program_name,
                                 setup.elf_bytes,
-                            ));
+                            )?;
                             let vk = Worker::<T>::setup_compute(
                                 prover.as_ref(),
                                 &setup.hash_id,
-                                guest_program.elf(),
                                 setup.with_hints,
                                 setup.emulator_only,
                                 &guest_program,
@@ -1486,29 +1478,34 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ///
     /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
     /// setup (generates ROM binary files on disk).
-    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
-        use std::sync::Arc;
-
-        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
-
-        let elf_path = ZiskPaths::global().elf_cache(&setup.hash_id);
-
-        // The cache path is content-addressed (blake3 of ELF bytes), so if the file already
-        // exists it is identical to what we received — skip write and re-setup.
+    /// Writes the ELF to the content-addressed cache (idempotent) and loads the
+    /// `GuestProgram`, moving the bytes in (no clone). Shared by the off-loop
+    /// setup path and the reconnection path so the cache-write contract — which
+    /// must stay byte-identical for the content-addressed skip check — lives once.
+    fn stage_guest_program(
+        hash_id: &str,
+        program_name: String,
+        elf_bytes: Vec<u8>,
+    ) -> Result<std::sync::Arc<GuestProgram>> {
+        let elf_path = ZiskPaths::global().elf_cache(hash_id);
         if !elf_path.exists() {
             if let Some(parent) = elf_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::write(&elf_path, &setup.elf_bytes)?;
+            std::fs::write(&elf_path, &elf_bytes)?;
         }
+        Ok(std::sync::Arc::new(GuestProgram::from_bytes(program_name, elf_bytes)))
+    }
+
+    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
+        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
 
         let guest_program =
-            Arc::new(GuestProgram::from_bytes(setup.program_name, setup.elf_bytes.clone()));
+            Self::stage_guest_program(&setup.hash_id, setup.program_name, setup.elf_bytes)?;
 
         // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
         let vk = self.worker.run_setup(
             &setup.hash_id,
-            &setup.elf_bytes,
             setup.with_hints,
             setup.emulator_only,
             guest_program,
