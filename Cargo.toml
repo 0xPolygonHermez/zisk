@@ -129,25 +129,25 @@ zisk-coordinator-server = { path = "distributed/crates/coordinator-server" }
 zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
-# Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v0.18.0" }
+# Proofman (fix/leak = v0.18.0 + backport of the memory-reuse fix from PR #484)
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "fix/leak" }
 
 # Proofman Local development
-# proofman = { path = "../pil2-proofman/proofman" }
-# proofman-common = { path = "../pil2-proofman/common" }
-# proofman-macros = { path = "../pil2-proofman/macros" }
-# proofman-verifier = { path = "../pil2-proofman/verifier" }
-# proofman-util = { path = "../pil2-proofman/util" }
-# pil-std-lib = { path = "../pil2-proofman/pil2-components/lib/std/rs" }
-# witness = { path = "../pil2-proofman/witness" }
-# fields = { path = "../pil2-proofman/fields" }
+# proofman = { path = "../pil2-proofman-fix-leak/proofman" }
+# proofman-common = { path = "../pil2-proofman-fix-leak/common" }
+# proofman-macros = { path = "../pil2-proofman-fix-leak/macros" }
+# proofman-verifier = { path = "../pil2-proofman-fix-leak/verifier" }
+# proofman-util = { path = "../pil2-proofman-fix-leak/util" }
+# pil-std-lib = { path = "../pil2-proofman-fix-leak/pil2-components/lib/std/rs" }
+# witness = { path = "../pil2-proofman-fix-leak/witness" }
+# fields = { path = "../pil2-proofman-fix-leak/fields" }
 
 # External dependencies
 arc-swap = "1"

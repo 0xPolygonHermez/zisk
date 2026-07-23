@@ -215,7 +215,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -226,7 +226,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -774,7 +774,7 @@ dependencies = [
  "bitflags",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "proc-macro2",
@@ -1000,7 +1000,7 @@ dependencies = [
  "colored",
  "dirs",
  "executor",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "futures",
  "indicatif",
  "proofman",
@@ -1200,7 +1200,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1600,9 +1600,9 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "num-bigint",
  "num-traits",
 ]
@@ -1818,7 +1818,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1840,7 +1840,7 @@ checksum = "9f5b01c17f85ee988d832c40e549a64bd89ab2c9f8d8a613bdf5122ae507e294"
 dependencies = [
  "cfg-if",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1995,7 +1995,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2018,7 +2018,7 @@ dependencies = [
  "asm-runner",
  "crossbeam",
  "data-bus",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "itertools 0.14.0",
  "mem-common",
  "mem-planner-cpp",
@@ -2106,6 +2106,17 @@ dependencies = [
 name = "fields"
 version = "0.18.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "serde",
+]
+
+[[package]]
+name = "fields"
+version = "0.18.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2829,7 +2840,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2843,15 +2854,6 @@ name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
 dependencies = [
  "either",
 ]
@@ -3199,7 +3201,7 @@ name = "mem-common"
 version = "0.18.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3401,7 +3403,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3750,10 +3752,10 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "num-bigint",
  "num-traits",
  "proofman-common",
@@ -3876,7 +3878,7 @@ dependencies = [
  "ark-secp256k1",
  "ark-secp256r1",
  "ark-std 0.5.0",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3912,7 +3914,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "ark-secp256k1",
  "ark-std 0.5.0",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "lazy_static",
  "lib-c",
  "mem-common",
@@ -3943,7 +3945,7 @@ dependencies = [
 name = "precomp-big-int"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -3964,7 +3966,7 @@ dependencies = [
 name = "precomp-blake2"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -3983,7 +3985,7 @@ dependencies = [
 name = "precomp-dma"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "generic-array",
  "lib-c",
  "mem-common",
@@ -4007,7 +4009,7 @@ name = "precomp-keccakf"
 version = "0.18.0"
 dependencies = [
  "circuit",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "path-clean",
  "pil-std-lib",
  "precompiles-common",
@@ -4027,7 +4029,7 @@ dependencies = [
 name = "precomp-poseidon2"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -4047,7 +4049,7 @@ dependencies = [
 name = "precomp-sha256f"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "mem-common",
  "pil-std-lib",
  "precompiles-common",
@@ -4066,7 +4068,7 @@ dependencies = [
 name = "precompiles-common"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "mem-common",
  "sm-mem",
  "zisk-common",
@@ -4172,7 +4174,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "bincode",
  "blake3",
@@ -4182,7 +4184,7 @@ dependencies = [
  "crossbeam-channel",
  "csv",
  "curves",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "libloading",
  "mpi",
  "num-bigint",
@@ -4193,7 +4195,7 @@ dependencies = [
  "proofman-macros",
  "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "rayon",
  "serde",
  "serde_json",
@@ -4206,7 +4208,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "bincode",
  "borsh",
@@ -4215,7 +4217,7 @@ dependencies = [
  "crossbeam-queue",
  "csv",
  "env",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "lazy_static",
  "libc",
  "libloading",
@@ -4237,9 +4239,9 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "itoa",
  "proofman-common",
  "proofman-starks-lib-c",
@@ -4250,7 +4252,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4260,7 +4262,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4269,7 +4271,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "bincode",
  "colored",
@@ -4283,7 +4285,19 @@ version = "0.18.0"
 source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
 dependencies = [
  "bincode",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0)",
+ "num-traits",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "0.18.0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
+dependencies = [
+ "bincode",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "num-traits",
  "serde",
  "tracing",
@@ -4774,7 +4788,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "colored",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "proofman-common",
  "sm-rom",
  "tracing",
@@ -4915,7 +4929,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4974,7 +4988,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5388,7 +5402,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 name = "sm-arith"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5408,7 +5422,7 @@ dependencies = [
 name = "sm-binary"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "num-bigint",
  "pil-std-lib",
  "proofman-common",
@@ -5428,7 +5442,7 @@ name = "sm-frequent-ops"
 version = "0.18.0"
 dependencies = [
  "clap",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "num-bigint",
  "proofman-common",
  "proofman-util",
@@ -5442,7 +5456,7 @@ dependencies = [
 name = "sm-main"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "mem-common",
  "num-bigint",
  "pil-std-lib",
@@ -5461,7 +5475,7 @@ dependencies = [
 name = "sm-mem"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "mem-common",
  "num-bigint",
  "num-traits",
@@ -5483,7 +5497,7 @@ version = "0.18.0"
 dependencies = [
  "anyhow",
  "asm-runner",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "itertools 0.14.0",
  "proofman-common",
  "proofman-macros",
@@ -5508,7 +5522,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -5711,7 +5725,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6661,7 +6675,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -7215,10 +7229,10 @@ dependencies = [
 [[package]]
 name = "witness"
 version = "0.18.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0#42ad4d02da3d3b6238ac126ead82a8814f3fd426"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak#20bb03305196340b523008927a2cd651adfbb365"
 dependencies = [
  "colored",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "libloading",
  "proofman-common",
  "proofman-util",
@@ -7462,12 +7476,12 @@ dependencies = [
  "anyhow",
  "bincode",
  "dirs",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "libc",
  "proofman",
  "proofman-common",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "quinn",
  "rcgen",
  "rustls",
@@ -7593,7 +7607,7 @@ name = "zisk-core"
 version = "0.18.0"
 dependencies = [
  "elf",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "lib-c",
  "lib-float",
  "paste",
@@ -7615,7 +7629,7 @@ version = "0.18.0"
 name = "zisk-pil"
 version = "0.18.0"
 dependencies = [
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "proofman-common",
  "proofman-macros",
  "rayon",
@@ -7649,12 +7663,12 @@ dependencies = [
  "borsh",
  "colored",
  "executor",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "rom-setup",
  "serde",
  "sha2",
@@ -7674,7 +7688,7 @@ dependencies = [
  "bincode",
  "bytes",
  "colored",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "futures",
  "proofman-common",
  "rom-setup",
@@ -7696,7 +7710,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "0.18.0"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0)",
 ]
 
 [[package]]
@@ -7711,7 +7725,7 @@ dependencies = [
  "clap",
  "colored",
  "config",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "precompiles-hints",
  "proofman",
  "proofman-common",
@@ -7748,7 +7762,7 @@ dependencies = [
  "clap",
  "criterion 0.5.1",
  "data-bus",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "flate2",
  "mem-common",
  "memmap2",
@@ -7789,7 +7803,7 @@ dependencies = [
  "ctor",
  "dlmalloc",
  "embedded-alloc",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?tag=v0.18.0)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
@@ -7822,7 +7836,7 @@ dependencies = [
  "anyhow",
  "bincode",
  "cfg-if",
- "fields",
+ "fields 0.18.0 (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=fix%2Fleak)",
  "getrandom 0.2.17",
  "lazy_static",
  "lib-c",
