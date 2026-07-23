@@ -739,6 +739,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
                 // Caller-provided keys if given, else the proof's own.
                 let plonk_vkey = self.trusted_plonk_vk.unwrap_or(&plonk_vk.plonk_vkey);
                 let rootc = self.trusted_setup_vk.unwrap_or(rootc.as_slice());
+                if rootc.len() != PROGRAM_VK_LEN {
+                    return Err(CommonError::InvalidProof(format!(
+                        "setup vk (`rootc`) must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
+                        rootc.len()
+                    )));
+                }
 
                 // snarkjs uses only `public_snark_bytes`; `public_bytes` is unused.
                 let public_snark_bytes = snark_publics_hash(publics_full, rootc);
@@ -799,6 +805,12 @@ impl<'a> ZiskVerifyBuilder<'a> {
 
                 // `root_c` for the STARK verifier: caller's key if given, else the proof's.
                 let setup_vk = self.trusted_setup_vk.unwrap_or(zisk_vk.as_slice());
+                if setup_vk.len() != PROGRAM_VK_LEN {
+                    return Err(CommonError::InvalidProof(format!(
+                        "setup vk must have exactly {PROGRAM_VK_LEN} u64 limbs, got {}",
+                        setup_vk.len()
+                    )));
+                }
 
                 let v = verifier(hash);
                 let expected_len = if kind.is_minimal() {
@@ -1230,6 +1242,57 @@ mod tests {
         .verify();
 
         assert!(result.is_err(), "expected Err for malformed proof, got {:?}", result);
+    }
+
+    /// A wrong-length `setup_vk` must return an error, not panic in
+    /// `snark_publics_hash` (which slices on `PROGRAM_VK_LEN`).
+    #[test]
+    fn plonk_verify_rejects_wrong_len_setup_vk() {
+        let g1 = || ["0".to_string(), "0".to_string(), "1".to_string()];
+        let g2 = || {
+            [
+                ["0".to_string(), "0".to_string()],
+                ["0".to_string(), "0".to_string()],
+                ["1".to_string(), "0".to_string()],
+            ]
+        };
+        let vkey = PlonkVkey {
+            protocol: "plonk".to_string(),
+            curve: "bn128".to_string(),
+            n_public: 1,
+            power: 1,
+            k1: "2".to_string(),
+            k2: "3".to_string(),
+            qm: g1(),
+            ql: g1(),
+            qr: g1(),
+            qo: g1(),
+            qc: g1(),
+            s1: g1(),
+            s2: g1(),
+            s3: g1(),
+            x_2: g2(),
+            w: "1".to_string(),
+        };
+        let proof = Proof::new(
+            ProofBody::Plonk {
+                proof_bytes: vec![],
+                plonk_vk: Box::new(PlonkVkBlob {
+                    vadcop_vk: vec![0u64; PROGRAM_VK_LEN],
+                    plonk_vkey: vkey,
+                }),
+                publics: PublicValues::new_empty(),
+                publics_full: vec![0u64; PROGRAM_VK_LEN + ZISK_PUBLICS],
+                rootc: vec![0u64; PROGRAM_VK_LEN],
+            },
+            ProgramVK::new_empty(),
+        );
+        // 3 limbs instead of PROGRAM_VK_LEN (4).
+        let err = proof.with_setup_vk(&[1u64, 2, 3]).verify().unwrap_err();
+        assert!(
+            matches!(err, CommonError::InvalidProof(_)),
+            "expected InvalidProof for wrong-length setup vk, got {err:?}"
+        );
     }
 
     #[test]
