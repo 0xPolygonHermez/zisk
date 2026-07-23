@@ -38,28 +38,13 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
         let inst = code[code_index];
         code_index += 1;
 
-        // Manage instructions that are zero
-        // As per spec, they can only be 32 bits nop instructions
-        // In case of 16 zero bits, they are used by some compilers (e.g. Go Lang compiler) to halt
-        // the system with an error
+        // A 16-bit instruction with all bits zero is permanently reserved as an illegal instruction.
+        // 16 zero bits are used by some compilers (e.g. Go Lang compiler) to halt the system with
+        // an error.
         if inst == 0 {
             // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
-            if code_index == code_len {
-                // This is the last 16 bits in the code buffer, so this must be a 16-bits invalid
-                // instruction, so we must HALT
-                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
-                break;
-            }
-            let inst = code[code_index];
-            if inst == 0 {
-                // Both 16 bits instructions are zero, so this is a 32-bits nop
-                code_index += 1;
-                insts.push(RiscvInst::nop(0, rom_address + (instruction_code_index * 2) as u64));
-            } else {
-                // The first 16 bits are zero, but the second 16 bits are not zero, so this is a
-                // 16-bits invalid instruction, so we must HALT
-                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
-            }
+            // This is a 16-bits invalid instruction, so we must HALT
+            insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
             continue;
         }
 
@@ -90,6 +75,12 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
 
             // Build the full 32-bits instruction
             let inst: u32 = (inst as u32) | ((interleaved_inst as u32) << 16);
+
+            if inst == 0xFFFFFFFF {
+                // This is a 32-bits invalid instruction, so we must HALT
+                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
+                continue;
+            }
 
             // Parse the 32-bits instruction
             let i = riscv_get_instruction_32(inst, rom_address, instruction_code_index);
@@ -340,6 +331,10 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
         i.rs2 = ((inst >> 2) & 0x1F) as u32;
         if inst_name == RiscvInstName::CJr {
             i.rd = 0;
+            if i.rs1 == 0 {
+                //panic!("Invalid use of rs1==0 in c.jr at index={code_index} addr=0x{rom_address:x}");
+                i.inst_name = RiscvInstName::CReserved;
+            }
             if i.rs2 != 0 {
                 //panic!("Invalid use of rs2!=0 in c.jr at index={code_index} addr=0x{rom_address:x}");
                 i.inst_name = RiscvInstName::CReserved;
@@ -371,6 +366,10 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm5 = ((inst >> 2) & 0x1) as u32;
             let imm = (imm9 << 9) | (imm8_7 << 7) | (imm6 << 6) | (imm5 << 5) | (imm4 << 4);
             i.imm = signext(imm, 10);
+            if i.imm == 0 {
+                // This is reserved and must not be executed
+                i.inst_name = RiscvInstName::CReserved;
+            }
         } else if (inst_name == RiscvInstName::CAddi) || (inst_name == RiscvInstName::CAddiw) {
             let imm5 = ((inst >> 12) & 0x1) as u32;
             let imm4_0 = ((inst >> 2) & 0x1F) as u32;
@@ -395,12 +394,14 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm17 = ((inst >> 12) & 0x1) as u32;
             let imm16_12 = ((inst >> 2) & 0x1F) as u32;
             i.imm = signext((imm17 << 17) | (imm16_12 << 12), 18);
-            if i.rd == 0 {
+            if i.imm == 0 {
+                // This is reserved and must not be executed
+                i.inst_name = RiscvInstName::CReserved;
+            } else if i.rd == 2 {
+                i.inst_name = RiscvInstName::CReserved;
+            } else if i.rd == 0 {
                 // This is a hint and must not be executed
                 i.inst_name = RiscvInstName::CNop; // Change to c.nop
-            }
-            if i.rd == 2 {
-                i.inst_name = RiscvInstName::CReserved;
             }
         } else if inst_name == RiscvInstName::CLdsp || inst_name == RiscvInstName::CFldsp {
             let imm5 = ((inst >> 12) & 0x1) as u32;
@@ -467,6 +468,10 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
         let imm2 = ((inst >> 6) & 0x1) as u32;
         let imm3 = ((inst >> 5) & 0x1) as u32;
         i.imm = ((imm9_6 << 6) | (imm5_4 << 4) | (imm3 << 3) | (imm2 << 2)) as i32;
+        if i.imm == 0 {
+            // This is reserved and must not be executed
+            i.inst_name = RiscvInstName::CReserved;
+        }
         i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
         i.rs1 = 2; // x2 is always the source register for CIW instructions
     } else if i.inst_type == RiscvInstType::Cl {
