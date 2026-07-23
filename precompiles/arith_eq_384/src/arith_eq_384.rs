@@ -410,13 +410,12 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         inputs: &[Vec<ArithEq384Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = ArithEq384Trace::<R>::new_from_vec(trace_buffer)?;
+        let mut trace = ArithEq384Trace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
         let num_available_ops = self.num_available_ops;
 
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let all_ops_used = total_inputs == num_available_ops;
-        let num_rows_filled = total_inputs * ARITH_EQ_384_ROWS_BY_OP;
         let num_rows_needed = if total_inputs < num_available_ops {
             total_inputs * ARITH_EQ_384_ROWS_BY_OP
         } else if all_ops_used {
@@ -477,32 +476,23 @@ impl<F: PrimeField64> ArithEq384SM<F> {
             }
         });
 
+        // Padding
+
+        // All-zero padding rows satisfy every constraint, so we must only handle the range_checks.
+
         let num_non_usable_rows = self.num_non_usable_rows;
         let padding_ops = (num_available_ops - index) as u64;
-        let q_hsc_range_mult = 3 * padding_ops; // 3 q_cols by each ARITH_EQ_384_ROWS_BY_OP
+        let q_hsc_range_mult = 3 * padding_ops + 3; // 3 q_cols by each ARITH_EQ_384_ROWS_BY_OP
         let chunk_range_mult = (7 * ARITH_EQ_384_ROWS_BY_OP as u64
             + 3 * (ARITH_EQ_384_ROWS_BY_OP - 1) as u64)
             * padding_ops
             + 7 * (ARITH_EQ_384_ROWS_BY_OP + num_non_usable_rows) as u64
-            + 3 * (ARITH_EQ_384_ROWS_BY_OP + num_non_usable_rows) as u64; // 7 chunk_cols + 3 q_cols
+            + 3 * (ARITH_EQ_384_ROWS_BY_OP + num_non_usable_rows - 1) as u64; // 7 chunk_cols + 3 q_cols
         let carry_range_mult = (6 * ARITH_EQ_384_ROWS_BY_OP as u64) * padding_ops
             + 6 * (ARITH_EQ_384_ROWS_BY_OP + num_non_usable_rows) as u64; // 6 carry_cols
         self.std.range_check(self.q_hsc_range_id, 0, q_hsc_range_mult);
         self.std.range_check(self.chunk_range_id, 0, chunk_range_mult);
         self.std.range_check(self.carry_range_id, 0, carry_range_mult);
-
-        let mut padding_row = R::default();
-
-        // In the no-op rows, the first x_are_different val should be the same as the previous one
-        // To make the constraint `x_are_different === 'x_are_different * (1 - CLK_0) + x_chunk_different;`
-        // be satisfied
-        if all_ops_used {
-            let prev_x_are_different = trace.buffer[num_rows_filled - 1].get_x_are_different();
-
-            padding_row.set_x_are_different(prev_x_are_different);
-        }
-
-        trace.buffer[num_rows_filled..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
 
         timer_stop_and_log_trace!(ARITH_EQ_384_TRACE);
 

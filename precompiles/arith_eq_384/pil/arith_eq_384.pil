@@ -25,25 +25,45 @@ airtemplate ArithEq384(const int N) {
     const int BLS12_381_PRIME = 0x1A0111EA397FE69A4B1BA7B6434BACD764774B84F38512BF6730D2A0F6B0F6241EABFFFEB153FFFFB9FEFFFFFFFFAAAB;
 
     const int CLOCKS = 24;
-    // Ensure that the ARITH_EQ_384 can fit in N rows
-    if (N < CLOCKS) {
-        error(`N must be at least ${CLOCKS}`);
+
+    // Calculate usable capacity
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_OPS;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        // N is perfectly divisible by CLOCKS
+        if (N < CLOCKS) {
+            error(`N must be at least ${CLOCKS} to fit the ArithEq384 arithmetization, but received N=${N}`);
+        }
+
+        NUM_OPS = N / CLOCKS;
+    } else {
+        // N is not divisible by CLOCKS
+        if (N < 2*CLOCKS) {
+            error(`N must be at least ${2*CLOCKS} to fit the ArithEq384 arithmetization, but received N=${N}`);
+        }
+
+        // Subtract 1 because we can't fit a complete cycle in the remaining rows
+        NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
     }
 
-    const int NUM_ARITH_EQ_384 = N / CLOCKS - 1; // The -1 is because CLOCKS is not a divisor of N
-    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_ARITH_EQ_384, 0...];
-    const expr LAST_CLK = (CLOCKS-1)'CLK_0;
+    // Base clock: 1 at row 0, 0 elsewhere within each cycle
+    if (NUM_NON_USABLE_ROWS == 0) {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS];
+    } else {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS, 1, 0...];
+    }
+
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; ++i) {
+        CLK[i] = (i)'CLK_0;
+    }
+    const expr LAST_CLK = CLK[CLOCKS-1];
 
     const int CHUNKS = CLOCKS;
     const int CBC = 2;
     const int CHUNK_BITS = 16;
     const int CHUNK_SIZE = 2**CHUNK_BITS;
     const int CHUNK_MAX = CHUNK_SIZE - 1;
-
-    const expr CLK[CLOCKS];
-    for (int i = 0; i < CLOCKS; ++i) {
-        CLK[i] = (i)'CLK_0;
-    }
 
     // TODO: carry min and max!!
     const int Q_HSC_BITS = 22; // Number of bits for high safe chunk of q
@@ -99,6 +119,8 @@ airtemplate ArithEq384(const int N) {
     const expr chunk_cols[7] = [x1, y1, x2, y2, x3, y3, s];
     const expr qs[QS] = [q0, q1, q2];
 
+    // TODO: explain concept of row_offset with x1, y1, x2, y2, x3, y3
+
     include "equations/arith384_mod.pil"
     include "equations/bls12_381_curve_add.pil"
     include "equations/bls12_381_curve_dbl.pil"
@@ -129,8 +151,7 @@ airtemplate ArithEq384(const int N) {
         sel_op[i] * (1 - sel_op[i]) === 0;
 
         // selector latch
-        expr sel_op_active = clock_set(start: 1, end: 20);
-        sel_op_active * (sel_op[i] - 'sel_op[i]) === 0;
+        (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
 
         // only one selector could be enabled
         sum_sel_op = sum_sel_op + sel_op[i];
@@ -346,7 +367,6 @@ airtemplate ArithEq384(const int N) {
     // 1 - first clock
     // 2 - last clock
     const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
-
     lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: sel_check_x_lt_prime, sel_is_binary: 1);
     lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: sel_check_y_lt_prime, sel_is_binary: 1);
 
@@ -606,10 +626,6 @@ airtemplate ArithEq384(const int N) {
             index += delta_index;
         }
         return res;
-    }
-
-    function chunk_to_m32_on_clock(const expr cl, int index, int current_clock): const expr {
-        return air.CLK[cl]*(index_on_clock(cl, index, current_clock) + index_on_clock(cl, index + 1, current_clock));
     }
 
     function index_on_clock(const expr cl, int index, int current_clock): const expr {
