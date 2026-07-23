@@ -497,8 +497,9 @@ impl Coordinator {
         }
 
         let path = ZiskPaths::global().elf_cache(hash_id);
-        let elf_bytes =
-            fs::read(&path).map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
+        let elf_bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|_| CoordinatorError::ProgramNotFound(hash_id.to_string()))?;
 
         // Atomic check + reserve under one workers-pool write lock:
         // refuses if any worker is `Computing` or any recovery is pending,
@@ -793,7 +794,7 @@ impl Coordinator {
             let (hash_id, with_hints, emulator_only) =
                 (key.hash_id, key.with_hints, key.emulator_only);
             let path = ZiskPaths::global().elf_cache(&hash_id);
-            match fs::read(&path) {
+            match tokio::fs::read(&path).await {
                 Ok(elf_bytes) => result.push(SetupProgramDto {
                     job_id: JobId::new().as_string(),
                     elf_bytes,
@@ -1061,19 +1062,24 @@ impl Coordinator {
 
         // Save proof to disk
         if state == JobState::Completed && !self.config.server.no_save_proofs {
-            let zisk_proof = job.proof.as_ref().ok_or_else(|| {
+            // Clone the proof so the (potentially large) blocking disk write can
+            // run off the async runtime without holding a borrow into the job;
+            // the in-memory proof stays intact for later retrieval.
+            let zisk_proof = job.proof.clone().ok_or_else(|| {
                 CoordinatorError::Internal(
                     "Proof is missing during post-launch processing".to_string(),
                 )
             })?;
             let folder = self.config.server.proofs_dir.clone();
-            fs::create_dir_all(&folder).map_err(|e| {
-                CoordinatorError::Internal(format!("Failed to create proofs directory: {}", e))
-            })?;
             let raw_path = folder.join(format!("proof_{}.bin", job_id.as_str()));
-            zisk_proof
-                .save(raw_path)
-                .map_err(|e| CoordinatorError::Internal(format!("Failed to save proof: {}", e)))?;
+            tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
+                std::fs::create_dir_all(&folder)?;
+                zisk_proof.save(&raw_path)?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| CoordinatorError::Internal(format!("proof save task panicked: {}", e)))?
+            .map_err(|e| CoordinatorError::Internal(format!("Failed to save proof: {}", e)))?;
         }
 
         // Clean up process data for the job
