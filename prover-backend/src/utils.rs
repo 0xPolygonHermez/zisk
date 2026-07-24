@@ -21,6 +21,8 @@ fn hash_mode_from_pctx<F: PrimeField64>(pctx: &ProofCtx<F>) -> Result<HashMode> 
     })
 }
 
+/// Build the ROM Merkle setup for `elf` and return its program verification
+/// key, using the hash mode declared in the proving key's global info.
 pub fn ensure_program_vk<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &GuestProgram,
@@ -29,6 +31,8 @@ pub fn ensure_program_vk<F: PrimeField64>(
     rom_merkle_setup(pctx, elf.elf(), &None, false, hash_mode)
 }
 
+/// Resolve the on-disk path of the compiled ROM binary for `program_id`,
+/// using the hash mode declared in the proving key's global info.
 pub fn get_rom_bin_path<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     program_id: &ProgramId,
@@ -38,6 +42,9 @@ pub fn get_rom_bin_path<F: PrimeField64>(
     Ok(rom_bin_path)
 }
 
+/// Return the `(minimal-trace, rom-histogram)` ASM binary filenames for `elf`.
+/// Names are content-addressed by the ELF hash (with a `-hints` marker when
+/// `with_hints` is set), so a given ELF always maps to the same artifacts.
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
     // Content-addressed by the ELF hash only — the same ELF maps to the same artifacts
     // regardless of the program name, so a given hash is generated once.
@@ -47,6 +54,7 @@ pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, St
     Ok((format!("{base}-mt.bin"), format!("{base}-rh.bin")))
 }
 
+/// Return an error if `path` does not exist.
 pub fn check_paths_exist(path: &PathBuf) -> Result<()> {
     if !path.exists() {
         return Err(anyhow::anyhow!("Path does not exist: {:?}", path));
@@ -54,6 +62,9 @@ pub fn check_paths_exist(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
+/// Translate the CLI-style debug selector into a [`DebugInfo`]:
+/// `None` → no debugging, `Some(None)` → debug all instances,
+/// `Some(Some(spec))` → debug only the instances named in `spec`.
 pub fn create_debug_info(
     debug_info: Option<Option<String>>,
     proving_key: PathBuf,
@@ -65,6 +76,7 @@ pub fn create_debug_info(
     }
 }
 
+/// Initialize the global logger at the given verbosity (non-distributed).
 pub fn setup_logger(verbose: VerboseMode) {
     initialize_logger(verbose, None);
 }

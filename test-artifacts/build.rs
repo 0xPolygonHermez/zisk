@@ -6,16 +6,94 @@ use std::{
 use std::env;
 use zisk_sdk::{build_program_with_args, BuildArgs};
 
+/// Every guest program under `programs/`, by package name. Each has a matching
+/// Cargo feature (see `Cargo.toml`); enabling the feature builds that program and
+/// exposes its `ELF_*` constant in `lib.rs`. Keep this list in sync with the
+/// `[features]` table and the constants in `src/lib.rs`.
+const PROGRAMS: &[&str] = &[
+    "add256",
+    "agg_verify",
+    "arith256",
+    "arith256_mod",
+    "arith384_mod",
+    "big_input",
+    "bigint",
+    "blake2",
+    "bls12_381",
+    "bls12_381_add",
+    "bls12_381_complex_add",
+    "bls12_381_complex_mul",
+    "bls12_381_complex_sub",
+    "bls12_381_dbl",
+    "bn254",
+    "bn254_add",
+    "bn254_complex_add",
+    "bn254_complex_mul",
+    "bn254_complex_sub",
+    "bn254_dbl",
+    "diagnostic",
+    "diagnostic-hints",
+    "fib_mod",
+    "hashes",
+    "keccak",
+    "liveness",
+    "missing_entrypoint",
+    "panic_modes",
+    "poseidon1",
+    "poseidon2",
+    "secp256k1",
+    "secp256k1_add",
+    "secp256k1_dbl",
+    "secp256r1",
+    "secp256r1_add",
+    "secp256r1_dbl",
+    "sha256",
+    "uint256",
+];
+
+/// Whether the Cargo feature matching `program` (its package name) is enabled.
+/// Cargo exposes `features."foo-bar"` as the env var `CARGO_FEATURE_FOO_BAR`.
+fn feature_enabled(program: &str) -> bool {
+    let var = format!("CARGO_FEATURE_{}", program.to_uppercase().replace('-', "_"));
+    env::var(var).is_ok()
+}
+
 fn main() -> Result<()> {
     let programs_path =
         [env!("CARGO_MANIFEST_DIR"), "programs"].iter().collect::<PathBuf>().canonicalize()?;
 
-    // Collect enabled features from the environment
-    let mut features = Vec::new();
+    // Build only the programs whose feature is enabled. With the default `all`
+    // feature this is every program (the historical behavior); a consumer that
+    // opts into a subset builds only those, skipping the cost of the rest.
+    let enabled: Vec<String> =
+        PROGRAMS.iter().filter(|p| feature_enabled(p)).map(|p| p.to_string()).collect();
 
-    // Check for bit_manipulation_extensions feature
-    if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok() {
-        features.push("bit_manipulation_extensions");
+    // No program selected (e.g. `default-features = false` with no program
+    // feature): nothing to build, and `lib.rs` exposes no constants.
+    if enabled.is_empty() {
+        return Ok(());
+    }
+
+    // Restrict a subset build to the requested guests by binary name (`--bin`),
+    // not by package (`--package`). Some guest names collide with crates.io
+    // dependency package names in `programs/` (e.g. `keccak`, `secp256k1`), which
+    // makes `--package <name>` ambiguous; `--bin <name>` is unambiguous because
+    // only the guest defines a binary of that name. With the default `all` feature
+    // every program is enabled and we build the whole workspace with no target
+    // selection (the historical behavior).
+    let subset = enabled.len() < PROGRAMS.len();
+
+    // `bit_manipulation_extensions` exists only on the `diagnostic` guest, so
+    // forward it scoped to that package (`diagnostic/...`) and only in a subset
+    // build that includes `diagnostic` (so `--bin diagnostic` is in the build).
+    // Forwarding it otherwise — the full build, or a subset without `diagnostic` —
+    // would make Cargo error, so it has no effect in those cases.
+    let mut features = Vec::new();
+    if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok()
+        && subset
+        && enabled.iter().any(|p| p == "diagnostic")
+    {
+        features.push("diagnostic/bit_manipulation_extensions");
     }
 
     // Build guests with the same profile as the host so profiling/benchmarks
@@ -25,6 +103,9 @@ fn main() -> Result<()> {
     let release = env::var("PROFILE").map(|p| p == "release").unwrap_or(false);
     let mut build_args = BuildArgs::default().release(release);
     build_args.features = if features.is_empty() { None } else { Some(features.join(",")) };
+    if subset {
+        build_args.binaries = enabled;
+    }
 
     build_program_with_args(
         programs_path

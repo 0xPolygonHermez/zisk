@@ -39,16 +39,16 @@ pub use embedded::{
 pub use error::{Result, SdkError};
 pub use zisk_client::ZiskClient;
 
-pub use execute::{ExecuteRequest, ExecuteResult};
+pub use execute::{ExecuteRequest, ExecuteRequestExt, ExecuteResult};
 pub use hints::{HintsSource, ZiskHints};
 pub use input_source::InputSource;
 pub use input_stream::ZiskStream;
 pub use job_handle::JobHandle;
 pub use lifecycle::{SetupTarget, UploadTarget};
-pub use prove::{JobEvent, ProveRequest, ProveResult};
+pub use prove::{JobEvent, ProveRequest, ProveRequestExt, ProveResult};
 pub use recurser::{AggregationProgram, AggregationProgramBuilder, Recurser};
 pub use remote::setup::SetupByIdRequest;
-pub use remote::{RemoteClient, RemoteClientBuilder};
+pub use remote::{RemoteClient, RemoteClientBuilder, RemoteClientExt};
 pub use setup::SetupRequest;
 pub use stdin::ZiskStdin;
 pub use upload::UploadRequest;

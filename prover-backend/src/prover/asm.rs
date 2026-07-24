@@ -36,6 +36,8 @@ use zisk_transpiler_riscv::Riscv2zisk;
 
 use anyhow::Result;
 
+/// Backend marker for the native assembly runner. Selects [`AsmProver`] as the
+/// proving engine.
 pub struct Asm;
 
 impl ZiskBackend for Asm {
@@ -63,11 +65,14 @@ impl<'a> AsmSetupBuilder<'a> {
         self
     }
 
+    /// Set up for emulation only: skip the proving-side setup so the program
+    /// can be executed but not proven. Prove/verify/stats are then rejected.
     pub fn emulator_only(mut self) -> Self {
         self.emulator_only = true;
         self
     }
 
+    /// Execute the setup and return the program's proving/verification key.
     pub fn run(self) -> Result<ProgramVK> {
         self.prover.setup_internal(self.elf, self.with_hints, self.emulator_only)
     }
@@ -80,6 +85,9 @@ struct ProgramEntry {
     resources: Option<Arc<AsmResources>>,
 }
 
+/// Proving engine for the ASM backend. Wraps an [`AsmCoreProver`], caches each
+/// program's parsed `ZiskRom` and ASM resources, and tracks the setup mode of
+/// the currently registered program.
 pub struct AsmProver {
     core_prover: AsmCoreProver,
     program_cache: RwLock<HashMap<SetupKey, ProgramEntry>>,
@@ -91,6 +99,10 @@ pub struct AsmProver {
 }
 
 impl AsmProver {
+    /// Build an ASM prover: clean up stale shared memory, then initialize the
+    /// underlying [`AsmCoreProver`] with the given proving keys and ASM options
+    /// (`unlock_mapped_memory`, `asm_out_file`, `no_auto_setup`, `cpu_mops`,
+    /// distributed mode, and optional SNARK wrapper).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         snark_wrapper: bool,
@@ -211,8 +223,9 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
-            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
+            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_first_gpu_buffer();
+            let gpu_id = pctx.first_gpu_id();
+            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
 
         let shared = Arc::new(AsmSharedResources::new(
@@ -693,16 +706,26 @@ impl ProverEngine for AsmProver {
     }
 }
 
+/// ASM-backend configuration and runtime counters carried by the core prover.
 pub struct AsmInfo {
+    /// Whether proving is distributed across multiple processes.
     pub is_distributed: bool,
+    /// Unlock mapped memory (avoids paging of the ASM shared-memory regions).
     pub unlock_mapped_memory: bool,
+    /// Write the ASM emulator's output to a file instead of shared memory.
     pub asm_out_file: bool,
+    /// Verbosity for ASM binary generation and services.
     pub verbose: VerboseMode,
+    /// Skip automatic ROM setup when the artifacts are expected to pre-exist.
     pub no_auto_setup: bool,
+    /// Number of program setups performed (diagnostic counter).
     pub n_setups: AtomicU64,
+    /// Force the CPU minimal-ops path instead of the GPU path.
     pub cpu_mops: bool,
 }
 
+/// Low-level ASM prover holding the initialized `ProofMan` backend, this
+/// process's [`RankInfo`], and the [`AsmInfo`] configuration.
 pub struct AsmCoreProver {
     backend: ProverBackend,
     rank_info: RankInfo,
@@ -710,6 +733,9 @@ pub struct AsmCoreProver {
 }
 
 impl AsmCoreProver {
+    /// Initialize `ProofMan` from `proving_key`, capture the distributed rank
+    /// info, and record the ASM options into [`AsmInfo`]. Optionally builds the
+    /// SNARK wrapper from `proving_key_snark` when `use_snark_wrapper` is set.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         use_snark_wrapper: bool,

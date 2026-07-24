@@ -11,6 +11,9 @@ use zisk_sm_rom::CustomRom;
 
 pub use zisk_common::HashMode;
 
+/// Resolve the artifact output directory, defaulting to the ZisK cache when
+/// `output_dir` is `None`. Creates the directory if needed and returns its
+/// canonical absolute path.
 pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     let output_path = if output_dir.is_none() {
         let cache_path = ZiskPaths::global().cache.clone();
@@ -22,11 +25,13 @@ pub fn get_output_path(output_dir: &Option<PathBuf>) -> Result<PathBuf> {
     };
 
     let output_path = fs::canonicalize(&output_path)
-        .unwrap_or_else(|_| panic!("Failed to get absolute path for {output_path:?}"));
+        .with_context(|| format!("Failed to get absolute path for {output_path:?}"))?;
 
     Ok(output_path)
 }
 
+/// Build the ROM custom-commit trace for `elf`, write it to `rom_buffer_path`,
+/// and return its Merkle root (the raw material for the verkey).
 pub fn gen_elf_hash<F: PrimeField64>(
     pctx: &ProofCtx<F>,
     elf: &[u8],
@@ -45,6 +50,8 @@ pub fn gen_elf_hash<F: PrimeField64>(
     )
 }
 
+/// Read a verification key (a `PROGRAM_VK_LEN` array of little-endian `u64`s)
+/// from `verkey_path`. Returns `None` if the file does not exist.
 pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u64>>> {
     if !verkey_path.exists() {
         return Ok(None);
@@ -60,6 +67,8 @@ pub fn get_elf_vk(verkey_path: &Path) -> Result<Option<Vec<u64>>> {
     Ok(Some(vk))
 }
 
+/// Read the ELF at `elf_path` and return the hex-encoded blake3 hash of its
+/// bytes. See [`get_elf_data_hash`] for the in-memory variant.
 pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {
     let elf_data =
         fs::read(elf_path).with_context(|| format!("Error reading ELF file: {elf_path:?}"))?;
@@ -69,10 +78,17 @@ pub fn get_elf_data_hash_from_path(elf_path: &Path) -> Result<String> {
     Ok(hash)
 }
 
+/// The hex-encoded blake3 hash of `elf`. This is the content address used to
+/// name and locate all of a program's cached artifacts.
 pub fn get_elf_data_hash(elf: &[u8]) -> String {
     blake3::hash(elf).to_hex().to_string()
 }
 
+/// Build the cache path of the ROM custom-commit binary for `hash`.
+///
+/// The filename encodes the ELF hash, PILOUT hash, row count, and hash-mode
+/// parameters (plus a `_gpu` suffix when `gpu` is set) so incompatible setups
+/// never collide.
 pub fn get_elf_bin_file_path_with_hash(
     hash: &str,
     default_cache_path: &Path,
@@ -98,6 +114,8 @@ pub fn get_elf_bin_file_path_with_hash(
     Ok(default_cache_path.join(rom_cache_file_name))
 }
 
+/// Build the cache path of the verkey (`.verkey.bin`) file for `hash`,
+/// mirroring the naming scheme of [`get_elf_bin_file_path_with_hash`].
 pub fn get_elf_bin_verkey_file_path_with_hash(
     hash: &str,
     default_cache_path: &Path,
@@ -120,7 +138,12 @@ pub fn get_elf_bin_verkey_file_path_with_hash(
     Ok(default_cache_path.join(rom_cache_file_name))
 }
 
-pub fn ensure_dir_exists(path: &PathBuf) {
+/// Create `path` (and any missing parents) if it does not already exist.
+///
+/// # Panics
+/// Panics if the directory cannot be created for a reason other than it
+/// already existing.
+pub fn ensure_dir_exists(path: &Path) {
     if let Err(e) = std::fs::create_dir_all(path) {
         if e.kind() != std::io::ErrorKind::AlreadyExists {
             panic!("Failed to create cache directory {path:?}: {e}");

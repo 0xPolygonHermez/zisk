@@ -133,13 +133,7 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = if job.metadata.is_empty() {
-            String::new()
-        } else {
-            let pairs: Vec<String> =
-                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
-            format!(" {}", pairs.join(", "))
-        };
+        let metadata_str = Self::format_job_metadata(job.metadata.as_ref());
 
         info!(
             "{} {} ({:.3}s+{:.3}s+{:.3}s) {} {} Capacity: {}{}",
@@ -498,6 +492,7 @@ impl Coordinator {
                 final_proof: all_done,
                 proof_type,
             }),
+            metadata: None,
         };
 
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);

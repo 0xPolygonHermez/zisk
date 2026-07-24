@@ -3,8 +3,7 @@ use sha_hasher_host::ELF_SHA_HASHER;
 use std::error::Error;
 use zisk_sdk::{ExecutorKind, ProverClient, ZiskStdin};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...");
 
     // Create an input stream and write '1000' to it.
@@ -21,19 +20,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = builder.build()?;
 
     println!("Setting up program...");
-    client.setup(&ELF_SHA_HASHER).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run_sync()?;
     println!("Setup completed successfully");
 
     // Execute the program using the `ProverClient.execute` method, without generating a proof.
     println!("Executing program (no proof generation)...");
     let result =
-        client.execute(&ELF_SHA_HASHER, &stdin).executor(ExecutorKind::Emulator).run()?.await?;
+        client.execute(&ELF_SHA_HASHER, &stdin).executor(ExecutorKind::Emulator).run_sync()?;
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());
     println!("Duration: {} ms", result.get_execution_time());
 
     let result =
-        client.execute(&ELF_SHA_HASHER, &stdin).executor(ExecutorKind::Assembly).run()?.await?;
+        client.execute(&ELF_SHA_HASHER, &stdin).executor(ExecutorKind::Assembly).run_sync()?;
 
     println!("\u{2713} Execution completed successfully!");
     println!("Cycles: {}", result.get_execution_steps());

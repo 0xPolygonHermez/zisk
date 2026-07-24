@@ -31,6 +31,11 @@ pub trait Instance<F: PrimeField64>: Any + Send + Sync {
     ///
     /// # Returns
     /// An optional `AirInstance` object representing the computed witness.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the witness computation fails. Implementations that do
+    /// no fallible work return `Ok`.
     fn compute_witness(
         &self,
         _pctx: &ProofCtx<F>,

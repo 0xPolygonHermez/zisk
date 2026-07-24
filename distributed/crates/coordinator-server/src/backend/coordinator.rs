@@ -32,6 +32,7 @@ use zisk_cluster_common::{
     LaunchWrapRequestDto, ProofKind,
 };
 
+/// [`BackendService`] backed by an in-process `Coordinator`.
 pub struct CoordinatorBackend {
     coordinator: Arc<Coordinator>,
     /// job_id (UUID string) → hash_id: needed to populate `DomainProof.hash_id`.
@@ -40,6 +41,7 @@ pub struct CoordinatorBackend {
 }
 
 impl CoordinatorBackend {
+    /// Wrap an existing coordinator as a backend.
     pub fn new(coordinator: Arc<Coordinator>) -> Self {
         Self { coordinator, job_hash: Arc::new(RwLock::new(HashMap::new())) }
     }
@@ -307,7 +309,11 @@ impl BackendService for CoordinatorBackend {
         Ok(recurser_id)
     }
 
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
+    async fn submit_job_with_metadata(
+        &self,
+        kind: DomainJobKind,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
+    ) -> ApiResult<SubmitJobResult> {
         match kind {
             DomainJobKind::Setup(r) => {
                 let job_id_internal = self
@@ -337,7 +343,7 @@ impl BackendService for CoordinatorBackend {
                         inputs_mode: domain_input_to_dto(&r.input),
                         hints_mode,
                         simulated_node: None,
-                        metadata: Default::default(),
+                        metadata,
                         execution_only: false,
                         proof_type,
                     })
@@ -361,7 +367,7 @@ impl BackendService for CoordinatorBackend {
                         inputs_mode: domain_input_to_dto(&r.input),
                         hints_mode,
                         simulated_node: None,
-                        metadata: Default::default(),
+                        metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
                     })

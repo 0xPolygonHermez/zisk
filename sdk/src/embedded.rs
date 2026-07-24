@@ -173,6 +173,7 @@ pub struct EmbeddedClientBuilder<Out = EmbeddedClient> {
     proof_kind: ProofKind,
     embedded_opts: EmbeddedOpts,
     gpu: bool,
+    cpu_mops: bool,
     asm_options: Option<AsmOptions>,
     proving_key: Option<PathBuf>,
     proving_key_snark: Option<PathBuf>,
@@ -195,6 +196,7 @@ impl<Out> EmbeddedClientBuilder<Out> {
             proof_kind: ProofKind::VadcopFinalMinimal,
             embedded_opts: EmbeddedOpts::default(),
             gpu: false,
+            cpu_mops: false,
             asm_options: None,
             proving_key: None,
             proving_key_snark: None,
@@ -282,6 +284,13 @@ impl<Out> EmbeddedClientBuilder<Out> {
     #[must_use]
     pub fn gpu(mut self) -> Self {
         self.gpu = true;
+        self
+    }
+
+    /// Run the mops planner on CPU even with GPU proving (leaves proof generation on GPU).
+    #[must_use]
+    pub fn cpu_mops(mut self) -> Self {
+        self.cpu_mops = true;
         self
     }
 
@@ -393,6 +402,9 @@ impl<Out: From<EmbeddedClient>> EmbeddedClientBuilder<Out> {
             embedded_opts.proving_key_snark = Some(pk);
         }
         let mut backend_opts = embedded_opts.into_backend_opts(self.gpu);
+        if self.cpu_mops {
+            backend_opts = backend_opts.cpu_mops();
+        }
         if self.verbose > 0 {
             backend_opts = backend_opts.verbose(self.verbose);
         }

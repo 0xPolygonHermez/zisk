@@ -448,7 +448,7 @@ mod tests {
     // `MainInstance<F>`, so the call site has to pick some concrete `F`.
     type MI = MainInstance<Goldilocks>;
 
-    fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any>>) -> Plan {
+    fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any + Send + Sync>>) -> Plan {
         Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)
     }
 

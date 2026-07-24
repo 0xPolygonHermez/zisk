@@ -60,15 +60,21 @@ impl GpuCountAndPlan {
     /// # Safety
     /// `d_buf` must be null (internal allocation) or a valid device buffer of at
     /// least `bytes` bytes that outlives this planner's use of it.
+    ///
+    /// `gpu_id`: device the buffer lives on (proofman's `my_gpu_ids[0]`);
+    /// negative = keep the current device (self-allocated path).
     pub unsafe fn setup(
         &self,
         d_buf: *mut c_void,
         bytes: usize,
         n_workers: u32,
         worker_id: u32,
+        gpu_id: i32,
     ) -> bool {
         unsafe {
-            gpu_bindings::count_and_plan_setup(self.inner, d_buf, bytes, n_workers, worker_id)
+            gpu_bindings::count_and_plan_setup(
+                self.inner, d_buf, bytes, n_workers, worker_id, gpu_id,
+            )
         }
     }
 

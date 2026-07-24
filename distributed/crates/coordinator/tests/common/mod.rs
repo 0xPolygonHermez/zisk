@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use zisk_cluster_common::{
     ComputeCapacity, CoordinatorMessageDto, HintsModeDto, InputsModeDto, Job, JobExecutionMode,
@@ -68,7 +67,7 @@ pub fn create_test_job(workers: &[WorkerId]) -> Job {
         workers.to_vec(),
         partitions,
         JobExecutionMode::Standard,
-        BTreeMap::new(),
+        None,
         false,
         zisk_common::ProofKind::VadcopFinal,
     )
