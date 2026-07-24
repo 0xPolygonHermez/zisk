@@ -64,6 +64,38 @@ pub(crate) enum WorkerMpiTag {
 /// `process_hints` call when shutting it down between proves.
 const STREAM_ACTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Return freed heap pages to the kernel in a background blocking task.
+/// The witness generation churns large, variable-size buffers across many
+/// rayon threads; glibc malloc keeps the freed chunks in its per-thread
+/// arenas (never trimming them back to the OS), so anonymous RSS otherwise
+/// grows monotonically across jobs. malloc_trim walks all arenas and
+/// releases their free pages via MADV_DONTNEED. It can take hundreds of ms,
+/// so it is fired off the critical path right after a job completes and
+/// overlaps with the idle window between jobs instead of delaying the next
+/// task. No-op outside glibc.
+pub fn spawn_malloc_trim() {
+    #[cfg(target_env = "gnu")]
+    {
+        let trim = || {
+            let trim_start = std::time::Instant::now();
+            let released = unsafe { libc::malloc_trim(0) };
+            info!(
+                "malloc_trim(0) took {:.1} ms (released memory: {})",
+                trim_start.elapsed().as_secs_f64() * 1000.0,
+                released == 1
+            );
+        };
+        // spawn_blocking panics outside a tokio runtime (e.g. unit tests);
+        // fall back to trimming inline in that case.
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn_blocking(trim);
+            }
+            Err(_) => trim(),
+        }
+    }
+}
+
 /// Run `body` inside `catch_unwind`; on unwind, log and invoke `on_panic`.
 /// Each `spawn_blocking` compute body uses this so a guest panic surfaces as
 /// a failure `LoopEvent` instead of silently killing the worker thread.
@@ -562,7 +594,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if let Some(job) = job {
             self.current_job = Some(Arc::new(Mutex::new(job)));
         } else {
-            self.current_job = None;
+            // Job ended — successfully or not (failure/recovery paths also
+            // clear the job through here). Release freed heap pages back to
+            // the kernel, overlapping with the idle window until the next job.
+            if self.current_job.take().is_some() {
+                spawn_malloc_trim();
+            }
         }
     }
 
@@ -643,7 +680,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// [`Self::cancel_current_computation`].
     pub fn clear_current_job(&mut self) -> CancelledWork {
         let cancelled = self.cancel_current_computation();
-        self.current_job = None;
+        // Job cancelled — same reclaim as the normal end-of-job path. The
+        // cancelled compute may still be draining; whatever it frees later is
+        // picked up by the trim at the end of the next job.
+        if self.current_job.take().is_some() {
+            spawn_malloc_trim();
+        }
         cancelled
     }
 
@@ -653,24 +695,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         with_hints: bool,
         is_first_process: bool,
     ) -> Result<()> {
-        // Return freed heap pages to the kernel before starting the next job.
-        // The witness generation churns large, variable-size buffers across
-        // many rayon threads; glibc malloc keeps the freed chunks in its
-        // per-thread arenas (never trimming them back to the OS), so anonymous
-        // RSS otherwise grows monotonically across jobs. malloc_trim walks all
-        // arenas and releases their free pages via MADV_DONTNEED; it costs a
-        // few ms and runs while the worker is idle between jobs.
-        #[cfg(target_env = "gnu")]
-        {
-            let trim_start = std::time::Instant::now();
-            let released = unsafe { libc::malloc_trim(0) };
-            info!(
-                "malloc_trim(0) took {:.1} ms (released memory: {})",
-                trim_start.elapsed().as_secs_f64() * 1000.0,
-                released == 1
-            );
-        }
-        
         let program_id = self
             .guest_programs
             .get(hash_id)
