@@ -518,6 +518,18 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         with_hints: bool,
         is_first_partition: bool,
     ) -> Result<()> {
+        // Return freed heap pages to the kernel before starting the next job.
+        // The witness generation churns large, variable-size buffers across
+        // many rayon threads; glibc malloc keeps the freed chunks in its
+        // per-thread arenas (never trimming them back to the OS), so anonymous
+        // RSS otherwise grows monotonically across jobs. malloc_trim walks all
+        // arenas and releases their free pages via MADV_DONTNEED; it costs a
+        // few ms and runs while the worker is idle between jobs.
+        #[cfg(target_env = "gnu")]
+        unsafe {
+            libc::malloc_trim(0);
+        }
+
         let program_id = self
             .guest_programs
             .get(hash_id)

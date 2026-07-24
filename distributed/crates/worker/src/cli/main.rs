@@ -96,31 +96,8 @@ struct Cli {
     pub preload_plonk: bool,
 }
 
-/// Cap glibc malloc arenas. The witness generation churns large,
-/// variable-size buffers across many rayon threads; with the default
-/// arena limit (8 x cores) each arena retains its high-water mark of
-/// fragmented free chunks and anonymous RSS grows unbounded across jobs.
-#[cfg(target_env = "gnu")]
-fn cap_malloc_arenas() {
-    // SAFETY: mallopt is async-signal-unsafe but we call it first thing
-    // in main, before any other thread exists.
-    unsafe {
-        libc::mallopt(libc::M_ARENA_MAX, 2);
-    }
-}
-
-#[cfg(not(target_env = "gnu"))]
-fn cap_malloc_arenas() {}
-
-fn main() -> Result<()> {
-    // Must run before the tokio runtime spawns its worker threads: arenas
-    // are created lazily per-thread, so the cap has to be in place first.
-    cap_malloc_arenas();
-
-    tokio::runtime::Builder::new_multi_thread().enable_all().build()?.block_on(async_main())
-}
-
-async fn async_main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let worker_config = WorkerServiceConfig::load(
