@@ -8088,6 +8088,7 @@ dependencies = [
  "colored",
  "config",
  "fields",
+ "libc",
  "proofman",
  "proofman-common",
  "proofman-verifier",
