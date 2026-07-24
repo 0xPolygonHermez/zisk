@@ -398,6 +398,7 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
                 // This is reserved and must not be executed
                 i.inst_name = RiscvInstName::CReserved;
             } else if i.rd == 2 {
+                // This is already filtered by the decoder, but we can add an extra check here
                 i.inst_name = RiscvInstName::CReserved;
             } else if i.rd == 0 {
                 // This is a hint and must not be executed
@@ -598,4 +599,67 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
         );
     }
     i
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Decode a single instruction and assert the interpreter classifies it as
+    /// one of the three "not a real instruction" names it uses for reserved /
+    /// illegal encodings:
+    /// * `Reserved`  — a reserved 32-bit encoding,
+    /// * `CReserved` — a reserved 16-bit (compressed) encoding,
+    /// * `CHalt`     — the all-zeros (16-bit) and all-ones (32-bit) sentinels,
+    ///   which are permanently-reserved illegal encodings the toolchain emits to
+    ///   halt (see `riscv_interpreter`).
+    ///
+    /// `chunks` is the little-endian 16-bit parcel stream: one parcel for a
+    /// 16-bit instruction, two `(low, high)` parcels for a 32-bit one.
+    fn assert_reserved(chunks: &[u16], what: &str) {
+        let insts = riscv_interpreter(0x8000_0000, chunks);
+        assert_eq!(insts.len(), 1, "{what}: expected one instruction from {chunks:04x?}");
+        let name = insts[0].inst_name;
+        assert!(
+            matches!(
+                name,
+                RiscvInstName::Reserved | RiscvInstName::CReserved | RiscvInstName::CHalt
+            ),
+            "{what} ({chunks:04x?}) decoded as {name:?}, expected Reserved / CReserved / CHalt",
+        );
+    }
+
+    #[test]
+    fn reserved_16bit_encodings_are_reserved() {
+        // The all-zero halfword is a permanently-reserved illegal instruction;
+        // the interpreter maps it to CHalt.
+        assert_reserved(&[0x0000], "all-zero halfword");
+        // Quadrant 0 (op=0b00), funct3=0b100: reserved compressed encoding.
+        assert_reserved(&[0x8000], "quadrant-0 funct3=0b100");
+        // C.ADDI4SPN with nzuimm=0 (CIW, rd'!=0): reserved.
+        assert_reserved(&[0x0004], "c.addi4spn nzuimm=0");
+        // C.ADDI16SP with nzimm=0: reserved.
+        assert_reserved(&[0x6101], "c.addi16sp nzimm=0");
+        // C.LUI with nzimm=0: reserved.
+        assert_reserved(&[0x6181], "c.lui nzimm=0");
+        // C.JR with rs1=x0: reserved.
+        assert_reserved(&[0x8002], "c.jr x0");
+        // C.LWSP with rd=x0: reserved.
+        assert_reserved(&[0x4002], "c.lwsp rd=x0");
+        // C.LDSP with rd=x0: reserved.
+        assert_reserved(&[0x6002], "c.ldsp rd=x0");
+    }
+
+    #[test]
+    fn reserved_32bit_encodings_are_reserved() {
+        // The all-ones word is a permanently-reserved illegal instruction;
+        // the interpreter maps it to CHalt.
+        assert_reserved(&[0xFFFF, 0xFFFF], "all-ones word");
+        // MISC-MEM (opcode 0b0001111) with funct3=0b010: reserved.
+        assert_reserved(&[0x200F, 0x0000], "misc-mem funct3=0b010");
+        // OP-IMM SLLI (opcode 0b0010011, funct3=0b001) with a reserved funct6.
+        assert_reserved(&[0x1013, 0x0400], "op-imm slli reserved funct6");
+        // SYSTEM (opcode 0b1110011) funct3=0 that is neither ECALL nor EBREAK.
+        assert_reserved(&[0x0073, 0x0020], "system funct3=0 non-ecall/ebreak");
+    }
 }
