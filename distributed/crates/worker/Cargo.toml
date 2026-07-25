@@ -42,6 +42,7 @@ serde = { workspace = true }
 borsh = { workspace = true }
 clap = { workspace = true }
 colored = { workspace = true }
+libc = "0.2"
 config = { workspace = true }
 uuid = { workspace = true }
 

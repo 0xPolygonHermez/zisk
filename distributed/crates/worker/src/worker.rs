@@ -64,6 +64,33 @@ pub(crate) enum WorkerMpiTag {
 /// `process_hints` call when shutting it down between proves.
 const STREAM_ACTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Return freed heap pages to the kernel in a background blocking task.
+/// glibc malloc retains freed chunks in its arenas, so anonymous RSS grows
+/// across jobs without this. Can take hundreds of ms — fired at end of job
+/// so it overlaps with the idle window. No-op outside glibc.
+pub fn spawn_malloc_trim() {
+    #[cfg(target_env = "gnu")]
+    {
+        let trim = || {
+            let trim_start = std::time::Instant::now();
+            let released = unsafe { libc::malloc_trim(0) };
+            info!(
+                "malloc_trim(0) took {:.1} ms (released memory: {})",
+                trim_start.elapsed().as_secs_f64() * 1000.0,
+                released == 1
+            );
+        };
+        // spawn_blocking panics outside a tokio runtime (e.g. unit tests);
+        // fall back to trimming inline in that case.
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => {
+                handle.spawn_blocking(trim);
+            }
+            Err(_) => trim(),
+        }
+    }
+}
+
 /// Run `body` inside `catch_unwind`; on unwind, log and invoke `on_panic`.
 /// Each `spawn_blocking` compute body uses this so a guest panic surfaces as
 /// a failure `LoopEvent` instead of silently killing the worker thread.
@@ -562,7 +589,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         if let Some(job) = job {
             self.current_job = Some(Arc::new(Mutex::new(job)));
         } else {
-            self.current_job = None;
+            // Job ended successfully or not (failure/recovery paths also
+            // clear the job through here). Release freed heap pages back to
+            // the kernel.
+            if self.current_job.take().is_some() {
+                spawn_malloc_trim();
+            }
         }
     }
 
@@ -643,7 +675,10 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// [`Self::cancel_current_computation`].
     pub fn clear_current_job(&mut self) -> CancelledWork {
         let cancelled = self.cancel_current_computation();
-        self.current_job = None;
+        // Job cancelled — same reclaim as the normal end-of-job path.
+        if self.current_job.take().is_some() {
+            spawn_malloc_trim();
+        }
         cancelled
     }
 
