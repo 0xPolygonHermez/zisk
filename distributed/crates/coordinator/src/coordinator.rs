@@ -2207,6 +2207,42 @@ mod tests {
         }
     }
 
+    /// Builds an `Execution` response reporting the given public outputs.
+    fn execution_response(
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        publics: Vec<u64>,
+    ) -> zisk_cluster_common::ExecuteTaskResponseDto {
+        use zisk_cluster_common::{
+            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto, ExecutionResultDataDto,
+            ZiskExecutorTimeDto,
+        };
+        ExecuteTaskResponseDto {
+            job_id: job_id.clone(),
+            worker_id: worker_id.clone(),
+            success: true,
+            error_message: None,
+            result_data: Some(ExecuteTaskResponseResultDataDto::Execution(
+                ExecutionResultDataDto {
+                    instances: 1,
+                    executed_steps: 100,
+                    zisk_executor_time: ZiskExecutorTimeDto {
+                        total_duration: 0.0,
+                        execution_duration: 0.0,
+                        count_and_plan_duration: 0.0,
+                        count_and_plan_mo_duration: 0.0,
+                        asm_execution_duration: None,
+                        task_received_time: 0.0,
+                    },
+                    publics,
+                    cost_per_type: StatsCostPerType::default(),
+                    plan: Vec::new(),
+                },
+            )),
+            worker_in_recovery: false,
+        }
+    }
+
     /// The headline vector of audits#36: an assigned worker submitting a
     /// `FinalProof` while the job is still gathering contributions. Responses
     /// used to be routed on payload variant alone, so this reached
@@ -2411,6 +2447,74 @@ mod tests {
             )
             .is_err());
         }
+    }
+
+    /// Execution-only jobs return public outputs with no proof behind them, so
+    /// the coordinator must not pick one worker's word out of a `HashMap` when
+    /// the workers disagree. Both workers here report success; only their
+    /// `publics` differ.
+    #[tokio::test]
+    async fn test_execution_only_publics_mismatch_fails_job() {
+        use zisk_common::ZISK_PUBLICS;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            entry.write().await.execution_only = true;
+        }
+
+        // First worker's result is stored; the job waits for the second.
+        coordinator
+            .handle_stream_execute_task_response(execution_response(
+                &job_id,
+                &workers[0].0,
+                vec![7u64; ZISK_PUBLICS],
+            ))
+            .await
+            .unwrap();
+
+        // Second worker disagrees — completion must be refused, not resolved
+        // from whichever entry `HashMap::values().next()` happened to yield.
+        let err = coordinator
+            .handle_stream_execute_task_response(execution_response(
+                &job_id,
+                &workers[1].0,
+                vec![9u64; ZISK_PUBLICS],
+            ))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::WorkerError(_)),
+            "disagreeing public outputs must fail the job, got {err:?}"
+        );
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Failed);
+    }
+
+    /// The agreeing case still completes — the unanimity check must not block
+    /// ordinary execution-only jobs.
+    #[tokio::test]
+    async fn test_execution_only_agreeing_publics_completes_job() {
+        use zisk_common::ZISK_PUBLICS;
+
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Contributions, |_| {}).await;
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            entry.write().await.execution_only = true;
+        }
+
+        for (worker_id, _) in &workers {
+            let response = execution_response(&job_id, worker_id, vec![7u64; ZISK_PUBLICS]);
+            coordinator.handle_stream_execute_task_response(response).await.unwrap();
+        }
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Completed);
     }
 
     /// A non-KeepComputing reconnect (here last_known_job_id=None, directive=None)

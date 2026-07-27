@@ -493,6 +493,22 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Execution-only jobs produce no proof, so the public outputs returned
+        // to the client rest entirely on worker honesty. Phase 1 already
+        // cross-checks `publics` across workers (`validate_and_extract_challenges`);
+        // this path had no equivalent and served `results.values().next()` —
+        // arbitrary `HashMap` order — letting a single disagreeing worker decide
+        // the API result. Require unanimity, and take the outputs from the same
+        // check that established it.
+        let public_outputs = match Self::validate_execution_publics(&job) {
+            Ok(publics) => publics.cloned().unwrap_or_default(),
+            Err(reason) => {
+                drop(job);
+                self.fail_job(&job_id, &reason).await?;
+                return Err(CoordinatorError::WorkerError(reason));
+            }
+        };
+
         // Print execution summary
         self.print_execution_summary(&job);
 
@@ -623,19 +639,6 @@ impl Coordinator {
         }
 
         let exec_stats = exec_stats_from_job(&job);
-
-        let public_outputs = job
-            .results
-            .get(&JobPhase::Execution)
-            .and_then(|m| m.values().next())
-            .and_then(|r| {
-                if let JobResultData::Execution(ref e) = r.data {
-                    Some(e.public_outputs.clone())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
 
         // Pairs with launch_proof's record_job_started (execution-only path).
         crate::metrics::record_job_terminal(
@@ -1032,6 +1035,39 @@ impl Coordinator {
 
         // Ensure we have results from all assigned workers before proceeding.
         job.execution_mode.is_simulating() || execution_results_len >= job.workers.len()
+    }
+
+    /// Returns the public outputs every worker agreed on for an execution-only
+    /// job, or a description of the first disagreement.
+    ///
+    /// Which worker supplies the returned value is arbitrary (`HashMap` order)
+    /// and does not matter: it is only returned once all of them match. An empty
+    /// result set yields `None`, as does simulation mode — `job.workers` there
+    /// lists the same physical worker N times, so only one result is ever stored
+    /// and there is nothing to compare against.
+    fn validate_execution_publics(job: &Job) -> Result<Option<&Vec<u8>>, String> {
+        let mut publics = job.results.get(&JobPhase::Execution).into_iter().flatten().filter_map(
+            |(worker_id, result)| match &result.data {
+                JobResultData::Execution(exec) => Some((worker_id, &exec.public_outputs)),
+                _ => None,
+            },
+        );
+
+        let Some((first_worker, first_publics)) = publics.next() else {
+            return Ok(None);
+        };
+
+        if job.execution_mode.is_simulating() {
+            return Ok(Some(first_publics));
+        }
+
+        match publics.find(|(_, other)| *other != first_publics) {
+            Some((worker_id, _)) => Err(format!(
+                "Execution public-output mismatch in job {}: worker {} disagrees with worker {}",
+                job.job_id, worker_id, first_worker
+            )),
+            None => Ok(Some(first_publics)),
+        }
     }
 
     /// Validates Phase 1 results and extracts challenge data with simulation mode handling.
