@@ -281,8 +281,12 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
 #[async_trait]
 impl BackendService for CoordinatorBackend {
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String> {
-        self.coordinator
-            .register_guest_program(elf)
+        // blake3 hashing + the multi-MB ELF `fs::write` are blocking; run them off
+        // the async runtime so they don't stall a tonic worker thread.
+        let coordinator = Arc::clone(&self.coordinator);
+        tokio::task::spawn_blocking(move || coordinator.register_guest_program(elf))
+            .await
+            .map_err(|e| internal(format!("register_guest_program task panicked: {e}")))?
             .map_err(|e| internal(format!("register_guest_program: {e}")))
     }
 
