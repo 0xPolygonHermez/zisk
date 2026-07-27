@@ -843,10 +843,7 @@ impl Coordinator {
         // defensive-guard against stomping a `Computing(other_live_job, _)`
         // state (which should be unreachable under the parking discipline
         // but is cheap insurance).
-        //
-        // The phase gate below needs the state and job kind, captured here
-        // under the same read lock as the resolved check.
-        let (job_state, execution_only) = {
+        {
             let job = job_entry.read().await;
             if job.state().is_resolved() {
                 drop(job);
@@ -888,33 +885,19 @@ impl Coordinator {
                 );
                 return Ok(());
             }
-            (job.state().clone(), job.execution_only)
-        };
+        }
 
         // Handle task failure if needed
         if !message.success {
             return self.handle_task_failure(message).await;
         }
 
-        let Some(result_data) = message.result_data.as_ref() else {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Worker {} reported success for job {} without result_data",
-                message.worker_id, message.job_id
-            )));
-        };
+        let result_data = Self::require_result_data(&message)?;
 
-        // Bind the payload to the job's current phase before any handler stores
-        // it or advances the job. Workers are untrusted: dispatching purely on
-        // the payload variant lets any assigned worker drive a job through a
-        // phase it is not in.
-        Self::validate_payload_phase(
-            &job_state,
-            execution_only,
-            result_data,
-            &message.job_id,
-            &message.worker_id,
-        )?;
-
+        // No payload/phase binding here: this function holds no job lock at
+        // dispatch, so a phase read could go stale before the handler mutates.
+        // Each handler calls `validate_response_phase` under the write lock it
+        // acts with.
         match result_data {
             ExecuteTaskResponseResultDataDto::Execution(_) => {
                 self.handle_execution_completion(message).await
@@ -972,6 +955,41 @@ impl Coordinator {
             )));
         }
         Ok(job_arc)
+    }
+
+    /// Binds a task response to the phase of the job as observed under the
+    /// caller's lock.
+    ///
+    /// Handlers call this immediately after taking their job write lock and
+    /// checking `is_resolved`, so the phase they validate against is the phase
+    /// they then mutate. Validating before dispatch instead would read the phase
+    /// through a lock already released — responses from other workers run
+    /// concurrently and can advance the job in between.
+    pub(super) fn validate_response_phase(
+        job: &Job,
+        message: &ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<()> {
+        Self::require_result_data(message).and_then(|result_data| {
+            Self::validate_payload_phase(
+                job.state(),
+                job.execution_only,
+                result_data,
+                &message.job_id,
+                &message.worker_id,
+            )
+        })
+    }
+
+    /// The `result_data` of a success response, or the error for its absence.
+    fn require_result_data(
+        message: &ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<&ExecuteTaskResponseResultDataDto> {
+        message.result_data.as_ref().ok_or_else(|| {
+            CoordinatorError::InvalidRequest(format!(
+                "Worker {} reported success for job {} without result_data",
+                message.worker_id, message.job_id
+            ))
+        })
     }
 
     /// Rejects a task response whose payload variant does not belong to the

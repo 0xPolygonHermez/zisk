@@ -428,6 +428,9 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Bind the payload to the phase mutated below (see `validate_response_phase`).
+        Self::validate_response_phase(&job, &execute_task_response)?;
+
         // Store Contributions response and extract instances
         let instances = self.store_contribution_response(&mut job, execute_task_response).await?;
         job.instances = Some(instances);
@@ -481,6 +484,9 @@ impl Coordinator {
         if job.state().is_resolved() {
             return Ok(());
         }
+
+        // Bind the payload to the phase mutated below (see `validate_response_phase`).
+        Self::validate_response_phase(&job, &execute_task_response)?;
 
         // Store Execution response and extract instances and executed_steps
         let (instances, executed_steps) =

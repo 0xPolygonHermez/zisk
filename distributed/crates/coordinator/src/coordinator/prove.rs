@@ -87,6 +87,14 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Bind the payload to the phase mutated below (see
+        // `validate_response_phase`). After `is_resolved`, so a late response for
+        // a resolved job stays a silent no-op rather than an error; and after the
+        // simulation short-circuit above, which bypasses the phase machinery
+        // wholesale (one physical worker stands in for N, and
+        // completion/challenge checks are likewise skipped).
+        Self::validate_response_phase(&job, &execute_task_response)?;
+
         // Store Proof response
         self.store_proof_response(&mut job, execute_task_response).await?;
 

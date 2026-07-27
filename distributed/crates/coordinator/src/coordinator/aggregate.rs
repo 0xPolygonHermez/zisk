@@ -51,6 +51,11 @@ impl Coordinator {
             return Err(CoordinatorError::Internal(reason));
         }
 
+        // Bind the payload to the phase mutated below (see
+        // `validate_response_phase`). After the failure branch: a failed
+        // response carries no `result_data` to bind.
+        Self::validate_response_phase(&job, &execute_task_response)?;
+
         // Extract the proof data
         let proof_data = match execute_task_response.result_data {
             Some(ExecuteTaskResponseResultDataDto::FinalProof(final_proof)) => final_proof,
@@ -93,27 +98,29 @@ impl Coordinator {
             )));
         };
 
-        // The shape of the response must match the task that was dispatched: an
+        // The response shape must match the task that was dispatched: an
         // intermediate step acks with empty proof bytes, the final task returns
         // the proof. Both mismatches are acted on destructively if let through —
         // a proof for an intermediate task completes the job from a partial
         // aggregation, and an empty ack for the final task is taken as an
         // intermediate step below, clearing the in-flight slot and popping the
         // queue so nothing outstanding remains to complete the job.
-        if proof_data.proof_data.is_empty() == inflight_all_done {
-            let detail = if inflight_all_done {
-                "an empty ack while the in-flight aggregation task is the final one"
-            } else {
-                "a final proof while the in-flight aggregation task is an intermediate step"
-            };
+        let is_intermediate_ack = proof_data.proof_data.is_empty();
+        if is_intermediate_ack && inflight_all_done {
             return Err(CoordinatorError::InvalidRequest(format!(
-                "Recurser {agg_worker_id} sent {detail} for job {job_id}"
+                "Recurser {agg_worker_id} sent an empty ack for job {job_id} while the in-flight \
+                 aggregation task is the final one"
+            )));
+        }
+        if !is_intermediate_ack && !inflight_all_done {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Recurser {agg_worker_id} sent a final proof for job {job_id} while the in-flight \
+                 aggregation task is an intermediate step"
             )));
         }
 
-        // Empty proof_data means this was an intermediate aggregation step.
         // Clear the in-flight slot and dispatch the next queued task, if any.
-        if proof_data.proof_data.is_empty() {
+        if is_intermediate_ack {
             drop(job);
             self.dispatch_next_agg_task(job_id).await?;
             return Ok(());

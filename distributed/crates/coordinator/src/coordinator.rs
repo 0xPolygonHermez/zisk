@@ -2243,6 +2243,25 @@ mod tests {
         }
     }
 
+    /// Designates `worker_id` as the job's recurser. `inflight_all_done` arms an
+    /// in-flight aggregation task carrying that flag; `None` leaves the slot empty.
+    async fn arm_recurser(
+        coordinator: &Coordinator,
+        job_id: &JobId,
+        worker_id: &WorkerId,
+        inflight_all_done: Option<bool>,
+    ) {
+        let entry = coordinator.jobs.read().await.get(job_id).cloned().unwrap();
+        let mut job = entry.write().await;
+        job.agg_worker_id = Some(worker_id.clone());
+        job.agg_task_inflight =
+            inflight_all_done.map(|all_done| zisk_cluster_common::PendingAggTask {
+                proofs: vec![],
+                all_done,
+                proof_type: ProofKind::VadcopFinal,
+            });
+    }
+
     /// The headline vector of audits#36: an assigned worker submitting a
     /// `FinalProof` while the job is still gathering contributions. Responses
     /// used to be routed on payload variant alone, so this reached
@@ -2277,16 +2296,7 @@ mod tests {
         let (w0_id, w1_id) = (workers[0].0.clone(), workers[1].0.clone());
 
         // w0 is the recurser with a final task outstanding; w1 tries to answer.
-        {
-            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
-            let mut job = entry.write().await;
-            job.agg_worker_id = Some(w0_id.clone());
-            job.agg_task_inflight = Some(zisk_cluster_common::PendingAggTask {
-                proofs: vec![],
-                all_done: true,
-                proof_type: ProofKind::VadcopFinal,
-            });
-        }
+        arm_recurser(&coordinator, &job_id, &w0_id, Some(true)).await;
 
         let forged = final_proof_response(&job_id, &w1_id, vec![1, 2, 3]);
         let err = coordinator.handle_stream_execute_task_response(forged).await.unwrap_err();
@@ -2307,11 +2317,7 @@ mod tests {
             setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0_id = workers[0].0.clone();
 
-        {
-            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
-            entry.write().await.agg_worker_id = Some(w0_id.clone());
-            // agg_task_inflight stays None.
-        }
+        arm_recurser(&coordinator, &job_id, &w0_id, None).await;
 
         let replayed = final_proof_response(&job_id, &w0_id, vec![1, 2, 3]);
         let err = coordinator.handle_stream_execute_task_response(replayed).await.unwrap_err();
@@ -2332,16 +2338,7 @@ mod tests {
             setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0_id = workers[0].0.clone();
 
-        {
-            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
-            let mut job = entry.write().await;
-            job.agg_worker_id = Some(w0_id.clone());
-            job.agg_task_inflight = Some(zisk_cluster_common::PendingAggTask {
-                proofs: vec![],
-                all_done: false,
-                proof_type: ProofKind::VadcopFinal,
-            });
-        }
+        arm_recurser(&coordinator, &job_id, &w0_id, Some(false)).await;
 
         let premature = final_proof_response(&job_id, &w0_id, vec![1, 2, 3]);
         let err = coordinator.handle_stream_execute_task_response(premature).await.unwrap_err();
@@ -2367,16 +2364,7 @@ mod tests {
             setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
         let w0_id = workers[0].0.clone();
 
-        {
-            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
-            let mut job = entry.write().await;
-            job.agg_worker_id = Some(w0_id.clone());
-            job.agg_task_inflight = Some(zisk_cluster_common::PendingAggTask {
-                proofs: vec![],
-                all_done: true,
-                proof_type: ProofKind::VadcopFinal,
-            });
-        }
+        arm_recurser(&coordinator, &job_id, &w0_id, Some(true)).await;
 
         let empty_ack = final_proof_response(&job_id, &w0_id, vec![]);
         let err = coordinator.handle_stream_execute_task_response(empty_ack).await.unwrap_err();
@@ -2391,16 +2379,9 @@ mod tests {
         assert!(job.agg_task_inflight.is_some(), "in-flight task must survive a rejected ack");
     }
 
-    /// The payload/phase mapping, including the two cases that must stay
-    /// permissive:
-    ///
-    /// * `Proofs` in `Recurse` — `resolve_recurser_assignment` flips the job to
-    ///   `Recurse` when the *first* worker finishes Phase 2, so the rest report
-    ///   in afterwards. Rejecting these would break every multi-worker job.
-    /// * `Execution` in `Contributions` — execution-only jobs never enter
-    ///   `Running(Execution)`.
-    #[test]
-    fn test_payload_phase_mapping() {
+    /// One sample of every `ExecuteTaskResponseResultDataDto` variant, in
+    /// declaration order: Execution, Challenges, Proofs, FinalProof, WrapResult.
+    fn sample_payloads() -> [zisk_cluster_common::ExecuteTaskResponseResultDataDto; 5] {
         use zisk_cluster_common::{
             ChallengesDto, ContributionsResultDataDto, ExecuteTaskResponseResultDataDto as Payload,
             ExecutionResultDataDto, FinalProofDto, ProofStarkDto, WitnessInfoDto, WrapResultDto,
@@ -2415,34 +2396,121 @@ mod tests {
             asm_execution_duration: None,
             task_received_time: 0.0,
         };
-        let execution = Payload::Execution(ExecutionResultDataDto {
-            instances: 0,
-            executed_steps: 0,
-            zisk_executor_time: zisk_executor_time.clone(),
-            publics: vec![],
-            cost_per_type: StatsCostPerType::default(),
-            plan: Vec::new(),
-        });
-        let challenges = Payload::Challenges(ContributionsResultDataDto {
-            challenges: vec![ChallengesDto { worker_index: 0, airgroup_id: 0, challenge: vec![] }],
-            witness_info: WitnessInfoDto {
-                witness_time: 0.0,
+        [
+            Payload::Execution(ExecutionResultDataDto {
+                instances: 0,
+                executed_steps: 0,
+                zisk_executor_time: zisk_executor_time.clone(),
                 publics: vec![],
-                proof_values: vec![],
-                summary_info: String::new(),
-                total_instances: 0,
-            },
-            zisk_executor_time,
-            cost_per_type: StatsCostPerType::default(),
-        });
-        let proofs =
-            Payload::Proofs(vec![ProofStarkDto { airgroup_id: 0, values: vec![], worker_idx: 0 }]);
-        let final_proof = Payload::FinalProof(FinalProofDto {
-            proof_data: vec![],
-            executed_steps: 0,
-            instances: 0,
-        });
-        let wrap = Payload::WrapResult(WrapResultDto { proof_data: vec![] });
+                cost_per_type: StatsCostPerType::default(),
+                plan: Vec::new(),
+            }),
+            Payload::Challenges(ContributionsResultDataDto {
+                challenges: vec![ChallengesDto {
+                    worker_index: 0,
+                    airgroup_id: 0,
+                    challenge: vec![],
+                }],
+                witness_info: WitnessInfoDto {
+                    witness_time: 0.0,
+                    publics: vec![],
+                    proof_values: vec![],
+                    summary_info: String::new(),
+                    total_instances: 0,
+                },
+                zisk_executor_time,
+                cost_per_type: StatsCostPerType::default(),
+            }),
+            Payload::Proofs(vec![ProofStarkDto { airgroup_id: 0, values: vec![], worker_idx: 0 }]),
+            Payload::FinalProof(FinalProofDto {
+                proof_data: vec![],
+                executed_steps: 0,
+                instances: 0,
+            }),
+            Payload::WrapResult(WrapResultDto { proof_data: vec![] }),
+        ]
+    }
+
+    /// Every payload variant must be rejected end-to-end when it arrives in a
+    /// phase it does not belong to — this exercises all five per-handler
+    /// `validate_response_phase` call sites through the real dispatch path, where
+    /// `test_payload_phase_mapping` only exercises the table in isolation.
+    ///
+    /// It also asserts the rejection lands before any mutation, by requiring the
+    /// worker's state to be untouched afterwards. That is the property a
+    /// mis-placed call breaks: `handle_wrap_completion` originally flipped the
+    /// worker to `Ready` before binding the payload.
+    ///
+    /// The `match` is exhaustive over the payload enum on purpose: adding a
+    /// variant fails to compile until someone supplies a row here, which forces
+    /// them to notice the new handler needs the phase bind too.
+    #[tokio::test]
+    async fn test_every_payload_variant_rejected_out_of_phase() {
+        use zisk_cluster_common::{
+            ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto as Payload,
+        };
+
+        for payload in sample_payloads() {
+            // A phase this variant is NOT valid in, and the job kind that makes
+            // the mismatch real.
+            let (label, wrong_phase, execution_only) = match &payload {
+                Payload::Execution(_) => ("Execution", JobPhase::Recurse, true),
+                Payload::Challenges(_) => ("Challenges", JobPhase::Recurse, false),
+                Payload::Proofs(_) => ("Proofs", JobPhase::Contributions, false),
+                Payload::FinalProof(_) => ("FinalProof", JobPhase::Contributions, false),
+                Payload::WrapResult(_) => ("WrapResult", JobPhase::Contributions, false),
+            };
+
+            let (coordinator, workers, job_id) =
+                setup_coordinator_with_job(1, wrong_phase.clone(), |_| {}).await;
+            let w0_id = workers[0].0.clone();
+            if execution_only {
+                let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+                entry.write().await.execution_only = true;
+            }
+            let state_before = coordinator.workers_pool.worker_state(&w0_id).await;
+
+            let response = ExecuteTaskResponseDto {
+                job_id: job_id.clone(),
+                worker_id: w0_id.clone(),
+                success: true,
+                error_message: None,
+                result_data: Some(payload),
+                worker_in_recovery: false,
+            };
+            let err = coordinator.handle_stream_execute_task_response(response).await.unwrap_err();
+            assert!(
+                matches!(err, CoordinatorError::InvalidRequest(_)),
+                "{label} in {wrong_phase:?} must be rejected, got {err:?}"
+            );
+
+            assert_eq!(
+                coordinator.workers_pool.worker_state(&w0_id).await,
+                state_before,
+                "{label} rejection must not have mutated worker state"
+            );
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            assert_eq!(
+                entry.read().await.state,
+                JobState::Running(wrong_phase.clone()),
+                "{label} rejection must not have advanced the job"
+            );
+        }
+    }
+
+    /// The payload/phase mapping, including the two cases that must stay
+    /// permissive:
+    ///
+    /// * `Proofs` in `Recurse` — `resolve_recurser_assignment` flips the job to
+    ///   `Recurse` when the *first* worker finishes Phase 2, so the rest report
+    ///   in afterwards. Rejecting these would break every multi-worker job.
+    /// * `Execution` in `Contributions` — execution-only jobs never enter
+    ///   `Running(Execution)`.
+    #[test]
+    fn test_payload_phase_mapping() {
+        use zisk_cluster_common::ExecuteTaskResponseResultDataDto as Payload;
+
+        let [execution, challenges, proofs, final_proof, wrap] = sample_payloads();
 
         let job_id = JobId::new();
         let worker_id = WorkerId::from("w0".to_string());
@@ -3369,10 +3437,7 @@ mod tests {
         // The aggregator path requires `agg_worker_id` to be set on the
         // job. Set it manually to match the worker we'll deliver a result
         // for.
-        {
-            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
-            entry.write().await.agg_worker_id = Some(w0_id.clone());
-        }
+        arm_recurser(&coordinator, &job_id, &w0_id, None).await;
 
         coordinator.fail_job(&job_id, "racing fail").await.unwrap();
         assert_eq!(
