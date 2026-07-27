@@ -1042,9 +1042,11 @@ impl Coordinator {
     ///
     /// Which worker supplies the returned value is arbitrary (`HashMap` order)
     /// and does not matter: it is only returned once all of them match. An empty
-    /// result set yields `None`, as does simulation mode — `job.workers` there
-    /// lists the same physical worker N times, so only one result is ever stored
-    /// and there is nothing to compare against.
+    /// result set yields `None`.
+    ///
+    /// Simulation mode returns the single stored result without comparing:
+    /// `job.workers` there lists the same physical worker N times, so only one
+    /// entry ever exists and there is nothing to disagree with.
     fn validate_execution_publics(job: &Job) -> Result<Option<&Vec<u8>>, String> {
         let mut publics = job.results.get(&JobPhase::Execution).into_iter().flatten().filter_map(
             |(worker_id, result)| match &result.data {
