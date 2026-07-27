@@ -48,6 +48,10 @@ The register `r0` is always read as zero, regardless of any previous value writt
 
 The registers `r1` to `r31` are the same as the RISC-V registers, and they are kept in the main execution trace (not in memory) in order to increase performance.
 
+## Virtual registers
+
+ZisK supports 32 extra virtual registers, meaning that they are transpiled as memory reads and writes into the registers area.  They are slower than regular, RISC-V-based registers, but convenient when you need temporary storage.  In oher words, `rN` with 32 <= `N` <= 63 will be interpreted as memory accesses to a system memory region dedicated to this purpose.
+
 ## Memory format
 
 In some cases memory must be used to load or to store data.  There are several ways to specify how this memory operation is performed.
