@@ -903,7 +903,7 @@ impl Stats {
         report.sdk_report_summary_line("STEPS", self.costs.steps);
         report.sdk_report_summary_line("COST", total_cost);
         report.sdk_report_summary_data_line(
-            "RAM",
+            "RAM (peak heap address)",
             &format!(
                 "{:>6.2} MB / {:>6.2} MB",
                 self.ram_monitor.ram_used as f64 / (1024.0 * 1024.0),
@@ -1085,7 +1085,7 @@ impl Stats {
         report.set_total_cost(total_cost - base_cost);
         report.add_cost_perc("FROPS", self.costs.frops_cost());
         if self.ram_monitor.ram_size > 0 {
-            report.add_perc("RAM USAGE", self.ram_monitor.ram_used, self.ram_monitor.ram_size);
+            report.add_perc("RAM USAGE (peak heap address)", self.ram_monitor.ram_used, self.ram_monitor.ram_size);
         }
 
         if show_opcodes {
