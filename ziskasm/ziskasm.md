@@ -1,6 +1,5 @@
 # ZisK assembly syntax specificiation
 
-
 ## Introduction
 
 This document specifies the syntax of the ZisK assembly language, that allows to write ZisK code
@@ -37,6 +36,58 @@ This is an example:
 
 Numbers are specified as integer numbers, either in decimal, or in hexagesimal with the `0x` prefix.  When specified in hexagesimal, both lower-case and upper-case are allowed to be used in the alphanumeric digits.
 
+## Register format
+
+In some cases a general-purpose register is used to load or to store data.
+
+A register will be noted as `rN`, where N is the register number in decimal format.
+
+The maximum value of N is 34.
+
+The register `r0` is always read as zero, regardless of any previous value written to it.  This is the same behavior as RISC-V.
+
+The registers `r1` to `r31` are the same as the RISC-V registers, and they are not stored in memory in order to increase performance.
+
+The registers `r32` to `r34` are stored in memory.
+
+## Memory format
+
+In some cases memory must be used to load or to store data.  There are several ways to specify how this memory operation is performed.
+
+The format `[N]`, where N is a literal number either in decimal format or in hexagesimal format, refers to the memory value addressed by N.
+
+The formats `[a + N]` and `[a - N]`, where N is a literal number in decimal format or hexagesimal format, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.
+
+The format `W[a + N]` and `W[a - N]`, where N is a literal number in decimal format or hexagesimal, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.  W is a literal number that refers to how many bytes must be copied when accessing to memory, and can only take the values 1, 2, 4 and 8.
+
+## Definition format
+
+A definition is used to assign a text value to a text identifier.  This is the generic definition format:
+
+```
+define TEXT_IDENTIFIER text_value
+```
+
+After the line of the definition, if the text idenfifier is found, it is replaced by its corresponding text value.  There is not type check, just a text replacement.
+
+Example:
+
+```
+RAM_MEM 0x9000000
+```
+
+## Label format
+
+A label is used to assign a text identifier to the program address of the next instruction.  This is the generic label format:
+
+```
+TEXT_IDENTIFIER:
+```
+
+The `TEXT_IDENTIFIER` field must start with a letter, and must be unique in the context of the ZisK assembly program.
+
+The label can be used in order to jump to that instruction from another instruction.
+
 ## Instruction format
 
 The instruction must follow a format with some fields that are mandatory, and some fields that are optional.  This is the generic instruction format:
@@ -51,29 +102,7 @@ An instruction addres is assigned inside the ROM address range (check the file m
 
 Two consecutive instructions are separated by 4 address bytes, i.e. next_instruction_pc = current_pc + 4.
 
-### Register format
-
-In some cases a general-purpose register is used to load or to store data.
-
-A register will be noted as `rN`, where N is the register number in decimal format.
-
-The maximum value of N is 34.
-
-The register `r0` is always read as zero, regardless of any previous value written to it.  This is the same behavior as RISC-V.
-
-The registers `r1` to `r31` are the same as the RISC-V registers, and they are not stored in memory in order to increase performance.
-
-The registers `r32` to `r34` are stored in memory.
-
-### Memory format
-
-In some cases memory must be used to load or to store data.  There are several ways to specify how this memory operation is performed.
-
-The format `[N]`, where N is a literal number either in decimal format or in hexagesimal format, refers to the memory value addressed by N.
-
-The formats `[a + N]` and `[a - N]`, where N is a literal number in decimal format, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N, with sign, is stored in the ZiskInst instance field `b_offset_imm0`.
-
-### Operation field
+## Operation field
 
 This field is mandatory.
 
@@ -85,37 +114,39 @@ The register `c` persists to be used as an `a_source` in the next instruction.
 
 The register `flag` can be used to jump to the next instruction based on the field `j(jump1, jump2)`, if used.
 
-### Source fields
+## Source fields
 
 These fields are mandatory.  You can set them to 0 if they are not used in the corresponding operation.
 
 The `(a_source, b_source)` fields describe how the registers a and b are loaded
 
-The possible formats of `a_source` can be:
+The possible formats of `a_source` are:
 - `c`, meaning that register `a` will be loaded with the current value of register `c`, i.e. with the result of the previously executed instruction.  The ZiskInst instance field `a_src` is set to SRC_C.
 - `rN`, meaning that register `a` will be loaded with the current value of register `rN`.  The ZiskInst instance field `a_src` is set to SRC_REG, and the field `a_offset_imm0` is set to N.
 - `[N]`, meaning that register `a` will be loaded with the current value of the memory at address N, plus the SP register if specified.  The ZiskInst instance field `a_src` is set to SRC_MEM, and the field `a_offset_imm0` is set to N.
 - `N`, meaning that register `a` will be loaded with the value N, which is a u64.  The ZiskInst instance field `a_src` is set to SRC_IMM, the field `a_offset_imm0` is set to the lower 32 bits of N, and the field `a_use_sp_imm1` is set to the higher 32 bits of N.
 - `step`, meaning that register `a` will be loaded with the current step number, i.e. the number of instructions executed up to this point. step=0 means the first instruction to execute.  The ZiskInst instance field `a_src` is set to SRC_STEP.
 
-The possible formats of `b_source` can be:
+The possible formats of `b_source` are:
 - `c`, meaning that register `b` will be loaded with the current value of register `c`, i.e. with the result of the previously executed instruction.  The ZiskInst instance field `b_src` is set to SRC_C.
 - `rN`, meaning that register `b` will be loaded with the current value of register `rN`.  The ZiskInst instance field `b_src` is set to SRC_REG, and the field `b_offset_imm0` is set to N.
 - `[N]`, meaning that register `b` will be loaded with the current value of the memory at address N, plus the SP register if specified.  The ZiskInst instance field `b_src` is set to SRC_MEM, and the field `b_offset_imm0` is set to N.
 - `N`, meaning that register `b` will be loaded with the value N, which is a u64.  The ZiskInst instance field `b_src` is set to SRC_IMM, the field `b_offset_imm0` is set to the lower 32 bits of N, and the field `b_use_sp_imm1` is set to the higher 32 bits of N.
 - `W[a+N]`, meaning that register `b` will be loaded with the first W bytes of current value of the memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `b_src` is set to SRC_IND, and the ZiskInst instance field `b_offset_imm0` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
 
-### Storage field
+## Storage field
 
 This field is optional.
 
-The field ` -> c_storage` specifies how the `c` register must be stored, either in a register, or in memory.
+The field ` -> c_storage` specifies how the value of the register `c` after executing the operation must be stored.  
 
-When `c_storage` is a register (e.g. `r10`) then the value of the register c is stored in the specified register, after executing the operation.  The register number (e.g. 10 in the last example) is stored in the field `store_offset` of the ZiskInst instance.
+The possible formats of `c_storage` are:
+- `rN`, meaning that the current value of register `c` will be stored with the current value of register `rN`.  The ZiskInst instance field `store` is set to STORE_REG, and the field `store_offset` is set to N.
+- `[N]`, meaning that register `c` will be stored in memory at address N, plus the SP register if specified.  The ZiskInst instance field `store` is set to STORE_MEM, and the field `store_offset` is set to N.
+- `W[a+N]`, meaning that the first W bytes of the current value of register `c` will be stored at the first W bytes in memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `source` is set to SOURCE_IND, and the ZiskInst instance field `store_offset` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
+- If not specified, the `c` register is not stored.  The ZiskInst instance field `source` is set to SOURCE_NONE.
 
-When `c_storage` is a memory location (e.g. `[0x9004000]`) the value of register c is stored in the memory at the specified address (plus the sp register if specified).
-
-### Jump field
+## Jump field
 
 This field is optional.
 
@@ -129,7 +160,7 @@ When `jump2` refers to the next instruction (i.e. current_pc + 4) then it can be
 
 When the next instruction to execute is always current_pc + 4, this field can be omitted.
 
-### Set PC field
+## Set PC field
 
 This field is optional.
 
@@ -143,7 +174,7 @@ In other words:
 next_instruction_pc = c + offset
 ```
 
-### SP field
+## SP field
 
 This field is optional.
 
@@ -151,7 +182,7 @@ The field `, sp` specifies that register `sp` must be taken into account when ca
 
 This field sets the field `use_sp` of the ZiskInst instance to true.
 
-### End field
+## End field
 
 This field is optional.
 
@@ -161,16 +192,7 @@ This field sets the field `end` of the ZiskInst instance to true.
 
 <!--
 
-Operation: enum
-Source a: enum + imm
-Source b: enum + imm
-Store c: enum + imm
-Set pc (bool)
-End: bool
-Jump 1: i64 (address offset)
-Jump 2: i64 (address offset)
-
-Registers:
+TODO:
 
 Logical instruction size (bits between 2 consecutive addresses)
 Constant values (definitions)
