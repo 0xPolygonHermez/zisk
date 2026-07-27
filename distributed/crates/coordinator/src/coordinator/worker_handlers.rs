@@ -4,12 +4,13 @@ use crate::{
     Coordinator,
 };
 use chrono::Utc;
-use std::sync::atomic::Ordering;
+use std::sync::{atomic::Ordering, Arc};
+use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 use zisk_cluster_common::JobState;
 use zisk_cluster_common::{
     CoordinatorMessageDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    HeartbeatAckDto, JobId, ReconnectionDirectiveDto, RunAggregateProofsAckDto,
+    HeartbeatAckDto, Job, JobId, JobPhase, ReconnectionDirectiveDto, RunAggregateProofsAckDto,
     SetupAggregationProgramAckDto, SetupProgramAckDto, SetupProgramDto, WorkerErrorDto, WorkerId,
     WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
 };
@@ -828,8 +829,10 @@ impl Coordinator {
         &self,
         message: ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
-        // Validate and update heartbeat
-        self.validate_and_update_heartbeat(&message).await?;
+        // Validate and update heartbeat. Hands back the job it resolved to
+        // prove existence and assignment, so the checks below reuse that handle
+        // instead of looking the job up again.
+        let job_entry = self.validate_and_update_heartbeat(&message).await?;
 
         // Late arrival for a resolved job (e.g. `spawn_blocking` finished
         // after `JobCancelled`). The worker is — or shortly will be — parked
@@ -840,11 +843,10 @@ impl Coordinator {
         // defensive-guard against stomping a `Computing(other_live_job, _)`
         // state (which should be unreachable under the parking discipline
         // but is cheap insurance).
-        let job_entry = {
-            let jobs_map = self.jobs.read().await;
-            jobs_map.get(&message.job_id).cloned()
-        };
-        if let Some(job_entry) = job_entry {
+        //
+        // The phase gate below needs the state and job kind, captured here
+        // under the same read lock as the resolved check.
+        let (job_state, execution_only) = {
             let job = job_entry.read().await;
             if job.state().is_resolved() {
                 drop(job);
@@ -886,7 +888,8 @@ impl Coordinator {
                 );
                 return Ok(());
             }
-        }
+            (job.state().clone(), job.execution_only)
+        };
 
         // Handle task failure if needed
         if !message.success {
@@ -899,6 +902,19 @@ impl Coordinator {
                 message.worker_id, message.job_id
             )));
         };
+
+        // Bind the payload to the job's current phase before any handler stores
+        // it or advances the job. Workers are untrusted: dispatching purely on
+        // the payload variant lets any assigned worker drive a job through a
+        // phase it is not in.
+        Self::validate_payload_phase(
+            &job_state,
+            execution_only,
+            result_data,
+            &message.job_id,
+            &message.worker_id,
+        )?;
+
         match result_data {
             ExecuteTaskResponseResultDataDto::Execution(_) => {
                 self.handle_execution_completion(message).await
@@ -920,13 +936,16 @@ impl Coordinator {
 
     /// Validates incoming task response and updates worker heartbeat.
     ///
+    /// Returns the job the response is for, so callers can go straight to it
+    /// rather than repeating the lookup this already did.
+    ///
     /// # Parameters
     ///
     /// * `message` - The task response message from a worker
     async fn validate_and_update_heartbeat(
         &self,
         message: &ExecuteTaskResponseDto,
-    ) -> CoordinatorResult<()> {
+    ) -> CoordinatorResult<Arc<RwLock<Job>>> {
         self.workers_pool.update_last_heartbeat(&message.worker_id).await?;
 
         // Job must exist AND the worker must be assigned to it. Prevents a
@@ -952,6 +971,72 @@ impl Coordinator {
                 message.worker_id, message.job_id
             )));
         }
+        Ok(job_arc)
+    }
+
+    /// Rejects a task response whose payload variant does not belong to the
+    /// job's current phase.
+    ///
+    /// `validate_and_update_heartbeat` only proves the sender is assigned to the
+    /// job; the response is then routed on the payload variant alone. Since
+    /// workers are untrusted, that lets any assigned worker act out of turn —
+    /// most damagingly by completing a job with a `FinalProof` while it is still
+    /// gathering contributions.
+    ///
+    /// Two deliberate asymmetries in the mapping:
+    ///
+    /// * `Proofs` is accepted in `Recurse` as well as `Prove`.
+    ///   `resolve_recurser_assignment` flips the job to `Recurse` as soon as the
+    ///   *first* worker finishes Phase 2, so the remaining workers legitimately
+    ///   report in while the job is already recursing.
+    /// * Execution-only jobs run in `Running(Contributions)` — `JobPhase::Execution`
+    ///   exists only as a `phase_timings` key and is never a job state — so the
+    ///   two Phase-1 variants are told apart by `execution_only`, not by phase.
+    pub(super) fn validate_payload_phase(
+        state: &JobState,
+        execution_only: bool,
+        result_data: &ExecuteTaskResponseResultDataDto,
+        job_id: &JobId,
+        worker_id: &WorkerId,
+    ) -> CoordinatorResult<()> {
+        use ExecuteTaskResponseResultDataDto as Payload;
+
+        let JobState::Running(phase) = state else {
+            let msg = format!(
+                "Worker {worker_id} sent a task response for job {job_id} in state {state}; \
+                 expected a running job"
+            );
+            warn!("{msg}");
+            return Err(CoordinatorError::InvalidRequest(msg));
+        };
+
+        let (variant, accepted, expected) = match result_data {
+            Payload::Execution(_) => (
+                "Execution",
+                execution_only && *phase == JobPhase::Contributions,
+                "Contributions on an execution-only job",
+            ),
+            Payload::Challenges(_) => (
+                "Challenges",
+                !execution_only && *phase == JobPhase::Contributions,
+                "Contributions",
+            ),
+            Payload::Proofs(_) => {
+                ("Proofs", matches!(phase, JobPhase::Prove | JobPhase::Recurse), "Prove or Recurse")
+            }
+            Payload::FinalProof(_) => ("FinalProof", *phase == JobPhase::Recurse, "Recurse"),
+            Payload::WrapResult(_) => ("WrapResult", *phase == JobPhase::Recurse, "Recurse"),
+        };
+
+        if !accepted {
+            let msg = format!(
+                "Worker {worker_id} sent {variant} for job {job_id} in phase {phase:?} \
+                 (execution_only={execution_only}); expected {expected}"
+            );
+            warn!("{msg}");
+            return Err(CoordinatorError::InvalidRequest(msg));
+        }
+
         Ok(())
     }
 
