@@ -62,9 +62,9 @@ impl Coordinator {
         };
 
         // Workers are untrusted, so bind the response to the dispatched task
-        // before acting on it. Both checks matter, and both must run before the
-        // intermediate-step branch below: without the identity check any
-        // assigned worker can complete the job outright (non-empty proof) or
+        // before acting on it. Every check below must run before the
+        // intermediate-step branch: without the identity check any assigned
+        // worker can complete the job outright (non-empty proof) or
         // desynchronise the aggregation queue (empty proof, which pops the next
         // queued task); without the in-flight check the designated recurser can
         // replay a result for a task that is no longer outstanding.
@@ -93,23 +93,30 @@ impl Coordinator {
             )));
         };
 
+        // The shape of the response must match the task that was dispatched: an
+        // intermediate step acks with empty proof bytes, the final task returns
+        // the proof. Both mismatches are acted on destructively if let through —
+        // a proof for an intermediate task completes the job from a partial
+        // aggregation, and an empty ack for the final task is taken as an
+        // intermediate step below, clearing the in-flight slot and popping the
+        // queue so nothing outstanding remains to complete the job.
+        if proof_data.proof_data.is_empty() == inflight_all_done {
+            let detail = if inflight_all_done {
+                "an empty ack while the in-flight aggregation task is the final one"
+            } else {
+                "a final proof while the in-flight aggregation task is an intermediate step"
+            };
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Recurser {agg_worker_id} sent {detail} for job {job_id}"
+            )));
+        }
+
         // Empty proof_data means this was an intermediate aggregation step.
         // Clear the in-flight slot and dispatch the next queued task, if any.
         if proof_data.proof_data.is_empty() {
             drop(job);
             self.dispatch_next_agg_task(job_id).await?;
             return Ok(());
-        }
-
-        // A final proof is only in order for the task that carried `all_done`;
-        // otherwise the recurser is completing the job from a partial
-        // aggregation.
-        if !inflight_all_done {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Recurser {} sent a final proof for job {} while the in-flight aggregation task \
-                 is an intermediate step",
-                agg_worker_id, job_id
-            )));
         }
 
         self.workers_pool.mark_worker_with_state(&agg_worker_id, WorkerState::Ready).await?;

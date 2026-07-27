@@ -2356,6 +2356,41 @@ mod tests {
         assert!(job.proof.is_none());
     }
 
+    /// The mirror of the intermediate-task check: an empty ack is only in order
+    /// for an intermediate step. When the in-flight task is the final one, an
+    /// empty `FinalProof` must not be taken as an intermediate ack — that would
+    /// clear the in-flight slot and pop the queue, leaving the job in `Recurse`
+    /// with nothing outstanding to complete it.
+    #[tokio::test]
+    async fn test_empty_ack_rejected_for_final_agg_task() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.agg_worker_id = Some(w0_id.clone());
+            job.agg_task_inflight = Some(zisk_cluster_common::PendingAggTask {
+                proofs: vec![],
+                all_done: true,
+                proof_type: ProofKind::VadcopFinal,
+            });
+        }
+
+        let empty_ack = final_proof_response(&job_id, &w0_id, vec![]);
+        let err = coordinator.handle_stream_execute_task_response(empty_ack).await.unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::InvalidRequest(_)),
+            "empty ack for the final task must be rejected, got {err:?}"
+        );
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let job = entry.read().await;
+        assert_eq!(job.state, JobState::Running(JobPhase::Recurse));
+        assert!(job.agg_task_inflight.is_some(), "in-flight task must survive a rejected ack");
+    }
+
     /// The payload/phase mapping, including the two cases that must stay
     /// permissive:
     ///
