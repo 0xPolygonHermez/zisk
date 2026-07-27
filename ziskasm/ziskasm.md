@@ -1,4 +1,4 @@
-# ZisK assembly syntax specificiation
+# ZisK assembly syntax specification
 
 ## Introduction
 
@@ -15,8 +15,8 @@ A ZisK assembly file must:
 - Have the .zisk extension
 - Have one text line per definition, per label, and per instruction
 - Empty lines are allowed, to improve readability
-- Definitions will be idented at the beginning of the text line
-- Labels will be idented at the beginning of the text line and will be sufixed with a colon character
+- Definitions will be written at the beginning of the text line (not indented)
+- Labels will be written at the beginning of the text line (not indented) and will be suffixed with a colon character
 - Instructions will be prefixed with a tab character, to improve readability of the code
 - Comments will be prefixed with a semi-colon character.  Any characters after a semi-colon character will be ignored in the parsing process, except to add the comment as debug data
 
@@ -34,7 +34,7 @@ This is an example:
 
 ## Number format
 
-Numbers are specified as integer numbers, either in decimal, or in hexagesimal with the `0x` prefix.  When specified in hexagesimal, both lower-case and upper-case are allowed to be used in the alphanumeric digits.
+Numbers are specified as integer numbers, either in decimal, or in hexadecimal with the `0x` prefix.  When specified in hexadecimal, both lower-case and upper-case are allowed to be used in the alphanumeric digits.
 
 ## Register format
 
@@ -42,23 +42,21 @@ In some cases a general-purpose register is used to load or to store data.
 
 A register will be noted as `rN`, where N is the register number in decimal format.
 
-The maximum value of N is 34.
+The maximum value of N is 31, i.e. the general-purpose registers are `r0` to `r31` (the RISC-V `x0` to `x31`).
 
-The register `r0` is always read as zero, regardless of any previous value written to it.  This is the same behavior as RISC-V.
+The register `r0` is always read as zero, regardless of any previous value written to it, and a store to `r0` is discarded.  This is the same behavior as RISC-V.  Note that the assembler encodes `r0` as an immediate value of 0 (`SRC_IMM`), not as `SRC_REG`.
 
-The registers `r1` to `r31` are the same as the RISC-V registers, and they are not stored in memory in order to increase performance.
-
-The registers `r32` to `r34` are stored in memory.
+The registers `r1` to `r31` are the same as the RISC-V registers, and they are kept in the main execution trace (not in memory) in order to increase performance.
 
 ## Memory format
 
 In some cases memory must be used to load or to store data.  There are several ways to specify how this memory operation is performed.
 
-The format `[N]`, where N is a literal number either in decimal format or in hexagesimal format, refers to the memory value addressed by N.
+The format `[N]`, where N is a literal number either in decimal format or in hexadecimal format, refers to the memory value addressed by N.
 
-The formats `[a + N]` and `[a - N]`, where N is a literal number in decimal format or hexagesimal format, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.
+The formats `[a + N]` and `[a - N]`, where N is a literal number in decimal format or hexadecimal format, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.
 
-The format `W[a + N]` and `W[a - N]`, where N is a literal number in decimal format or hexagesimal, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.  W is a literal number that refers to how many bytes must be copied when accessing to memory, and can only take the values 1, 2, 4 and 8.
+The format `W[a + N]` and `W[a - N]`, where N is a literal number in decimal format or hexadecimal, refers to the memory value addressed by the value of the `a` register plus/minus the value of N.  The value of N is stored in the corresponding ZiskInst instance field with sign.  W is a literal number that refers to how many bytes must be copied when accessing to memory, and can only take the values 1, 2, 4 and 8.
 
 ## Definition format
 
@@ -73,7 +71,7 @@ After the line of the definition, if the text idenfifier is found, it is replace
 Example:
 
 ```
-RAM_MEM 0x9000000
+define RAM_MEM 0x9000000
 ```
 
 ## Label format
@@ -134,6 +132,10 @@ The possible formats of `b_source` are:
 - `N`, meaning that register `b` will be loaded with the value N, which is a u64.  The ZiskInst instance field `b_src` is set to SRC_IMM, the field `b_offset_imm0` is set to the lower 32 bits of N, and the field `b_use_sp_imm1` is set to the higher 32 bits of N.
 - `W[a+N]`, meaning that register `b` will be loaded with the first W bytes of current value of the memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `b_src` is set to SRC_IND, and the ZiskInst instance field `b_offset_imm0` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
 
+Notes on register operands:
+- Only `a_source` can use `step`; `b_source` cannot (there is no SRC_STEP for register `b`).
+- The register `r0` is encoded as the immediate value 0 (`SRC_IMM`), not as `SRC_REG` (see Register format).
+
 ## Storage field
 
 This field is optional.
@@ -141,10 +143,10 @@ This field is optional.
 The field ` -> c_storage` specifies how the value of the register `c` after executing the operation must be stored.  
 
 The possible formats of `c_storage` are:
-- `rN`, meaning that the current value of register `c` will be stored with the current value of register `rN`.  The ZiskInst instance field `store` is set to STORE_REG, and the field `store_offset` is set to N.
+- `rN`, meaning that the current value of register `c` will be stored into register `rN`.  The ZiskInst instance field `store` is set to STORE_REG, and the field `store_offset` is set to N.
 - `[N]`, meaning that register `c` will be stored in memory at address N, plus the SP register if specified.  The ZiskInst instance field `store` is set to STORE_MEM, and the field `store_offset` is set to N.
-- `W[a+N]`, meaning that the first W bytes of the current value of register `c` will be stored at the first W bytes in memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `source` is set to SOURCE_IND, and the ZiskInst instance field `store_offset` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
-- If not specified, the `c` register is not stored.  The ZiskInst instance field `source` is set to SOURCE_NONE.
+- `W[a+N]`, meaning that the first W bytes of the current value of register `c` will be stored at the first W bytes in memory at address equals the value of `a` register plus the value of N, which can be a negative offset.  The ZiskInst instance field `store` is set to STORE_IND, and the ZiskInst instance field `store_offset` is set to the address offset, i.e. to N including sign, and the field `ind_width` is set to W, which can be 1, 2, 4 or 8.
+- If not specified, the `c` register is not stored.  The ZiskInst instance field `store` is set to STORE_NONE.
 
 ## Jump field
 
@@ -174,13 +176,17 @@ In other words:
 next_instruction_pc = c + offset
 ```
 
+Note that `setpc` and the flag-based jump `j(jump1, jump2)` are mutually exclusive on the same instruction: both are stored in the field `jmp_offset1`, and the emulator checks `set_pc` first.  If `set_pc` is true, the next pc is `c + jmp_offset1` and the `flag` register is ignored; otherwise the next pc is `pc + jmp_offset1` when `flag` is 1, or `pc + jmp_offset2` when `flag` is 0.
+
 ## SP field
 
 This field is optional.
 
-The field `, sp` specifies that register `sp` must be taken into account when calculating some address operations.
+The field `, sp` specifies that the `sp` register must be added to the address of the memory-addressed operands of the instruction.
 
-This field sets the field `use_sp` of the ZiskInst instance to true.
+There is no single `use_sp` field; this sets the per-operand flags `a_use_sp_imm1`, `b_use_sp_imm1` and `store_use_sp` of the ZiskInst instance, as applicable.  It only affects memory-addressed operands, i.e. the `[N]` (`SRC_MEM`) and `W[a+N]` (`SRC_IND`) sources, and the `[N]`/`W[a+N]` stores; it has no effect on `c`, `rN`, immediate (`N`) or `step` operands.
+
+Note that for an immediate source (`N`), the same field (`a_use_sp_imm1` / `b_use_sp_imm1`) holds the higher 32 bits of the immediate value, so `sp` cannot be combined with an immediate on the same operand.
 
 ## End field
 
