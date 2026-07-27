@@ -2232,6 +2232,94 @@ mod tests {
         assert!(job.proof.is_none(), "no proof may be stored from a rejected response");
     }
 
+    /// Only the designated recurser may report aggregation results. Any other
+    /// assigned worker submitting a `FinalProof` in `Recurse` is rejected.
+    #[tokio::test]
+    async fn test_final_proof_rejected_from_non_recurser() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(2, JobPhase::Recurse, |_| {}).await;
+        let (w0_id, w1_id) = (workers[0].0.clone(), workers[1].0.clone());
+
+        // w0 is the recurser with a final task outstanding; w1 tries to answer.
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.agg_worker_id = Some(w0_id.clone());
+            job.agg_task_inflight = Some(zisk_cluster_common::PendingAggTask {
+                proofs: vec![],
+                all_done: true,
+                proof_type: ProofKind::VadcopFinal,
+            });
+        }
+
+        let forged = final_proof_response(&job_id, &w1_id, vec![1, 2, 3]);
+        let err = coordinator.handle_stream_execute_task_response(forged).await.unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::InvalidRequest(_)),
+            "FinalProof from a non-recurser must be rejected, got {err:?}"
+        );
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert_eq!(entry.read().await.state, JobState::Running(JobPhase::Recurse));
+    }
+
+    /// Even the designated recurser cannot replay a final proof once no
+    /// aggregation task is outstanding.
+    #[tokio::test]
+    async fn test_final_proof_rejected_with_no_inflight_agg_task() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            entry.write().await.agg_worker_id = Some(w0_id.clone());
+            // agg_task_inflight stays None.
+        }
+
+        let replayed = final_proof_response(&job_id, &w0_id, vec![1, 2, 3]);
+        let err = coordinator.handle_stream_execute_task_response(replayed).await.unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::InvalidRequest(_)),
+            "FinalProof with no task in flight must be rejected, got {err:?}"
+        );
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        assert!(entry.read().await.proof.is_none());
+    }
+
+    /// The recurser may not complete the job off an intermediate aggregation
+    /// step — a final proof is only in order for the task carrying `all_done`.
+    #[tokio::test]
+    async fn test_final_proof_rejected_for_intermediate_agg_task() {
+        let (coordinator, workers, job_id) =
+            setup_coordinator_with_job(1, JobPhase::Recurse, |_| {}).await;
+        let w0_id = workers[0].0.clone();
+
+        {
+            let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+            let mut job = entry.write().await;
+            job.agg_worker_id = Some(w0_id.clone());
+            job.agg_task_inflight = Some(zisk_cluster_common::PendingAggTask {
+                proofs: vec![],
+                all_done: false,
+                proof_type: ProofKind::VadcopFinal,
+            });
+        }
+
+        let premature = final_proof_response(&job_id, &w0_id, vec![1, 2, 3]);
+        let err = coordinator.handle_stream_execute_task_response(premature).await.unwrap_err();
+        assert!(
+            matches!(err, CoordinatorError::InvalidRequest(_)),
+            "final proof for an intermediate task must be rejected, got {err:?}"
+        );
+
+        let entry = coordinator.jobs.read().await.get(&job_id).cloned().unwrap();
+        let job = entry.read().await;
+        assert_eq!(job.state, JobState::Running(JobPhase::Recurse));
+        assert!(job.proof.is_none());
+    }
+
     /// The payload/phase mapping, including the two cases that must stay
     /// permissive:
     ///
