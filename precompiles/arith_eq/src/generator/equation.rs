@@ -85,7 +85,7 @@ pub struct Equation {
 /// - `str_to_bigint(s: &str) -> (BigInt, bool)`
 ///   - Converts a string to a `BigInt`, detecting if it's in hexadecimal format.
 ///
-/// - `generate_terms(&mut self)`
+/// - `generate_terms(&mut self, name: &str)`
 ///   - Generates terms (sequence of product additions) from the parsed equation.
 ///
 /// - `index_to_row_offset(index: usize, row: usize, terms_by_clock: usize) -> i32`
@@ -278,7 +278,7 @@ impl Equation {
         }
         false
     }
-    fn generate_terms(&mut self) {
+    fn generate_terms(&mut self, name: &str) {
         // Generate all terms, using stack of additions.
         for term in self.stack.iter().filter(|t| !t.terms.is_empty()) {
             let count = term.terms.len();
@@ -307,6 +307,17 @@ impl Equation {
                 }
             }
         }
+
+        if !self.config.force_extra_clocks_zero {
+            let clocks = self.terms.len().div_ceil(self.config.terms_by_clock);
+            assert!(
+                clocks <= self.config.clocks,
+                "[{name}] exceeded number of clocks, it must be less than or equal {} but got {}",
+                self.config.clocks * self.config.terms_by_clock,
+                self.terms.len()
+            );
+        }
+
         // self.add_zero_terms();
     }
     fn push_term_to_col_index(
@@ -352,23 +363,54 @@ impl Equation {
             0
         }
     }
-    // fn add_zero_terms(&mut self) {
-    //     let total_chunks = self.config.chunks * 2;
-    //     while self.terms.len() < total_chunks {
-    //         self.terms.push(vec![]);
-    //     }
-    // }
+    #[inline(always)]
     fn map_chunks(
         &mut self,
         terms_by_clock: usize,
         end_of_line: &str,
         last_end_of_line: &str,
     ) -> Vec<String> {
+        self.inner_map_chunks(terms_by_clock, end_of_line, last_end_of_line, false)
+    }
+
+    #[inline(always)]
+    fn map_zero_chunks(
+        &mut self,
+        terms_by_clock: usize,
+        end_of_line: &str,
+        last_end_of_line: &str,
+    ) -> Vec<String> {
+        self.inner_map_chunks(terms_by_clock, end_of_line, last_end_of_line, true)
+    }
+    // fn add_zero_terms(&mut self) {
+    //     let total_chunks = self.config.chunks * 2;
+    //     while self.terms.len() < total_chunks {
+    //         self.terms.push(vec![]);
+    //     }
+    // }
+    fn inner_map_chunks(
+        &mut self,
+        terms_by_clock: usize,
+        end_of_line: &str,
+        last_end_of_line: &str,
+        map_zero_terms: bool,
+    ) -> Vec<String> {
         let mut output: Vec<String> = Vec::new();
         let mut line = CodeLine::new(terms_by_clock > 0, self.config.comment_col);
-        for (icol, addition_cols) in self.terms.iter().enumerate() {
+        let (skip, take) = if terms_by_clock == 0 {
+            (0, self.terms.len())
+        } else {
+            let max_terms = terms_by_clock * self.config.clocks;
+            if map_zero_terms {
+                (max_terms, self.terms.len().saturating_sub(max_terms))
+            } else {
+                (0, max_terms)
+            }
+        };
+        for (icol, addition_cols) in self.terms.iter().skip(skip).take(take).enumerate() {
             let mut out = String::new();
-            let clock = icol.checked_div(terms_by_clock).unwrap_or(0);
+            let clock =
+                if map_zero_terms { 0 } else { icol.checked_div(terms_by_clock).unwrap_or(0) };
             if addition_cols.is_empty() {
                 output.push(format!("{}{}", 0, last_end_of_line));
                 continue;
@@ -471,7 +513,7 @@ impl Equation {
 
     pub fn generate_rust_code(&mut self, struct_name: &str, args_order: &str) -> String {
         if self.is_empty() {
-            self.generate_terms();
+            self.generate_terms(struct_name);
         }
 
         let chunks_config = self.config.chunks;
@@ -526,9 +568,8 @@ impl Equation {
     }
     pub fn generate_pil_code(&mut self, const_name: &str) -> String {
         if self.is_empty() {
-            self.generate_terms();
+            self.generate_terms(const_name);
         }
-
         let end_of_term = format!("{: <1$}", "\n", 15 + const_name.len());
         let chunks = self.map_chunks(self.config.terms_by_clock, &end_of_term, ";");
         // air-scoped so the chunks stay visible when the equation is `include`d inside a conditional
@@ -543,7 +584,24 @@ impl Equation {
             let label = format!("{const_name}_chunks[{icol:#2}]");
             out = out + &label + " = " + col + "\n\n";
         }
+
+        let zero_terms = self.get_zero_terms();
+        if zero_terms > 0 {
+            let end_of_term = format!("{: <1$}", "\n", 20 + const_name.len());
+            let zero_chunks = self.map_zero_chunks(self.config.terms_by_clock, &end_of_term, ";");
+            out =
+                out + &format!("\nconst expr air.{}_zero_chunks[{}];\n\n", const_name, zero_terms);
+
+            for (icol, col) in zero_chunks.iter().enumerate() {
+                let label = format!("{const_name}_zero_chunks[{icol:#2}]");
+                out = out + &label + " = " + col + "\n\n";
+            }
+        }
         out
+    }
+    pub fn get_zero_terms(&self) -> usize {
+        let max_terms = self.config.terms_by_clock * self.config.clocks;
+        self.terms.len().saturating_sub(max_terms)
     }
     pub fn generate_rust_code_to_file(
         &mut self,
