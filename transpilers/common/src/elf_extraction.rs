@@ -266,7 +266,7 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
 }
 
 fn print_xr_warning(address: u64) {
-    println!("");
+    println!();
     println!("############################################################################");
     println!("#                                                                          #");
     println!("#                              WARNING !!!                                 #");
@@ -275,7 +275,7 @@ fn print_xr_warning(address: u64) {
     println!("#   ZisK requires PF_X (execute-and-not-read) for maximum performance      #");
     println!("#                                                                          #");
     println!("############################################################################");
-    println!("");
+    println!();
 }
 
 /// Validates the guest entry point against the payload's loaded executable segments.
