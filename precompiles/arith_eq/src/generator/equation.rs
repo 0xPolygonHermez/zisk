@@ -531,8 +531,10 @@ impl Equation {
 
         let end_of_term = format!("{: <1$}", "\n", 15 + const_name.len());
         let chunks = self.map_chunks(self.config.terms_by_clock, &end_of_term, ";");
+        // air-scoped so the chunks stay visible when the equation is `include`d inside a conditional
+        // `if (use_X) { ... }` block in arith_eq.pil (block-local consts would not be).
         let mut out = self.generate_code_header()
-            + &format!("\nconst expr {}_chunks[{}];\n\n", const_name, chunks.len());
+            + &format!("\nconst expr air.{}_chunks[{}];\n\n", const_name, chunks.len());
 
         for (icol, col) in chunks.iter().enumerate() {
             if (icol % self.config.terms_by_clock) == 0 {
