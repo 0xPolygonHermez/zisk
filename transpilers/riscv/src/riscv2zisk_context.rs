@@ -229,6 +229,9 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::Lw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             RiscvInstName::Lwu => self.load_op(riscv_instruction, "copyb", 4, 4),
             RiscvInstName::Ld => self.load_op(riscv_instruction, "copyb", 8, 4),
+            // LR is translated as a plain load: no reservation is recorded. This is
+            // sound for a single-hart machine; see `sc_w` for the full rationale and
+            // the conformance caveat it implies.
             RiscvInstName::LrW => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             RiscvInstName::LrD => self.load_op(riscv_instruction, "copyb", 8, 4),
             RiscvInstName::Lui => self.lui(riscv_instruction, 4),
@@ -1270,6 +1273,47 @@ impl Riscv2ZiskContext<'_> {
     //    copyb_d([%rs1], [%rs2]) -> [a]
     //    copyb_d(0,0) -> [%rd]
     /// Implements the RISC-V store-conditional instruction of a 32-bits value
+    ///
+    /// # Zalrsc: SC always succeeds (deliberate deviation)
+    ///
+    /// ZisK models no LR/SC reservation state at all. `lr.w`/`lr.d` translate to a
+    /// plain load, and `sc.w`/`sc.d` unconditionally perform the store and write 0
+    /// (success) to `rd`. This is a considered choice, not an oversight.
+    ///
+    /// Rationale: ZisK is single-hart and deterministic — no second hart, no
+    /// interrupts, no preemption, no DMA. Of the conditions under which the RISC-V
+    /// unprivileged spec *requires* SC to fail, the two that motivate the extension
+    /// (a store to the reservation set from another hart; a reservation lost to
+    /// preemption) are unreachable by construction. Spurious failure is permitted
+    /// but never required. So for any LR/SC pair with matching address and width —
+    /// which is all a compiler ever emits, since LLVM's RISC-V atomics expansion
+    /// only produces matched pairs inside a constrained sequence — unconditional
+    /// success is not merely legal, it is the optimal single-hart implementation:
+    /// every compare-and-swap loop converges in exactly one iteration.
+    ///
+    /// Modeling a reservation would add per-instruction state and a branch to both
+    /// the emulator hot path and the constraint system, solely to reproduce a
+    /// failure mode that only malformed code can trigger.
+    ///
+    /// # Conformance caveat
+    ///
+    /// The residual gap is spec fidelity, not soundness. There is no second
+    /// implementation to diverge from: the transpiler emits a ZisK ROM, and both
+    /// the emulator and the constraint system execute that ROM, so the translation
+    /// *is* the semantics and a prover cannot exploit this to prove a false
+    /// statement about ZisK-ROM execution.
+    ///
+    /// What a program *can* do is distinguish ZisK from real hardware. These three
+    /// cases must fail on conforming hardware but succeed here:
+    ///
+    ///   * `sc` with no preceding `lr` (no reservation held),
+    ///   * `sc` to a different address than the `lr` it is paired with,
+    ///   * `sc` with a different width than that `lr` (e.g. `lr.d` then `sc.w`).
+    ///
+    /// Guest code must therefore pair LR and SC with matching address and width.
+    /// Compiler-generated code always does. This only becomes a concern under a
+    /// threat model where the guest ELF itself is adversarial and unvetted; where
+    /// the verifier trusts a known ELF hash, the exposure is nil.
     pub fn sc_w(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd > 0 {
@@ -1315,6 +1359,10 @@ impl Riscv2ZiskContext<'_> {
     //    copyb([%rs1], [%rs2]) -> [a]
     //    copyb(0,0) -> [%rd]
     /// Implements the RISC-V store-conditional instruction of a 64-bits value
+    ///
+    /// Like Riscv2ZiskContext::sc_w(), this always succeeds: no reservation state
+    /// is modeled, the store is unconditional, and `rd` is set to 0. See `sc_w` for
+    /// the rationale and the conformance caveat.
     pub fn sc_d(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd > 0 {
