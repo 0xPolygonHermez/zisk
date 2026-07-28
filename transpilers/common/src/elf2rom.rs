@@ -10,7 +10,7 @@ use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
-use zisk_core::FLOAT_LIB_ROM_ADDR;
+use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
@@ -101,7 +101,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                 // If this is a program section, it should not overlap with the float library region
                 // If this is a float library section, it should not overlap with the program region
                 if i == elf_index {
-                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_ROM_ADDR {
+                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_RAM_ADDR {
                         return Err(format!(
                             "RAM program data section at address 0x{:x} with size {} overlaps with the ZisK float library region",
                             section.addr,
@@ -109,7 +109,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
                         )
                         .into());
                     }
-                } else if section.addr < FLOAT_LIB_ROM_ADDR {
+                } else if section.addr < FLOAT_LIB_RAM_ADDR {
                     return Err(format!(
                         "RAM float library data section at address 0x{:x} with size {} overlaps with the ZisK program region",
                         section.addr,

@@ -238,7 +238,10 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
                 .into());
             }
             let mut data = file_bytes.to_vec();
-            if mem_size > RAM_SIZE.try_into().unwrap() {
+            let ram_size = RAM_SIZE.try_into().map_err(|_| {
+                format!("RAM_SIZE (0x{:x}) is too large for this platform", RAM_SIZE)
+            })?;
+            if mem_size > ram_size {
                 return Err(format!(
                     "writable PT_LOAD segment at 0x{seg_start:x} has p_memsz (0x{:x}) larger than RAM_SIZE (0x{:x})",
                     ph.p_memsz, RAM_SIZE
@@ -250,7 +253,10 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
         } else {
             // Read-only data (constants, strings, etc.).
             let mut data = file_bytes.to_vec();
-            if mem_size > ROM_SIZE.try_into().unwrap() {
+            let rom_size = ROM_SIZE.try_into().map_err(|_| {
+                format!("ROM_SIZE (0x{:x}) is too large for this platform", ROM_SIZE)
+            })?;
+            if mem_size > rom_size {
                 return Err(format!(
                     "read-only PT_LOAD segment at 0x{seg_start:x} has p_memsz (0x{:x}) larger than ROM_SIZE (0x{:x})",
                     ph.p_memsz, ROM_SIZE
