@@ -512,6 +512,12 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
         }
     }
 
+    if (defined(eq_arith256_mod_zero_chunks)) {
+        for (int j = 0; j < length(eq_arith256_mod_zero_chunks); ++j) {
+            arith256_mod_clk0 * eq_arith256_mod_zero_chunks[j] === 0;
+        }
+    }
+
     // There are some values that no change during all cycle, normally we define a constraint
     // like latch to guarantee that these values are the same in all clocks. In this case, we
     // define that for some of these type of values, only "use" one clock inside the cycle and
