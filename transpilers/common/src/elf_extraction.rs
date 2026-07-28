@@ -113,14 +113,13 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
             .into());
         }
 
-        // ZisK is an execute-and-read zkVM: every executable segment must be
-        // PF_X. A PF_X | PF_R (execute-and-read) segment is rejected.
+        // R/W: a writable segment can be readable
+
+        // ZisK is an execute-and-read zkVM: every executable segment must be PF_X.
+        // A PF_X | PF_R (execute-and-read) segment is accepted but will be slower than a PF_X
+        // (execute-and-not-read) segment, so warn the user.
         if is_exec && is_read {
-            return Err(format!(
-                "executable PT_LOAD segment at 0x{seg_start:x} is readable; \
-                 ZisK requires PF_X (execute-and-not-read) executable segments"
-            )
-            .into());
+            print_xr_warning(seg_start);
         }
 
         // Alignment: p_vaddr must be at least {INSTRUCTION_ALIGN}-byte (instruction) aligned.
@@ -210,6 +209,24 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
             }
             // Keep exactly the file bytes so no spurious zero words are transpiled.
             out.exec.push(DataSection { addr: seg_start, data: file_bytes.to_vec() });
+
+            // In case the program segment is both executable and readable, also add it to the RO
+            // list. This is necessary to initialize the ROM content with the read-only data, even
+            // if it is also executable.  We don't know what parts of the program segment are data
+            // and what parts are code, so we just add the whole segment to the RO list.
+            if is_read {
+                // Read-only data (constants, strings, etc.).
+                let mut data = file_bytes.to_vec();
+                if mem_size > ROM_SIZE.try_into().unwrap() {
+                    return Err(format!(
+                    "read-only PT_LOAD segment at 0x{seg_start:x} has p_memsz (0x{:x}) larger than ROM_SIZE (0x{:x})",
+                    ph.p_memsz, ROM_SIZE
+                )
+                .into());
+                }
+                data.resize(mem_size, 0);
+                out.ro.push(DataSection { addr: seg_start, data });
+            }
         } else if is_write {
             // Writable data must live in RAM so it can be initialized there.
             if !in_ram {
@@ -246,6 +263,19 @@ pub fn collect_elf_payload_from_bytes(file_data: &[u8]) -> Result<ElfPayload, Bo
     }
 
     Ok(out)
+}
+
+fn print_xr_warning(address: u64) {
+    println!("");
+    println!("############################################################################");
+    println!("#                                                                          #");
+    println!("#                              WARNING !!!                                 #");
+    println!("#                                                                          #");
+    println!("#   ELF PT_LOAD segment at 0x{address:08x} is PF_X | PF_R (execute-and-read)    #");
+    println!("#   ZisK requires PF_X (execute-and-not-read) for maximum performance      #");
+    println!("#                                                                          #");
+    println!("############################################################################");
+    println!("");
 }
 
 /// Validates the guest entry point against the payload's loaded executable segments.

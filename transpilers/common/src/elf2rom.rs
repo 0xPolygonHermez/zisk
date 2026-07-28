@@ -10,6 +10,7 @@ use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
+use zisk_core::FLOAT_LIB_ROM_ADDR;
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
@@ -74,10 +75,48 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             if section.addr >= ROM_ADDR
                 && (section.addr + section.data.len() as u64) <= (ROM_ADDR + ROM_SIZE)
             {
+                // If this is a program section, it should not overlap with the float library region
+                // If this is a float library section, it should not overlap with the program region
+                if i == elf_index {
+                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_ROM_ADDR {
+                        return Err(format!(
+                            "ROM program data section at address 0x{:x} with size {} overlaps with the ZisK float library region",
+                            section.addr,
+                            section.data.len()
+                        )
+                        .into());
+                    }
+                } else if section.addr < FLOAT_LIB_ROM_ADDR {
+                    return Err(format!(
+                        "ROM float library data section at address 0x{:x} with size {} overlaps with the ZisK program region",
+                        section.addr,
+                        section.data.len()
+                    )
+                    .into());
+                }
                 ro_data.push(section);
             } else if section.addr >= RAM_ADDR
                 && (section.addr + section.data.len() as u64) <= (RAM_ADDR + RAM_SIZE)
             {
+                // If this is a program section, it should not overlap with the float library region
+                // If this is a float library section, it should not overlap with the program region
+                if i == elf_index {
+                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_ROM_ADDR {
+                        return Err(format!(
+                            "RAM program data section at address 0x{:x} with size {} overlaps with the ZisK float library region",
+                            section.addr,
+                            section.data.len()
+                        )
+                        .into());
+                    }
+                } else if section.addr < FLOAT_LIB_ROM_ADDR {
+                    return Err(format!(
+                        "RAM float library data section at address 0x{:x} with size {} overlaps with the ZisK program region",
+                        section.addr,
+                        section.data.len()
+                    )
+                    .into());
+                }
                 rw_data.push(section);
             } else {
                 return Err(format!(
