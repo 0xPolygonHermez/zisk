@@ -140,17 +140,17 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
+stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/colMajor-ntt-scheduler" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
