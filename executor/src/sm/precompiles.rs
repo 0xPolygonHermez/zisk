@@ -12,7 +12,10 @@
 //! Adding a precompile: ONE line in `register_precompiles!`, plus the
 //! matching per-crate import.
 
-use precomp_arith_eq::{ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager};
+use precomp_arith_eq::{
+    ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager,
+    ARITH_EQ_CONFIG_AIR_IDS,
+};
 use precomp_arith_eq_384::{
     ArithEq384Collector, ArithEq384CounterInputGen, ArithEq384Instance, ArithEq384Manager,
 };
@@ -29,8 +32,8 @@ use zisk_core::{
     KECCAK_OP_TYPE_ID, POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID,
 };
 use zisk_pil::{
-    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_AIR_IDS, BLAKE_2_BR_AIR_IDS, KECCAKF_AIR_IDS,
-    POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
+    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, BLAKE_2_BR_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS,
+    SHA_256_F_AIR_IDS,
 };
 
 crate::register_precompiles! {
@@ -56,7 +59,7 @@ crate::register_precompiles! {
     ] => Blake2Manager<F>,
     ArithEq [
         op: ARITH_EQ_OP_TYPE_ID,
-        air: ARITH_EQ_AIR_IDS,
+        air: ARITH_EQ_CONFIG_AIR_IDS,
         rank_assign: false,
     ] => ArithEqManager<F>,
     ArithEq384 [

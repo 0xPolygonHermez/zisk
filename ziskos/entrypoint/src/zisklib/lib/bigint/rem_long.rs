@@ -99,7 +99,7 @@ pub fn rem_long_init(
 /// The remainder: a mod b
 ///
 /// # Note
-/// Not optimal for `len(b) == 1`, use `rem_short` instead
+/// Not optimal for `len(b) == 1`, use `rem_short_init` instead
 pub fn rem_long(
     a: &[U256],
     b: &[U256],

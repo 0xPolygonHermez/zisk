@@ -1,0 +1,466 @@
+#![allow(dead_code)]
+//! Legacy FROPS (binary basic) — snapshot of `binary_basic_frops.rs` as of commit d978059
+//! ("Big opcode refactor"), the last version before the FROPS overhaul.
+//!
+//! Kept only for comparison: `ziskemu --legacy-frops` uses these membership tests so a new
+//! FROPS version can be measured against the previous (legacy) one. The table-generation
+//! machinery (build_table / generate_* / fixed .bin) is intentionally omitted — only the pure
+//! `is_frequent_op` / `get_row` predicates (and their private offset helpers) remain, so this
+//! module depends solely on `ZiskOp`.
+
+use static_assertions::const_assert;
+use zisk_core::zisk_ops::ZiskOp;
+
+const OP_ADD: u8 = ZiskOp::Add.code();
+const OP_ADDW: u8 = ZiskOp::AddW.code();
+const OP_SUB: u8 = ZiskOp::Sub.code();
+const OP_SUBW: u8 = ZiskOp::SubW.code();
+const OP_EQ: u8 = ZiskOp::Eq.code();
+const OP_EQW: u8 = ZiskOp::EqW.code();
+const OP_LTU: u8 = ZiskOp::Ltu.code();
+const OP_LT: u8 = ZiskOp::Lt.code();
+const OP_LTUW: u8 = ZiskOp::LtuW.code();
+const OP_LTW: u8 = ZiskOp::LtW.code();
+const OP_LEU: u8 = ZiskOp::Leu.code();
+const OP_LE: u8 = ZiskOp::Le.code();
+const OP_LEUW: u8 = ZiskOp::LeuW.code();
+const OP_LEW: u8 = ZiskOp::LeW.code();
+const OP_AND: u8 = ZiskOp::And.code();
+const OP_OR: u8 = ZiskOp::Or.code();
+const OP_XOR: u8 = ZiskOp::Xor.code();
+
+const MAX_A_LOW_VALUE: u64 = 386;
+const MAX_B_LOW_VALUE: u64 = 386;
+const LOW_VALUE_SIZE: usize = (MAX_A_LOW_VALUE * MAX_B_LOW_VALUE) as usize;
+const MINUS_ONE: u64 = -1i64 as u64;
+const MAX_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
+const EQ_OP_B_ZERO_A_LIMIT: u64 = 0xFFFFF;
+const LTU_OP_B_LT_ONE_FROM: u64 = -128i64 as u64;
+
+// LT
+
+const LT_FROM_ADDR: u64 = 0xA010_0000;
+const LT_TO_ADDR: u64 = 0xA012_0000;
+const LT_DELTA: u64 = 8;
+const LT_LOW_DISTANCE_1: u64 = 16; // 0 - 15
+const LT_HIGH_DISTANCE_8: u64 = 240; // 16,24,32,40,.....
+const LT_LOW_HIGH_DISTANCES: u64 = LT_LOW_DISTANCE_1 + LT_HIGH_DISTANCE_8;
+const LT_MAX_DISTANCE: u64 = LT_LOW_DISTANCE_1 + (LT_HIGH_DISTANCE_8 - 1) * 8;
+const LT_FROM_TO_SIZE: usize = ((LT_TO_ADDR - LT_FROM_ADDR) / LT_DELTA) as usize;
+const LT_ALL_FROM_TO_SIZE: usize = LT_FROM_TO_SIZE * LT_LOW_HIGH_DISTANCES as usize;
+
+const LT_ZERO_TO_B: u64 = 0x10000;
+
+// ADD
+const MAX_ADD_MINUS_ONE: u64 = 24628;
+const MAX_ADD_MINUS_A: u64 = 1024;
+const MAX_ADD_MINUS_B: u64 = 8;
+const ADD_ONE_FROM_ADDR: u64 = 0xA010_0000; // address
+const ADD_ONE_TO_ADDR: u64 = 0xA020_0000;
+const ADD_EIGHT_FROM_ADDR: u64 = 0xA010_0000; // address
+const ADD_EIGHT_TO_ADDR: u64 = 0xA020_0000;
+const ADD_EIGHT_FROM_CODE: u64 = 0x8000_0000; // address
+const ADD_EIGHT_TO_CODE: u64 = 0x8080_0000;
+const ADD_EIGHT_STEP: u64 = 8;
+
+const ADD_ZERO_FROM_ADDR: u64 = 0xA010_0000; // address
+const ADD_ZERO_TO_ADDR: u64 = 0xA020_0000;
+const ADD_ZERO_STEP: u64 = 8;
+
+const ADD_MINUS_ONE_SIZE: usize = MAX_ADD_MINUS_ONE as usize;
+const ADD_MINUS_A_B_SIZE: usize = (MAX_ADD_MINUS_A * MAX_ADD_MINUS_B) as usize;
+const ADD_MINUS_A_B_FROM_B: u64 = MINUS_ONE - MAX_ADD_MINUS_B;
+
+const ADD_ONE_ADDR_SIZE: usize = (ADD_ONE_TO_ADDR - ADD_ONE_FROM_ADDR) as usize;
+const ADD_EIGHT_ADDR_SIZE: usize =
+    ((ADD_EIGHT_TO_ADDR - ADD_EIGHT_FROM_ADDR) / ADD_EIGHT_STEP) as usize;
+const ADD_EIGHT_CODE_SIZE: usize =
+    ((ADD_EIGHT_TO_CODE - ADD_EIGHT_FROM_CODE) / ADD_EIGHT_STEP) as usize;
+
+const ADD_MINUS_ONE_OFFSET: usize = LOW_VALUE_SIZE;
+const ADD_MINUS_A_B_OFFSET: usize = ADD_MINUS_ONE_OFFSET + ADD_MINUS_ONE_SIZE;
+const ADD_ONE_ADDR_OFFSET: usize = ADD_MINUS_A_B_OFFSET + ADD_MINUS_A_B_SIZE;
+const ADD_EIGHT_ADDR_OFFSET: usize = ADD_ONE_ADDR_OFFSET + ADD_ONE_ADDR_SIZE;
+const ADD_EIGHT_CODE_OFFSET: usize = ADD_EIGHT_ADDR_OFFSET + ADD_EIGHT_ADDR_SIZE;
+const ADD_ZERO_ADDR_OFFSET: usize = ADD_EIGHT_CODE_OFFSET + ADD_EIGHT_CODE_SIZE;
+
+// AND
+const AND_CODE_ADDR_FROM: u64 = 0x8000_0000;
+const AND_CODE_ADDR_TO: u64 = 0x8090_0000; // address
+const AND_CODE_ADDR_STEP: u64 = 4;
+const AND_CODE_ADDR_MASK: u64 = 0xFFFF_FFFF_FFFF_FFFC;
+
+const AND_RESET_LAST_THREE_BITS_B: u64 = 0xFFFF_FFFF_FFFF_FFF8;
+const AND_RESET_LAST_THREE_BITS_A_TO: u64 = 1024;
+const AND_GET_LAST_THREE_BITS_B: u64 = 0x7;
+const AND_GET_LAST_THREE_BITS_FROM: u64 = 0xA010_0000;
+const AND_GET_LAST_THREE_BITS_TO: u64 = 0xA020_0000;
+const AND_GET_LAST_THREE_BITS_STEP: u64 = 8;
+
+const AND_CODE_ADDR_OFFSET: usize = LOW_VALUE_SIZE;
+const AND_CODE_ADDR_SIZE: usize =
+    ((AND_CODE_ADDR_TO - AND_CODE_ADDR_FROM) / AND_CODE_ADDR_STEP) as usize;
+
+const AND_RESET_LAST_THREE_BITS_OFFSET: usize = AND_CODE_ADDR_OFFSET + AND_CODE_ADDR_SIZE;
+const AND_RESET_LAST_THREE_BITS_SIZE: usize = AND_RESET_LAST_THREE_BITS_A_TO as usize;
+
+const AND_GET_LAST_THREE_BITS_OFFSET: usize =
+    AND_RESET_LAST_THREE_BITS_OFFSET + AND_RESET_LAST_THREE_BITS_SIZE;
+
+const OR_TO_A: u64 = 0x1000;
+const OR_TO_B: u64 = 16;
+
+const SUB_W_ADDR_FROM: u64 = 0xA010_0000;
+
+const SUB_TO_A: u64 = 4192;
+const SUB_TO_B: u64 = 8;
+
+// table autogenerated with FrequentOpsTable::print_table_offsets()
+// this table is used to calculate the offset (row) of each operation
+const OP_TABLE_OFFSETS_START: usize = 6;
+const OP_TABLE_OFFSETS: [usize; 24] = [
+    0, 149124, 0, 4557574, 5755146, 8296258, 8479508, 8628504, 8777500, 11417888, 11629954, 0, 0,
+    0, 0, 0, 11778952, 11927948, 0, 12076944, 12225940, 12374936, 12786076, 12935072,
+];
+
+#[derive(Debug, Clone, Default)]
+pub struct BinaryBasicLegacyFrops;
+
+impl BinaryBasicLegacyFrops {
+    pub const NO_FROPS: usize = usize::MAX;
+
+    // EQ
+
+    #[inline(always)]
+    fn get_eq_offset(a: u64, b: u64) -> usize {
+        if b == 0 && a <= EQ_OP_B_ZERO_A_LIMIT {
+            LOW_VALUE_SIZE + a as usize
+        } else if b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // LTU
+
+    #[inline(always)]
+    fn get_ltu_offset(a: u64, b: u64) -> usize {
+        if b == 1 {
+            if a >= LTU_OP_B_LT_ONE_FROM {
+                LOW_VALUE_SIZE + (a - LTU_OP_B_LT_ONE_FROM) as usize
+            } else if a < MAX_A_LOW_VALUE {
+                Self::get_low_values_offset(a, 1)
+            } else {
+                Self::NO_FROPS
+            }
+        } else if b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // LT
+
+    #[inline(always)]
+    fn is_frequent_lt(a: u64, b: u64) -> bool {
+        if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+            true
+        } else if a <= b && b & 0xFFFF_FFFF_FFFE_0007 == 0xA010_0000 {
+            // 256 / 8 = 32 (5 bits)
+            let dist = b - a;
+            if dist < LT_LOW_DISTANCE_1 {
+                true
+            } else if dist <= LT_MAX_DISTANCE && dist & 0x7 == 0 {
+                // 16 - dist >> 3 - 2 = 14 - dist >> 3
+                true
+            } else {
+                false
+            }
+        } else {
+            a == 0 && b < LT_ZERO_TO_B
+        }
+    }
+
+    #[inline(always)]
+    fn get_lt_offset(a: u64, b: u64) -> usize {
+        const_assert!(LT_DELTA == 8);
+        const_assert!(LT_FROM_ADDR == 0xA010_0000);
+        const_assert!(LT_TO_ADDR == 0xA012_0000);
+
+        if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        // TODO_ASSERT
+        } else if a <= b && (b & 0xFFFF_FFFF_FFFE_0007) == 0xA010_0000 {
+            // 256 / 8 = 32 (5 bits)
+            let addr_offset = ((b - LT_FROM_ADDR) >> 3) * LT_LOW_HIGH_DISTANCES;
+            let dist = b - a;
+            if dist < LT_LOW_DISTANCE_1 {
+                LOW_VALUE_SIZE + (addr_offset + dist) as usize
+            } else if dist <= LT_MAX_DISTANCE && dist & 0x7 == 0 {
+                // 16 - dist >> 3 - 2 = 14 - dist >> 3
+                LOW_VALUE_SIZE + (addr_offset + LT_LOW_DISTANCE_1 + ((dist - 16) >> 3)) as usize
+            } else {
+                Self::NO_FROPS
+            }
+        } else if a == 0 && b < LT_ZERO_TO_B {
+            // in this point B >= MAX_B_LOW_VALUE
+            LOW_VALUE_SIZE + LT_ALL_FROM_TO_SIZE + (b - MAX_B_LOW_VALUE) as usize
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // ADD
+
+    #[inline(always)]
+    fn get_add_offset(a: u64, b: u64) -> usize {
+        const_assert!(ADD_ZERO_STEP == 8);
+        if b < MAX_B_LOW_VALUE {
+            if a < MAX_A_LOW_VALUE {
+                Self::get_low_values_offset(a, b)
+            } else {
+                match b {
+                    0 => {
+                        if (ADD_ZERO_FROM_ADDR..ADD_ZERO_TO_ADDR).contains(&a) && a & 0x7 == 0 {
+                            ADD_ZERO_ADDR_OFFSET + ((a - ADD_ZERO_FROM_ADDR) >> 3) as usize
+                        } else {
+                            Self::NO_FROPS
+                        }
+                    }
+                    1 => {
+                        if (ADD_ONE_FROM_ADDR..ADD_ONE_TO_ADDR).contains(&a) {
+                            ADD_ONE_ADDR_OFFSET + (a - ADD_ONE_FROM_ADDR) as usize
+                        } else {
+                            Self::NO_FROPS
+                        }
+                    }
+                    8 => {
+                        if a & 0x7 == 0 {
+                            if (ADD_EIGHT_FROM_ADDR..ADD_EIGHT_TO_ADDR).contains(&a) {
+                                ADD_EIGHT_ADDR_OFFSET + ((a - ADD_EIGHT_FROM_ADDR) >> 3) as usize
+                            } else if (ADD_EIGHT_FROM_CODE..ADD_EIGHT_TO_CODE).contains(&a) {
+                                ADD_EIGHT_CODE_OFFSET + ((a - ADD_EIGHT_FROM_CODE) >> 3) as usize
+                            } else {
+                                Self::NO_FROPS
+                            }
+                        } else {
+                            Self::NO_FROPS
+                        }
+                    }
+                    _ => Self::NO_FROPS,
+                }
+            }
+        } else if b == MINUS_ONE {
+            if a < MAX_ADD_MINUS_ONE {
+                ADD_MINUS_ONE_OFFSET + a as usize
+            } else {
+                Self::NO_FROPS
+            }
+        } else if b >= ADD_MINUS_A_B_FROM_B && a < MAX_ADD_MINUS_A {
+            ADD_MINUS_A_B_OFFSET + (a * MAX_ADD_MINUS_B + (MAX_U64 - 1 - b)) as usize
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // AND
+
+    #[inline(always)]
+    fn get_and_offset(a: u64, b: u64) -> usize {
+        if a == AND_CODE_ADDR_MASK
+            && (b & 0x03) == 0
+            && (AND_CODE_ADDR_FROM..AND_CODE_ADDR_TO).contains(&b)
+        {
+            AND_CODE_ADDR_OFFSET + ((b - AND_CODE_ADDR_FROM) >> 2) as usize
+        } else if b == AND_RESET_LAST_THREE_BITS_B && a < AND_RESET_LAST_THREE_BITS_A_TO {
+            AND_RESET_LAST_THREE_BITS_OFFSET + a as usize
+        } else if b == AND_GET_LAST_THREE_BITS_B
+            && (AND_GET_LAST_THREE_BITS_FROM..AND_GET_LAST_THREE_BITS_TO).contains(&a)
+            && a & 0x7 == 0
+        {
+            AND_GET_LAST_THREE_BITS_OFFSET + ((a - AND_GET_LAST_THREE_BITS_FROM) >> 3) as usize
+        } else if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // OR
+
+    #[inline(always)]
+    fn is_frequent_or(a: u64, b: u64) -> bool {
+        (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE) || (a < OR_TO_A && b <= OR_TO_B)
+    }
+    #[inline(always)]
+    fn get_or_offset(a: u64, b: u64) -> usize {
+        if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        } else if a < OR_TO_A && b <= OR_TO_B {
+            LOW_VALUE_SIZE + ((a - MAX_A_LOW_VALUE) * (OR_TO_B + 1) + b) as usize
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // SUB_W
+
+    #[inline(always)]
+    fn is_frequent_sub_w(a: u64, b: u64) -> bool {
+        (a == 0 && ((b & 0xFFFF_FFFF_FFF0_0003 == 0xA010_0000) || b < MAX_B_LOW_VALUE))
+            || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
+    }
+    #[inline(always)]
+    fn get_sub_w_offset(a: u64, b: u64) -> usize {
+        if a == 0 {
+            if b & 0xFFFF_FFFF_FFF0_0003 == 0xA010_0000 {
+                LOW_VALUE_SIZE + ((b - SUB_W_ADDR_FROM) >> 2) as usize
+            } else if b < MAX_B_LOW_VALUE {
+                Self::get_low_values_offset(0, b)
+            } else {
+                Self::NO_FROPS
+            }
+        } else if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // XOR
+
+    #[inline(always)]
+    fn is_frequent_xor(a: u64, b: u64) -> bool {
+        (b == MAX_U64 && a < 2) || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
+    }
+    #[inline(always)]
+    fn get_xor_offset(a: u64, b: u64) -> usize {
+        if b == MAX_U64 {
+            if a < 2 {
+                LOW_VALUE_SIZE + a as usize
+            } else {
+                Self::NO_FROPS
+            }
+        } else if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    // SUB
+
+    #[inline(always)]
+    fn is_frequent_sub(a: u64, b: u64) -> bool {
+        (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE) || (a < SUB_TO_A && b <= SUB_TO_B)
+    }
+    #[inline(always)]
+    fn get_sub_offset(a: u64, b: u64) -> usize {
+        if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+            Self::get_low_values_offset(a, b)
+        } else if a < SUB_TO_A && b <= SUB_TO_B {
+            LOW_VALUE_SIZE + ((a - MAX_A_LOW_VALUE) * (SUB_TO_B + 1) + b) as usize
+        } else {
+            Self::NO_FROPS
+        }
+    }
+
+    #[inline(always)]
+    fn get_low_values_offset(a: u64, b: u64) -> usize {
+        (a * MAX_B_LOW_VALUE + b) as usize
+    }
+
+    #[inline(always)]
+    pub fn is_frequent_op(op: u8, a: u64, b: u64) -> bool {
+        // Use lookup table for faster branching instead of match on enum
+        match op {
+            // Low value operations - check bounds first (most common case)
+            OP_ADDW | OP_EQW | OP_LTUW | OP_LTW | OP_LEU | OP_LE | OP_LEUW | OP_LEW => {
+                a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE
+            }
+            // Special cases - inline the logic to avoid function calls
+            OP_EQ => {
+                (b == 0 && a <= EQ_OP_B_ZERO_A_LIMIT)
+                    || (b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE)
+            }
+            OP_LTU => {
+                (b == 1 && !(MAX_A_LOW_VALUE..LTU_OP_B_LT_ONE_FROM).contains(&a))
+                    || (b < MAX_B_LOW_VALUE && a < MAX_A_LOW_VALUE)
+            }
+            OP_ADD => {
+                // Inline is_frequent_add logic
+                if b < MAX_B_LOW_VALUE {
+                    if a < MAX_A_LOW_VALUE {
+                        true
+                    } else {
+                        match b {
+                            0 => {
+                                (ADD_ZERO_FROM_ADDR..ADD_ZERO_TO_ADDR).contains(&a) && a & 0x7 == 0
+                            }
+                            1 => (ADD_ONE_FROM_ADDR..ADD_ONE_TO_ADDR).contains(&a),
+                            8 => {
+                                a & 0x7 == 0
+                                    && ((ADD_EIGHT_FROM_ADDR..ADD_EIGHT_TO_ADDR).contains(&a)
+                                        || (ADD_EIGHT_FROM_CODE..ADD_EIGHT_TO_CODE).contains(&a))
+                            }
+                            _ => false,
+                        }
+                    }
+                } else if b == MINUS_ONE {
+                    a < MAX_ADD_MINUS_ONE
+                } else {
+                    b >= ADD_MINUS_A_B_FROM_B && a < MAX_ADD_MINUS_A
+                }
+            }
+            OP_AND => {
+                // Inline is_frequent_and logic
+                (a == AND_CODE_ADDR_MASK
+                    && (b & 0x03) == 0
+                    && (AND_CODE_ADDR_FROM..AND_CODE_ADDR_TO).contains(&b))
+                    || (b == AND_RESET_LAST_THREE_BITS_B && a < AND_RESET_LAST_THREE_BITS_A_TO)
+                    || (b == AND_GET_LAST_THREE_BITS_B
+                        && (AND_GET_LAST_THREE_BITS_FROM..AND_GET_LAST_THREE_BITS_TO).contains(&a)
+                        && a & 0x7 == 0)
+                    || (a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE)
+            }
+            // Other special cases - call functions for less common operations
+            OP_LT => Self::is_frequent_lt(a, b),
+            OP_SUBW => Self::is_frequent_sub_w(a, b),
+            OP_SUB => Self::is_frequent_sub(a, b),
+            OP_OR => Self::is_frequent_or(a, b),
+            OP_XOR => Self::is_frequent_xor(a, b),
+            _ => false,
+        }
+    }
+
+    #[inline(always)]
+    pub fn get_row(op: u8, a: u64, b: u64) -> usize {
+        // ecall/system call functions are not candidates to be usual
+        let relative_offset = match op {
+            OP_ADDW | OP_EQW | OP_LTUW | OP_LTW | OP_LEU | OP_LE | OP_LEUW | OP_LEW => {
+                if a < MAX_A_LOW_VALUE && b < MAX_B_LOW_VALUE {
+                    Self::get_low_values_offset(a, b)
+                } else {
+                    Self::NO_FROPS
+                }
+            }
+            OP_EQ => Self::get_eq_offset(a, b),
+            OP_LTU => Self::get_ltu_offset(a, b),
+            OP_LT => Self::get_lt_offset(a, b),
+            OP_SUBW => Self::get_sub_w_offset(a, b),
+            OP_SUB => Self::get_sub_offset(a, b),
+            OP_OR => Self::get_or_offset(a, b),
+            OP_XOR => Self::get_xor_offset(a, b),
+            OP_AND => Self::get_and_offset(a, b),
+            OP_ADD => Self::get_add_offset(a, b),
+            _ => Self::NO_FROPS,
+        };
+        if relative_offset == Self::NO_FROPS {
+            Self::NO_FROPS
+        } else {
+            relative_offset + OP_TABLE_OFFSETS[op as usize - OP_TABLE_OFFSETS_START]
+        }
+    }
+}

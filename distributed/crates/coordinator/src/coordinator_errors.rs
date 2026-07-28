@@ -22,6 +22,9 @@ pub enum CoordinatorError {
     #[error("Workers are connected but still running setup; retry shortly")]
     WorkersSettingUp,
 
+    #[error("Workers are busy running another job; retry shortly")]
+    WorkersBusy,
+
     #[error("Workers are connected but setup has not been done; call setup() first")]
     WorkersNotSetup,
 
@@ -52,6 +55,9 @@ impl From<CoordinatorError> for Status {
             }
             CoordinatorError::WorkersSettingUp => {
                 Status::new(Code::Unavailable, "Workers are setting up; retry shortly")
+            }
+            CoordinatorError::WorkersBusy => {
+                Status::new(Code::Unavailable, "Workers are busy; retry shortly")
             }
             CoordinatorError::WorkersNotSetup => Status::new(
                 Code::FailedPrecondition,

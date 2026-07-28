@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::{binary_constants::*, BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
+use crate::{BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput};
 
 use fields::PrimeField64;
 use pil_std_lib::Std;
@@ -71,25 +71,82 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             | ZiskOp::Sra
             | ZiskOp::SllW
             | ZiskOp::SrlW
-            | ZiskOp::SraW => true,
+            | ZiskOp::SraW
+            | ZiskOp::Rol
+            | ZiskOp::RolW
+            | ZiskOp::Ror
+            | ZiskOp::RorW
+            | ZiskOp::Bclr
+            | ZiskOp::Bext
+            | ZiskOp::Binv
+            | ZiskOp::Bset => true,
 
-            ZiskOp::SignExtendB | ZiskOp::SignExtendH | ZiskOp::SignExtendW => false,
+            ZiskOp::SignExtendB
+            | ZiskOp::SignExtendH
+            | ZiskOp::SignExtendW
+            | ZiskOp::Rev8
+            | ZiskOp::OrcB
+            | ZiskOp::Cpop
+            | ZiskOp::CpopW
+            | ZiskOp::Ctz
+            | ZiskOp::CtzW
+            | ZiskOp::Clz
+            | ZiskOp::ClzW
+            | ZiskOp::Pack
+            | ZiskOp::PackH
+            | ZiskOp::PackW => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={opcode:?}"),
         }
     }
 
+    /// Determines if the given opcode is a forward byte-chain operation (ctz family, scanned
+    /// LSB -> MSB), where each byte's table row is linked to the previous one through the
+    /// accumulated count in `free_in_c[j][1]`.
+    fn opcode_is_chain(opcode: ZiskOp) -> bool {
+        matches!(opcode, ZiskOp::Ctz | ZiskOp::CtzW)
+    }
+
+    /// Determines if the given opcode is a reverse byte-chain operation (clz family, scanned
+    /// MSB -> LSB).
+    fn opcode_is_chain_rev(opcode: ZiskOp) -> bool {
+        matches!(opcode, ZiskOp::Clz | ZiskOp::ClzW)
+    }
+
+    /// Determines if the given opcode is a pack (combine) operation, where the low halves of the
+    /// two register operands are interleaved into `free_in_a`.
+    fn opcode_is_combine(opcode: ZiskOp) -> bool {
+        matches!(opcode, ZiskOp::Pack | ZiskOp::PackH | ZiskOp::PackW)
+    }
+
     /// Determines if the given opcode represents a shift word operation.
     fn opcode_is_shift_word(opcode: ZiskOp) -> bool {
         match opcode {
-            ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW => true,
+            ZiskOp::SllW | ZiskOp::SrlW | ZiskOp::SraW | ZiskOp::RolW | ZiskOp::RorW => true,
 
             ZiskOp::Sll
             | ZiskOp::Srl
             | ZiskOp::Sra
             | ZiskOp::SignExtendB
             | ZiskOp::SignExtendH
-            | ZiskOp::SignExtendW => false,
+            | ZiskOp::SignExtendW
+            | ZiskOp::Rev8
+            | ZiskOp::OrcB
+            | ZiskOp::Rol
+            | ZiskOp::Ror
+            | ZiskOp::Cpop
+            | ZiskOp::CpopW
+            | ZiskOp::Ctz
+            | ZiskOp::CtzW
+            | ZiskOp::Clz
+            | ZiskOp::ClzW
+            | ZiskOp::Pack
+            | ZiskOp::PackH
+            | ZiskOp::PackW
+            | ZiskOp::Bclr
+            | ZiskOp::Bext
+            | ZiskOp::Binv
+            | ZiskOp::Bset => false,
 
             _ => panic!("BinaryExtensionSM::opcode_is_shift() got invalid opcode={opcode:?}"),
         }
@@ -116,31 +173,54 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let op_is_shift = Self::opcode_is_shift(opcode);
         row.set_op_is_shift(op_is_shift);
 
+        // Set if the opcode is a byte-chain operation (forward: ctz family, reverse: clz family)
+        let op_is_chain = Self::opcode_is_chain(opcode);
+        row.set_op_is_chain(op_is_chain);
+        let op_is_chain_rev = Self::opcode_is_chain_rev(opcode);
+        row.set_op_is_chain_rev(op_is_chain_rev);
+
+        // Set if the opcode is a pack (combine) operation
+        let op_is_combine = Self::opcode_is_combine(opcode);
+        row.set_op_is_combine(op_is_combine);
+
         // Set if the opcode is a shift word operation
         let op_is_shift_word = Self::opcode_is_shift_word(opcode);
 
-        // Detect if this is a sign extend operation
-        let a_val = if op_is_shift { input.a } else { input.b };
+        // Select the value that is byte-decomposed into free_in_a:
+        //  - shift:   the value being shifted (input.a)
+        //  - combine: the two low halves interleaved, input.a[31:0] | input.b[31:0] << 32
+        //  - other:   the single operand (input.b)
+        let a_val = if op_is_shift {
+            input.a
+        } else if op_is_combine {
+            (input.a & 0xFFFFFFFF) | ((input.b & 0xFFFFFFFF) << 32)
+        } else {
+            input.b
+        };
         let b_val = if op_is_shift { input.b } else { input.a };
 
         // Split a in bytes and store them in in1
         let a_bytes: [u8; 8] = a_val.to_le_bytes();
         row.set_all_free_in_a(&a_bytes);
 
-        // Store b low part into in2_low
+        // Store b low part into in2_low (only shifts use it; 0 otherwise)
         let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
         row.set_free_in_b(in2_low as u8);
 
         // Store b lower bits when shifting, depending on operation size
         let b_low = if op_is_shift_word { b_val & LS_5_BITS } else { b_val & LS_6_BITS };
 
-        // Store b into in2
-        let in2_0: u32 = if op_is_shift {
-            ((b_val >> 8) & 0xFFFFFF) as u32
+        // Store the b[] witness columns:
+        //  - shift:   the shift amount (bits 8..63 of input.b; low byte is in free_in_b)
+        //  - combine: the two high halves, b[0] = input.a[63:32], b[1] = input.b[63:32]
+        //  - other:   the operand high/low (0 for single-source ops)
+        let (in2_0, in2_1): (u32, u32) = if op_is_shift {
+            (((b_val >> 8) & 0xFFFFFF) as u32, ((b_val >> 32) & 0xFFFFFFFF) as u32)
+        } else if op_is_combine {
+            ((input.a >> 32) as u32, (input.b >> 32) as u32)
         } else {
-            (b_val & 0xFFFFFFFF) as u32
+            ((b_val & 0xFFFFFFFF) as u32, ((b_val >> 32) & 0xFFFFFFFF) as u32)
         };
-        let in2_1: u32 = ((b_val >> 32) & 0xFFFFFFFF) as u32;
 
         row.set_all_b(&[in2_0, in2_1]);
 
@@ -279,6 +359,237 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                     t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
                 }
             }
+            ZiskOp::Rev8 => {
+                // Byte-reverse the 64-bit input: byte j moves to position 7 - j.
+                // Single input (op_is_shift = 0), so `a_bytes` holds the operand.
+                binary_extension_table_op = BinaryExtensionTableOp::Rev8;
+                for j in 0..8 {
+                    let out = (a_bytes[j] as u64) << (8 * (7 - j) as u64);
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::OrcB => {
+                // OR-combine bits within each byte, in place: output byte j is 0xFF
+                // if input byte j has any bit set, else 0x00. Single input.
+                binary_extension_table_op = BinaryExtensionTableOp::OrcB;
+                for j in 0..8 {
+                    let out = if a_bytes[j] != 0 { 0xFFu64 << (8 * j as u64) } else { 0 };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::Rol => {
+                // Rotate left the full 64-bit value by `b_low` (mod 64), per byte.
+                binary_extension_table_op = BinaryExtensionTableOp::Rol;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = a_pos.rotate_left(b_low as u32);
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::Ror => {
+                // Rotate right the full 64-bit value by `b_low` (mod 64), per byte.
+                binary_extension_table_op = BinaryExtensionTableOp::Ror;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = a_pos.rotate_right(b_low as u32);
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::RolW => {
+                // Rotate left the low 32 bits by `b_low` (mod 32), sign-extended.
+                binary_extension_table_op = BinaryExtensionTableOp::RolW;
+                for j in 0..8 {
+                    let out = if j >= 4 {
+                        0u64
+                    } else {
+                        let lo = ((a_bytes[j] as u64) << (8 * j as u64)) as u32;
+                        let r = lo.rotate_left(b_low as u32) as u64;
+                        if r & SIGN_32_BIT != 0 {
+                            r | SE_MASK_32
+                        } else {
+                            r
+                        }
+                    };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::RorW => {
+                // Rotate right the low 32 bits by `b_low` (mod 32), sign-extended.
+                binary_extension_table_op = BinaryExtensionTableOp::RorW;
+                for j in 0..8 {
+                    let out = if j >= 4 {
+                        0u64
+                    } else {
+                        let lo = ((a_bytes[j] as u64) << (8 * j as u64)) as u32;
+                        let r = lo.rotate_right(b_low as u32) as u64;
+                        if r & SIGN_32_BIT != 0 {
+                            r | SE_MASK_32
+                        } else {
+                            r
+                        }
+                    };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::Cpop => {
+                // Population count: each byte contributes its own set-bit count (0..8),
+                // position-independent; the 8 contributions sum to the 64-bit popcount.
+                binary_extension_table_op = BinaryExtensionTableOp::Cpop;
+                for j in 0..8 {
+                    t_out[j][0] = a_bytes[j].count_ones();
+                }
+            }
+            ZiskOp::CpopW => {
+                // Population count of the low 32 bits: only the low 4 bytes contribute.
+                binary_extension_table_op = BinaryExtensionTableOp::CpopW;
+                for j in 0..4 {
+                    t_out[j][0] = a_bytes[j].count_ones();
+                }
+            }
+            ZiskOp::Ctz => {
+                // Count trailing zeros, byte-chained. `free_in_c[j][0]` = per-byte increment
+                // (summed = ctz), `free_in_c[j][1]` = acc_in entering byte j. A byte is still in
+                // the trailing-zero run iff acc_in == 8*j, in which case it adds its own trailing
+                // zeros (8 for a zero byte, else 0..7); otherwise it adds 0.
+                binary_extension_table_op = BinaryExtensionTableOp::Ctz;
+                let mut acc: u64 = 0;
+                for j in 0..8 {
+                    let acc_in = acc;
+                    let incr =
+                        if acc_in == 8 * j as u64 { a_bytes[j].trailing_zeros() as u64 } else { 0 };
+                    t_out[j][0] = incr as u32;
+                    t_out[j][1] = acc_in as u32;
+                    acc = acc_in + incr;
+                }
+            }
+            ZiskOp::CtzW => {
+                // Count trailing zeros of the low 32 bits. Same chain as Ctz but only the low 4
+                // bytes participate; bytes at offset >= 4 add nothing.
+                binary_extension_table_op = BinaryExtensionTableOp::CtzW;
+                let mut acc: u64 = 0;
+                for j in 0..8 {
+                    let acc_in = acc;
+                    let incr = if j < 4 && acc_in == 8 * j as u64 {
+                        a_bytes[j].trailing_zeros() as u64
+                    } else {
+                        0
+                    };
+                    t_out[j][0] = incr as u32;
+                    t_out[j][1] = acc_in as u32;
+                    acc = acc_in + incr;
+                }
+            }
+            ZiskOp::Clz => {
+                // Count leading zeros, reverse byte-chain (scan MSB -> LSB). Mirror of Ctz: a
+                // byte is still in the leading-zero run iff acc_in == 8*(7-j); it then adds its
+                // own leading zeros (8 for a zero byte, else 0..7). Increments telescope to clz.
+                binary_extension_table_op = BinaryExtensionTableOp::Clz;
+                let mut acc: u64 = 0;
+                for j in (0..8).rev() {
+                    let acc_in = acc;
+                    let incr = if acc_in == 8 * (7 - j) as u64 {
+                        a_bytes[j].leading_zeros() as u64
+                    } else {
+                        0
+                    };
+                    t_out[j][0] = incr as u32;
+                    t_out[j][1] = acc_in as u32;
+                    acc = acc_in + incr;
+                }
+            }
+            ZiskOp::ClzW => {
+                // Count leading zeros of the low 32 bits. Same reverse chain as Clz but only the
+                // low 4 bytes participate; the top of the word is byte 3.
+                binary_extension_table_op = BinaryExtensionTableOp::ClzW;
+                let mut acc: u64 = 0;
+                for j in (0..4).rev() {
+                    let acc_in = acc;
+                    // `leading_zeros` on the u8 byte gives 0..8 (its position within the 32-bit
+                    // word is handled by the 8*(3-j) threshold, mirroring Ctz_w).
+                    let incr = if acc_in == 8 * (3 - j) as u64 {
+                        a_bytes[j].leading_zeros() as u64
+                    } else {
+                        0
+                    };
+                    t_out[j][0] = incr as u32;
+                    t_out[j][1] = acc_in as u32;
+                    acc = acc_in + incr;
+                }
+            }
+            ZiskOp::Pack => {
+                // rd = rs1[31:0] | (rs2[31:0] << 32). free_in_a already holds rs1[31:0] in its
+                // low 4 bytes and rs2[31:0] in its high 4 bytes, so each byte lands in place.
+                binary_extension_table_op = BinaryExtensionTableOp::Pack;
+                for j in 0..8 {
+                    let out = (a_bytes[j] as u64) << (8 * j as u64);
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::PackH => {
+                // rd = rs1[7:0] | (rs2[7:0] << 8): byte 0 -> result byte 0, byte 4 -> result byte 1.
+                binary_extension_table_op = BinaryExtensionTableOp::PackH;
+                t_out[0][0] = a_bytes[0] as u32;
+                t_out[4][0] = (a_bytes[4] as u32) << 8;
+            }
+            ZiskOp::PackW => {
+                // rd = sext32(rs1[15:0] | (rs2[15:0] << 16)): bytes 0,1 -> result bytes 0,1;
+                // bytes 4,5 -> result bytes 2,3; sign-extend from bit 7 of byte 5 (bit 31).
+                binary_extension_table_op = BinaryExtensionTableOp::PackW;
+                t_out[0][0] = a_bytes[0] as u32;
+                t_out[1][0] = (a_bytes[1] as u32) << 8;
+                t_out[4][0] = (a_bytes[4] as u32) << 16;
+                t_out[5][0] = (a_bytes[5] as u32) << 24;
+                if a_bytes[5] & (SIGN_BYTE as u8) != 0 {
+                    t_out[5][1] = MASK_32 as u32;
+                }
+            }
+            ZiskOp::Bclr => {
+                // rd = a & ~(1 << pos). Only the byte holding `pos` is affected; the mask is a
+                // no-op on the others, so it can be applied uniformly (branch-free).
+                binary_extension_table_op = BinaryExtensionTableOp::Bclr;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = a_pos & !(1u64 << b_low);
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::Bext => {
+                // rd = (a >> pos) & 1: the extracted bit lands at result bit 0.
+                binary_extension_table_op = BinaryExtensionTableOp::Bext;
+                let target = (b_low >> 3) as usize;
+                let bit = b_low & 0x07;
+                t_out[target][0] = (((a_bytes[target] as u64) >> bit) & 1) as u32;
+            }
+            ZiskOp::Binv => {
+                // rd = a ^ (1 << pos): only the byte holding `pos` flips it.
+                binary_extension_table_op = BinaryExtensionTableOp::Binv;
+                let target = (b_low >> 3) as usize;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = if j == target { a_pos ^ (1u64 << b_low) } else { a_pos };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
+            ZiskOp::Bset => {
+                // rd = a | (1 << pos): only the byte holding `pos` sets it.
+                binary_extension_table_op = BinaryExtensionTableOp::Bset;
+                let target = (b_low >> 3) as usize;
+                for j in 0..8 {
+                    let a_pos = (a_bytes[j] as u64) << (8 * j as u64);
+                    let out = if j == target { a_pos | (1u64 << b_low) } else { a_pos };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
             _ => panic!("BinaryExtensionSM::process_slice() found invalid opcode={}", input.op),
         }
 
@@ -286,11 +597,15 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         row.set_all_free_in_c(&t_out);
 
         for (i, a_byte) in a_bytes.iter().enumerate() {
+            // For chain ops (forward or reverse) the fourth argument is acc_in (carried in
+            // free_in_c[j][1]), which selects the row within the block; for the rest it is the
+            // shared B low byte.
+            let table_b = if op_is_chain || op_is_chain_rev { t_out[i][1] as u64 } else { in2_low };
             let row = BinaryExtensionTableSM::calculate_table_row(
                 binary_extension_table_op,
                 i as u64,
                 *a_byte as u64,
-                in2_low,
+                table_b,
             );
             self.std.inc_virtual_row_one(self.table_id, row);
         }
@@ -356,7 +671,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
 
         // Set SEXT_B(0) as the padding row
         let mut padding_row: R = Default::default();
-        padding_row.set_op(SEXT_B_OP);
+        padding_row.set_op(ZiskOp::SignExtendB.code());
 
         binary_e_trace.buffer[total_inputs..num_rows]
             .par_iter_mut()

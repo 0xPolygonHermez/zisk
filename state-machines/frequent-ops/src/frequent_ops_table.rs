@@ -744,7 +744,7 @@ impl FrequentOpsTable {
     }
     pub fn print_table_offsets(&self) {
         let offsets = self.generate_table_offsets();
-        println!("const OP_TABLE_OFFSETS: [usize; {}] = {:?};", offsets.len(), &offsets);
+        println!("const OP_TABLE_OFFSETS: [usize; {}] = {:?};", offsets.len(), offsets);
     }
 
     pub fn generate_table_offsets(&self) -> Vec<usize> {

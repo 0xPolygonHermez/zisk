@@ -7,6 +7,7 @@ use test_data::{
     get_secp256k1_dbl_test_data, get_secp256r1_add_test_data, get_secp256r1_dbl_test_data,
 };
 
+#[path = "../arith_eq_constants.rs"]
 mod arith_eq_constants;
 use arith_eq_constants::ARITH_EQ_ROWS_BY_OP;
 

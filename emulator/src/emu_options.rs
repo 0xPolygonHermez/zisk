@@ -117,6 +117,10 @@ pub struct EmuOptions {
     /// Optional file path to store operation data for analysis
     #[clap(short, long, value_name = "STORE_OP_OUTPUT")]
     pub store_op_output: Option<String>,
+    /// Use the legacy FROPS tables (snapshot before the FROPS overhaul) when computing FROPS
+    /// coverage statistics, so a new FROPS version can be compared against the previous one.
+    #[clap(long, value_name = "LEGACY_FROPS", default_value = "false")]
+    pub legacy_frops: bool,
     /// Load function names and symbols from the ELF file.
     #[clap(short = 'S', long, value_name = "READ_SYMBOLS", default_value = "false")]
     pub read_symbols: bool,
@@ -234,6 +238,7 @@ impl Default for EmuOptions {
             stats: false,
             generate_minimal_traces: false,
             store_op_output: None,
+            legacy_frops: false,
             read_symbols: false,
             roi_callers: 10,
             top_roi: 25,

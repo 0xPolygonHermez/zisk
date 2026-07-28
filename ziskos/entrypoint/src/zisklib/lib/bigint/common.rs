@@ -182,27 +182,6 @@ impl PartialEq for U256 {
     }
 }
 
-/// Scratch space for short-divisor division verification (`rem_short`).
-pub struct ShortScratch {
-    pub quo: [u64; 8],    // quotient
-    pub rem: [u64; 4],    // remainder
-    pub q_b: [U256; 2],   // q * b
-    pub q_b_r: [U256; 2], // q * b + r
-}
-
-impl ShortScratch {
-    #[inline(always)]
-    pub fn new() -> Self {
-        Self { quo: [0u64; 8], rem: [0u64; 4], q_b: [U256::ZERO; 2], q_b_r: [U256::ZERO; 2] }
-    }
-}
-
-impl Default for ShortScratch {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Scratch space for the remainder step of long-divisor division verification.
 pub struct RemLongScratch {
     pub quo: Vec<u64>,    // quotient

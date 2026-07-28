@@ -233,6 +233,12 @@ impl ProveCmd {
             !self.asm
         };
 
+        if let Some(msg) =
+            super::hints_backend_error(hints_stream.is_some(), emulator, cfg!(target_os = "macos"))
+        {
+            anyhow::bail!(msg);
+        }
+
         let (result, executor_time) = if emulator {
             self.run_emu(stdin, prover_options)?
         } else {

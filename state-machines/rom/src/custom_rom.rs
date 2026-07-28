@@ -55,7 +55,7 @@ impl CustomRom {
             .map_err(|e| RomError::TraceConstruction(e.to_string()))?;
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (_pc, zib) in rom.insts.iter() {
+        for zib in rom.insts.values() {
             // Get the ZisK instruction
             let inst = &zib.i;
 
