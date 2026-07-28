@@ -1736,7 +1736,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler)",
  "num-bigint",
@@ -2208,7 +2208,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2271,7 +2271,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -4090,7 +4090,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler)",
@@ -4110,7 +4110,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4137,7 +4137,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4548,7 +4548,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "bincode",
  "blake3",
@@ -4582,7 +4582,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "bincode",
  "borsh",
@@ -4613,7 +4613,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler)",
  "itoa",
@@ -4626,7 +4626,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4636,7 +4636,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4645,7 +4645,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "bincode",
  "colored",
@@ -4656,7 +4656,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "bincode",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler)",
@@ -6133,7 +6133,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "anyhow",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler)",
@@ -7612,7 +7612,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#642a5670a16b4f70aab9589743079a96446725d6"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler#e308c24f95c84e0e5297938bc8102bc9387905b1"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2FcolMajor-ntt-scheduler)",

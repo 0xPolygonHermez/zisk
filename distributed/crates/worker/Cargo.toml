@@ -52,3 +52,6 @@ time = { workspace = true }
 [features]
 default = []
 cpu-only = ["zisk-prover-backend/cpu-only"]
+# Compiles in the per-row multiplicity-table accounting of the phase-1 contribution trace.
+# ZISK_TRACE_PHASE1=1 alone gives the rest of the breakdown without needing this.
+phase1-trace = ["proofman/phase1-trace"]
