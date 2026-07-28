@@ -68,7 +68,7 @@ fn main() -> Result<()> {
     let enabled: Vec<String> =
         PROGRAMS.iter().filter(|p| feature_enabled(p)).map(|p| p.to_string()).collect();
 
-        // No program selected (e.g. `default-features = false` with no program
+    // No program selected (e.g. `default-features = false` with no program
     // feature): nothing to build, and `lib.rs` exposes no constants.
     if enabled.is_empty() {
         return Ok(());
