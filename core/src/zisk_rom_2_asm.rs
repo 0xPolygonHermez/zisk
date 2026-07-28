@@ -267,19 +267,16 @@ impl ZiskAsmContext {
         self.precompile_results
     }
     pub fn precompile_results_keccak(&self) -> bool {
-        //self.precompile_results()
-        false
+        zisk_definitions::KECCAK_RESULTS && self.precompile_results()
     }
     pub fn precompile_results_sha256(&self) -> bool {
-        //self.precompile_results()
-        false
+        zisk_definitions::SHA256_RESULTS && self.precompile_results()
     }
     pub fn precompile_results_arith256(&self) -> bool {
         self.precompile_results()
     }
     pub fn precompile_results_arith256mod(&self) -> bool {
-        //self.precompile_results()
-        false
+        zisk_definitions::ARITH256MOD_RESULTS && self.precompile_results()
     }
     pub fn precompile_results_secp256k1add(&self) -> bool {
         self.precompile_results()

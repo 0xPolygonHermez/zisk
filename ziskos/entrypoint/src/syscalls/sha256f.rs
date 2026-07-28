@@ -42,7 +42,7 @@ pub extern "C" fn syscall_sha256_f(
         sha256f(params.state, params.input);
 
         #[cfg(feature = "hints")]
-        {
+        if zisk_definitions::SHA256_RESULTS {
             hints.extend_from_slice(params.state);
         }
     }

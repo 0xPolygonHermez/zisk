@@ -8214,6 +8214,7 @@ dependencies = [
  "serde",
  "sha2",
  "tiny-keccak",
+ "zisk-definitions",
  "zisk-verifier",
  "zkvm-interface",
 ]

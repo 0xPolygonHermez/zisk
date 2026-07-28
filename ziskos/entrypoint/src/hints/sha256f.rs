@@ -1,10 +1,11 @@
-use crate::hints::macros::define_hint_disabled;
-use zisk_definitions::HINT_SHA256;
+use crate::hints::macros::define_hint_ptr;
+use zisk_definitions::{HINT_SHA256, SHA256_RESULTS};
 
-define_hint_disabled! {
+define_hint_ptr! {
     sha256 => {
         hint_id: HINT_SHA256,
         param: f,
         is_result: false,
+        enabled: SHA256_RESULTS,
     }
 }
