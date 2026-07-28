@@ -57,7 +57,11 @@ impl MemCountersCursor {
         counters: Arc<Vec<(ChunkId, &MemCounters)>>,
         addr_index: usize,
     ) -> Vec<Vec<SortedBox>> {
+        // Measurement only (ZISK_TRACE_PHASE1): a fresh 16-thread pool is built on every call, so
+        // record what the construction itself costs and whether it lands inside the witness span.
+        let pool_build_started = std::time::Instant::now();
         let pool = ThreadPoolBuilder::new().num_threads(16).build().unwrap();
+        proofman_common::phase1_trace::note_pool_build(pool_build_started.elapsed());
         pool.install(|| {
             counters
                 .par_iter()
