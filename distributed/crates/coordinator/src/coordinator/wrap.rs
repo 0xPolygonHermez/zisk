@@ -2,7 +2,6 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator, CoordinatorError, CoordinatorResult,
 };
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use zisk_cluster_common::{
@@ -39,7 +38,7 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             ProofKind::VadcopFinal,
         );
@@ -60,6 +59,7 @@ impl Coordinator {
                 proof_data: request.proof_data,
                 proof_dest: request.proof_dest,
             }),
+            metadata: None,
         };
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
         if let Err(e) = self.workers_pool.send_message(&worker_id, message).await {
@@ -90,6 +90,15 @@ impl Coordinator {
 
         if job.state().is_resolved() {
             return Ok(());
+        }
+
+        // Bind the payload to the phase mutated below (see
+        // `validate_response_phase`) — ahead of the `Ready` flip, which is itself
+        // a mutation: a rejected payload must not un-mark a computing worker.
+        // Only for a success response; a failure carries no `result_data` to
+        // bind and is owned by the branch below.
+        if execute_task_response.success {
+            Self::validate_response_phase(&job, &execute_task_response)?;
         }
 
         self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;

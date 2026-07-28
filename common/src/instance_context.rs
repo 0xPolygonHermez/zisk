@@ -31,8 +31,3 @@ impl InstanceCtx {
         Self { plan, global_id }
     }
 }
-
-/// # Safety
-/// This struct is marked as `Send` because its fields are safe to transfer across threads,
-/// assuming that the `Plan` type and its associated data are also thread-safe.
-unsafe impl Send for InstanceCtx {}

@@ -4,7 +4,6 @@
 //! to a specific `Plan` instance.
 
 use crate::{MainSmError, Result};
-use std::any::Any;
 use zisk_common::{CheckPoint, ChunkId, EmuTrace, InstanceType, Plan, SegmentId};
 use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
@@ -62,7 +61,7 @@ impl MainPlanner {
                     Some(SegmentId(segment_id)),
                     InstanceType::Instance,
                     CheckPoint::Single(ChunkId(segment_id)),
-                    Some(Box::new(segment_id == num_instances - 1) as Box<dyn Any>),
+                    Some(Box::new(segment_id == num_instances - 1)),
                 )
             })
             .collect())

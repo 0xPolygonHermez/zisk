@@ -47,6 +47,7 @@ impl Coordinator {
                 params: ExecuteTaskRequestTypeDto::ProveParams(ProveParamsDto {
                     challenges: challenges.clone(),
                 }),
+                metadata: None,
             };
             let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
@@ -86,6 +87,14 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Bind the payload to the phase mutated below (see
+        // `validate_response_phase`). After `is_resolved`, so a late response for
+        // a resolved job stays a silent no-op rather than an error; and after the
+        // simulation short-circuit above, which bypasses the phase machinery
+        // wholesale (one physical worker stands in for N, and
+        // completion/challenge checks are likewise skipped).
+        Self::validate_response_phase(&job, &execute_task_response)?;
+
         // Store Proof response
         self.store_proof_response(&mut job, execute_task_response).await?;
 
@@ -103,20 +112,33 @@ impl Coordinator {
         let task = PendingAggTask { proofs, all_done, proof_type: job.proof_type };
 
         if job.agg_task_inflight.is_none() {
-            // Nothing in-flight — dispatch immediately. Only mark in-flight
-            // AFTER the send succeeds; otherwise a failed send would leave the
-            // slot stuck `Some` forever and subsequent completions would queue
-            // tasks that never get dispatched.
+            // Claim the in-flight slot WHILE STILL HOLDING the job write lock,
+            // then send. Claiming after the send opened a TOCTOU: two workers'
+            // Prove completions racing through this handler both saw the slot
+            // empty and both dispatched an Aggregate to the recurser — the
+            // duplicate ran a second concurrent proofman task over the same GPU
+            // streams, corrupting in-flight proofs. It also let the recurser reply
+            // before this task could reacquire the lock, which
+            // `handle_recurser_completion` rejects as a final proof with no task
+            // in flight.
+            //
+            // The slot is deliberately left set if the send fails: the queue's
+            // only drain (`dispatch_next_agg_task`, which likewise keeps the slot
+            // on failure) runs off an aggregator ack, so clearing it would orphan
+            // anything that queued during the send window. Keeping it lets
+            // `replay_inflight_agg_task_if_recurser` re-send on reconnect; if the
+            // recurser never returns, the disconnect handler or the phase-3
+            // timeout fails the job.
+            job.agg_task_inflight = Some(task.clone());
             drop(job);
             self.send_recurser_task(
                 &job_id,
                 &agg_worker_id,
-                task.proofs.clone(),
+                task.proofs,
                 task.all_done,
                 task.proof_type,
             )
             .await?;
-            job_entry.write().await.agg_task_inflight = Some(task);
         } else {
             // Task in-flight — queue this one; it will be sent after the ack.
             job.agg_task_queue.push_back(task);
