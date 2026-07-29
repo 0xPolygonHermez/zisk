@@ -11,6 +11,7 @@ mod arith_range_table_helpers;
 mod arith_table;
 mod arith_table_data;
 mod arith_table_helpers;
+mod tools;
 
 pub use arith::*;
 pub use arith_bus_device::*;
@@ -24,7 +25,9 @@ use arith_range_table::*;
 use arith_range_table_helpers::*;
 use arith_table::*;
 use arith_table_data::*;
+
 use arith_table_helpers::*;
+pub use tools::*;
 
 #[cfg(test)]
 mod arith_operation_test;

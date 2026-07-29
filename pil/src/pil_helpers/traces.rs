@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "aa170a74c69a4dfc3bf0032c752703827dd85461ed9b0dbff2c970803d9cf24a";
+pub const PILOUT_HASH: &str = "17865e7297b7af4ad23bf47116942fa9c6d740ad037e1d4d0e40e3d57cab06e2";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -251,7 +251,7 @@ trace_row!(ArithFixedRow<F> {
 pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 9>;
 
 trace_row!(ArithTraceRow<F> {
- carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow_mul_rz:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, multiplicity:bit, range_ab:ubit(7), range_cd:ubit(7),
+ carry:[u64; 7], a:[u16; 4], b:[u16; 4], c:[u16; 4], d:[u16; 4], na:bit, nb:bit, nr:bit, np:bit, sext:bit, m32:bit, div:bit, fab:u64, na_fb:u64, nb_fa:u64, main_div:bit, main_mul:bit, signed:bit, div_by_zero:bit, div_overflow:bit, result_is_zero:bit, remainder_is_zero:bit, inv_sum_all_bs:u64, op:u8, bus_res1:u32, range_ab:ubit(7), range_cd:ubit(7),
 });
 
 pub type ArithTrace<R> = GenericTrace<R, 2097152, 0, 9>;
@@ -554,12 +554,12 @@ trace_row!(DmaPrePostInputCpyTraceRow<F> {
 pub type DmaPrePostInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 36>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 26], column: [F; 83], __L1__: F,
+ UID: [F; 25], column: [F; 81], __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 37>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 26],
+ multiplicity:[F; 25],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 37>;
@@ -607,6 +607,10 @@ values!(MemAlignReadByteAirValues<F> {
 
 values!(MemAlignWriteByteAirValues<F> {
  padding_size: F, im_direct: [FieldExtension<F>; 3],
+});
+
+values!(ArithAirValues<F> {
+ padding_size: F, im_direct: [FieldExtension<F>; 1],
 });
 
 values!(BinaryAirValues<F> {
@@ -845,7 +849,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 9, PackedInfoConst {
         is_packed: true,
         num_packed_words: 17,
-        unpack_info: &[64, 64, 64, 64, 64, 64, 64, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 1, 1, 1, 1, 1, 64, 8, 32, 1, 7, 7],
+        unpack_info: &[64, 64, 64, 64, 64, 64, 64, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 1, 1, 1, 1, 1, 1, 1, 64, 8, 32, 7, 7],
     }),
     (0, 10, PackedInfoConst {
         is_packed: true,
