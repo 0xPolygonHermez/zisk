@@ -86,7 +86,7 @@ airtemplate Mem(const int N = 2**21, const int id = MEMORY_ID, const int RC = 2,
                 const int free_input_mem = 0, const expr enable_flag = 1, 
                 const int large_mem = 0, const int dual_mem = 0, const int continuous_addresses = 0) {
 
-    col fixed SEGMENT_L1 = [1,0...];
+    const expr SEGMENT_L1 = get_L1();
     const expr SEGMENT_LAST = SEGMENT_L1';
 
     // in this air the address in a mem-bytes address (internal), when this address is pushed in BUS must be multiplied

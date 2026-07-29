@@ -17,5 +17,70 @@ zisk-sdk = { path = "../sdk" }
 zisk-sdk = { path = "../sdk" }
 
 [features]
-default = []
-bit_manipulation_extensions = []
+default = ["all"]
+
+# Build every guest program (the historical default). Consumers that only need a
+# subset should set `default-features = false` and enable just the programs they
+# use, e.g. `test-artifacts = { workspace = true, default-features = false, features = ["fib_mod"] }`.
+all = [
+  "add256", "agg_verify", "arith256", "arith256_mod", "arith384_mod",
+  "big_input", "bigint", "blake2", "bls12_381", "bls12_381_add",
+  "bls12_381_complex_add", "bls12_381_complex_mul", "bls12_381_complex_sub",
+  "bls12_381_dbl", "bn254", "bn254_add", "bn254_complex_add",
+  "bn254_complex_mul", "bn254_complex_sub", "bn254_dbl", "diagnostic",
+  "diagnostic-hints", "fib_mod", "hashes", "keccak", "liveness",
+  "missing_entrypoint", "panic_modes", "poseidon1", "poseidon2", "secp256k1",
+  "secp256k1_add", "secp256k1_dbl", "secp256r1", "secp256r1_add",
+  "secp256r1_dbl", "sha256", "uint256",
+]
+
+# One feature per guest program. Enabling a feature makes `build.rs` compile that
+# program and exposes its `ELF_*` constant in `lib.rs`; the feature name matches
+# the program's package name under `programs/`.
+add256 = []
+agg_verify = []
+arith256 = []
+arith256_mod = []
+arith384_mod = []
+big_input = []
+bigint = []
+blake2 = []
+bls12_381 = []
+bls12_381_add = []
+bls12_381_complex_add = []
+bls12_381_complex_mul = []
+bls12_381_complex_sub = []
+bls12_381_dbl = []
+bn254 = []
+bn254_add = []
+bn254_complex_add = []
+bn254_complex_mul = []
+bn254_complex_sub = []
+bn254_dbl = []
+diagnostic = []
+diagnostic-hints = []
+fib_mod = []
+hashes = []
+keccak = []
+liveness = []
+missing_entrypoint = []
+panic_modes = []
+poseidon1 = []
+poseidon2 = []
+secp256k1 = []
+secp256k1_add = []
+secp256k1_dbl = []
+secp256r1 = []
+secp256r1_add = []
+secp256r1_dbl = []
+sha256 = []
+uint256 = []
+zba = []
+zbc = []
+zbkc = []
+zbkx = []
+zba_native = []
+zbc_native = []
+zbkc_native = []
+zbkx_native = []
+zicond_native = []

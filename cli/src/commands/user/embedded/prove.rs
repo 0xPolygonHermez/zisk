@@ -87,6 +87,11 @@ pub(crate) struct ZiskEmbeddedProve {
     #[arg(short = 'g', long)]
     gpu: bool,
 
+    /// Run mops planner on CPU even when --gpu is set (fallback for GPU-planner issues)
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(long)]
+    cpu_mops: bool,
+
     /// Verbosity (-v, -vv, -vvv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -122,6 +127,10 @@ impl ZiskEmbeddedProve {
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {
             builder = builder.gpu();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            builder = builder.cpu_mops();
         }
         if let Some(pk) = &self.proving_key {
             builder = builder.proving_key(pk.clone());

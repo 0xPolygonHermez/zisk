@@ -37,14 +37,7 @@ pub const LE_OP: u8 = ZiskOp::Le.code();
 pub const AND_OP: u8 = ZiskOp::And.code();
 pub const OR_OP: u8 = ZiskOp::Or.code();
 pub const XOR_OP: u8 = ZiskOp::Xor.code();
-
-/// Binary extension opcodes
-pub const SLL_OP: u8 = ZiskOp::Sll.code();
-pub const SRL_OP: u8 = ZiskOp::Srl.code();
-pub const SRA_OP: u8 = ZiskOp::Sra.code();
-pub const SLLW_OP: u8 = ZiskOp::SllW.code();
-pub const SRLW_OP: u8 = ZiskOp::SrlW.code();
-pub const SRAW_OP: u8 = ZiskOp::SraW.code();
-pub const SEXT_B_OP: u8 = ZiskOp::SignExtendB.code();
-pub const SEXT_H_OP: u8 = ZiskOp::SignExtendH.code();
-pub const SEXT_W_OP: u8 = ZiskOp::SignExtendW.code();
+pub const ANDN_OP: u8 = ZiskOp::Andn.code();
+pub const ORN_OP: u8 = ZiskOp::Orn.code();
+pub const XNOR_OP: u8 = ZiskOp::Xnor.code();
+pub const BREV8_OP: u8 = ZiskOp::Brev8.code();

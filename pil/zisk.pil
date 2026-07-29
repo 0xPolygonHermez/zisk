@@ -90,9 +90,9 @@ airgroup Zisk {
 
     Binary(N: 2**22);
     BinaryAdd(N: 2**22);
-    virtual BinaryTable(BINARY_TABLE_SIZE);
+    virtual BinaryTable();
     BinaryExtension(N: 2**22);
-    virtual BinaryExtensionTable(BINARY_EXTENSION_TABLE_SIZE);
+    virtual BinaryExtensionTable();
 
     virtual FrequentOps(table_id: BINARY_FROPS_TABLE_ID, 
                         bin_file: "state-machines/binary/src/binary_basic_frops_fixed.bin") alias BinaryBasicFrops;
@@ -101,7 +101,13 @@ airgroup Zisk {
 
     // Precompiles
     BigIntAdd(N: 2**20, bits: 256, operation_code: OP_ADD256) alias Add256;
+
     ArithEq(N: 2**20);
+    ArithEq(N: 2**20, equations: EQ_ARITH256) alias Arith256;
+    ArithEq(N: 2**20, equations: EQ_ARITH256 + EQ_ARITH256_MOD) alias Arith256X;
+    ArithEq(N: 2**20, equations: EQ_SECP256K1) alias ArithSecp256K1;
+    ArithEq(N: 2**20, equations: EQ_BN254_EC) alias ArithBn254Ec;
+    ArithEq(N: 2**20, equations: EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Complex;        
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 

@@ -2,8 +2,6 @@
 //! for regular instances and table instances. It leverages operation counts and metadata
 //! to construct detailed plans for execution.
 
-use std::any::Any;
-
 use crate::{
     BusDeviceMetrics, CheckPoint, ChunkId, InstCount, InstanceType, Metrics, Plan, Planner,
     RegularCounters,
@@ -162,7 +160,7 @@ impl Planner for RegularPlanner {
             let plan: Vec<_> = plan(&count[idx], instance.num_ops as u64)
                 .into_iter()
                 .map(|(check_point, collect_info)| {
-                    let converted: Box<dyn Any> = Box::new(collect_info);
+                    let converted = Box::new(collect_info);
                     Plan::new(
                         instance.airgroup_id,
                         instance.air_id,
