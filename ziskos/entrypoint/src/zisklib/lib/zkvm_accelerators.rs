@@ -614,6 +614,10 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
     result: *mut zkvm_bls12_381_g1_point,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    if num_pairs == 0 {
+        return ZKVM_EFAIL;
+    }
+
     #[cfg(feature = "hints")]
     {
         let ret = super::msm_safe_bls12_381_c(
@@ -759,6 +763,10 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
     result: *mut zkvm_bls12_381_g2_point,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    if num_pairs == 0 {
+        return ZKVM_EFAIL;
+    }
+
     #[cfg(feature = "hints")]
     {
         let ret = super::msm_safe_twist_bls12_381_c(
@@ -828,6 +836,10 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
     verified: *mut bool,
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> zkvm_status {
+    if num_pairs == 0 {
+        return ZKVM_EFAIL;
+    }
+
     #[cfg(feature = "hints")]
     {
         let ret = super::pairing_check_safe_bls12_381_c(pairs as *const u8, num_pairs, hints);

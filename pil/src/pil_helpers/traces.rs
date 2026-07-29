@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "17865e7297b7af4ad23bf47116942fa9c6d740ad037e1d4d0e40e3d57cab06e2";
+pub const PILOUT_HASH: &str = "2596ee15cb1fa95d0eb645fffa78d61259feb978ce6cf4b77356e009c0cecce1";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -207,7 +207,7 @@ trace_row!(MemAlignFixedRow<F> {
 pub type MemAlignFixed<F> = GenericTrace<MemAlignFixedRow<F>, 2097152, 0, 5>;
 
 trace_row!(MemAlignTraceRow<F> {
- addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, is_non_aligned_op:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, value:[u32; 2],
+ addr:ubit(29), offset:ubit(3), width:ubit(4), wr:bit, pc:u8, reset:bit, sel_up_to_down:bit, sel_down_to_up:bit, is_non_aligned_op:bit, sel_w_lt8:bit, sel_w_lt4:bit, sel_w_lt2:bit, reg:[u8; 8], sel:[bit; 8], step:ubit(40), delta_addr:u64, value:[u32; 2],
 });
 
 pub type MemAlignTrace<R> = GenericTrace<R, 2097152, 0, 5>;
@@ -367,7 +367,7 @@ trace_row!(ArithBn254ComplexTraceRow<F> {
 pub type ArithBn254ComplexTrace<R> = GenericTrace<R, 1048576, 0, 19>;
 
 trace_row!(ArithEq384FixedRow<F> {
- CLK_0: F, __L1__: F,
+ FIRST_CLK: F, __L1__: F,
 });
 pub type ArithEq384Fixed<F> = GenericTrace<ArithEq384FixedRow<F>, 1048576, 0, 20>;
 
@@ -416,7 +416,7 @@ trace_row!(Blake2brFixedRow<F> {
 pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 24>;
 
 trace_row!(Blake2brTraceRow<F> {
- in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:ubit(4), m_limbs:[[u16; 2]; 2], ms:[u32; 2], perm_active:bit, step_addr:ubit(40), op_step:ubit(40), g_active:bit, va_limbs:[[u16; 2]; 2], vc_limbs:[[u16; 2]; 2], vb:[[bit; 32]; 2], vd:[[bit; 32]; 2], in_use_clk_0:bit,
+ in_use:bit, round_idx:ubit(4), round_idx_sel:[bit; 10], sigma_idx:[ubit(4); 2], x:[u16; 4], y:[u16; 4], xs:[u32; 2], ys:[u32; 2], step_addr:ubit(40), op_step:ubit(40), va:[u16; 4], vb:[u8; 8], vc:[u16; 4], vd:[u8; 8], va_prime:[u8; 8], vd_prime:[u8; 8], vc_prime:[u8; 8], vb_prime:[u8; 8], va_prime_prime:[u8; 8], vd_prime_prime:[u8; 8], vc_prime_prime:[u8; 8], vb_pp_xor:[u8; 8], vb_pp_t:[bit; 2], in_use_clk_0:bit,
 });
 
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 24>;
@@ -829,7 +829,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 5, PackedInfoConst {
         is_packed: true,
         num_packed_words: 5,
-        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 32, 32],
+        unpack_info: &[29, 3, 4, 1, 8, 1, 1, 1, 1, 1, 1, 1, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 40, 64, 32, 32],
     }),
     (0, 6, PackedInfoConst {
         is_packed: true,
@@ -923,8 +923,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 24, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 8,
-        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 16, 16, 16, 16, 32, 32, 1, 40, 40, 1, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        num_packed_words: 18,
+        unpack_info: &[1, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 4, 4, 16, 16, 16, 16, 16, 16, 16, 16, 32, 32, 32, 32, 40, 40, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 16, 16, 16, 16, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 1, 1, 1],
     }),
     (0, 25, PackedInfoConst {
         is_packed: true,
