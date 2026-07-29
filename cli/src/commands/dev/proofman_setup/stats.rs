@@ -31,6 +31,10 @@ pub(crate) struct ZiskProofmanSetupStats {
     #[arg(short = 'm', long)]
     impols: bool,
 
+    /// Report the multilinear prover's view instead of the univariate layout
+    #[arg(long)]
+    multilinear: bool,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -47,6 +51,7 @@ impl ZiskProofmanSetupStats {
             airgroups: self.airgroups.clone(),
             airs: self.airs.clone(),
             im_pols_stages: self.impols,
+            multilinear: self.multilinear,
         };
 
         // Expression trees in large AIRs (e.g. ZisK) can be thousands of levels deep,

@@ -1,0 +1,6 @@
+require "std_constants.pil"
+
+// Enable GKR sum bus (multilinear proving system only)
+enable_gkr_sum_bus();
+
+require "zisk.pil"

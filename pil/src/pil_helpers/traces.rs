@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "219a6798a11fbb9af845e6f9d2d7e3d0db99e5d519f5083fa21f9540113c6f45";
+pub const PILOUT_HASH: &str = "b9c330ecb358d1cda457348d6b25d5a000cb79ec9974008a95fc85fc0a717dc4";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -151,7 +151,7 @@ trace_row!(MainTraceRow<F> {
 pub type MainTrace<R> = GenericTrace<R, 4194304, 0, 0>;
 
 trace_row!(RomFixedRow<F> {
- __L1__: F,
+
 });
 pub type RomFixed<F> = GenericTrace<RomFixedRow<F>, 4194304, 0, 1>;
 
@@ -206,7 +206,7 @@ trace_row!(MemAlignTraceRow<F> {
 pub type MemAlignTrace<R> = GenericTrace<R, 2097152, 0, 5>;
 
 trace_row!(MemAlignByteFixedRow<F> {
- __L1__: F,
+
 });
 pub type MemAlignByteFixed<F> = GenericTrace<MemAlignByteFixedRow<F>, 4194304, 0, 6>;
 
@@ -217,7 +217,7 @@ trace_row!(MemAlignByteTraceRow<F> {
 pub type MemAlignByteTrace<R> = GenericTrace<R, 4194304, 0, 6>;
 
 trace_row!(MemAlignReadByteFixedRow<F> {
- __L1__: F,
+
 });
 pub type MemAlignReadByteFixed<F> = GenericTrace<MemAlignReadByteFixedRow<F>, 4194304, 0, 7>;
 
@@ -228,7 +228,7 @@ trace_row!(MemAlignReadByteTraceRow<F> {
 pub type MemAlignReadByteTrace<R> = GenericTrace<R, 4194304, 0, 7>;
 
 trace_row!(MemAlignWriteByteFixedRow<F> {
- __L1__: F,
+
 });
 pub type MemAlignWriteByteFixed<F> = GenericTrace<MemAlignWriteByteFixedRow<F>, 4194304, 0, 8>;
 
@@ -239,7 +239,7 @@ trace_row!(MemAlignWriteByteTraceRow<F> {
 pub type MemAlignWriteByteTrace<R> = GenericTrace<R, 4194304, 0, 8>;
 
 trace_row!(ArithFixedRow<F> {
- __L1__: F,
+
 });
 pub type ArithFixed<F> = GenericTrace<ArithFixedRow<F>, 2097152, 0, 9>;
 
@@ -250,7 +250,7 @@ trace_row!(ArithTraceRow<F> {
 pub type ArithTrace<R> = GenericTrace<R, 2097152, 0, 9>;
 
 trace_row!(BinaryFixedRow<F> {
- __L1__: F,
+
 });
 pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 10>;
 
@@ -261,7 +261,7 @@ trace_row!(BinaryTraceRow<F> {
 pub type BinaryTrace<R> = GenericTrace<R, 4194304, 0, 10>;
 
 trace_row!(BinaryAddFixedRow<F> {
- __L1__: F,
+
 });
 pub type BinaryAddFixed<F> = GenericTrace<BinaryAddFixedRow<F>, 4194304, 0, 11>;
 
@@ -272,7 +272,7 @@ trace_row!(BinaryAddTraceRow<F> {
 pub type BinaryAddTrace<R> = GenericTrace<R, 4194304, 0, 11>;
 
 trace_row!(BinaryExtensionFixedRow<F> {
- __L1__: F,
+
 });
 pub type BinaryExtensionFixed<F> = GenericTrace<BinaryExtensionFixedRow<F>, 4194304, 0, 12>;
 
@@ -283,7 +283,7 @@ trace_row!(BinaryExtensionTraceRow<F> {
 pub type BinaryExtensionTrace<R> = GenericTrace<R, 4194304, 0, 12>;
 
 trace_row!(Add256FixedRow<F> {
- __L1__: F,
+
 });
 pub type Add256Fixed<F> = GenericTrace<Add256FixedRow<F>, 1048576, 0, 13>;
 
@@ -294,7 +294,7 @@ trace_row!(Add256TraceRow<F> {
 pub type Add256Trace<R> = GenericTrace<R, 1048576, 0, 13>;
 
 trace_row!(ArithEqFixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type ArithEqFixed<F> = GenericTrace<ArithEqFixedRow<F>, 1048576, 0, 14>;
 
@@ -305,7 +305,7 @@ trace_row!(ArithEqTraceRow<F> {
 pub type ArithEqTrace<R> = GenericTrace<R, 1048576, 0, 14>;
 
 trace_row!(Arith256FixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type Arith256Fixed<F> = GenericTrace<Arith256FixedRow<F>, 1048576, 0, 15>;
 
@@ -316,7 +316,7 @@ trace_row!(Arith256TraceRow<F> {
 pub type Arith256Trace<R> = GenericTrace<R, 1048576, 0, 15>;
 
 trace_row!(Arith256XFixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type Arith256XFixed<F> = GenericTrace<Arith256XFixedRow<F>, 1048576, 0, 16>;
 
@@ -327,7 +327,7 @@ trace_row!(Arith256XTraceRow<F> {
 pub type Arith256XTrace<R> = GenericTrace<R, 1048576, 0, 16>;
 
 trace_row!(ArithSecp256K1FixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type ArithSecp256K1Fixed<F> = GenericTrace<ArithSecp256K1FixedRow<F>, 1048576, 0, 17>;
 
@@ -338,7 +338,7 @@ trace_row!(ArithSecp256K1TraceRow<F> {
 pub type ArithSecp256K1Trace<R> = GenericTrace<R, 1048576, 0, 17>;
 
 trace_row!(ArithBn254EcFixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type ArithBn254EcFixed<F> = GenericTrace<ArithBn254EcFixedRow<F>, 1048576, 0, 18>;
 
@@ -349,7 +349,7 @@ trace_row!(ArithBn254EcTraceRow<F> {
 pub type ArithBn254EcTrace<R> = GenericTrace<R, 1048576, 0, 18>;
 
 trace_row!(ArithBn254ComplexFixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type ArithBn254ComplexFixed<F> = GenericTrace<ArithBn254ComplexFixedRow<F>, 1048576, 0, 19>;
 
@@ -360,7 +360,7 @@ trace_row!(ArithBn254ComplexTraceRow<F> {
 pub type ArithBn254ComplexTrace<R> = GenericTrace<R, 1048576, 0, 19>;
 
 trace_row!(ArithEq384FixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type ArithEq384Fixed<F> = GenericTrace<ArithEq384FixedRow<F>, 1048576, 0, 20>;
 
@@ -371,7 +371,7 @@ trace_row!(ArithEq384TraceRow<F> {
 pub type ArithEq384Trace<R> = GenericTrace<R, 1048576, 0, 20>;
 
 trace_row!(KeccakfFixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 131072, 0, 21>;
 
@@ -382,7 +382,7 @@ trace_row!(KeccakfTraceRow<F> {
 pub type KeccakfTrace<R> = GenericTrace<R, 131072, 0, 21>;
 
 trace_row!(Sha256fFixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type Sha256fFixed<F> = GenericTrace<Sha256fFixedRow<F>, 262144, 0, 22>;
 
@@ -393,7 +393,7 @@ trace_row!(Sha256fTraceRow<F> {
 pub type Sha256fTrace<R> = GenericTrace<R, 262144, 0, 22>;
 
 trace_row!(PoseidonFixedRow<F> {
- CLK_0: F, __L1__: F,
+ CLK_0: F,
 });
 pub type PoseidonFixed<F> = GenericTrace<PoseidonFixedRow<F>, 131072, 0, 23>;
 
@@ -404,7 +404,7 @@ trace_row!(PoseidonTraceRow<F> {
 pub type PoseidonTrace<R> = GenericTrace<R, 131072, 0, 23>;
 
 trace_row!(Blake2brFixedRow<F> {
- CLK_0: F, MSG_IDX: F, __L1__: F,
+ CLK_0: F, MSG_IDX: F,
 });
 pub type Blake2brFixed<F> = GenericTrace<Blake2brFixedRow<F>, 262144, 0, 24>;
 
@@ -415,7 +415,7 @@ trace_row!(Blake2brTraceRow<F> {
 pub type Blake2brTrace<R> = GenericTrace<R, 262144, 0, 24>;
 
 trace_row!(DmaFixedRow<F> {
- __L1__: F,
+
 });
 pub type DmaFixed<F> = GenericTrace<DmaFixedRow<F>, 2097152, 0, 25>;
 
@@ -426,7 +426,7 @@ trace_row!(DmaTraceRow<F> {
 pub type DmaTrace<R> = GenericTrace<R, 2097152, 0, 25>;
 
 trace_row!(DmaMemCpyFixedRow<F> {
- __L1__: F,
+
 });
 pub type DmaMemCpyFixed<F> = GenericTrace<DmaMemCpyFixedRow<F>, 2097152, 0, 26>;
 
@@ -437,7 +437,7 @@ trace_row!(DmaMemCpyTraceRow<F> {
 pub type DmaMemCpyTrace<R> = GenericTrace<R, 2097152, 0, 26>;
 
 trace_row!(DmaInputCpyFixedRow<F> {
- __L1__: F,
+
 });
 pub type DmaInputCpyFixed<F> = GenericTrace<DmaInputCpyFixedRow<F>, 2097152, 0, 27>;
 
@@ -515,7 +515,7 @@ trace_row!(DmaUnalignedTraceRow<F> {
 pub type DmaUnalignedTrace<R> = GenericTrace<R, 2097152, 0, 33>;
 
 trace_row!(DmaPrePostFixedRow<F> {
- __L1__: F,
+
 });
 pub type DmaPrePostFixed<F> = GenericTrace<DmaPrePostFixedRow<F>, 2097152, 0, 34>;
 
@@ -526,7 +526,7 @@ trace_row!(DmaPrePostTraceRow<F> {
 pub type DmaPrePostTrace<R> = GenericTrace<R, 2097152, 0, 34>;
 
 trace_row!(DmaPrePostMemCpyFixedRow<F> {
- __L1__: F,
+
 });
 pub type DmaPrePostMemCpyFixed<F> = GenericTrace<DmaPrePostMemCpyFixedRow<F>, 2097152, 0, 35>;
 
@@ -537,7 +537,7 @@ trace_row!(DmaPrePostMemCpyTraceRow<F> {
 pub type DmaPrePostMemCpyTrace<R> = GenericTrace<R, 2097152, 0, 35>;
 
 trace_row!(DmaPrePostInputCpyFixedRow<F> {
- __L1__: F,
+
 });
 pub type DmaPrePostInputCpyFixed<F> = GenericTrace<DmaPrePostInputCpyFixedRow<F>, 2097152, 0, 36>;
 
@@ -548,23 +548,23 @@ trace_row!(DmaPrePostInputCpyTraceRow<F> {
 pub type DmaPrePostInputCpyTrace<R> = GenericTrace<R, 2097152, 0, 36>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 23], column: [F; 62], __L1__: F,
+ UID: [F; 26], column: [F; 83],
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 37>;
 
 trace_row!(VirtualTableZisk0TraceRow<F> {
- multiplicity:[F; 23],
+ multiplicity:[F; 26],
 });
 
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 37>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- UID: [F; 9], column: [F; 69], __L1__: F,
+ UID: [F; 11], column: [F; 88],
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 38>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
- multiplicity:[F; 9],
+ multiplicity:[F; 11],
 });
 
 pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 38>;
@@ -575,67 +575,67 @@ trace_row!(RomRomTraceRow<F> {
 pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 4194304, 0, 1, 0>;
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 96],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31],
 });
 
 values!(MemAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2],
 });
 
 values!(InputDataAirValues<F> {
- segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2], im_direct: [FieldExtension<F>; 6],
+ segment_id: F, is_first_segment: F, is_last_segment: F, previous_segment_value: [F; 2], previous_segment_step: F, previous_segment_addr: F, segment_last_value: [F; 2], segment_last_step: F, segment_last_addr: F, distance_base: [F; 2], distance_end: [F; 2],
 });
 
 values!(RomDataAirValues<F> {
- previous_segment_value: [F; 2], previous_segment_addr: F, segment_last_value: [F; 2], segment_last_addr: F, segment_id: F, is_first_segment: F, is_last_segment: F, padding_size: F, im_direct: [FieldExtension<F>; 4],
+ previous_segment_value: [F; 2], previous_segment_addr: F, segment_last_value: [F; 2], segment_last_addr: F, segment_id: F, is_first_segment: F, is_last_segment: F, padding_size: F,
 });
 
 values!(MemAlignByteAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 2],
+ padding_size: F,
 });
 
 values!(MemAlignReadByteAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 2],
+ padding_size: F,
 });
 
 values!(MemAlignWriteByteAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 3],
+ padding_size: F,
 });
 
 values!(BinaryAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 1],
+ padding_size: F,
 });
 
 values!(BinaryAddAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 1],
+ padding_size: F,
 });
 
 values!(BinaryExtensionAirValues<F> {
- padding_size: F, im_direct: [FieldExtension<F>; 1],
+ padding_size: F,
 });
 
 values!(Dma64AlignedAirValues<F> {
- segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_src64: F, segment_last_src64: F, segment_previous_fill_byte: F, segment_last_fill_byte: F, last_count_chunk: [F; 2], padding_size: F, im_direct: [FieldExtension<F>; 5],
+ segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_src64: F, segment_last_src64: F, segment_previous_fill_byte: F, segment_last_fill_byte: F, last_count_chunk: [F; 2], padding_size: F,
 });
 
 values!(Dma64AlignedInputCpyAirValues<F> {
- segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, last_count_chunk: [F; 2], padding_size: F, im_direct: [FieldExtension<F>; 5],
+ segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, last_count_chunk: [F; 2], padding_size: F,
 });
 
 values!(Dma64AlignedMemSetAirValues<F> {
- segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_fill_byte: F, segment_last_fill_byte: F, last_count_chunk: [F; 2], padding_size: F, im_direct: [FieldExtension<F>; 5],
+ segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_fill_byte: F, segment_last_fill_byte: F, last_count_chunk: [F; 2], padding_size: F,
 });
 
 values!(Dma64AlignedMemAirValues<F> {
- segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_src64: F, segment_last_src64: F, segment_previous_fill_byte: F, segment_last_fill_byte: F, last_count_chunk: [F; 2], padding_size: F, im_direct: [FieldExtension<F>; 5],
+ segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_src64: F, segment_last_src64: F, segment_previous_fill_byte: F, segment_last_fill_byte: F, last_count_chunk: [F; 2], padding_size: F,
 });
 
 values!(Dma64AlignedMemCpyAirValues<F> {
- segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_src64: F, segment_last_src64: F, last_count_chunk: [F; 2], padding_size: F, im_direct: [FieldExtension<F>; 5],
+ segment_id: F, segment_previous_seq_end: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_count64: F, segment_previous_flags: F, segment_last_seq_end: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_count64: F, segment_last_flags: F, is_last_segment: F, segment_previous_src64: F, segment_last_src64: F, last_count_chunk: [F; 2], padding_size: F,
 });
 
 values!(DmaUnalignedAirValues<F> {
- segment_id: F, segment_previous_seq_end: F, segment_previous_src64: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_offset: F, segment_previous_count: F, segment_first_bytes: [F; 8], segment_last_seq_end: F, segment_last_src64: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_offset: F, segment_last_count: F, segment_next_bytes: [F; 8], is_last_segment: F, segment_previous_is_memeq: F, segment_last_is_memeq: F, padding_size: F, last_count_chunk: [F; 2], im_direct: [FieldExtension<F>; 6],
+ segment_id: F, segment_previous_seq_end: F, segment_previous_src64: F, segment_previous_dst64: F, segment_previous_main_step: F, segment_previous_offset: F, segment_previous_count: F, segment_first_bytes: [F; 8], segment_last_seq_end: F, segment_last_src64: F, segment_last_dst64: F, segment_last_main_step: F, segment_last_offset: F, segment_last_count: F, segment_next_bytes: [F; 8], is_last_segment: F, segment_previous_is_memeq: F, segment_last_is_memeq: F, padding_size: F, last_count_chunk: [F; 2],
 });
 
 values!(MainAirGroupValues<F> {

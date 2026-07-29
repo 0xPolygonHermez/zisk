@@ -26,7 +26,7 @@ use crate::worker_node::run_recovery;
 
 use proofman::ProvePhaseInputs;
 use proofman::WitnessInfo;
-use proofman_common::ProofOptions;
+use proofman_common::{ProofOptions, ProofSystem};
 use proofman_common::{json_to_debug_instances_map, DebugInfo};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
@@ -1541,6 +1541,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: minimal,
+            proof_system: ProofSystem::Univariate,
         }
     }
 
@@ -1554,6 +1555,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             rma: true,
             minimal_memory: self.prover_config.minimal_memory,
             compressed: false,
+            proof_system: ProofSystem::Univariate,
         }
     }
 
