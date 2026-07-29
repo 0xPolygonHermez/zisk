@@ -16,9 +16,9 @@ airtemplate Main(int N = 2**21, int RC = 2, int stack_enabled = 0,
 
     const int REGS_IN_MAIN = REGS_IN_MAIN_TO - REGS_IN_MAIN_FROM + 1;
 
-    col fixed SEGMENT_L1 = [1,0...];
     col fixed SEGMENT_STEP = [0..(N-1)];
 
+    const expr SEGMENT_L1 = get_L1();
     const expr SEGMENT_LAST = SEGMENT_L1';
 
     // CONTINUATIONS

@@ -143,7 +143,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     const expr aligned_wr = wr * (sel_up_to_down + sel_down_to_up);
     (1 - reset) * ((step - aligned_wr) - ('step - 'aligned_wr)) === 0;
 
-    col fixed L1 = [1,0...];
+    const expr L1 = get_L1();
     L1 * pc === 0; // The program should start at the first line
 
     // We compress selectors, so we should ensure they are binary

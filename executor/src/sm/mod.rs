@@ -62,13 +62,17 @@ pub struct StaticSMBundle<F: PrimeField64> {
 impl<F: PrimeField64> StaticSMBundle<F> {
     /// Construct the bundle with the built-in SMs (Rom, Mem, Binary,
     /// Arith, Dma) created internally + the caller-supplied precompiles.
-    pub fn new(std: Arc<Std<F>>, precompiles: Vec<(usize, Precompiles<F>)>) -> Self {
+    pub fn new(std: Arc<Std<F>>, precompiles: Vec<(&'static [usize], Precompiles<F>)>) -> Self {
         let sm: Vec<SMType<F>> = BuiltinSMs::all(std.clone())
             .into_iter()
             .map(|(ids, b)| (ids, StateMachines::Builtin(b)))
-            .chain(precompiles.into_iter().map(|(air_id, p)| {
+            .chain(precompiles.into_iter().map(|(air_ids, p)| {
+                // A precompile may own several airs (e.g. the ArithEq family); key it by all of them
+                // so `build_instance` finds it for any of its air ids.
                 (
-                    std::borrow::Cow::Owned(vec![(ZISK_AIRGROUP_ID, air_id)]),
+                    std::borrow::Cow::Owned(
+                        air_ids.iter().map(|&id| (ZISK_AIRGROUP_ID, id)).collect(),
+                    ),
                     StateMachines::Precompile(p),
                 )
             }))

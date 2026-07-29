@@ -1,7 +1,9 @@
 mod test_data;
 use test_data::{get_secp256k1_add_test_data, get_secp256k1_dbl_test_data};
 
+#[path = "../equations/mod.rs"]
 mod equations;
+#[path = "../executors/mod.rs"]
 mod executors;
 use std::time::Instant;
 use zisk_lib_c::add_point_ec_p_c;

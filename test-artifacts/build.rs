@@ -89,11 +89,59 @@ fn main() -> Result<()> {
     // Forwarding it otherwise — the full build, or a subset without `diagnostic` —
     // would make Cargo error, so it has no effect in those cases.
     let mut features = Vec::new();
-    if env::var("CARGO_FEATURE_BIT_MANIPULATION_EXTENSIONS").is_ok()
-        && subset
-        && enabled.iter().any(|p| p == "diagnostic")
-    {
-        features.push("diagnostic/bit_manipulation_extensions");
+
+    // Check for zba feature
+    let zba = env::var("CARGO_FEATURE_ZBA").is_ok();
+    if zba {
+        features.push("zba");
+    }
+
+    // Check for zba_native feature
+    let zba_native = env::var("CARGO_FEATURE_ZBA_NATIVE").is_ok();
+    if zba_native {
+        features.push("zba_native");
+    }
+
+    // Check for zbc feature
+    let zbc = env::var("CARGO_FEATURE_ZBC").is_ok();
+    if zbc {
+        features.push("zbc");
+    }
+
+    // Check for zbc_native feature
+    let zbc_native = env::var("CARGO_FEATURE_ZBC_NATIVE").is_ok();
+    if zbc_native {
+        features.push("zbc_native");
+    }
+
+    // Check for zbkc feature
+    let zbkc = env::var("CARGO_FEATURE_ZBKC").is_ok();
+    if zbkc {
+        features.push("zbkc");
+    }
+
+    // Check for zbkc_native feature
+    let zbkc_native = env::var("CARGO_FEATURE_ZBKC_NATIVE").is_ok();
+    if zbkc_native {
+        features.push("zbkc_native");
+    }
+
+    // Check for zbkx feature
+    let zbkx = env::var("CARGO_FEATURE_ZBKX").is_ok();
+    if zbkx {
+        features.push("zbkx");
+    }
+
+    // Check for zbkx_native feature
+    let zbkx_native = env::var("CARGO_FEATURE_ZBKX_NATIVE").is_ok();
+    if zbkx_native {
+        features.push("zbkx_native");
+    }
+
+    // Check for zicond_native feature
+    let zicond_native = env::var("CARGO_FEATURE_ZICOND_NATIVE").is_ok();
+    if zicond_native {
+        features.push("zicond_native");
     }
 
     // Build guests with the same profile as the host so profiling/benchmarks

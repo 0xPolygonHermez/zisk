@@ -14,11 +14,12 @@ use ziskos::zisklib::fcall_proxy;
 
 use crate::{
     blake2br, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
-    ZiskRequiredOperation, ADD256_COST, ARITHA32_COST, ARITHAM32_COST, ARITH_EQ_384_COST,
-    ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST, DMA_64_ALIGNED_COST,
-    DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST, DMA_MEMSET_COST,
-    DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST, INPUT_ADDR,
-    INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0, SHA256_COST, SYS_ADDR,
+    ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST, ARITHAM32_COST,
+    ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST,
+    DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST,
+    DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST,
+    INPUT_ADDR, INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0,
+    SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
 };
 use paste::paste;
 use proofman_fields::{
@@ -432,10 +433,10 @@ define_ops! {
 
     // Bit manipulation extensions (Zbb, Zba, Zbs, Zbc, Zbkb, Zbkc, Zbkx)
     (Rev8, "rev8", BinaryE, BINARY_E_COST, 0x31, 0, 0, opc_rev8, op_rev8, ops_none),
-    (Brev8, "brev8", BinaryE, BINARY_E_COST, 0x32, 0, 0, opc_brev8, op_brev8, ops_none),
-    (Andn, "andn", BinaryE, BINARY_E_COST, 0x33, 0, 0, opc_andn, op_andn, ops_none),
-    (Orn, "orn", BinaryE, BINARY_E_COST, 0x34, 0, 0, opc_orn, op_orn, ops_none),
-    (Xnor, "xnor", BinaryE, BINARY_E_COST, 0x35, 0, 0, opc_xnor, op_xnor, ops_none),
+    (Brev8, "brev8", Binary, BINARY_COST, 0x32, 0, 0, opc_brev8, op_brev8, ops_none),
+    (Andn, "andn", Binary, BINARY_COST, 0x33, 0, 0, opc_andn, op_andn, ops_none),
+    (Orn, "orn", Binary, BINARY_COST, 0x34, 0, 0, opc_orn, op_orn, ops_none),
+    (Xnor, "xnor", Binary, BINARY_COST, 0x35, 0, 0, opc_xnor, op_xnor, ops_none),
     (Pack, "pack", BinaryE, BINARY_E_COST, 0x36, 0, 0, opc_pack, op_pack, ops_none),
     (PackH, "pack_h", BinaryE, BINARY_E_COST, 0x37, 0, 0, opc_pack_h, op_pack_h, ops_none),
     (PackW, "pack_w", BinaryE, BINARY_E_COST, 0x38, 0, 0, opc_pack_w, op_pack_w, ops_none),
@@ -454,19 +455,21 @@ define_ops! {
     (Bext, "bext", BinaryE, BINARY_E_COST, 0x45, 0, 0, opc_bext, op_bext, ops_none),
     (Binv, "binv", BinaryE, BINARY_E_COST, 0x46, 0, 0, opc_binv, op_binv, ops_none),
     (Bset, "bset", BinaryE, BINARY_E_COST, 0x47, 0, 0, opc_bset, op_bset, ops_none),
-    (AddUW, "add_u_w", BinaryE, BINARY_E_COST, 0x48, 0, 0, opc_add_u_w, op_add_u_w, ops_none),
-    (Sh1add, "sh1add", BinaryE, BINARY_E_COST, 0x49, 0, 0, opc_sh1add, op_sh1add, ops_none),
-    (Sh1addUW, "sh1add_u_w", BinaryE, BINARY_E_COST, 0x4a, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
-    (Sh2add, "sh2add", BinaryE, BINARY_E_COST, 0x4b, 0, 0, opc_sh2add, op_sh2add, ops_none),
-    (Sh2addUW, "sh2add_u_w", BinaryE, BINARY_E_COST, 0x4c, 0, 0, opc_sh2add_u_w, op_sh2add_u_w, ops_none),
-    (Sh3add, "sh3add", BinaryE, BINARY_E_COST, 0x4d, 0, 0, opc_sh3add, op_sh3add, ops_none),
-    (Sh3addUW, "sh3add_u_w", BinaryE, BINARY_E_COST, 0x4e, 0, 0, opc_sh3add_u_w, op_sh3add_u_w, ops_none),
-    (SllUW, "sll_u_w", BinaryE, BINARY_E_COST, 0x4f, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
+    (AddUW, "add_u_w", BinaryE, ADD_U_W_COST, 0x48, 0, 0, opc_add_u_w, op_add_u_w, ops_none),
+    (Sh1add, "sh1add", BinaryE, SH_ADD_COST, 0x49, 0, 0, opc_sh1add, op_sh1add, ops_none),
+    (Sh1addUW, "sh1add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4a, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
+    (Sh2add, "sh2add", BinaryE, SH_ADD_COST, 0x4b, 0, 0, opc_sh2add, op_sh2add, ops_none),
+    (Sh2addUW, "sh2add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4c, 0, 0, opc_sh2add_u_w, op_sh2add_u_w, ops_none),
+    (Sh3add, "sh3add", BinaryE, SH_ADD_U_W_COST, 0x4d, 0, 0, opc_sh3add, op_sh3add, ops_none),
+    (Sh3addUW, "sh3add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4e, 0, 0, opc_sh3add_u_w, op_sh3add_u_w, ops_none),
+    (SllUW, "sll_u_w", BinaryE, SLL_U_W_COST, 0x4f, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
     (Clmul, "clmul", BinaryE, BINARY_E_COST, 0x52, 0, 0, opc_clmul, op_clmul, ops_none),
     (ClmulH, "clmul_h", BinaryE, BINARY_E_COST, 0x53, 0, 0, opc_clmul_h, op_clmul_h, ops_none),
     (ClmulR, "clmul_r", BinaryE, BINARY_E_COST, 0x54, 0, 0, opc_clmul_r, op_clmul_r, ops_none),
     (Xperm4, "xperm4", BinaryE, BINARY_E_COST, 0x55, 0, 0, opc_xperm4, op_xperm4, ops_none),
     (Xperm8, "xperm8", BinaryE, BINARY_E_COST, 0x56, 0, 0, opc_xperm8, op_xperm8, ops_none),
+    (CzeroEqz, "czero_eqz", BinaryE, BINARY_E_COST, 0x57, 0, 0, opc_czero_eqz, op_czero_eqz, ops_none),
+    (CzeroNez, "czero_nez", BinaryE, BINARY_E_COST, 0x58, 0, 0, opc_czero_nez, op_czero_nez, ops_none),
 
     // Opcodes 0x50,0x51,0x60,0x61 are reserved for binary
     (Mulu, "mulu", ArithAm32, ARITHAM32_COST, 0xb0, 0, 0, opc_mulu, op_mulu, ops_none),

@@ -16,26 +16,26 @@ path = "src/arith_eq_generator.rs"
 
 [[bin]]
 name = "zisk-arith-eq-test-bigint"
-path = "src/arith_eq_test_bigint.rs"
+path = "src/tests/arith_eq_test_bigint.rs"
 required-features = ["test_data"]
 
 [[bin]]
 name = "zisk-arith-eq-test-generator"
-path = "src/arith_eq_test_generator.rs"
+path = "src/tests/arith_eq_test_generator.rs"
 
 [[bin]]
 name = "zisk-arith-eq-test-c"
-path = "src/arith_eq_test_c.rs"
+path = "src/tests/arith_eq_test_c.rs"
 required-features = ["test_data"]
 
 [[bin]]
 name = "zisk-arith-eq-test-secp256k1"
-path = "src/arith_eq_test_secp256k1.rs"
+path = "src/tests/arith_eq_test_secp256k1.rs"
 required-features = ["test_data"]
 
 [[bin]]
 name = "zisk-arith-eq-test-secp256r1"
-path = "src/arith_eq_test_secp256r1.rs"
+path = "src/tests/arith_eq_test_secp256r1.rs"
 required-features = ["test_data"]
 
 [dependencies]

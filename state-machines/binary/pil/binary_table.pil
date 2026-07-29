@@ -4,26 +4,32 @@ require "operations.pil"
 require "opids.pil"
 
 /* PIL Binary Operations Table used by Binary
-                                                                                     Running Total
-    MINU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                           + 2^18 + 2^17
-    MIN        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |                    + 2^19 + 2^18
-    MAXU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20               + 2^17
-    MAX        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |               2^20 + 2^19
-    LT_ABS_NP  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^2 (CIN)          =    2^20     |        2^21        + 2^19
-    LT_ABS_PN  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |        2^21 + 2^20 
-    LTU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20        + 2^18
-    LT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19
-    GT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |        2^21 + 2^20 + 2^19 + 2^18
-    EQ         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22
-    ADD        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22                      + 2^18
-    SUB        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22               + 2^19
-    LEU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22               + 2^19 + 2^18
-    LE         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     | 2^22        + 2^20
-    AND        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22        + 2^20               + 2^17
-    OR         2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22        + 2^20        + 2^18
-    XOR        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     | 2^22        + 2^20        + 2^18 + 2^17
-    SEXT_00    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20 + 2^19               + 2^16
-    SEXT_FF    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 | 2^22        + 2^20 + 2^19 + 2^18
+                                                                                     Accumulated rows
+    MINU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |       393,216
+    MIN        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |       786,432
+    MAXU       2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |     1,179,648
+    MAX        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN) x FLAGS  = 2^18 + 2^17 |     1,572,864
+    LT_ABS_NP  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^2 (CIN)          =    2^20     |     2,621,440
+    LT_ABS_PN  2^8 (A) x 2^8 (B) x 2^2 (POS_IND) x 2^1 (CIN)          =    2^19     |     3,145,728
+    LTU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     3,407,872
+    LT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     3,670,016
+    GT         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     3,932,160
+    EQ         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     4,194,304
+    ADD        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     4,456,448
+    SUB        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     4,718,592
+    LEU        2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     4,980,736
+    LE         2^8 (A) x 2^8 (B) x 2^1 (POS_IND) x 2^1 (CIN)          =    2^18     |     5,242,880
+    AND        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     5,373,952
+    OR         2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     5,505,024
+    XOR        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     5,636,096
+    SEXT_00    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 |     5,832,704
+    SEXT_FF    2^8 (A) x 2^8 (B)                 x CIN x 2^1 (FLAGS)  = 2^17 + 2^16 |     6,029,312
+    ANDN       2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     6,160,384
+    ORN        2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     6,291,456
+    XNOR       2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     6,422,528
+    BREV8      2^8 (A) x 2^8 (B) x 2^1 (POS_IND)                      =    2^17     |     6,553,600  => BINARY_TABLE_SIZE
+
+    Total N = 6,553,600 rows, with 2^22 (4,194,304) < N < 2^23 (8,388,608)
     -------------------------------------------------------------------------------------------------------------------
     Notes:
     - MINU/MIN/MAXU/MAX: POS_IND=0 (2^18 rows with FLAGS), POS_IND=1 (2^17 rows without FLAGS)
@@ -31,14 +37,18 @@ require "opids.pil"
     - Bitwise ops don't use POS_IND operationally, but include it for consistency with other ops
     - Sign extension ops don't use A,B,CIN operationally, but include them for consistency with other ops
     - SEXT_00, SEXT_FF are the only (unary) operation which are not a ZisK OP but are used to prove the rest
+    - ANDN, ORN, XNOR, BREV8 are B-extension bitwise ops, single-byte like AND/OR/XOR (2^17 rows each)
 */
 
-const int BINARY_TABLE_SIZE = P2_22 + P2_20 + P2_19 + P2_18;
+const int BINARY_TABLE_SIZE = 6_553_600;
+const int BINARY_TABLE_SIZE_P2 = 2**23;
 const int OP_SEXT_00 = 0x200;
 const int OP_SEXT_FF = 0x201;
 
-airtemplate BinaryTable(const int N = 2**23) {
-    if (N < BINARY_TABLE_SIZE) {
+airtemplate BinaryTable(int N = 0) {
+    if (N == 0) {
+        N = VIRTUAL ? BINARY_TABLE_SIZE : BINARY_TABLE_SIZE_P2;
+    } else if (N < BINARY_TABLE_SIZE) {
         error(`N must be at least ${BINARY_TABLE_SIZE}, but N=${N} was provided`);
     }
 
@@ -63,7 +73,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                          [0:P2_16, 1:P2_16]:(2*2),          // LEU,LE
                          [0:P2_16, 1:P2_16]:3,              // AND,OR,XOR
                           0:(P2_17 + P2_16),                // SEXT_00
-                          0:(P2_17 + P2_16)]...;            // SEXT_FF
+                          0:(P2_17 + P2_16),                // SEXT_FF
+                         [0:P2_16, 1:P2_16]:4]...;          // ANDN,ORN,XNOR,BREV8
 
     // Input carry (<=2 bits)
     col fixed CIN = [[0:P2_16, 1:P2_16]:(3*2),        // MINU,MIN
@@ -75,7 +86,8 @@ airtemplate BinaryTable(const int N = 2**23) {
                      [0:P2_17, 1:P2_17]:2,            // LEU,LE
                       0:(P2_17*3),                    // AND,OR,XOR
                      [0:P2_16, 1:P2_16, 0:P2_16],     // SEXT_00
-                     [0:P2_16, 1:P2_16, 0:P2_16]]...; // SEXT_FF
+                     [0:P2_16, 1:P2_16, 0:P2_16],     // SEXT_FF
+                      0:(P2_17*4)]...;                // ANDN,ORN,XNOR,BREV8
 
     // Operation opcode
     col fixed OP = [OP_MINU:(P2_18 + P2_17), OP_MIN:(P2_18 + P2_17),     // MINU,MIN
@@ -87,7 +99,9 @@ airtemplate BinaryTable(const int N = 2**23) {
                     OP_LEU:P2_18, OP_LE:P2_18,                           // LEU,LE
                     OP_AND:P2_17, OP_OR:P2_17, OP_XOR:P2_17,             // AND,OR,XOR
                     OP_SEXT_00:(P2_17 + P2_16),                          // SEXT_00
-                    OP_SEXT_FF:(P2_17 + P2_16)]...;                      // SEXT_FF
+                    OP_SEXT_FF:(P2_17 + P2_16),                          // SEXT_FF
+                    OP_ANDN:P2_17, OP_ORN:P2_17,                         // ANDN, ORN
+                    OP_XNOR:P2_17, OP_BREV8:P2_17]...;                   // XNOR, BREV8
 
     col fixed C;     // Output C (8 bits)
     col fixed FLAGS; // Combined flags (8 bits): cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
@@ -353,6 +367,21 @@ airtemplate BinaryTable(const int N = 2**23) {
 
                 result_is_a = (relative_index >= P2_17) ? 1 : 0;
                 c_is_signed = 1;
+
+            case OP_ANDN: // ANDN: bitwise AND with negated b -> a & ~b
+                c = a & (b ^ 0xFF);
+
+            case OP_ORN: // ORN: bitwise OR with negated b -> a | ~b
+                c = a | (b ^ 0xFF);
+
+            case OP_XNOR: // XNOR: bitwise NOT of XOR -> ~(a ^ b)
+                c = (a ^ b) ^ 0xFF;
+
+            case OP_BREV8: // BREV8: reverse the bit order within the byte (operand in b)
+                c = 0;
+                for (int k = 0; k < 8; k++) {
+                    c = c | (((b >> k) & 0x01) << (7 - k));
+                }
 
             default:
                 error(`Invalid operation opcode: ${op} at row ${i}`);

@@ -75,7 +75,12 @@ secp256r1_add = []
 secp256r1_dbl = []
 sha256 = []
 uint256 = []
-
-# Guest-compilation flag: enables the RISC-V bit-manipulation extension code paths
-# in the `diagnostic` guest — the only program that defines this feature.
-bit_manipulation_extensions = []
+zba = []
+zbc = []
+zbkc = []
+zbkx = []
+zba_native = []
+zbc_native = []
+zbkc_native = []
+zbkx_native = []
+zicond_native = []

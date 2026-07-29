@@ -1768,6 +1768,7 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_mem_full_stats(options.mem_full_stats);
         self.ctx.stats.set_sdk_width(options.sdk_width);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
+        self.ctx.stats.set_legacy_frops(options.legacy_frops);
         if let Some(profiler_output) = &options.profiler_output {
             self.ctx.stats.set_profiler_output(profiler_output.clone());
         }
