@@ -27,5 +27,20 @@
   },
   "Blake2br": {
     "hasCompressor": true
+  },
+  "Arith256": {
+    "hasCompressor": true
+  },
+  "Arith256X": {
+    "hasCompressor": true
+  },
+  "ArithSecp256K1": {
+    "hasCompressor": true
+  },
+  "ArithBn254Ec": {
+    "hasCompressor": true
+  },
+  "ArithBn254Complex": {
+    "hasCompressor": true
   }
 }

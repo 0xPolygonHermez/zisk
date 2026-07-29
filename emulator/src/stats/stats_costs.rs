@@ -27,10 +27,10 @@ impl StatsCosts {
             cost: 0,
         }
     }
-    pub fn memory_write(&mut self, address: u64, width: u64, value: u64) -> bool {
+    pub fn memory_write(&mut self, address: u64, width: u64, value: u64) -> u32 {
         self.mops.memory_write(address, width, value)
     }
-    pub fn memory_read(&mut self, address: u64, width: u64) -> bool {
+    pub fn memory_read(&mut self, address: u64, width: u64) -> u32 {
         self.mops.memory_read(address, width)
     }
     pub fn get_delta_steps(&mut self, reference: &StatsCosts, current: &StatsCosts) -> u64 {
@@ -82,20 +82,20 @@ impl StatsCosts {
         self.frops_ops.get_opcode_count_and_cost(op_code)
     }
     #[inline(always)]
-    pub fn top_count_opcodes(&self, k: usize) -> Vec<u8> {
-        self.ops.top_count_opcodes(k)
+    pub fn top_count_opcodes(&self, k: usize, base: bool, precompiled: bool) -> Vec<u8> {
+        self.ops.top_count_opcodes(k, base, precompiled)
     }
     #[inline(always)]
     pub fn top_count_frops_opcodes(&self, k: usize) -> Vec<u8> {
-        self.frops_ops.top_count_opcodes(k)
+        self.frops_ops.top_count_opcodes(k, true, false)
     }
     #[inline(always)]
-    pub fn top_cost_opcodes(&self, k: usize) -> Vec<u8> {
-        self.ops.top_cost_opcodes(k)
+    pub fn top_cost_opcodes(&self, k: usize, base: bool, precompiled: bool) -> Vec<u8> {
+        self.ops.top_cost_opcodes(k, base, precompiled)
     }
     #[inline(always)]
     pub fn top_cost_frops_opcodes(&self, k: usize) -> Vec<u8> {
-        self.frops_ops.top_cost_opcodes(k)
+        self.frops_ops.top_cost_opcodes(k, true, false)
     }
     #[inline(always)]
     pub fn ops_costs(&self) -> &OpsCosts {

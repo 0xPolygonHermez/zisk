@@ -21,7 +21,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Tell cargo to rerun this build script if any proto file changes
     println!("cargo:rerun-if-changed=proto/zisk_cluster_api.proto");
-    println!("cargo:rerun-if-changed=proto/zisk_coordinator_api.proto");
 
     Ok(())
 }

@@ -10,8 +10,7 @@ struct GuestPublics {
     b: u32,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");
 
     let n: u32 = 2000;
@@ -27,13 +26,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = builder.build()?;
 
     println!("Setting up first program (fib_mod)...");
-    client.setup(&ELF_FIB_MOD).run()?.await?;
+    client.setup(&ELF_FIB_MOD).run_sync()?;
 
     println!("Setting up second program (agg_verify)...");
-    client.setup(&ELF_AGG_VERIFY).run()?.await?;
+    client.setup(&ELF_AGG_VERIFY).run_sync()?;
 
     println!("Executing first program...");
-    let result = client.execute(&ELF_FIB_MOD, &stdin).run()?.await?;
+    let result = client.execute(&ELF_FIB_MOD, &stdin).run_sync()?;
 
     println!(
         "Program executed successfully: {} cycles in {} ms",
@@ -60,14 +59,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Publics OK: n={}, module={}, b={}", publics.n, publics.module, publics.b);
 
     println!("Generating first proof for fib_mod...");
-    let vadcop_result1 = client.prove(&ELF_FIB_MOD, stdin).run()?.await?;
+    let vadcop_result1 = client.prove(&ELF_FIB_MOD, stdin).run_sync()?;
 
     let stdin2 = ZiskStdin::new();
     stdin2.write(&n);
     stdin2.write(&module);
 
     println!("Generating second proof for fib_mod...");
-    let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run()?.await?;
+    let vadcop_result2 = client.prove(&ELF_FIB_MOD, stdin2).run_sync()?;
 
     let stdin_aggregation = ZiskStdin::new();
     stdin_aggregation.write_slice(&vadcop_result1.get_proof_bytes()?);
@@ -76,7 +75,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Running ZisK Emulator on aggregation program for profiling...");
     zisk_sdk::run(&ELF_AGG_VERIFY, stdin_aggregation.clone(), Some(ProfilingMode::Complete))?;
 
-    let result_aggregation = client.prove(&ELF_AGG_VERIFY, stdin_aggregation).run()?.await?;
+    let result_aggregation = client.prove(&ELF_AGG_VERIFY, stdin_aggregation).run_sync()?;
 
     result_aggregation.verify()?;
 

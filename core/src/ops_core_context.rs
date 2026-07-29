@@ -532,3 +532,15 @@ pub fn opc_xperm4(ctx: &mut InstContext) {
 pub fn opc_xperm8(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_xperm8(ctx.a, ctx.b);
 }
+
+/// InstContext-based wrapper over op_czero_eqz()
+#[inline(always)]
+pub fn opc_czero_eqz(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_czero_eqz(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_czero_nez()
+#[inline(always)]
+pub fn opc_czero_nez(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_czero_nez(ctx.a, ctx.b);
+}

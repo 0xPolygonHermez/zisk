@@ -19,6 +19,11 @@ impl ProofLog {
     }
 
     /// Writes the proof log entries to a JSON file at the specified path.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `entries` cannot be serialized to JSON, or if the file
+    /// cannot be created or written.
     pub fn write_json_log(file_path: &PathBuf, entries: &ProofLog) -> Result<(), Box<dyn Error>> {
         let json = serde_json::to_string_pretty(entries)?;
         let mut file = File::create(file_path)?;

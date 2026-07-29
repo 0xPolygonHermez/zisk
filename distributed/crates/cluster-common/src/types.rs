@@ -32,14 +32,17 @@ impl Default for JobId {
 }
 
 impl JobId {
+    /// Generate a fresh random job id.
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
 
+    /// Borrow the id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Clone the id into an owned `String`.
     pub fn as_string(&self) -> String {
         self.0.clone()
     }
@@ -78,14 +81,17 @@ impl Default for DataId {
 }
 
 impl DataId {
+    /// Generate a fresh random data id.
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
 
+    /// Borrow the id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Clone the id into an owned `String`.
     pub fn as_string(&self) -> String {
         self.0.clone()
     }
@@ -124,14 +130,17 @@ impl Default for WorkerId {
 }
 
 impl WorkerId {
+    /// Generate a fresh random worker id.
     pub fn new() -> Self {
         Self(uuid::Uuid::new_v4().to_string())
     }
 
+    /// Borrow the id as a string slice.
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
+    /// Clone the id into an owned `String`.
     pub fn as_string(&self) -> String {
         self.0.clone()
     }
@@ -159,9 +168,12 @@ impl std::fmt::Display for WorkerId {
     }
 }
 
+/// Lifecycle state of a worker as tracked by the coordinator.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkerState {
+    /// Not connected.
     Disconnected,
+    /// Connection in progress.
     Connecting,
     /// Connected but no setup done yet. Not eligible for job assignment.
     Idle,
@@ -169,7 +181,9 @@ pub enum WorkerState {
     SettingUp,
     /// Setup complete. Eligible for job assignment.
     Ready,
+    /// Computing the given phase of the given job.
     Computing((JobId, JobPhase)),
+    /// In an error state.
     Error,
 }
 
@@ -191,6 +205,7 @@ impl Display for WorkerState {
 /// Compute capacity
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ComputeCapacity {
+    /// Number of compute units.
     pub compute_units: u32,
 }
 
@@ -206,13 +221,17 @@ impl std::fmt::Display for ComputeCapacity {
     }
 }
 
+/// How a job is executed across workers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobExecutionMode {
-    Standard,        // the normal mode
-    Simulating(u32), // simulation mode where we simulate N workers but only use one worker
+    /// Normal mode: real workers.
+    Standard,
+    /// Simulation mode: simulate N workers using only one physical worker.
+    Simulating(u32),
 }
 
 impl JobExecutionMode {
+    /// Whether this is [`Simulating`](Self::Simulating) mode.
     pub fn is_simulating(&self) -> bool {
         matches!(self, JobExecutionMode::Simulating(_))
     }
@@ -246,7 +265,9 @@ impl Display for FailurePolicy {
 /// Per-phase timing data: tracks when a phase started and optionally when it ended.
 #[derive(Clone)]
 pub struct PhaseTimings {
+    /// When the phase started.
     pub start_time: DateTime<Utc>,
+    /// When the phase ended, if it has.
     pub end_time: Option<DateTime<Utc>>,
 }
 
@@ -268,40 +289,68 @@ impl Display for PhaseTimings {
     }
 }
 
+/// The coordinator's full state for a single job across its lifecycle.
 #[derive(Debug)]
 pub struct Job {
+    /// The job's id.
     pub job_id: JobId,
+    /// Content hash of the guest program being proven.
     pub hash_id: String,
+    /// Start/end timings per phase.
     pub phase_timings: HashMap<JobPhase, PhaseTimings>,
+    /// When the job request was received.
     pub task_received_time: Option<DateTime<Utc>>,
+    /// Total duration once terminal, in milliseconds.
     pub duration_ms: Option<u64>,
+    /// When the job reached a terminal state.
     pub terminated_at: Option<DateTime<Utc>>,
+    /// Current job state.
     pub state: JobState,
+    /// Id of the input/hints data context.
     pub data_id: DataId,
+    /// How inputs are supplied.
     pub inputs_mode: InputsModeDto,
+    /// How hints are supplied.
     pub hints_mode: HintsModeDto,
+    /// Requested compute capacity.
     pub compute_capacity: ComputeCapacity,
+    /// Minimum acceptable compute capacity.
     pub minimal_compute_capacity: ComputeCapacity,
+    /// Workers assigned to the job.
     pub workers: Vec<WorkerId>,
+    /// Worker handling aggregation, if assigned.
     pub agg_worker_id: Option<WorkerId>,
+    /// Per-worker compute-unit partitions.
     pub partitions: Vec<Vec<u32>>,
+    /// Per-phase, per-worker results.
     pub results: HashMap<JobPhase, HashMap<WorkerId, JobResult>>,
+    /// Collected contribution challenges, once available.
     pub challenges: Option<Vec<ContributionsInfo>>,
+    /// Witness metadata, once available.
     pub witness_info: Option<WitnessInfo>,
+    /// Execution mode (standard or simulating).
     pub execution_mode: JobExecutionMode,
+    /// The final proof, once produced.
     pub proof: Option<Proof>,
+    /// Total executed steps, once known.
     pub executed_steps: Option<u64>,
+    /// Number of AIR instances, once known.
     pub instances: Option<u64>,
-    pub metadata: BTreeMap<String, String>,
+    /// Arbitrary client-supplied metadata.
+    pub metadata: Option<BTreeMap<String, String>>,
+    /// Whether this is an execute-only job (no proof).
     pub execution_only: bool,
+    /// The kind of proof requested.
     pub proof_type: ProofKind,
     /// Aggregation task currently in-flight to the recurser (sent, not yet acked).
     /// Re-sent verbatim if the recurser reconnects before returning its result.
     pub agg_task_inflight: Option<PendingAggTask>,
+    /// Queued aggregation tasks awaiting dispatch.
     pub agg_task_queue: VecDeque<PendingAggTask>,
 }
 
 impl Job {
+    /// Create a new job in the `Created` state from its submission parameters.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         job_id: JobId,
@@ -314,7 +363,7 @@ impl Job {
         selected_workers: Vec<WorkerId>,
         partitions: Vec<Vec<u32>>,
         execution_mode: JobExecutionMode,
-        metadata: BTreeMap<String, String>,
+        metadata: Option<BTreeMap<String, String>>,
         execution_only: bool,
         proof_type: ProofKind,
     ) -> Self {
@@ -349,10 +398,14 @@ impl Job {
         }
     }
 
+    /// The job's id.
     pub fn job_id(&self) -> &JobId {
         &self.job_id
     }
 
+    /// Transition the job to `new_state`, validating the transition and
+    /// recording phase timings and terminal duration. Invalid transitions are
+    /// logged and ignored.
     pub fn change_state(&mut self, new_state: JobState) {
         // Validate transition. Failed and Cancelled are always reachable (abort from any state).
         let valid = matches!(
@@ -408,10 +461,13 @@ impl Job {
         self.phase_timings.get(phase).map(|t| t.start_time)
     }
 
+    /// The job's current state.
     pub fn state(&self) -> &JobState {
         &self.state
     }
 
+    /// Release per-job working memory (partitions, results, timings, challenges,
+    /// and aggregation queues) once the job is terminal.
     pub fn cleanup(&mut self) {
         self.partitions.clear();
         self.results.clear();
@@ -422,16 +478,23 @@ impl Job {
     }
 }
 
+/// Coarse job state (the phase lives inside `Running`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JobState {
+    /// Created, not yet running.
     Created,
+    /// Running the given phase.
     Running(JobPhase),
+    /// Finished successfully.
     Completed,
+    /// Finished with a failure.
     Failed,
+    /// Cancelled.
     Cancelled,
 }
 
 impl JobState {
+    /// Whether this is a resolved (terminal) state.
     pub fn is_resolved(&self) -> bool {
         matches!(self, JobState::Failed | JobState::Completed | JobState::Cancelled)
     }
@@ -449,70 +512,113 @@ impl fmt::Display for JobState {
     }
 }
 
+/// A single airgroup's partial proof produced by a worker.
 #[derive(Debug, Clone)]
 pub struct AggProofData {
+    /// Index of the producing worker.
     pub worker_idx: u32,
+    /// The airgroup this proof belongs to.
     pub airgroup_id: u64,
+    /// The proof field-element values.
     pub values: Vec<u64>,
 }
 
+/// An aggregation task queued or in-flight to the recurser.
 #[derive(Debug, Clone)]
 pub struct PendingAggTask {
+    /// The partial proofs to aggregate.
     pub proofs: Vec<AggProofData>,
+    /// Whether this is the final aggregation step.
     pub all_done: bool,
+    /// The kind of proof being produced.
     pub proof_type: ProofKind,
 }
 
+/// Result of the contribution phase for one worker.
 #[derive(Debug, Clone)]
 pub struct ContributionsResult {
+    /// The contribution challenges.
     pub challenges: Vec<ContributionsInfo>,
+    /// Witness metadata.
     pub witness_info: WitnessInfo,
+    /// Executor timing.
     pub zisk_executor_time: ZiskExecutorTime,
+    /// When the originating task was received.
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    /// Number of AIR instances.
     pub instances: u64,
+    /// Per-type cost breakdown.
     pub cost_per_type: StatsCostPerType,
 }
 
+/// Result of an execute-only run for one worker.
 #[derive(Debug, Clone)]
 pub struct ExecutionResult {
+    /// Number of AIR instances.
     pub instances: u64,
+    /// Steps executed.
     pub executed_steps: u64,
+    /// Executor timing.
     pub zisk_executor_time: ZiskExecutorTime,
+    /// When the originating task was received.
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    /// The program's public outputs.
     pub public_outputs: Vec<u8>,
+    /// Per-type cost breakdown.
     pub cost_per_type: StatsCostPerType,
+    /// Per-AIR instance plan.
     pub plan: Vec<zisk_common::AirInstanceCount>,
 }
 
+/// The payload of a per-worker job result, by phase.
 #[derive(Debug, Clone)]
 pub enum JobResultData {
+    /// Execute-only result.
     Execution(ExecutionResult),
+    /// Contribution-phase result.
     Challenges(ContributionsResult),
+    /// Partial proofs from the prove phase.
     AggProofs(Vec<AggProofData>),
 }
 
+/// A worker's result for one phase of a job.
 #[derive(Debug, Clone)]
 pub struct JobResult {
+    /// Whether the phase succeeded for this worker.
     pub success: bool,
+    /// The result payload.
     pub data: JobResultData,
+    /// When the result was recorded.
     pub end_time: DateTime<Utc>,
 }
 
+/// The input/hints data context for a job.
 #[derive(Debug, Clone)]
 pub struct DataCtx {
+    /// Id of this data context.
     pub data_id: DataId,
+    /// Where the job's input comes from.
     pub input_source: InputSourceDto,
+    /// Where the job's hints come from.
     pub hints_source: HintsSourceDto,
 }
 
+/// A phase of a job's execution. The `#[repr(u8)]` order is wire-significant
+/// (used by [`TryFrom<u8>`]).
 #[repr(u8)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash, BorshSerialize, BorshDeserialize)]
 pub enum JobPhase {
+    /// Execute-only phase.
     Execution,
+    /// Contribution-gathering phase.
     Contributions,
+    /// Proof-generation phase.
     Prove,
+    /// Recursion/aggregation phase.
     Recurse,
+    /// Streaming of contribution inputs.
     ContributionsInputsStream,
+    /// Streaming of contribution hints.
     ContributionsHintsStream,
 }
 
@@ -545,47 +651,71 @@ impl fmt::Display for JobPhase {
     }
 }
 
+/// A worker's assigned compute-unit range within a job.
 #[derive(Debug, Clone)]
 pub struct WorkerAllocationDto {
+    /// The compute-unit index range assigned to the worker.
     pub range: Range<u32>,
 }
 
+/// Parameters for an aggregation step.
 #[derive(Debug, Clone)]
 pub struct AggregationParams {
+    /// Partial proofs to aggregate.
     pub agg_proofs: Vec<AggProofData>,
+    /// Whether this is the last proof in the current round.
     pub last_proof: bool,
+    /// Whether this produces the final job proof.
     pub final_proof: bool,
+    /// The kind of proof being produced.
     pub proof_type: ProofKind,
 }
 
+/// A worker's partition of a job's total work.
 #[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
 pub struct PartitionInfo {
+    /// Total compute units across the job.
     pub total_compute_units: usize,
+    /// Per-worker compute-unit allocation.
     pub allocation: Vec<u32>,
+    /// This worker's index into `allocation`.
     pub worker_idx: usize,
 }
 
-/// Message structures for MPI broadcast to ensure type safety
+/// MPI broadcast message carrying a contribution/execution task to peer ranks.
 #[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct ContributionsMessage {
+    /// The job id.
     pub job_id: JobId,
+    /// Content hash of the guest program.
     pub hash_id: String,
+    /// Proving-phase inputs.
     pub phase_inputs: ProvePhaseInputs,
+    /// Proof options.
     pub options: ProofOptions,
+    /// Where the input comes from.
     pub input_source: InputSourceDto,
+    /// Where the hints come from.
     pub hints_source: HintsSourceDto,
+    /// This rank's partition.
     pub partition_info: PartitionInfo,
 }
 
+/// MPI broadcast message carrying a prove task to peer ranks.
 #[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct ProveMessage {
+    /// The job id.
     pub job_id: JobId,
+    /// Proving-phase inputs (challenges).
     pub phase_inputs: ProvePhaseInputs,
+    /// Proof options.
     pub options: ProofOptions,
 }
 
+/// MPI broadcast message carrying a chunk of streamed data.
 #[derive(borsh::BorshSerialize, borsh::BorshDeserialize)]
 pub struct StreamMessage {
+    /// The streamed words.
     pub data: Vec<u64>,
 }
 
@@ -605,7 +735,7 @@ mod tests {
             vec![],
             vec![],
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             crate::ProofKind::VadcopFinal,
         )

@@ -11,12 +11,12 @@ pub const PARAM_CHUNKS: usize = 16;
 pub const START_READ_PARAMS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + PARAMS;
 
 // Generic Parameters
-pub const CLOCKS_PER_G: usize = 3;
-pub const G_FUNCTIONS_COLUMN_MIXING: usize = 4;
-pub const G_FUNCTIONS_DIAGONAL_MIXING: usize = 4;
-pub const CLOCKS_COLUMN_MIXING: usize = CLOCKS_PER_G * G_FUNCTIONS_COLUMN_MIXING;
-pub const CLOCKS_DIAGONAL_MIXING: usize = CLOCKS_PER_G * G_FUNCTIONS_DIAGONAL_MIXING;
-pub const CLOCKS: usize = CLOCKS_COLUMN_MIXING + CLOCKS_DIAGONAL_MIXING;
+pub const CLOCKS_PER_G: usize = 1;
+pub const NUM_G_PER_ROUND: usize = 8;
+pub const CLOCKS: usize = CLOCKS_PER_G * NUM_G_PER_ROUND;
+
+// Blake2br XOR table
+pub const BLAKE2BR_TABLE_SIZE: usize = 1 << 16;
 
 /// Message word permutation schedule
 pub const SIGMA: [[usize; 16]; 10] = [

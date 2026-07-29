@@ -2,7 +2,7 @@
 pub const INTERNAL_COST: u64 = 0;
 pub const BINARY_COST: u64 = 60;
 pub const BINARY_ADD_COST: u64 = 25;
-pub const BINARY_E_COST: u64 = 53;
+pub const BINARY_E_COST: u64 = 56;
 pub const ARITHA32_COST: u64 = 95;
 pub const ARITHAM32_COST: u64 = 95;
 pub const KECCAK_COST: u64 = 25 * 3023;
@@ -13,6 +13,12 @@ pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 79 * 24;
 pub const ADD256_COST: u64 = 104;
 pub const BLAKE2_COST: u64 = 24 * 209;
+pub const MAIN_COST: u64 = 68;
+
+pub const ADD_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_ADD_COST; // step extra + and + add
+pub const SH_ADD_COST: u64 = MAIN_COST + BINARY_E_COST + BINARY_ADD_COST; // step extra + ssl + add
+pub const SH_ADD_U_W_COST: u64 = 2 * MAIN_COST + BINARY_E_COST + BINARY_COST + BINARY_ADD_COST; // 2 * step extra + ssl + and + add
+pub const SLL_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_E_COST; // step extra + and + ssl
 
 /*
     Hash throughput comparison, where cost is clocks per columns:

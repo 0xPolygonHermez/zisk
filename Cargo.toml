@@ -1,5 +1,5 @@
 [workspace.package]
-version = "1.1.0-alpha"
+version = "1.2.0-alpha"
 edition = "2021"
 license = "Apache-2.0 or MIT"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -7,8 +7,8 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_zisk_ethproofs_branch = "develop-0.11.1"
-gha_zisk_eth_client_branch = "develop-0.10.1"
+gha_zisk_ethproofs_branch = "feature/riscv-b-extension"
+gha_zisk_eth_client_branch = "feature/riscv-b-extension"
 gha_zisk_template_branch = "pre-develop-1.1.0-alpha"
 gha_zisk_testvectors_branch = "zisk-1.0.0"
 gha_pil2_compiler_branch = "develop-0.12.0"
