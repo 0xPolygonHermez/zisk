@@ -498,13 +498,13 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
     }   // if (has_check_lt)
 
     col witness bits(64, signed) carry[MAX_CEQS][CBC];
-
     for (int i = 0; i < MAX_CEQS; ++i) {
+        // Initial carry must be 0
         carry[i][0] * CLK_0 === 0;
         for (int j = 0; j < CBC; ++j) {
             range_check(min: CARRY_MIN, max: CARRY_MAX, expression: carry[i][j]);
             if (j == CBC - 1) {
-                // in last clock (CLK_0') carry belongs to next operation cycle
+                // in the last clock the equation should be satisfied and carry must be 0
                 eq[i][j] + carry[i][j] === (1 - LAST_CLK) * carry[i][0]' * CHUNK_SIZE;
             } else {
                 eq[i][j] + carry[i][j] === carry[i][j+1] * CHUNK_SIZE;
@@ -791,10 +791,6 @@ airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
             index += delta_index;
         }
         return res;
-    }
-
-    function chunk_to_m32_on_clock(const expr cl, int index, int current_clock): const expr {
-        return air.CLK[cl]*(index_on_clock(cl, index, current_clock) + index_on_clock(cl, index + 1, current_clock));
     }
 
     function index_on_clock(const expr cl, int index, int current_clock): const expr {
