@@ -184,7 +184,7 @@ airtemplate ArithTable(int N = 0, const int generate_table = 0) {
             if (div) {
                 if (quotient_is_zero && neg_quotient) continue;
                 if (remainder_is_zero && neg_remainder) continue;
-                if ((div_by_zero || div_overflow) && (quotient_is_zero || result_is_zero)) continue;
+                if ((div_by_zero || div_overflow) && quotient_is_zero) continue;
             } else {
                 if (remainder_is_zero) continue;  // remainder sign only meaningful for division
                 if (result_is_zero && np) continue;  // if p is negative cannot be zero (product is non-zero)

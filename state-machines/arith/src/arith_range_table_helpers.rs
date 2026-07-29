@@ -200,7 +200,7 @@ impl ArithRangeTableInputs {
         } else {
             self.multiplicity[row] += 1;
         }
-        self.updated &= 1 << (row >> (ROWS_BITS - 6));
+        self.updated |= 1 << (row >> (ROWS_BITS - 6));
     }
 
     /// Increments the multiplicity for a row by a specified number of times.
@@ -210,7 +210,7 @@ impl ArithRangeTableInputs {
     /// * `times` - The number of times to increment.
     fn incr_row(&mut self, row: usize, times: usize) {
         self.incr_row_without_update(row, times);
-        self.updated &= 1 << (row >> (ROWS_BITS - 6));
+        self.updated |= 1 << (row >> (ROWS_BITS - 6));
     }
 
     /// Increments the multiplicity for a row without updating the `updated` bitmask.
@@ -280,7 +280,10 @@ impl ArithRangeTableInputs {
                 continue;
             }
             let from = chunk_size * i_chunk;
-            let to = from + chunk_size;
+            // ROWS is not a multiple of chunk_size, so the last chunk runs past the end of the
+            // vector; clamp it. (This only became reachable once `updated` was fixed to `|=`: while
+            // the bitmask stayed 0 the loop always skipped and never indexed.)
+            let to = (from + chunk_size).min(ROWS);
             for row in from..to {
                 let count = other.multiplicity[row];
                 if count > 0 {
@@ -547,5 +550,28 @@ mod range_layout_tests {
             CARRY_BASE as usize
         );
         assert_eq!(ArithRangeTableHelpers::get_row_carry_range_check(MAX_CARRY), last as usize);
+    }
+}
+
+#[cfg(test)]
+mod merge_tests {
+    use super::*;
+
+    #[test]
+    fn update_with_merges_multiplicities() {
+        let mut dst = ArithRangeTableInputs::new();
+        let mut src = ArithRangeTableInputs::new();
+
+        // a chunk-range row, and a carry row at the very top of the table: the last row lands in the
+        // last chunk of the `updated` bitmask, which is the one whose bounds are easy to get wrong
+        src.use_chunk_range_check(ARITH_RANGE_16_BITS, 0x1234);
+        src.multi_use_carry_range_check(3, MAX_CARRY);
+
+        let expected: Vec<(usize, u64)> = (&src).into_iter().collect();
+        assert_eq!(expected.len(), 2, "the source should hold exactly two rows");
+
+        dst.update_with(&src);
+        let got: Vec<(usize, u64)> = (&dst).into_iter().collect();
+        assert_eq!(got, expected, "update_with dropped multiplicities");
     }
 }
