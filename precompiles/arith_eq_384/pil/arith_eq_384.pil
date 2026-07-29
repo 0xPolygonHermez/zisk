@@ -385,6 +385,16 @@ airtemplate ArithEq384(const int N) {
         }
     }
 
+    // The arith384_mod equation (x1*y1+x2-x3-q0*y2-q1*y2*p2_384) expands into 71 chunk terms,
+    // but only CLOCKS * CBC = 48 of them fit in the operation cycle. The 23 leftover terms are
+    // the chunks of q1*y2 from 2^384 upwards (chunks 24..46 of the product, shifted by p2_384
+    // to positions 48..70); they must vanish, so instead of extending the cycle we constrain
+    // them to zero directly, without carry propagation. They are all expressed relative to the
+    // first clock of the cycle, hence the arith384_mod_clk0 selector.
+    for (int j = 0; j < length(eq_arith384_mod_zero_chunks); ++j) {
+        arith384_mod_clk0 * eq_arith384_mod_zero_chunks[j] === 0;
+    }
+
     // There are some values that no change during all cycle, normally we define a constraint
     // like latch to guarantee that these values are the same in all clocks. In this case, we
     // define that for some of these type of values, only "use" one clock inside the cycle and

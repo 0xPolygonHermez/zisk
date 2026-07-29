@@ -833,3 +833,23 @@ pub const fn op_xperm8(a: u64, b: u64) -> (u64, bool) {
 
     (result, false)
 }
+
+/// Sets c to zero if b is equal to zero, to a otherwise, and flag to false
+#[inline(always)]
+pub fn op_czero_eqz(a: u64, b: u64) -> (u64, bool) {
+    if b == 0 {
+        (0, false)
+    } else {
+        (a, false)
+    }
+}
+
+/// Sets c to zero if b is not equal to zero, to a otherwise, and flag to false
+#[inline(always)]
+pub fn op_czero_nez(a: u64, b: u64) -> (u64, bool) {
+    if b != 0 {
+        (0, false)
+    } else {
+        (a, false)
+    }
+}

@@ -4,11 +4,59 @@ require "operations.pil"
 require "opids.pil"
 require "arith_eq_lt_table.pil"
 
-airtemplate ArithEq (const int N = 2**18) {
+// Equation-group flags: powers of 2 so `equations` is a bitmask (OR/sum of the enabled groups).
+const int EQ_ARITH256     = 1;
+const int EQ_ARITH256_MOD = 2;
+const int EQ_SECP256K1    = 4;
+const int EQ_BN254_EC     = 8;
+const int EQ_BN254_ADD    = 16;
+const int EQ_BN254_SUB    = 32;
+const int EQ_BN254_MUL    = 64;
+const int EQ_SECP256R1    = 128;
+const int EQ_ALL_256 = EQ_ARITH256 + EQ_ARITH256_MOD + EQ_SECP256K1 + EQ_BN254_EC +
+                       EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL + EQ_SECP256R1;
 
-    // TODO: introduction, map
-    // TODO: explain concept of q
-    // TODO: explain overload of last chunk
+airtemplate ArithEq (const int N = 2**18, const int equations = EQ_ALL_256) {
+
+    // Which equation groups are instantiated in this air (bitmask `equations`).
+    const int use_arith256     = (equations & EQ_ARITH256)     ? 1 : 0;
+    const int use_arith256_mod = (equations & EQ_ARITH256_MOD) ? 1 : 0;
+    const int use_secp256k1    = (equations & EQ_SECP256K1)    ? 1 : 0;
+    const int use_bn254_ec     = (equations & EQ_BN254_EC)     ? 1 : 0;
+    const int use_bn254_add    = (equations & EQ_BN254_ADD)    ? 1 : 0;
+    const int use_bn254_sub    = (equations & EQ_BN254_SUB)    ? 1 : 0;
+    const int use_bn254_mul    = (equations & EQ_BN254_MUL)    ? 1 : 0;
+    const int use_secp256r1    = (equations & EQ_SECP256R1)    ? 1 : 0;
+
+    // Derived groups
+    const int use_curve   = use_secp256k1 || use_bn254_ec || use_secp256r1;    // lambda-based EC ops
+    const int use_complex = use_bn254_add || use_bn254_sub || use_bn254_mul;   // bn254 Fp2 ops
+    const int use_s       = use_curve;                                          // witness s only for EC lambdas
+
+    // ops that read x2/y2 as a second point/operand, and ops that check x1 != x2 (EC point add)
+    const int has_check_diff = use_secp256k1 || use_bn254_ec || use_secp256r1;  // *_add ops (guarded by sel)
+    const int has_check_lt   = use_arith256_mod || use_curve || use_complex;    // x3/y3 alias-free checks
+
+    // Concept of q (the quotient columns q0/q1/q2):
+    // The equations are integer identities of the form  lhs = rhs, but the values live modulo a prime
+    // p (the base field of the curve, or the modulus y2 for arith256_mod). Instead of proving the
+    // congruence directly, we prove the *integer* identity by materializing the quotient: how many
+    // times p "fits" in the expression. I.e. we divide, keep the remainder (x3/y3, the actual result)
+    // and expose the quotient q so the constraint can be written as an exact integer equation
+    //   lhs = q * p + remainder
+    // The verifier then only has to check this exact equation (plus that the remainder is alias-free,
+    // i.e. < p). So q is not an output; it is the witness that lets us validate that the reduced
+    // result really equals the unreduced expression modulo p. Different equations need a different
+    // number of quotient limbs (see QS): none for arith256, {q0,q1} for arith256_mod, {q0,q1,q2} for
+    // the elliptic-curve / complex equations.
+
+    // Overload of the last chunk of q:
+    // The equation is accumulated chunk by chunk (16-bit chunks, CHUNKS per operand). The running
+    // value of an equation can exceed what fits in the nominal 32 chunks of 16 bits. Rather than
+    // adding an extra chunk (and an extra clock), we let the *last* chunk of q hold more bits
+    // (Q_HSC_BITS, the "high safe chunk"): it is safe because no further chunk follows it, so those
+    // extra high bits cannot overlap/carry into anything. That is why q is range-checked with
+    // multi_range_check: [0, CHUNK_MAX] on the normal chunks and [0, Q_HSC_MAX] on the last one.
 
     /*
         EQ0 : x1 * y1 + x2 - x3 - y3 * p2_256                 arith 256     ARITH_256          y3|x3 = x1*y1+x2
@@ -49,6 +97,8 @@ airtemplate ArithEq (const int N = 2**18) {
     const expr LAST_CLK = CLK_0';
 
     const int CHUNKS = CLOCKS;
+    // CBC = "chunks by clock": how many 16-bit chunks of each equation we evaluate per clock (row).
+    // With CHUNKS chunks spread over CLOCKS rows at CBC chunks/row we cover 2*CLOCKS = 32 chunks.
     const int CBC = 2;
     const int CHUNK_BITS = 16;
     const int CHUNK_SIZE = 2**CHUNK_BITS;
@@ -66,10 +116,15 @@ airtemplate ArithEq (const int N = 2**18) {
     const int CARRY_MIN = -(2**CARRY_BITS - 1);
     const int CARRY_MAX = 2**CARRY_BITS;
 
-    const int EQS = 20;     // Number of equations
-    const int OPS = 11;     // Number of operations
-    const int MAX_CEQS = 3; // Max concurrent equations
-    const int QS = 3;       // Number of quotients
+    // Counts derived from the enabled equation groups.
+    const int EQS = use_arith256 + use_arith256_mod + 4*use_secp256k1 + 4*use_bn254_ec +
+                    2*use_bn254_add + 2*use_bn254_sub + 2*use_bn254_mul + 4*use_secp256r1; // Number of equations
+    const int OPS = use_arith256 + use_arith256_mod + 2*use_secp256k1 + 2*use_bn254_ec +
+                    use_bn254_add + use_bn254_sub + use_bn254_mul + 2*use_secp256r1;        // Number of operations
+    // Max concurrent equations: EC curve ops solve lambda+x3+y3 (3), bn254 Fp2 ops x3+y3 (2), arith 1.
+    const int MAX_CEQS = use_curve ? 3 : (use_complex ? 2 : 1);
+    // Number of quotients (highest q index used + 1): EC/complex use q2 -> 3, arith256_mod uses q1 -> 2.
+    const int QS = (use_curve || use_complex) ? 3 : (use_arith256_mod ? 2 : 0);
 
     col witness bits(CHUNK_BITS) x1;
     col witness bits(CHUNK_BITS) y1;
@@ -77,23 +132,30 @@ airtemplate ArithEq (const int N = 2**18) {
     col witness bits(CHUNK_BITS) y2;
     col witness bits(CHUNK_BITS) x3;
     col witness bits(CHUNK_BITS) y3;
-    col witness bits(Q_HSC_BITS) q0;
-    col witness bits(Q_HSC_BITS) q1;
-    col witness bits(Q_HSC_BITS) q2;
-    col witness bits(Q_HSC_BITS) s;
-    col witness bits(1) sel_op[OPS];
+    // Quotient / lambda witnesses: only the ones the enabled equations use.
+    if (QS >= 1) { col witness bits(Q_HSC_BITS) air.q0; } else { const int air.q0 = 0; }
+    if (QS >= 2) { col witness bits(Q_HSC_BITS) air.q1; } else { const int air.q1 = 0; }
+    if (QS >= 3) { col witness bits(Q_HSC_BITS) air.q2; } else { const int air.q2 = 0; }
+    if (use_s)   { col witness bits(Q_HSC_BITS) air.s;  } else { const int air.s  = 0; }
 
-    const expr sel_arith256 = sel_op[0];
-    const expr sel_arith256_mod = sel_op[1];
-    const expr sel_secp256k1_add = sel_op[2];
-    const expr sel_secp256k1_dbl = sel_op[3];
-    const expr sel_bn254_curve_add = sel_op[4];
-    const expr sel_bn254_curve_dbl = sel_op[5];
-    const expr sel_bn254_complex_add = sel_op[6];
-    const expr sel_bn254_complex_sub = sel_op[7];
-    const expr sel_bn254_complex_mul = sel_op[8];
-    const expr sel_secp256r1_add = sel_op[9];
-    const expr sel_secp256r1_dbl = sel_op[10];
+    // One witness selector per enabled operation (+ its clk0 twin), declared individually (not as an
+    // array) so each air only carries the columns it needs and the witness can set them by name.
+    // Disabled ops become the compile-time constant 0 so every downstream reference keeps compiling.
+    // Enabled selectors are collected into sel_list/sel_clk0_list for the shared constraints below.
+    const expr sel_list[OPS];
+    const expr sel_clk0_list[OPS];
+    int _op = 0;
+    if (use_arith256)     { col witness bits(1) air.sel_arith256;          col witness bits(1) air.arith256_clk0;          sel_list[_op] = sel_arith256;          sel_clk0_list[_op] = arith256_clk0;          _op += 1; } else { const int air.sel_arith256 = 0;          const int air.arith256_clk0 = 0; }
+    if (use_arith256_mod) { col witness bits(1) air.sel_arith256_mod;      col witness bits(1) air.arith256_mod_clk0;      sel_list[_op] = sel_arith256_mod;      sel_clk0_list[_op] = arith256_mod_clk0;      _op += 1; } else { const int air.sel_arith256_mod = 0;      const int air.arith256_mod_clk0 = 0; }
+    if (use_secp256k1)    { col witness bits(1) air.sel_secp256k1_add;     col witness bits(1) air.secp256k1_add_clk0;     sel_list[_op] = sel_secp256k1_add;     sel_clk0_list[_op] = secp256k1_add_clk0;     _op += 1; } else { const int air.sel_secp256k1_add = 0;     const int air.secp256k1_add_clk0 = 0; }
+    if (use_secp256k1)    { col witness bits(1) air.sel_secp256k1_dbl;     col witness bits(1) air.secp256k1_dbl_clk0;     sel_list[_op] = sel_secp256k1_dbl;     sel_clk0_list[_op] = secp256k1_dbl_clk0;     _op += 1; } else { const int air.sel_secp256k1_dbl = 0;     const int air.secp256k1_dbl_clk0 = 0; }
+    if (use_bn254_ec)     { col witness bits(1) air.sel_bn254_curve_add;   col witness bits(1) air.bn254_curve_add_clk0;   sel_list[_op] = sel_bn254_curve_add;   sel_clk0_list[_op] = bn254_curve_add_clk0;   _op += 1; } else { const int air.sel_bn254_curve_add = 0;   const int air.bn254_curve_add_clk0 = 0; }
+    if (use_bn254_ec)     { col witness bits(1) air.sel_bn254_curve_dbl;   col witness bits(1) air.bn254_curve_dbl_clk0;   sel_list[_op] = sel_bn254_curve_dbl;   sel_clk0_list[_op] = bn254_curve_dbl_clk0;   _op += 1; } else { const int air.sel_bn254_curve_dbl = 0;   const int air.bn254_curve_dbl_clk0 = 0; }
+    if (use_bn254_add)    { col witness bits(1) air.sel_bn254_complex_add; col witness bits(1) air.bn254_complex_add_clk0; sel_list[_op] = sel_bn254_complex_add; sel_clk0_list[_op] = bn254_complex_add_clk0; _op += 1; } else { const int air.sel_bn254_complex_add = 0; const int air.bn254_complex_add_clk0 = 0; }
+    if (use_bn254_sub)    { col witness bits(1) air.sel_bn254_complex_sub; col witness bits(1) air.bn254_complex_sub_clk0; sel_list[_op] = sel_bn254_complex_sub; sel_clk0_list[_op] = bn254_complex_sub_clk0; _op += 1; } else { const int air.sel_bn254_complex_sub = 0; const int air.bn254_complex_sub_clk0 = 0; }
+    if (use_bn254_mul)    { col witness bits(1) air.sel_bn254_complex_mul; col witness bits(1) air.bn254_complex_mul_clk0; sel_list[_op] = sel_bn254_complex_mul; sel_clk0_list[_op] = bn254_complex_mul_clk0; _op += 1; } else { const int air.sel_bn254_complex_mul = 0; const int air.bn254_complex_mul_clk0 = 0; }
+    if (use_secp256r1)    { col witness bits(1) air.sel_secp256r1_add;     col witness bits(1) air.secp256r1_add_clk0;     sel_list[_op] = sel_secp256r1_add;     sel_clk0_list[_op] = secp256r1_add_clk0;     _op += 1; } else { const int air.sel_secp256r1_add = 0;     const int air.secp256r1_add_clk0 = 0; }
+    if (use_secp256r1)    { col witness bits(1) air.sel_secp256r1_dbl;     col witness bits(1) air.secp256r1_dbl_clk0;     sel_list[_op] = sel_secp256r1_dbl;     sel_clk0_list[_op] = secp256r1_dbl_clk0;     _op += 1; } else { const int air.sel_secp256r1_dbl = 0;     const int air.secp256r1_dbl_clk0 = 0; }
 
     // groups of selectors
     const expr sel_any_arith256 = sel_arith256 + sel_arith256_mod;
@@ -107,83 +169,88 @@ airtemplate ArithEq (const int N = 2**18) {
     const expr sel_check_y_lt_prime = sel_secp256k1 + sel_bn254_curve +
                                       sel_bn254_complex + sel_secp256r1;
 
-    const expr eq_selectors[EQS] = [sel_arith256, sel_arith256_mod,
-                                    sel_secp256k1_add, sel_secp256k1_dbl,
-                                    sel_secp256k1, sel_secp256k1,
-                                    sel_bn254_curve_add, sel_bn254_curve_dbl,
-                                    sel_bn254_curve, sel_bn254_curve,
-                                    sel_bn254_complex_add, sel_bn254_complex_add,
-                                    sel_bn254_complex_sub, sel_bn254_complex_sub,
-                                    sel_bn254_complex_mul, sel_bn254_complex_mul,
-                                    sel_secp256r1_add, sel_secp256r1_dbl,
-                                    sel_secp256r1, sel_secp256r1];
+    // constraint to set (x1,y1) = (x2,y2) for the EC doubling ops (only when a curve is instantiated)
+    if (use_curve) {
+        (sel_secp256k1_dbl + sel_bn254_curve_dbl + sel_secp256r1_dbl) * (x1 - x2) === 0;
+        (sel_secp256k1_dbl + sel_bn254_curve_dbl + sel_secp256r1_dbl) * (y1 - y2) === 0;
+    }
 
-    // constraint to set (x1,y1) = (x2,y2)
-    (sel_secp256k1_dbl + sel_bn254_curve_dbl + sel_secp256r1_dbl) * (x1 - x2) === 0;
-    (sel_secp256k1_dbl + sel_bn254_curve_dbl + sel_secp256r1_dbl) * (y1 - y2) === 0;
+    const int NCHUNK_COLS = use_s ? 7 : 6;
+    const expr chunk_cols[NCHUNK_COLS];
+    chunk_cols[0] = x1;
+    chunk_cols[1] = y1;
+    chunk_cols[2] = x2;
+    chunk_cols[3] = y2;
+    chunk_cols[4] = x3;
+    chunk_cols[5] = y3;
+    if (use_s) {
+        chunk_cols[6] = s;
+    }
 
-    const expr chunk_cols[7] = [x1, y1, x2, y2, x3, y3, s];
-    const expr qs[QS] = [q0, q1, q2];
+    const expr qs[QS];
+    if (QS >= 1) { qs[0] = q0; }
+    if (QS >= 2) { qs[1] = q1; }
+    if (QS >= 3) { qs[2] = q2; }
 
     // TODO: explain concept of row_offset with x1, y1, x2, y2, x3, y3
 
-    include "equations/arith256.pil"
-    include "equations/arith256_mod.pil"
-    include "equations/secp256k1_add.pil"
-    include "equations/secp256k1_dbl.pil"
-    include "equations/secp256k1_x3.pil"
-    include "equations/secp256k1_y3.pil"
-    include "equations/bn254_curve_add.pil"
-    include "equations/bn254_curve_dbl.pil"
-    include "equations/bn254_curve_x3.pil"
-    include "equations/bn254_curve_y3.pil"
-    include "equations/bn254_complex_add_x3.pil"
-    include "equations/bn254_complex_add_y3.pil"
-    include "equations/bn254_complex_sub_x3.pil"
-    include "equations/bn254_complex_sub_y3.pil"
-    include "equations/bn254_complex_mul_x3.pil"
-    include "equations/bn254_complex_mul_y3.pil"
-    include "equations/secp256r1_add.pil"
-    include "equations/secp256r1_dbl.pil"
-    include "equations/secp256r1_x3.pil"
-    include "equations/secp256r1_y3.pil"
+    if (use_arith256)     { include "equations/arith256.pil" }
+    if (use_arith256_mod) { include "equations/arith256_mod.pil" }
+    if (use_secp256k1) {
+        include "equations/secp256k1_add.pil"
+        include "equations/secp256k1_dbl.pil"
+        include "equations/secp256k1_x3.pil"
+        include "equations/secp256k1_y3.pil"
+    }
+    if (use_bn254_ec) {
+        include "equations/bn254_curve_add.pil"
+        include "equations/bn254_curve_dbl.pil"
+        include "equations/bn254_curve_x3.pil"
+        include "equations/bn254_curve_y3.pil"
+    }
+    if (use_bn254_add) {
+        include "equations/bn254_complex_add_x3.pil"
+        include "equations/bn254_complex_add_y3.pil"
+    }
+    if (use_bn254_sub) {
+        include "equations/bn254_complex_sub_x3.pil"
+        include "equations/bn254_complex_sub_y3.pil"
+    }
+    if (use_bn254_mul) {
+        include "equations/bn254_complex_mul_x3.pil"
+        include "equations/bn254_complex_mul_y3.pil"
+    }
+    if (use_secp256r1) {
+        include "equations/secp256r1_add.pil"
+        include "equations/secp256r1_dbl.pil"
+        include "equations/secp256r1_x3.pil"
+        include "equations/secp256r1_y3.pil"
+    }
 
-    col witness bits(1) sel_op_clk0[OPS];
-
-    const expr arith256_clk0 = sel_op_clk0[0];
-    const expr arith256_mod_clk0 = sel_op_clk0[1];
-    const expr secp256k1_add_clk0 = sel_op_clk0[2];
-    const expr secp256k1_dbl_clk0 = sel_op_clk0[3];
-    const expr secp256k1_clk0 = sel_op_clk0[2] + sel_op_clk0[3];
-    const expr bn254_curve_add_clk0 = sel_op_clk0[4];
-    const expr bn254_curve_dbl_clk0 = sel_op_clk0[5];
-    const expr bn254_curve_clk0 = sel_op_clk0[4] + sel_op_clk0[5];
-    const expr bn254_complex_add_clk0 = sel_op_clk0[6];
-    const expr bn254_complex_sub_clk0 = sel_op_clk0[7];
-    const expr bn254_complex_mul_clk0 = sel_op_clk0[8];
-    const expr secp256r1_add_clk0 = sel_op_clk0[9];
-    const expr secp256r1_dbl_clk0 = sel_op_clk0[10];
-    const expr secp256r1_clk0 = sel_op_clk0[9] + sel_op_clk0[10];
+    // Individual *_clk0 selectors are declared above (one column per enabled op); here only the groups.
+    const expr secp256k1_clk0 = secp256k1_add_clk0 + secp256k1_dbl_clk0;
+    const expr bn254_curve_clk0 = bn254_curve_add_clk0 + bn254_curve_dbl_clk0;
+    const expr secp256r1_clk0 = secp256r1_add_clk0 + secp256r1_dbl_clk0;
 
     expr sum_sel_op = 0;
     expr sum_sel_op_clk0 = 0;
     for (int i = 0; i < OPS; ++i) {
         // binary constraint
-        sel_op_clk0[i] * (1 - sel_op_clk0[i]) === 0;
-        sel_op[i] * (1 - sel_op[i]) === 0;
+        sel_clk0_list[i] * (1 - sel_clk0_list[i]) === 0;
+        sel_list[i] * (1 - sel_list[i]) === 0;
 
         // selector latch
-        (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
+        (1 - CLK_0) * (sel_list[i] - 'sel_list[i]) === 0;
 
         // only one selector could be enabled
-        sum_sel_op = sum_sel_op + sel_op[i];
-        sum_sel_op_clk0 = sum_sel_op_clk0 + sel_op_clk0[i];
+        sum_sel_op = sum_sel_op + sel_list[i];
+        sum_sel_op_clk0 = sum_sel_op_clk0 + sel_clk0_list[i];
 
         // only could be one in CLK_0
-        (1 - CLK_0) * sel_op_clk0[i] === 0;
+        (1 - CLK_0) * sel_clk0_list[i] === 0;
 
         // clock of selector must be active if selector is active
-        CLK_0 * (sel_op[i] - sel_op_clk0[i]) === 0;
+        CLK_0 * (sel_list[i] - sel_clk0_list[i]) === 0;
     }
 
     const expr in_use = sum_sel_op;
@@ -192,29 +259,50 @@ airtemplate ArithEq (const int N = 2**18) {
     const expr in_use_clk0 = sum_sel_op_clk0;
     in_use_clk0 * (1 - in_use_clk0) === 0;
 
+    // Each operation packs its concurrent equations into slots starting at 0:
+    //   arith256 / arith256_mod -> slot 0                       (1 equation)
+    //   bn254 complex (add/sub/mul) -> slot 0 (x3), slot 1 (y3) (2 equations)
+    //   EC curve (secp256k1/bn254_ec/secp256r1) -> slot 0 (lambda), 1 (x3), 2 (y3) (3 equations)
+    // Since sel_op is one-hot per row, ops share slots; only the enabled terms are summed (so a
+    // non-included equation file's *_chunks is never referenced).
     const expr eq[MAX_CEQS][CBC];
 
     for (int i = 0; i < CBC; ++i) {
-        eq[0][i] = expr_group_by_cbc(arith256_clk0, eq_arith256_chunks, i)
-                 + expr_group_by_cbc(arith256_mod_clk0, eq_arith256_mod_chunks, i)
-                 + expr_group_by_cbc(secp256k1_add_clk0, eq_secp256k1_add_chunks, i)
-                 + expr_group_by_cbc(secp256k1_dbl_clk0, eq_secp256k1_dbl_chunks, i)
-                 + expr_group_by_cbc(bn254_curve_add_clk0, eq_bn254_curve_add_chunks, i)
-                 + expr_group_by_cbc(bn254_curve_dbl_clk0, eq_bn254_curve_dbl_chunks, i)
-                 + expr_group_by_cbc(secp256r1_add_clk0, eq_secp256r1_add_chunks, i)
-                 + expr_group_by_cbc(secp256r1_dbl_clk0, eq_secp256r1_dbl_chunks, i);
-        eq[1][i] = expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_x3_chunks, i)
-                 + expr_group_by_cbc(bn254_curve_clk0, eq_bn254_curve_x3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_add_clk0, eq_bn254_complex_add_x3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_sub_clk0, eq_bn254_complex_sub_x3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_x3_chunks, i)
-                 + expr_group_by_cbc(secp256r1_clk0, eq_secp256r1_x3_chunks, i);
-        eq[2][i] = expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_y3_chunks, i)
-                 + expr_group_by_cbc(bn254_curve_clk0, eq_bn254_curve_y3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_add_clk0, eq_bn254_complex_add_y3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_sub_clk0, eq_bn254_complex_sub_y3_chunks, i)
-                 + expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_y3_chunks, i)
-                 + expr_group_by_cbc(secp256r1_clk0, eq_secp256r1_y3_chunks, i);
+        // slot 0: single-equation ops + curve lambda + complex x3
+        expr e0 = 0;
+        if (use_arith256)     { e0 += expr_group_by_cbc(arith256_clk0, eq_arith256_chunks, i); }
+        if (use_arith256_mod) { e0 += expr_group_by_cbc(arith256_mod_clk0, eq_arith256_mod_chunks, i); }
+        if (use_secp256k1)    { e0 += expr_group_by_cbc(secp256k1_add_clk0, eq_secp256k1_add_chunks, i)
+                                     + expr_group_by_cbc(secp256k1_dbl_clk0, eq_secp256k1_dbl_chunks, i); }
+        if (use_bn254_ec)     { e0 += expr_group_by_cbc(bn254_curve_add_clk0, eq_bn254_curve_add_chunks, i)
+                                     + expr_group_by_cbc(bn254_curve_dbl_clk0, eq_bn254_curve_dbl_chunks, i); }
+        if (use_secp256r1)    { e0 += expr_group_by_cbc(secp256r1_add_clk0, eq_secp256r1_add_chunks, i)
+                                     + expr_group_by_cbc(secp256r1_dbl_clk0, eq_secp256r1_dbl_chunks, i); }
+        if (use_bn254_add)    { e0 += expr_group_by_cbc(bn254_complex_add_clk0, eq_bn254_complex_add_x3_chunks, i); }
+        if (use_bn254_sub)    { e0 += expr_group_by_cbc(bn254_complex_sub_clk0, eq_bn254_complex_sub_x3_chunks, i); }
+        if (use_bn254_mul)    { e0 += expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_x3_chunks, i); }
+        eq[0][i] = e0;
+
+        // slot 1: curve x3 + complex y3
+        if (MAX_CEQS >= 2) {
+            expr e1 = 0;
+            if (use_secp256k1) { e1 += expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_x3_chunks, i); }
+            if (use_bn254_ec)  { e1 += expr_group_by_cbc(bn254_curve_clk0, eq_bn254_curve_x3_chunks, i); }
+            if (use_secp256r1) { e1 += expr_group_by_cbc(secp256r1_clk0, eq_secp256r1_x3_chunks, i); }
+            if (use_bn254_add) { e1 += expr_group_by_cbc(bn254_complex_add_clk0, eq_bn254_complex_add_y3_chunks, i); }
+            if (use_bn254_sub) { e1 += expr_group_by_cbc(bn254_complex_sub_clk0, eq_bn254_complex_sub_y3_chunks, i); }
+            if (use_bn254_mul) { e1 += expr_group_by_cbc(bn254_complex_mul_clk0, eq_bn254_complex_mul_y3_chunks, i); }
+            eq[1][i] = e1;
+        }
+
+        // slot 2: curve y3
+        if (MAX_CEQS >= 3) {
+            expr e2 = 0;
+            if (use_secp256k1) { e2 += expr_group_by_cbc(secp256k1_clk0, eq_secp256k1_y3_chunks, i); }
+            if (use_bn254_ec)  { e2 += expr_group_by_cbc(bn254_curve_clk0, eq_bn254_curve_y3_chunks, i); }
+            if (use_secp256r1) { e2 += expr_group_by_cbc(secp256r1_clk0, eq_secp256r1_y3_chunks, i); }
+            eq[2][i] = e2;
+        }
     }
 
     for (int i = 0; i < length(chunk_cols); ++i) {
@@ -238,54 +326,57 @@ airtemplate ArithEq (const int N = 2**18) {
     // x_delta_chunk and his inverse, x_delta_chunk_inv. We only need in one chunk calculate
     // inverse to demostrate that x1 and x2 are different.
 
-    const expr x_delta_chunk = x2 - x1;
-    col witness bits(64) x_delta_chunk_inv;
+    // Only needed by EC point-add ops (sel_check_diff); skipped when none are instantiated.
+    if (has_check_diff) {
+        const expr x_delta_chunk = x2 - x1;
+        col witness bits(64) air.x_delta_chunk_inv;
 
-    // x_chunk_different as binary value, only when x_delta_chunk_inv == inv(x_delta_chunk),
-    // its value is 1.
-    //
-    // x_chunk_different: 1 ==> x1[i] != x2[i]
-    //                    0 does not imply anything, x1[i] ≠ x2[i] or x1[i] == x2[i].
+        // x_chunk_different as binary value, only when x_delta_chunk_inv == inv(x_delta_chunk),
+        // its value is 1.
+        //
+        // x_chunk_different: 1 ==> x1[i] != x2[i]
+        //                    0 does not imply anything, x1[i] ≠ x2[i] or x1[i] == x2[i].
 
-    const expr x_chunk_different = x_delta_chunk * x_delta_chunk_inv;
-    x_chunk_different * (1 - x_chunk_different) === 0;
+        const expr x_chunk_different = x_delta_chunk * x_delta_chunk_inv;
+        x_chunk_different * (1 - x_chunk_different) === 0;
 
-    // x_delta_chunk  x_delta_chunk_inv  x_chunk_different
-    // -------------  -----------------  ------------------
-    //        0             any          0 * any = 0            OK (1)
-    //    x (≠ 0)            0           x * 0 = 0              OK (2)
-    //    x (≠ 0)          inv(x)        x * inv(x) = 1         OK (3)
-    //    x (≠ 0)       j ≠ {inv(x),0}   x * j = k (≠ 0,1)      FAILS (4)
-    //
-    // (1) and (3) are the standard cases, but (2) was introduced to avoid calculate the inverse
-    // when it is not necessary. x_chunk_different is well calculed because it's 1 only when x ≠ 0
-    // and  inverse it's calculated.
+        // x_delta_chunk  x_delta_chunk_inv  x_chunk_different
+        // -------------  -----------------  ------------------
+        //        0             any          0 * any = 0            OK (1)
+        //    x (≠ 0)            0           x * 0 = 0              OK (2)
+        //    x (≠ 0)          inv(x)        x * inv(x) = 1         OK (3)
+        //    x (≠ 0)       j ≠ {inv(x),0}   x * j = k (≠ 0,1)      FAILS (4)
+        //
+        // (1) and (3) are the standard cases, but (2) was introduced to avoid calculate the inverse
+        // when it is not necessary. x_chunk_different is well calculed because it's 1 only when x ≠ 0
+        // and  inverse it's calculated.
 
-    // x_are_different is used to indicate that in current clock we knows that x1 and x2 are different
+        // x_are_different is used to indicate that in current clock we knows that x1 and x2 are different
 
-    col witness bits(1) x_are_different;
-    x_are_different * (1 - x_are_different) === 0;
+        col witness bits(1) air.x_are_different;
+        x_are_different * (1 - x_are_different) === 0;
 
-    // x_are_different in first clock that x_are_different == 1, after that x_are_different must be 0.
+        // x_are_different in first clock that x_are_different == 1, after that x_are_different must be 0.
 
-    x_are_different === 'x_are_different * (1 - CLK_0) + x_chunk_different;
+        x_are_different === 'x_are_different * (1 - CLK_0) + x_chunk_different;
 
-    // 'x_are_different  CLK  x_chunk_different  x_are_different
-    // ----------------  ---  -----------------  --------------
-    //          0         0          0            0 OK
-    //          0         0          1            1 OK
-    //          0         1          0            1 OK
-    //          0         1          1            1 OK
-    //          1         0          0            1 OK
-    //          1         0          1            2 FAILS, x_are_different ≠ 0,1 (1)
-    //          1         1          0            1 OK
-    //          1         1          1            1 OK
+        // 'x_are_different  CLK  x_chunk_different  x_are_different
+        // ----------------  ---  -----------------  --------------
+        //          0         0          0            0 OK
+        //          0         0          1            1 OK
+        //          0         1          0            1 OK
+        //          0         1          1            1 OK
+        //          1         0          0            1 OK
+        //          1         0          1            2 FAILS, x_are_different ≠ 0,1 (1)
+        //          1         1          0            1 OK
+        //          1         1          1            1 OK
 
-    // (1) forbidden, executor must control this situation, because expending an
-    // unnecessary inverse. In last clock of cycle we check that x_are_different == 0 if
-    // we need to verify this condition.
+        // (1) forbidden, executor must control this situation, because expending an
+        // unnecessary inverse. In last clock of cycle we check that x_are_different == 0 if
+        // we need to verify this condition.
 
-    (x_are_different - sel_check_diff) * LAST_CLK === 0;
+        (x_are_different - sel_check_diff) * LAST_CLK === 0;
+    }   // if (has_check_diff)
 
     // FEATURE:
     //
@@ -376,32 +467,35 @@ airtemplate ArithEq (const int N = 2**18) {
     // Originally the table had 2^18 rows, but now has 2^18 rows for the first clock, 2^17 rows for
     // the last clock, and 2^18 rows for middle clocks, for a total size of 2^19 + 2^17 rows
 
-    col witness bits(1) x3_lt;
-    col witness bits(1) y3_lt;
+    // x3/y3 alias-free (less-than-prime) checks: only for arith256_mod and the EC/complex ops.
+    if (has_check_lt) {
+        col witness bits(1) air.x3_lt;
+        col witness bits(1) air.y3_lt;
 
-    x3_lt * (1 - x3_lt) === 0;
-    y3_lt * (1 - y3_lt) === 0;
+        x3_lt * (1 - x3_lt) === 0;
+        y3_lt * (1 - y3_lt) === 0;
 
-    const expr lt_cte = 0 + clk_cte_selector(secp256k1_clk0, SECP256K1_PRIME)
-                          + clk_cte_selector(bn254_curve_clk0, BN254_PRIME)
-                          + clk_cte_selector(bn254_complex_add_clk0, BN254_PRIME)
-                          + clk_cte_selector(bn254_complex_sub_clk0, BN254_PRIME)
-                          + clk_cte_selector(bn254_complex_mul_clk0, BN254_PRIME)
-                          + clk_cte_selector(secp256r1_clk0, SECP256R1_PRIME);
+        const expr lt_cte = 0 + clk_cte_selector(secp256k1_clk0, SECP256K1_PRIME)
+                              + clk_cte_selector(bn254_curve_clk0, BN254_PRIME)
+                              + clk_cte_selector(bn254_complex_add_clk0, BN254_PRIME)
+                              + clk_cte_selector(bn254_complex_sub_clk0, BN254_PRIME)
+                              + clk_cte_selector(bn254_complex_mul_clk0, BN254_PRIME)
+                              + clk_cte_selector(secp256r1_clk0, SECP256R1_PRIME);
     
-    col witness bits(64, signed) delta_x3;
-    col witness bits(64, signed) delta_y3;                          
-    
-    delta_x3 <== x3 - y2 * sel_arith256_mod - lt_cte;
-    delta_y3 <== y3 - lt_cte;
+        col witness bits(64, signed) air.delta_x3;
+        col witness bits(64, signed) air.delta_y3;
 
-    // CLK_LT_SELECTOR
-    // 0 - middle clocks
-    // 1 - first clock
-    // 2 - last clock
-    const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
-    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: sel_check_x_lt_prime, sel_is_binary: 1);
-    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: sel_check_y_lt_prime, sel_is_binary: 1);
+        delta_x3 <== x3 - y2 * sel_arith256_mod - lt_cte;
+        delta_y3 <== y3 - lt_cte;
+
+        // CLK_LT_SELECTOR
+        // 0 - middle clocks
+        // 1 - first clock
+        // 2 - last clock
+        const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
+        lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: sel_check_x_lt_prime, sel_is_binary: 1);
+        lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: sel_check_y_lt_prime, sel_is_binary: 1);
+    }   // if (has_check_lt)
 
     col witness bits(64, signed) carry[MAX_CEQS][CBC];
     for (int i = 0; i < MAX_CEQS; ++i) {
@@ -415,6 +509,12 @@ airtemplate ArithEq (const int N = 2**18) {
             } else {
                 eq[i][j] + carry[i][j] === carry[i][j+1] * CHUNK_SIZE;
             }
+        }
+    }
+
+    if (defined(eq_arith256_mod_zero_chunks)) {
+        for (int j = 0; j < length(eq_arith256_mod_zero_chunks); ++j) {
+            arith256_mod_clk0 * eq_arith256_mod_zero_chunks[j] === 0;
         }
     }
 

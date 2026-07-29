@@ -1191,8 +1191,19 @@ void server_run (void)
     }
     else if (emulation_aborted && call_chunk_done)
     {
+        // Do NOT post `_chunk_done()` on the abort path. The chunk_done semaphore
+        // is persistent and epoch-less: if the consumer already exited (its own
+        // timeout) before this post lands, the post survives in the semaphore and
+        // the NEXT job's consumer wakes on it, reading a shifted/stale chunk
+        // stream -> wrong minimal trace -> wrong proof (VerifyEvaluations/
+        // VerifyGlobalConstraints, cross-job, non-reproducible). Regression
+        // introduced in 0.18 ("ASM fixes to support signals"); 0.17 had the child
+        // die on a fault (no persistent contamination). The abort is still
+        // reported to the client via the stdio response result (MEM_ERROR -> 1),
+        // and the consumer fails cleanly on its wait timeout — the 0.17 semantics
+        // without killing the long-running service. write_abort_chunk() is kept
+        // (harmless shmem terminal marker) but the leaking post is removed.
         write_abort_chunk();
-        _chunk_done();
     }
 
 

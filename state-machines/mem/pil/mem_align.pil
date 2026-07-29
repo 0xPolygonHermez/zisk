@@ -83,10 +83,14 @@ require "mem_align_rom.pil"
     | R0 | R1 | R2 | R3 | R4 | R5 | R6 | R7 | [R2] (assume, down_to_up) sel = [0,0,1,1,1,1,1,1]
     +----+----+----+----+----+----+----+----+
 
-    (*) In this step, we use the selectors to indicate the "scanning" needed to form the bus value:
-        v_0 = sel[0] * [V1,V0,V7,V6] + sel[1] * [V0,V7,V6,V5] + sel[2] * [V7,V6,V5,V4] + sel[3] * [V6,V5,V4,V3]
-        v_1 = sel[4] * [V5,V4,V3,V2] + sel[5] * [V4,V3,V2,V1] + sel[6] * [V3,V2,V1,V0] + sel[7] * [V2,V1,V0,V7]
-    Notice that it is enough with 8 combinations.
+    (*) 
+    In this step, we use the selectors to indicate the "scanning" needed to form the bus value:
+        v[0] = sel[0] * [V6,V7,V0,V1] + sel[1] * [V7,V0,V1,V2] + sel[2] * [V0,V1,V2,V3] + sel[3] * [V1,V2,V3,V4] +
+               sel[4] * [V2,V3,V4,V5] + sel[5] * [V3,V4,V5,V6] + sel[6] * [V4,V5,V6,V7] + sel[7] * [V5,V6,V7,V0]
+        v[1] = sel[0] * [V2,V3,V4,V5] + sel[1] * [V3,V4,V5,V6] + sel[2] * [V4,V5,V6,V7] + sel[3] * [V5,V6,V7,V0] +
+               sel[4] * [V6,V7,V0,V1] + sel[5] * [V7,V0,V1,V2] + sel[6] * [V0,V1,V2,V3] + sel[7] * [V1,V2,V3,V4]
+    Taking sel[6] = 1, we get v[0] = [V4,V5,V6,V7], which is the correct value.
+    We should also force the non-involved bytes v[1] = [V0,V1,V2,V3] to be zero.
 */
 
 airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM = 8, const int CHUNK_BITS = 8) {
@@ -101,23 +105,28 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     col witness bits(1) sel_up_to_down;
     col witness bits(1) sel_down_to_up;
     col witness bits(1) is_non_aligned_op;
+    col witness bits(1) sel_w_lt8;
+    col witness bits(1) sel_w_lt4;
+    col witness bits(1) sel_w_lt2;
     col witness bits(8) reg[CHUNK_NUM];
     col witness bits(1) sel[CHUNK_NUM];
     col witness bits(40) step;
 
     // 1] Ensure the MemAlign follows the program
 
+    // Range-check the 8 register bytes
+    for (int i = 0; i < CHUNK_NUM; i += 2) {
+        range_dual_byte(reg[i], reg[i+1]);
+    }
+
     // Registers should be bytes and be such that:
     //  - reg' == reg in transitions R -> V, R -> W, W -> V,
     //  - 'reg == reg in transitions V <- R, W <- R, V <- W,
     // in any case, sel_up_to_down and sel_down_to_up must be 0 in [V] rows.
     for (int i = 0; i < CHUNK_NUM; i++) {
-        range_check(reg[i], 0, 2**CHUNK_BITS-1);
-
         (reg[i]' - reg[i]) * sel[i] * sel_up_to_down === 0;
         ('reg[i] - reg[i]) * sel[i] * sel_down_to_up === 0;
     }
-
 
     // The step is constant within a sub-program except on the two,
     // aligned-write rows which sit one step above it:
@@ -143,7 +152,7 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     const expr aligned_wr = wr * (sel_up_to_down + sel_down_to_up);
     (1 - reset) * ((step - aligned_wr) - ('step - 'aligned_wr)) === 0;
 
-    col fixed L1 = [1,0...];
+    const expr L1 = get_L1();
     L1 * pc === 0; // The program should start at the first line
 
     // We compress selectors, so we should ensure they are binary
@@ -155,6 +164,9 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     sel_up_to_down * (1 - sel_up_to_down) === 0;
     sel_down_to_up * (1 - sel_down_to_up) === 0;
     is_non_aligned_op * (1 - is_non_aligned_op) === 0;
+    sel_w_lt8 * (1 - sel_w_lt8) === 0;
+    sel_w_lt4 * (1 - sel_w_lt4) === 0;
+    sel_w_lt2 * (1 - sel_w_lt2) === 0;
 
     expr flags = 0;
     for (int i = 0; i < CHUNK_NUM; i++) {
@@ -162,7 +174,8 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     }
     flags += wr * 2**CHUNK_NUM + reset * 2**(CHUNK_NUM + 1) + 
              sel_up_to_down * 2**(CHUNK_NUM + 2) + sel_down_to_up * 2**(CHUNK_NUM + 3) + 
-             is_non_aligned_op * 2**(CHUNK_NUM + 4);
+             is_non_aligned_op * 2**(CHUNK_NUM + 4) + sel_w_lt8 * 2**(CHUNK_NUM + 5) + 
+             sel_w_lt4 * 2**(CHUNK_NUM + 6) + sel_w_lt2 * 2**(CHUNK_NUM + 7);
 
     // Perform the lookup against the program
     expr delta_pc;
@@ -212,5 +225,19 @@ airtemplate MemAlign(const int N = 2**10, const int RC = 2, const int CHUNK_NUM 
     for (int i = 0; i < RC; i++) {
         value[i] === is_non_aligned_op * non_aligned_val[i] + is_aligned_op * aligned_val[i];
     }
+
+    // Zero every value byte at position >= width on LOAD prove rows.
+    expr vbyte[CHUNKS_BY_RC];
+    for (int k = 0; k < CHUNKS_BY_RC; k++) {
+        vbyte[k] = 0;
+        for (int _offset = 0; _offset < CHUNK_NUM; _offset++) {
+            vbyte[k] += sel[_offset] * reg[(_offset + k) % CHUNK_NUM];
+        }
+    }
+    sel_w_lt8 * value[RC-1] === 0; // width < 8 => bytes 4..7 should be zero
+    sel_w_lt4 * vbyte[3]    === 0; // width < 4 => byte 3 should be zero
+    sel_w_lt4 * vbyte[2]    === 0; // width < 4 => byte 2 should be zero
+    sel_w_lt2 * vbyte[1]    === 0; // width < 2 => byte 1 should be zero
+
     permutation(MEMORY_ID, expressions: [wr * (MEMORY_STORE_OP - MEMORY_LOAD_OP) + MEMORY_LOAD_OP, addr * CHUNK_NUM + offset, step, width, ...value], sel: is_non_aligned_op - is_aligned_op, sel_is_ternary: 1);
 }
