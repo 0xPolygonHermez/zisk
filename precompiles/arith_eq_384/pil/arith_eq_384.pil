@@ -26,37 +26,26 @@ airtemplate ArithEq384(const int N) {
 
     const int CLOCKS = 24;
 
+    if (N < CLOCKS) {
+        error(`N must be at least ${CLOCKS} to fit the ArithEq384 arithmetization, but received N=${N}`);
+    }
+
     // Calculate usable capacity
     const int NUM_NON_USABLE_ROWS = N % CLOCKS;
-    const int NUM_OPS;
-    if (NUM_NON_USABLE_ROWS == 0) {
-        // N is perfectly divisible by CLOCKS
-        if (N < CLOCKS) {
-            error(`N must be at least ${CLOCKS} to fit the ArithEq384 arithmetization, but received N=${N}`);
-        }
-
-        NUM_OPS = N / CLOCKS;
-    } else {
-        // N is not divisible by CLOCKS
-        if (N < 2*CLOCKS) {
-            error(`N must be at least ${2*CLOCKS} to fit the ArithEq384 arithmetization, but received N=${N}`);
-        }
-
-        // Subtract 1 because we can't fit a complete cycle in the remaining rows
-        NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
-    }
+    const int NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS;
 
     // Base clock: 1 at row 0, 0 elsewhere within each cycle
     if (NUM_NON_USABLE_ROWS == 0) {
-        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS];
+        col fixed air.FIRST_CLK = [[1, 0:(CLOCKS-1)]:NUM_OPS];
     } else {
-        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS, 1, 0...];
+        col fixed air.FIRST_CLK = [[1, 0:(CLOCKS-1)]:NUM_OPS, 0...];
     }
 
     const expr CLK[CLOCKS];
     for (int i = 0; i < CLOCKS; ++i) {
-        CLK[i] = (i)'CLK_0;
+        CLK[i] = (i)'FIRST_CLK;
     }
+    const expr SECOND_CLK_TO_LAST = clock_set(start: 1, end: CLOCKS-1);
     const expr LAST_CLK = CLK[CLOCKS-1];
 
     const int CHUNKS = CLOCKS;
@@ -90,7 +79,6 @@ airtemplate ArithEq384(const int N) {
     col witness bits(Q_HSC_BITS) s;
     col witness bits(1) sel_op[OPS];
 
-
     const expr sel_arith384_mod = sel_op[0];
     const expr sel_bls12_381_curve_add = sel_op[1];
     const expr sel_bls12_381_curve_dbl = sel_op[2];
@@ -104,13 +92,6 @@ airtemplate ArithEq384(const int N) {
     const expr sel_check_diff = sel_bls12_381_curve_add;
     const expr sel_check_x_lt_prime = sel_arith384_mod + sel_bls12_381_curve + sel_bls12_381_complex;
     const expr sel_check_y_lt_prime = sel_bls12_381_curve + sel_bls12_381_complex;
-
-    const expr eq_selectors[EQS] = [sel_arith384_mod,
-                                    sel_bls12_381_curve_add, sel_bls12_381_curve_dbl,
-                                    sel_bls12_381_curve, sel_bls12_381_curve,
-                                    sel_bls12_381_complex_add, sel_bls12_381_complex_add,
-                                    sel_bls12_381_complex_sub, sel_bls12_381_complex_sub,
-                                    sel_bls12_381_complex_mul, sel_bls12_381_complex_mul];
 
     // constraint to set (x1,y1) = (x2,y2)
     sel_bls12_381_curve_dbl * (x1 - x2) === 0;
@@ -146,29 +127,25 @@ airtemplate ArithEq384(const int N) {
     expr sum_sel_op = 0;
     expr sum_sel_op_clk0 = 0;
     for (int i = 0; i < OPS; ++i) {
+        sel_op_clk0[i] <== sel_op[i] * FIRST_CLK;
+
         // binary constraint
-        sel_op_clk0[i] * (1 - sel_op_clk0[i]) === 0;
         sel_op[i] * (1 - sel_op[i]) === 0;
 
         // selector latch
-        (1 - CLK_0) * (sel_op[i] - 'sel_op[i]) === 0;
+        SECOND_CLK_TO_LAST * (sel_op[i] - 'sel_op[i]) === 0;
 
-        // only one selector could be enabled
         sum_sel_op = sum_sel_op + sel_op[i];
         sum_sel_op_clk0 = sum_sel_op_clk0 + sel_op_clk0[i];
-
-        // only could be one in CLK_0
-        (1 - CLK_0) * sel_op_clk0[i] === 0;
-
-        // clock of selector must be active if selector is active
-        CLK_0 * (sel_op[i] - sel_op_clk0[i]) === 0;
     }
 
+    // only one selector can be enabled
     const expr in_use = sum_sel_op;
+    const expr in_use_clk0 = sum_sel_op_clk0;
     in_use * (1 - in_use) === 0;
 
-    const expr in_use_clk0 = sum_sel_op_clk0;
-    in_use_clk0 * (1 - in_use_clk0) === 0;
+    // padding rows: no selector can be active
+    (1 - FIRST_CLK - SECOND_CLK_TO_LAST) * in_use === 0;
 
     const expr eq[MAX_CEQS][CBC];
 
@@ -237,7 +214,7 @@ airtemplate ArithEq384(const int N) {
 
     // x_are_different in first clock that x_are_different == 1, after that x_are_different must be 0.
 
-    x_are_different === 'x_are_different * (1 - CLK_0) + x_chunk_different;
+    x_are_different === 'x_are_different * SECOND_CLK_TO_LAST + x_chunk_different;
 
     // 'x_are_different  CLK  x_chunk_different  x_are_different
     // ----------------  ---  -----------------  --------------
@@ -366,14 +343,14 @@ airtemplate ArithEq384(const int N) {
     // 0 - middle clocks
     // 1 - first clock
     // 2 - last clock
-    const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
+    const expr CLK_LT_SELECTOR = 2 * LAST_CLK + FIRST_CLK;
     lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: sel_check_x_lt_prime, sel_is_binary: 1);
     lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: sel_check_y_lt_prime, sel_is_binary: 1);
 
     col witness bits(64, signed) carry[MAX_CEQS][CBC];
     for (int i = 0; i < MAX_CEQS; ++i) {
         // Initial carry must be 0
-        carry[i][0] * CLK_0 === 0;
+        carry[i][0] * FIRST_CLK === 0;
         for (int j = 0; j < CBC; ++j) {
             range_check(min: CARRY_MIN, max: CARRY_MAX, expression: carry[i][j]);
             if (j == CBC - 1) {
@@ -676,7 +653,7 @@ airtemplate ArithEq384(const int N) {
     }
 
     function clock_eq(const expr mvcol, int pos1, int pos2, int pos2_offset = 0): const expr {
-        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2) - pos2_offset);
+        return air.FIRST_CLK * (mvcol'(pos1) - mvcol'(pos2) - pos2_offset);
     }
 
     function clk_cte_selector(const expr selclk0, int value, int chunk_bits = 16, int chunks = 24): expr {
