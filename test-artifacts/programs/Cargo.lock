@@ -7187,6 +7187,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ziskasm"
+version = "1.2.0-alpha"
+dependencies = [
+ "riscv",
+ "zisk-core",
+]
+
+[[package]]
 name = "ziskemu"
 version = "1.2.0-alpha"
 dependencies = [
@@ -7214,6 +7222,7 @@ dependencies = [
  "zisk-core",
  "zisk-definitions",
  "zisk-pil",
+ "ziskasm",
 ]
 
 [[package]]

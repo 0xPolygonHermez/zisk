@@ -316,14 +316,19 @@ impl Emulator for ZiskEmulator {
             println!("emulate()\n{options}");
         }
 
-        // Check options
-        if options.rom.is_some() && options.elf.is_some() {
+        // Check options: exactly one program source (ROM `-r`, ELF `-e` or ZisK
+        // assembly `-z`) must be provided; they are mutually exclusive.
+        let source_count = [options.rom.is_some(), options.elf.is_some(), options.zisk.is_some()]
+            .iter()
+            .filter(|&&present| present)
+            .count();
+        if source_count == 0 {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                "ROM file and ELF file are incompatible; use only one of them",
+                "a program source must be provided: ROM file (-r), ELF file (-e) or ZisK assembly (-z)",
             )));
-        } else if options.rom.is_none() && options.elf.is_none() {
+        } else if source_count > 1 {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                "ROM file or ELF file must be provided",
+                "ROM (-r), ELF (-e) and ZisK assembly (-z) are mutually exclusive; use only one",
             )));
         }
 
@@ -387,6 +392,17 @@ impl Emulator for ZiskEmulator {
             // Call process_rom_file()
             Self::process_rom_file(rom_filename, &inputs, options, callback)
         }
+        // If a ZisK assembly path is provided, assemble it into a ROM and run it
+        else if options.zisk.is_some() {
+            let zisk_path = options.zisk.clone().unwrap();
+            let files = collect_zisk_files(&zisk_path)?;
+            let rom = ziskasm::assemble_files(&files).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not assemble ZisK assembly at '{zisk_path}': {e}"
+                )))
+            })?;
+            Self::process_rom(&rom, &inputs, options, callback)
+        }
         // Process the ELF file
         else {
             // Get the ELF file name
@@ -406,6 +422,38 @@ impl Emulator for ZiskEmulator {
                 Self::process_elf_file(elf_filename, &inputs, options, callback)
             }
         }
+    }
+}
+
+/// Resolves the `-z` argument into the list of `.zisk` files to assemble.
+///
+/// If `path` is a single file it must have the `.zisk` extension. If it is a
+/// directory, every `.zisk` file directly inside it is collected, sorted by name
+/// for a deterministic assembly order (labels are resolved globally, so the order
+/// only affects instruction addresses, not correctness).
+fn collect_zisk_files(path: &str) -> Result<Vec<PathBuf>, ZiskEmulatorErr> {
+    let wrong = |msg: String| ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(msg));
+    let is_zisk = |p: &Path| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("zisk"));
+
+    let p = Path::new(path);
+    let metadata = fs::metadata(p)
+        .map_err(|_| wrong(format!("ZisK assembly path '{path}' does not exist")))?;
+
+    if metadata.is_dir() {
+        let mut files: Vec<PathBuf> = fs::read_dir(p)
+            .map_err(|e| wrong(format!("Could not read directory '{path}': {e}")))?
+            .filter_map(|entry| entry.ok().map(|e| e.path()))
+            .filter(|p| p.is_file() && is_zisk(p))
+            .collect();
+        if files.is_empty() {
+            return Err(wrong(format!("directory '{path}' contains no .zisk files")));
+        }
+        files.sort();
+        Ok(files)
+    } else if is_zisk(p) {
+        Ok(vec![p.to_path_buf()])
+    } else {
+        Err(wrong(format!("ZisK assembly file '{path}' must have the .zisk extension")))
     }
 }
 
