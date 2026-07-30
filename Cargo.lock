@@ -1736,7 +1736,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu)",
  "num-bigint",
@@ -2208,7 +2208,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2271,7 +2271,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -4090,7 +4090,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu)",
@@ -4110,7 +4110,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "anyhow",
  "clap",
@@ -4137,7 +4137,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4548,7 +4548,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "bincode",
  "blake3",
@@ -4582,7 +4582,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "bincode",
  "borsh",
@@ -4613,7 +4613,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu)",
  "itoa",
@@ -4626,7 +4626,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4636,7 +4636,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4645,7 +4645,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "bincode",
  "colored",
@@ -4656,7 +4656,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "bincode",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu)",
@@ -6133,7 +6133,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "anyhow",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu)",
@@ -7612,7 +7612,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#edf3bf1ef2eabe7118cec056b4b0f60e475032c9"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu#562e48fe7a626ee613d3686d43617dbc809bdbef"
 dependencies = [
  "colored",
  "fields 1.0.0-beta (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fconst_pols_gpu)",
