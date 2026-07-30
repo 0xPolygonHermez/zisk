@@ -61,7 +61,6 @@ predicates = "3"
 default = []
 cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only"]
 diagnostic = ["zisk-prover-backend/diagnostic"]
-phase1-trace = ["proofman/phase1-trace"]
 custom_rust_llvm = []
 stats = []
 verify = ["fields/verify"]
