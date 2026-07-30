@@ -6,5 +6,7 @@
 
 pub mod assembler;
 pub mod parser;
+pub mod utils;
 
 pub use assembler::{assemble, assemble_files};
+pub use utils::collect_zisk_files;

@@ -12,6 +12,7 @@ to be kept current as the feature evolves.
 | [`ziskasm.md`](ziskasm.md) | The language **specification** (syntax, sources, storage, jump/setpc, call/ret, definitions, labels). |
 | [`src/parser.rs`](src/parser.rs) | Line-oriented `.zisk` parser → instruction AST. |
 | [`src/assembler.rs`](src/assembler.rs) | Two-pass assembler: AST → `ZiskRom`. |
+| [`bin/zisk2zisk.rs`](bin/zisk2zisk.rs) | Binary: `.zisk` → x86-64 NASM (the fast-emulator source), mirroring `riscv2zisk`. |
 | [`examples/doubler/`](examples/doubler/) | Worked example: `ziskos.zisk` (launcher) + `doubler.zisk` (program) + `input.bin`. |
 | [`tests/doubler.rs`](tests/doubler.rs) | End-to-end test: assemble the example, run it, assert output. |
 
@@ -24,6 +25,14 @@ cargo run -p ziskemu -- -z ziskasm/examples/doubler -i ziskasm/examples/doubler/
 `-z` accepts a single `.zisk` file or a directory of `.zisk` files. It is mutually
 exclusive with `-e` (ELF) and `-r` (ROM). Directory order does not matter — the
 assembler resolves the `_start` entry by label.
+
+To compile `.zisk` source to the x86-64 fast-emulator assembly (what `riscv2zisk`
+does for ELFs), use the `zisk2zisk` binary — same arguments as `riscv2zisk`,
+except the input may be a file or a directory:
+
+```
+cargo run -p ziskasm --bin zisk2zisk -- ziskasm/examples/doubler out.asm --gen=0
+```
 
 ## Architecture
 
@@ -64,6 +73,8 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
   and the `call`/`ret` section.
 - Assembler (`ziskasm` crate): **done** — parses and builds a `ZiskRom`.
 - Emulator integration: **done** — `ziskemu -z <file|dir>`.
+- `zisk2zisk` binary: **done** — `.zisk` → x86-64 NASM, mirroring `riscv2zisk`
+  (reuses `ZiskRom2Asm::save_to_asm_file`; `--gen=0/1/2/7`).
 - Verified: the `doubler` example runs end-to-end and outputs `[2,4,…,16]` for the
   input `[1..8]`.
 
