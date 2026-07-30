@@ -108,6 +108,12 @@ public:
     const InstanceMeta* metas_data()             const { return metas_.data(); }
     uint32_t            num_active_instances()   const { return num_active_; }
 
+    // Arena usage of the CURRENT block in BYTES: fixed carve end + ops-pool cursor.
+    // Valid between run() and the next reset() (reset zeroes the pool cursor). 
+    size_t max_used_bytes() const {
+        return cursor_ + pool_cursor_u32_.load(std::memory_order_relaxed) * 4;
+    }
+
     // Per-chunk mem-align counters, valid after `run()`. Length == n_chunks().
     const ChunkCounters* align_counters_data()   const { return h_chunk_counters_per_chunk_; }
     uint32_t             n_chunks()              const { return n_chunks_; }

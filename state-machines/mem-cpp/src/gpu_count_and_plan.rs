@@ -86,6 +86,10 @@ impl GpuCountAndPlan {
 
     /// Clear per-block state so the same planner instance can process the
     /// next block. Cheap — keeps the arena and per-stream resources alive.
+    pub fn max_used_bytes(&self) -> usize {
+        unsafe { gpu_bindings::count_and_plan_max_used_bytes(self.inner) }
+    }
+
     pub fn reset(&self) {
         unsafe { gpu_bindings::count_and_plan_reset(self.inner) };
     }
