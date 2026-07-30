@@ -1181,10 +1181,6 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             )?;
         }
 
-        // Label the phase-1 trace with this job so its records join to the coordinator's
-        // [Phase1] lines. No-op unless ZISK_TRACE_PHASE1=1.
-        proofman_common::phase1_trace::set_job_tag(&job_id.to_string());
-
         let challenge = match prover.prove_phase(phase_inputs, options, phase) {
             Ok(proofman::ProvePhaseResult::Contributions(challenge)) => {
                 info!("Contribution computation successful for {job_id}");

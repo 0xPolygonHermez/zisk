@@ -172,7 +172,6 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // Give the phase-1 trace this worker's real WorkerId. The partition index proofman sees is
         // a lexicographic rank of hostnames (worker-10 -> 0, worker-2 -> 3), so it cannot be used
         // to attribute traces to a machine. No-op unless ZISK_TRACE_PHASE1=1.
-        proofman_common::phase1_trace::set_worker_label(&self.worker_config.worker.worker_id.as_string());
 
         // Process-long channel: tasks scheduled before a stream drop must
         // still be deliverable on the next reconnect.

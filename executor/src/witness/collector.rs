@@ -360,17 +360,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// stealers see `None` and skip); processes via
     /// [`Self::process_one_chunk`].
     fn worker_loop(ctx: &WorkerCtx<'_, F>) {
-        // Measurement only (ZISK_TRACE_PHASE1): counts how many of the spawned loops are ever
-        // simultaneously active and how the chunks were spread over them, so a work-imbalance tail
-        // can be told apart from uniformly slower loops. `None` when tracing is off.
-        let mut loop_guard = proofman_common::phase1_trace::worker_loop_enter();
         loop {
             let next_chunk_id = ctx.next_chunk.fetch_add(1, Ordering::Relaxed);
             if next_chunk_id >= ctx.ordered_chunks.len() {
                 break;
-            }
-            if let Some(guard) = loop_guard.as_mut() {
-                guard.chunk_done();
             }
             let chunk_id = ctx.ordered_chunks[next_chunk_id];
 
