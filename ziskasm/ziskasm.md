@@ -200,6 +200,41 @@ The field `end` specifies that this is the last instruction of the program to be
 
 This field sets the field `end` of the ZiskInst instance to true.
 
+## Call and return
+
+These two pseudo-instructions provide function-call semantics equivalent to RISC-V, using register `r1` as the return-address register (the RISC-V `ra`).
+
+### call
+
+```
+call LABEL
+```
+
+The `call` pseudo-instruction stores the return address (the address of the instruction that follows the `call`) into register `r1`, and then jumps to `LABEL`.
+
+It assembles to a single ZisK instruction that:
+- uses the `flag` operation, which sets the `flag` register to 1;
+- sets the ZiskInst `store_pc` flag, with `store` set to STORE_REG and `store_offset` set to 1, so that the instruction stores the value `pc + jmp_offset2` (the return address) into register `r1` instead of storing the `c` register;
+- sets `jmp_offset1` to the offset from the current instruction to `LABEL`, and `jmp_offset2` to the instruction size (4).
+
+Because `flag` is 1, the next pc is `pc + jmp_offset1` (i.e. `LABEL`), while the value stored into `r1` is `pc + jmp_offset2` (i.e. the address of the next instruction).  This is the equivalent of the RISC-V `jal r1, LABEL`.
+
+### ret
+
+```
+ret
+```
+
+The `ret` pseudo-instruction jumps to the address held in register `r1`.
+
+It assembles to a single ZisK instruction, equivalent to writing:
+
+```
+and(0xfffffffffffffffe, r1), setpc(0)
+```
+
+The `and` masks off bit 0 of `r1` (the RISC-V JALR target-alignment rule), producing the target address in the `c` register, and `setpc(0)` sets the next pc to `c`, i.e. to `r1 & ~1`.  No value is stored.  This is the equivalent of the RISC-V `ret` = `jalr r0, r1, 0`.
+
 <!--
 
 TODO:
@@ -208,9 +243,7 @@ Logical instruction size (bits between 2 consecutive addresses)
 Constant values (definitions)
 Constant data
 Variable data
-call / ret :
-what register contains return address (same as RISC-V)
-what registers to save (ideally, only those used by callee)
+Calling convention: which registers a callee must preserve across a call (ideally, only those it uses)
 How to identify main label (e.g. “main:”)
 Tabs
 How to split code between different files:

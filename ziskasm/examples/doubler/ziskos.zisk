@@ -1,0 +1,44 @@
+; ============================================================================
+; ziskos.zisk
+;
+; The ZisK program launcher, i.e. the ziskasm equivalent of ziskos::_start
+; (ziskos/entrypoint/src/lib.rs). It performs the minimal boot sequence and then
+; runs the program entry point `_zisk_main` (defined in doubler.zisk).
+;
+; ziskos::_start does, in order:
+;   1. set the global pointer  (gp / r3 = _global_pointer)
+;   2. set the stack pointer   (sp / r2 = _init_stack_top)
+;   3. call _zisk_main
+;   4. on return, exit          (marchid check + ecall 93 / QEMU exit)
+;
+; This file is the entry point of the program: when the two files are assembled
+; together, `_start` is the first instruction (at ROM_ADDR).
+;
+; NOTE: `call`/`ret` follow the RISC-V convention (return address in r1); see
+; ziskasm.md, "Call and return". The simple ziskasm subset still has no syscalls,
+; so termination uses the `end` flag in place of ecall 93.
+; ============================================================================
+
+
+; ---- Definitions ----
+
+define INIT_STACK_TOP  0xa0400000     ; _init_stack_top = ORIGIN(ram) + stack_size
+define GLOBAL_POINTER  0x00000000     ; _global_pointer: unused here (the linker
+                                      ; fills it in a real program); set only to
+                                      ; mirror the launcher faithfully
+
+
+_start:
+	; ---- Boot sequence (mirrors ziskos::_start) ----
+	copyb(0, GLOBAL_POINTER) -> r3        ; gp (r3) = _global_pointer
+	copyb(0, INIT_STACK_TOP) -> r2        ; sp (r2) = _init_stack_top
+
+	; Call the program entry point (in doubler.zisk). `call` stores the return
+	; address (the next instruction, `_exit`) into r1 and jumps to _zisk_main.
+	call _zisk_main
+
+_exit:
+	; The program returns here (via `ret`, which jumps to r1 == _exit).
+	; ziskos::_start would exit via ecall 93; the simple ziskasm subset has no
+	; syscalls, so we terminate with `end`.
+	copyb(0, 0), end
