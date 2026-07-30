@@ -47,10 +47,33 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
         return Err("empty program: no instructions".into());
     }
 
+    // The entry point (`_start`) must be the program's first instruction, so it
+    // lands at ROM_ADDR. This matches the ELF convention (the entry point is the
+    // program base) and the fast emulator's expectations. Source files may be
+    // supplied in any order — a `-z <dir>` run collects them sorted by name — so
+    // move the file that defines `_start` to the front, keeping every file's own
+    // instruction order (like a linker placing the entry section first).
+    let start_file = instructions
+        .iter()
+        .find(|i| i.label.as_deref() == Some("_start"))
+        .map(|i| i.file.clone())
+        .ok_or("missing `_start` label: the program has no entry point")?;
+
+    let mut ordered: Vec<&Instruction> = Vec::with_capacity(instructions.len());
+    ordered.extend(instructions.iter().filter(|i| i.file == start_file));
+    ordered.extend(instructions.iter().filter(|i| i.file != start_file));
+
+    if ordered[0].label.as_deref() != Some("_start") {
+        return Err(format!(
+            "the file `{start_file}` that defines `_start` must begin with it, \
+             so the entry point is placed at ROM_ADDR"
+        ));
+    }
+
     // Pass 1: assign a ROM address to every instruction and collect labels.
     let addr_of = |i: usize| (ROM_ADDR as i64 + INST_SIZE * i as i64) as u64;
     let mut labels: HashMap<&str, u64> = HashMap::new();
-    for (i, inst) in instructions.iter().enumerate() {
+    for (i, inst) in ordered.iter().enumerate() {
         if let Some(label) = &inst.label {
             if labels.insert(label.as_str(), addr_of(i)).is_some() {
                 return Err(format!("duplicate label `{label}`"));
@@ -58,6 +81,7 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
         }
     }
 
+    // `_start` is now instruction 0, i.e. ROM_ADDR.
     let entry = *labels
         .get("_start")
         .ok_or("missing `_start` label: the program has no entry point")?;
@@ -67,7 +91,7 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
     add_end_and_lib(&mut rom);
 
     // Pass 2: encode each instruction at its address, resolving label targets.
-    for (i, inst) in instructions.iter().enumerate() {
+    for (i, inst) in ordered.iter().enumerate() {
         encode(&mut rom, addr_of(i), inst, &labels)?;
     }
 

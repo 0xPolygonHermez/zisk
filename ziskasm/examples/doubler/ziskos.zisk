@@ -14,13 +14,16 @@
 ; This file is the entry point of the program: when the two files are assembled
 ; together, `_start` is the first instruction (at ROM_ADDR).
 ;
-; Termination uses the ret-to-BIOS convention: the ZisK BIOS enters `_start`
-; with the address of its output-finalization code in r1 (a `call`, RISC-V
-; `jal r1`). When `_start` returns (`ret`, RISC-V `jalr r0, r1`), the BIOS reads
-; the program output from OUTPUT_ADDR and ends. Because our own `call _zisk_main`
-; also writes r1, we save and restore the BIOS return address around it.
+; Termination returns control to the ZisK BIOS, which reads the program output
+; from OUTPUT_ADDR and ends. The BIOS entered `_start` with the address of that
+; output-finalization code in r1 (its "CALL to entry"), so a faithful RISC-V
+; launcher would `ret` (jalr r0, r1) to it. We cannot: r1 holds a *low* address
+; (< ROM_ADDR), and the x86 assembly generator's dynamic-jump fast path assumes
+; jump targets are high addresses. Instead we jump there *statically* by loading
+; the fixed BIOS finalization address as a constant and using `setpc` — a static
+; jump to a constant compiles to a direct `jmp` and works for any address.
 ;
-; `call`/`ret` follow the RISC-V convention (return address in r1); see
+; `call` still follows the RISC-V convention (return address in r1); see
 ; ziskasm.md, "Call and return".
 ; ============================================================================
 
@@ -31,6 +34,12 @@ define INIT_STACK_TOP  0xa0400000     ; _init_stack_top = ORIGIN(ram) + stack_si
 define GLOBAL_POINTER  0x00000000     ; _global_pointer: unused here (the linker
                                       ; fills it in a real program); set only to
                                       ; mirror the launcher faithfully
+define BIOS_FINALIZE   0x0000101c     ; BIOS output-finalization code: the fixed
+                                      ; return address (ROM_ENTRY + 0x1c, i.e. the
+                                      ; instruction after the BIOS "CALL to entry")
+                                      ; that the BIOS left in r1 when it entered
+                                      ; `_start`. We jump here statically (see the
+                                      ; note above on the dynamic-jump limitation).
 
 
 _start:
@@ -38,16 +47,14 @@ _start:
 	copyb(0, GLOBAL_POINTER) -> r3        ; gp (r3) = _global_pointer
 	copyb(0, INIT_STACK_TOP) -> r2        ; sp (r2) = _init_stack_top
 
-	; The BIOS entered us with its finalization return address in r1. Our own
-	; `call` below overwrites r1, so save it in a callee-saved register (r9 / s1)
-	; that the program does not touch.
-	copyb(0, r1) -> r9                    ; save the BIOS return address
-
-	; Call the program entry point (in doubler.zisk); on return, r1 holds the
-	; instruction after this `call`.
+	; Call the program entry point (in doubler.zisk). `call` sets r1 to the
+	; return address; `_zisk_main` returns here via `ret`, a dynamic jump to r1,
+	; which is a high (>= ROM_ADDR) address and so is supported.
 	call _zisk_main
 
-	; Restore the BIOS return address and return to the BIOS, which reads the
-	; output from OUTPUT_ADDR and ends the program.
-	copyb(0, r9) -> r1                    ; restore the BIOS return address
-	ret
+	; Return to the BIOS, which reads the output from OUTPUT_ADDR and ends the
+	; program. This is a *static* jump to the fixed BIOS finalization address, not
+	; a `ret`: `ret` would jump dynamically through r1 to a low (< ROM_ADDR)
+	; address, which the x86 asm generator does not support. Loading the target as
+	; a constant makes `setpc` compile to a direct `jmp`.
+	copyb(0, BIOS_FINALIZE), setpc(0)     ; static jump -> BIOS output finalization
