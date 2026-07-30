@@ -61,6 +61,10 @@ pub(crate) struct ProveCmd {
     #[arg(long, conflicts_with = "minimal")]
     plonk: bool,
 
+    /// Prove with the multilinear prover instead of the default univariate one.
+    #[arg(long, conflicts_with_all = ["minimal", "plonk"])]
+    multilinear: bool,
+
     /// Verify proofs after generation
     #[arg(short = 'y', long)]
     verify_proofs: bool,
@@ -164,6 +168,9 @@ impl ProveCmd {
         }
         if self.verify_proofs {
             prover_options = prover_options.verify_proofs();
+        }
+        if self.multilinear {
+            prover_options = prover_options.multilinear();
         }
         #[cfg(not(feature = "cpu-only"))]
         if self.gpu {

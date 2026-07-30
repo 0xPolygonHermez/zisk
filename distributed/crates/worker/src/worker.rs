@@ -26,8 +26,7 @@ use crate::worker_node::run_recovery;
 
 use proofman::ProvePhaseInputs;
 use proofman::WitnessInfo;
-use proofman_common::{ProofOptions, ProofSystem};
-use proofman_common::{json_to_debug_instances_map, DebugInfo};
+use proofman_common::{json_to_debug_instances_map, DebugInfo, ProofOptions, ProofSystem};
 use std::path::PathBuf;
 use tracing::{error, info, warn};
 

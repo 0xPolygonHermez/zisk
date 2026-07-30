@@ -171,7 +171,11 @@ impl ProverClientBuilder<EmuB> {
         let proving_key_snark =
             ZiskPaths::get_proving_key_snark(self.prover_options.proving_key_snark.as_ref());
 
-        Self::print_emu_command_info(&proving_key, &proving_key_snark);
+        Self::print_emu_command_info(
+            &proving_key,
+            &proving_key_snark,
+            self.prover_options.multilinear,
+        );
 
         let mut options = self.prover_options.build_proofman_options();
 
@@ -193,7 +197,7 @@ impl ProverClientBuilder<EmuB> {
         Ok(ZiskProver::<Emu>::new(emu, self.prover_options))
     }
 
-    fn print_emu_command_info(proving_key: &Path, proving_key_snark: &Path) {
+    fn print_emu_command_info(proving_key: &Path, proving_key_snark: &Path, multilinear: bool) {
         println!(
             "{: >12} {}",
             "Emulator".bright_green().bold(),
@@ -202,6 +206,8 @@ impl ProverClientBuilder<EmuB> {
         println!("{: >12} {}", "Proving Key".bright_green().bold(), proving_key.display());
 
         println!("{: >12} {}", "SNARK Key".bright_green().bold(), proving_key_snark.display());
+
+        println!("{: >12} {}", "Prover".bright_green().bold(), prover_system_name(multilinear));
 
         println!();
     }
@@ -251,7 +257,11 @@ impl ProverClientBuilder<AsmB> {
         let proving_key_snark =
             ZiskPaths::get_proving_key_snark(self.prover_options.proving_key_snark.as_ref());
 
-        Self::print_asm_command_info(&proving_key, &proving_key_snark);
+        Self::print_asm_command_info(
+            &proving_key,
+            &proving_key_snark,
+            self.prover_options.multilinear,
+        );
 
         let mut options = self.prover_options.build_proofman_options();
 
@@ -278,12 +288,23 @@ impl ProverClientBuilder<AsmB> {
         Ok(ZiskProver::<Asm>::new(asm, self.prover_options))
     }
 
-    fn print_asm_command_info(proving_key: &Path, proving_key_snark: &Path) {
+    fn print_asm_command_info(proving_key: &Path, proving_key_snark: &Path, multilinear: bool) {
         println!("{: >12} {}", "Proving Key".bright_green().bold(), proving_key.display());
 
         println!("{: >12} {}", "SNARK Key".bright_green().bold(), proving_key_snark.display());
 
+        println!("{: >12} {}", "Prover".bright_green().bold(), prover_system_name(multilinear));
+
         println!();
+    }
+}
+
+/// Human-readable name of the proving system selected by the `--multilinear` flag.
+fn prover_system_name(multilinear: bool) -> colored::ColoredString {
+    if multilinear {
+        "Multilinear".bright_yellow()
+    } else {
+        "Univariate".bright_yellow()
     }
 }
 

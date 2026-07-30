@@ -21,7 +21,7 @@ use recurser::prove::{
     RegisteredRecurser,
 };
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
@@ -345,6 +345,27 @@ impl ProverBackend {
             ));
         }
 
+        // Check if the multilinear prover is invoked
+        let multilinear = prover_options.multilinear;
+        if multilinear {
+            if !proving_key_is_multilinear(&self.proving_key_path) {
+                return Err(anyhow::anyhow!(
+                    "The proving key at {} has no multilinear artifacts (.mlinfo.bin); it cannot be used with --multilinear.",
+                    self.proving_key_path.display()
+                ));
+            }
+            if proof_kind != ProofKind::VadcopFinal {
+                return Err(anyhow::anyhow!(
+                    "Multilinear proofs only support basic STARK proofs (no minimal/SNARK variants)."
+                ));
+            }
+            if prover_options.aggregation {
+                return Err(anyhow::anyhow!(
+                    "Multilinear proofs do not support aggregation yet. Re-run with --no-aggregation."
+                ));
+            }
+        }
+
         let start = std::time::Instant::now();
 
         self.executor.set_stdin(stdin)?;
@@ -353,21 +374,22 @@ impl ProverBackend {
 
         self.proofman.set_partition(1, vec![0], 0)?;
 
+        let mut proof_options = ProofOptions::new(
+            false,
+            prover_options.aggregation,
+            true,
+            minimal,
+            prover_options.verify_proofs,
+            prover_options.minimal_memory,
+        );
+        if multilinear {
+            proof_options.multilinear();
+        }
+
         self.proofman.set_barrier();
         let proof = self
             .proofman
-            .generate_proof_from_lib(
-                ProvePhaseInputs::Full(),
-                ProofOptions::new(
-                    false,
-                    prover_options.aggregation,
-                    true,
-                    minimal,
-                    prover_options.verify_proofs,
-                    prover_options.minimal_memory,
-                ),
-                ProvePhase::Full,
-            )
+            .generate_proof_from_lib(ProvePhaseInputs::Full(), proof_options, ProvePhase::Full)
             .map_err(|e| anyhow::anyhow!("Error generating proof: {}", e))?;
 
         let proof = match proof {
@@ -663,4 +685,22 @@ impl ProverBackend {
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
     }
+}
+
+/// Whether the proving key ships multilinear artifacts.
+fn proving_key_is_multilinear(dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if proving_key_is_multilinear(&path) {
+                return true;
+            }
+        } else if path.file_name().is_some_and(|n| n.to_string_lossy().ends_with(".mlinfo.bin")) {
+            return true;
+        }
+    }
+    false
 }

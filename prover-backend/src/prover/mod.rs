@@ -88,6 +88,7 @@ pub struct BackendProverOpts {
     pub(crate) verify_constraints: bool,
     pub(crate) verify_proofs: bool,
     pub(crate) minimal_memory: bool,
+    pub(crate) multilinear: bool,
     pub(crate) verbose: u8,
 
     // Proving keys
@@ -118,6 +119,7 @@ impl Default for BackendProverOpts {
             verify_proofs: false,
 
             minimal_memory: false,
+            multilinear: false,
             verbose: 0,
             proving_key: None,
             proving_key_snark: None,
@@ -245,6 +247,13 @@ impl BackendProverOpts {
     /// Prefer lower memory usage at the cost of speed.
     pub fn minimal_memory(mut self) -> Self {
         self.minimal_memory = true;
+        self
+    }
+
+    /// Prove with the multilinear (GKR) prover instead of the default
+    /// univariate one. Requires a proving key with multilinear artifacts.
+    pub fn multilinear(mut self) -> Self {
+        self.multilinear = true;
         self
     }
 
