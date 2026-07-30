@@ -2,8 +2,7 @@ use std::error::Error;
 use test_artifacts::ELF_FIB_MOD;
 use zisk_sdk::{EmbeddedOpts, ProverClient, ZiskStdin};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");
 
     // Prove the same parameterized fib_mod ELF twice, with different (n, module) inputs.
@@ -20,10 +19,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Setting up program (single ELF, two invocations)...");
     client.upload(&ELF_FIB_MOD).run()?;
-    client.setup(&ELF_FIB_MOD).run()?.await?;
+    client.setup(&ELF_FIB_MOD).run_sync()?;
 
     println!("Executing first invocation (n=1000, module=233)...");
-    let result = client.execute(&ELF_FIB_MOD, &stdin).run()?.await?;
+    let result = client.execute(&ELF_FIB_MOD, &stdin).run_sync()?;
     println!(
         "Program executed successfully: {} cycles in {} ms",
         result.get_execution_steps(),
@@ -31,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     println!("Generating proof for first invocation...");
-    let vadcop_result = client.prove(&ELF_FIB_MOD, &stdin).run()?.await?;
+    let vadcop_result = client.prove(&ELF_FIB_MOD, &stdin).run_sync()?;
 
     println!("Verifying proof...");
     let vkey = ELF_FIB_MOD.vk()?;
@@ -43,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     stdin2.write(&253u32);
 
     println!("Executing second invocation (n=2000, module=253)...");
-    let result2 = client.execute(&ELF_FIB_MOD, &stdin2).run()?.await?;
+    let result2 = client.execute(&ELF_FIB_MOD, &stdin2).run_sync()?;
     println!(
         "Program executed successfully: {} cycles in {} ms",
         result2.get_execution_steps(),
@@ -51,7 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     );
 
     println!("Generating proof for second invocation...");
-    let vadcop_result2 = client.prove(&ELF_FIB_MOD, &stdin2).run()?.await?;
+    let vadcop_result2 = client.prove(&ELF_FIB_MOD, &stdin2).run_sync()?;
 
     println!("Verifying proof...");
     vadcop_result2.with_program_vk(&vkey).verify()?;

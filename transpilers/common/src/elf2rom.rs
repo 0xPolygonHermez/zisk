@@ -1,7 +1,8 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::elf_extraction::{
-    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_ro_sections, ElfPayload,
+    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_ro_sections,
+    validate_entry_point, ElfPayload,
 };
 use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, add_zisk_code};
 use std::{error::Error, path::Path};
@@ -9,6 +10,7 @@ use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
+use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
@@ -41,6 +43,11 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             .into());
     }
 
+    // Validate the guest entry point: instruction-aligned (2 bytes, ZisK decodes
+    // compressed instructions) and inside a loaded executable segment (ZisK reads
+    // e_entry rather than booting from a fixed address).
+    validate_entry_point(&payloads[elf_index])?;
+
     // Get DMA function addresses: (memcpy, memcmp, memset, memmove)
     let dma_addrs = get_dma_symbol_addresses(elf);
 
@@ -68,10 +75,48 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             if section.addr >= ROM_ADDR
                 && (section.addr + section.data.len() as u64) <= (ROM_ADDR + ROM_SIZE)
             {
+                // If this is a program section, it should not overlap with the float library region
+                // If this is a float library section, it should not overlap with the program region
+                if i == elf_index {
+                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_ROM_ADDR {
+                        return Err(format!(
+                            "ROM program data section at address 0x{:x} with size {} overlaps with the ZisK float library region",
+                            section.addr,
+                            section.data.len()
+                        )
+                        .into());
+                    }
+                } else if section.addr < FLOAT_LIB_ROM_ADDR {
+                    return Err(format!(
+                        "ROM float library data section at address 0x{:x} with size {} overlaps with the ZisK program region",
+                        section.addr,
+                        section.data.len()
+                    )
+                    .into());
+                }
                 ro_data.push(section);
             } else if section.addr >= RAM_ADDR
                 && (section.addr + section.data.len() as u64) <= (RAM_ADDR + RAM_SIZE)
             {
+                // If this is a program section, it should not overlap with the float library region
+                // If this is a float library section, it should not overlap with the program region
+                if i == elf_index {
+                    if section.addr + section.data.len() as u64 >= FLOAT_LIB_RAM_ADDR {
+                        return Err(format!(
+                            "RAM program data section at address 0x{:x} with size {} overlaps with the ZisK float library region",
+                            section.addr,
+                            section.data.len()
+                        )
+                        .into());
+                    }
+                } else if section.addr < FLOAT_LIB_RAM_ADDR {
+                    return Err(format!(
+                        "RAM float library data section at address 0x{:x} with size {} overlaps with the ZisK program region",
+                        section.addr,
+                        section.data.len()
+                    )
+                    .into());
+                }
                 rw_data.push(section);
             } else {
                 return Err(format!(

@@ -311,7 +311,12 @@ pub struct Plan {
     pub check_point: CheckPoint,
 
     /// Additional metadata associated with the plan.
-    pub meta: Option<Box<dyn Any>>,
+    ///
+    /// Bounded to `Send + Sync` so that `Plan` (and everything that embeds it, e.g.
+    /// [`InstanceCtx`](crate::InstanceCtx)) auto-derives `Send`/`Sync` instead of
+    /// relying on a hand-written `unsafe impl` whose invariant the type system could
+    /// not enforce.
+    pub meta: Option<Box<dyn Any + Send + Sync>>,
 
     /// The global instance ID associated with this plan.
     pub global_id: Option<usize>,
@@ -326,7 +331,6 @@ impl Plan {
     /// * `segment_id` - The segment ID (if any).
     /// * `instance_type` - The type of instance.
     /// * `check_point` - The checkpoint type.
-    /// * `collect_info` - Optional input collection information.
     /// * `meta` - Optional additional metadata.
     ///
     /// # Returns
@@ -337,7 +341,7 @@ impl Plan {
         segment_id: Option<SegmentId>,
         instance_type: InstanceType,
         check_point: CheckPoint,
-        meta: Option<Box<dyn Any>>,
+        meta: Option<Box<dyn Any + Send + Sync>>,
     ) -> Self {
         Plan { airgroup_id, air_id, segment_id, instance_type, check_point, meta, global_id: None }
     }
@@ -350,9 +354,6 @@ impl Plan {
         self.global_id = Some(global_id);
     }
 }
-
-unsafe impl Send for Plan {}
-unsafe impl Sync for Plan {}
 
 /// The `Planner` trait defines the interface for creating execution plans.
 ///

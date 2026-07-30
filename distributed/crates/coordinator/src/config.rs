@@ -4,29 +4,45 @@ use std::path::PathBuf;
 use zisk_cluster_common::Environment;
 use zisk_cluster_common::LoggingConfig;
 
+/// Result alias for config operations that fail with [`anyhow::Error`].
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
+/// Top-level coordinator configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    /// Service identity (name, version, environment).
     pub service: ServiceConfig,
+    /// Worker-facing gRPC server settings.
     pub server: ServerConfig,
+    /// Logging configuration.
     pub logging: LoggingConfig,
+    /// Orchestration, timeout, and worker-management knobs.
     pub coordinator: CoordinatorConfig,
 }
 
+/// Worker-facing gRPC server settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
+    /// Bind host.
     pub host: String,
+    /// Bind port.
     pub port: u16,
+    /// Directory where generated proofs are written.
     pub proofs_dir: PathBuf,
+    /// If true, proofs are not persisted to disk.
     pub no_save_proofs: bool,
+    /// Grace period, in seconds, for in-flight work on shutdown.
     pub shutdown_timeout_seconds: u64,
 }
 
+/// Service identity metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceConfig {
+    /// Human-readable service name.
     pub name: String,
+    /// Service version (defaults to the crate version).
     pub version: String,
+    /// Deployment environment.
     pub environment: Environment,
 }
 
@@ -117,6 +133,8 @@ impl Config {
     const DEFAULT_PORT: u16 = 50051;
     const DEFAULT_PROOFS_DIR: &'static str = "proofs";
 
+    /// Load the configuration from built-in defaults, an optional TOML file,
+    /// and the given argument overrides (creating `proofs_dir` if needed).
     pub fn load(
         config_file: Option<String>,
         port: Option<u16>,
@@ -190,6 +208,7 @@ impl Config {
         Ok(config.try_deserialize()?)
     }
 
+    /// The default coordinator URL (`http://127.0.0.1:50051`).
     pub fn default_url() -> String {
         format!("http://{}:{}", Self::DEFAULT_HOST, Self::DEFAULT_PORT)
     }

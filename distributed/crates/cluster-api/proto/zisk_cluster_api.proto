@@ -180,6 +180,7 @@ message ExecuteTaskRequest {
     ContributionParams execution_params = 7; // Same params as contribution, but only executes without proof generation
     WrapParams wrap_params = 8;
   }
+  map<string, string> metadata = 9;
 }
 
 enum TaskType {

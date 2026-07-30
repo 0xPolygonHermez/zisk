@@ -33,7 +33,7 @@ pub unsafe extern "C" fn syscall_keccak_f(
 
         // Store results in hints vector
         #[cfg(feature = "hints")]
-        {
+        if zisk_definitions::KECCAK_RESULTS {
             hints.extend_from_slice(unsafe { &*state });
         }
     }

@@ -17,6 +17,7 @@ categories = { workspace = true }
 [dependencies]
 zkvm-interface = { workspace = true }
 lib-c = { workspace = true }
+zisk-definitions = { workspace = true }
 
 num-bigint = { workspace = true }
 num-integer = { workspace = true }

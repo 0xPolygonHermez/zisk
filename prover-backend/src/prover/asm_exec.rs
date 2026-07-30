@@ -26,6 +26,7 @@ struct AsmSetupState {
     with_hints: bool,
 }
 
+/// Execute-only client backed by the ASM emulator.
 pub struct AsmExecClient {
     executor: Arc<ZiskExecutor<Goldilocks>>,
     asm_cache_dir: PathBuf,
@@ -35,12 +36,20 @@ pub struct AsmExecClient {
 }
 
 impl AsmExecClient {
+    /// Construct an execute-only client. Loads no proving keys. `asm_cache_dir`
+    /// selects where generated ASM binaries are cached (a default is used when
+    /// `None`); `gpu` enables the GPU-backed ASM services.
     pub fn new(verbose: VerboseMode, asm_cache_dir: Option<PathBuf>, gpu: bool) -> Result<Self> {
         let asm_cache_dir = rom_setup::get_output_path(&asm_cache_dir)?;
         let executor = ZiskExecutor::<Goldilocks>::new_standalone(verbose, true)?;
         Ok(Self { executor, asm_cache_dir, verbose, gpu, program: Mutex::new(None) })
     }
 
+    /// Prepare the program for execution: generate (or reuse cached) ASM
+    /// binaries, spawn the ASM services, and parse the ELF into a `ZiskRom`.
+    /// This per-program work is amortized across repeated
+    /// [`execute`](Self::execute) calls. `with_hints` enables the precompile
+    /// hints stream.
     pub fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
         tracing::info!(
             "Setting up AsmExecClient for ELF '{}' (with_hints={})",
@@ -72,6 +81,10 @@ impl AsmExecClient {
         Ok(())
     }
 
+    /// Run the program set up by [`setup`](Self::setup) once with the given
+    /// stdin. `hints` installs a precompile hints stream (only effective when
+    /// the client was set up with `with_hints = true`). Returns an error if
+    /// `setup` has not been called.
     pub fn execute(&self, stdin: ZiskStdin, hints: Option<StreamSource>) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;

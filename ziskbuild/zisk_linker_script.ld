@@ -8,7 +8,7 @@ MEMORY {
 }
 
 PHDRS {
-  text PT_LOAD FLAGS(5);
+  text PT_LOAD FLAGS(1);
   rodata PT_LOAD FLAGS(4);
   data PT_LOAD FLAGS(6);
   bss PT_LOAD FLAGS(6);
@@ -100,9 +100,9 @@ SECTIONS
   /* reserved space for stack data */
   .stack_data (NOLOAD): {
   PROVIDE(_stack_start = .);
-  PROVIDE(_init_stack_bottom = .); # alias for the start of the reserved stack region
+  PROVIDE(_init_stack_bottom = .); /* alias for the start of the reserved stack region */
   . = . + _stack_size;
-  PROVIDE(_init_stack_top = .); # reserve 4M bytes for the initialisation stack
+  PROVIDE(_init_stack_top = .); /* reserve 4M bytes for the initialisation stack */
   } >ram AT>ram :stack_data
   
   /* reserved space for general registers */
@@ -134,7 +134,7 @@ SECTIONS
   .bss : {
     PROVIDE(_bss_start = .);
     *(.bss .bss.* .sbss .sbss.*);
-    PROVIDE(_bss_end = .); # ... and one at the end
+    PROVIDE(_bss_end = .); /* ... and one at the end */
   } >ram AT>ram :bss
 
   PROVIDE(_heap_bottom = .);
