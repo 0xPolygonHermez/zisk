@@ -27,6 +27,7 @@ members = [
   "transpilers/riscv",
   "transpilers/riscv2zisk",
   "transpilers/common",
+  "ziskasm",
   "rom-setup",
   "state-machines/arith",
   "state-machines/binary",

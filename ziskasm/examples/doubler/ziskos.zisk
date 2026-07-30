@@ -9,14 +9,19 @@
 ;   1. set the global pointer  (gp / r3 = _global_pointer)
 ;   2. set the stack pointer   (sp / r2 = _init_stack_top)
 ;   3. call _zisk_main
-;   4. on return, exit          (marchid check + ecall 93 / QEMU exit)
+;   4. return to the BIOS, which reads the output and ends
 ;
 ; This file is the entry point of the program: when the two files are assembled
 ; together, `_start` is the first instruction (at ROM_ADDR).
 ;
-; NOTE: `call`/`ret` follow the RISC-V convention (return address in r1); see
-; ziskasm.md, "Call and return". The simple ziskasm subset still has no syscalls,
-; so termination uses the `end` flag in place of ecall 93.
+; Termination uses the ret-to-BIOS convention: the ZisK BIOS enters `_start`
+; with the address of its output-finalization code in r1 (a `call`, RISC-V
+; `jal r1`). When `_start` returns (`ret`, RISC-V `jalr r0, r1`), the BIOS reads
+; the program output from OUTPUT_ADDR and ends. Because our own `call _zisk_main`
+; also writes r1, we save and restore the BIOS return address around it.
+;
+; `call`/`ret` follow the RISC-V convention (return address in r1); see
+; ziskasm.md, "Call and return".
 ; ============================================================================
 
 
@@ -33,12 +38,16 @@ _start:
 	copyb(0, GLOBAL_POINTER) -> r3        ; gp (r3) = _global_pointer
 	copyb(0, INIT_STACK_TOP) -> r2        ; sp (r2) = _init_stack_top
 
-	; Call the program entry point (in doubler.zisk). `call` stores the return
-	; address (the next instruction, `_exit`) into r1 and jumps to _zisk_main.
+	; The BIOS entered us with its finalization return address in r1. Our own
+	; `call` below overwrites r1, so save it in a callee-saved register (r9 / s1)
+	; that the program does not touch.
+	copyb(0, r1) -> r9                    ; save the BIOS return address
+
+	; Call the program entry point (in doubler.zisk); on return, r1 holds the
+	; instruction after this `call`.
 	call _zisk_main
 
-_exit:
-	; The program returns here (via `ret`, which jumps to r1 == _exit).
-	; ziskos::_start would exit via ecall 93; the simple ziskasm subset has no
-	; syscalls, so we terminate with `end`.
-	copyb(0, 0), end
+	; Restore the BIOS return address and return to the BIOS, which reads the
+	; output from OUTPUT_ADDR and ends the program.
+	copyb(0, r9) -> r1                    ; restore the BIOS return address
+	ret
