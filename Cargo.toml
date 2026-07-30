@@ -7,8 +7,8 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_zisk_ethproofs_branch = "feature/riscv-b-extension"
-gha_zisk_eth_client_branch = "feature/riscv-b-extension"
+gha_zisk_ethproofs_branch = "develop-0.11.1"
+gha_zisk_eth_client_branch = "develop-0.10.1"
 gha_zisk_template_branch = "pre-develop-1.1.0-alpha"
 gha_zisk_testvectors_branch = "develop-0.4.0"
 gha_pil2_compiler_branch = "develop-0.12.0"
@@ -140,17 +140,17 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api" }
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client" }
 
 # Proofman
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.1.0-alpha" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+pil-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
+stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/circom-imps" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman" }
