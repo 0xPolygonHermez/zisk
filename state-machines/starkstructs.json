@@ -5,10 +5,10 @@
     "hasCompressor": true
   },
   "VirtualTableZisk0": {
-    "powBits": 20
+    "powBits": 22
   },
   "VirtualTableZisk1": {
-    "powBits": 20
+    "powBits": 22
   },
   "Rom": {
     "powBits": 20
