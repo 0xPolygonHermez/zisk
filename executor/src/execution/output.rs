@@ -12,7 +12,7 @@
 //!
 //! The plan-merging callers (step 1.3 onward) drive this via:
 //! ```ignore
-//! let mem_plans = trace.backend.await_mem_plans()?;
+//! let (mem_plans, gpu_mops_used_bytes) = trace.backend.await_mem_plans()?;
 //! let rh_data   = trace.backend.await_rom_histogram()?;
 //! ```
 //! On the Rust path the calls yield `vec![]` / `None` instantly; on
@@ -125,8 +125,10 @@ mod tests {
     #[test]
     fn rust_await_mem_plans_yields_empty() {
         let mut backend = BackendArtifacts::Rust;
-        let plans = backend.await_mem_plans().expect("await_mem_plans on Rust");
+        let (plans, gpu_mops_used_bytes) =
+            backend.await_mem_plans().expect("await_mem_plans on Rust");
         assert!(plans.is_empty());
+        assert!(gpu_mops_used_bytes.is_none());
     }
 
     #[test]
@@ -138,15 +140,17 @@ mod tests {
 
     #[test]
     fn asm_await_mem_plans_returns_canned_plans_after_thread_join() {
-        // The Vec<Plan> is opaque to this test; we just need its length
-        // to match what we passed in.
+        // Plan contents are opaque here; we only verify the tuple unwraps and
+        // preserves the plan count for the canned runner output.
         let canned = Vec::<Plan>::new();
         let expected_len = canned.len();
         let mo_handle = std::thread::spawn(move || Ok(AsmRunnerMO::new(canned)));
         let mut backend = BackendArtifacts::Asm { mo: Some(mo_handle), rh: None };
 
-        let plans = backend.await_mem_plans().expect("await_mem_plans on Asm");
+        let (plans, gpu_mops_used_bytes) =
+            backend.await_mem_plans().expect("await_mem_plans on Asm");
         assert_eq!(plans.len(), expected_len);
+        assert!(gpu_mops_used_bytes.is_none());
     }
 
     #[test]
