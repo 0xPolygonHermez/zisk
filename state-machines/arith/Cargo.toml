@@ -11,6 +11,14 @@ categories = { workspace = true }
 name = "arith_frops_fixed_gen"
 path = "src/arith_frops_fixed_gen.rs"
 
+[[bin]]
+name = "arith_carry_range"
+path = "src/tools/arith_carry_range.rs"
+
+[[bin]]
+name = "arith_table_decode_gen"
+path = "src/tools/arith_table_decode_gen.rs"
+
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
