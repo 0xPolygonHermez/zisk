@@ -28,6 +28,8 @@ pub struct SecondaryPlanArtifacts {
     pub count_and_plan_duration: Duration,
     /// Wall-clock waiting on the MO runner and merging its plans.
     pub count_and_plan_mo_duration: Duration,
+    /// Bytes of the borrowed GPU buffer the mem-ops planner used for this block
+    pub gpu_mops_used_bytes: Option<u64>,
 }
 
 /// Pure-planning phase actor. Owns chunk size only.
@@ -96,7 +98,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         let mo_start = Instant::now();
 
         stats_begin!(stats, exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
-        let mem_plans = backend.await_mem_plans()?;
+        let (mem_plans, gpu_mops_used_bytes) = backend.await_mem_plans()?;
         stats_end!(stats, &_mo_wait_scope);
 
         stats_begin!(stats, exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
@@ -110,6 +112,7 @@ impl<F: PrimeField64> PlanPhase<F> {
             secn_planning,
             count_and_plan_duration,
             count_and_plan_mo_duration,
+            gpu_mops_used_bytes,
         })
     }
 }

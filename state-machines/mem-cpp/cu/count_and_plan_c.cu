@@ -44,6 +44,11 @@ bool count_and_plan_register_input_pinned(void* h, void* ptr, size_t bytes) {
     return static_cast<CountAndPlan*>(h)->register_input_pinned(ptr, bytes);
 }
 
+size_t count_and_plan_max_used_bytes(void* h) {
+    if (h == nullptr) return 0;
+    return static_cast<CountAndPlan*>(h)->max_used_bytes();
+}
+
 void count_and_plan_unregister_input_pinned(void* h, void* ptr) {
     if (!h) return;
     static_cast<CountAndPlan*>(h)->unregister_input_pinned(ptr);

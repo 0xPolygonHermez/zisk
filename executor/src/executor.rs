@@ -301,9 +301,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         // MO runner joined in `run_secondary`; release the buffer back to proofman.
         // Earlier error paths skip the release on purpose: the MO thread may
-        // still be using the buffer (see `release_gpu_buffer` docs).
+        // still be using the buffer.
         if is_asm_emulator {
             if let Some(extras) = proofman_extras {
+                if let Some(used) = secn_artifacts.gpu_mops_used_bytes {
+                    extras.pctx().report_first_gpu_buffer_usage(used);
+                }
                 extras.release_gpu_buffer();
             }
         }
