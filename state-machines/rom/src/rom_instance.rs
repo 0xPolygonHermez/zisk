@@ -241,7 +241,13 @@ impl<F: PrimeField64> Instance<F> for RomInstance {
                 let stats = r
                     .aggregate_stats(collectors)
                     .map_err(|e| ProofmanError::InvalidParameters(e.to_string()))?;
-                Self::compute_witness_from_rust(&self.zisk_rom, &stats, trace_buffer)
+                let air = Self::compute_witness_from_rust(&self.zisk_rom, &stats, trace_buffer);
+                // The counts live in shared atomics that survive this call;
+                // zero them so a re-collection (the multilinear prover
+                // recomputes every witness twice per run) starts fresh
+                // instead of double-counting.
+                r.reset();
+                air
             }
         };
         Ok(Some(air))

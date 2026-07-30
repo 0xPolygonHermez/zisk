@@ -316,8 +316,15 @@ impl<F: PrimeField64> WitnessPhase<F> {
 
         let collectors =
             ctx.state.take_collectors_for_instance(global_id, instance.instance_type())?;
-        let trace_buffer =
+        let mut trace_buffer =
             std::mem::take(&mut *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")?);
+        // The buffer moves into the AirInstance and never comes back; it is
+        // normally refilled by `reset()` between runs, but the multilinear
+        // prover recomputes every witness twice within one run (commit pass +
+        // prove pass), so refill lazily when it has already been consumed.
+        if trace_buffer.len() != RomTrace::<F>::NUM_ROWS {
+            trace_buffer = vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
+        }
 
         self.witness_generator.compute_secn_witness(
             ctx.pctx,
