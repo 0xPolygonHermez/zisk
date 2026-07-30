@@ -38,28 +38,13 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
         let inst = code[code_index];
         code_index += 1;
 
-        // Manage instructions that are zero
-        // As per spec, they can only be 32 bits nop instructions
-        // In case of 16 zero bits, they are used by some compilers (e.g. Go Lang compiler) to halt
-        // the system with an error
+        // A 16-bit instruction with all bits zero is permanently reserved as an illegal instruction.
+        // 16 zero bits are used by some compilers (e.g. Go Lang compiler) to halt the system with
+        // an error.
         if inst == 0 {
             // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
-            if code_index == code_len {
-                // This is the last 16 bits in the code buffer, so this must be a 16-bits invalid
-                // instruction, so we must HALT
-                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
-                break;
-            }
-            let inst = code[code_index];
-            if inst == 0 {
-                // Both 16 bits instructions are zero, so this is a 32-bits nop
-                code_index += 1;
-                insts.push(RiscvInst::nop(0, rom_address + (instruction_code_index * 2) as u64));
-            } else {
-                // The first 16 bits are zero, but the second 16 bits are not zero, so this is a
-                // 16-bits invalid instruction, so we must HALT
-                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
-            }
+            // This is a 16-bits invalid instruction, so we must HALT
+            insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
             continue;
         }
 
@@ -90,6 +75,12 @@ pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
 
             // Build the full 32-bits instruction
             let inst: u32 = (inst as u32) | ((interleaved_inst as u32) << 16);
+
+            if inst == 0xFFFFFFFF {
+                // This is a 32-bits invalid instruction, so we must HALT
+                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
+                continue;
+            }
 
             // Parse the 32-bits instruction
             let i = riscv_get_instruction_32(inst, rom_address, instruction_code_index);
@@ -340,6 +331,10 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
         i.rs2 = ((inst >> 2) & 0x1F) as u32;
         if inst_name == RiscvInstName::CJr {
             i.rd = 0;
+            if i.rs1 == 0 {
+                //panic!("Invalid use of rs1==0 in c.jr at index={code_index} addr=0x{rom_address:x}");
+                i.inst_name = RiscvInstName::CReserved;
+            }
             if i.rs2 != 0 {
                 //panic!("Invalid use of rs2!=0 in c.jr at index={code_index} addr=0x{rom_address:x}");
                 i.inst_name = RiscvInstName::CReserved;
@@ -371,6 +366,10 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm5 = ((inst >> 2) & 0x1) as u32;
             let imm = (imm9 << 9) | (imm8_7 << 7) | (imm6 << 6) | (imm5 << 5) | (imm4 << 4);
             i.imm = signext(imm, 10);
+            if i.imm == 0 {
+                // This is reserved and must not be executed
+                i.inst_name = RiscvInstName::CReserved;
+            }
         } else if (inst_name == RiscvInstName::CAddi) || (inst_name == RiscvInstName::CAddiw) {
             let imm5 = ((inst >> 12) & 0x1) as u32;
             let imm4_0 = ((inst >> 2) & 0x1F) as u32;
@@ -395,12 +394,15 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
             let imm17 = ((inst >> 12) & 0x1) as u32;
             let imm16_12 = ((inst >> 2) & 0x1F) as u32;
             i.imm = signext((imm17 << 17) | (imm16_12 << 12), 18);
-            if i.rd == 0 {
+            if i.imm == 0 {
+                // This is reserved and must not be executed
+                i.inst_name = RiscvInstName::CReserved;
+            } else if i.rd == 2 {
+                // This is already filtered by the decoder, but we can add an extra check here
+                i.inst_name = RiscvInstName::CReserved;
+            } else if i.rd == 0 {
                 // This is a hint and must not be executed
                 i.inst_name = RiscvInstName::CNop; // Change to c.nop
-            }
-            if i.rd == 2 {
-                i.inst_name = RiscvInstName::CReserved;
             }
         } else if inst_name == RiscvInstName::CLdsp || inst_name == RiscvInstName::CFldsp {
             let imm5 = ((inst >> 12) & 0x1) as u32;
@@ -467,6 +469,10 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
         let imm2 = ((inst >> 6) & 0x1) as u32;
         let imm3 = ((inst >> 5) & 0x1) as u32;
         i.imm = ((imm9_6 << 6) | (imm5_4 << 4) | (imm3 << 3) | (imm2 << 2)) as i32;
+        if i.imm == 0 {
+            // This is reserved and must not be executed
+            i.inst_name = RiscvInstName::CReserved;
+        }
         i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
         i.rs1 = 2; // x2 is always the source register for CIW instructions
     } else if i.inst_type == RiscvInstType::Cl {
@@ -593,4 +599,67 @@ fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> 
         );
     }
     i
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Decode a single instruction and assert the interpreter classifies it as
+    /// one of the three "not a real instruction" names it uses for reserved /
+    /// illegal encodings:
+    /// * `Reserved`  — a reserved 32-bit encoding,
+    /// * `CReserved` — a reserved 16-bit (compressed) encoding,
+    /// * `CHalt`     — the all-zeros (16-bit) and all-ones (32-bit) sentinels,
+    ///   which are permanently-reserved illegal encodings the toolchain emits to
+    ///   halt (see `riscv_interpreter`).
+    ///
+    /// `chunks` is the little-endian 16-bit parcel stream: one parcel for a
+    /// 16-bit instruction, two `(low, high)` parcels for a 32-bit one.
+    fn assert_reserved(chunks: &[u16], what: &str) {
+        let insts = riscv_interpreter(0x8000_0000, chunks);
+        assert_eq!(insts.len(), 1, "{what}: expected one instruction from {chunks:04x?}");
+        let name = insts[0].inst_name;
+        assert!(
+            matches!(
+                name,
+                RiscvInstName::Reserved | RiscvInstName::CReserved | RiscvInstName::CHalt
+            ),
+            "{what} ({chunks:04x?}) decoded as {name:?}, expected Reserved / CReserved / CHalt",
+        );
+    }
+
+    #[test]
+    fn reserved_16bit_encodings_are_reserved() {
+        // The all-zero halfword is a permanently-reserved illegal instruction;
+        // the interpreter maps it to CHalt.
+        assert_reserved(&[0x0000], "all-zero halfword");
+        // Quadrant 0 (op=0b00), funct3=0b100: reserved compressed encoding.
+        assert_reserved(&[0x8000], "quadrant-0 funct3=0b100");
+        // C.ADDI4SPN with nzuimm=0 (CIW, rd'!=0): reserved.
+        assert_reserved(&[0x0004], "c.addi4spn nzuimm=0");
+        // C.ADDI16SP with nzimm=0: reserved.
+        assert_reserved(&[0x6101], "c.addi16sp nzimm=0");
+        // C.LUI with nzimm=0: reserved.
+        assert_reserved(&[0x6181], "c.lui nzimm=0");
+        // C.JR with rs1=x0: reserved.
+        assert_reserved(&[0x8002], "c.jr x0");
+        // C.LWSP with rd=x0: reserved.
+        assert_reserved(&[0x4002], "c.lwsp rd=x0");
+        // C.LDSP with rd=x0: reserved.
+        assert_reserved(&[0x6002], "c.ldsp rd=x0");
+    }
+
+    #[test]
+    fn reserved_32bit_encodings_are_reserved() {
+        // The all-ones word is a permanently-reserved illegal instruction;
+        // the interpreter maps it to CHalt.
+        assert_reserved(&[0xFFFF, 0xFFFF], "all-ones word");
+        // MISC-MEM (opcode 0b0001111) with funct3=0b010: reserved.
+        assert_reserved(&[0x200F, 0x0000], "misc-mem funct3=0b010");
+        // OP-IMM SLLI (opcode 0b0010011, funct3=0b001) with a reserved funct6.
+        assert_reserved(&[0x1013, 0x0400], "op-imm slli reserved funct6");
+        // SYSTEM (opcode 0b1110011) funct3=0 that is neither ECALL nor EBREAK.
+        assert_reserved(&[0x0073, 0x0020], "system funct3=0 non-ecall/ebreak");
+    }
 }
