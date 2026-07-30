@@ -14,7 +14,10 @@ use proofman::{
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
-use zisk_pil::get_packed_info;
+use zisk_pil::{
+    get_packed_info, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
+    ZISK_AIRGROUP_ID,
+};
 
 use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;
@@ -79,6 +82,28 @@ impl AsmOptions {
         self
     }
 }
+
+/// Airs whose const *tree* is kept preallocated on-device, as `(airgroup_id, air_id)`.
+/// Cascades to each air's Basic and Recursive1 circuits. Airgroup 0's Recursive2 tree is
+/// always resident and must not be listed. Costs `const_tree_size` of VRAM per entry and
+/// saves a disk load on every proof of that air, so this is the expensive knob.
+///
+/// Main reproduces the residency proofman hardcoded before it became caller-chosen;
+/// dropping it would silently make every Main proof reload its tree from disk.
+const PRELOADED_CONST_TREE_GPU: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0])];
+
+/// Airs proved at most once per run, as `(airgroup_id, air_id)`. Lets proofman drop their
+/// `("const", false)` region and unpack into the const tree's node area instead, saving
+/// `N * nConstants` of aux trace per stream. Only airs big enough to build their const tree
+/// on the fly are affected; the rest keep the normal layout.
+///
+/// The two virtual tables qualify: each is registered once via `add_table`/`add_table_all`,
+/// so nothing ever reuses their const pols across proofs. Listing an air that IS proved more
+/// than once would re-merkelize its fixed columns on every proof.
+const TABLE_AIRS_GPU: &[(usize, usize)] = &[
+    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0]),
+    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_1_AIR_IDS[0]),
+];
 
 /// Comprehensive prover configuration containing all settings
 #[derive(Clone)]
@@ -162,6 +187,11 @@ impl BackendProverOpts {
 
         if self.gpu {
             options.gpu();
+            // GPU-only knobs, fixed in code rather than exposed as user options: the right
+            // choice depends on the air mix and the card, not on the caller. See the
+            // constants above before changing either list.
+            options.preloaded_const_tree_gpu(PRELOADED_CONST_TREE_GPU.to_vec());
+            options.table_airs_gpu(TABLE_AIRS_GPU.to_vec());
         }
 
         if self.packed {
