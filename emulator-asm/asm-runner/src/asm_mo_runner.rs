@@ -168,6 +168,8 @@ impl Drop for MOShmemReader {
 pub struct AsmRunnerMO {
     /// The generated plans from the MO trace.
     pub plans: Vec<Plan>,
+    /// Bytes of the proofman-owned GPU buffer consumed by the GPU mem-ops
+    /// planner; `None` on the CPU planner path.
     pub gpu_mops_used_bytes: Option<u64>,
 }
 
