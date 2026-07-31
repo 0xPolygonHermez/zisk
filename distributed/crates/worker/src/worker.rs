@@ -73,7 +73,7 @@ const STREAM_ACTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
 /// so it is fired off the critical path right after a job completes and
 /// overlaps with the idle window between jobs instead of delaying the next
 /// task. No-op outside glibc.
-pub fn spawn_malloc_trim() {
+fn spawn_malloc_trim() {
     #[cfg(target_env = "gnu")]
     {
         let trim = || {
