@@ -90,6 +90,8 @@ endif
 	ltu(0, r10), j(_report)
 	call fcall_bls12_381            ; 0x2exx (fcall: bls12_381 inv/sqrt/twist)
 	ltu(0, r10), j(_report)
+	call dma                        ; 0x2fxx (DMA: memcpy/memcmp/memset/inputcpy)
+	ltu(0, r10), j(_report)
 	; --- add more tests here ---
 	;   call <next_test>
 	;   ltu(0, r10), j(_report)

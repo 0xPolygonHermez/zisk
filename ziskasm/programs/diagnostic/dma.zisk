@@ -1,0 +1,144 @@
+; ============================================================================
+; dma.zisk - diagnostic for the ZisK DMA (bulk memory) instructions.
+;
+;   dma_memcpy(dst, src)      copy N bytes src->dst; N read from EXTRA_PARAMS_ADDR
+;   dma_xmemcpy(dst, src)     same, N carried in the extended arg
+;   dma_memcmp(dst, src)      compare N bytes (N via EXTRA_PARAMS); c = 0 if equal,
+;                             else sign-extended (a-b) at the first differing byte
+;   dma_xmemcmp(dst, src)     same, N in the extended arg
+;   dma_xmemset(dst, N)       fill N bytes at dst with the extended-arg byte
+;   dma_inputcpy(dst, N)      copy N bytes of the pending fcall result into dst
+;                             (the bulk form of fcall_get; N is the b operand)
+;
+; The "extended" variants carry their 3rd argument in jmp_offset1 (used as
+; extended_arg because these ops have input_size > 0). In .zisk that is written
+; with the jump modifier after the store:
+;   op(a, b) -> c, j(<extended_arg>, 4)     ; 4 = normal fall-through (instr stride)
+; The non-extended memcpy/memcmp read their byte count from EXTRA_PARAMS_ADDR
+; (0xa0400f00), written with an ordinary store beforehand.
+;
+; dma_inputcpy pulls from the fcall result buffer, so it is driven by a preceding
+; fcall (here msb_pos_256, id 17) rather than a program input file.
+;
+; All buffers are 8-byte aligned with byte counts multiple of 8 (the aligned fast
+; path). First mismatch returns 0x2fCC.
+;
+; Checks:
+;   2f01  dma_memcpy      2f02  dma_xmemcpy    2f03  dma_memcmp
+;   2f04  dma_xmemcmp     2f05  dma_xmemset    2f06  dma_inputcpy
+; ============================================================================
+
+define EXTRA_PARAMS 0xa0400f00
+
+const u64 DMA_SRC[4] =
+	0x1122334455667788, 0xaabbccddeeff0011, 0x0123456789abcdef, 0xfedcba9876543210
+const u64 DMA_SRC_EQ[4] =
+	0x1122334455667788, 0xaabbccddeeff0011, 0x0123456789abcdef, 0xfedcba9876543210
+const u64 DMA_DIFF[4] =
+	0x1122334455667788, 0xaabbccddeeff0011, 0x0123456789abcdef, 0xfedcba9876543211
+const u64 IC_IN[5] =
+	1, 1, 2, 3, 2
+
+u64 MC_DST[4] = 0, 0, 0, 0
+u64 XMC_DST[4] = 0, 0, 0, 0
+u64 MS_DST[4] = 0, 0, 0, 0
+u64 IC_DST[2] = 0, 0
+
+dma:
+	; --- 2f01 dma_memcpy (count via EXTRA_PARAMS_ADDR) ---
+	copyb(0, 32) -> [EXTRA_PARAMS]         ; count = 32 bytes
+	dma_memcpy(MC_DST, DMA_SRC) -> r5      ; MC_DST <- DMA_SRC (4 words)
+	copyb(0, MC_DST) -> r6
+	copyb(0, DMA_SRC) -> r7
+	copyb(0, 0) -> r12
+d1_loop:
+	copyb(r6, 8[a + 0]) -> r8
+	copyb(r7, 8[a + 0]) -> r13
+	eq(r8, r13), j(d1_n)
+	copyb(0, 0x2f01) -> r10
+	ret
+d1_n:
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	add(r12, 1) -> r12
+	eq(r12, 4), j(d2)
+	jump(d1_loop)
+
+d2:
+	; --- 2f02 dma_xmemcpy (count in extended arg) ---
+	dma_xmemcpy(XMC_DST, DMA_SRC) -> r5, j(32, 4)
+	copyb(0, XMC_DST) -> r6
+	copyb(0, DMA_SRC) -> r7
+	copyb(0, 0) -> r12
+d2_loop:
+	copyb(r6, 8[a + 0]) -> r8
+	copyb(r7, 8[a + 0]) -> r13
+	eq(r8, r13), j(d2_n)
+	copyb(0, 0x2f02) -> r10
+	ret
+d2_n:
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	add(r12, 1) -> r12
+	eq(r12, 4), j(d3)
+	jump(d2_loop)
+
+d3:
+	; --- 2f03 dma_memcmp: equal -> 0, differing -> nonzero ---
+	copyb(0, 32) -> [EXTRA_PARAMS]
+	dma_memcmp(DMA_SRC, DMA_SRC_EQ) -> r5
+	eq(r5, 0), j(d3b)
+	copyb(0, 0x2f03) -> r10
+	ret
+d3b:
+	copyb(0, 32) -> [EXTRA_PARAMS]
+	dma_memcmp(DMA_SRC, DMA_DIFF) -> r5    ; last byte differs -> result must be nonzero
+	eq(r5, 0), j(d3_fail)                  ; a zero here means the diff went undetected
+	jump(d4)
+d3_fail:
+	copyb(0, 0x2f03) -> r10
+	ret
+
+d4:
+	; --- 2f04 dma_xmemcmp (equal -> 0) ---
+	dma_xmemcmp(DMA_SRC, DMA_SRC_EQ) -> r5, j(32, 4)
+	eq(r5, 0), j(d5)
+	copyb(0, 0x2f04) -> r10
+	ret
+
+d5:
+	; --- 2f05 dma_xmemset: fill 32 bytes with 0xab ---
+	dma_xmemset(MS_DST, 32) -> r5, j(0xab, 4)
+	copyb(0, MS_DST) -> r6
+	copyb(0, 0xabababababababab) -> r13
+	copyb(0, 0) -> r12
+d5_loop:
+	copyb(r6, 8[a + 0]) -> r8
+	eq(r8, r13), j(d5_n)
+	copyb(0, 0x2f05) -> r10
+	ret
+d5_n:
+	add(r6, 8) -> r6
+	add(r12, 1) -> r12
+	eq(r12, 4), j(d6)
+	jump(d5_loop)
+
+d6:
+	; --- 2f06 dma_inputcpy: bulk-copy an fcall result into memory ---
+	fcall_param(5, IC_IN) -> r4
+	fcall(17, 0) -> r4                     ; msb_pos_256([1,2,3,2]) -> result [3, 1]
+	dma_inputcpy(IC_DST, 16) -> r5         ; copy 2 result words (16 bytes) into IC_DST
+	copyb(0, IC_DST) -> r6
+	copyb(r6, 8[a + 0]) -> r8
+	eq(r8, 3), j(d6b)                      ; IC_DST[0] == limb == 3
+	copyb(0, 0x2f06) -> r10
+	ret
+d6b:
+	copyb(r6, 8[a + 8]) -> r8
+	eq(r8, 1), j(dma_ok)                   ; IC_DST[1] == bit == 1
+	copyb(0, 0x2f06) -> r10
+	ret
+
+dma_ok:
+	copyb(0, 0) -> r10
+	ret
