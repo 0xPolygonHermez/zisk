@@ -170,10 +170,13 @@ pub fn parse_program(src: &str, file: &str) -> Result<Program, String> {
     let mut pending_label: Option<String> = None;
     let mut program = Program::default();
 
-    for (idx, raw) in src.lines().enumerate() {
+    let lines: Vec<&str> = src.lines().collect();
+    let mut idx = 0;
+    while idx < lines.len() {
         let line = idx + 1;
         // Strip the `;` comment; anything after it is ignored by the parser.
-        let code = raw.split(';').next().unwrap_or("").trim();
+        let code = lines[idx].split(';').next().unwrap_or("").trim();
+        idx += 1;
         if code.is_empty() {
             continue;
         }
@@ -189,13 +192,25 @@ pub fn parse_program(src: &str, file: &str) -> Result<Program, String> {
 
         // Data declaration: `[const] TYPE NAME[SIZE] [= values]`. Detected by the
         // first token being `const` or a type keyword (no operation is so named).
+        // The value list may span several lines: while the accumulated text ends
+        // with `=` or `,`, following (comment-stripped) lines are appended.
         if is_data_decl(code) {
             if pending_label.is_some() {
                 return Err(err(file, line, "a label cannot precede a data declaration"));
             }
-            let substituted = substitute(code, &defs);
+            let mut full = code.to_string();
+            while (full.ends_with('=') || full.ends_with(',')) && idx < lines.len() {
+                let cont = lines[idx].split(';').next().unwrap_or("").trim();
+                idx += 1;
+                if cont.is_empty() {
+                    continue;
+                }
+                full.push(' ');
+                full.push_str(cont);
+            }
+            let substituted = substitute(&full, &defs);
             let decl = parse_data_decl(&substituted, file, line)
-                .map_err(|e| err(file, line, &format!("{e} (in `{code}`)")))?;
+                .map_err(|e| err(file, line, &format!("{e} (in `{full}`)")))?;
             program.data.push(decl);
             continue;
         }

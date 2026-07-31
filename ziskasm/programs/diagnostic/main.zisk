@@ -1,0 +1,71 @@
+; ============================================================================
+; main.zisk - ZisK diagnostic program entry point.
+;
+; Mirrors test-artifacts/programs/diagnostic/src/main.rs: `main` calls each
+; diagnostic test function (one per file) and reports the result. Each test
+; covers a family of ZisK instructions. This is the growth point of the
+; diagnostic: add `call <test>` lines here as new test files are written.
+;
+; Reporting / calling convention (ad-hoc, until a formal one is defined):
+;   - Each test function returns r10 = 0 on success, or a nonzero error code
+;     0xFFCC on the FIRST failing sub-check (FF = test-file id, CC = sub-check).
+;   - Test functions use r4-r8 as scratch and r10 for the return code; they do
+;     NOT touch r9 or r11 (reserved for `main`).
+;   - `main` writes output[0] = 0 if every test passes, else the first error code.
+;
+; There is no `_start`, so the assembler synthesizes the launcher around `main`.
+;
+; Run it:
+;   ziskemu -z ziskasm/programs/diagnostic -c        (no input needed)
+; ============================================================================
+
+define OUTPUT_ADDR 0xa0410000
+
+main:
+	copyb(0, r1) -> r9              ; save return address (our `call`s clobber r1)
+
+	call minmax                     ; 0x01xx
+	ltu(0, r10), j(_report)         ; r10 != 0 -> report this failure now
+	call compare                    ; 0x02xx
+	ltu(0, r10), j(_report)
+	call addsub                     ; 0x03xx
+	ltu(0, r10), j(_report)
+	call logical                    ; 0x04xx
+	ltu(0, r10), j(_report)
+	call shift                      ; 0x05xx
+	ltu(0, r10), j(_report)
+	call rotate                     ; 0x06xx
+	ltu(0, r10), j(_report)
+	call bitcount                   ; 0x07xx
+	ltu(0, r10), j(_report)
+	call singlebit                  ; 0x08xx
+	ltu(0, r10), j(_report)
+	call signext                    ; 0x0axx
+	ltu(0, r10), j(_report)
+	call byteops                    ; 0x09xx
+	ltu(0, r10), j(_report)
+	call pack                       ; 0x0bxx
+	ltu(0, r10), j(_report)
+	call shxadd                     ; 0x0cxx
+	ltu(0, r10), j(_report)
+	call clmul                      ; 0x0dxx
+	ltu(0, r10), j(_report)
+	call xperm                      ; 0x0exx
+	ltu(0, r10), j(_report)
+	call czero                      ; 0x0fxx
+	ltu(0, r10), j(_report)
+	call mul                        ; 0x10xx
+	ltu(0, r10), j(_report)
+	call divrem                     ; 0x11xx
+	ltu(0, r10), j(_report)
+	; --- add more tests here ---
+	;   call <next_test>
+	;   ltu(0, r10), j(_report)
+
+	copyb(0, 0) -> r10              ; all diagnostics passed
+
+_report:
+	copyb(0, OUTPUT_ADDR) -> r11
+	copyb(r11, r10) -> 8[a + 0]     ; output[0] = 0 on success, else error code
+	copyb(0, r9) -> r1              ; restore return address
+	ret

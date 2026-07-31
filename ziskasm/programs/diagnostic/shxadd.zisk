@@ -1,0 +1,99 @@
+; ============================================================================
+; shxadd.zisk - diagnostic for the ZisK shift-add / word address-gen ops (Zba).
+;
+;   sh1add sh2add sh3add       (b + (a << N))
+;   add_u_w                    (b + zext32(a))
+;   sh1add_u_w sh2add_u_w sh3add_u_w   (b + (zext32(a) << N))
+;   sll_u_w                    (zext32(a) << (b & 0x3f))
+;
+; Note: `b` is the addend for the sh*add ops but the shift amount for sll_u_w;
+; the table gives each op its own expected column, so both are exercised.
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; SHXADD_TABLE columns: a b sh1add sh2add sh3add add_u_w sh1add_u_w sh2add_u_w sh3add_u_w sll_u_w
+; First mismatch returns 0x0cCC (01=sh1add .. 08=sll_u_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      10
+define ROW_BYTES 80      ; 10 u64 columns * 8 bytes
+
+; a, b, sh1add, sh2add, sh3add, add_u_w, sh1add_u_w, sh2add_u_w, sh3add_u_w, sll_u_w
+const u64 SHXADD_TABLE =
+	0x0000000000000001, 0x0000000000000000, 0x0000000000000002, 0x0000000000000004, 0x0000000000000008, 0x0000000000000001, 0x0000000000000002, 0x0000000000000004, 0x0000000000000008, 0x0000000000000001,
+	0x0000000000000001, 0x0000000000000001, 0x0000000000000003, 0x0000000000000005, 0x0000000000000009, 0x0000000000000002, 0x0000000000000003, 0x0000000000000005, 0x0000000000000009, 0x0000000000000002,
+	0x00000000000000ff, 0x0000000000000004, 0x0000000000000202, 0x0000000000000400, 0x00000000000007fc, 0x0000000000000103, 0x0000000000000202, 0x0000000000000400, 0x00000000000007fc, 0x0000000000000ff0,
+	0x0000000100000000, 0x0000000000000008, 0x0000000200000008, 0x0000000400000008, 0x0000000800000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000008, 0x0000000000000000,
+	0x00000000ffffffff, 0x0000000000000001, 0x00000001ffffffff, 0x00000003fffffffd, 0x00000007fffffff9, 0x0000000100000000, 0x00000001ffffffff, 0x00000003fffffffd, 0x00000007fffffff9, 0x00000001fffffffe,
+	0x8000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000000,
+	0x00000000deadbeef, 0x0000000000000020, 0x00000001bd5b7dfe, 0x000000037ab6fbdc, 0x00000006f56df798, 0x00000000deadbf0f, 0x00000001bd5b7dfe, 0x000000037ab6fbdc, 0x00000006f56df798, 0xdeadbeef00000000,
+	0x0000000000000001, 0x0000000000000040, 0x0000000000000042, 0x0000000000000044, 0x0000000000000048, 0x0000000000000041, 0x0000000000000042, 0x0000000000000044, 0x0000000000000048, 0x0000000000000001,
+	0x0000000000000001, 0x0000000000000041, 0x0000000000000043, 0x0000000000000045, 0x0000000000000049, 0x0000000000000042, 0x0000000000000043, 0x0000000000000045, 0x0000000000000049, 0x0000000000000002,
+	0x0000000000abcdef, 0x0000000000001000, 0x000000000157abde, 0x0000000002af47bc, 0x00000000055e7f78, 0x0000000000abddef, 0x000000000157abde, 0x0000000002af47bc, 0x00000000055e7f78, 0x0000000000abcdef
+
+shxadd:
+	copyb(0, SHXADD_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+sx_loop:
+	eq(r6, ROWS), j(sx_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	sh1add(r7, r8) -> r13
+	eq(r13, r12), j(sx_c1)
+	copyb(0, 0x0c01) -> r10
+	ret
+sx_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	sh2add(r7, r8) -> r13
+	eq(r13, r12), j(sx_c2)
+	copyb(0, 0x0c02) -> r10
+	ret
+sx_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	sh3add(r7, r8) -> r13
+	eq(r13, r12), j(sx_c3)
+	copyb(0, 0x0c03) -> r10
+	ret
+sx_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	add_u_w(r7, r8) -> r13
+	eq(r13, r12), j(sx_c4)
+	copyb(0, 0x0c04) -> r10
+	ret
+sx_c4:
+	copyb(r5, 8[a + 48]) -> r12
+	sh1add_u_w(r7, r8) -> r13
+	eq(r13, r12), j(sx_c5)
+	copyb(0, 0x0c05) -> r10
+	ret
+sx_c5:
+	copyb(r5, 8[a + 56]) -> r12
+	sh2add_u_w(r7, r8) -> r13
+	eq(r13, r12), j(sx_c6)
+	copyb(0, 0x0c06) -> r10
+	ret
+sx_c6:
+	copyb(r5, 8[a + 64]) -> r12
+	sh3add_u_w(r7, r8) -> r13
+	eq(r13, r12), j(sx_c7)
+	copyb(0, 0x0c07) -> r10
+	ret
+sx_c7:
+	copyb(r5, 8[a + 72]) -> r12
+	sll_u_w(r7, r8) -> r13
+	eq(r13, r12), j(sx_next)
+	copyb(0, 0x0c08) -> r10
+	ret
+
+sx_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(sx_loop)
+
+sx_ok:
+	copyb(0, 0) -> r10
+	ret
