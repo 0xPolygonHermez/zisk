@@ -13,8 +13,9 @@ to be kept current as the feature evolves.
 | [`src/parser.rs`](src/parser.rs) | Line-oriented `.zisk` parser → instruction AST. |
 | [`src/assembler.rs`](src/assembler.rs) | Two-pass assembler: AST → `ZiskRom`. |
 | [`bin/zisk2zisk.rs`](bin/zisk2zisk.rs) | Binary: `.zisk` → x86-64 NASM (the fast-emulator source), mirroring `riscv2zisk`. |
-| [`examples/doubler/`](examples/doubler/) | Worked example: `ziskos.zisk` (launcher) + `doubler.zisk` (program) + `input.bin`. |
-| [`tests/doubler.rs`](tests/doubler.rs) | End-to-end test: assemble the example, run it, assert output. |
+| [`examples/doubler/`](examples/doubler/) | Worked example: `ziskos.zisk` (explicit launcher) + `doubler.zisk` (program) + `input.bin`. |
+| [`examples/doubler-min/`](examples/doubler-min/) | Same program as a single `main:` file — the assembler synthesizes the launcher. |
+| [`tests/doubler.rs`](tests/doubler.rs) | End-to-end tests: assemble each example, run it, assert output. |
 
 ## How to run
 
@@ -63,45 +64,53 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
   expects. Source files may be given/collected in any order (a `-z <dir>` run
   sorts them by name), so this reordering is done automatically; the `_start`
   file must *begin* with the `_start` label.
+- **Automatic launcher**: if a program defines no `_start`, the assembler
+  synthesizes one around its entry label (`main`, else `_zisk_main`) — set gp/sp,
+  `call` the entry, `ret_to_bios` — mirroring `ziskos::_start`. So a program can be
+  just its own code plus a `main:` label (see `examples/doubler-min`).
 - **Instruction stride is fixed at 4 bytes** (the assembler owns addresses).
 - **Exit via a static jump to the BIOS** (the intended final model): the BIOS
   enters `_start` with the address of its output-finalization code in `r1` (a
   `call`), then reads `OUTPUT_ADDR` and ends once the program jumps back there.
-  The launcher must reach it with a **static** jump — `copyb(0, 0x101c), setpc(0)`
-  — *not* a dynamic `ret` through `r1`: the x86 assembly generator's dynamic-jump
-  fast path assumes high (`>= ROM_ADDR`) targets, so a `ret` to the low BIOS
-  address (`0x101c`) is unsupported. A static jump to a constant compiles to a
-  direct `jmp` and works for any address. (`0x101c` = `ROM_ENTRY + 0x1c`, the
-  instruction after the BIOS "CALL to entry".) Program-internal `ret`s are fine —
-  they target high addresses.
+  The launcher reaches it with the `ret_to_bios` pseudo-instruction — a **static**
+  jump to that address — *not* a dynamic `ret` through `r1`: the x86 generator's
+  dynamic-jump fast path assumes high (`>= ROM_ADDR`) targets, so a `ret` to the
+  low BIOS address is unsupported; a static jump to a constant compiles to a direct
+  `jmp` and works for any address. The assembler **derives** the BIOS address
+  (`next_init_inst_addr + 0x14`, the `:0014` block of `add_entry_exit_jmp`; = `0x101c`
+  in practice) rather than hard-coding it. Program-internal `ret`s are fine — they
+  target high addresses.
 - **`call`/`ret` follow the RISC-V convention** (return address in `r1`):
   `call LABEL` = `flag` op + `store_pc → r1` + `j(LABEL)`; `ret` =
   `and(0xfffffffffffffffe, r1)` + `setpc(0)`.
+- **Pseudo-instructions** (`ziskasm.md` → "Pseudo-instructions"): `call`, `ret`,
+  `jump(target)` (unconditional static jump to a label or absolute address), and
+  `ret_to_bios`.
 
 ## Status
 
 - Language spec (`ziskasm.md`): drafted, incl. sources/storage/jump/setpc/sp/end
   and the `call`/`ret` section.
 - Assembler (`ziskasm` crate): **done** — parses and builds a `ZiskRom`.
+- Pseudo-instructions: **done** — `call`, `ret`, `jump(target)`, `ret_to_bios`;
+  plus an automatic launcher synthesized from `main:` / `_zisk_main:`.
 - Emulator integration: **done** — `ziskemu -z <file|dir>`.
 - `zisk2zisk` binary: **done** — `.zisk` → x86-64 NASM, mirroring `riscv2zisk`
   (reuses `ZiskRom2Asm::save_to_asm_file`; `--gen=0/1/2/7`).
-- Verified: the `doubler` example runs end-to-end and outputs `[2,4,…,16]` for the
-  input `[1..8]`.
+- Verified: both `doubler` (explicit launcher) and `doubler-min` (auto launcher)
+  run end-to-end and output `[2,4,…,16]` for the input `[1..8]`, on the interpreted
+  and fast (x86) emulators.
 
 ## Roadmap / TODO
 
-- Parser gaps that currently error: the `sp` modifier and the `step` a-source.
+- Parser gap that currently errors: the `sp` modifier (the `step` a-source is
+  supported).
 - **Round-trip test** using the ROM→text decoder (`ZiskInst::to_zisk_asm`) as an
   oracle: assemble → decode → re-assemble.
 - Multi-file: `include`/`import` (currently: pass a file list or a directory) and a
   **calling convention** (which registers a callee must preserve).
 - Instruction-size convention: the spec still lists it as open; the assembler
   hard-codes `+4`. Pin it.
-- The BIOS finalization address (`0x101c`) is currently **hard-coded** in the
-  launcher. It is stable (fixed BIOS layout), but a `ret_to_bios` pseudo-op — or a
-  symbolic constant the assembler derives from `add_entry_exit_jmp` — would be less
-  fragile.
 - **Proving** fidelity (beyond emulation).
 - Deferred refactor: move `to_zisk_asm` (the decoder, currently in `zisk-core`)
   into `ziskasm`. Blocked earlier by a dependency cycle (`zisk-core` calls it from

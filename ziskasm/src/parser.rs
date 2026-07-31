@@ -26,6 +26,22 @@ pub enum Kind {
     Call(Target),
     /// `ret` pseudo-instruction.
     Ret,
+    /// `jump(target)` pseudo-instruction: an unconditional *static* jump to a
+    /// label or an absolute address (compiles to `copyb(0, addr), setpc(0)`).
+    Jump(JumpTarget),
+    /// `ret_to_bios` pseudo-instruction: a static jump to the BIOS
+    /// output-finalization address (which the assembler derives), returning
+    /// control to the BIOS so it reads the output and ends the program.
+    RetToBios,
+}
+
+/// Target of a `jump(...)`: a label, or an absolute numeric address. Unlike a
+/// `j(...)`/`call` [`Target`], a `jump` number is an absolute address, not a
+/// pc-relative offset.
+#[derive(Debug, Clone)]
+pub enum JumpTarget {
+    Addr(u64),
+    Label(String),
 }
 
 #[derive(Debug, Clone)]
@@ -178,10 +194,30 @@ fn parse_instruction(s: &str) -> Result<Kind, String> {
     if s == "ret" {
         return Ok(Kind::Ret);
     }
+    if s == "ret_to_bios" {
+        return Ok(Kind::RetToBios);
+    }
     if let Some(rest) = s.strip_prefix("call ") {
         return Ok(Kind::Call(parse_target(rest.trim())?));
     }
+    if let Some(inner) = strip_call(s, "jump") {
+        return Ok(Kind::Jump(parse_jump_target(inner.trim())?));
+    }
     parse_op(s).map(Kind::Op)
+}
+
+/// Parses a `jump(...)` target: a label, or an absolute numeric address.
+fn parse_jump_target(s: &str) -> Result<JumpTarget, String> {
+    if s.is_empty() {
+        return Err("empty jump target".into());
+    }
+    if s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+        Ok(JumpTarget::Addr(parse_u64(s)?))
+    } else if is_identifier(s) {
+        Ok(JumpTarget::Label(s.to_string()))
+    } else {
+        Err(format!("invalid jump target `{s}`"))
+    }
 }
 
 fn parse_op(s: &str) -> Result<Op, String> {

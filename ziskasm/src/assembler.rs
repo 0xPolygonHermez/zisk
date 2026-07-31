@@ -16,12 +16,21 @@ use std::path::Path;
 use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
 use zisk_core::zisk_rom::ZiskRom;
-use zisk_core::{ROM_ADDR, ROM_ENTRY};
+use zisk_core::{ROM_ADDR, ROM_ENTRY, SYS_ADDR};
 
-use crate::parser::{self, ASource, BSource, Control, Instruction, Kind, Op, Store, Target};
+use crate::parser::{
+    self, ASource, BSource, Control, Instruction, JumpTarget, Kind, Op, Store, Target,
+};
 
 /// Bytes between two consecutive program instructions (the `.zisk` convention).
 const INST_SIZE: i64 = 4;
+
+/// Offset from the start of the BIOS entry/exit block (`add_entry_exit_jmp`) to
+/// its output-finalization code (its `:0014` instruction — 5 instructions in).
+/// The BIOS "CALL to entry" leaves this address in `r1`; `ret_to_bios` jumps here
+/// so the BIOS reads `OUTPUT_ADDR` and ends. Kept in sync with `add_entry_exit_jmp`
+/// in `transpilers/riscv/src/riscv2zisk_context.rs`.
+const BIOS_FINALIZE_OFFSET: u64 = 0x14;
 
 /// RISC-V JALR target mask: clears bit 0 (2-byte instruction alignment). Used by
 /// `ret` and by any `setpc`-based indirect jump through a register.
@@ -46,6 +55,21 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
     if instructions.is_empty() {
         return Err("empty program: no instructions".into());
     }
+
+    // If the program has no explicit `_start`, synthesize a launcher around its
+    // entry label (`main` or `_zisk_main`): set gp/sp, `call` the entry, and
+    // `ret_to_bios`. This lets a program be just its own code plus a `main:` label,
+    // with no hand-written boot file.
+    let with_launcher: Vec<Instruction>;
+    let instructions: &[Instruction] = if has_label(instructions, "_start") {
+        instructions
+    } else {
+        let entry = program_entry(instructions)?;
+        let mut v = synth_launcher(entry)?;
+        v.extend_from_slice(instructions);
+        with_launcher = v;
+        &with_launcher
+    };
 
     // The entry point (`_start`) must be the program's first instruction, so it
     // lands at ROM_ADDR. This matches the ELF convention (the entry point is the
@@ -90,9 +114,15 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
     let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
     add_end_and_lib(&mut rom);
 
+    // After `add_end_and_lib`, `next_init_inst_addr` points at the start of the
+    // BIOS entry/exit block that `add_entry_exit_jmp` (called below) will emit, so
+    // we can derive the BIOS finalization address that `ret_to_bios` jumps to —
+    // no hard-coded constant.
+    let bios_finalize = rom.next_init_inst_addr + BIOS_FINALIZE_OFFSET;
+
     // Pass 2: encode each instruction at its address, resolving label targets.
     for (i, inst) in ordered.iter().enumerate() {
-        encode(&mut rom, addr_of(i), inst, &labels)?;
+        encode(&mut rom, addr_of(i), inst, &labels, bios_finalize)?;
     }
 
     // BIOS entry/exit: jumps to `entry`, leaving the return address (the output
@@ -101,6 +131,46 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
 
     rom.optimize_instruction_lookup().map_err(|e| e.to_string())?;
     Ok(rom)
+}
+
+/// Whether any instruction carries the given label.
+fn has_label(instructions: &[Instruction], label: &str) -> bool {
+    instructions.iter().any(|i| i.label.as_deref() == Some(label))
+}
+
+/// Finds the program entry label when there is no explicit `_start`.
+fn program_entry(instructions: &[Instruction]) -> Result<&'static str, String> {
+    ["main", "_zisk_main"]
+        .into_iter()
+        .find(|name| has_label(instructions, name))
+        .ok_or_else(|| "program has no `_start`, `main` or `_zisk_main` entry label".to_string())
+}
+
+/// Builds the launcher (`_start`) a program without an explicit `_start` gets
+/// automatically: set gp (r3) and sp (r2), `call` the entry, then `ret_to_bios`.
+/// Mirrors `ziskos::_start`.
+fn synth_launcher(entry: &str) -> Result<Vec<Instruction>, String> {
+    let src = format!(
+        "_start:\n\
+         \tcopyb(0, 0) -> r3\n\
+         \tcopyb(0, 0x{sys:x}) -> r2\n\
+         \tcall {entry}\n\
+         \tret_to_bios\n",
+        sys = SYS_ADDR,
+    );
+    parser::parse_program(&src, "<launcher>")
+}
+
+/// Emits an unconditional static jump to an absolute address: `copyb(0, addr)`
+/// puts the constant target in `c`, and `setpc(0)` sets the next pc to `c`.
+/// Because `c` is a constant, the x86 generator compiles this to a direct `jmp`,
+/// which works for any address (unlike a register-based dynamic jump).
+fn emit_static_jump(zib: &mut ZiskInstBuilder, addr: u64) {
+    zib.src_a("imm", 0, false);
+    zib.src_b("imm", addr, false);
+    zib.op("copyb").unwrap();
+    zib.set_pc();
+    zib.j(0, INST_SIZE);
 }
 
 /// Resolves a jump/call target to a pc-relative offset from the instruction at `pc`.
@@ -119,6 +189,7 @@ fn encode(
     pc: u64,
     inst: &Instruction,
     labels: &HashMap<&str, u64>,
+    bios_finalize: u64,
 ) -> Result<(), String> {
     let mut zib = ZiskInstBuilder::new(pc);
     let loc = || format!("{}:{}", inst.file, inst.line);
@@ -131,6 +202,22 @@ fn encode(
             zib.op("and").unwrap();
             zib.set_pc();
             zib.j(0, INST_SIZE);
+        }
+        Kind::Jump(target) => {
+            // jump(target) : unconditional static jump to an absolute address.
+            let addr = match target {
+                JumpTarget::Addr(a) => *a,
+                JumpTarget::Label(l) => *labels
+                    .get(l.as_str())
+                    .ok_or_else(|| format!("{}: undefined label `{l}`", loc()))?,
+            };
+            emit_static_jump(&mut zib, addr);
+        }
+        Kind::RetToBios => {
+            // ret_to_bios : static jump to the BIOS output-finalization address.
+            // A dynamic `ret` cannot be used: the x86 asm generator's dynamic-jump
+            // path assumes high (>= ROM_ADDR) targets, and this is a low address.
+            emit_static_jump(&mut zib, bios_finalize);
         }
         Kind::Call(target) => {
             // call LABEL == jal r1, LABEL : flag=1 forces the jump to jmp_offset1,
@@ -191,7 +278,7 @@ fn encode_a(zib: &mut ZiskInstBuilder, a: &ASource) -> Result<(), String> {
         ASource::Reg(n) => zib.src_a("reg", *n, false),
         ASource::Mem(n) => zib.src_a("mem", *n, false),
         ASource::Imm(n) => zib.src_a("imm", *n, false),
-        ASource::Step => return Err("`step` source is not supported yet".into()),
+        ASource::Step => zib.src_a("step", 0, false),
     }
     Ok(())
 }

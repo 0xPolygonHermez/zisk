@@ -34,12 +34,6 @@ define INIT_STACK_TOP  0xa0400000     ; _init_stack_top = ORIGIN(ram) + stack_si
 define GLOBAL_POINTER  0x00000000     ; _global_pointer: unused here (the linker
                                       ; fills it in a real program); set only to
                                       ; mirror the launcher faithfully
-define BIOS_FINALIZE   0x0000101c     ; BIOS output-finalization code: the fixed
-                                      ; return address (ROM_ENTRY + 0x1c, i.e. the
-                                      ; instruction after the BIOS "CALL to entry")
-                                      ; that the BIOS left in r1 when it entered
-                                      ; `_start`. We jump here statically (see the
-                                      ; note above on the dynamic-jump limitation).
 
 
 _start:
@@ -53,8 +47,8 @@ _start:
 	call _zisk_main
 
 	; Return to the BIOS, which reads the output from OUTPUT_ADDR and ends the
-	; program. This is a *static* jump to the fixed BIOS finalization address, not
-	; a `ret`: `ret` would jump dynamically through r1 to a low (< ROM_ADDR)
-	; address, which the x86 asm generator does not support. Loading the target as
-	; a constant makes `setpc` compile to a direct `jmp`.
-	copyb(0, BIOS_FINALIZE), setpc(0)     ; static jump -> BIOS output finalization
+	; program. `ret_to_bios` is a *static* jump to the BIOS finalization address
+	; (which the assembler derives), not a `ret`: a `ret` would jump dynamically
+	; through r1 to a low (< ROM_ADDR) address, which the x86 asm generator does
+	; not support.
+	ret_to_bios

@@ -200,9 +200,11 @@ The field `end` specifies that this is the last instruction of the program to be
 
 This field sets the field `end` of the ZiskInst instance to true.
 
-## Call and return
+## Pseudo-instructions
 
-These two pseudo-instructions provide function-call semantics equivalent to RISC-V, using register `r1` as the return-address register (the RISC-V `ra`).
+Pseudo-instructions are convenience mnemonics that the assembler expands into a single ZisK instruction.
+
+`call` and `ret` provide function-call semantics equivalent to RISC-V, using register `r1` as the return-address register (the RISC-V `ra`).
 
 ### call
 
@@ -235,24 +237,87 @@ and(0xfffffffffffffffe, r1), setpc(0)
 
 The `and` masks off bit 0 of `r1` (the RISC-V JALR target-alignment rule), producing the target address in the `c` register, and `setpc(0)` sets the next pc to `c`, i.e. to `r1 & ~1`.  No value is stored.  This is the equivalent of the RISC-V `ret` = `jalr r0, r1, 0`.
 
+### jump
+
+```
+jump(TARGET)
+```
+
+The `jump` pseudo-instruction performs an unconditional *static* jump to `TARGET`, which is either a label or an absolute address (a number).  Note that, unlike the `j(...)` field and `call`, a numeric `jump` target is an absolute address, not a pc-relative offset.
+
+It assembles to a single ZisK instruction equivalent to:
+
+```
+copyb(0, TARGET_ADDRESS), setpc(0)
+```
+
+i.e. it loads the target address as a constant into the `c` register and sets the next pc to `c`.  Because the target is a constant, the x86 assembly generator compiles it to a direct jump, which — unlike a register-based dynamic jump such as `ret` — works for any address, including low (`< ROM_ADDR`) BIOS addresses.
+
+### ret_to_bios
+
+```
+ret_to_bios
+```
+
+The `ret_to_bios` pseudo-instruction returns control to the ZisK BIOS finalization code, which reads the program output from `OUTPUT_ADDR` and ends the program.  The BIOS entered the program (its `_start`) leaving this return address in `r1`, so `ret_to_bios` jumps there.
+
+It assembles to a static `jump` to the BIOS finalization address, which the assembler derives from the BIOS layout (it is not hard-coded).  A dynamic `ret` cannot be used here: the return address is a low (`< ROM_ADDR`) address, and the x86 assembly generator's dynamic-jump path assumes high addresses.
+
+## Program entry and automatic launcher
+
+The program entry point is the `_start` label, which the assembler places at `ROM_ADDR` (the ELF convention that the entry point is the program base).  Source files may be supplied in any order — a `-z <dir>` run collects them sorted by name — and the assembler moves the file that defines `_start` first.
+
+If a program does not define `_start`, the assembler synthesizes a launcher automatically around the program's entry label — `main`, or otherwise `_zisk_main` — mirroring `ziskos::_start`:
+
+```
+_start:
+    copyb(0, 0) -> r3            ; gp = _global_pointer
+    copyb(0, 0xa0400000) -> r2   ; sp = _init_stack_top (SYS_ADDR)
+    call main                    ; or _zisk_main
+    ret_to_bios
+```
+
+This lets a program be just its own code plus a `main:` label, with no hand-written boot file.  Compare `examples/doubler` (explicit launcher in `ziskos.zisk`) with `examples/doubler-min` (automatic launcher).
+
 <!--
 
 TODO:
 
-Logical instruction size (bits between 2 consecutive addresses)
-Constant values (definitions)
-Constant data
-Variable data
+Logical instruction size:
+    bits between 2 consecutive addresses
+    currently 32 bits = 4 bytes
+    RISC-V uses ROM_SIZE (128M) / 4 = 32M instructions -> we could expand it to 128M instructions
+
+Constant values (definitions) -> done: define my_definition my_value
+Constant data (stored in ROM_ADDR and above, after the code, aligned to 8 bytes) -> const u64 name initial_value
+Variable data (stored in GENERAL_RAM_ADDR and above, aligned to 8 bytes) -> u64 name initial_value
+
 Calling convention: which registers a callee must preserve across a call (ideally, only those it uses)
-How to identify main label (e.g. “main:”)
-Tabs
+
 How to split code between different files:
-imports or includes of other files
-external functions and data
-”Makefile” with a list of files to compile…
+    imports or includes of other files
+    external functions and data
+    ”Makefile” with a list of files to compile…
+    currently: -z file.zisk, or -z folder -> folder/*.zisk
+
 How to integrate BIOS code, e.g. how to do syscall
 How to call read_input / write_output / simply access the input/output memory address
 How to call precompiles
+
 Hints / pragmas
+
+CLI integration: be able to generate a proof
+
+Diagnostic:
+    Call all ZisK instructions with 8-10 pairs of values each
+    Call precompiles
+    Use ROM constants and RAM variables
+    Use one file.zisk per group of instructions, or per precompile
+
+Alias instructions:
+    DONE: call, ret (using r1 as ra)
+    DONE: jump(constant_address) and jump(label) -- unconditional static jump
+    DONE: ret_to_bios -- static jump to the BIOS finalization (assembler-derived address)
+    DONE: automatic launcher synthesized from `main:` / `_zisk_main:` (no hand-written ziskos.zisk)
 
 -->
