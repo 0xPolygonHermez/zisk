@@ -23,8 +23,8 @@ main:
 \tret
 ";
 
-    let insts = parse_program(src, "step_test").expect("parse should succeed");
-    let rom = assemble(&insts).expect("assembly should succeed");
+    let program = parse_program(src, "step_test").expect("parse should succeed");
+    let rom = assemble(&program).expect("assembly should succeed");
 
     let input: Vec<u8> = Vec::new();
     let out = ZiskEmulator::process_rom(&rom, &input, &EmuOptions::default(), None::<fn(EmuTrace)>)

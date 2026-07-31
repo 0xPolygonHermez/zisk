@@ -7,6 +7,15 @@
 
 use std::collections::HashMap;
 
+/// A parsed program: the instruction stream plus its data declarations. Both are
+/// concatenated across source files; symbols (labels and data names) are resolved
+/// globally by the assembler, so declaration order does not matter.
+#[derive(Debug, Clone, Default)]
+pub struct Program {
+    pub instructions: Vec<Instruction>,
+    pub data: Vec<DataDecl>,
+}
+
 /// A parsed instruction, with the label that precedes it (if any) and the
 /// original source text (used as the ZisK instruction `verbose` comment).
 #[derive(Debug, Clone)]
@@ -16,6 +25,62 @@ pub struct Instruction {
     pub verbose: String,
     pub file: String,
     pub line: usize,
+}
+
+/// A `[const] TYPE NAME[SIZE] [= values]` data declaration. `const` data lives in
+/// ROM (read-only), non-`const` data in RAM. Every element occupies one 8-byte
+/// slot regardless of `ty` (the width only range-checks the initial values).
+#[derive(Debug, Clone)]
+pub struct DataDecl {
+    pub name: String,
+    pub ty: DataType,
+    pub is_const: bool,
+    /// Number of 8-byte slots (>= 1). A scalar is a 1-element array.
+    pub count: usize,
+    /// Initial values, one per slot; `len() <= count`, remaining slots are zero.
+    pub values: Vec<u64>,
+    pub file: String,
+    pub line: usize,
+}
+
+/// Declared width of a data element. Every element is stored in one 8-byte slot;
+/// the type only bounds the initial values (and documents intent).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataType {
+    U8,
+    U16,
+    U32,
+    U64,
+}
+
+impl DataType {
+    /// The inclusive maximum initial value this type accepts.
+    pub fn max_value(self) -> u64 {
+        match self {
+            DataType::U8 => u8::MAX as u64,
+            DataType::U16 => u16::MAX as u64,
+            DataType::U32 => u32::MAX as u64,
+            DataType::U64 => u64::MAX,
+        }
+    }
+
+    fn from_keyword(s: &str) -> Option<DataType> {
+        match s {
+            "u8" => Some(DataType::U8),
+            "u16" => Some(DataType::U16),
+            "u32" => Some(DataType::U32),
+            "u64" => Some(DataType::U64),
+            _ => None,
+        }
+    }
+}
+
+/// A number operand that is either a literal or a symbol (a label or data name)
+/// resolved to its address by the assembler.
+#[derive(Debug, Clone)]
+pub enum Num {
+    Lit(u64),
+    Sym(String),
 }
 
 #[derive(Debug, Clone)]
@@ -59,8 +124,8 @@ pub struct Op {
 pub enum ASource {
     C,
     Reg(u64),
-    Mem(u64),
-    Imm(u64),
+    Mem(Num),
+    Imm(Num),
     Step,
 }
 
@@ -69,15 +134,15 @@ pub enum ASource {
 pub enum BSource {
     C,
     Reg(u64),
-    Mem(u64),
-    Imm(u64),
+    Mem(Num),
+    Imm(Num),
     Ind { width: u64, offset: i64 },
 }
 
 #[derive(Debug, Clone)]
 pub enum Store {
     Reg(u64),
-    Mem(u64),
+    Mem(Num),
     Ind { width: u64, offset: i64 },
 }
 
@@ -99,11 +164,11 @@ pub enum Target {
     Label(String),
 }
 
-/// Parses one `.zisk` source file into a list of instructions.
-pub fn parse_program(src: &str, file: &str) -> Result<Vec<Instruction>, String> {
+/// Parses one `.zisk` source file into a [`Program`] (instructions + data).
+pub fn parse_program(src: &str, file: &str) -> Result<Program, String> {
     let mut defs: HashMap<String, String> = HashMap::new();
     let mut pending_label: Option<String> = None;
-    let mut out = Vec::new();
+    let mut program = Program::default();
 
     for (idx, raw) in src.lines().enumerate() {
         let line = idx + 1;
@@ -119,6 +184,19 @@ pub fn parse_program(src: &str, file: &str) -> Result<Vec<Instruction>, String> 
             let name = it.next().ok_or_else(|| err(file, line, "define without identifier"))?;
             let value = it.next().ok_or_else(|| err(file, line, "define without value"))?;
             defs.insert(name.to_string(), value.to_string());
+            continue;
+        }
+
+        // Data declaration: `[const] TYPE NAME[SIZE] [= values]`. Detected by the
+        // first token being `const` or a type keyword (no operation is so named).
+        if is_data_decl(code) {
+            if pending_label.is_some() {
+                return Err(err(file, line, "a label cannot precede a data declaration"));
+            }
+            let substituted = substitute(code, &defs);
+            let decl = parse_data_decl(&substituted, file, line)
+                .map_err(|e| err(file, line, &format!("{e} (in `{code}`)")))?;
+            program.data.push(decl);
             continue;
         }
 
@@ -140,13 +218,99 @@ pub fn parse_program(src: &str, file: &str) -> Result<Vec<Instruction>, String> 
         let substituted = substitute(code, &defs);
         let kind = parse_instruction(&substituted)
             .map_err(|e| err(file, line, &format!("{e} (in `{code}`)")))?;
-        out.push(Instruction { label: pending_label.take(), kind, verbose, file: file.to_string(), line });
+        program.instructions.push(Instruction {
+            label: pending_label.take(),
+            kind,
+            verbose,
+            file: file.to_string(),
+            line,
+        });
     }
 
     if let Some(l) = pending_label {
         return Err(format!("{file}: label `{l}:` at end of file has no instruction"));
     }
-    Ok(out)
+    Ok(program)
+}
+
+/// Whether a (comment-stripped, trimmed) line is a data declaration: its first
+/// whitespace-delimited token is `const` or a type keyword. No operation name
+/// collides with these, and instructions have no space before their `(`.
+fn is_data_decl(code: &str) -> bool {
+    let first = code.split_whitespace().next().unwrap_or("");
+    first == "const" || DataType::from_keyword(first).is_some()
+}
+
+/// Parses `[const] TYPE NAME[SIZE] [= v0, v1, ...]`.
+fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, String> {
+    let mut rest = code.trim();
+    let is_const = match rest.strip_prefix("const ") {
+        Some(r) => {
+            rest = r.trim_start();
+            true
+        }
+        None => false,
+    };
+
+    // TYPE NAME[SIZE] [= values]
+    let (type_kw, after_type) =
+        rest.split_once(char::is_whitespace).ok_or("data declaration missing a name")?;
+    let ty = DataType::from_keyword(type_kw)
+        .ok_or_else(|| format!("unknown data type `{type_kw}`"))?;
+
+    let (head, values_str) = match after_type.split_once('=') {
+        Some((h, v)) => (h.trim(), Some(v.trim())),
+        None => (after_type.trim(), None),
+    };
+
+    // head is `NAME` or `NAME[SIZE]`.
+    let (name, explicit_size) = match head.find('[') {
+        Some(open) => {
+            if !head.ends_with(']') {
+                return Err(format!("malformed array size in `{head}`"));
+            }
+            let name = head[..open].trim();
+            let size = parse_u64(head[open + 1..head.len() - 1].trim())? as usize;
+            (name, Some(size))
+        }
+        None => (head, None),
+    };
+    if !is_identifier(name) {
+        return Err(format!("invalid data name `{name}`"));
+    }
+
+    let mut values = Vec::new();
+    if let Some(v) = values_str {
+        if !v.is_empty() {
+            for part in v.split(',') {
+                let val = parse_u64(part.trim())?;
+                if val > ty.max_value() {
+                    return Err(format!("value {val} does not fit in {type_kw}"));
+                }
+                values.push(val);
+            }
+        }
+    }
+
+    let count = match explicit_size {
+        Some(size) => {
+            if values.len() > size {
+                return Err(format!(
+                    "{} initializers for `{name}` of size {size}",
+                    values.len()
+                ));
+            }
+            size
+        }
+        // No `[SIZE]`: a value list defines an array of that length; otherwise a
+        // scalar (one slot).
+        None => values.len().max(1),
+    };
+    if count == 0 {
+        return Err(format!("`{name}` has size 0; arrays need at least one element"));
+    }
+
+    Ok(DataDecl { name: name.to_string(), ty, is_const, count, values, file: file.to_string(), line })
 }
 
 fn err(file: &str, line: usize, msg: &str) -> String {
@@ -303,7 +467,7 @@ fn parse_a_source(s: &str) -> Result<ASource, String> {
         _ if is_reg(s) => ASource::Reg(parse_reg(s)?),
         _ if s.starts_with('[') => ASource::Mem(parse_mem(s)?),
         _ if is_ind(s) => return Err("`a` source cannot be an indirect (`W[a + N]`) operand".into()),
-        _ => ASource::Imm(parse_u64(s)?),
+        _ => ASource::Imm(parse_num(s)?),
     })
 }
 
@@ -317,7 +481,7 @@ fn parse_b_source(s: &str) -> Result<BSource, String> {
             let (width, offset) = parse_ind(s)?;
             BSource::Ind { width, offset }
         }
-        _ => BSource::Imm(parse_u64(s)?),
+        _ => BSource::Imm(parse_num(s)?),
     })
 }
 
@@ -331,6 +495,20 @@ fn parse_store(s: &str) -> Result<Store, String> {
         }
         _ => return Err(format!("invalid storage `{s}`")),
     })
+}
+
+/// Parses a number operand: a literal (decimal / `0x` hex) or a symbol (a label
+/// or data name), resolved to its address by the assembler.
+fn parse_num(s: &str) -> Result<Num, String> {
+    let s = s.trim();
+    if s.is_empty() {
+        return Err("empty operand".into());
+    }
+    if is_identifier(s) {
+        Ok(Num::Sym(s.to_string()))
+    } else {
+        Ok(Num::Lit(parse_u64(s)?))
+    }
 }
 
 fn parse_target(s: &str) -> Result<Target, String> {
@@ -353,13 +531,13 @@ fn parse_reg(s: &str) -> Result<u64, String> {
     s[1..].parse::<u64>().map_err(|_| format!("invalid register `{s}`"))
 }
 
-/// Parses a `[N]` memory operand (absolute address).
-fn parse_mem(s: &str) -> Result<u64, String> {
+/// Parses a `[N]` memory operand (absolute address: a literal or a symbol).
+fn parse_mem(s: &str) -> Result<Num, String> {
     let inner = s
         .strip_prefix('[')
         .and_then(|x| x.strip_suffix(']'))
         .ok_or_else(|| format!("malformed memory operand `{s}`"))?;
-    parse_u64(inner.trim())
+    parse_num(inner.trim())
 }
 
 /// `W[a ± N]` — a width digit immediately followed by `[a ...]`.

@@ -36,6 +36,8 @@ This is an example:
 
 Numbers are specified as integer numbers, either in decimal, or in hexadecimal with the `0x` prefix.  When specified in hexadecimal, both lower-case and upper-case are allowed to be used in the alphanumeric digits.
 
+Wherever a number is expected as an immediate source (`N`), a memory address (`[N]`), or a jump target, an identifier naming a **symbol** — a label or a data declaration (see [Data declarations](#data-declarations)) — may be used instead.  The assembler resolves the symbol to its address.  For example, `copyb(0, counter) -> r5` loads the *address* of the data symbol `counter`, and `[counter]` reads its *value*.
+
 ## Register format
 
 In some cases a general-purpose register is used to load or to store data.
@@ -89,6 +91,55 @@ TEXT_IDENTIFIER:
 The `TEXT_IDENTIFIER` field must start with a letter, and must be unique in the context of the ZisK assembly program.
 
 The label can be used in order to jump to that instruction from another instruction.
+
+## Data declarations
+
+A data declaration reserves initialized storage and binds a name (a symbol) to its address.  Like labels, data symbols are resolved globally by the assembler, so a declaration may appear anywhere in the program (before or after its uses) and in any file.  A data declaration is written at the beginning of the line (not indented), like a definition or a label.
+
+The generic format is:
+
+```
+[const] TYPE NAME[SIZE] = value0, value1, ...
+```
+
+where:
+
+- `const` (optional): if present, the data is **read-only** and is stored in ROM, right after the program code.  If absent, the data is **read-write** and is stored in RAM (starting at `GENERAL_RAM_ADDR`; see mem.rs).
+- `TYPE`: one of `u8`, `u16`, `u32` or `u64`.  Every element occupies **one 8-byte slot** regardless of the type; the type only range-checks the initial values (and documents intent).  A value that does not fit in `TYPE` is an error.
+- `NAME`: the symbol bound to the address of the data.  It must be a valid identifier and unique across all labels and data names.
+- `[SIZE]` (optional): the number of elements (an array).  If omitted, the declaration is a scalar (one element), unless a value list longer than one is given, in which case `SIZE` is inferred from the list.
+- `= value0, value1, ...` (optional): the initial values, one per element.  If fewer values than `SIZE` are given, the remaining elements are zero.  If no values are given, all elements are zero.
+
+All elements are 8-byte aligned (each occupies an 8-byte slot).  Initial values must be literal numbers.
+
+Examples:
+
+```
+const u64 MAGIC = 0xdeadbeef        ; scalar constant in ROM
+const u64 TABLE[4] = 10, 20, 30, 40 ; array constant in ROM
+const u32 PRIMES = 2, 3, 5, 7, 11   ; array of 5 (size inferred) in ROM
+u64 counter = 0                     ; scalar variable in RAM
+u64 buffer[64]                      ; zero-initialized array in RAM
+```
+
+### Using data symbols
+
+A data symbol resolves to the **address** of its storage (like a label).  So:
+
+- `NAME` used as an immediate or address operand is the **address** of the data (a pointer to element 0).
+- `[NAME]` reads or writes the **value** of element 0 (an 8-byte memory access at `NAME`).
+- To access array element `i`, load the base address into a register (`copyb(0, NAME) -> rP`) and use an indirect operand (`W[a + N]`) with that register as the base (the same pattern the doubler example uses for the input and output arrays).
+
+Example (summing a constant array into a RAM accumulator):
+
+```
+const u64 TABLE[4] = 10, 20, 30, 40
+u64 acc = 0
+    copyb(0, TABLE) -> r10       ; r10 = address of TABLE (a pointer)
+    copyb(0, [acc]) -> r7        ; r7 = value of acc (0)
+    copyb(r10, 8[a + 0]) -> r8   ; r8 = TABLE[0]
+    add(r7, r8) -> r7            ; acc += TABLE[0]
+```
 
 ## Instruction format
 
@@ -289,8 +340,9 @@ Logical instruction size:
     RISC-V uses ROM_SIZE (128M) / 4 = 32M instructions -> we could expand it to 128M instructions
 
 Constant values (definitions) -> done: define my_definition my_value
-Constant data (stored in ROM_ADDR and above, after the code, aligned to 8 bytes) -> const u64 name initial_value
-Variable data (stored in GENERAL_RAM_ADDR and above, aligned to 8 bytes) -> u64 name initial_value
+DONE: Constant data in ROM (after the code, 8-byte aligned) -> const u64 name = value, arrays too
+DONE: Variable data in RAM (GENERAL_RAM_ADDR, 8-byte aligned) -> u64 name = value, arrays too
+DONE: symbolic operands -- a label or data name resolves to its address in immediate/[mem] positions
 
 Calling convention: which registers a callee must preserve across a call (ideally, only those it uses)
 

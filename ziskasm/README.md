@@ -15,7 +15,8 @@ to be kept current as the feature evolves.
 | [`bin/zisk2zisk.rs`](bin/zisk2zisk.rs) | Binary: `.zisk` → x86-64 NASM (the fast-emulator source), mirroring `riscv2zisk`. |
 | [`examples/doubler/`](examples/doubler/) | Worked example: `ziskos.zisk` (explicit launcher) + `doubler.zisk` (program) + `input.bin`. |
 | [`examples/doubler-min/`](examples/doubler-min/) | Same program as a single `main:` file — the assembler synthesizes the launcher. |
-| [`tests/doubler.rs`](tests/doubler.rs) | End-to-end tests: assemble each example, run it, assert output. |
+| [`examples/sum/`](examples/sum/) | Data declarations: sums a `const` ROM array into a RAM accumulator. |
+| [`tests/`](tests/) | End-to-end tests (`doubler`, `step`, `data`): assemble, run, assert output. |
 
 ## How to run
 
@@ -69,6 +70,16 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
   `call` the entry, `ret_to_bios` — mirroring `ziskos::_start`. So a program can be
   just its own code plus a `main:` label (see `examples/doubler-min`).
 - **Instruction stride is fixed at 4 bytes** (the assembler owns addresses).
+- **Data declarations**: `const TYPE NAME[SIZE] = …` → `ro_data_64` in the ROM
+  region right after the code (read-only); `TYPE NAME[SIZE] = …` (no `const`) →
+  `rw_data_64` at `GENERAL_RAM_ADDR` (read-write). `TYPE` ∈ `u8|u16|u32|u64` is a
+  range-check only — **every element is one 8-byte slot** (the native
+  `DataSection64 = Vec<u64>` granularity). Both emulators initialize memory from
+  these sections. Sections are 8-byte aligned; the 32-byte alignment the RISC-V
+  transpiler applies is *not* required for emulation (verified on both emulators).
+- **Symbolic operands**: a `Num` operand is a literal *or* a symbol (label or data
+  name) resolved at assemble time. `NAME` = the symbol's address; `[NAME]` = the
+  value at it. Array elements use a register base + indirect `W[a + N]`.
 - **Exit via a static jump to the BIOS** (the intended final model): the BIOS
   enters `_start` with the address of its output-finalization code in `r1` (a
   `call`), then reads `OUTPUT_ADDR` and ends once the program jumps back there.
@@ -94,6 +105,8 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
 - Assembler (`ziskasm` crate): **done** — parses and builds a `ZiskRom`.
 - Pseudo-instructions: **done** — `call`, `ret`, `jump(target)`, `ret_to_bios`;
   plus an automatic launcher synthesized from `main:` / `_zisk_main:`.
+- Data declarations: **done** — `const`/RAM, `u8..u64`, scalars + arrays, with
+  symbolic operands (`NAME` = address, `[NAME]` = value). `step` a-source: done.
 - Emulator integration: **done** — `ziskemu -z <file|dir>`.
 - `zisk2zisk` binary: **done** — `.zisk` → x86-64 NASM, mirroring `riscv2zisk`
   (reuses `ZiskRom2Asm::save_to_asm_file`; `--gen=0/1/2/7`).

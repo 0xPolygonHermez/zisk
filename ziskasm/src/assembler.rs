@@ -15,11 +15,12 @@ use std::path::Path;
 
 use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
 use zisk_core::zisk_inst_builder::ZiskInstBuilder;
-use zisk_core::zisk_rom::ZiskRom;
-use zisk_core::{ROM_ADDR, ROM_ENTRY, SYS_ADDR};
+use zisk_core::zisk_rom::{DataSection64, ZiskRom};
+use zisk_core::{GENERAL_RAM_ADDR, ROM_ADDR, ROM_ENTRY, SYS_ADDR};
 
 use crate::parser::{
-    self, ASource, BSource, Control, Instruction, JumpTarget, Kind, Op, Store, Target,
+    self, ASource, BSource, Control, DataDecl, Instruction, JumpTarget, Kind, Num, Op, Program,
+    Store, Target,
 };
 
 /// Bytes between two consecutive program instructions (the `.zisk` convention).
@@ -37,22 +38,25 @@ const BIOS_FINALIZE_OFFSET: u64 = 0x14;
 const JALR_MASK: u64 = 0xffff_ffff_ffff_fffe;
 
 /// Reads and assembles the given `.zisk` source files (in order) into a `ZiskRom`.
-/// The first file must contain the `_start` entry label (typically `ziskos.zisk`).
+/// The first file must contain the `_start` entry label (typically `ziskos.zisk`),
+/// unless the program instead defines `main` / `_zisk_main` (auto-launcher).
 pub fn assemble_files<P: AsRef<Path>>(paths: &[P]) -> Result<ZiskRom, String> {
-    let mut instructions = Vec::new();
+    let mut program = Program::default();
     for path in paths {
         let path = path.as_ref();
         let name = path.to_string_lossy().to_string();
         let src = std::fs::read_to_string(path)
             .map_err(|e| format!("cannot read `{name}`: {e}"))?;
-        instructions.extend(parser::parse_program(&src, &name)?);
+        let parsed = parser::parse_program(&src, &name)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
     }
-    assemble(&instructions)
+    assemble(&program)
 }
 
-/// Assembles an already-parsed program into a `ZiskRom`.
-pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
-    if instructions.is_empty() {
+/// Assembles an already-parsed program (instructions + data) into a `ZiskRom`.
+pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
+    if program.instructions.is_empty() {
         return Err("empty program: no instructions".into());
     }
 
@@ -61,12 +65,12 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
     // `ret_to_bios`. This lets a program be just its own code plus a `main:` label,
     // with no hand-written boot file.
     let with_launcher: Vec<Instruction>;
-    let instructions: &[Instruction] = if has_label(instructions, "_start") {
-        instructions
+    let instructions: &[Instruction] = if has_label(&program.instructions, "_start") {
+        &program.instructions
     } else {
-        let entry = program_entry(instructions)?;
+        let entry = program_entry(&program.instructions)?;
         let mut v = synth_launcher(entry)?;
-        v.extend_from_slice(instructions);
+        v.extend_from_slice(&program.instructions);
         with_launcher = v;
         &with_launcher
     };
@@ -94,19 +98,32 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
         ));
     }
 
-    // Pass 1: assign a ROM address to every instruction and collect labels.
     let addr_of = |i: usize| (ROM_ADDR as i64 + INST_SIZE * i as i64) as u64;
-    let mut labels: HashMap<&str, u64> = HashMap::new();
+
+    // Lay out data: `const` goes in ROM right after the code (8-byte aligned),
+    // non-`const` in RAM at GENERAL_RAM_ADDR. This yields the initialized sections
+    // and each data symbol's address.
+    let rom_data_base = align8(addr_of(ordered.len()));
+    let (ro_section, rw_section, data_syms) = layout_data(&program.data, rom_data_base);
+
+    // Symbol table: labels (code addresses) + data names. Used to resolve jump
+    // targets and symbolic operands. Names must be unique across both.
+    let mut symbols: HashMap<&str, u64> = HashMap::new();
     for (i, inst) in ordered.iter().enumerate() {
         if let Some(label) = &inst.label {
-            if labels.insert(label.as_str(), addr_of(i)).is_some() {
-                return Err(format!("duplicate label `{label}`"));
+            if symbols.insert(label.as_str(), addr_of(i)).is_some() {
+                return Err(format!("duplicate symbol `{label}`"));
             }
+        }
+    }
+    for &(name, addr) in &data_syms {
+        if symbols.insert(name, addr).is_some() {
+            return Err(format!("duplicate symbol `{name}`"));
         }
     }
 
     // `_start` is now instruction 0, i.e. ROM_ADDR.
-    let entry = *labels
+    let entry = *symbols
         .get("_start")
         .ok_or("missing `_start` label: the program has no entry point")?;
 
@@ -120,9 +137,13 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
     // no hard-coded constant.
     let bios_finalize = rom.next_init_inst_addr + BIOS_FINALIZE_OFFSET;
 
-    // Pass 2: encode each instruction at its address, resolving label targets.
+    // Initialized data sections (read by the emulator at startup).
+    rom.ro_data_64.extend(ro_section);
+    rom.rw_data_64.extend(rw_section);
+
+    // Pass 2: encode each instruction at its address, resolving symbols.
     for (i, inst) in ordered.iter().enumerate() {
-        encode(&mut rom, addr_of(i), inst, &labels, bios_finalize)?;
+        encode(&mut rom, addr_of(i), inst, &symbols, bios_finalize)?;
     }
 
     // BIOS entry/exit: jumps to `entry`, leaving the return address (the output
@@ -131,6 +152,35 @@ pub fn assemble(instructions: &[Instruction]) -> Result<ZiskRom, String> {
 
     rom.optimize_instruction_lookup().map_err(|e| e.to_string())?;
     Ok(rom)
+}
+
+/// Rounds an address up to the next multiple of 8.
+fn align8(addr: u64) -> u64 {
+    (addr + 7) & !7
+}
+
+/// Lays out the `const` (ROM, at `rom_data_base`) and non-`const` (RAM, at
+/// `GENERAL_RAM_ADDR`) data declarations, packing each element into one 8-byte
+/// slot in declaration order. Returns the two initialized sections (if non-empty)
+/// and each symbol's address.
+fn layout_data(
+    data: &[DataDecl],
+    rom_data_base: u64,
+) -> (Option<DataSection64>, Option<DataSection64>, Vec<(&str, u64)>) {
+    let mut ro: Vec<u64> = Vec::new();
+    let mut rw: Vec<u64> = Vec::new();
+    let mut syms: Vec<(&str, u64)> = Vec::new();
+    for d in data {
+        let base = if d.is_const { rom_data_base } else { GENERAL_RAM_ADDR };
+        let buf = if d.is_const { &mut ro } else { &mut rw };
+        syms.push((d.name.as_str(), base + buf.len() as u64 * 8));
+        for k in 0..d.count {
+            buf.push(d.values.get(k).copied().unwrap_or(0));
+        }
+    }
+    let ro_section = (!ro.is_empty()).then(|| DataSection64 { addr: rom_data_base, data: ro });
+    let rw_section = (!rw.is_empty()).then(|| DataSection64 { addr: GENERAL_RAM_ADDR, data: rw });
+    (ro_section, rw_section, syms)
 }
 
 /// Whether any instruction carries the given label.
@@ -158,7 +208,7 @@ fn synth_launcher(entry: &str) -> Result<Vec<Instruction>, String> {
          \tret_to_bios\n",
         sys = SYS_ADDR,
     );
-    parser::parse_program(&src, "<launcher>")
+    Ok(parser::parse_program(&src, "<launcher>")?.instructions)
 }
 
 /// Emits an unconditional static jump to an absolute address: `copyb(0, addr)`
@@ -174,12 +224,23 @@ fn emit_static_jump(zib: &mut ZiskInstBuilder, addr: u64) {
 }
 
 /// Resolves a jump/call target to a pc-relative offset from the instruction at `pc`.
-fn resolve(target: &Target, pc: u64, labels: &HashMap<&str, u64>) -> Result<i64, String> {
+fn resolve(target: &Target, pc: u64, symbols: &HashMap<&str, u64>) -> Result<i64, String> {
     match target {
         Target::Offset(o) => Ok(*o),
         Target::Label(l) => {
-            let dst = *labels.get(l.as_str()).ok_or_else(|| format!("undefined label `{l}`"))?;
+            let dst = *symbols.get(l.as_str()).ok_or_else(|| format!("undefined label `{l}`"))?;
             Ok(dst as i64 - pc as i64)
+        }
+    }
+}
+
+/// Resolves a number operand to its `u64` value: a literal as-is, a symbol to its
+/// address.
+fn resolve_num(n: &Num, symbols: &HashMap<&str, u64>) -> Result<u64, String> {
+    match n {
+        Num::Lit(v) => Ok(*v),
+        Num::Sym(name) => {
+            symbols.get(name.as_str()).copied().ok_or_else(|| format!("undefined symbol `{name}`"))
         }
     }
 }
@@ -188,7 +249,7 @@ fn encode(
     rom: &mut ZiskRom,
     pc: u64,
     inst: &Instruction,
-    labels: &HashMap<&str, u64>,
+    symbols: &HashMap<&str, u64>,
     bios_finalize: u64,
 ) -> Result<(), String> {
     let mut zib = ZiskInstBuilder::new(pc);
@@ -207,7 +268,7 @@ fn encode(
             // jump(target) : unconditional static jump to an absolute address.
             let addr = match target {
                 JumpTarget::Addr(a) => *a,
-                JumpTarget::Label(l) => *labels
+                JumpTarget::Label(l) => *symbols
                     .get(l.as_str())
                     .ok_or_else(|| format!("{}: undefined label `{l}`", loc()))?,
             };
@@ -222,14 +283,16 @@ fn encode(
         Kind::Call(target) => {
             // call LABEL == jal r1, LABEL : flag=1 forces the jump to jmp_offset1,
             // and store_pc writes the return address (pc + jmp_offset2) into r1.
-            let off = resolve(target, pc, labels).map_err(|e| format!("{}: {e}", loc()))?;
+            let off = resolve(target, pc, symbols).map_err(|e| format!("{}: {e}", loc()))?;
             zib.src_a("imm", 0, false);
             zib.src_b("imm", 0, false);
             zib.op("flag").unwrap();
             zib.store_pc("reg", 1, false);
             zib.j(off, INST_SIZE);
         }
-        Kind::Op(op) => encode_op(&mut zib, pc, op, labels).map_err(|e| format!("{}: {e}", loc()))?,
+        Kind::Op(op) => {
+            encode_op(&mut zib, pc, op, symbols).map_err(|e| format!("{}: {e}", loc()))?
+        }
     }
 
     zib.verbose(&inst.verbose);
@@ -241,21 +304,21 @@ fn encode_op(
     zib: &mut ZiskInstBuilder,
     pc: u64,
     op: &Op,
-    labels: &HashMap<&str, u64>,
+    symbols: &HashMap<&str, u64>,
 ) -> Result<(), String> {
-    encode_a(zib, &op.a)?;
-    encode_b(zib, &op.b)?;
+    encode_a(zib, &op.a, symbols)?;
+    encode_b(zib, &op.b, symbols)?;
     zib.op(&op.op).map_err(|_| format!("unknown operation `{}`", op.op))?;
     if let Some(store) = &op.store {
-        encode_store(zib, store);
+        encode_store(zib, store, symbols)?;
     }
 
     match &op.control {
         Control::Fallthrough => zib.j(INST_SIZE, INST_SIZE),
         Control::Jump(j1, j2) => {
-            let o1 = resolve(j1, pc, labels)?;
+            let o1 = resolve(j1, pc, symbols)?;
             let o2 = match j2 {
-                Some(t) => resolve(t, pc, labels)?,
+                Some(t) => resolve(t, pc, symbols)?,
                 None => INST_SIZE, // omitted jump2 == the next instruction
             };
             zib.j(o1, o2);
@@ -272,23 +335,23 @@ fn encode_op(
     Ok(())
 }
 
-fn encode_a(zib: &mut ZiskInstBuilder, a: &ASource) -> Result<(), String> {
+fn encode_a(zib: &mut ZiskInstBuilder, a: &ASource, symbols: &HashMap<&str, u64>) -> Result<(), String> {
     match a {
         ASource::C => zib.src_a("lastc", 0, false),
         ASource::Reg(n) => zib.src_a("reg", *n, false),
-        ASource::Mem(n) => zib.src_a("mem", *n, false),
-        ASource::Imm(n) => zib.src_a("imm", *n, false),
+        ASource::Mem(n) => zib.src_a("mem", resolve_num(n, symbols)?, false),
+        ASource::Imm(n) => zib.src_a("imm", resolve_num(n, symbols)?, false),
         ASource::Step => zib.src_a("step", 0, false),
     }
     Ok(())
 }
 
-fn encode_b(zib: &mut ZiskInstBuilder, b: &BSource) -> Result<(), String> {
+fn encode_b(zib: &mut ZiskInstBuilder, b: &BSource, symbols: &HashMap<&str, u64>) -> Result<(), String> {
     match b {
         BSource::C => zib.src_b("lastc", 0, false),
         BSource::Reg(n) => zib.src_b("reg", *n, false),
-        BSource::Mem(n) => zib.src_b("mem", *n, false),
-        BSource::Imm(n) => zib.src_b("imm", *n, false),
+        BSource::Mem(n) => zib.src_b("mem", resolve_num(n, symbols)?, false),
+        BSource::Imm(n) => zib.src_b("imm", resolve_num(n, symbols)?, false),
         BSource::Ind { width, offset } => {
             zib.ind_width(*width);
             zib.src_b("ind", *offset as u64, false);
@@ -297,13 +360,18 @@ fn encode_b(zib: &mut ZiskInstBuilder, b: &BSource) -> Result<(), String> {
     Ok(())
 }
 
-fn encode_store(zib: &mut ZiskInstBuilder, store: &Store) {
+fn encode_store(
+    zib: &mut ZiskInstBuilder,
+    store: &Store,
+    symbols: &HashMap<&str, u64>,
+) -> Result<(), String> {
     match store {
         Store::Reg(n) => zib.store("reg", *n as i64, false, false),
-        Store::Mem(n) => zib.store("mem", *n as i64, false, false),
+        Store::Mem(n) => zib.store("mem", resolve_num(n, symbols)? as i64, false, false),
         Store::Ind { width, offset } => {
             zib.ind_width(*width);
             zib.store("ind", *offset, false, false);
         }
     }
+    Ok(())
 }
