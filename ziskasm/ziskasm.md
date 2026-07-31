@@ -80,6 +80,28 @@ Example:
 define RAM_MEM 0x9000000
 ```
 
+## Conditional compilation
+
+Parts of a program can be included or excluded at assembly time with directives written at the beginning of the line (not indented), like definitions:
+
+```
+ifdef NAME
+    ; ... assembled only if NAME is defined ...
+else
+    ; ... assembled only if NAME is not defined ...
+endif
+
+ifndef NAME
+    ; ... assembled only if NAME is not defined ...
+endif
+```
+
+`else` is optional, and `ifdef`/`ifndef` blocks may be nested.  A symbol `NAME` is considered *defined* if it was introduced with `define NAME ...` earlier in the program, or if it was predefined externally by the assembler (see below).
+
+The assembler predefines a symbol to select the build target:
+
+- **`ASM`** is defined when assembling for the x86 assembly generator (the `zisk2zisk` tool); it is not defined for the Rust emulator (`ziskemu -z`).  Some ZisK ops exist only in the Rust emulator and are not emitted by the x86 generator (the Zba/Zbc/Zbkx/Zicond ops: `sh*add`, `add_u_w`, `sll_u_w`, `clmul*`, `xperm*`, `czero_*`).  A program that uses them should guard them with `ifndef ASM` so the x86 build excludes them.  The diagnostic program does exactly this.
+
 ## Label format
 
 A label is used to assign a text identifier to the program address of the next instruction.  This is the generic label format:

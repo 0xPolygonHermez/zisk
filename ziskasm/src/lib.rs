@@ -8,5 +8,5 @@ pub mod assembler;
 pub mod parser;
 pub mod utils;
 
-pub use assembler::{assemble, assemble_files};
+pub use assembler::{assemble, assemble_files, assemble_files_with_defines};
 pub use utils::collect_zisk_files;

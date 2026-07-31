@@ -10,7 +10,7 @@
 //! Input memory is populated by the emulator; the program reads it and writes its
 //! output to `OUTPUT_ADDR`, which the BIOS finalization reads back on return.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
@@ -41,13 +41,25 @@ const JALR_MASK: u64 = 0xffff_ffff_ffff_fffe;
 /// The first file must contain the `_start` entry label (typically `ziskos.zisk`),
 /// unless the program instead defines `main` / `_zisk_main` (auto-launcher).
 pub fn assemble_files<P: AsRef<Path>>(paths: &[P]) -> Result<ZiskRom, String> {
+    assemble_files_with_defines(paths, &[])
+}
+
+/// Like [`assemble_files`], but with a set of externally predefined symbols that
+/// the source can test with `ifdef`/`ifndef`. For example, passing `["ASM"]`
+/// selects the x86-assembly target so a program can exclude ops that generator
+/// cannot emit.
+pub fn assemble_files_with_defines<P: AsRef<Path>>(
+    paths: &[P],
+    defines: &[&str],
+) -> Result<ZiskRom, String> {
+    let predefined: HashSet<String> = defines.iter().map(|s| s.to_string()).collect();
     let mut program = Program::default();
     for path in paths {
         let path = path.as_ref();
         let name = path.to_string_lossy().to_string();
         let src = std::fs::read_to_string(path)
             .map_err(|e| format!("cannot read `{name}`: {e}"))?;
-        let parsed = parser::parse_program(&src, &name)?;
+        let parsed = parser::parse_program_with_defines(&src, &name, &predefined)?;
         program.instructions.extend(parsed.instructions);
         program.data.extend(parsed.data);
     }

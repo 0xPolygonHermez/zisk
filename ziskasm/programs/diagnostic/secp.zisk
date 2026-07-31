@@ -1,0 +1,142 @@
+;
+; secp.zisk - diagnostic for the ZisK secp256k1 / secp256r1 curve precompiles.
+;   secp256k1_add secp256k1_dbl secp256r1_add secp256r1_dbl
+; add: b -> [&P1,&P2] (8 u64 each = point x||y, LE limbs), result overwrites P1.
+; dbl: b -> P1 (8 u64, flat), permuted in place.
+; Inputs/outputs are the arith_eq test vectors (index 0); the library computed
+; the expected results. First mismatch returns 0x24CC.
+;
+
+u64 K1A_P1 =
+	0x59f2815b16f81798, 0x029bfcdb2dce28d9, 0x55a06295ce870b07, 0x79be667ef9dcbbac,
+	0x9c47d08ffb10d4b8, 0xfd17b448a6855419, 0x5da4fbfc0e1108a8, 0x483ada7726a3c465
+
+const u64 K1A_P2 =
+	0xabac09b95c709ee5, 0x5c778e4b8cef3ca7, 0x3045406e95c07cd8, 0xc6047f9441ed7d6d,
+	0x236431a950cfe52a, 0xf7f632653266d0e1, 0xa3c58419466ceaee, 0x1ae168fea63dc339
+
+u64 K1A_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 K1A_EXP =
+	0x8601f113bce036f9, 0xb531c845836f99b0, 0x49344f85f89d5229, 0xf9308a019258c310,
+	0x6cb9fd7584b8e672, 0x6500a99934c2231b, 0x0fe337e62a37f356, 0x388f7b0f632de814
+
+u64 K1D_BUF =
+	0x2f057a1460297556, 0x82f6472f8568a18b, 0x20453a14355235d3, 0xfff97bd5755eeea4,
+	0x3c870c36b075f297, 0xde80f0f6518fe4a0, 0xf3be96017f45c560, 0xae12777aacfbb620
+
+const u64 K1D_EXP =
+	0xc5b0f47070afe85a, 0x687cf4419620095b, 0x15c38f004d734633, 0xd01115d548e7561b,
+	0x6b051b13f4062327, 0x79238c5dd9a86d52, 0xa8b64537e17bd815, 0xa9f34ffdc815e0d7
+
+u64 R1A_P1 =
+	0x29f68f756a3827a0, 0x0ba7df09d36853f0, 0x5c8562869c4c0fb4, 0x27193b771e1cde5c,
+	0x2ef1960045452fe3, 0xa638d06d0d174449, 0xf92c3d4e94af10fc, 0xcbc5108ea2f892a8
+
+const u64 R1A_P2 =
+	0x5c11b150d2d06a34, 0x638fa5212b1c0ad4, 0x3ac31b2c71c6615b, 0xa391c31f150a5df0,
+	0x5874813f67f55b29, 0x0ebb8b718523a207, 0x375eb505c1c9b7a3, 0x37c21b657e76819b
+
+u64 R1A_HDR =
+	0x0000000000000000, 0x0000000000000000
+
+const u64 R1A_EXP =
+	0x95a653b1a8fc30da, 0xf90366b5e1189f28, 0x69e04acad5ee17fd, 0xf7fea2960a443e71,
+	0xda84f54473855e42, 0x936cdc186f163cbe, 0x2b7a3d484f7336c7, 0x547e48052be6f6c5
+
+u64 R1D_BUF =
+	0x8c55e6201219d8a2, 0x767c388036505c43, 0xecae37d735219b0a, 0x3d2fc64146325bab,
+	0x67c4e22b6235c353, 0xcce4258c9112d0cc, 0xeb7d35f5e73186a3, 0x10413913ca7056d5
+
+const u64 R1D_EXP =
+	0x9283d948f249ec73, 0x4596a30f9a42c2ed, 0x4d400232d6b60c0c, 0xaebd8fa976cae936,
+	0x18422d6bbc067494, 0x8f9067e4d0a01448, 0x4edc7fa2326f8fec, 0x090407465a993908
+
+secp:
+	; secp256k1_add
+	copyb(0, K1A_HDR) -> r8
+	copyb(0, K1A_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, K1A_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	secp256k1_add(0, r8) -> r13
+	copyb(0, K1A_P1) -> r7
+	copyb(0, K1A_EXP) -> r5
+	copyb(0, 8) -> r6
+K1A_loop:
+	eq(r6, 0), j(K1A_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(K1A_next)
+	copyb(0, 0x2401) -> r10
+	ret
+K1A_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(K1A_loop)
+K1A_ok:
+	; secp256k1_dbl
+	copyb(0, K1D_BUF) -> r8
+	secp256k1_dbl(0, r8) -> r13
+	copyb(0, K1D_BUF) -> r7
+	copyb(0, K1D_EXP) -> r5
+	copyb(0, 8) -> r6
+K1D_loop:
+	eq(r6, 0), j(K1D_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(K1D_next)
+	copyb(0, 0x2402) -> r10
+	ret
+K1D_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(K1D_loop)
+K1D_ok:
+	; secp256r1_add
+	copyb(0, R1A_HDR) -> r8
+	copyb(0, R1A_P1) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, R1A_P2) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+	secp256r1_add(0, r8) -> r13
+	copyb(0, R1A_P1) -> r7
+	copyb(0, R1A_EXP) -> r5
+	copyb(0, 8) -> r6
+R1A_loop:
+	eq(r6, 0), j(R1A_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(R1A_next)
+	copyb(0, 0x2403) -> r10
+	ret
+R1A_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(R1A_loop)
+R1A_ok:
+	; secp256r1_dbl
+	copyb(0, R1D_BUF) -> r8
+	secp256r1_dbl(0, r8) -> r13
+	copyb(0, R1D_BUF) -> r7
+	copyb(0, R1D_EXP) -> r5
+	copyb(0, 8) -> r6
+R1D_loop:
+	eq(r6, 0), j(R1D_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(R1D_next)
+	copyb(0, 0x2404) -> r10
+	ret
+R1D_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(R1D_loop)
+R1D_ok:
+	copyb(0, 0) -> r10
+	ret

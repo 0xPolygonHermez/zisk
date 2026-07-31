@@ -16,6 +16,8 @@
 ; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 exp  r13 res.
 ; ============================================================================
 
+ifndef ASM   ; excluded on the x86 asm target (op unsupported there); see ziskasm.md
+
 define ROWS      10
 define ROW_BYTES 80      ; 10 u64 columns * 8 bytes
 
@@ -97,3 +99,5 @@ sx_next:
 sx_ok:
 	copyb(0, 0) -> r10
 	ret
+
+endif

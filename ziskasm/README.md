@@ -97,6 +97,11 @@ instructions come from the `.zisk` parser instead of the RISC-V transpiler:
 - **Pseudo-instructions** (`ziskasm.md` → "Pseudo-instructions"): `call`, `ret`,
   `jump(target)` (unconditional static jump to a label or absolute address), and
   `ret_to_bios`.
+- **Conditional compilation**: `ifdef`/`ifndef`/`else`/`endif` directives include
+  or exclude source at assemble time based on `define`d or externally predefined
+  symbols. `zisk2zisk` predefines **`ASM`** (the x86-asm target), so a program can
+  `ifndef ASM` out ops the x86 generator can't emit (Zba/Zbc/Zbkx/Zicond). Pass
+  extra symbols via `assemble_files_with_defines`.
 
 ## Status
 

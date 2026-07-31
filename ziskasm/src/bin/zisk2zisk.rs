@@ -2,7 +2,7 @@
 //! assembly file (the fast-emulator source), mirroring `riscv2zisk` but taking
 //! `.zisk` input instead of a RISC-V ELF.
 
-use ziskasm::{assemble_files, collect_zisk_files};
+use ziskasm::{assemble_files_with_defines, collect_zisk_files};
 use zisk_core::{AsmGenerationMethod, ZiskRom2Asm};
 
 use std::{env, path::Path, process};
@@ -52,8 +52,10 @@ fn main() {
         process::exit(1);
     });
 
-    // Assemble the .zisk source into a ZiskRom
-    let rom = assemble_files(&zisk_files).unwrap_or_else(|e| {
+    // Assemble the .zisk source into a ZiskRom. Since this always targets the
+    // x86 assembly generator, define `ASM` so a program can `ifndef ASM` out any
+    // ops the generator cannot emit (e.g. the Zba/Zbc/Zbkx/Zicond ops).
+    let rom = assemble_files_with_defines(&zisk_files, &["ASM"]).unwrap_or_else(|e| {
         eprintln!("Error assembling .zisk source: {e}");
         process::exit(1);
     });

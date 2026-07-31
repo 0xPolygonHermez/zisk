@@ -46,6 +46,7 @@ main:
 	ltu(0, r10), j(_report)
 	call pack                       ; 0x0bxx
 	ltu(0, r10), j(_report)
+ifndef ASM   ; these ops are unsupported by the x86 asm generator (Zba/Zbc/Zbkx/Zicond)
 	call shxadd                     ; 0x0cxx
 	ltu(0, r10), j(_report)
 	call clmul                      ; 0x0dxx
@@ -54,6 +55,7 @@ main:
 	ltu(0, r10), j(_report)
 	call czero                      ; 0x0fxx
 	ltu(0, r10), j(_report)
+endif
 	call mul                        ; 0x10xx
 	ltu(0, r10), j(_report)
 	call divrem                     ; 0x11xx
@@ -65,6 +67,14 @@ main:
 	call poseidon2                  ; 0x22xx (precompile)
 	ltu(0, r10), j(_report)
 	call blake2                     ; 0x23xx (precompile)
+	ltu(0, r10), j(_report)
+	call secp                       ; 0x24xx (precompile)
+	ltu(0, r10), j(_report)
+	call bn254                      ; 0x25xx (precompile)
+	ltu(0, r10), j(_report)
+	call bigint                     ; 0x26xx (precompile)
+	ltu(0, r10), j(_report)
+	call bls12_381                  ; 0x27xx (precompile)
 	ltu(0, r10), j(_report)
 	; --- add more tests here ---
 	;   call <next_test>

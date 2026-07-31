@@ -5,7 +5,7 @@
 //! flat list of [`Instruction`]s (labels attached to the instruction they
 //! precede); [`crate::assembler`] turns that into a `ZiskRom`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// A parsed program: the instruction stream plus its data declarations. Both are
 /// concatenated across source files; symbols (labels and data names) are resolved
@@ -164,11 +164,61 @@ pub enum Target {
     Label(String),
 }
 
+/// One level of `ifdef`/`ifndef`/`else`/`endif` conditional compilation.
+struct CondFrame {
+    /// Whether lines at this level are currently included.
+    active: bool,
+    /// Whether any branch of this conditional has already been taken (for `else`).
+    taken: bool,
+    /// Whether the enclosing level was active when this one opened.
+    parent_active: bool,
+}
+
+/// Handles a conditional-compilation directive line (`ifdef`/`ifndef`/`else`/`endif`).
+fn handle_cond(
+    code: &str,
+    cond: &mut Vec<CondFrame>,
+    defs: &HashMap<String, String>,
+    predefined: &HashSet<String>,
+) -> Result<(), String> {
+    let parent_active = cond.last().map_or(true, |f| f.active);
+    let is_defined = |name: &str| defs.contains_key(name) || predefined.contains(name);
+    if let Some(name) = code.strip_prefix("ifdef ") {
+        let taken = parent_active && is_defined(name.trim());
+        cond.push(CondFrame { active: taken, taken, parent_active });
+    } else if let Some(name) = code.strip_prefix("ifndef ") {
+        let taken = parent_active && !is_defined(name.trim());
+        cond.push(CondFrame { active: taken, taken, parent_active });
+    } else if code == "else" {
+        let f = cond.last_mut().ok_or("`else` without matching `ifdef`")?;
+        f.active = f.parent_active && !f.taken;
+        f.taken = true;
+    } else if code == "endif" {
+        cond.pop().ok_or("`endif` without matching `ifdef`")?;
+    } else {
+        return Err(format!("malformed conditional directive `{code}`"));
+    }
+    Ok(())
+}
+
 /// Parses one `.zisk` source file into a [`Program`] (instructions + data).
 pub fn parse_program(src: &str, file: &str) -> Result<Program, String> {
+    parse_program_with_defines(src, file, &HashSet::new())
+}
+
+/// Like [`parse_program`], but with a set of externally predefined symbols that
+/// `ifdef`/`ifndef` can test (in addition to source-level `define`s). Used to
+/// select a build target: e.g. the `ASM` symbol lets a program exclude ops that
+/// the x86 assembly generator cannot emit.
+pub fn parse_program_with_defines(
+    src: &str,
+    file: &str,
+    predefined: &HashSet<String>,
+) -> Result<Program, String> {
     let mut defs: HashMap<String, String> = HashMap::new();
     let mut pending_label: Option<String> = None;
     let mut program = Program::default();
+    let mut cond: Vec<CondFrame> = Vec::new();
 
     let lines: Vec<&str> = src.lines().collect();
     let mut idx = 0;
@@ -178,6 +228,19 @@ pub fn parse_program(src: &str, file: &str) -> Result<Program, String> {
         let code = lines[idx].split(';').next().unwrap_or("").trim();
         idx += 1;
         if code.is_empty() {
+            continue;
+        }
+
+        // Conditional-compilation directive. Handled even inside an inactive
+        // branch so that nesting (ifdef/endif pairing) is tracked correctly.
+        let first = code.split_whitespace().next().unwrap_or("");
+        if matches!(first, "ifdef" | "ifndef" | "else" | "endif") {
+            handle_cond(code, &mut cond, &defs, predefined).map_err(|e| err(file, line, &e))?;
+            continue;
+        }
+
+        // Skip everything else while inside an inactive conditional branch.
+        if cond.last().is_some_and(|f| !f.active) {
             continue;
         }
 
@@ -242,6 +305,9 @@ pub fn parse_program(src: &str, file: &str) -> Result<Program, String> {
         });
     }
 
+    if !cond.is_empty() {
+        return Err(format!("{file}: unterminated `ifdef`/`ifndef` (missing `endif`)"));
+    }
     if let Some(l) = pending_label {
         return Err(format!("{file}: label `{l}:` at end of file has no instruction"));
     }
