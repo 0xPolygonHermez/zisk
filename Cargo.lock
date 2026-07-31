@@ -621,7 +621,7 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
 name = "asm-runner"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "libc",
@@ -1098,7 +1098,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-zisk"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1262,7 +1262,7 @@ dependencies = [
 
 [[package]]
 name = "circuit"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 
 [[package]]
 name = "clang-sys"
@@ -1786,7 +1786,7 @@ dependencies = [
 
 [[package]]
 name = "data-bus"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "zisk-common",
 ]
@@ -2165,7 +2165,7 @@ dependencies = [
 
 [[package]]
 name = "executor"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -2361,7 +2361,7 @@ dependencies = [
 
 [[package]]
 name = "frops-analyzer"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "clap",
  "rayon",
@@ -3093,7 +3093,7 @@ dependencies = [
 
 [[package]]
 name = "integration-tests"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "serial_test",
@@ -3306,11 +3306,11 @@ dependencies = [
 
 [[package]]
 name = "lib-c"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 
 [[package]]
 name = "lib-float"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 
 [[package]]
 name = "libc"
@@ -3472,7 +3472,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
 name = "mem-common"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "clap",
  "fields",
@@ -3485,7 +3485,7 @@ dependencies = [
 
 [[package]]
 name = "mem-planner-cpp"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "mem-common",
  "proofman-common",
@@ -4236,7 +4236,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
@@ -4268,7 +4268,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-arith-eq-384"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-ff 0.5.0",
@@ -4295,7 +4295,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-big-int"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "lib-c",
@@ -4313,7 +4313,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-blake2"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -4330,7 +4330,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-dma"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -4347,7 +4347,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-keccakf"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "circuit",
  "fields",
@@ -4368,7 +4368,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-poseidon"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -4385,7 +4385,7 @@ dependencies = [
 
 [[package]]
 name = "precomp-sha256f"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -4402,7 +4402,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-common"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "mem-common",
@@ -4413,7 +4413,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-helpers"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -4430,7 +4430,7 @@ dependencies = [
 
 [[package]]
 name = "precompiles-hints"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "borsh",
@@ -5054,7 +5054,7 @@ dependencies = [
 
 [[package]]
 name = "recurser"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -5217,7 +5217,7 @@ dependencies = [
 
 [[package]]
 name = "riscv"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "lib-float",
  "zisk-core",
@@ -5226,7 +5226,7 @@ dependencies = [
 
 [[package]]
 name = "riscv2zisk"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "lib-float",
  "transpilers-common",
@@ -5258,7 +5258,7 @@ dependencies = [
 
 [[package]]
 name = "rom-setup"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -5983,7 +5983,7 @@ dependencies = [
 
 [[package]]
 name = "sm-arith"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -5999,7 +5999,7 @@ dependencies = [
 
 [[package]]
 name = "sm-binary"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "pil-std-lib",
@@ -6015,7 +6015,7 @@ dependencies = [
 
 [[package]]
 name = "sm-frequent-ops"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "clap",
  "fields",
@@ -6026,7 +6026,7 @@ dependencies = [
 
 [[package]]
 name = "sm-main"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "mem-common",
@@ -6043,7 +6043,7 @@ dependencies = [
 
 [[package]]
 name = "sm-mem"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "env",
  "fields",
@@ -6060,7 +6060,7 @@ dependencies = [
 
 [[package]]
 name = "sm-rom"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "asm-runner",
  "fields",
@@ -6881,7 +6881,7 @@ dependencies = [
 
 [[package]]
 name = "transpilers-common"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "elf",
  "lib-float",
@@ -7779,7 +7779,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-build"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "blake3",
@@ -7795,7 +7795,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-cluster-api"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "prost 0.14.4",
  "prost-types 0.14.4",
@@ -7824,7 +7824,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-common"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "alloy-sol-types",
  "bincode",
@@ -7850,7 +7850,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -7881,7 +7881,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator-api"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "chrono",
@@ -7896,7 +7896,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator-client"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7911,7 +7911,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-coordinator-server"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -7944,7 +7944,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-core"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "elf",
  "fields",
@@ -7961,11 +7961,11 @@ dependencies = [
 
 [[package]]
 name = "zisk-definitions"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 
 [[package]]
 name = "zisk-pil"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "fields",
  "proofman-common",
@@ -7976,7 +7976,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-program-macros"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "blake3",
  "proc-macro-crate",
@@ -7987,7 +7987,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-prove-client"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "clap",
@@ -8001,7 +8001,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-prover-backend"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "alloy-sol-types",
  "anyhow",
@@ -8031,7 +8031,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-sdk"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "bincode",
  "fields",
@@ -8057,7 +8057,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-stream"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "libc",
  "quinn",
@@ -8070,14 +8070,14 @@ dependencies = [
 
 [[package]]
 name = "zisk-verifier"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "proofman-verifier",
 ]
 
 [[package]]
 name = "zisk-worker"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "asm-runner",
@@ -8113,7 +8113,7 @@ dependencies = [
 
 [[package]]
 name = "ziskclib"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "sha2",
  "tiny-keccak",
@@ -8121,7 +8121,7 @@ dependencies = [
 
 [[package]]
 name = "ziskemu"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "clap",
  "criterion 0.5.1",
@@ -8152,7 +8152,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -8196,7 +8196,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos-hints"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "anyhow",
  "bincode",
@@ -8222,7 +8222,7 @@ dependencies = [
 
 [[package]]
 name = "ziskos-staticlib"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "ziskos",
  "zkvm-interface",
@@ -8230,7 +8230,7 @@ dependencies = [
 
 [[package]]
 name = "zkvm-interface"
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 dependencies = [
  "bindgen",
 ]
