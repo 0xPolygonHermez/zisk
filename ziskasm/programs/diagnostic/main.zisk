@@ -92,6 +92,10 @@ endif
 	ltu(0, r10), j(_report)
 	call dma                        ; 0x2fxx (DMA: memcpy/memcmp/memset/inputcpy)
 	ltu(0, r10), j(_report)
+	call flag                       ; 0x30xx (internal: flag)
+	ltu(0, r10), j(_report)
+	call poseidon1                  ; 0x31xx (precompile)
+	ltu(0, r10), j(_report)
 	; --- add more tests here ---
 	;   call <next_test>
 	;   ltu(0, r10), j(_report)
