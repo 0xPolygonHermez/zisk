@@ -356,15 +356,10 @@ This lets a program be just its own code plus a `main:` label, with no hand-writ
 
 TODO:
 
-Logical instruction size:
+[Optimization] Logical instruction size:
     bits between 2 consecutive addresses
     currently 32 bits = 4 bytes
     RISC-V uses ROM_SIZE (128M) / 4 = 32M instructions -> we could expand it to 128M instructions
-
-Constant values (definitions) -> done: define my_definition my_value
-DONE: Constant data in ROM (after the code, 8-byte aligned) -> const u64 name = value, arrays too
-DONE: Variable data in RAM (GENERAL_RAM_ADDR, 8-byte aligned) -> u64 name = value, arrays too
-DONE: symbolic operands -- a label or data name resolves to its address in immediate/[mem] positions
 
 Calling convention: which registers a callee must preserve across a call (ideally, only those it uses)
 
@@ -375,23 +370,11 @@ How to split code between different files:
     currently: -z file.zisk, or -z folder -> folder/*.zisk
 
 How to integrate BIOS code, e.g. how to do syscall
-How to call read_input / write_output / simply access the input/output memory address
-How to call precompiles
+
+How to call read_input / write_output / simply access the input/output memory addresses
 
 Hints / pragmas
 
 CLI integration: be able to generate a proof
-
-Diagnostic:
-    Call all ZisK instructions with 8-10 pairs of values each
-    Call precompiles
-    Use ROM constants and RAM variables
-    Use one file.zisk per group of instructions, or per precompile
-
-Alias instructions:
-    DONE: call, ret (using r1 as ra)
-    DONE: jump(constant_address) and jump(label) -- unconditional static jump
-    DONE: ret_to_bios -- static jump to the BIOS finalization (assembler-derived address)
-    DONE: automatic launcher synthesized from `main:` / `_zisk_main:` (no hand-written ziskos.zisk)
 
 -->
