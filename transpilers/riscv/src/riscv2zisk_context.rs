@@ -96,7 +96,7 @@ impl<'a> Riscv2ZiskContext<'a> {
     }
     fn notify_deprecated(&mut self, msg: &str) {
         if !self.deprecated {
-            // self.deprecated = true;
+            self.deprecated = true;
             println!("*** DEPRECATED INSTRUCTION: {}. Please update toolchain/zisklibs/ziskos and recompile your code. ***", msg);
         }
     }
@@ -983,7 +983,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.op(op).unwrap();
         zib.store("reg", rd as i64, false, false);
         let jmp_offset = next_pc as i64 - i.rom_address as i64;
-        zib.j(extended_arg, jmp_offset as i64);
+        zib.j(extended_arg, jmp_offset);
         zib.verbose(&format!(
             "{} r{}, r{}, r{} (precompiled {op} r{rd},r{rs1},r{rs2},{extended_arg} + jmp +{jmp_offset})",
             i.inst_name,
@@ -994,8 +994,9 @@ impl<'a> Riscv2ZiskContext<'a> {
         zib.build(self.rom);
     }
 
-    /// Creates a Zisk precompile call with 3 params, how 3rd param isn't an immediate, it's necessary
-    /// add previous instruccion to set EXTRA_PARAMS_ADDR
+    /// Creates a Zisk precompile call with 3 params; since the 3rd param isn't an immediate, it's necessary to
+    /// add the previous instruction to set EXTRA_PARAMS_ADDR
+    #[allow(clippy::too_many_arguments)]
     pub fn create_precompiles_triple_param_op(
         &mut self,
         i: &RiscvInst,

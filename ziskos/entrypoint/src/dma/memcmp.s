@@ -6,8 +6,8 @@
         .p2align        4
         .type   memcmp,@function
 memcmp:
-        csrrs   a0,0x814, a1  # Marker: Write count (a2) to CSR 0x814
-        add	x0,a0,a2        
+        csrrs   a0,0x814, a1  # DMA memcmp: result -> a0, src -> a1
+        add	x0,a0,a2      # Marker: dst (a0), count (a2)       
         ret
                
         .size memcmp, .-memcmp
