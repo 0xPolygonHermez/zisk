@@ -65,6 +65,7 @@ airgroup Zisk {
     set_range_check_tables_virtual();
     set_max_bits_virtual_tables(21);
     set_num_virtual_tables(2);
+    set_group_virtual_tables([ARITH_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, BINARY_EXTENSION_FROPS_TABLE_ID]);
 
     // Main Program
     Main(N: 2**22);

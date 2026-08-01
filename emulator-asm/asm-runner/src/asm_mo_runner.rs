@@ -168,12 +168,15 @@ impl Drop for MOShmemReader {
 pub struct AsmRunnerMO {
     /// The generated plans from the MO trace.
     pub plans: Vec<Plan>,
+    /// Bytes of the proofman-owned GPU buffer consumed by the GPU mem-ops
+    /// planner; `None` on the CPU planner path.
+    pub gpu_mops_used_bytes: Option<u64>,
 }
 
 impl AsmRunnerMO {
-    /// Creates a new `AsmRunnerMO` with the given plans.
+    /// Creates a new `AsmRunnerMO` with the given plans (no GPU planner usage).
     pub fn new(plans: Vec<Plan>) -> Self {
-        Self { plans }
+        Self { plans, gpu_mops_used_bytes: None }
     }
 
     /// Runs the assembly code in a separate process, collects the MO trace, and generates plans.
@@ -380,6 +383,12 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         timer_stop_and_log_info!(GPU_MOPS_TIME);
 
+        #[cfg(gpu)]
+        let gpu_mops_used_bytes: Option<u64> =
+            gpu_count_and_plan_opt.as_ref().map(|gcp| gcp.max_used_bytes() as u64);
+        #[cfg(not(gpu))]
+        let gpu_mops_used_bytes: Option<u64> = None;
+
         // owner: join CPU workers; no-op in GPU mode (null-guarded)
         mem_planner.wait();
 
@@ -471,6 +480,6 @@ impl AsmRunnerMO {
         save_plans(&plans, "mem_plans_cpp.txt");
 
         stats_end!(_stats, &_runner_scope);
-        Ok(AsmRunnerMO::new(plans))
+        Ok(AsmRunnerMO { plans, gpu_mops_used_bytes })
     }
 }
