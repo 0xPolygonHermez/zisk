@@ -1032,7 +1032,8 @@ impl<'a> Riscv2ZiskContext<'a> {
             zib.op(op).unwrap();
             zib.store("reg", rd as i64, false, false);
             let jump_address = next_pc as i64 - internal_address_1 as i64;
-            zib.j(jump_address, jump_address);
+            // jmp_offset1 is set to 0 because the it's precompiled and it's used as extended param
+            zib.j(0, jump_address);
             zib.verbose(&format!("{} r{}, r{}, r{} 2/2", op, rd, rs1, rs2));
             zib.build(self.rom);
         }
