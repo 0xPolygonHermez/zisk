@@ -2533,7 +2533,7 @@ impl<'a> Riscv2ZiskContext<'a> {
                     //
                     //  i:  csrs  0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM] ─┐
                     //                                           [internal_pc]  memcxx rd, reg(dst), reg(src) ─┐
-                    //  n0: addi   rd, reg(dst), reg(count)       add   rd, reg(dst), reg(count)               │ jmp
+                    //  n0: add   rd, reg(dst), reg(count)       add   rd, reg(dst), reg(count)                │ jmp
                     //  n1: ..........                           ..........   <────────────────────────────────┘ next[1]
                     self.notify_deprecated(&format!(
                         "{op} transpilation pattern on pc 0x{:08x}",
@@ -2586,7 +2586,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as memcpy/memcmp with a \
-                        consecutive addi (next[0]:{})",
+                        consecutive add/i (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
@@ -2639,7 +2639,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as inputcpy with a \
-                        consecutive addi (next[0]:{})",
+                        consecutive add/i (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
