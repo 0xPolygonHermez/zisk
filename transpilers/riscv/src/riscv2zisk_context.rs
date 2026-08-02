@@ -97,7 +97,7 @@ impl<'a> Riscv2ZiskContext<'a> {
     fn notify_deprecated(&mut self, msg: &str) {
         if !self.deprecated {
             self.deprecated = true;
-            println!("*** DEPRECATED INSTRUCTION: {}. Please update toolchain/zisklibs/ziskos and recompile your code. ***", msg);
+            eprintln!("*** DEPRECATED INSTRUCTION: {}. Please update toolchain/zisklibs/ziskos and recompile your code. ***", msg);
         }
     }
     /// Converts an input RISCV instruction into a ZisK instruction and stores it into the internal
@@ -2529,7 +2529,6 @@ impl<'a> Riscv2ZiskContext<'a> {
                     return;
                 } else {
                     // DEPRECATED: memcpy/memcmp transpilation pattern:
-                    // memcpy/memcmp transpilation pattern:
                     //
                     //  i:  csrs  0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM] ─┐
                     //                                           [internal_pc]  memcxx rd, reg(dst), reg(src) ─┐
@@ -2565,7 +2564,6 @@ impl<'a> Riscv2ZiskContext<'a> {
                     return;
                 } else {
                     // DEPRECATED: memcpy/memcmp transpilation pattern:
-                    // memcpy/memcmp transpilation pattern:
                     //
                     //  csrs  0x81x, reg(src)          ===>  memcxx rd, reg(dst), reg(src), count ─┐
                     //  addi  rd, reg(dst), count            addi rd, reg(dst), count              │ jmp+8
@@ -2586,7 +2584,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as memcpy/memcmp with a \
-                        consecutive add/i (next[0]:{})",
+                        consecutive add/addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
@@ -2639,7 +2637,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as inputcpy with a \
-                        consecutive add/i (next[0]:{})",
+                        consecutive add/addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
