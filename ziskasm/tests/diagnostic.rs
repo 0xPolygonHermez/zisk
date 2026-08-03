@@ -15,8 +15,7 @@ fn diag_dir() -> PathBuf {
 #[test]
 fn diagnostic_reports_success() {
     // Assemble every .zisk file in the diagnostic directory (like `ziskemu -z`).
-    let files = collect_zisk_files(diag_dir().to_str().unwrap())
-        .expect("collect diagnostic files");
+    let files = collect_zisk_files(diag_dir().to_str().unwrap()).expect("collect diagnostic files");
     let rom = assemble_files(&files).expect("assembly should succeed");
 
     let out = ZiskEmulator::process_rom(&rom, &[], &EmuOptions::default(), None::<fn(EmuTrace)>)

@@ -376,5 +376,16 @@ How to call read_input / write_output / simply access the input/output memory ad
 Hints / pragmas
 
 CLI integration: be able to generate a proof
+    ziskemu -z file.zisk ..
+    zisk2zisk -> emu.asm
+    ziskemuasm -z ..
+    cargo-zisk prove
+    .zisk -> compile -> ZiskRom -> save_as_asm() -> .asm
+
+Define macros with parameters and multi-line code, e.g. define my_macro(a,b,c) ...
+
+Import a file.elf (e.g. libfloat.elf)
+
+Start working on the Eth client
 
 -->

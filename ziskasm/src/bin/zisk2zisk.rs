@@ -2,8 +2,8 @@
 //! assembly file (the fast-emulator source), mirroring `riscv2zisk` but taking
 //! `.zisk` input instead of a RISC-V ELF.
 
-use ziskasm::{assemble_files_with_defines, collect_zisk_files};
 use zisk_core::{AsmGenerationMethod, ZiskRom2Asm};
+use ziskasm::{assemble_files_with_defines, collect_zisk_files};
 
 use std::{env, path::Path, process};
 

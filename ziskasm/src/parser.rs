@@ -336,8 +336,8 @@ fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, Stri
     // TYPE NAME[SIZE] [= values]
     let (type_kw, after_type) =
         rest.split_once(char::is_whitespace).ok_or("data declaration missing a name")?;
-    let ty = DataType::from_keyword(type_kw)
-        .ok_or_else(|| format!("unknown data type `{type_kw}`"))?;
+    let ty =
+        DataType::from_keyword(type_kw).ok_or_else(|| format!("unknown data type `{type_kw}`"))?;
 
     let (head, values_str) = match after_type.split_once('=') {
         Some((h, v)) => (h.trim(), Some(v.trim())),
@@ -376,10 +376,7 @@ fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, Stri
     let count = match explicit_size {
         Some(size) => {
             if values.len() > size {
-                return Err(format!(
-                    "{} initializers for `{name}` of size {size}",
-                    values.len()
-                ));
+                return Err(format!("{} initializers for `{name}` of size {size}", values.len()));
             }
             size
         }
@@ -391,7 +388,15 @@ fn parse_data_decl(code: &str, file: &str, line: usize) -> Result<DataDecl, Stri
         return Err(format!("`{name}` has size 0; arrays need at least one element"));
     }
 
-    Ok(DataDecl { name: name.to_string(), ty, is_const, count, values, file: file.to_string(), line })
+    Ok(DataDecl {
+        name: name.to_string(),
+        ty,
+        is_const,
+        count,
+        values,
+        file: file.to_string(),
+        line,
+    })
 }
 
 fn err(file: &str, line: usize, msg: &str) -> String {
@@ -547,7 +552,9 @@ fn parse_a_source(s: &str) -> Result<ASource, String> {
         "step" => ASource::Step,
         _ if is_reg(s) => ASource::Reg(parse_reg(s)?),
         _ if s.starts_with('[') => ASource::Mem(parse_mem(s)?),
-        _ if is_ind(s) => return Err("`a` source cannot be an indirect (`W[a + N]`) operand".into()),
+        _ if is_ind(s) => {
+            return Err("`a` source cannot be an indirect (`W[a + N]`) operand".into())
+        }
         _ => ASource::Imm(parse_num(s)?),
     })
 }

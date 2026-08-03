@@ -51,14 +51,15 @@ fn with_define_takes_ifdef_skips_ifndef() {
 #[test]
 fn unterminated_conditional_errors() {
     let set = HashSet::new();
-    let err = parse_program_with_defines("main:\n\tcopyb(0,0)->r5\nifdef X\n", "t", &set)
-        .unwrap_err();
+    let err =
+        parse_program_with_defines("main:\n\tcopyb(0,0)->r5\nifdef X\n", "t", &set).unwrap_err();
     assert!(err.contains("unterminated"), "{err}");
 }
 
 #[test]
 fn stray_endif_errors() {
     let set = HashSet::new();
-    let err = parse_program_with_defines("main:\n\tcopyb(0,0)->r5\nendif\n", "t", &set).unwrap_err();
+    let err =
+        parse_program_with_defines("main:\n\tcopyb(0,0)->r5\nendif\n", "t", &set).unwrap_err();
     assert!(err.contains("endif"), "{err}");
 }

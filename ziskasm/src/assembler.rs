@@ -57,8 +57,8 @@ pub fn assemble_files_with_defines<P: AsRef<Path>>(
     for path in paths {
         let path = path.as_ref();
         let name = path.to_string_lossy().to_string();
-        let src = std::fs::read_to_string(path)
-            .map_err(|e| format!("cannot read `{name}`: {e}"))?;
+        let src =
+            std::fs::read_to_string(path).map_err(|e| format!("cannot read `{name}`: {e}"))?;
         let parsed = parser::parse_program_with_defines(&src, &name, &predefined)?;
         program.instructions.extend(parsed.instructions);
         program.data.extend(parsed.data);
@@ -135,9 +135,8 @@ pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
     }
 
     // `_start` is now instruction 0, i.e. ROM_ADDR.
-    let entry = *symbols
-        .get("_start")
-        .ok_or("missing `_start` label: the program has no entry point")?;
+    let entry =
+        *symbols.get("_start").ok_or("missing `_start` label: the program has no entry point")?;
 
     // Build the ROM the same way elf2rom does.
     let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
@@ -347,7 +346,11 @@ fn encode_op(
     Ok(())
 }
 
-fn encode_a(zib: &mut ZiskInstBuilder, a: &ASource, symbols: &HashMap<&str, u64>) -> Result<(), String> {
+fn encode_a(
+    zib: &mut ZiskInstBuilder,
+    a: &ASource,
+    symbols: &HashMap<&str, u64>,
+) -> Result<(), String> {
     match a {
         ASource::C => zib.src_a("lastc", 0, false),
         ASource::Reg(n) => zib.src_a("reg", *n, false),
@@ -358,7 +361,11 @@ fn encode_a(zib: &mut ZiskInstBuilder, a: &ASource, symbols: &HashMap<&str, u64>
     Ok(())
 }
 
-fn encode_b(zib: &mut ZiskInstBuilder, b: &BSource, symbols: &HashMap<&str, u64>) -> Result<(), String> {
+fn encode_b(
+    zib: &mut ZiskInstBuilder,
+    b: &BSource,
+    symbols: &HashMap<&str, u64>,
+) -> Result<(), String> {
     match b {
         BSource::C => zib.src_b("lastc", 0, false),
         BSource::Reg(n) => zib.src_b("reg", *n, false),

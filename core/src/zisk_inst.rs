@@ -446,9 +446,6 @@ mod tests {
             end: true,
             ..Default::default()
         };
-        assert_eq!(
-            inst.to_zisk_asm(),
-            "copyb(r2, 8[a - 8]) -> [0xa0000000], j(-16), end"
-        );
+        assert_eq!(inst.to_zisk_asm(), "copyb(r2, 8[a - 8]) -> [0xa0000000], j(-16), end");
     }
 }

@@ -31,8 +31,9 @@ fn run_doubler(rom: &zisk_core::ZiskRom) -> Vec<u64> {
 #[test]
 fn doubler_end_to_end() {
     // Explicit launcher: assemble `ziskos.zisk` (`_start`) + `doubler.zisk`.
-    let rom = assemble_files(&[example("doubler", "ziskos.zisk"), example("doubler", "doubler.zisk")])
-        .expect("assembly should succeed");
+    let rom =
+        assemble_files(&[example("doubler", "ziskos.zisk"), example("doubler", "doubler.zisk")])
+            .expect("assembly should succeed");
     assert_eq!(run_doubler(&rom), vec![2, 4, 6, 8, 10, 12, 14, 16], "doubler output mismatch");
 }
 
@@ -40,7 +41,11 @@ fn doubler_end_to_end() {
 fn doubler_min_auto_launcher() {
     // No `_start`: a single `main:` file; the assembler synthesizes the launcher
     // (gp/sp, `call main`, `ret_to_bios`). Exercises jump/ret_to_bios + auto-launcher.
-    let rom = assemble_files(&[example("doubler-min", "doubler.zisk")])
-        .expect("assembly should succeed");
-    assert_eq!(run_doubler(&rom), vec![2, 4, 6, 8, 10, 12, 14, 16], "auto-launcher output mismatch");
+    let rom =
+        assemble_files(&[example("doubler-min", "doubler.zisk")]).expect("assembly should succeed");
+    assert_eq!(
+        run_doubler(&rom),
+        vec![2, 4, 6, 8, 10, 12, 14, 16],
+        "auto-launcher output mismatch"
+    );
 }
