@@ -1150,7 +1150,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            // `ZiskStdin::from_vec` is the boundary where `Bytes` has to become
+            // an owned `Vec`. Note it then clones again internally (it keeps both
+            // the buffer and a `Cursor` over a copy), so this path still costs
+            // two copies of the input — worth fixing in `common` separately.
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data.to_vec()),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
@@ -1161,7 +1165,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
-                    let hints_stream = StreamSource::from_vec(hints_data);
+                    let hints_stream = StreamSource::from_vec(hints_data.to_vec());
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
@@ -1214,7 +1218,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Result<(usize, Vec<u64>)> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            // `ZiskStdin::from_vec` is the boundary where `Bytes` has to become
+            // an owned `Vec`. Note it then clones again internally (it keeps both
+            // the buffer and a `Cursor` over a copy), so this path still costs
+            // two copies of the input — worth fixing in `common` separately.
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data.to_vec()),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
@@ -1225,7 +1233,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
-                    let hints_stream = StreamSource::from_vec(hints_data);
+                    let hints_stream = StreamSource::from_vec(hints_data.to_vec());
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {

@@ -6,6 +6,7 @@
 
 use crate::{ComputeCapacity, DataId, JobId, WorkerId};
 use borsh::{BorshDeserialize, BorshSerialize};
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -20,8 +21,9 @@ pub enum InputsModeDto {
     ///
     /// Raw bytes, exactly as they arrived on the API. They are handed to the
     /// transport unmodified, so nothing between here and the worker needs to
-    /// re-encode them.
-    InputsData(Vec<u8>),
+    /// re-encode them. `Bytes` so the per-worker fan-out clones are refcount
+    /// bumps rather than one full copy each.
+    InputsData(Bytes),
     /// Inputs will be streamed from the given URI (QUIC, Unix socket).
     /// The coordinator reads from this URI and relays data to workers.
     InputsStream(String),
@@ -45,16 +47,32 @@ pub use zisk_common::ProofKind;
 pub use zisk_common::StatsCostPerType;
 
 /// How a job's precompile hints are supplied to the cluster.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum HintsModeDto {
     /// No hints are provided.
     HintsNone,
     /// Hints are provided as a complete payload referenced by a URI.
     HintsPath(String),
-    /// Hints are provided directly as data (hex-encoded).
-    HintsData(String),
+    /// Hints are provided directly as data.
+    ///
+    /// Raw bytes, as for [`InputsModeDto::InputsData`] — handed to the
+    /// transport unmodified, and `Bytes` for the same fan-out reason.
+    HintsData(Bytes),
     /// Hints will be streamed from the given URI endpoint.
     HintsStream(String),
+}
+
+/// Hand-written for the same reason as [`InputsModeDto`]'s: payloads are large
+/// and `Job` derives `Debug`.
+impl std::fmt::Debug for HintsModeDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HintsModeDto::HintsNone => write!(f, "HintsNone"),
+            HintsModeDto::HintsPath(path) => write!(f, "HintsPath({path})"),
+            HintsModeDto::HintsData(data) => write!(f, "HintsData({} bytes)", data.len()),
+            HintsModeDto::HintsStream(uri) => write!(f, "HintsStream({uri})"),
+        }
+    }
 }
 
 /// Request to launch a proof/execute job on the cluster.
@@ -239,8 +257,9 @@ pub struct RunAggregateProofsAckDto {
 pub struct InputStreamDataDto {
     /// The target job.
     pub job_id: JobId,
-    /// The input bytes.
-    pub payload: Vec<u8>,
+    /// The input bytes. `Bytes` so the relay's per-worker chunk clones are
+    /// refcount bumps.
+    pub payload: Bytes,
 }
 
 /// Coordinator → worker request to set up a guest program.
@@ -286,8 +305,8 @@ pub struct StreamDataDto {
 pub struct StreamPayloadDto {
     /// Monotonic sequence number for reordering.
     pub sequence_number: u32,
-    /// The chunk bytes.
-    pub payload: Vec<u8>,
+    /// The chunk bytes. `Bytes` — see [`InputStreamDataDto::payload`].
+    pub payload: Bytes,
 }
 
 /// Liveness heartbeat from the coordinator.
@@ -379,27 +398,136 @@ pub struct ContributionParamsDto {
 }
 
 /// Where a task's input is read from (borsh-encoded on the wire).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Clone)]
 pub enum InputSourceDto {
     /// Read from a file/URI path.
     InputPath(String),
-    /// Inline input data.
-    InputData(Vec<u8>),
+    /// Inline input data. `Bytes` so cloning it per worker, and per MPI rank,
+    /// does not copy the payload.
+    InputData(Bytes),
     /// No input.
     InputNull,
 }
 
+/// See [`InputsModeDto`]'s: payloads are large and this is reachable from
+/// `Debug` types.
+impl std::fmt::Debug for InputSourceDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputSourceDto::InputPath(path) => write!(f, "InputPath({path})"),
+            InputSourceDto::InputData(data) => write!(f, "InputData({} bytes)", data.len()),
+            InputSourceDto::InputNull => write!(f, "InputNull"),
+        }
+    }
+}
+
+/// Hand-written because `Bytes` has no Borsh impl. The encoding is
+/// byte-identical to what `#[derive(BorshSerialize)]` produced when the variant
+/// held a `Vec<u8>` — u8 variant index, then u32 length, then the payload — so
+/// the MPI broadcast format is unchanged.
+impl BorshSerialize for InputSourceDto {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        // Fully qualified: `serde::Serialize` is also in scope here.
+        match self {
+            InputSourceDto::InputPath(path) => {
+                BorshSerialize::serialize(&0u8, writer)?;
+                BorshSerialize::serialize(path, writer)
+            }
+            InputSourceDto::InputData(data) => {
+                BorshSerialize::serialize(&1u8, writer)?;
+                BorshSerialize::serialize(&(data.len() as u32), writer)?;
+                writer.write_all(data)
+            }
+            InputSourceDto::InputNull => BorshSerialize::serialize(&2u8, writer),
+        }
+    }
+}
+
+impl BorshDeserialize for InputSourceDto {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        match u8::deserialize_reader(reader)? {
+            0 => Ok(InputSourceDto::InputPath(String::deserialize_reader(reader)?)),
+            1 => {
+                let len = u32::deserialize_reader(reader)? as usize;
+                let mut buf = vec![0u8; len];
+                reader.read_exact(&mut buf)?;
+                Ok(InputSourceDto::InputData(Bytes::from(buf)))
+            }
+            2 => Ok(InputSourceDto::InputNull),
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid InputSourceDto variant {other}"),
+            )),
+        }
+    }
+}
+
 /// Where a task's hints are read from (borsh-encoded on the wire).
-#[derive(Debug, Clone, BorshSerialize, BorshDeserialize)]
+#[derive(Clone)]
 pub enum HintsSourceDto {
     /// Read from a file/URI path.
     HintsPath(String),
-    /// Inline hint data.
-    HintsData(Vec<u8>),
+    /// Inline hint data. `Bytes` for the same reason as
+    /// [`InputSourceDto::InputData`].
+    HintsData(Bytes),
     /// Streamed from a URI.
     HintsStream(String),
     /// No hints.
     HintsNull,
+}
+
+impl std::fmt::Debug for HintsSourceDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HintsSourceDto::HintsPath(path) => write!(f, "HintsPath({path})"),
+            HintsSourceDto::HintsData(data) => write!(f, "HintsData({} bytes)", data.len()),
+            HintsSourceDto::HintsStream(uri) => write!(f, "HintsStream({uri})"),
+            HintsSourceDto::HintsNull => write!(f, "HintsNull"),
+        }
+    }
+}
+
+/// Hand-written for the same reason as [`InputSourceDto`]'s, and likewise
+/// byte-identical to the previous derived encoding.
+impl BorshSerialize for HintsSourceDto {
+    fn serialize<W: std::io::Write>(&self, writer: &mut W) -> std::io::Result<()> {
+        match self {
+            HintsSourceDto::HintsPath(path) => {
+                BorshSerialize::serialize(&0u8, writer)?;
+                BorshSerialize::serialize(path, writer)
+            }
+            HintsSourceDto::HintsData(data) => {
+                BorshSerialize::serialize(&1u8, writer)?;
+                BorshSerialize::serialize(&(data.len() as u32), writer)?;
+                writer.write_all(data)
+            }
+            HintsSourceDto::HintsStream(uri) => {
+                BorshSerialize::serialize(&2u8, writer)?;
+                BorshSerialize::serialize(uri, writer)
+            }
+            HintsSourceDto::HintsNull => BorshSerialize::serialize(&3u8, writer),
+        }
+    }
+}
+
+impl BorshDeserialize for HintsSourceDto {
+    fn deserialize_reader<R: std::io::Read>(reader: &mut R) -> std::io::Result<Self> {
+        match u8::deserialize_reader(reader)? {
+            0 => Ok(HintsSourceDto::HintsPath(String::deserialize_reader(reader)?)),
+            1 => {
+                let len = u32::deserialize_reader(reader)? as usize;
+                let mut buf = vec![0u8; len];
+                reader.read_exact(&mut buf)?;
+                Ok(HintsSourceDto::HintsData(Bytes::from(buf)))
+            }
+            2 => Ok(HintsSourceDto::HintsStream(String::deserialize_reader(reader)?)),
+            3 => Ok(HintsSourceDto::HintsNull),
+            other => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!("invalid HintsSourceDto variant {other}"),
+            )),
+        }
+    }
 }
 
 /// Parameters for a prove task.

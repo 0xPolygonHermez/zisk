@@ -17,6 +17,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
         // Add support for proto3 optional fields
         .protoc_arg("--experimental_allow_proto3_optional")
+        // Generate `Bytes` rather than `Vec<u8>` for the input payloads. The
+        // coordinator hands the same input to every worker, so a `Vec` forces
+        // one full copy per worker before the first message is even queued —
+        // serial work in front of the fan-out. `Bytes` makes those clones
+        // refcount bumps. Decoding also becomes zero-copy: tonic decodes from a
+        // `Bytes` buffer, so prost slices rather than copies.
+        //
+        // Scoped to these fields deliberately — a blanket `bytes(["."])` would
+        // change every byte field in both the coordinator and the worker for no
+        // benefit. Wire format is unchanged either way.
+        .bytes(".zisk.distributed.api.v1.ContributionParams.input_data")
+        .bytes(".zisk.distributed.api.v1.ContributionParams.hints_data")
+        .bytes(".zisk.distributed.api.v1.InputStreamData.payload")
+        .bytes(".zisk.distributed.api.v1.StreamPayload.payload")
         .compile_protos(&["proto/zisk_cluster_api.proto"], &["proto/"])?;
 
     // Tell cargo to rerun this build script if any proto file changes

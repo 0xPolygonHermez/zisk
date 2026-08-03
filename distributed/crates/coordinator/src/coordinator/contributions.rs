@@ -4,6 +4,7 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator, PrecompileHintsRelay, WorkersPool,
 };
+use bytes::Bytes;
 use chrono::Utc;
 use colored::Colorize;
 use proofman::{ContributionsInfo, WitnessInfo};
@@ -72,15 +73,7 @@ impl Coordinator {
 
         let hints_source = match &job.hints_mode {
             HintsModeDto::HintsPath(ref hints_uri) => HintsSourceDto::HintsPath(hints_uri.clone()),
-            HintsModeDto::HintsData(ref hints_hex) => {
-                let hints = hex::decode(hints_hex).map_err(|e| {
-                    CoordinatorError::Internal(format!(
-                        "Failed to decode inline hints data for job {}: {}",
-                        job.job_id, e
-                    ))
-                })?;
-                HintsSourceDto::HintsData(hints)
-            }
+            HintsModeDto::HintsData(ref hints) => HintsSourceDto::HintsData(hints.clone()),
             HintsModeDto::HintsStream(hints_uri) => {
                 // Hints will be streamed separately
                 HintsSourceDto::HintsStream(hints_uri.clone())
@@ -210,6 +203,10 @@ impl Coordinator {
                 let pool = Arc::clone(&workers_pool);
 
                 Box::pin(async move {
+                    // Convert once, outside the fan-out: every worker gets the
+                    // same chunk, so the per-worker clones below are refcount
+                    // bumps rather than a copy each.
+                    let payload = Bytes::from(payload);
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
@@ -478,6 +475,8 @@ impl Coordinator {
                     chunks += 1;
                     bytes += chunk.len() as u64;
 
+                    // Converted once so the per-worker clones are refcounts.
+                    let chunk = Bytes::from(chunk);
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
