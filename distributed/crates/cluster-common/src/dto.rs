@@ -423,7 +423,13 @@ impl BorshSerialize for InputSourceDto {
             }
             InputSourceDto::InputData(data) => {
                 BorshSerialize::serialize(&1u8, writer)?;
-                BorshSerialize::serialize(&(data.len() as u32), writer)?;
+                let len = u32::try_from(data.len()).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "InputSourceDto::InputData payload exceeds the u32 borsh length prefix",
+                    )
+                })?;
+                BorshSerialize::serialize(&len, writer)?;
                 writer.write_all(data)
             }
             InputSourceDto::InputNull => BorshSerialize::serialize(&2u8, writer),
@@ -484,7 +490,13 @@ impl BorshSerialize for HintsSourceDto {
             }
             HintsSourceDto::HintsData(data) => {
                 BorshSerialize::serialize(&1u8, writer)?;
-                BorshSerialize::serialize(&(data.len() as u32), writer)?;
+                let len = u32::try_from(data.len()).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "HintsSourceDto::HintsData payload exceeds the u32 borsh length prefix",
+                    )
+                })?;
+                BorshSerialize::serialize(&len, writer)?;
                 writer.write_all(data)
             }
             HintsSourceDto::HintsStream(uri) => {

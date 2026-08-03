@@ -255,10 +255,11 @@ impl ZiskStdin {
         let len = usize::from_le_bytes(len_bytes);
         let mut data = vec![0u8; len];
         cursor.read_exact(&mut data)?;
+        // Padding is at most 7 bytes, so it reads into a stack buffer.
         let padding = (8 - ((8 + len) % 8)) % 8;
         if padding > 0 {
-            let mut pad = vec![0u8; padding];
-            cursor.read_exact(&mut pad)?;
+            let mut pad = [0u8; 7];
+            cursor.read_exact(&mut pad[..padding])?;
         }
 
         // Commit only on success, so a short read leaves the reader put.
