@@ -60,21 +60,27 @@ impl WitnessGenerator {
         stats_begin!(state.stats, _caller_stats_id, _stats_scope, "AIR_MAIN_WITNESS", air_id);
 
         let zisk_rom = state.get_rom()?;
-        let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
-        let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
+        // Clone the Arc vector under a short read lock instead of holding the
+        // guard across the whole witness computation: with main-witness
+        // advancement the emulator's reader thread keeps pushing chunks into
+        // this store (write lock) while early segments are being computed.
+        let min_traces = {
+            let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
+            min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?.clone()
+        };
 
         // Packed ⇒ compact indexed Main row (+ instruction table); otherwise the unpacked row.
         let air_instance = if self.packed.load(Ordering::Relaxed) {
             main_instance.compute_witness::<MainTraceRowPackedIndexed<F>>(
                 &zisk_rom,
-                min_traces,
+                &min_traces,
                 self.chunk_size,
                 trace_buffer,
             )?
         } else {
             main_instance.compute_witness::<MainTraceRow<F>>(
                 &zisk_rom,
-                min_traces,
+                &min_traces,
                 self.chunk_size,
                 trace_buffer,
             )?

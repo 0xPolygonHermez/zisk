@@ -10,7 +10,11 @@ use zisk_common::Instance;
 /// Populated main + secondary instance maps, keyed by `global_id`.
 pub struct InstanceSet<F: PrimeField64> {
     /// Main state machine instances, indexed by their global ID.
-    pub main_instances: RwLock<HashMap<usize, MainInstance<F>>>,
+    // `Arc` values: the main witness handler clones the instance out and
+    // drops the guard before computing, so the incremental main advancement
+    // (which takes the write lock from the emulator's reader thread) is never
+    // blocked behind a witness computation.
+    pub main_instances: RwLock<HashMap<usize, std::sync::Arc<MainInstance<F>>>>,
 
     /// Secondary state machine instances, indexed by their global ID.
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
