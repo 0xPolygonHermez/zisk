@@ -29,8 +29,9 @@ use crate::CountersChunkMetrics;
 
 /// Uniform return type for all `Emulator<F>` impls.
 pub struct ExecutionOutput {
-    /// Minimal traces produced by the emulator.
-    pub min_traces: Vec<EmuTrace>,
+    /// Minimal traces produced by the emulator (shared with the progressive
+    /// main-witness advancement store, hence `Arc` elements).
+    pub min_traces: Vec<std::sync::Arc<EmuTrace>>,
     /// Device metrics for secondary devices (counter-phase output).
     pub counters: CountersChunkMetrics,
     /// Public outputs accumulated during execution.

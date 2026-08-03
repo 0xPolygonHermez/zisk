@@ -31,6 +31,27 @@ impl MainPlanner {
     /// - The `chunk_size` exceeds the row capacity of `MainTrace` ([`MainSmError::ChunkSizeTooBig`]).
     /// - A `u64` quantity could not be converted to `usize` on this target ([`MainSmError::TryFromIntError`]).
     pub fn plan(min_traces: &[EmuTrace], chunk_size: u64) -> Result<Vec<Plan>> {
+        Self::plan_count(min_traces.len(), chunk_size)
+    }
+
+    /// Same as [`Self::plan`] but from the chunk count alone (plans depend only
+    /// on how many minimal-trace chunks exist).
+    pub fn plan_count(num_chunks: usize, chunk_size: u64) -> Result<Vec<Plan>> {
+        let num_within = Self::traces_per_segment(chunk_size)?;
+
+        // Number of `Main` segments needed to cover all the execution trace.
+        let num_instances = num_chunks.div_ceil(num_within);
+
+        Ok((0..num_instances)
+            .map(|segment_id| Self::plan_segment(segment_id, segment_id == num_instances - 1))
+            .collect())
+    }
+
+    /// Number of minimal-trace chunks wrapped in one main trace segment.
+    ///
+    /// # Errors
+    /// Same `chunk_size` validation as [`Self::plan`].
+    pub fn traces_per_segment(chunk_size: u64) -> Result<usize> {
         const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
 
         // Compile-time assertion to ensure `MainTrace::NUM_ROWS` is a power of two.
@@ -47,24 +68,23 @@ impl MainPlanner {
             return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: NUM_ROWS });
         }
 
-        // Number of minimal traces wrapped in a main trace.
-        let num_within = NUM_ROWS / chunk_size;
+        Ok(NUM_ROWS / chunk_size)
+    }
 
-        // Number of `Main` segments needed to cover all the execution trace.
-        let num_instances = min_traces.len().div_ceil(num_within);
-
-        Ok((0..num_instances)
-            .map(|segment_id| {
-                Plan::new(
-                    ZISK_AIRGROUP_ID,
-                    MAIN_AIR_IDS[0],
-                    Some(SegmentId(segment_id)),
-                    InstanceType::Instance,
-                    CheckPoint::Single(ChunkId(segment_id)),
-                    Some(Box::new(segment_id == num_instances - 1)),
-                )
-            })
-            .collect())
+    /// Builds the plan of a single Main segment. Used by the incremental
+    /// main-witness advancement: segments become plannable one by one while
+    /// the emulation streams chunks (`is_last_segment` for a full segment is
+    /// known as soon as one chunk beyond it exists; the final segment is
+    /// planned once the emulation ends and the total count is known).
+    pub fn plan_segment(segment_id: usize, is_last_segment: bool) -> Plan {
+        Plan::new(
+            ZISK_AIRGROUP_ID,
+            MAIN_AIR_IDS[0],
+            Some(SegmentId(segment_id)),
+            InstanceType::Instance,
+            CheckPoint::Single(ChunkId(segment_id)),
+            Some(Box::new(is_last_segment)),
+        )
     }
 }
 

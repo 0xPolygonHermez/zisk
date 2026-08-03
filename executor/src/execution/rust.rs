@@ -52,6 +52,10 @@ impl EmulatorRust {
         let (counters, pub_outs) = self.count::<F>(zisk_rom, &min_traces)?;
         timer_stop_and_log_info!(COUNT);
 
+        // Wrap once at the boundary: downstream (planning, witness, the
+        // progressive main store) shares chunks as Arcs.
+        let min_traces = min_traces.into_iter().map(std::sync::Arc::new).collect();
+
         Ok(ExecutionOutput {
             min_traces,
             counters,

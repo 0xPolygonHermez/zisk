@@ -72,7 +72,7 @@ impl<F: PrimeField64> MainInstance<F> {
     pub fn compute_witness<R: MainTraceRowOps<F> + IndexedFill>(
         &self,
         zisk_rom: &ZiskRom,
-        min_traces: &[EmuTrace],
+        min_traces: &[std::sync::Arc<EmuTrace>],
         chunk_size: u64,
         trace_buffer: Vec<F>,
     ) -> Result<AirInstance<F>, MainSmError> {
@@ -144,7 +144,7 @@ impl<F: PrimeField64> MainInstance<F> {
                 let (pc, regs) = Self::fill_partial_trace::<R>(
                     zisk_rom,
                     chunk,
-                    &segment_min_traces[chunk_id],
+                    &*segment_min_traces[chunk_id],
                     &mut reg_trace,
                     &mut step_range_check,
                     chunk_id == (end_idx - start_idx - 1),
