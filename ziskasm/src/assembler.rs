@@ -189,8 +189,8 @@ fn layout_data(
             buf.push(d.values.get(k).copied().unwrap_or(0));
         }
     }
-    let ro_section = (!ro.is_empty()).then(|| DataSection64 { addr: rom_data_base, data: ro });
-    let rw_section = (!rw.is_empty()).then(|| DataSection64 { addr: GENERAL_RAM_ADDR, data: rw });
+    let ro_section = (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro });
+    let rw_section = (!rw.is_empty()).then_some(DataSection64 { addr: GENERAL_RAM_ADDR, data: rw });
     (ro_section, rw_section, syms)
 }
 
