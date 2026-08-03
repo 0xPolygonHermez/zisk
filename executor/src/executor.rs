@@ -242,9 +242,16 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         // Reserve proofman's unified GPU buffer for MO count-and-plan
         // (no-op on CPU / standalone).
+        //
+        // Timed at info level: the acquire drains all in-flight commits on the first
+        // GPU and, while held, stream selection skips every stream on that GPU. On a
+        // single-GPU worker that makes this window a hard stop for the whole
+        // contributions pipeline, which the coordinator only sees as Witness time.
         if is_asm_emulator {
             if let Some(extras) = proofman_extras {
+                timer_start_info!(ACQUIRE_GPU_BUFFER);
                 extras.acquire_gpu_buffer();
+                timer_stop_and_log_info!(ACQUIRE_GPU_BUFFER);
             }
         }
 
@@ -276,6 +283,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
 
+        timer_start_info!(PLAN_MAIN);
         InstanceAssigner::assign_rom_instance(registry)?;
         let main_plans = self.plan.run_main(&min_traces, &self.state.stats, &_exec_scope)?;
         *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
@@ -286,10 +294,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         if let Some(witness) = self.witness.as_ref() {
             witness.populate_main_instances(registry, &self.state, main_assignments)?;
         }
+        timer_stop_and_log_info!(PLAN_MAIN);
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.3: Plan secondary, await async, configure + populate (witness only)
         // ────────────────────────────────────────────────────────────
+        timer_start_info!(PLAN_SECONDARY);
         let secn_artifacts = self.plan.run_secondary(
             &mut counters,
             num_chunks,
@@ -302,12 +312,18 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         // MO runner joined in `run_secondary`; release the buffer back to proofman.
         // Earlier error paths skip the release on purpose: the MO thread may
         // still be using the buffer.
+        timer_stop_and_log_info!(PLAN_SECONDARY);
         if is_asm_emulator {
             if let Some(extras) = proofman_extras {
                 if let Some(used) = secn_artifacts.gpu_mops_used_bytes {
                     extras.pctx().report_first_gpu_buffer_usage(used);
                 }
+                // The release device-synchronises and then invalidates every stream's
+                // const-pols reuse context, so the commits that follow all take the cold
+                // unpack path. Timed for the same reason as the acquire above.
+                timer_start_info!(RELEASE_GPU_BUFFER);
                 extras.release_gpu_buffer();
+                timer_stop_and_log_info!(RELEASE_GPU_BUFFER);
             }
         }
 
