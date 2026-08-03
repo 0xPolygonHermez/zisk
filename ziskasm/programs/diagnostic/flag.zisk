@@ -1,0 +1,30 @@
+; ============================================================================
+; flag.zisk - diagnostic for the ZisK `flag` internal instruction.
+;
+; `flag` is the primitive behind `call`/`jump`: op_flag(a, b) = (c = 0, flag = true).
+; It unconditionally sets the result c to 0 and raises the instruction flag, so
+; the pc takes the "flag" branch (jmp_offset1) rather than the fall-through
+; (jmp_offset2). This test checks both documented effects at once:
+;   - the taken branch: the instruction after `flag` (a failure marker) is skipped
+;   - c = 0: the store target is overwritten with 0 regardless of the b operand
+;
+; Sub-checks (first failure returns 0x30CC):
+;   3001  flag did NOT take its branch (fell through instead of jumping)
+;   3002  flag did NOT set c to 0
+; ============================================================================
+
+flag:
+	copyb(0, 0xbeef) -> r4               ; sentinel in the store target
+	flag(0, 0x1234) -> r4, j(fl_taken)   ; c=0 -> r4, flag=true -> jump to fl_taken
+
+	copyb(0, 0x3001) -> r10              ; reached only if flag failed to jump
+	ret
+
+fl_taken:
+	eq(r4, 0), j(fl_ok)                  ; flag must have zeroed c (r4), not left 0x1234/0xbeef
+	copyb(0, 0x3002) -> r10
+	ret
+
+fl_ok:
+	copyb(0, 0) -> r10
+	ret

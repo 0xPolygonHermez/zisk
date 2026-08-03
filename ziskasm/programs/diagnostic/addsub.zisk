@@ -1,0 +1,80 @@
+; ============================================================================
+; addsub.zisk - diagnostic for the ZisK add / subtract instructions.
+;
+; Covers:
+;   add   sub          (64-bit, wrapping)
+;   add_w sub_w         (32-bit, result sign-extended to 64 bits)
+;
+; Pure-constant style (see minmax.zisk): AS_TABLE holds the expected result of
+; each op for each (a, b) pair. Beyond add/sub it depends only on copyb and eq
+; (and add for the loop). Expected values generated from core/src/ops_core.rs.
+;
+; AS_TABLE columns: a b add sub add_w sub_w
+; First mismatch returns 0x03CC (01=add 02=sub 03=add_w 04=sub_w). Corner cases
+; include 64-bit wrap and 32-bit overflow (e.g. i32MAX+1 -> i32MIN, sign-extended).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 expected  r13 result.
+; ============================================================================
+
+define ROWS      15
+define ROW_BYTES 48      ; 6 u64 columns * 8 bytes
+
+; a, b, add, sub, add_w, sub_w
+const u64 AS_TABLE =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,   ; 0 & 0
+	0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0xffffffffffffffff, 0x0000000000000001, 0xffffffffffffffff,   ; 0 & 1
+	0x0000000000000001, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001,   ; 1 & 0
+	0x0000000000000001, 0x0000000000000002, 0x0000000000000003, 0xffffffffffffffff, 0x0000000000000003, 0xffffffffffffffff,   ; 1 & 2
+	0x0000000000000002, 0x0000000000000001, 0x0000000000000003, 0x0000000000000001, 0x0000000000000003, 0x0000000000000001,   ; 2 & 1
+	0xffffffffffffffff, 0x0000000000000001, 0x0000000000000000, 0xfffffffffffffffe, 0x0000000000000000, 0xfffffffffffffffe,   ; -1 & 1
+	0x0000000000000001, 0xffffffffffffffff, 0x0000000000000000, 0x0000000000000002, 0x0000000000000000, 0x0000000000000002,   ; 1 & -1
+	0x7fffffffffffffff, 0x8000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff,   ; i64MAX & i64MIN
+	0x8000000000000000, 0x7fffffffffffffff, 0xffffffffffffffff, 0x0000000000000001, 0xffffffffffffffff, 0x0000000000000001,   ; i64MIN & i64MAX
+	0x00000000ffffffff, 0x0000000000000001, 0x0000000100000000, 0x00000000fffffffe, 0x0000000000000000, 0xfffffffffffffffe,   ; u32low & 1
+	0x000000007fffffff, 0x0000000000000001, 0x0000000080000000, 0x000000007ffffffe, 0xffffffff80000000, 0x000000007ffffffe,   ; i32MAX & 1 (add_w overflow)
+	0x0000000080000000, 0x0000000000000001, 0x0000000080000001, 0x000000007fffffff, 0xffffffff80000001, 0x000000007fffffff,   ; i32MIN & 1 (sub_w overflow)
+	0x0000000080000000, 0x000000007fffffff, 0x00000000ffffffff, 0x0000000000000001, 0xffffffffffffffff, 0x0000000000000001,   ; i32MIN & i32MAX low32
+	0xffffffff00000001, 0x0000000100000002, 0x0000000000000003, 0xfffffffdffffffff, 0x0000000000000003, 0xffffffffffffffff,   ; hi differ, low 1&2
+	0xffffffffffffffff, 0xffffffffffffffff, 0xfffffffffffffffe, 0x0000000000000000, 0xfffffffffffffffe, 0x0000000000000000   ; -1 & -1
+
+addsub:
+	copyb(0, AS_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+as_loop:
+	eq(r6, ROWS), j(as_ok)
+	copyb(r5, 8[a + 0]) -> r7      ; a
+	copyb(r5, 8[a + 8]) -> r8      ; b
+
+	copyb(r5, 8[a + 16]) -> r12
+	add(r7, r8) -> r13
+	eq(r13, r12), j(as_c1)
+	copyb(0, 0x0301) -> r10
+	ret
+as_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	sub(r7, r8) -> r13
+	eq(r13, r12), j(as_c2)
+	copyb(0, 0x0302) -> r10
+	ret
+as_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	add_w(r7, r8) -> r13
+	eq(r13, r12), j(as_c3)
+	copyb(0, 0x0303) -> r10
+	ret
+as_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	sub_w(r7, r8) -> r13
+	eq(r13, r12), j(as_next)
+	copyb(0, 0x0304) -> r10
+	ret
+
+as_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(as_loop)
+
+as_ok:
+	copyb(0, 0) -> r10
+	ret

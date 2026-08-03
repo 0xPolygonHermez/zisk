@@ -1,0 +1,61 @@
+; ============================================================================
+; xperm.zisk - diagnostic for the ZisK crossbar-permute instructions (Zbkx).
+;
+;   xperm4  (each output nibble i = a's nibble at index = b's nibble i)
+;   xperm8  (each output byte  i = a's byte  at index = b's byte  i,
+;            or 0 if that index >= 8)
+;
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+; Cases include an identity `a` (so xperm4 reproduces b) and out-of-range
+; xperm8 indices (>= 8 -> 0).
+;
+; XPERM_TABLE columns: a b xperm4 xperm8
+; First mismatch returns 0x0eCC (01=xperm4 02=xperm8).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 exp  r13 res.
+; ============================================================================
+
+ifndef ASM   ; excluded on the x86 asm target (op unsupported there); see ziskasm.md
+
+define ROWS      5
+define ROW_BYTES 32      ; 4 u64 columns * 8 bytes
+
+; a, b, xperm4, xperm8
+const u64 XPERM_TABLE =
+	0xfedcba9876543210, 0x0123456789abcdef, 0x0123456789abcdef, 0x3200000000000000,
+	0x1111111111111111, 0x0123456789abcdef, 0x1111111111111111, 0x1100000000000000,
+	0x0123456789abcdef, 0xfedcba9876543210, 0x0123456789abcdef, 0x0000000000000000,
+	0xdeadbeefcafebabe, 0x0011223344556677, 0xeebbaabbeeffaacc, 0xbe00000000000000,
+	0xff00ff00ff00ff00, 0x0808080808080808, 0x0000000000000000, 0x0000000000000000
+
+xperm:
+	copyb(0, XPERM_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+xp_loop:
+	eq(r6, ROWS), j(xp_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	xperm4(r7, r8) -> r13
+	eq(r13, r12), j(xp_c1)
+	copyb(0, 0x0e01) -> r10
+	ret
+xp_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	xperm8(r7, r8) -> r13
+	eq(r13, r12), j(xp_next)
+	copyb(0, 0x0e02) -> r10
+	ret
+
+xp_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(xp_loop)
+
+xp_ok:
+	copyb(0, 0) -> r10
+	ret
+
+endif

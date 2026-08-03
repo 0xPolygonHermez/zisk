@@ -1,0 +1,57 @@
+; ============================================================================
+; fcall.zisk - diagnostic for the ZisK free-input call instructions.
+;
+;   fcall_param(words, value)  - append `words` u64 params to the fcall param list
+;                                (words==1: value is the param; words>1: value is
+;                                 the address of a `words`-long array to copy in)
+;   fcall(id, _)               - run the hardcoded function `id` over the stored
+;                                params; result is exposed through the free-input
+;                                channel (result[0]) and the param list is reset
+;   fcall_get(_, _)            - advance the free-input channel to the next result
+;                                word (result[1], result[2], ...)
+;
+; The result words are NOT the `c` output of the fcall ops (those just pass `b`
+; through); each result word is read back by loading the free-input address
+; FREE_INPUT (== INPUT_ADDR, 0x40000000) as a u64. `fcall` publishes result[0];
+; every following `fcall_get` publishes the next word before it is read.
+;
+; This test drives function id 17 = FCALL_MSB_POS_256_ID (see
+; ziskos/entrypoint/src/zisklib/fcalls/mod.rs), which returns the (limb, bit)
+; position of the most significant set bit across `n` 256-bit little-endian
+; values. Params: n, then n*4 limbs. Result: 2 words [limb, bit].
+;
+; Golden vector (from the fcall_msb_pos_256 unit test, n=1):
+;   input 256-bit value limbs = [1, 2, 3, 2]  ->  limb = 3, bit = 1
+;   (limb 3 = 2 = 0b10, so the MSB sits at bit 1 of limb 3)
+;
+; First mismatch returns 0x28CC (01 = limb, 02 = bit).
+;
+; Registers: r4 scratch (fcall op passthrough), r7 limb result, r8 bit result.
+; ============================================================================
+
+define FREE_INPUT      0x40000000    ; == INPUT_ADDR; a u64 load here yields free_input
+define MSB_POS_256_ID  17            ; FCALL_MSB_POS_256_ID
+
+fcall:
+	fcall_param(1, 1) -> r4         ; n = 1 (one 256-bit input)
+	fcall_param(1, 1) -> r4         ; limb 0 = 1
+	fcall_param(1, 2) -> r4         ; limb 1 = 2
+	fcall_param(1, 3) -> r4         ; limb 2 = 3
+	fcall_param(1, 2) -> r4         ; limb 3 = 2
+	fcall(MSB_POS_256_ID, 0) -> r4  ; compute; free_input = result[0] (limb)
+
+	copyb(0, [FREE_INPUT]) -> r7    ; r7 = result[0] = limb
+	eq(r7, 3), j(fc_c1)
+	copyb(0, 0x2801) -> r10
+	ret
+
+fc_c1:
+	fcall_get(0, 0) -> r4           ; advance; free_input = result[1] (bit)
+	copyb(0, [FREE_INPUT]) -> r8    ; r8 = result[1] = bit
+	eq(r8, 1), j(fc_ok)
+	copyb(0, 0x2802) -> r10
+	ret
+
+fc_ok:
+	copyb(0, 0) -> r10              ; pass
+	ret

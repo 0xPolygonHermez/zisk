@@ -1,0 +1,105 @@
+; ============================================================================
+; minmax.zisk - diagnostic for the ZisK minimum / maximum instructions.
+;
+; Covers the 8 min/max ops:
+;   minu   min   maxu   max        (64-bit)
+;   minu_w min_w maxu_w max_w       (32-bit, result sign-extended to 64 bits)
+;
+; Pure-constant style: MM_TABLE holds, for each (a, b) pair, the expected result
+; of all 8 ops as constants. The code just runs each op and compares with `eq`,
+; so beyond the min/max ops it depends only on `copyb` (loads), `add` (loop), and
+; `eq` (compare) - the irreducible minimum. Expected values were generated from
+; the reference semantics in core/src/ops_core.rs.
+;
+; MM_TABLE columns (matched by the checks):
+;   a  b  minu  min  maxu  max  minu_w  min_w  maxu_w  max_w
+; First mismatch returns 0x01CC (CC = column: 01=minu .. 08=max_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 expected  r13 result.
+; ============================================================================
+
+define ROWS      14
+define ROW_BYTES 80      ; 10 u64 columns * 8 bytes
+
+; a, b, minu, min, maxu, max, minu_w, min_w, maxu_w, max_w
+const u64 MM_TABLE =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,   ; 0 & 0
+	0x0000000000000000, 0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001,   ; 0 & 1
+	0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001, 0x0000000000000000, 0x0000000000000000, 0x0000000000000001, 0x0000000000000001,   ; 1 & 0 (swap)
+	0x0000000000000001, 0x0000000000000002, 0x0000000000000001, 0x0000000000000001, 0x0000000000000002, 0x0000000000000002, 0x0000000000000001, 0x0000000000000001, 0x0000000000000002, 0x0000000000000002,   ; 1 & 2
+	0xffffffffffffffff, 0x0000000000000001, 0x0000000000000001, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000001, 0x0000000000000001, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000001,   ; -1 & 1
+	0x0000000000000001, 0xffffffffffffffff, 0x0000000000000001, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000001, 0x0000000000000001, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000001,   ; 1 & -1 (swap)
+	0x7fffffffffffffff, 0x8000000000000000, 0x7fffffffffffffff, 0x8000000000000000, 0x8000000000000000, 0x7fffffffffffffff, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000000,   ; i64MAX & i64MIN
+	0x8000000000000000, 0x7fffffffffffffff, 0x7fffffffffffffff, 0x8000000000000000, 0x8000000000000000, 0x7fffffffffffffff, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000000,   ; i64MIN & i64MAX (swap)
+	0x00000000ffffffff, 0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x00000000ffffffff, 0x00000000ffffffff, 0x0000000000000001, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000001,   ; u32low & 1
+	0x00000000ffffffff, 0x00000000ffffffff, 0x00000000ffffffff, 0x00000000ffffffff, 0x00000000ffffffff, 0x00000000ffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff,   ; u32low & itself
+	0x0000000080000000, 0x000000007fffffff, 0x000000007fffffff, 0x000000007fffffff, 0x0000000080000000, 0x0000000080000000, 0x000000007fffffff, 0xffffffff80000000, 0xffffffff80000000, 0x000000007fffffff,   ; i32MIN & i32MAX low32
+	0xffffffff00000001, 0x0000000100000002, 0x0000000100000002, 0xffffffff00000001, 0xffffffff00000001, 0x0000000100000002, 0x0000000000000001, 0x0000000000000001, 0x0000000000000002, 0x0000000000000002,   ; hi differ, low 1&2
+	0x00000000ffffffff, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x00000000ffffffff, 0x00000000ffffffff, 0x0000000000000000, 0xffffffffffffffff, 0xffffffffffffffff, 0x0000000000000000,   ; u32low & 0
+	0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff   ; -1 & -1
+
+minmax:
+	copyb(0, MM_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+mm_loop:
+	eq(r6, ROWS), j(mm_ok)
+	copyb(r5, 8[a + 0]) -> r7      ; a
+	copyb(r5, 8[a + 8]) -> r8      ; b
+
+	copyb(r5, 8[a + 16]) -> r12
+	minu(r7, r8) -> r13
+	eq(r13, r12), j(mm_c1)
+	copyb(0, 0x0101) -> r10
+	ret
+mm_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	min(r7, r8) -> r13
+	eq(r13, r12), j(mm_c2)
+	copyb(0, 0x0102) -> r10
+	ret
+mm_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	maxu(r7, r8) -> r13
+	eq(r13, r12), j(mm_c3)
+	copyb(0, 0x0103) -> r10
+	ret
+mm_c3:
+	copyb(r5, 8[a + 40]) -> r12
+	max(r7, r8) -> r13
+	eq(r13, r12), j(mm_c4)
+	copyb(0, 0x0104) -> r10
+	ret
+mm_c4:
+	copyb(r5, 8[a + 48]) -> r12
+	minu_w(r7, r8) -> r13
+	eq(r13, r12), j(mm_c5)
+	copyb(0, 0x0105) -> r10
+	ret
+mm_c5:
+	copyb(r5, 8[a + 56]) -> r12
+	min_w(r7, r8) -> r13
+	eq(r13, r12), j(mm_c6)
+	copyb(0, 0x0106) -> r10
+	ret
+mm_c6:
+	copyb(r5, 8[a + 64]) -> r12
+	maxu_w(r7, r8) -> r13
+	eq(r13, r12), j(mm_c7)
+	copyb(0, 0x0107) -> r10
+	ret
+mm_c7:
+	copyb(r5, 8[a + 72]) -> r12
+	max_w(r7, r8) -> r13
+	eq(r13, r12), j(mm_next)
+	copyb(0, 0x0108) -> r10
+	ret
+
+mm_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(mm_loop)
+
+mm_ok:
+	copyb(0, 0) -> r10
+	ret

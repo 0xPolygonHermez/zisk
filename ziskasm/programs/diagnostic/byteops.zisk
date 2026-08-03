@@ -1,0 +1,65 @@
+; ============================================================================
+; byteops.zisk - diagnostic for the ZisK byte/bit-reordering instructions.
+;
+;   rev8   (reverse byte order)
+;   brev8  (reverse the bits within each byte)
+;   orc_b  (each byte -> 0xff if nonzero, else 0x00)
+;
+; These operate on b only (a is ignored); the `a` column is a poison value.
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; BYTE_TABLE columns: a b rev8 brev8 orc_b
+; First mismatch returns 0x09CC (01=rev8 02=brev8 03=orc_b).
+;
+; Registers: r5 row ptr  r6 row index  r7 a(poison)  r8 b(operand)  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      8
+define ROW_BYTES 40      ; 5 u64 columns * 8 bytes
+
+; a, b, rev8, brev8, orc_b
+const u64 BYTE_TABLE =
+	0x5555555555555555, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x5555555555555555, 0x0123456789abcdef, 0xefcdab8967452301, 0x80c4a2e691d5b3f7, 0xffffffffffffffff,
+	0x5555555555555555, 0xff00ff00ff00ff00, 0x00ff00ff00ff00ff, 0xff00ff00ff00ff00, 0xff00ff00ff00ff00,
+	0x5555555555555555, 0x8000000000000001, 0x0100000000000080, 0x0100000000000080, 0xff000000000000ff,
+	0x5555555555555555, 0x00000000000000ff, 0xff00000000000000, 0x00000000000000ff, 0x00000000000000ff,
+	0x5555555555555555, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff, 0xffffffffffffffff,
+	0x5555555555555555, 0x0102040810204080, 0x8040201008040201, 0x8040201008040201, 0xffffffffffffffff,
+	0x5555555555555555, 0xfedcba9876543210, 0x1032547698badcfe, 0x7f3b5d196e2a4c08, 0xffffffffffffffff
+
+byteops:
+	copyb(0, BYTE_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+by_loop:
+	eq(r6, ROWS), j(by_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	rev8(r7, r8) -> r13
+	eq(r13, r12), j(by_c1)
+	copyb(0, 0x0901) -> r10
+	ret
+by_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	brev8(r7, r8) -> r13
+	eq(r13, r12), j(by_c2)
+	copyb(0, 0x0902) -> r10
+	ret
+by_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	orc_b(r7, r8) -> r13
+	eq(r13, r12), j(by_next)
+	copyb(0, 0x0903) -> r10
+	ret
+
+by_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(by_loop)
+
+by_ok:
+	copyb(0, 0) -> r10
+	ret

@@ -1,0 +1,68 @@
+; ============================================================================
+; clmul.zisk - diagnostic for the ZisK carry-less multiply instructions (Zbc/Zbkc).
+;
+;   clmul    (low 64 bits of the carry-less product)
+;   clmul_h  (high 64 bits)
+;   clmul_r  (bit-reversed / "reversed" carry-less product)
+;
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; CLMUL_TABLE columns: a b clmul clmul_h clmul_r
+; First mismatch returns 0x0dCC (01=clmul 02=clmul_h 03=clmul_r).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 exp  r13 res.
+; ============================================================================
+
+ifndef ASM   ; excluded on the x86 asm target (op unsupported there); see ziskasm.md
+
+define ROWS      8
+define ROW_BYTES 40      ; 5 u64 columns * 8 bytes
+
+; a, b, clmul, clmul_h, clmul_r
+const u64 CLMUL_TABLE =
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000002, 0x0000000000000003, 0x0000000000000006, 0x0000000000000000, 0x0000000000000000,
+	0x00000000000000ff, 0x00000000000000ff, 0x0000000000005555, 0x0000000000000000, 0x0000000000000000,
+	0xffffffffffffffff, 0x0000000000000002, 0xfffffffffffffffe, 0x0000000000000001, 0x0000000000000003,
+	0x8000000000000000, 0x8000000000000000, 0x0000000000000000, 0x4000000000000000, 0x8000000000000000,
+	0x0000000100000001, 0x0000000100000001, 0x0000000000000001, 0x0000000000000001, 0x0000000000000002,
+	0x00000000deadbeef, 0x00000000cafebabe, 0x5fff0846b6b7038a, 0x0000000000000000, 0x0000000000000000
+
+clmul:
+	copyb(0, CLMUL_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+cl_loop:
+	eq(r6, ROWS), j(cl_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	clmul(r7, r8) -> r13
+	eq(r13, r12), j(cl_c1)
+	copyb(0, 0x0d01) -> r10
+	ret
+cl_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	clmul_h(r7, r8) -> r13
+	eq(r13, r12), j(cl_c2)
+	copyb(0, 0x0d02) -> r10
+	ret
+cl_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	clmul_r(r7, r8) -> r13
+	eq(r13, r12), j(cl_next)
+	copyb(0, 0x0d03) -> r10
+	ret
+
+cl_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(cl_loop)
+
+cl_ok:
+	copyb(0, 0) -> r10
+	ret
+
+endif
