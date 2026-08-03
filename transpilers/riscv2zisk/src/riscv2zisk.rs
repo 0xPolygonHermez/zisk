@@ -3,7 +3,7 @@
 //! The input parameter is the contents (bytes) of an ELF RISC-V file.
 //! Optionally, the Zisk ROM can also be saved in x86-64 NASM assembly format.
 
-use transpilers_common::{elf2rom, elf2romfile};
+use transpilers_common::{elf2cfile, elf2rom, elf2romfile};
 use zisk_core::AsmGenerationMethod;
 use zisk_core::ZiskRom;
 
@@ -32,6 +32,19 @@ impl<'a> Riscv2zisk<'a> {
     ) -> Result<(), Box<dyn Error>> {
         let asm_file = asm_file.into();
         elf2romfile(self.elf, &asm_file, generation_method, log_output, comments, hints)
+    }
+
+    /// Executes the file conversion process into C source code, by calling elf2cfile()
+    pub fn runfile_c<P: Into<PathBuf>>(
+        &self,
+        c_file: P,
+        generation_method: AsmGenerationMethod,
+        log_output: bool,
+        comments: bool,
+        hints: bool,
+    ) -> Result<(), Box<dyn Error>> {
+        let c_file = c_file.into();
+        elf2cfile(self.elf, &c_file, generation_method, log_output, comments, hints)
     }
 
     /// Executes the file conversion process by calling elf2rom()

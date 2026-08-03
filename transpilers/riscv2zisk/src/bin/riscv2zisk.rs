@@ -16,12 +16,16 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     // Check program arguments length
+    let lang_c = args.iter().any(|a| a == "--lang=c");
+    let args: Vec<String> = args.into_iter().filter(|a| a != "--lang=c").collect();
     if args.len() != 4 {
         eprintln!("Error parsing arguments: invalid number of arguments={}", args.len());
         for (i, arg) in args.iter().enumerate() {
             eprintln!("Argument {i}: {arg}");
         }
-        eprintln!("Usage: riscv2zisk <riscv_elf_file> <i86-64_asm_file> <generation_method>");
+        eprintln!(
+            "Usage: riscv2zisk <riscv_elf_file> <output_file> <generation_method> [--lang=c]"
+        );
         process::exit(1);
     }
 
@@ -51,8 +55,13 @@ fn main() {
     // Create an instance of the program converter
     let rv2zk = Riscv2zisk::new(&elf);
 
-    // Convert program
-    if let Err(e) = rv2zk.runfile(asm_file, generation_method, true, true, false) {
+    // Convert program, into assembly or into C
+    let result = if lang_c {
+        rv2zk.runfile_c(asm_file, generation_method, true, true, false)
+    } else {
+        rv2zk.runfile(asm_file, generation_method, true, true, false)
+    };
+    if let Err(e) = result {
         println!("Application error: {e}");
         process::exit(1);
     }

@@ -68,6 +68,7 @@ pub mod zisk_registers;
 pub mod zisk_required_operation;
 pub mod zisk_rom;
 pub mod zisk_rom_2_asm;
+pub mod zisk_rom_2_c;
 pub mod zisk_rom_2_code;
 
 pub use fcall::*;
@@ -83,4 +84,5 @@ pub use zisk_registers::*;
 pub use zisk_required_operation::*;
 pub use zisk_rom::*;
 pub use zisk_rom_2_asm::*;
+pub use zisk_rom_2_c::*;
 pub use zisk_rom_2_code::*;

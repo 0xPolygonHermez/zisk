@@ -10,6 +10,7 @@ use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::ZiskRom2Asm;
+use zisk_core::zisk_rom_2_c::ZiskRom2C;
 use zisk_core::zisk_rom_2_code::AsmGenerationMethod;
 use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 
@@ -415,6 +416,22 @@ pub fn elf2romfile(
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf)?;
     ZiskRom2Asm::save_to_asm_file(&rom, asm_file, generation_method, log_output, comments, hints);
+
+    Ok(())
+}
+
+/// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result as C
+/// source code.  This is the C counterpart of elf2romfile().
+pub fn elf2cfile(
+    elf: &[u8],
+    c_file: &Path,
+    generation_method: AsmGenerationMethod,
+    log_output: bool,
+    comments: bool,
+    hints: bool,
+) -> Result<(), Box<dyn Error>> {
+    let rom = elf2rom(elf)?;
+    ZiskRom2C::save_to_c_file(&rom, c_file, generation_method, log_output, comments, hints);
 
     Ok(())
 }
