@@ -6,7 +6,8 @@ use std::sync::{Arc, Mutex};
 
 struct Inner {
     data: Mutex<Vec<u8>>,
-    cursor: Mutex<Cursor<Vec<u8>>>,
+    /// Frame-read offset into `data`; independent of writes.
+    pos: Mutex<usize>,
 }
 
 /// The `ZiskStdin` struct provides an abstraction for handling standard input data in a flexible manner.
@@ -24,18 +25,12 @@ impl Default for ZiskStdin {
 impl ZiskStdin {
     /// Creates a new, empty `ZiskStdin` instance.
     pub fn new() -> Self {
-        Self {
-            inner: Arc::new(Inner {
-                data: Mutex::new(Vec::new()),
-                cursor: Mutex::new(Cursor::new(Vec::new())),
-            }),
-        }
+        Self { inner: Arc::new(Inner { data: Mutex::new(Vec::new()), pos: Mutex::new(0) }) }
     }
 
     /// Creates a `ZiskStdin` instance from a vector of bytes.
     pub fn from_vec(data: Vec<u8>) -> Self {
-        let cursor = Cursor::new(data.clone());
-        Self { inner: Arc::new(Inner { data: Mutex::new(data), cursor: Mutex::new(cursor) }) }
+        Self { inner: Arc::new(Inner { data: Mutex::new(data), pos: Mutex::new(0) }) }
     }
 
     /// Creates a `ZiskStdin` instance by reading data from a file at the specified path.
@@ -114,6 +109,37 @@ impl ZiskStdin {
         self.inner.data.lock().unwrap().clone()
     }
 
+    /// Borrow the raw buffer for the duration of `f`. Prefer this over
+    /// [`read_data`](Self::read_data) for read-only use; inputs reach tens of MB.
+    ///
+    /// `f` must not call back into this `ZiskStdin`: the buffer lock is held for
+    /// its duration and is not reentrant.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
+    pub fn with_data<R>(&self, f: impl FnOnce(&[u8]) -> R) -> R {
+        f(self.inner.data.lock().unwrap().as_slice())
+    }
+
+    /// Length of the raw buffer in bytes.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
+    pub fn len(&self) -> usize {
+        self.inner.data.lock().unwrap().len()
+    }
+
+    /// Whether the raw buffer is empty.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the internal mutex is poisoned.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Read the next frame of data from the `ZiskStdin` buffer as a vector of bytes.
     ///
     /// # Panics
@@ -164,16 +190,8 @@ impl ZiskStdin {
         let mut buf = self.inner.data.lock().unwrap();
         buf.extend_from_slice(&len_bytes);
         buf.extend_from_slice(data);
-        if padding > 0 {
-            buf.extend_from_slice(&vec![0u8; padding]);
-        }
-
-        let mut cursor = self.inner.cursor.lock().unwrap();
-        cursor.get_mut().extend_from_slice(&len_bytes);
-        cursor.get_mut().extend_from_slice(data);
-        if padding > 0 {
-            cursor.get_mut().extend_from_slice(&vec![0u8; padding]);
-        }
+        let padded_len = buf.len() + padding;
+        buf.resize(padded_len, 0);
     }
 
     /// Save the `ZiskStdin` buffer to a file at the specified path.
@@ -206,7 +224,7 @@ impl ZiskStdin {
     ///
     /// Panics if the internal mutex is poisoned.
     pub fn rewind(&self) {
-        self.inner.cursor.lock().unwrap().set_position(0);
+        *self.inner.pos.lock().unwrap() = 0;
     }
 
     /// Alias for `rewind`.
@@ -221,23 +239,123 @@ impl ZiskStdin {
     /// Panics if the internal mutex is poisoned.
     pub fn clear(&self) {
         self.inner.data.lock().unwrap().clear();
-        let mut cursor = self.inner.cursor.lock().unwrap();
-        *cursor = Cursor::new(Vec::new());
+        *self.inner.pos.lock().unwrap() = 0;
     }
 
+    /// Reads the next length-prefixed frame, advancing past its padding.
     fn read_raw(&self) -> std::io::Result<Vec<u8>> {
-        let mut cursor = self.inner.cursor.lock().unwrap();
+        let buf = self.inner.data.lock().unwrap();
+        let mut pos = self.inner.pos.lock().unwrap();
+
+        let mut cursor = Cursor::new(&buf[..]);
+        cursor.set_position(*pos as u64);
+
         let mut len_bytes = [0u8; 8];
         cursor.read_exact(&mut len_bytes)?;
         let len = usize::from_le_bytes(len_bytes);
         let mut data = vec![0u8; len];
         cursor.read_exact(&mut data)?;
-        let total_len = 8 + len;
-        let padding = (8 - (total_len % 8)) % 8;
+        let padding = (8 - ((8 + len) % 8)) % 8;
         if padding > 0 {
             let mut pad = vec![0u8; padding];
             cursor.read_exact(&mut pad)?;
         }
+
+        // Commit only on success, so a short read leaves the reader put.
+        *pos = cursor.position() as usize;
         Ok(data)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_vec_round_trips_a_single_frame() {
+        let stdin = ZiskStdin::new();
+        stdin.write_slice(&[1, 2, 3]);
+        // The path a saved `input.bin` takes.
+        let reloaded = ZiskStdin::from_vec(stdin.read_data());
+        assert_eq!(reloaded.read_bytes(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn frames_are_read_back_in_order_with_padding_skipped() {
+        let stdin = ZiskStdin::new();
+        stdin.write_slice(&[9]); // 1 byte  -> 7 bytes padding
+        stdin.write_slice(&[1, 2, 3, 4, 5, 6, 7, 8]); // 8 bytes -> 0 padding
+        stdin.write_slice(&[]); // empty frame
+
+        assert_eq!(stdin.read_bytes(), vec![9]);
+        assert_eq!(stdin.read_bytes(), vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(stdin.read_bytes(), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn every_frame_is_eight_byte_aligned() {
+        let stdin = ZiskStdin::new();
+        for len in 0..24usize {
+            stdin.write_slice(&vec![7u8; len]);
+            assert_eq!(stdin.len() % 8, 0, "buffer unaligned after a {len}-byte frame");
+        }
+    }
+
+    #[test]
+    fn rewind_replays_from_the_start() {
+        let stdin = ZiskStdin::new();
+        stdin.write_slice(&[4, 5]);
+        assert_eq!(stdin.read_bytes(), vec![4, 5]);
+        stdin.rewind();
+        assert_eq!(stdin.read_bytes(), vec![4, 5]);
+    }
+
+    #[test]
+    fn writes_after_a_read_are_visible_without_disturbing_the_position() {
+        let stdin = ZiskStdin::new();
+        stdin.write_slice(&[1]);
+        assert_eq!(stdin.read_bytes(), vec![1]);
+        stdin.write_slice(&[2]);
+        assert_eq!(stdin.read_bytes(), vec![2]);
+    }
+
+    #[test]
+    fn reading_past_the_end_errors_and_leaves_the_position_put() {
+        let stdin = ZiskStdin::new();
+        stdin.write_slice(&[1, 2]);
+        assert_eq!(stdin.read_bytes(), vec![1, 2]);
+
+        assert!(stdin.read_raw().is_err());
+        // A failed read must not consume anything.
+        stdin.write_slice(&[3]);
+        assert_eq!(stdin.read_bytes(), vec![3]);
+    }
+
+    #[test]
+    fn clear_empties_the_buffer_and_resets_the_reader() {
+        let stdin = ZiskStdin::new();
+        stdin.write_slice(&[1, 2, 3]);
+        stdin.clear();
+        assert!(stdin.is_empty());
+        assert!(stdin.read_raw().is_err());
+
+        stdin.write_slice(&[8]);
+        assert_eq!(stdin.read_bytes(), vec![8]);
+    }
+
+    #[test]
+    fn with_data_sees_the_same_bytes_as_read_data() {
+        let stdin = ZiskStdin::new();
+        stdin.write_slice(&[1, 2, 3]);
+        assert_eq!(stdin.with_data(|d| d.to_vec()), stdin.read_data());
+        assert_eq!(stdin.with_data(|d| d.len()), stdin.len());
+    }
+
+    #[test]
+    fn clones_share_one_buffer() {
+        let stdin = ZiskStdin::new();
+        let clone = stdin.clone();
+        stdin.write_slice(&[42]);
+        assert_eq!(clone.read_bytes(), vec![42]);
     }
 }

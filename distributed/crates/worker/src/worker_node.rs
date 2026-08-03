@@ -2178,20 +2178,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
+        if !input_data.payload.is_empty() && input_data.payload.len() % 8 != 0 {
+            return Err(anyhow!(
+                "InputStreamData payload length {} is not a multiple of 8 bytes",
+                input_data.payload.len()
+            ));
+        }
+
         // gRPC `InputStreamData` only reaches rank 0. Mirror it to peer ranks
         // via MPI so their ASM children get the same bytes — without this
         // they wait on `chunk_done` until the semaphore times out (~10 s) and
-        // every streamed-input job fails on every rank ≠ 0.
+        // every streamed-input job fails on every rank ≠ 0. Skipped when this
+        // is the only rank: the conversion and borsh pass below copy the chunk
+        // twice for nobody.
         // Wire format matches what `process_hints` broadcasts for hint-driven
         // inputs (see `precompiles/hints/src/hints_processor.rs`): tag byte
         // followed by a borsh-encoded `StreamMessage { data: Vec<u64> }`.
-        if !input_data.payload.is_empty() {
-            if input_data.payload.len() % 8 != 0 {
-                return Err(anyhow!(
-                    "InputStreamData payload length {} is not a multiple of 8 bytes",
-                    input_data.payload.len()
-                ));
-            }
+        if self.worker.n_processes() > 1 && !input_data.payload.is_empty() {
             let data_u64: Vec<u64> = input_data
                 .payload
                 .chunks_exact(8)
