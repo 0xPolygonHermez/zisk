@@ -209,6 +209,24 @@ impl AsmRunnerMT {
                 .context("Child process returned error");
         }
 
+        // Cross-run chunk-stream desync detector: the `chunk_done` semaphore
+        // carries no run epoch, so a stale post left by a prior aborted run can
+        // shift THIS run's chunk stream (consumer reads leftover bytes), silently
+        // producing a wrong minimal trace -> wrong instance plan ->
+        // VerifyGlobalConstraints. The header's `num_chunks` is authoritative for
+        // this run; if populated and it disagrees with what we consumed, a desync
+        // occurred. Log-only and guarded by `!= 0` so an unpopulated header can
+        // never false-fire.
+        {
+            let header_chunks = preloaded.output_shmem.map_header().num_chunks;
+            let consumed = chunk_id.0 as u64 + 1;
+            if header_chunks != 0 && header_chunks != consumed {
+                error!(
+                    "[CHUNK-DESYNC] MT consumed {consumed} chunks but header reports {header_chunks} — likely a stale chunk_done post from a prior run shifted the stream (wrong minimal trace)"
+                );
+            }
+        }
+
         let total_steps = emu_traces.iter().map(|x| x.steps).sum::<u64>();
         let mhz = (total_steps as f64 / elapsed.as_secs_f64()) / 1_000_000.0;
         let asm_execution_info = AsmExecutionInfo { time: elapsed.as_secs_f32(), mhz: mhz as f32 };

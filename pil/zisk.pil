@@ -66,6 +66,7 @@ airgroup Zisk {
     set_range_check_tables_virtual();
     set_max_bits_virtual_tables(21);
     set_num_virtual_tables(2);
+    set_group_virtual_tables([ARITH_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, BINARY_EXTENSION_FROPS_TABLE_ID]);
 
     // Main Program
     Main(N: 2**22);
@@ -124,6 +125,7 @@ airgroup Zisk {
     Poseidon(N: 2**17);
 
     Blake2br(N: 2**18);
+    virtual Blake2brTable(BLAKE2BR_TABLE_SIZE);
 
     Dma();
     Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;

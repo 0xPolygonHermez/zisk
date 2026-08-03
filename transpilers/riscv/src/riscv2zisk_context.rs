@@ -87,17 +87,19 @@ pub struct Riscv2ZiskContext<'a> {
     /// - read and increment rom.build_counter when creating instructions (i.e. in creation order)
     /// - insert the created instructions in the rom.insts map, using the instruction pc as key
     pub rom: &'a mut ZiskRom,
-
-    // to store csr-port used on CSR instrucction for next instruction
-    pub input_precompile: Option<u32>,
-    pub output_precompile: Option<u32>,
-    // to store register used on CSR instrucction for next instruction as arg1
-    // precompile (arg1, previous_arg1, arg2 || immediate)
-    pub input_precompile_reg: Option<u32>,
-    pub output_precompile_reg: Option<u32>,
+    pub deprecated: bool,
 }
 
-impl Riscv2ZiskContext<'_> {
+impl<'a> Riscv2ZiskContext<'a> {
+    pub fn new(rom: &'a mut ZiskRom) -> Self {
+        Self { rom, deprecated: false }
+    }
+    fn notify_deprecated(&mut self, msg: &str) {
+        if !self.deprecated {
+            self.deprecated = true;
+            eprintln!("*** DEPRECATED INSTRUCTION: {}. Please update toolchain/zisklibs/ziskos and recompile your code. ***", msg);
+        }
+    }
     /// Converts an input RISCV instruction into a ZisK instruction and stores it into the internal
     /// map.  C instrucions are already expanded into their equivalent RISCV instructions, so we
     /// only have to map them to their corresponding IMA 32-bits equivalent instructions.
@@ -113,25 +115,7 @@ impl Riscv2ZiskContext<'_> {
 
             // I.1. Integer Computational (Register-Register)
             RiscvInstName::Add => {
-                if riscv_instruction.rd == 0
-                    && self.input_precompile == Some(SYSCALL_DMA_MEMCPY_ID as u32)
-                {
-                    self.create_precompiled_op(
-                        riscv_instruction,
-                        "dma_memcpy",
-                        riscv_instruction.rs1,
-                        self.input_precompile_reg.unwrap(),
-                        4,
-                    );
-                } else if self.input_precompile == Some(SYSCALL_DMA_MEMCMP_ID as u32) {
-                    self.create_precompiled_op(
-                        riscv_instruction,
-                        "dma_memcmp",
-                        riscv_instruction.rs1,
-                        self.input_precompile_reg.unwrap(),
-                        4,
-                    );
-                } else if riscv_instruction.rs1 == 0 {
+                if riscv_instruction.rs1 == 0 {
                     if !next_instructions.is_empty() {
                         // rd = rs1(0) + rs2 = rs2 followed by ret
                         self.copyb(riscv_instruction, 4, 2);
@@ -229,6 +213,9 @@ impl Riscv2ZiskContext<'_> {
             RiscvInstName::Lw => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             RiscvInstName::Lwu => self.load_op(riscv_instruction, "copyb", 4, 4),
             RiscvInstName::Ld => self.load_op(riscv_instruction, "copyb", 8, 4),
+            // LR is translated as a plain load: no reservation is recorded. This is
+            // sound for a single-hart machine; see `sc_w` for the full rationale and
+            // the conformance caveat it implies.
             RiscvInstName::LrW => self.load_op(riscv_instruction, "signextend_w", 4, 4),
             RiscvInstName::LrD => self.load_op(riscv_instruction, "copyb", 8, 4),
             RiscvInstName::Lui => self.lui(riscv_instruction, 4),
@@ -982,11 +969,10 @@ impl Riscv2ZiskContext<'_> {
         rd: u32,
         extended_arg: i64,
         is_rs2_an_imm: bool,
-        inst_size: u64,
+        next_pc: u64,
     ) {
         // inst_size == 8 used for special cases where take arguments of precompiled of
         // next instruction but no need to read again
-        assert!(inst_size == 2 || inst_size == 4 || inst_size == 8 || inst_size == 12);
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
         zib.src_a("reg", rs1 as u64, false);
         if is_rs2_an_imm {
@@ -996,9 +982,10 @@ impl Riscv2ZiskContext<'_> {
         }
         zib.op(op).unwrap();
         zib.store("reg", rd as i64, false, false);
-        zib.j(extended_arg, inst_size as i64);
+        let jmp_offset = next_pc as i64 - i.rom_address as i64;
+        zib.j(extended_arg, jmp_offset);
         zib.verbose(&format!(
-            "{} r{}, r{}, r{} (precompiled {op} r{rd},r{rs1},r{rs2},{extended_arg} + jmp +{inst_size})",
+            "{} r{}, r{}, r{} (precompiled {op} r{rd},r{rs1},r{rs2},{extended_arg} + jmp +{jmp_offset})",
             i.inst_name,
             i.rd,
             i.rs1,
@@ -1007,20 +994,49 @@ impl Riscv2ZiskContext<'_> {
         zib.build(self.rom);
     }
 
-    /// Creates a Zisk operation that implements a RISC-V precompiles set extra param this
-    /// operation store in fixed address the value.
-    pub fn create_set_precompiles_param_op(&mut self, i: &RiscvInst, rs1: u32, inst_size: u64) {
-        assert!(inst_size == 2 || inst_size == 4);
-        let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
-        zib.src_a("imm", 0, false);
-        zib.src_b("reg", rs1 as u64, false);
-        zib.op("copyb").unwrap();
-        zib.store("mem", EXTRA_PARAMS_ADDR as i64, false, false);
-        zib.j(0, inst_size as i64);
-        zib.verbose(&format!("sd r{}, (0x{:X}) (param 0x{:03X})", rs1, EXTRA_PARAMS_ADDR, i.csr));
-        zib.build(self.rom);
-        self.output_precompile = Some(i.csr);
-        self.output_precompile_reg = Some(i.rs1);
+    /// Creates a Zisk precompile call with 3 params; since the 3rd param isn't an immediate, it's necessary to
+    /// add the previous instruction to set EXTRA_PARAMS_ADDR
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_precompiles_triple_param_op(
+        &mut self,
+        i: &RiscvInst,
+        next_pc: u64,
+        rd: u32,
+        op: &str,
+        rs1: u32,
+        rs2: u32,
+        rs3: u32,
+    ) {
+        // Get addresses of the required instructions to implement this function
+        let rom_address = i.rom_address;
+        let internal_address_1 = self.rom.get_internal_address();
+        {
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", rs3 as u64, false);
+            zib.op("copyb").unwrap();
+            zib.store("mem", EXTRA_PARAMS_ADDR as i64, false, false);
+            zib.set_next_internal_address(internal_address_1);
+            let jump_address = internal_address_1 as i64 - i.rom_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!(
+                "sd r{}, (0x{:X}) (param 0x{:03X}) 1/2",
+                rs3, EXTRA_PARAMS_ADDR, i.csr
+            ));
+            zib.build(self.rom);
+        }
+        {
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
+            zib.src_a("reg", rs1 as u64, false);
+            zib.src_b("reg", rs2 as u64, false);
+            zib.op(op).unwrap();
+            zib.store("reg", rd as i64, false, false);
+            let jump_address = next_pc as i64 - internal_address_1 as i64;
+            // jmp_offset1 is set to 0 because the it's precompiled and it's used as extended param
+            zib.j(0, jump_address);
+            zib.verbose(&format!("{} r{}, r{}, r{} 2/2", op, rd, rs1, rs2));
+            zib.build(self.rom);
+        }
     }
 
     // beq rs1, rs2, label
@@ -1291,6 +1307,47 @@ impl Riscv2ZiskContext<'_> {
     //    copyb_d([%rs1], [%rs2]) -> [a]
     //    copyb_d(0,0) -> [%rd]
     /// Implements the RISC-V store-conditional instruction of a 32-bits value
+    ///
+    /// # Zalrsc: SC always succeeds (deliberate deviation)
+    ///
+    /// ZisK models no LR/SC reservation state at all. `lr.w`/`lr.d` translate to a
+    /// plain load, and `sc.w`/`sc.d` unconditionally perform the store and write 0
+    /// (success) to `rd`. This is a considered choice, not an oversight.
+    ///
+    /// Rationale: ZisK is single-hart and deterministic — no second hart, no
+    /// interrupts, no preemption, no DMA. Of the conditions under which the RISC-V
+    /// unprivileged spec *requires* SC to fail, the two that motivate the extension
+    /// (a store to the reservation set from another hart; a reservation lost to
+    /// preemption) are unreachable by construction. Spurious failure is permitted
+    /// but never required. So for any LR/SC pair with matching address and width —
+    /// which is all a compiler ever emits, since LLVM's RISC-V atomics expansion
+    /// only produces matched pairs inside a constrained sequence — unconditional
+    /// success is not merely legal, it is the optimal single-hart implementation:
+    /// every compare-and-swap loop converges in exactly one iteration.
+    ///
+    /// Modeling a reservation would add per-instruction state and a branch to both
+    /// the emulator hot path and the constraint system, solely to reproduce a
+    /// failure mode that only malformed code can trigger.
+    ///
+    /// # Conformance caveat
+    ///
+    /// The residual gap is spec fidelity, not soundness. There is no second
+    /// implementation to diverge from: the transpiler emits a ZisK ROM, and both
+    /// the emulator and the constraint system execute that ROM, so the translation
+    /// *is* the semantics and a prover cannot exploit this to prove a false
+    /// statement about ZisK-ROM execution.
+    ///
+    /// What a program *can* do is distinguish ZisK from real hardware. These three
+    /// cases must fail on conforming hardware but succeed here:
+    ///
+    ///   * `sc` with no preceding `lr` (no reservation held),
+    ///   * `sc` to a different address than the `lr` it is paired with,
+    ///   * `sc` with a different width than that `lr` (e.g. `lr.d` then `sc.w`).
+    ///
+    /// Guest code must therefore pair LR and SC with matching address and width.
+    /// Compiler-generated code always does. This only becomes a concern under a
+    /// threat model where the guest ELF itself is adversarial and unvetted; where
+    /// the verifier trusts a known ELF hash, the exposure is nil.
     pub fn sc_w(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd > 0 {
@@ -1336,6 +1393,10 @@ impl Riscv2ZiskContext<'_> {
     //    copyb([%rs1], [%rs2]) -> [a]
     //    copyb(0,0) -> [%rd]
     /// Implements the RISC-V store-conditional instruction of a 64-bits value
+    ///
+    /// Like Riscv2ZiskContext::sc_w(), this always succeeds: no reservation state
+    /// is modeled, the store is unconditional, and `rd` is set to 0. See `sc_w` for
+    /// the rationale and the conformance caveat.
     pub fn sc_d(&mut self, i: &RiscvInst) {
         let rom_address = i.rom_address;
         if i.rd > 0 {
@@ -1661,6 +1722,18 @@ impl Riscv2ZiskContext<'_> {
     /// if that CSR bit is writable.
     pub fn csrrs(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         let rom_address = i.rom_address;
+        // Special DMA patterns that can have rd != 0
+        match i.csr as u16 {
+            SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID => {
+                assert!(!next_instructions.is_empty());
+                return self.transpile_dma_memcpy_memcmp_pattern(i, next_instructions);
+            }
+            SYSCALL_DMA_MEMSET_ID => {
+                assert!(!next_instructions.is_empty());
+                return self.transpile_dma_memset_pattern(i, next_instructions);
+            }
+            _ => {}
+        }
         if i.rd == i.rs1 {
             if i.rd == 0 {
                 let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
@@ -1719,17 +1792,9 @@ impl Riscv2ZiskContext<'_> {
             }
         } else if i.rd == 0 {
             match i.csr as u16 {
-                SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID => {
-                    assert!(!next_instructions.is_empty());
-                    self.transpile_dma_memcpy_memcmp_pattern(i, next_instructions);
-                }
                 SYSCALL_DMA_INPUTCPY_ID => {
                     assert!(!next_instructions.is_empty());
                     self.transpile_dma_inputcpy_pattern(i, next_instructions);
-                }
-                SYSCALL_DMA_MEMSET_ID => {
-                    assert!(!next_instructions.is_empty());
-                    self.transpile_dma_memset_pattern(i, next_instructions);
                 }
                 SYSCALL_PROFILE_ID => {
                     assert!(!next_instructions.is_empty());
@@ -1767,7 +1832,11 @@ impl Riscv2ZiskContext<'_> {
                     zib.verbose(precompiled);
                     // NOTE: if precompiles don't use extended static parameter (jmp_offset1), must be set to 0
                     // to match with that precompiles proves
-                    zib.j(0, 4);
+                    assert!(!next_instructions.is_empty());
+                    let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+                    // jmp_offset1 is used for extended static parameter, which is not used in this case
+                    zib.j(0, jmp_offset);
+
                     zib.build(self.rom);
                 }
                 CSR_FCALL_PARAM_ADDR_START..=CSR_FCALL_PARAM_ADDR_END => {
@@ -1782,7 +1851,9 @@ impl Riscv2ZiskContext<'_> {
                         "csrrs 0x{0:X}, rs1={1} => copyb[fcall_param(r{1},{2})]",
                         i.csr, i.rs1, words
                     ));
-                    zib.j(4, 4);
+                    assert!(!next_instructions.is_empty());
+                    let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+                    zib.j(jmp_offset, jmp_offset);
                     zib.build(self.rom);
                 }
                 _ => {
@@ -1796,7 +1867,9 @@ impl Riscv2ZiskContext<'_> {
                         "{} r{}, 0x{:x}, r{} # rs!=rd=0",
                         i.inst_name, i.rd, i.csr, i.rs1
                     ));
-                    zib.j(4, 4);
+                    assert!(!next_instructions.is_empty());
+                    let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+                    zib.j(jmp_offset, jmp_offset);
                     zib.build(self.rom);
                 }
             }
@@ -1819,7 +1892,9 @@ impl Riscv2ZiskContext<'_> {
                 ));
             }
             zib.store("reg", i.rd as i64, false, false);
-            zib.j(4, 4);
+            assert!(!next_instructions.is_empty());
+            let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+            zib.j(jmp_offset, jmp_offset);
             zib.build(self.rom);
         } else if i.csr == SYSCALL_ADD256_ID as u32 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
@@ -1828,7 +1903,10 @@ impl Riscv2ZiskContext<'_> {
             zib.op("add256").unwrap();
             zib.verbose("add256");
             zib.store("reg", i.rd as i64, false, false);
-            zib.j(0, 4);
+            assert!(!next_instructions.is_empty());
+            let jmp_offset = next_instructions[0].rom_address as i64 - rom_address as i64;
+            // jmp_offset1 is used for extended static parameter, which is not used in this case
+            zib.j(0, jmp_offset);
             zib.build(self.rom);
         } else {
             let internal_address_1 = self.rom.get_internal_address();
@@ -2349,7 +2427,7 @@ impl Riscv2ZiskContext<'_> {
 
     fn transpile_dma_memset_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         if i.imme == 2 {
-            if next_instructions.len() > 1
+            if next_instructions.len() > 2
                 && next_instructions[0].inst_name == RiscvInstName::Addi
                 && next_instructions[1].inst_name == RiscvInstName::Addi
             {
@@ -2364,6 +2442,7 @@ impl Riscv2ZiskContext<'_> {
                 let rs2 = next_instructions[0].imm; // count
                 let rd = next_instructions[0].rd;
                 let fill_byte = next_instructions[1].imm; // fill_byte
+                let next_pc = next_instructions[2].rom_address;
                 assert!((0..=0xFF).contains(&fill_byte));
                 self.create_extended_precompiles_op(
                     i,
@@ -2373,7 +2452,7 @@ impl Riscv2ZiskContext<'_> {
                     rd,
                     fill_byte as i64,
                     true,
-                    12,
+                    next_pc,
                 );
             } else {
                 let next_0 =
@@ -2386,8 +2465,7 @@ impl Riscv2ZiskContext<'_> {
                         i.csr, i.rom_address, next_0, next_1);
             }
         } else if i.imme == 0 {
-            if !next_instructions.is_empty()
-                && next_instructions[0].inst_name == RiscvInstName::Addi
+            if next_instructions.len() > 1 && next_instructions[0].inst_name == RiscvInstName::Addi
             {
                 // xmemset transpilation pattern:
                 //
@@ -2399,6 +2477,8 @@ impl Riscv2ZiskContext<'_> {
                 let rs2 = next_instructions[0].rs1; // count
                 let rd = next_instructions[0].rd;
                 let fill_byte = next_instructions[0].imm; // byte (fill_byte)
+                let next_pc = next_instructions[1].rom_address;
+
                 assert!((0..=0xFF).contains(&fill_byte));
                 self.create_extended_precompiles_op(
                     i,
@@ -2408,7 +2488,7 @@ impl Riscv2ZiskContext<'_> {
                     rd,
                     fill_byte as i64,
                     false,
-                    8,
+                    next_pc,
                 );
             } else {
                 let next_0 =
@@ -2427,50 +2507,95 @@ impl Riscv2ZiskContext<'_> {
         i: &RiscvInst,
         next_instructions: &[RiscvInst],
     ) {
-        if i.imme == 0 && !next_instructions.is_empty() {
-            if next_instructions[0].inst_name == RiscvInstName::Add {
-                // memcpy/memcmp transpilation pattern:
-                //
-                //  csrs  0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM]
-                //  add   rd, reg(dst), reg(count)       memcxx rd, reg(dst), reg(src)
-                //  ..........                           ..........
+        if i.imme == 0 && next_instructions.len() > 1 {
+            let rd = i.rd;
+            let src = i.rs1;
+            let dst = next_instructions[0].rs1;
+            let next_pc = next_instructions[1].rom_address;
 
-                self.create_set_precompiles_param_op(i, next_instructions[0].rs2, 4);
-                return;
+            if next_instructions[0].inst_name == RiscvInstName::Add && next_instructions.len() > 1 {
+                let op =
+                    if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 { "dma_memcpy" } else { "dma_memcmp" };
+                if next_instructions[0].rd == 0 {
+                    // memcpy/memcmp transpilation pattern:
+                    //
+                    //  i:  csrrs  rd, 0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM] ─┐
+                    //                                           [internal_pc]  memcxx rd, reg(dst), reg(src) ─┐
+                    //  n0: add   r0, reg(dst), reg(count)       add   rd, reg(dst), reg(count)                │ jmp
+                    //  n1: ..........                           ..........   <────────────────────────────────┘ next[1]
+                    let count = next_instructions[0].rs2;
+                    self.create_precompiles_triple_param_op(i, next_pc, rd, op, dst, src, count);
+
+                    return;
+                } else {
+                    // DEPRECATED: memcpy/memcmp transpilation pattern:
+                    //
+                    //  i:  csrs  0x81x, reg(src)          ===>  sd reg(count), [EXTRA_PARAM] ─┐
+                    //                                           [internal_pc]  memcxx rd, reg(dst), reg(src) ─┐
+                    //  n0: add   rd, reg(dst), reg(count)       add   rd, reg(dst), reg(count)                │ jmp
+                    //  n1: ..........                           ..........   <────────────────────────────────┘ next[1]
+                    self.notify_deprecated(&format!(
+                        "{op} transpilation pattern on pc 0x{:08x}",
+                        i.rom_address
+                    ));
+                    let count = next_instructions[0].rs2;
+                    let rd = next_instructions[0].rd;
+                    self.create_precompiles_triple_param_op(i, next_pc, rd, op, dst, src, count);
+
+                    return;
+                }
             }
             if next_instructions[0].inst_name == RiscvInstName::Addi {
-                // memcpy/memcmp transpilation pattern:
-                //
-                //  csrs  0x81x, reg(src)          ===>  memcxx rd, reg(dst), reg(src), count ─┐
-                //  addi  rd, reg(dst), count            addi rd, reg(dst), count              │ jmp+8
-                //  ..........                           ..........   <────────────────────────┘
-                let rs1 = next_instructions[0].rs1;
-                let rs2 = i.rs1;
-                let rd = next_instructions[0].rd;
-                let count = next_instructions[0].imm as i64; // count
                 let op = if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 {
                     "dma_xmemcpy"
                 } else {
                     "dma_xmemcmp"
                 };
-                self.create_extended_precompiles_op(i, op, rs1, rs2 as u64, rd, count, false, 8);
-                return;
+                if next_instructions[0].rd == 0 {
+                    // memcpy/memcmp transpilation pattern:
+                    //
+                    //  csrs  0x81x, reg(src)          ===>  memcxx rd, reg(dst), reg(src), count ─┐
+                    //  addi  rd, reg(dst), count            addi rd, reg(dst), count              │ jmp+8
+                    //  ..........                           ..........   <────────────────────────┘
+                    let count = next_instructions[0].imm as i64; // count
+                    self.create_extended_precompiles_op(
+                        i, op, dst, src as u64, rd, count, false, next_pc,
+                    );
+                    return;
+                } else {
+                    // DEPRECATED: memcpy/memcmp transpilation pattern:
+                    //
+                    //  csrs  0x81x, reg(src)          ===>  memcxx rd, reg(dst), reg(src), count ─┐
+                    //  addi  rd, reg(dst), count            addi rd, reg(dst), count              │ jmp+8
+                    //  ..........                           ..........   <────────────────────────┘
+                    let count = next_instructions[0].imm as i64; // count
+                    let rd = next_instructions[0].rd;
+                    self.notify_deprecated(&format!(
+                        "{op} transpilation pattern on pc 0x{:08x}",
+                        i.rom_address
+                    ));
+                    self.create_extended_precompiles_op(
+                        i, op, dst, src as u64, rd, count, false, next_pc,
+                    );
+                    return;
+                }
             }
         }
         let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as memcpy/memcmp with a \
-                        consecutive addi (next[0]:{})",
+                        consecutive add/addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
     fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
-        if i.imme == 0 && !next_instructions.is_empty() {
+        if i.imme == 0 && next_instructions.len() > 1 {
+            let next_pc = next_instructions[1].rom_address;
             if next_instructions[0].inst_name == RiscvInstName::Add {
                 // inputcpy transpilation pattern:
                 //
                 //  csrs  0x815, reg(count)        ===>  inputcpy rd, reg(dst), reg(count) ─┐
-                //  add   rd, reg(dst), reg(count)       addi rd, reg(dst), reg(count)      │ jmp+8
+                //  add   r0, reg(dst), reg(count)       add r0, reg(dst), reg(count)       │ jmp+8
                 //  ..........                           ..........   <─────────────────────┘
                 let rs1 = next_instructions[0].rs1;
                 let rs2 = next_instructions[0].rs2;
@@ -2483,7 +2608,7 @@ impl Riscv2ZiskContext<'_> {
                     rd,
                     0,
                     false,
-                    8,
+                    next_pc,
                 );
                 return;
             }
@@ -2491,27 +2616,38 @@ impl Riscv2ZiskContext<'_> {
                 // inputcpy transpilation pattern:
                 //
                 //  csrs  0x815, reg(dst)          ===>  inputcpy rd, reg(dst), count ────┐
-                //  addi  rd, reg(dst), count            addi rd, reg(dst), count         │ jmp+8
+                //  addi  r0, reg(dst), count            addi r0, reg(dst), count         │ jmp+8
                 //  ..........                           ..........   <───────────────────┘
                 let rs1 = next_instructions[0].rs1;
                 let imm2 = next_instructions[0].imm as u64;
                 let rd = next_instructions[0].rd;
-                self.create_extended_precompiles_op(i, "dma_inputcpy", rs1, imm2, rd, 0, true, 8);
+                self.create_extended_precompiles_op(
+                    i,
+                    "dma_inputcpy",
+                    rs1,
+                    imm2,
+                    rd,
+                    0,
+                    true,
+                    next_pc,
+                );
                 return;
             }
         }
         let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
         panic!(
             "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as inputcpy with a \
-                        consecutive addi (next[0]:{})",
+                        consecutive add/addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
     }
     fn transpile_profile_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
-        assert!(!next_instructions.is_empty());
+        assert!(next_instructions.len() > 1);
         assert!(next_instructions[0].inst_name == RiscvInstName::Addi);
         assert!(next_instructions[0].rd == 0);
         assert!(next_instructions[0].rs1 == 0);
+        let next_pc = next_instructions[1].rom_address;
+
         // profile transpilation pattern:
         //
         //  csrs  0x81A, reg(tag)    ===>  profile x0, reg(tag), imm(cmd_id) ─┐
@@ -2519,7 +2655,7 @@ impl Riscv2ZiskContext<'_> {
         //  ..........                     ..........   <─────────────────────┘
         let rs1 = i.rs1;
         let rs2 = next_instructions[0].imm as u32;
-        self.create_extended_precompiles_op(i, "profile", rs1, rs2 as u64, 0, 0, true, 8);
+        self.create_extended_precompiles_op(i, "profile", rs1, rs2 as u64, 0, 0, true, next_pc);
     }
 
     pub fn create_single_source_register_op(
@@ -2560,13 +2696,7 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64
     let riscv_instructions = riscv_interpreter(addr, &code_vector);
 
     // Create a context to convert RISCV instructions to ZisK instructions, using rom.insts
-    let mut ctx = Riscv2ZiskContext {
-        rom,
-        input_precompile: None,
-        output_precompile: None,
-        input_precompile_reg: None,
-        output_precompile_reg: None,
-    };
+    let mut ctx = Riscv2ZiskContext::new(rom);
 
     // For all RISCV instructions
     for (i, riscv_instruction) in riscv_instructions.iter().enumerate() {
@@ -2577,10 +2707,6 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64
         let next_instructions = &riscv_instructions[(i + 1)..];
 
         // Convert RICV instruction to ZisK instruction and store it in rom.insts
-        ctx.input_precompile = ctx.output_precompile;
-        ctx.output_precompile = None;
-        ctx.input_precompile_reg = ctx.output_precompile_reg;
-        ctx.output_precompile_reg = None;
         ctx.convert(riscv_instruction, next_instructions);
         //print!("   to: {}", ctx.insts.iter().last().)
     }

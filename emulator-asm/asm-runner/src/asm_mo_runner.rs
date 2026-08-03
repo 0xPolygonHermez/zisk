@@ -55,25 +55,34 @@ fn register_mo_shmem_pinned(
 
 #[cfg(gpu)]
 fn setup_gpu_count_and_plan(gpu_buffer: GpuBufferSource) -> Option<GpuCountAndPlan> {
-    let (d_buf, bytes): (*mut c_void, usize) = match gpu_buffer {
+    // gpu_id: device to bind; negative = keep current device (self-allocated).
+    let (d_buf, bytes, gpu_id): (*mut c_void, usize, i32) = match gpu_buffer {
         GpuBufferSource::Cpu => {
             tracing::info!("[gpu] no GPU buffer requested; using CPU mem_planner path");
             return None;
         }
-        GpuBufferSource::Borrowed { ptr, size } if ptr == 0 || size == 0 => {
+        GpuBufferSource::Borrowed { ptr, size, .. } if ptr == 0 || size == 0 => {
             tracing::info!(
                 "[gpu] borrowed buffer is empty (--gpu not set at runtime); using CPU mem_planner path"
             );
             return None;
         }
-        GpuBufferSource::Borrowed { ptr, size } => (ptr as *mut c_void, size),
-        GpuBufferSource::SelfAllocated => (std::ptr::null_mut(), 0),
+        GpuBufferSource::Borrowed { ptr, size, gpu_id } => {
+            let Ok(gpu_id) = i32::try_from(gpu_id) else {
+                tracing::error!(
+                    "[gpu] gpu_id {gpu_id} exceeds i32::MAX; using CPU mem_planner path"
+                );
+                return None;
+            };
+            (ptr as *mut c_void, size, gpu_id)
+        }
+        GpuBufferSource::SelfAllocated => (std::ptr::null_mut(), 0, -1),
     };
 
     let gpu_count_and_plan = GpuCountAndPlan::new();
     // SAFETY: `d_buf` is either null (self-allocated) or a device buffer of
     // `bytes` bytes borrowed from the prover, which outlives this planner.
-    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0) } {
+    if !unsafe { gpu_count_and_plan.setup(d_buf, bytes, 1, 0, gpu_id) } {
         tracing::error!("[gpu] GpuCountAndPlan::setup returned false; falling back to CPU");
         return None;
     }
@@ -131,11 +140,10 @@ impl MOShmemReader {
             handle_mo: None,
             #[cfg(gpu)]
             gpu_count_and_plan,
-            // When the caller opted out of MAP_LOCKED, the user can't afford
-            // pinned pages, the `usize::MAX` sentinel is the existing
-            // "give up" mechanism in `register_mo_shmem_pinned`
+            // Pinned pages disabled: no measured benefit and not supported on all devices.
+            // `usize::MAX` is the "give up" sentinel in `register_mo_shmem_pinned`.
             #[cfg(gpu)]
-            registered_bytes: if unlock_mapped_memory { usize::MAX } else { 0 },
+            registered_bytes: usize::MAX,
         })
     }
 }
@@ -160,12 +168,15 @@ impl Drop for MOShmemReader {
 pub struct AsmRunnerMO {
     /// The generated plans from the MO trace.
     pub plans: Vec<Plan>,
+    /// Bytes of the proofman-owned GPU buffer consumed by the GPU mem-ops
+    /// planner; `None` on the CPU planner path.
+    pub gpu_mops_used_bytes: Option<u64>,
 }
 
 impl AsmRunnerMO {
-    /// Creates a new `AsmRunnerMO` with the given plans.
+    /// Creates a new `AsmRunnerMO` with the given plans (no GPU planner usage).
     pub fn new(plans: Vec<Plan>) -> Self {
-        Self { plans }
+        Self { plans, gpu_mops_used_bytes: None }
     }
 
     /// Runs the assembly code in a separate process, collects the MO trace, and generates plans.
@@ -372,6 +383,12 @@ impl AsmRunnerMO {
         #[cfg(gpu)]
         timer_stop_and_log_info!(GPU_MOPS_TIME);
 
+        #[cfg(gpu)]
+        let gpu_mops_used_bytes: Option<u64> =
+            gpu_count_and_plan_opt.as_ref().map(|gcp| gcp.max_used_bytes() as u64);
+        #[cfg(not(gpu))]
+        let gpu_mops_used_bytes: Option<u64> = None;
+
         // owner: join CPU workers; no-op in GPU mode (null-guarded)
         mem_planner.wait();
 
@@ -463,6 +480,6 @@ impl AsmRunnerMO {
         save_plans(&plans, "mem_plans_cpp.txt");
 
         stats_end!(_stats, &_runner_scope);
-        Ok(AsmRunnerMO::new(plans))
+        Ok(AsmRunnerMO { plans, gpu_mops_used_bytes })
     }
 }

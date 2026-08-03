@@ -64,6 +64,7 @@ extern "C" {
         bytes: usize,
         n_workers: u32,
         worker_id: u32,
+        gpu_id: i32,
     ) -> bool;
     pub fn count_and_plan_add_chunk(
         h: *mut CountAndPlanHandle,
@@ -76,6 +77,7 @@ extern "C" {
         n_metas: *mut u32,
     ) -> bool;
     pub fn count_and_plan_reset(h: *mut CountAndPlanHandle);
+    pub fn count_and_plan_max_used_bytes(h: *mut CountAndPlanHandle) -> usize;
     pub fn count_and_plan_register_input_pinned(
         h: *mut CountAndPlanHandle,
         ptr: *mut c_void,

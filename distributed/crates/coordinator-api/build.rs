@@ -10,8 +10,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .extern_path(".google.protobuf.Timestamp", "::prost_types::Timestamp")
         .extern_path(".google.protobuf.Duration", "::prost_types::Duration")
         .protoc_arg("--experimental_allow_proto3_optional")
-        .compile_protos(&["proto/zisk_coordinator_api.proto"], &["proto/"])?;
+        .compile_protos(
+            &["proto/zisk_coordinator_api.proto", "proto/zisk_coordinator_api_ext.proto"],
+            &["proto/"],
+        )?;
 
     println!("cargo:rerun-if-changed=proto/zisk_coordinator_api.proto");
+    println!("cargo:rerun-if-changed=proto/zisk_coordinator_api_ext.proto");
     Ok(())
 }

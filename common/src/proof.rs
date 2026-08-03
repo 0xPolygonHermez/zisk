@@ -50,6 +50,10 @@ pub struct ProgramVK {
 impl ProgramVK {
     /// Build from the first `PROGRAM_VK_LEN` u64 elements of a publics blob,
     /// recording the [`HashMode`] the verkey was produced under.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `publics` has fewer than `PROGRAM_VK_LEN` elements.
     pub fn new_from_publics_with_mode(publics: &[u64], hash_mode: HashMode) -> Self {
         // Strip the recursion-layer `is_vadcop_final_proof` flag (present on a
         // full 69-wide vadcop_final publics vector) so the VK is read from the
@@ -240,6 +244,11 @@ pub struct PlonkVkey {
 
 impl PlonkVkey {
     /// Load PlonkVkey from a JSON file
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::Io`] if the file cannot be opened or read.
+    /// - [`CommonError::Deserialization`] if the JSON cannot be parsed into a [`PlonkVkey`].
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let file = File::open(path.as_ref()).map_err(|e| {
             CommonError::Io(format!(
@@ -257,6 +266,11 @@ impl PlonkVkey {
     }
 
     /// Save PlonkVkey to a JSON file
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::Io`] if the parent directory or the file cannot be created.
+    /// - [`CommonError::Serialization`] if the vkey cannot be serialized to JSON.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
 
@@ -309,6 +323,10 @@ impl Clone for PublicValues {
 
 impl PublicValues {
     /// Build from the full proof publics byte blob.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `publics_bytes` is not exactly `ZISK_PUBLICS * 8 + 32` bytes long.
     pub fn new(publics_bytes: &[u8]) -> Self {
         assert!(
             publics_bytes.len() == ZISK_PUBLICS * 8 + 32,
@@ -326,6 +344,10 @@ impl PublicValues {
 
     /// Build from the full proof publics u64 blob: `[program_vk(4)][publics(ZISK_PUBLICS)]`.
     /// Each public u64 is truncated to its low 32 bits (matching `public_u64()`).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `publics` does not contain exactly `ZISK_PUBLICS + PROGRAM_VK_LEN` elements.
     pub fn new_from_u64(publics: &[u64]) -> Self {
         // Accept either the flag-free app view (`[vk | inputs]`, 68) or a full
         // vadcop_final vector (`[flag | vk | inputs]`, 69); strip the flag first.
@@ -352,6 +374,11 @@ impl PublicValues {
 
     /// Create PublicValues from a serializable value.
     /// The value is serialized with bincode and stored in the public outputs as 64-bit chunks.
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::Serialization`] if the value cannot be serialized with bincode.
+    /// - [`CommonError::Invalid`] if the serialized data exceeds `ZISK_PUBLICS * 4` bytes.
     pub fn write<T: serde::Serialize>(value: &T) -> Result<Self> {
         let serialized = bincode::serde::encode_to_vec(value, bincode::config::standard())
             .map_err(|e| CommonError::Serialization(e.to_string()))?;
@@ -378,6 +405,10 @@ impl PublicValues {
 
     /// Create PublicValues from an ABI-encodable value.
     /// The value is ABI-encoded and stored in the public outputs as 32-bit chunks.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Invalid`] if the ABI-encoded data exceeds `ZISK_PUBLICS * 4` bytes.
     pub fn write_abi<T: alloy_sol_types::SolValue>(value: &T) -> Result<Self> {
         let encoded = value.abi_encode();
 
@@ -414,6 +445,10 @@ impl PublicValues {
 
     /// Deserialize a value from public outputs.
     /// The value must have been previously written with bincode serialization using `commit()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Deserialization`] if the stored bytes cannot be decoded into `T`.
     pub fn read<T: serde::Serialize + serde::de::DeserializeOwned>(&self) -> Result<T> {
         let ptr = self.ptr.load(Ordering::Relaxed);
         let (result, nb_bytes): (T, usize) =
@@ -425,6 +460,10 @@ impl PublicValues {
 
     /// Decode an ABI-encoded value from public outputs.
     /// The value must have been previously written with ABI encoding using `write_abi()`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::AbiDecoding`] if the stored bytes cannot be ABI-decoded into `T`.
     pub fn read_abi<T>(&self) -> Result<T>
     where
         T: alloy_sol_types::SolValue + From<<T::SolType as alloy_sol_types::SolType>::RustType>,
@@ -658,6 +697,15 @@ impl<'a> ZiskVerifyBuilder<'a> {
     ///
     /// This method uses the overridden values if provided, otherwise falls back
     /// to the values stored in the proof.
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::NotVerified`] if the proof is well-formed but does not verify.
+    /// - [`CommonError::InvalidProof`] if the proof is malformed or its hash family
+    ///   does not match the verification key.
+    /// - [`CommonError::Invalid`] if SNARK proof verification fails (Plonk).
+    /// - [`CommonError::Serialization`] / [`CommonError::Io`] if writing the temporary
+    ///   PlonkVkey file fails (Plonk).
     pub fn verify(self) -> Result<()> {
         let derived_publics = self.proof_with_values.publics();
         let has_override = self.override_publics.is_some() || self.override_program_vk.is_some();
@@ -829,6 +877,11 @@ impl Proof {
     }
 
     /// Save the proof to a file using bincode serialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Io`] if the parent directory or file cannot be created,
+    /// or if serializing the proof to the file fails.
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
         let path = path.as_ref();
 
@@ -853,6 +906,11 @@ impl Proof {
     }
 
     /// Load a proof from a file using bincode deserialization.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::Io`] if the file cannot be opened or its contents
+    /// cannot be deserialized into a [`Proof`].
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let mut file = File::open(path.as_ref()).map_err(|e| {
             CommonError::Io(format!(
@@ -867,6 +925,10 @@ impl Proof {
     }
 
     /// Extract a `VadcopFinalProof` from the proof body.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] if the proof is not a Vadcop final proof.
     pub fn get_vadcop_final_proof(&self) -> Result<VadcopFinalProof> {
         match &self.body {
             ProofBody::Vadcop { proof, kind, hash, publics_full, .. } => {
@@ -888,6 +950,11 @@ impl Proof {
     }
 
     /// Get the proof data as a vector of u64 values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] if the program or Zisk verification key
+    /// has an unexpected length, or if the proof is not a Vadcop proof.
     pub fn get_proof_u64(&self) -> Result<Vec<u64>> {
         match &self.body {
             ProofBody::Vadcop { proof, zisk_vk, kind, publics_full, .. } => {
@@ -931,6 +998,11 @@ impl Proof {
     }
 
     /// Get the proof data as a vector of bytes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`CommonError::InvalidProof`] under the same conditions as
+    /// [`get_proof_u64`](Self::get_proof_u64), which this method builds upon.
     pub fn get_proof_bytes(&self) -> Result<Vec<u8>> {
         let words = self.get_proof_u64()?;
         let mut bytes = Vec::with_capacity(words.len() * 8);
@@ -965,6 +1037,12 @@ impl Proof {
     /// # Returns
     ///
     /// A Proof containing the parsed proof, publics, and program VK
+    ///
+    /// # Errors
+    ///
+    /// - [`CommonError::InvalidProof`] if `zisk_vk` has an unexpected length or the
+    ///   proof bytes cannot be parsed.
+    /// - [`CommonError::Invalid`] if `hash` is not a recognized proof hash family.
     pub fn new_from_vadcop_proof(
         proof: &[u64],
         minimal: bool,
@@ -1035,6 +1113,10 @@ impl Proof {
     /// // Custom verification with multiple overrides
     /// proof.publics(&custom_publics).program_vk(&custom_program_vk).verify()?;
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns the same errors as [`ZiskVerifyBuilder::verify`], which this method delegates to.
     pub fn verify(&self) -> Result<()> {
         ZiskVerifyBuilder::new(self).verify()
     }

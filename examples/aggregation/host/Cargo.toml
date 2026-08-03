@@ -5,9 +5,8 @@ edition = "2021"
 
 [dependencies]
 zisk-sdk = { workspace = true }
-test-artifacts = { workspace = true }
+test-artifacts = { workspace = true, features = ["fib_mod", "agg_verify"] }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = []

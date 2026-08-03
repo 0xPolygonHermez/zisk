@@ -98,7 +98,7 @@ pub fn bls_aggregate_verify_bls12_381(
 
 /// Aggregate verification (CoreAggregateVerify, IETF draft §2.9).
 /// Verifies one aggregate signature against `n` (PK, msg) pairs.
-pub fn bls_core_aggregate_verify_bls12_381(
+fn bls_core_aggregate_verify_bls12_381(
     pks_compressed: &[[u8; 48]],
     msgs: &[&[u8]],
     sig_compressed: &[u8; 96],

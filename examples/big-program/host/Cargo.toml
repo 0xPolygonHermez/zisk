@@ -5,8 +5,7 @@ edition = "2021"
 
 [dependencies]
 zisk-sdk = { workspace = true }
-test-artifacts = { workspace = true }
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+test-artifacts = { workspace = true, features = ["big_input"] }
 
 [build-dependencies]
 zisk-sdk = { workspace = true }

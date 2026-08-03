@@ -20,7 +20,7 @@ pub const ROM_INIT_COST: u64 = ROM_READ_COST;
 pub const INPUT_READ_COST: u64 = 29;
 
 pub const ROM_COST: usize = 16 << 22;
-pub const TABLES_COST: usize = (74 + 35) << 21;
+pub const TABLES_COST: usize = (70 + 35) << 21;
 pub const BASE_COST: usize = ROM_COST + TABLES_COST;
 
 pub const MAIN_COST: u64 = 68;
