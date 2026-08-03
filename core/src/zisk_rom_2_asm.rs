@@ -1,14 +1,28 @@
 //! Zisk ROM to ASM
 //!
 //! Generates i86_64 assembly code that implements the Zisk ROM program
+//!
+//! Everything that is not specific to i86-64 assembly (generation methods, trace layouts, fcall
+//! context layout, mem op flags, precompile queries) lives in `zisk_rom_2_code`, so that it can be
+//! shared with other code generation backends.
 use std::path::Path;
 
 use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 use crate::{
-    zisk_ops::ZiskOp, ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR,
-    INPUT_ADDR, M64, ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP,
-    STORE_IND, STORE_MEM, STORE_NONE, STORE_REG, UART_ADDR,
+    zisk_ops::ZiskOp,
+    zisk_rom_2_code::{
+        op_is_precompiled, rom_histogram_trace_address, AsmGenerationMethod, PrecompileResults,
+        FCALL_FUNCTION_ID, FCALL_LENGTH, FCALL_PARAMS, FCALL_PARAMS_CAPACITY, FCALL_PARAMS_LENGTH,
+        FCALL_PARAMS_SIZE, FCALL_RESULT, FCALL_RESULT_CAPACITY, FCALL_RESULT_GOT,
+        FCALL_RESULT_LENGTH, FCALL_RESULT_SIZE, F_MOPS_ALIGNED_READ, F_MOPS_ALIGNED_WRITE,
+        F_MOPS_BLOCK_LENGTH_SHIFT, F_MOPS_BLOCK_READ, F_MOPS_BLOCK_WRITE, F_MOPS_CLEAR_WRITE_BYTE,
+        F_MOPS_READ_1, F_MOPS_READ_2, F_MOPS_READ_4, F_MOPS_READ_8, F_MOPS_WRITE_1, F_MOPS_WRITE_2,
+        F_MOPS_WRITE_4, F_MOPS_WRITE_8, PRECOMPILE_BUFFER_SIZE_U64_MASK,
+    },
+    ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64,
+    ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
+    STORE_NONE, STORE_REG, UART_ADDR,
 };
 
 // Regs rax, rcx, rdx, rdi, rsi, rsp, and r8-r11 are caller-save, not saved across function calls.
@@ -51,91 +65,8 @@ const REG_PC: &str = "r8";
 //   - rsi
 //   - rsp
 
-// Only used to calculate histogram position for every rom pc
-const TRACE_ADDR_NUMBER: u64 = 0xd0000000 + 0x20;
-
-// Fcall params and result lengths
-// NOTE: if these parameters are update, review dma_constants.inc
-const FCALL_PARAMS_LENGTH: u64 = 386;
-const FCALL_RESULT_LENGTH: u64 = 8193;
-
-// Fcall context offsets of the different fields
-const FCALL_FUNCTION_ID: u64 = 0;
-const FCALL_PARAMS_CAPACITY: u64 = FCALL_FUNCTION_ID + 1;
-const FCALL_PARAMS_SIZE: u64 = FCALL_PARAMS_CAPACITY + 1;
-const FCALL_PARAMS: u64 = FCALL_PARAMS_SIZE + 1;
-const FCALL_RESULT_CAPACITY: u64 = FCALL_PARAMS + FCALL_PARAMS_LENGTH;
-const FCALL_RESULT_SIZE: u64 = FCALL_RESULT_CAPACITY + 1;
-const FCALL_RESULT: u64 = FCALL_RESULT_SIZE + 1;
-const FCALL_RESULT_GOT: u64 = FCALL_RESULT + FCALL_RESULT_LENGTH;
-const FCALL_LENGTH: u64 = FCALL_RESULT_GOT + 1;
-
 const XMM_MAPPED_REGS: [u64; 16] = [1, 2, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
 //const XMM_MAPPED_REGS: [u64; 0] = []; // Used for debugging
-
-const F_MOPS_CLEAR_WRITE_BYTE: u64 = 1 << 37;
-
-const F_MOPS_BLOCK_READ: u64 = 0x0000_000A_0000_0000;
-const F_MOPS_BLOCK_WRITE: u64 = 0x0000_000B_0000_0000;
-
-const F_MOPS_READ_8: u64 = 0x0000_0008_0000_0000;
-const F_MOPS_READ_4: u64 = 0x0000_0004_0000_0000;
-const F_MOPS_READ_2: u64 = 0x0000_0002_0000_0000;
-const F_MOPS_READ_1: u64 = 0x0000_0001_0000_0000;
-
-const F_MOPS_WRITE_8: u64 = 0x0000_0018_0000_0000;
-const F_MOPS_WRITE_4: u64 = 0x0000_0014_0000_0000;
-const F_MOPS_WRITE_2: u64 = 0x0000_0012_0000_0000;
-const F_MOPS_WRITE_1: u64 = 0x0000_0011_0000_0000;
-
-const F_MOPS_ALIGNED_READ: u64 = 0x0000_000C_0000_0000;
-const F_MOPS_ALIGNED_WRITE: u64 = 0x0000_000D_0000_0000;
-// const F_MOPS_ALIGNED_BLOCK_READ: u64 = 0x0000_000E_0000_0000;
-// const F_MOPS_ALIGNED_BLOCK_WRITE: u64 = 0x0000_000F_0000_0000;
-const F_MOPS_BLOCK_LENGTH_SHIFT: u64 = 36;
-
-// const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x100000; // 1MB
-const PRECOMPILE_BUFFER_SIZE_IN_BYTES: u64 = 0x8000000; // 128MB
-const PRECOMPILE_BUFFER_SIZE_IN_U64: u64 = PRECOMPILE_BUFFER_SIZE_IN_BYTES / 8;
-const PRECOMPILE_BUFFER_SIZE_U64_MASK: u64 = PRECOMPILE_BUFFER_SIZE_IN_U64 - 1;
-
-/// ZisK Emulator can be executed in assembly to get the maximum performance
-/// in the first sequential emulation.
-///
-/// ROM histogram contains a counter per program counter that is incremented every time that
-/// instruction is executed.  It is generated in one single, sequential emulation.
-///
-/// Mem reads contain all the memory reads done during a chunk of the emulation.  Mem reads chunks
-/// are generated sequentially, and consumed in parallel after the first chunk is ready to generate
-/// the main AIR traces.
-///
-/// Mem trace contains a record of all the memory operations: step, r/w, address, width, write
-/// value, etc.  Mem trace is generated sequentially in chunks, which are consumed in parallel in C
-/// to generate the memory AIR plan and AIR traces.
-///
-/// ```text
-///                 /-> [ASM seq] -> ROM Histogram
-///                /
-/// RISC-V -> ZisK ---> [ASM seq] -> Mem Reads chunks -> [ASM par chunk player] -> Main Trace
-///                \
-///                 \-> [ASM seq] -> Mem Trace chunks -> [  C par chunk player] -> Mem Plan & Trace
-/// ```
-///
-/// Other meaningful assembly emulation methods used for performance investigation include:
-/// - Fast: Does not generate any trace, but simply emulates the program.  It is the fastest method.
-/// - Chunks: Stops every chunk-size steps, without generating traces.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub enum AsmGenerationMethod {
-    /// Generate assembly code to not even stop at chunks, nor generate trace, i.e. fast
-    #[default]
-    AsmFast,
-    /// Generate assembly code to compute the minimal trace
-    AsmMinimalTraces,
-    /// Generate assembly code to compute the ROM histogram
-    AsmRomHistogram,
-    /// Generate assembly code to compute the memory operations [w/r, width, address] trace
-    AsmMemOp,
-}
 
 #[derive(Default, Debug, Clone)]
 pub struct ZiskAsmRegister {
@@ -193,22 +124,22 @@ pub struct ZiskAsmContext {
     ptr: String, // "ptr ", ""
 
     //assert_rsp_counter: u64,
-    precompile_results: bool, // Set to true is we are consuming precompile results
+    precompile_results: PrecompileResults, // Which precompiles provide their results to this code
     wait_for_prec_counter: u64, // Counter of wait_for_prec_avail calls, reset at every instruction
 }
 
 impl ZiskAsmContext {
     pub fn fast(&self) -> bool {
-        self.mode == AsmGenerationMethod::AsmFast
+        self.mode.is_fast()
     }
     pub fn minimal_trace(&self) -> bool {
-        self.mode == AsmGenerationMethod::AsmMinimalTraces
+        self.mode.is_minimal_trace()
     }
     pub fn rom_histogram(&self) -> bool {
-        self.mode == AsmGenerationMethod::AsmRomHistogram
+        self.mode.is_rom_histogram()
     }
     pub fn mem_op(&self) -> bool {
-        self.mode == AsmGenerationMethod::AsmMemOp
+        self.mode.is_mem_op()
     }
 
     // Creates a comment with the specified prefix and sufix, i.e. with the requested syntax
@@ -235,151 +166,88 @@ impl ZiskAsmContext {
     }
 
     pub fn op_is_precompiled(&self, zisk_op: &ZiskOp) -> bool {
-        matches!(
-            zisk_op,
-            ZiskOp::Keccak
-                | ZiskOp::Sha256
-                | ZiskOp::Poseidon2
-                | ZiskOp::Poseidon1
-                | ZiskOp::Arith256
-                | ZiskOp::Arith256Mod
-                | ZiskOp::Secp256k1Add
-                | ZiskOp::Secp256k1Dbl
-                | ZiskOp::Bn254CurveAdd
-                | ZiskOp::Bn254CurveDbl
-                | ZiskOp::Bn254ComplexAdd
-                | ZiskOp::Bn254ComplexSub
-                | ZiskOp::Bn254ComplexMul
-                | ZiskOp::Arith384Mod
-                | ZiskOp::Bls12_381CurveAdd
-                | ZiskOp::Bls12_381CurveDbl
-                | ZiskOp::Bls12_381ComplexAdd
-                | ZiskOp::Bls12_381ComplexSub
-                | ZiskOp::Bls12_381ComplexMul
-                | ZiskOp::Add256
-                | ZiskOp::Secp256r1Add
-                | ZiskOp::Secp256r1Dbl
-                | ZiskOp::Blake2
-        )
+        op_is_precompiled(zisk_op)
     }
 
     pub fn precompile_results(&self) -> bool {
-        self.precompile_results
+        self.precompile_results.enabled()
     }
     pub fn precompile_results_keccak(&self) -> bool {
-        zisk_definitions::KECCAK_RESULTS && self.precompile_results()
+        self.precompile_results.keccak()
     }
     pub fn precompile_results_sha256(&self) -> bool {
-        zisk_definitions::SHA256_RESULTS && self.precompile_results()
+        self.precompile_results.sha256()
     }
     pub fn precompile_results_arith256(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.arith256()
     }
     pub fn precompile_results_arith256mod(&self) -> bool {
-        zisk_definitions::ARITH256MOD_RESULTS && self.precompile_results()
+        self.precompile_results.arith256mod()
     }
     pub fn precompile_results_secp256k1add(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.secp256k1add()
     }
     pub fn precompile_results_secp256k1dbl(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.secp256k1dbl()
     }
     pub fn precompile_results_secp256r1add(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.secp256r1add()
     }
     pub fn precompile_results_secp256r1dbl(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.secp256r1dbl()
     }
     pub fn precompile_results_fcall(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.fcall()
     }
     pub fn precompile_results_bn254curveadd(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bn254curveadd()
     }
     pub fn precompile_results_bn254curvedbl(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bn254curvedbl()
     }
     pub fn precompile_results_bn254complexadd(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bn254complexadd()
     }
     pub fn precompile_results_bn254complexsub(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bn254complexsub()
     }
     pub fn precompile_results_bn254complexmul(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bn254complexmul()
     }
     pub fn precompile_results_arith384mod(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.arith384mod()
     }
     pub fn precompile_results_bls12_381curveadd(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bls12_381curveadd()
     }
     pub fn precompile_results_bls12_381curvedbl(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bls12_381curvedbl()
     }
     pub fn precompile_results_bls12_381complexadd(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bls12_381complexadd()
     }
     pub fn precompile_results_bls12_381complexsub(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bls12_381complexsub()
     }
     pub fn precompile_results_bls12_381complexmul(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.bls12_381complexmul()
     }
     pub fn precompile_results_add256(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.add256()
     }
     pub fn precompile_results_blake2(&self) -> bool {
-        //self.precompile_results()
-        false
+        self.precompile_results.blake2()
     }
     pub fn call_wait_for_prec_avail(&self) -> bool {
-        self.precompile_results()
+        self.precompile_results.call_wait_for_prec_avail()
     }
     pub fn float(&self) -> bool {
         cfg!(feature = "float")
     }
 }
 
-// One-pass (single emulation) memory trace, used to count, plan and collect.
-// If ZisK instruction contains at least one memory operation:
-//   [32b] header (from higher bits to lower bits)
-//     [1b] read_a
-//       0 = no reg a mem op
-//       1 = one reg a mem op
-//     [3b] read_b
-//       0 = no reg b mem op
-//       1 = one reg b mem op of width 1
-//       2 = one reg b mem op of width 2
-//       3 = one reg b mem op of width 4
-//       4 = one reg b mem op of width 8
-//     [3b] write
-//       0 = no write op
-//       1 = one write c mem op of width 1
-//       2 = one write c mem op of width 2
-//       3 = one write c mem op of width 4
-//       4 = one write c mem op of width 8
-//       5 = one precompiled mem op of contiguous addresses
-//       6 = one precompiled mem op of non-contiguous addresses
-//     [25b] relative step: lower bits of step
-// If header.read_a == 1:
-//   [32b] a mem address
-// If header.read_b == 1, 2, 3 or 4:
-//   [32b] b mem address
-// If header.write == 1, 2, 3 or 4
-//   [32b] c mem address
-//   [64b] c write value
-// If header.write == 5
-//   [32b] prec_cont_count = prec_read_count + prec_write_count<<16
-//   [32b] prec_const_address
-//   [64b x prec_write_count] prec_cont_write_data
-// If header.write == 6
-//   [32b] prec_non_cont_count = prec_read_count + prec_write_count<<16
-//   [32b x prec_read_count] prec_non_cont_read_address = precompiled read addresses
-//   [32b x prec_write_count] prec_non_const_write_address = precompiled write addresses
-//   [64b x prec_write_count] prec_non_const_write_data = precompiled write data
-// If not aligned to 64b
-//   [32b] padding zeros
+// The one-pass memory trace format written by the AsmMemOp mode, along with the F_MOPS_* flags that
+// encode it, is documented in zisk_rom_2_code, since it is shared with every other backend.
 
 // pub struct ZiskAsmMemTraceContext {
 //     // Header mask
@@ -549,7 +417,7 @@ impl ZiskRom2Asm {
             comments,
             boc: "/* ".to_string(),
             eoc: " */".to_string(),
-            precompile_results,
+            precompile_results: PrecompileResults::new(precompile_results),
             ..Default::default()
         };
 
@@ -1153,7 +1021,7 @@ impl ZiskRom2Asm {
                 comment_lines_counter,
                 code_lines_counter,
                 code_lines_counter as f64 / rom.sorted_pc_list.len() as f64,
-                ctx.precompile_results,
+                ctx.precompile_results(),
                 ctx.float()
             );
         }
@@ -8476,20 +8344,9 @@ impl ZiskRom2Asm {
 
     /// This function calculates the address of the rom histogram for the provided pc
     ///
-    /// ROM histogram structure:
-    ///
-    /// ROM trace control:
-    ///     [8B] version
-    ///     [8B] exit_code (0=success, 1=not completed)
-    ///     [8B] allocated_size = xxx (bytes)
-    ///     [8B] executed steps
-    /// Instruction histogram: (TRACE_ADDR_NUMBER)
-    ///     [8B] multiplicity_size = S
-    ///     [8B] multiplicity[0]
-    ///     [8B] multiplicity[1]
-    ///     …
-    ///     [8B] multiplicity[S-1]
+    /// The ROM histogram layout is defined in zisk_rom_2_code, since it is shared with every other
+    /// backend.
     fn get_rom_histogram_trace_address(index: u64) -> u64 {
-        TRACE_ADDR_NUMBER + (1 + index) * 8
+        rom_histogram_trace_address(index)
     }
 }

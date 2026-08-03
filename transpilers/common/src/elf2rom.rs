@@ -9,7 +9,8 @@ use std::{error::Error, path::Path};
 use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
-use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
+use zisk_core::zisk_rom_2_asm::ZiskRom2Asm;
+use zisk_core::zisk_rom_2_code::AsmGenerationMethod;
 use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
