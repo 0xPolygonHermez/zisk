@@ -171,10 +171,12 @@ fn coord_event_to_domain(
     }
 }
 
-fn domain_input_to_dto(input: &DomainInputKind) -> InputsModeDto {
+/// Takes the input by value: it is up to tens of megabytes, and the request is
+/// owned at both call sites, so there is no reason to copy it.
+fn domain_input_to_dto(input: DomainInputKind) -> InputsModeDto {
     match input {
-        DomainInputKind::Inline(chunk) => InputsModeDto::InputsData(hex::encode(&chunk.data)),
-        DomainInputKind::StreamUri(uri) => InputsModeDto::InputsStream(uri.clone()),
+        DomainInputKind::Inline(chunk) => InputsModeDto::InputsData(chunk.data),
+        DomainInputKind::StreamUri(uri) => InputsModeDto::InputsStream(uri),
     }
 }
 
@@ -344,7 +346,7 @@ impl BackendService for CoordinatorBackend {
                         hash_id: hash_id.clone(),
                         compute_capacity: None,
                         minimal_compute_capacity: None,
-                        inputs_mode: domain_input_to_dto(&r.input),
+                        inputs_mode: domain_input_to_dto(r.input),
                         hints_mode,
                         simulated_node: None,
                         metadata,
@@ -368,7 +370,7 @@ impl BackendService for CoordinatorBackend {
                         hash_id: hash_id.clone(),
                         compute_capacity: None,
                         minimal_compute_capacity: None,
-                        inputs_mode: domain_input_to_dto(&r.input),
+                        inputs_mode: domain_input_to_dto(r.input),
                         hints_mode,
                         simulated_node: None,
                         metadata,

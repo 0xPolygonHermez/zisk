@@ -10,17 +10,34 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// How a job's inputs are supplied to the cluster.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum InputsModeDto {
     /// No inputs are provided.
     InputsNone,
     /// Inputs are provided as a complete payload referenced by a URI.
     InputsPath(String),
     /// Inputs are provided directly as data.
-    InputsData(String),
+    ///
+    /// Raw bytes, exactly as they arrived on the API. They are handed to the
+    /// transport unmodified, so nothing between here and the worker needs to
+    /// re-encode them.
+    InputsData(Vec<u8>),
     /// Inputs will be streamed from the given URI (QUIC, Unix socket).
     /// The coordinator reads from this URI and relays data to workers.
     InputsStream(String),
+}
+
+/// Hand-written so a job's payload can never be dumped into a log line:
+/// inputs run to tens of megabytes and `Job` derives `Debug`.
+impl std::fmt::Debug for InputsModeDto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InputsModeDto::InputsNone => write!(f, "InputsNone"),
+            InputsModeDto::InputsPath(path) => write!(f, "InputsPath({path})"),
+            InputsModeDto::InputsData(data) => write!(f, "InputsData({} bytes)", data.len()),
+            InputsModeDto::InputsStream(uri) => write!(f, "InputsStream({uri})"),
+        }
+    }
 }
 
 pub use zisk_common::AirInstanceCount;

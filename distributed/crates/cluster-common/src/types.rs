@@ -295,9 +295,9 @@ impl Display for PhaseTimings {
 /// The `Delay` metric alone lumps together coordinator-side preparation, the
 /// per-worker fan-out, on-wire time, and the worker's own scheduling — so a
 /// change in any one of them is indistinguishable from a change in the others.
-/// These fields split it: `decode_ms` and `sent_offset_ms` are everything the
-/// coordinator did before the bytes were handed to the transport, so the
-/// remainder of `Delay` is wire plus worker wakeup.
+/// These fields split it: `sent_offset_ms` is everything the coordinator did
+/// before the bytes were handed to the transport, so the remainder of `Delay`
+/// is wire plus worker wakeup.
 ///
 /// The `relay_*` fields are populated only on the streaming paths, where the
 /// task message carries no input and the bytes follow as `InputStreamData`.
@@ -309,9 +309,9 @@ pub struct InputDispatchStats {
     /// Input size in bytes as sent to *each* worker; `0` when the job has none.
     /// Multiply by the worker count for bytes actually put on the wire.
     pub input_bytes: usize,
-    /// Time spent turning `inputs_mode` into sendable bytes (the hex decode).
-    pub decode_ms: f64,
     /// Per-worker offset to the moment that worker's task message was queued.
+    /// Includes that worker's payload copy, so the spread across workers is the
+    /// fan-out cost.
     pub sent_offset_ms: HashMap<WorkerId, f64>,
     /// Offset to the moment the final input chunk was queued to the last
     /// worker. `None` when the input travelled inside the task message.

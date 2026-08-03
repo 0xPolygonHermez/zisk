@@ -1052,7 +1052,6 @@ impl Coordinator {
             let mut job = job_arc.write().await;
             let stats = job.input_dispatch.get_or_insert_with(Default::default);
             stats.input_bytes = dispatch_stats.input_bytes;
-            stats.decode_ms = dispatch_stats.decode_ms;
             stats.sent_offset_ms = dispatch_stats.sent_offset_ms;
         }
 

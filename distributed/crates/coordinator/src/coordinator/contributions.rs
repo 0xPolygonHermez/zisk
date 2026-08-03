@@ -50,25 +50,16 @@ impl Coordinator {
             InputsModeDto::InputsPath(ref inputs_path) => {
                 InputSourceDto::InputPath(inputs_path.clone())
             }
-            InputsModeDto::InputsData(ref inputs_hex) => {
-                let decode_start = std::time::Instant::now();
-                let inputs = hex::decode(inputs_hex).map_err(|e| {
-                    CoordinatorError::Internal(format!(
-                        "Failed to decode inline input data for job {}: {}",
-                        job.job_id, e
-                    ))
-                })?;
-                stats.decode_ms = decode_start.elapsed().as_secs_f64() * 1000.0;
+            InputsModeDto::InputsData(ref inputs) => {
                 stats.input_bytes = inputs.len();
                 info!(
-                    "Job {} using inline input data ({} bytes, hex decode {:.1}ms, {} copies to fan out = {} bytes on the wire)",
+                    "Job {} using inline input data ({} bytes, {} copies to fan out = {} bytes on the wire)",
                     job.job_id,
                     inputs.len(),
-                    stats.decode_ms,
                     active_workers.len(),
                     inputs.len() * active_workers.len(),
                 );
-                InputSourceDto::InputData(inputs)
+                InputSourceDto::InputData(inputs.clone())
             }
             InputsModeDto::InputsStream(_) => {
                 // Coordinator will relay streamed inputs to workers via InputStreamData.
@@ -104,18 +95,26 @@ impl Coordinator {
         let cloned_active_workers = active_workers.clone();
         let execution_only = job.execution_only;
         let job_hash_id = job.hash_id.clone();
+        // Borrowed, not cloned per task: `buffer_unordered` drains the whole
+        // iterator into its buffer before polling any future, so cloning here
+        // would copy the payload N times before the first message is queued —
+        // every worker's transfer would then start only after the last copy.
+        // Cloning inside the future instead interleaves the copies with the
+        // sends, so worker 1 starts transferring immediately.
+        let input_source = &input_source;
+        let hints_source = &hints_source;
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
             let job_hash_id = job_hash_id.clone();
             let data_id = job.data_id.clone();
-            let input_source = input_source.clone();
-            let hints_source = hints_source.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
             let job_metadata = job.metadata.clone();
             let workers_pool = &self.workers_pool;
 
             async move {
+                let input_source = input_source.clone();
+                let hints_source = hints_source.clone();
                 let contribution_params = ContributionParamsDto {
                     hash_id: job_hash_id.clone(),
                     data_id,
@@ -1027,9 +1026,6 @@ impl Coordinator {
         let mut parts = Vec::new();
         if stats.input_bytes > 0 {
             parts.push(format!("inline {}B", stats.input_bytes));
-        }
-        if stats.decode_ms >= 0.05 {
-            parts.push(format!("decode {:.1}ms", stats.decode_ms));
         }
         if let Some(queued) = stats.sent_offset_ms.get(worker_id) {
             parts.push(format!("queued +{:.1}ms", queued));
