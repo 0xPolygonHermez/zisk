@@ -289,6 +289,39 @@ impl Display for PhaseTimings {
     }
 }
 
+/// How a job's input actually reached its workers, in coordinator-clock
+/// offsets from the Contributions phase start.
+///
+/// The `Delay` metric alone lumps together coordinator-side preparation, the
+/// per-worker fan-out, on-wire time, and the worker's own scheduling — so a
+/// change in any one of them is indistinguishable from a change in the others.
+/// These fields split it: `decode_ms` and `sent_offset_ms` are everything the
+/// coordinator did before the bytes were handed to the transport, so the
+/// remainder of `Delay` is wire plus worker wakeup.
+///
+/// The `relay_*` fields are populated only on the streaming paths, where the
+/// task message carries no input and the bytes follow as `InputStreamData`.
+/// There, `Delay` stops measuring the transfer entirely and
+/// `relay_done_offset_ms` is what tells you whether the input is still on the
+/// critical path.
+#[derive(Debug, Clone, Default)]
+pub struct InputDispatchStats {
+    /// Input size in bytes as sent to *each* worker; `0` when the job has none.
+    /// Multiply by the worker count for bytes actually put on the wire.
+    pub input_bytes: usize,
+    /// Time spent turning `inputs_mode` into sendable bytes (the hex decode).
+    pub decode_ms: f64,
+    /// Per-worker offset to the moment that worker's task message was queued.
+    pub sent_offset_ms: HashMap<WorkerId, f64>,
+    /// Offset to the moment the final input chunk was queued to the last
+    /// worker. `None` when the input travelled inside the task message.
+    pub relay_done_offset_ms: Option<f64>,
+    /// Bytes relayed as `InputStreamData` (streaming paths only).
+    pub relay_bytes: u64,
+    /// Chunks relayed as `InputStreamData` (streaming paths only).
+    pub relay_chunks: u64,
+}
+
 /// The coordinator's full state for a single job across its lifecycle.
 #[derive(Debug)]
 pub struct Job {
@@ -347,6 +380,8 @@ pub struct Job {
     pub agg_task_inflight: Option<PendingAggTask>,
     /// Queued aggregation tasks awaiting dispatch.
     pub agg_task_queue: VecDeque<PendingAggTask>,
+    /// How the input reached the workers, once Phase 1 has been dispatched.
+    pub input_dispatch: Option<InputDispatchStats>,
 }
 
 impl Job {
@@ -395,6 +430,7 @@ impl Job {
             proof_type,
             agg_task_inflight: None,
             agg_task_queue: VecDeque::new(),
+            input_dispatch: None,
         }
     }
 

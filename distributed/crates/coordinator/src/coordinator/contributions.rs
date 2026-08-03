@@ -13,8 +13,9 @@ use zisk_cluster_common::{
     ChallengesDto, ContributionParamsDto, ContributionsResult, CoordinatorMessageDto,
     ExecuteTaskRequestDto, ExecuteTaskRequestTypeDto, ExecuteTaskResponseDto,
     ExecuteTaskResponseResultDataDto, ExecutionResult, HintsModeDto, HintsSourceDto,
-    InputSourceDto, InputStreamDataDto, InputsModeDto, Job, JobId, JobPhase, JobResult,
-    JobResultData, JobState, StreamMessageKind, WorkerId, WorkerState, ZiskExecutorTimeDto,
+    InputDispatchStats, InputSourceDto, InputStreamDataDto, InputsModeDto, Job, JobId, JobPhase,
+    JobResult, JobResultData, JobState, StreamMessageKind, WorkerId, WorkerState,
+    ZiskExecutorTimeDto,
 };
 use zisk_common::io::{StreamRead, StreamSource, ZiskStream};
 use zisk_common::AsmExecutionInfo;
@@ -36,19 +37,37 @@ impl Coordinator {
         self: &Arc<Self>,
         job: &Job,
         active_workers: &[WorkerId],
-    ) -> CoordinatorResult<()> {
+    ) -> CoordinatorResult<InputDispatchStats> {
+        // Offsets are reported against the same phase start that
+        // `check_phase1_completion` / `check_execution_completion` use for
+        // `Delay`, so the two decompose against a common origin.
+        let timed_phase =
+            if job.execution_only { JobPhase::Execution } else { JobPhase::Contributions };
+        let phase_start = job.phase_start_time(&timed_phase);
+        let mut stats = InputDispatchStats::default();
+
         let input_source = match job.inputs_mode {
             InputsModeDto::InputsPath(ref inputs_path) => {
                 InputSourceDto::InputPath(inputs_path.clone())
             }
             InputsModeDto::InputsData(ref inputs_hex) => {
+                let decode_start = std::time::Instant::now();
                 let inputs = hex::decode(inputs_hex).map_err(|e| {
                     CoordinatorError::Internal(format!(
                         "Failed to decode inline input data for job {}: {}",
                         job.job_id, e
                     ))
                 })?;
-                info!("Job {} using inline input data ({} bytes)", job.job_id, inputs.len());
+                stats.decode_ms = decode_start.elapsed().as_secs_f64() * 1000.0;
+                stats.input_bytes = inputs.len();
+                info!(
+                    "Job {} using inline input data ({} bytes, hex decode {:.1}ms, {} copies to fan out = {} bytes on the wire)",
+                    job.job_id,
+                    inputs.len(),
+                    stats.decode_ms,
+                    active_workers.len(),
+                    inputs.len() * active_workers.len(),
+                );
                 InputSourceDto::InputData(inputs)
             }
             InputsModeDto::InputsStream(_) => {
@@ -123,8 +142,14 @@ impl Coordinator {
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
                 let send_result = workers_pool.send_message(&worker_id, req).await;
+                // Stamped after the send so the offset covers this worker's
+                // turn in the fan-out, including the payload clone above.
+                // Queueing only — the encode and socket write happen later in
+                // the per-connection task, so the residual in `Delay` is wire
+                // time plus the worker's wakeup.
+                let sent_at = Utc::now();
 
-                (worker_id, send_result)
+                (worker_id, send_result, sent_at)
             }
         });
 
@@ -134,13 +159,20 @@ impl Coordinator {
         let results: Vec<_> = futures::stream::iter(tasks).buffer_unordered(16).collect().await;
 
         // Check for any errors
-        for (worker_id, send_result) in results {
+        for (worker_id, send_result, sent_at) in results {
             send_result.map_err(|e| {
                 CoordinatorError::Internal(format!(
                     "Failed to send message to worker {}: {}",
                     worker_id, e
                 ))
             })?;
+            if let Some(start) = phase_start {
+                stats.sent_offset_ms.insert(
+                    worker_id,
+                    sent_at.signed_duration_since(start).num_microseconds().unwrap_or(0) as f64
+                        / 1000.0,
+                );
+            }
         }
 
         if matches!(hints_source, HintsSourceDto::HintsStream(_)) {
@@ -152,7 +184,7 @@ impl Coordinator {
             self.initialize_input_relay(job, cloned_active_workers).await?;
         }
 
-        Ok(())
+        Ok(stats)
     }
 
     async fn initialize_stream(
@@ -289,6 +321,12 @@ impl Coordinator {
 
         let job_id = job.job_id.clone();
         let coord = Arc::clone(self);
+        let worker_count = active_workers.len();
+        // Same origin as `Delay`, so relay completion and per-worker delays are
+        // directly comparable in the log.
+        let timed_phase =
+            if job.execution_only { JobPhase::Execution } else { JobPhase::Contributions };
+        let phase_start = job.phase_start_time(&timed_phase);
 
         // Spawn a background thread: opens the stream reader, reads chunks,
         // and relays each chunk to all workers via InputStreamData.
@@ -310,16 +348,29 @@ impl Coordinator {
                 )
                 .await;
 
-                if let Err(e) = result {
-                    error!("Input relay failed for job {}: {}", job_id, e);
-                    // Canonical failure path: parks workers, sends
-                    // JobCancelled, records metrics, runs post_launch_proof.
-                    let reason = format!("Input relay failed: {}", e);
-                    if let Err(fail_err) = coord.fail_job(&job_id, &reason).await {
-                        error!(
-                            "Failed to fail_job after input relay error for {}: {}",
-                            job_id, fail_err
-                        );
+                match result {
+                    Ok((chunks, bytes)) => {
+                        coord
+                            .record_input_relay_done(
+                                &job_id,
+                                chunks,
+                                bytes,
+                                worker_count,
+                                phase_start,
+                            )
+                            .await;
+                    }
+                    Err(e) => {
+                        error!("Input relay failed for job {}: {}", job_id, e);
+                        // Canonical failure path: parks workers, sends
+                        // JobCancelled, records metrics, runs post_launch_proof.
+                        let reason = format!("Input relay failed: {}", e);
+                        if let Err(fail_err) = coord.fail_job(&job_id, &reason).await {
+                            error!(
+                                "Failed to fail_job after input relay error for {}: {}",
+                                job_id, fail_err
+                            );
+                        }
                     }
                 }
             });
@@ -328,14 +379,64 @@ impl Coordinator {
         Ok(())
     }
 
+    /// Records how long the input relay took and what it moved, so the
+    /// streaming paths are not a blind spot.
+    ///
+    /// On the streaming paths the task message carries no input, so `Delay`
+    /// collapses to near zero and stops saying anything about the transfer.
+    /// What matters instead is whether the last chunk landed before the phase
+    /// ended — this is the number that shows the input creeping back onto the
+    /// critical path as blocks or worker counts grow.
+    async fn record_input_relay_done(
+        &self,
+        job_id: &JobId,
+        chunks: u64,
+        bytes: u64,
+        worker_count: usize,
+        phase_start: Option<chrono::DateTime<Utc>>,
+    ) {
+        let offset_ms = phase_start.map(|start| {
+            Utc::now().signed_duration_since(start).num_microseconds().unwrap_or(0) as f64 / 1000.0
+        });
+
+        let wire_bytes = bytes * worker_count as u64;
+        let throughput = offset_ms
+            .filter(|ms| *ms > 0.0)
+            .map(|ms| format!("{:.0} MB/s", wire_bytes as f64 / 1000.0 / ms))
+            .unwrap_or_else(|| "n/a".to_string());
+
+        info!(
+            "[Input] Relay finished for {} - {} chunks, {} bytes x {} workers = {} bytes on the wire, done at +{} ({})",
+            job_id,
+            chunks,
+            bytes,
+            worker_count,
+            wire_bytes,
+            offset_ms.map(|ms| format!("{:.3}s", ms / 1000.0)).unwrap_or_else(|| "?".to_string()),
+            throughput,
+        );
+
+        let job_entry = { self.jobs.read().await.get(job_id).cloned() };
+        if let Some(entry) = job_entry {
+            let mut job = entry.write().await;
+            let stats = job.input_dispatch.get_or_insert_with(Default::default);
+            stats.relay_chunks = chunks;
+            stats.relay_bytes = bytes;
+            stats.relay_done_offset_ms = offset_ms;
+        }
+    }
+
     /// Core loop for the input relay: connects to the stream, reads chunks,
     /// and broadcasts each to all workers.
+    ///
+    /// Returns `(chunks, bytes)` relayed — bytes as read from the source, i.e.
+    /// once per chunk rather than once per worker.
     async fn run_input_relay(
         inputs_uri: &str,
         job_id: &JobId,
         workers: &[WorkerId],
         workers_pool: &WorkersPool,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<(u64, u64)> {
         let mut stream = StreamSource::from_uri(inputs_uri)?;
 
         // The SDK creates its listener after receiving the submit_job response, so
@@ -369,9 +470,15 @@ impl Coordinator {
 
         info!("Input relay started for job {} from {}", job_id, inputs_uri);
 
+        let mut chunks: u64 = 0;
+        let mut bytes: u64 = 0;
+
         loop {
             match stream.next() {
                 Ok(Some(chunk)) => {
+                    chunks += 1;
+                    bytes += chunk.len() as u64;
+
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
@@ -391,8 +498,7 @@ impl Coordinator {
                     futures::future::join_all(sends).await;
                 }
                 Ok(None) => {
-                    info!("Input relay finished for job {} (stream ended)", job_id);
-                    return Ok(());
+                    return Ok((chunks, bytes));
                 }
                 Err(e) => {
                     return Err(e.into());
@@ -902,6 +1008,47 @@ impl Coordinator {
     ///
     /// # Parameters
     ///
+    /// Splits the coordinator-side portion out of one worker's `Delay`.
+    ///
+    /// `Delay` is `task_received_time - phase_start`, which spans coordinator
+    /// preparation, that worker's turn in the fan-out, on-wire time, and the
+    /// worker's own scheduling. Reported as one number, a regression in any of
+    /// them is indistinguishable from the others. `queued` is everything up to
+    /// handing the payload to the transport; the `wire` remainder is transport
+    /// plus worker wakeup.
+    ///
+    /// On the streaming paths the task message carries no input, so both
+    /// numbers collapse and the `relay` term is the one that matters.
+    fn format_input_dispatch(job: &Job, worker_id: &WorkerId, delay_ms: f64) -> String {
+        let Some(stats) = job.input_dispatch.as_ref() else {
+            return String::new();
+        };
+
+        let mut parts = Vec::new();
+        if stats.input_bytes > 0 {
+            parts.push(format!("inline {}B", stats.input_bytes));
+        }
+        if stats.decode_ms >= 0.05 {
+            parts.push(format!("decode {:.1}ms", stats.decode_ms));
+        }
+        if let Some(queued) = stats.sent_offset_ms.get(worker_id) {
+            parts.push(format!("queued +{:.1}ms", queued));
+            parts.push(format!("wire {:.1}ms", (delay_ms - queued).max(0.0)));
+        }
+        if let Some(relay) = stats.relay_done_offset_ms {
+            parts.push(format!(
+                "relay {}ch/{}B done +{:.1}ms",
+                stats.relay_chunks, stats.relay_bytes, relay
+            ));
+        }
+
+        if parts.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", parts.join(", "))
+        }
+    }
+
     /// * `job` - Reference to the job to check
     fn check_phase1_completion(&self, job: &Job, worker_id: &WorkerId) -> bool {
         let phase1_results_len =
@@ -931,7 +1078,16 @@ impl Coordinator {
                         .map(|task_received| task_received.signed_duration_since(phase_start_time))
                         .unwrap_or_else(chrono::Duration::zero);
                     let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
-                    let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
+                    // Microsecond resolution here: the `wire` term is a
+                    // subtraction, so integer-millisecond rounding on both
+                    // sides would show up as jitter in the residual.
+                    let delay_us =
+                        (delay_duration.num_microseconds().unwrap_or(0).max(0) as f64) / 1000.0;
+                    let delay_str = format!(
+                        ", Delay: {:.3}s{}",
+                        delay_ms / 1000.0,
+                        Self::format_input_dispatch(job, worker_id, delay_us)
+                    );
 
                     let asm_str = contributions_result
                         .zisk_executor_time
@@ -1006,7 +1162,13 @@ impl Coordinator {
                         .map(|task_received| task_received.signed_duration_since(phase_start_time))
                         .unwrap_or_else(chrono::Duration::zero);
                     let delay_ms = delay_duration.num_milliseconds().max(0) as f32;
-                    let delay_str = format!(", Delay: {:.3}s", delay_ms / 1000.0);
+                    let delay_us =
+                        (delay_duration.num_microseconds().unwrap_or(0).max(0) as f64) / 1000.0;
+                    let delay_str = format!(
+                        ", Delay: {:.3}s{}",
+                        delay_ms / 1000.0,
+                        Self::format_input_dispatch(job, worker_id, delay_us)
+                    );
 
                     let asm_str = execution_result
                         .zisk_executor_time

@@ -1020,17 +1020,40 @@ impl Coordinator {
         crate::metrics::record_job_started();
 
         let job = job_arc.read().await;
-        if let Err(e) = self.dispatch_contributions_messages(&job, &active_workers).await {
-            drop(job);
-            // Dispatch flaked (e.g. a worker's channel broke). The job is
-            // already stored and workers are `Computing`; fail it now so
-            // the canonical recovery path (`terminate_job` →
-            // `mark_computing_workers_settingup` → `pending_recovery`)
-            // releases them immediately rather than waiting for the
-            // monitor's Phase 1 timeout to fire.
-            let reason = format!("Failed to dispatch Phase 1 to workers: {}", e);
-            let _ = self.fail_job(&job_id, &reason).await;
-            return Err(e);
+        let dispatch_stats = match self.dispatch_contributions_messages(&job, &active_workers).await
+        {
+            Ok(stats) => {
+                drop(job);
+                stats
+            }
+            Err(e) => {
+                drop(job);
+                // Dispatch flaked (e.g. a worker's channel broke). The job is
+                // already stored and workers are `Computing`; fail it now so
+                // the canonical recovery path (`terminate_job` →
+                // `mark_computing_workers_settingup` → `pending_recovery`)
+                // releases them immediately rather than waiting for the
+                // monitor's Phase 1 timeout to fire.
+                let reason = format!("Failed to dispatch Phase 1 to workers: {}", e);
+                let _ = self.fail_job(&job_id, &reason).await;
+                return Err(e);
+            }
+        };
+
+        // Store the dispatch breakdown for the completion handlers to log
+        // alongside `Delay`. A worker that finishes Phase 1 before this write
+        // lands simply logs without the breakdown — the phase takes ~1.5s, so
+        // that is a theoretical rather than practical loss.
+        //
+        // Merge rather than assign: on the streaming paths the relay runs on
+        // its own thread and may already have recorded its `relay_*` fields
+        // here, and a short input can finish relaying before we get the lock.
+        {
+            let mut job = job_arc.write().await;
+            let stats = job.input_dispatch.get_or_insert_with(Default::default);
+            stats.input_bytes = dispatch_stats.input_bytes;
+            stats.decode_ms = dispatch_stats.decode_ms;
+            stats.sent_offset_ms = dispatch_stats.sent_offset_ms;
         }
 
         info!("[Phase1] Started with {} workers for {}", active_workers.len(), job_id);
