@@ -1,0 +1,108 @@
+require "std_lookup.pil"
+require "operations.pil"
+require "opids.pil"
+require "binary_table.pil"
+
+/* 
+    Operation table summary:
+    ==========================
+
+    List of 64-bit proven operations:
+    ┼───────────────┼──────────┼──────────┼───────┼
+    │     name      │    op    │   b_op   │ carry │
+    ┼───────────────┼──────────┼──────────┼───────┼
+    │ LTU           │   0x06   │   0x06   │   X   │ 2^
+    │ EQ            │   0x09   │   0x09   │   X   │
+    │ ADD           │   0x0a   │   0x0a   │   X   │
+    │ OR            │   0x0f   │   0x0f   │       │
+    ┼───────────────┼──────────┼──────────┼───────┼
+*/
+
+airtemplate BinaryZx(const int N = 2**21, const int RC = 2, const int bits = 64) {
+    if (RC != 2 || bits != 64) {
+        error(`Currently only RC=2 and bits=64 are supported, got RC=${RC}, bits=${bits}`);
+    }
+
+    // Default values
+    const int BYTES = bits / 8;
+    const int HALF_BYTES = BYTES / 2;
+    const int BYTE_BASE = (1 << BYTES);
+    const int BYTES_PER_CHUNK = BYTES / RC;
+
+    // Primary columns
+    col witness bits(7) b_op;                         // binary operation code           
+    col witness bits(8) free_in_a[BYTES_PER_CHUNK];   // input A per byte
+    col witness bits(8) free_in_b[BYTES_PER_CHUNK];   // input B per byte
+    col witness bits(8) free_in_c[BYTES_PER_CHUNK];   // output C per byte
+    col witness bits(2) carry[BYTES_PER_CHUNK];       // per-byte carry chain:
+                                            //      (cin[i]=carry[i-1], cout[i]=carry[i])
+                                            // 2 bits to hold LT_ABS_NP's packed {clt + 2*cneg}, all other ops use only bit 0
+
+    const expr cout = carry[BYTES_PER_CHUNK-1];
+
+    // Selectors not constrained by the table should be constrained
+    cout * (1 - cout) === 0;
+
+    // IMPORTANT: Not all operations are valid using four bytes. The following constraint ensures 
+    // that only valid operations are used. This constraint generates an intermediate polynomial
+    // to reduce degree to 3.
+    
+    (opid - OP_LTU) * (opid - OP_EQ) * (opid - OP_ADD) * (opid - OP_OR) * (opid - OP_AND)=== 0;
+    
+
+    /*
+    Perform, at the byte level, lookups against the binary table on inputs:
+                  [pos_ind, opid, a, b, cin, c, cout + flags]
+    where pos_ind indicates relevant byte positions
+
+    Example for 8 bytes:
+        │──────────────────│───────────│────│────│──────────│────│───────────│
+        │     pos_ind      │    opid   │ a  │ b  │ cin      │ c  │           │
+        │──────────────────│───────────│────│────│──────────│────│───────────│
+        │        0         │   b_op    │ a0 │ b0 │ 0        │ c0 │ carry[0]  │
+        │        0         │   b_op    │ a1 │ b1 │ carry[0] │ c1 │ carry[1]  │
+        │        0         │   b_op    │ a2 │ b2 │ carry[1] │ c2 │ carry[2]  │
+        │        1         │   b_op    │ a3 │ b3 │ carry[2] │ c3 │ carry[3]  │
+        │──────────────────│───────────│────│────│──────────│────│───────────│
+    */
+
+
+    // Lookups
+    lookup_assumes(BINARY_TABLE_ID, [0, b_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0]]);
+    lookup_assumes(BINARY_TABLE_ID, [0, b_op, free_in_a[1], free_in_b[1], carry[0], free_in_c[1], carry[1]]);
+    lookup_assumes(BINARY_TABLE_ID, [0, b_op, free_in_a[2], free_in_b[2], carry[1], free_in_c[2], carry[2]]);
+    lookup_assumes(BINARY_TABLE_ID, [1, b_op, free_in_a[3], free_in_b[3], carry[2], free_in_c[3], carry[3]]);
+
+    // Constraints to make sure that this component is called from the main component
+    expr a[RC];
+    expr b[RC];
+    expr c[RC];
+    for (int i = 0; i < RC; i++) {
+        a[i] = 0;
+        b[i] = 0;
+        c[i] = 0;
+    }
+
+    int byte = 0;
+    int chunk = 0;
+    for (int i = 0; i < BYTES_PER_CHUNK; i++) {
+        const int byte_weight = BYTE_BASE ** byte;
+        a[chunk] += (byte_weight * free_in_a[i]);
+        b[chunk] += (byte_weight * free_in_b[i]);
+        c[chunk] += (byte_weight * free_in_c[i]);
+        byte++;
+        if (byte == BYTES_PER_CHUNK) {
+            byte = 0;
+            chunk++;
+        }
+    }
+
+    // In comparison operations, we set c = 0 and so the result is cout
+    // Otherwise, the result is simply c
+    c[0] += cout;
+
+    proves_operation(op: b_op, a:, b:, c:, flag: cout);
+
+    airval padding_size;
+    assumes_padding_operation(op: OP_ADD, padding_size:);
+}

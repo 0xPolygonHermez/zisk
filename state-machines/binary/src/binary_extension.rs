@@ -203,9 +203,14 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         let a_bytes: [u8; 8] = a_val.to_le_bytes();
         row.set_all_free_in_a(&a_bytes);
 
-        // Store b low part into in2_low (only shifts use it; 0 otherwise)
+        // Store b low part into in2_low (only shifts use it; 0 otherwise). The table lookup only
+        // consumes the low 6 bits (free_in_b, since the shift amount is masked with LS_6_BITS /
+        // LS_5_BITS); the two remaining bits are carried separately in free_in_b_bit6 /
+        // free_in_b_bit7 so the full shift-amount low byte can be rebuilt on the operation bus.
         let in2_low: u64 = if op_is_shift { b_val & 0xFF } else { 0 };
-        row.set_free_in_b(in2_low as u8);
+        row.set_free_in_b((in2_low & LS_6_BITS) as u8);
+        row.set_free_in_b_bit6((in2_low >> 6) & 1 != 0);
+        row.set_free_in_b_bit7((in2_low >> 7) & 1 != 0);
 
         // Store b lower bits when shifting, depending on operation size
         let b_low = if op_is_shift_word { b_val & LS_5_BITS } else { b_val & LS_6_BITS };
@@ -599,8 +604,12 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         for (i, a_byte) in a_bytes.iter().enumerate() {
             // For chain ops (forward or reverse) the fourth argument is acc_in (carried in
             // free_in_c[j][1]), which selects the row within the block; for the rest it is the
-            // shared B low byte.
-            let table_b = if op_is_chain || op_is_chain_rev { t_out[i][1] as u64 } else { in2_low };
+            // shared B value, restricted to its low 6 bits (the only part the table enumerates).
+            let table_b = if op_is_chain || op_is_chain_rev {
+                t_out[i][1] as u64
+            } else {
+                in2_low & LS_6_BITS
+            };
             let row = BinaryExtensionTableSM::calculate_table_row(
                 binary_extension_table_op,
                 i as u64,
