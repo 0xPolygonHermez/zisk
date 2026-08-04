@@ -49,18 +49,55 @@ type CollectorSlots = Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>;
 /// contention); a chunk with cpu/wall well below 1 is blocked on something. And comparing
 /// the summed chunk wall time against `workers x scope wall` shows how much of the pool
 /// was idle or spinning rather than processing chunks.
-#[derive(Default)]
+/// Instance-count buckets for the per-chunk cost model. Index = instances attached to
+/// the chunk, clamped to the last bucket.
+const COST_BUCKETS: usize = 17;
+
 struct CollectStats {
     chunks: AtomicUsize,
     wall_ns: AtomicU64,
     cpu_ns: AtomicU64,
     max_wall_ns: AtomicU64,
     max_chunk: AtomicUsize,
+    /// Per-chunk wall time grouped by how many instances that chunk fed.
+    ///
+    /// This is the cost model for switching the replay to the instance axis (one trace
+    /// live at a time, each chunk replayed once per instance that needs it). Regressing
+    /// mean wall against instance count splits the per-chunk cost in two: the intercept is
+    /// the instance-independent part (emulating the chunk), which an instance-axis replay
+    /// pays once *per instance*; the slope is the per-instance bus fan-out, which it pays
+    /// exactly as often as today. So intercept/slope is the exchange rate that decides
+    /// whether trading memory for re-replay is worth it.
+    bucket_count: [AtomicUsize; COST_BUCKETS],
+    bucket_ns: [AtomicU64; COST_BUCKETS],
+}
+
+impl Default for CollectStats {
+    fn default() -> Self {
+        Self {
+            chunks: AtomicUsize::new(0),
+            wall_ns: AtomicU64::new(0),
+            cpu_ns: AtomicU64::new(0),
+            max_wall_ns: AtomicU64::new(0),
+            max_chunk: AtomicUsize::new(0),
+            bucket_count: std::array::from_fn(|_| AtomicUsize::new(0)),
+            bucket_ns: std::array::from_fn(|_| AtomicU64::new(0)),
+        }
+    }
 }
 
 impl CollectStats {
-    fn record(&self, chunk_id: usize, wall: std::time::Duration, cpu: Option<std::time::Duration>) {
+    fn record(
+        &self,
+        chunk_id: usize,
+        n_inst: usize,
+        wall: std::time::Duration,
+        cpu: Option<std::time::Duration>,
+    ) {
         let ns = wall.as_nanos() as u64;
+        let bucket = n_inst.min(COST_BUCKETS - 1);
+        self.bucket_count[bucket].fetch_add(1, Ordering::Relaxed);
+        self.bucket_ns[bucket].fetch_add(ns, Ordering::Relaxed);
         self.chunks.fetch_add(1, Ordering::Relaxed);
         self.wall_ns.fetch_add(ns, Ordering::Relaxed);
         if let Some(cpu) = cpu {
@@ -413,6 +450,49 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let collector_pairs: usize = chunks_to_execute.iter().map(|c| c.len()).sum();
         let max_inst = chunks_to_execute.iter().map(|c| c.len()).max().unwrap_or(0);
         let non_empty = n_chunks - n_empty;
+
+        // Peak concurrent trace residency for a scheme that writes trace rows directly
+        // during this replay instead of materialising intermediate inputs.
+        //
+        // Such a scheme does NOT need every instance's trace at once: a trace only has to
+        // be live from the first chunk that feeds it to the last. Sweeping `ordered_chunks`
+        // and counting instances that have started but not finished gives the actual peak,
+        // which is what the chunk ordering controls — and it is far below the
+        // all-instances-resident ceiling. Reported with the airs at the peak so their trace
+        // sizes can be summed for a byte figure.
+        let mut first_at: HashMap<usize, usize> = HashMap::new();
+        let mut last_at: HashMap<usize, usize> = HashMap::new();
+        for (pos, &chunk_id) in ordered_chunks.iter().enumerate() {
+            for &inst in &chunks_to_execute[chunk_id] {
+                first_at.entry(inst).or_insert(pos);
+                last_at.insert(inst, pos);
+            }
+        }
+        let mut live = 0usize;
+        let mut peak_live = 0usize;
+        let mut peak_pos = 0usize;
+        let mut starts: HashMap<usize, usize> = HashMap::new();
+        let mut ends: HashMap<usize, usize> = HashMap::new();
+        for (&inst, &pos) in first_at.iter() {
+            *starts.entry(pos).or_insert(0) += 1;
+            *ends.entry(last_at[&inst]).or_insert(0) += 1;
+        }
+        for pos in 0..ordered_chunks.len() {
+            live += starts.get(&pos).copied().unwrap_or(0);
+            if live > peak_live {
+                peak_live = live;
+                peak_pos = pos;
+            }
+            live -= ends.get(&pos).copied().unwrap_or(0);
+        }
+        // The airs live at the peak, so their trace sizes can be summed offline.
+        let mut peak_airs: Vec<String> = first_at
+            .iter()
+            .filter(|(inst, &f)| f <= peak_pos && last_at[inst] >= peak_pos)
+            .filter_map(|(inst, _)| pctx.dctx_get_instance_info(*inst).ok())
+            .map(|(ag, air)| format!("{ag}:{air}"))
+            .collect();
+        peak_airs.sort();
         let chunks_done = collect_stats.chunks.load(Ordering::Relaxed);
         let chunk_wall_ms = collect_stats.wall_ns.load(Ordering::Relaxed) as f64 / 1e6;
         let chunk_cpu_ms = collect_stats.cpu_ns.load(Ordering::Relaxed) as f64 / 1e6;
@@ -426,7 +506,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
              chunks={} empty={} done={} workers={} | chunk_wall_sum={:.1}ms chunk_cpu_sum={:.1}ms \
              cpu/wall={:.2} max_chunk_wall={:.1}ms (chunk {}) | pool_capacity={:.1}ms idle={:.1}ms ({:.1}%) \
              | minflt={} majflt={} faults_per_chunk={:.0} | malloc_d_mmap={}KB d_inuse={}KB d_free={}KB \
-             | collector_pairs={} inst_per_chunk mean={:.2} max={}",
+             | collector_pairs={} inst_per_chunk mean={:.2} max={} \
+             | direct_rows_peak_live={} of {} at pos {} airs=[{}]",
             guard_wait.as_secs_f64() * 1000.0,
             plan_time.as_secs_f64() * 1000.0,
             bus_build.as_secs_f64() * 1000.0,
@@ -456,7 +537,23 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             collector_pairs,
             if non_empty > 0 { collector_pairs as f64 / non_empty as f64 } else { 0.0 },
             max_inst,
+            peak_live,
+            first_at.len(),
+            peak_pos,
+            peak_airs.join(","),
         );
+
+        // Cost model for an instance-axis replay. `n=<inst>:<count>x<mean_ms>` per bucket.
+        let buckets: Vec<String> = (0..COST_BUCKETS)
+            .filter_map(|b| {
+                let c = collect_stats.bucket_count[b].load(Ordering::Relaxed);
+                (c > 0).then(|| {
+                    let ms = collect_stats.bucket_ns[b].load(Ordering::Relaxed) as f64 / 1e6 / c as f64;
+                    format!("n={b}:{c}x{ms:.2}ms")
+                })
+            })
+            .collect();
+        tracing::info!("COLLECT_COST per-chunk wall by instance count — {}", buckets.join(" "));
 
         // Collect any errors from parallel execution.
         // Use unwrap_or_else to handle poisoned mutex (e.g., if a worker thread panicked).
@@ -515,6 +612,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             Self::process_one_chunk(chunk_id, data_bus, ctx);
             ctx.collect_stats.record(
                 chunk_id,
+                ctx.chunks_to_execute[chunk_id].len(),
                 t0.elapsed(),
                 cpu0.zip(proofman::thread_cpu_time()).map(|(a, b)| b.saturating_sub(a)),
             );
