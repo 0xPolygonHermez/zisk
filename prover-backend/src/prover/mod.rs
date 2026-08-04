@@ -394,6 +394,9 @@ pub trait ProverEngine {
     /// This rank's index in the global MPI context (`0` when MPI is unused).
     fn world_rank(&self) -> i32;
 
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    fn n_processes(&self) -> i32;
+
     /// This rank's index within its node (`0` when MPI is unused).
     fn local_rank(&self) -> i32;
 
@@ -647,6 +650,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// If MPI is not used, this will always return 0.
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    pub fn n_processes(&self) -> i32 {
+        self.prover.n_processes()
     }
 
     /// Get the local rank of the prover. The local rank is the rank of the prover in the local MPI context.

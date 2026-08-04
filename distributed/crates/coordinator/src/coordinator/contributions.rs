@@ -4,6 +4,7 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator, PrecompileHintsRelay, WorkersPool,
 };
+use bytes::Bytes;
 use chrono::Utc;
 use colored::Colorize;
 use proofman::{ContributionsInfo, WitnessInfo};
@@ -41,15 +42,9 @@ impl Coordinator {
             InputsModeDto::InputsPath(ref inputs_path) => {
                 InputSourceDto::InputPath(inputs_path.clone())
             }
-            InputsModeDto::InputsData(ref inputs_hex) => {
-                let inputs = hex::decode(inputs_hex).map_err(|e| {
-                    CoordinatorError::Internal(format!(
-                        "Failed to decode inline input data for job {}: {}",
-                        job.job_id, e
-                    ))
-                })?;
+            InputsModeDto::InputsData(ref inputs) => {
                 info!("Job {} using inline input data ({} bytes)", job.job_id, inputs.len());
-                InputSourceDto::InputData(inputs)
+                InputSourceDto::InputData(inputs.clone())
             }
             InputsModeDto::InputsStream(_) => {
                 // Coordinator will relay streamed inputs to workers via InputStreamData.
@@ -62,15 +57,7 @@ impl Coordinator {
 
         let hints_source = match &job.hints_mode {
             HintsModeDto::HintsPath(ref hints_uri) => HintsSourceDto::HintsPath(hints_uri.clone()),
-            HintsModeDto::HintsData(ref hints_hex) => {
-                let hints = hex::decode(hints_hex).map_err(|e| {
-                    CoordinatorError::Internal(format!(
-                        "Failed to decode inline hints data for job {}: {}",
-                        job.job_id, e
-                    ))
-                })?;
-                HintsSourceDto::HintsData(hints)
-            }
+            HintsModeDto::HintsData(ref hints) => HintsSourceDto::HintsData(hints.clone()),
             HintsModeDto::HintsStream(hints_uri) => {
                 // Hints will be streamed separately
                 HintsSourceDto::HintsStream(hints_uri.clone())
@@ -85,18 +72,23 @@ impl Coordinator {
         let cloned_active_workers = active_workers.clone();
         let execution_only = job.execution_only;
         let job_hash_id = job.hash_id.clone();
+        // Borrowed here and cloned inside each future: `buffer_unordered` drains
+        // the whole iterator before polling any of it, so cloning at this level
+        // would run every copy before the first message is queued.
+        let input_source = &input_source;
+        let hints_source = &hints_source;
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
             let job_hash_id = job_hash_id.clone();
             let data_id = job.data_id.clone();
-            let input_source = input_source.clone();
-            let hints_source = hints_source.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
             let job_metadata = job.metadata.clone();
             let workers_pool = &self.workers_pool;
 
             async move {
+                let input_source = input_source.clone();
+                let hints_source = hints_source.clone();
                 let contribution_params = ContributionParamsDto {
                     hash_id: job_hash_id.clone(),
                     data_id,
@@ -179,6 +171,8 @@ impl Coordinator {
                 let pool = Arc::clone(&workers_pool);
 
                 Box::pin(async move {
+                    // Converted once so the per-worker clones are refcounts.
+                    let payload = Bytes::from(payload);
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
@@ -330,6 +324,7 @@ impl Coordinator {
 
     /// Core loop for the input relay: connects to the stream, reads chunks,
     /// and broadcasts each to all workers.
+    ///
     async fn run_input_relay(
         inputs_uri: &str,
         job_id: &JobId,
@@ -372,6 +367,8 @@ impl Coordinator {
         loop {
             match stream.next() {
                 Ok(Some(chunk)) => {
+                    // Converted once so the per-worker clones are refcounts.
+                    let chunk = Bytes::from(chunk);
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
