@@ -70,6 +70,11 @@ struct CollectStats {
     /// whether trading memory for re-replay is worth it.
     bucket_count: [AtomicUsize; COST_BUCKETS],
     bucket_ns: [AtomicU64; COST_BUCKETS],
+    /// Inside a chunk: the emulator pass (emulation + bus dispatch + collector pushes,
+    /// interleaved and not separable without touching the emulator) versus draining the
+    /// collectors into the store afterwards.
+    emu_ns: AtomicU64,
+    drain_ns: AtomicU64,
 }
 
 impl Default for CollectStats {
@@ -82,6 +87,8 @@ impl Default for CollectStats {
             max_chunk: AtomicUsize::new(0),
             bucket_count: std::array::from_fn(|_| AtomicUsize::new(0)),
             bucket_ns: std::array::from_fn(|_| AtomicU64::new(0)),
+            emu_ns: AtomicU64::new(0),
+            drain_ns: AtomicU64::new(0),
         }
     }
 }
@@ -543,6 +550,51 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             peak_airs.join(","),
         );
 
+        // Optional benchmark: replay every chunk again with a bus that has NO collectors
+        // attached. That pass costs emulation + bus dispatch with no consumers, so
+        // (real emulator pass - this) is the collector-push cost, and this is the floor an
+        // instance-axis replay would pay per instance. Side-effect free: with no
+        // collectors there is nothing to write. Gated because it doubles the replay.
+        if std::env::var("ZISK_COLLECT_BENCH").is_ok() {
+            let t_bench = Instant::now();
+            let empty: Vec<usize> = Vec::new();
+            let bench_ns = AtomicU64::new(0);
+            ordered_chunks.par_iter().for_each(|&chunk_id| {
+                if chunks_to_execute[chunk_id].is_empty() {
+                    return;
+                }
+                if let Ok(mut bus) = crate::StaticDataBusCollect::for_chunk(
+                    pctx,
+                    &secn_instances,
+                    ChunkId(chunk_id),
+                    &empty,
+                    zisk_rom.as_ref(),
+                ) {
+                    let t = Instant::now();
+                    ZiskEmulator::process_emu_traces::<F, _, _>(
+                        &zisk_rom,
+                        min_traces,
+                        chunk_id,
+                        &mut bus,
+                    );
+                    bench_ns.fetch_add(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
+                }
+            });
+            let emu_ms = collect_stats.emu_ns.load(Ordering::Relaxed) as f64 / 1e6;
+            let no_col_ms = bench_ns.load(Ordering::Relaxed) as f64 / 1e6;
+            tracing::info!(
+                "COLLECT_BENCH no_collector_replay: emu_with_collectors={:.1}ms \
+                 emu_no_collectors={:.1}ms => collector_push={:.1}ms ({:.1}% of emu pass) \
+                 | irreducible_floor={:.1}% | wall={:.1}ms",
+                emu_ms,
+                no_col_ms,
+                (emu_ms - no_col_ms).max(0.0),
+                if emu_ms > 0.0 { 100.0 * (emu_ms - no_col_ms).max(0.0) / emu_ms } else { 0.0 },
+                if emu_ms > 0.0 { 100.0 * no_col_ms / emu_ms } else { 0.0 },
+                t_bench.elapsed().as_secs_f64() * 1000.0,
+            );
+        }
+
         // Cost model for an instance-axis replay. `n=<inst>:<count>x<mean_ms>` per bucket.
         let buckets: Vec<String> = (0..COST_BUCKETS)
             .filter_map(|b| {
@@ -553,7 +605,12 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 })
             })
             .collect();
-        tracing::info!("COLLECT_COST per-chunk wall by instance count — {}", buckets.join(" "));
+        tracing::info!(
+            "COLLECT_COST emu_pass={:.1}ms drain={:.1}ms | per-chunk wall by instance count — {}",
+            collect_stats.emu_ns.load(Ordering::Relaxed) as f64 / 1e6,
+            collect_stats.drain_ns.load(Ordering::Relaxed) as f64 / 1e6,
+            buckets.join(" ")
+        );
 
         // Collect any errors from parallel execution.
         // Use unwrap_or_else to handle poisoned mutex (e.g., if a worker thread panicked).
@@ -648,14 +705,17 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         }
 
         // Run the emulator over this chunk's traces.
+        let t_emu = Instant::now();
         ZiskEmulator::process_emu_traces::<F, _, _>(
             ctx.zisk_rom,
             ctx.min_traces,
             chunk_id,
             &mut data_bus,
         );
+        ctx.collect_stats.emu_ns.fetch_add(t_emu.elapsed().as_nanos() as u64, Ordering::Relaxed);
 
         // Drain device collectors and build per-instance entries.
+        let t_drain = Instant::now();
         let devices = data_bus.into_devices(false);
         let mut entries: Vec<(usize, usize, Option<ChunkCollector>)> = Vec::new();
         for (global_id, col) in devices {
@@ -699,6 +759,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 push_error(ctx.errors, "collectors_by_instance lock poisoned".to_string());
             }
         }
+        ctx.collect_stats.drain_ns.fetch_add(t_drain.elapsed().as_nanos() as u64, Ordering::Relaxed);
 
         // Advance counters; on the last chunk for an instance, flip its
         // witness-ready flag and record completion stats.
