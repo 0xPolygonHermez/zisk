@@ -376,6 +376,12 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             collect_stats: &collect_stats,
         };
 
+        // Page faults and allocator state across the replay. The replay allocates one
+        // Vec::with_capacity per (chunk, instance) and frees it after; if the allocator
+        // returned those pages to the kernel, every first touch re-faults, and a fault
+        // storm reads as an IPC collapse on byte-identical work.
+        let faults_before = proofman::page_faults();
+        let alloc_before = proofman::allocator_stats();
         let t_scope = Instant::now();
         let n_workers = rayon::current_num_threads();
         rayon::in_place_scope(|scope| {
@@ -385,6 +391,17 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         });
         let replay = t_scope.elapsed();
+        let (minflt, majflt) = faults_before
+            .zip(proofman::page_faults())
+            .map(|((a0, b0), (a1, b1))| (a1.saturating_sub(a0), b1.saturating_sub(b0)))
+            .unwrap_or((0, 0));
+        // Signed: the allocator can also *release* during the window.
+        let (d_mmap, d_inuse, d_free) = alloc_before
+            .zip(proofman::allocator_stats())
+            .map(|((m0, u0, f0), (m1, u1, f1))| {
+                (m1 as i64 - m0 as i64, u1 as i64 - u0 as i64, f1 as i64 - f0 as i64)
+            })
+            .unwrap_or((0, 0, 0));
 
         let n_chunks = chunks_to_execute.len();
         let n_empty = chunks_to_execute.iter().filter(|c| c.is_empty()).count();
@@ -399,7 +416,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         tracing::info!(
             "COLLECT_SPLIT guard_wait={:.1}ms plan={:.1}ms bus_build={:.1}ms replay={:.1}ms \
              chunks={} empty={} done={} workers={} | chunk_wall_sum={:.1}ms chunk_cpu_sum={:.1}ms \
-             cpu/wall={:.2} max_chunk_wall={:.1}ms (chunk {}) | pool_capacity={:.1}ms idle={:.1}ms ({:.1}%)",
+             cpu/wall={:.2} max_chunk_wall={:.1}ms (chunk {}) | pool_capacity={:.1}ms idle={:.1}ms ({:.1}%) \
+             | minflt={} majflt={} faults_per_chunk={:.0} | malloc_d_mmap={}KB d_inuse={}KB d_free={}KB",
             guard_wait.as_secs_f64() * 1000.0,
             plan_time.as_secs_f64() * 1000.0,
             bus_build.as_secs_f64() * 1000.0,
@@ -420,6 +438,12 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             } else {
                 0.0
             },
+            minflt,
+            majflt,
+            if chunks_done > 0 { minflt as f64 / chunks_done as f64 } else { 0.0 },
+            d_mmap / 1024,
+            d_inuse / 1024,
+            d_free / 1024,
         );
 
         // Collect any errors from parallel execution.
