@@ -463,14 +463,58 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             return Ok(());
         }
 
+        // `create_pool` builds a *fresh* rayon pool — n_cores new OS threads — on every
+        // call, and tears it down when `pool` drops at the end of this function. That
+        // happens while the per-instance witness threads are already running, so the new
+        // workers have to be placed by the scheduler under load, and rayon workers spin
+        // before they sleep. This stage carries ~91% of the slow-mode witness excess, so
+        // time the construction, the work and the teardown separately: if the variance is
+        // in the pool rather than the work, that is a different fix entirely.
+        let pool_start = Instant::now();
         let pool = create_pool(n_cores);
+        let pool_create = pool_start.elapsed();
+
         let adapter = ProofmanAdapter::new(&pctx, &sctx);
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();
 
-        pool.install(|| {
+        let work_start = Instant::now();
+        let result = pool.install(|| {
             witness.pre_calculate(&pctx, &adapter, &self.state, global_ids, is_asm_emulator)
-        })?;
+        });
+        let work = work_start.elapsed();
+
+        // Explicit drop so the teardown cost is inside the measurement rather than
+        // attributed to whatever runs next.
+        // Where the pool's workers actually sit. The witness/commit core fields in
+        // CONTRIB_PROFILE sample the *dispatcher* thread, which is blocked in `install`
+        // while these workers do the work (its cpu/wall reads ~0) — so those fields say
+        // nothing about the placement of the real computation. Broadcast once, right after
+        // the work, to sample every worker in this pool.
+        let worker_cpus: Vec<i32> = pool.broadcast(|_| proofman::current_cpu());
+        let workers_on_e = worker_cpus.iter().filter(|c| proofman::is_e_core(**c)).count();
+
+        let drop_start = Instant::now();
+        drop(pool);
+        let pool_drop = drop_start.elapsed();
+
+        tracing::info!(
+            "PRE_CALCULATE_SPLIT n_cores={} pool_create={:.1}ms work={:.1}ms pool_drop={:.1}ms \
+             workers={} on_e={} e_share={:.1}%",
+            n_cores,
+            pool_create.as_secs_f64() * 1000.0,
+            work.as_secs_f64() * 1000.0,
+            pool_drop.as_secs_f64() * 1000.0,
+            worker_cpus.len(),
+            workers_on_e,
+            if worker_cpus.is_empty() {
+                0.0
+            } else {
+                100.0 * workers_on_e as f64 / worker_cpus.len() as f64
+            },
+        );
+
+        result?;
 
         stats_end!(self.state.stats, &_pre_scope);
         Ok(())
