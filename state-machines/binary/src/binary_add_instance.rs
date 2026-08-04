@@ -4,15 +4,14 @@
 //! It manages collected inputs and interacts with the `BinaryAddSM` to compute witnesses for
 //! execution plans.
 
-use crate::{AddScope, BinaryAddCollector, BinaryAddSM};
+use crate::{BinaryAddCollector, BinaryAddSM, BinaryCollectInfo};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow, BinaryAddTraceRowPacked};
 
@@ -24,11 +23,9 @@ pub struct BinaryAddInstance<F: PrimeField64> {
     /// Binary Add state machine.
     binary_add_sm: Arc<BinaryAddSM<F>>,
 
-    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
-
-    /// Which add shapes this instance is responsible for, decided by the planner.
-    add_scope: AddScope,
+    /// Collect info for each chunk ID: what to collect, what to skip, and which additions belong to
+    /// another air.
+    collect_info: HashMap<ChunkId, BinaryCollectInfo>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -61,11 +58,11 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
 
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
-        let (add_scope, collect_info) = *meta
-            .downcast::<(AddScope, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, BinaryCollectInfo>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_add_sm, collect_info, add_scope, ictx, std }
+        Self { binary_add_sm, collect_info, ictx, std }
     }
 
     pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector<F> {
@@ -75,14 +72,7 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        BinaryAddCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            self.add_scope,
-            force_execute_to_end,
-            self.std.clone(),
-        )
+        BinaryAddCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
 
@@ -162,14 +152,7 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             "BinaryAddInstance: Unsupported air_id: {:?}",
             self.ictx.plan.air_id
         );
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(BinaryAddCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            self.add_scope,
-            force_execute_to_end,
-            self.std.clone(),
-        )))
+        Some(Box::new(BinaryAddCollector::new(self.collect_info[&chunk_id], self.std.clone())))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

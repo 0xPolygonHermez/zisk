@@ -9,6 +9,7 @@
 //! Operand convention: for `a op b = c`, each of `a`, `b` and `c` is a 64-bit value seen as two
 //! 32-bit limbs, `[0]` being the low part and `[1]` the high part.
 
+use zisk_common::CollectSkipper;
 use zisk_core::zisk_ops::ZiskOp;
 
 /// Number of independent additions packed into one `BinaryAddHi` row.
@@ -61,12 +62,15 @@ pub fn add_shape(a: u64, b: u64) -> AddShape {
     }
 }
 
-/// Which add shapes an instance is responsible for.
+/// Which add shapes a dedicated air is responsible for.
 ///
-/// Additions can be proven by more than one air — `Binary` and `BinaryAdd` take any shape, while
-/// the packed `BinaryAddHi` only takes the low-limb ones — so the planner decides per shape where
-/// they go and every collector filters by the scope it was given. Exactly one instance must accept
-/// a given operation, otherwise it would be proven twice or not at all.
+/// Additions can be proven by more than one air — `Binary` and `BinaryAdd` take any shape, while the
+/// packed `BinaryAddHi` only takes the low-limb ones — so the planner decides per shape where they go
+/// and every collector filters by what it was given. Exactly one instance must accept a given
+/// operation, otherwise it would be proven twice or not at all.
+///
+/// This is the filter of the dedicated airs, which take a prefix of a shape; the general `Binary` air
+/// takes the tail and filters with [`ShapeDrop`] instead.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct AddScope {
     /// Take the additions that need the full 64-bit add ([`AddShape::Full`]).
@@ -98,6 +102,78 @@ impl AddScope {
     pub fn is_empty(&self) -> bool {
         !self.full && !self.hi
     }
+}
+
+/// How many additions of one shape an instance has to let pass before taking them.
+///
+/// A dedicated add air takes a *prefix* of its shape's operations — as many as fill whole instances
+/// — and the general `Binary` air takes the tail in the room its instances have already paid for.
+/// Its collectors therefore need to drop that prefix, which is what this describes.
+///
+/// The distinction between [`ShapeDrop::all`] and [`ShapeDrop::first`] matters for the frequent
+/// operations: while dropping, frops of the shape are dropped too, so they stay accounted for by the
+/// dedicated air. `all` keeps dropping to the end of the chunk, which is what makes the dedicated air
+/// the sole owner of that chunk's frops for the shape; `first(n)` hands the ones past the boundary
+/// over to `Binary`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShapeDrop {
+    /// `true` when every operation of the shape belongs to another air.
+    all: bool,
+
+    /// Operations of the shape to let pass before taking them. Unused when `all`.
+    skipper: CollectSkipper,
+}
+
+impl ShapeDrop {
+    /// Every operation of the shape belongs to another air.
+    pub fn all() -> Self {
+        Self { all: true, skipper: CollectSkipper::new(0) }
+    }
+
+    /// Every operation of the shape is ours.
+    pub fn none() -> Self {
+        Self { all: false, skipper: CollectSkipper::new(0) }
+    }
+
+    /// The first `n` non-frop operations of the shape belong to another air; the rest are ours.
+    pub fn first(n: u64) -> Self {
+        Self { all: false, skipper: CollectSkipper::new(n) }
+    }
+
+    /// Returns `true` when the current operation of the shape is ours to take.
+    ///
+    /// `is_frop` marks frequent operations, which never take a row: they do not count towards the
+    /// boundary, but they are dropped along with the prefix so the dedicated air accounts for them.
+    #[inline(always)]
+    pub fn accepts(&mut self, is_frop: bool) -> bool {
+        if self.all {
+            return false;
+        }
+        !self.skipper.should_skip_query(!is_frop)
+    }
+}
+
+/// What one instance of an add-capable air (`Binary` or `BinaryAdd`) collects from one chunk.
+///
+/// Besides the usual count and skip over the stream it accepts, it carries which additions belong to
+/// another air: those are dropped, so the room an instance has already paid for can take the residual
+/// of a shape instead of forcing a whole extra instance of a dedicated air.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BinaryCollectInfo {
+    /// Operations to collect from the accepted stream.
+    pub count: u64,
+
+    /// Operations of the accepted stream to skip before collecting.
+    pub skipper: CollectSkipper,
+
+    /// Low-limb additions that belong to a dedicated air.
+    pub hi_drop: ShapeDrop,
+
+    /// Additions needing the full 64-bit add that belong to a dedicated air.
+    pub full_drop: ShapeDrop,
+
+    /// Whether the chunk must be walked to its end because it still holds frops to account for.
+    pub force_execute_to_end: bool,
 }
 
 /// Determines if the given opcode belongs to the shift family (shifts, rotates and single-bit
@@ -259,6 +335,50 @@ mod tests {
     #[test]
     fn add_shape_full_when_b_hi_is_neither_zero_nor_all_ones() {
         assert_eq!(add_shape(0, 1 << 32), AddShape::Full);
+    }
+
+    /// `ShapeDrop::all` never yields an operation, so the dedicated air stays the sole owner of the
+    /// chunk — frops included.
+    #[test]
+    fn shape_drop_all_never_accepts() {
+        let mut drop = ShapeDrop::all();
+        for is_frop in [false, true, false, false] {
+            assert!(!drop.accepts(is_frop));
+        }
+    }
+
+    /// `ShapeDrop::none` yields everything.
+    #[test]
+    fn shape_drop_none_accepts_everything() {
+        let mut drop = ShapeDrop::none();
+        for is_frop in [false, true, false] {
+            assert!(drop.accepts(is_frop));
+        }
+    }
+
+    /// `ShapeDrop::first(n)` lets the first `n` real operations pass to the dedicated air and takes
+    /// the rest. Frops in the dropped prefix go with it; the ones past the boundary are ours.
+    #[test]
+    fn shape_drop_first_hands_over_the_tail() {
+        let mut drop = ShapeDrop::first(2);
+
+        // A frop inside the prefix does not advance the boundary, and is dropped.
+        assert!(!drop.accepts(true));
+        // The two operations of the prefix.
+        assert!(!drop.accepts(false));
+        assert!(!drop.accepts(false));
+        // From here on everything is ours, frops included.
+        assert!(drop.accepts(true));
+        assert!(drop.accepts(false));
+        assert!(drop.accepts(false));
+    }
+
+    /// `first(0)` is the same as taking everything.
+    #[test]
+    fn shape_drop_first_zero_takes_everything() {
+        let mut drop = ShapeDrop::first(0);
+        assert!(drop.accepts(false));
+        assert!(drop.accepts(true));
     }
 
     #[test]

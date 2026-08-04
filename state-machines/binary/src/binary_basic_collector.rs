@@ -2,10 +2,11 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use crate::{AddScope, BinaryBasicFrops, BinaryInput};
+use crate::{
+    add_shape, BinaryBasicFrops, BinaryCollectCursor, BinaryCollectInfo, BinaryInput, CollectAction,
+};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -18,15 +19,8 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
-    pub num_operations: usize,
-
-    pub collect_skipper: CollectSkipper,
-
-    /// Which add shapes this instance is responsible for (the rest go to a dedicated add air).
-    add_scope: AddScope,
-
-    /// Flag to indicate that force to execute to end of chunk
-    force_execute_to_end: bool,
+    /// Decides, operation by operation, what belongs to this instance.
+    cursor: BinaryCollectCursor,
 
     /// The table ID for the Binary FROPS
     frops_table_id: usize,
@@ -39,28 +33,20 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     /// Creates a new `BinaryBasicCollector`.
     ///
     /// # Arguments
-    /// * `num_operations` - The number of operations to collect.
-    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    /// * `collect_info` - What this instance collects from the chunk: how many operations, how many
+    ///   to skip, and which additions belong to a dedicated air.
+    /// * `std` - PIL2 standard library utilities.
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(
-        num_operations: usize,
-        collect_skipper: CollectSkipper,
-        add_scope: AddScope,
-        force_execute_to_end: bool,
-        std: Arc<Std<F>>,
-    ) -> Self {
+    pub fn new(collect_info: BinaryCollectInfo, std: Arc<Std<F>>) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
 
         Self {
-            inputs: Vec::with_capacity(num_operations),
-            num_operations,
-            collect_skipper,
-            add_scope,
-            force_execute_to_end,
+            inputs: Vec::with_capacity(collect_info.count as usize),
+            cursor: BinaryCollectCursor::new(collect_info),
             frops_table_id,
             std,
         }
@@ -79,46 +65,32 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
-        let instance_complete = self.inputs.len() == self.num_operations;
-
-        if instance_complete && !self.force_execute_to_end {
-            return false;
-        }
 
         let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&op_data);
-
-        if op_type as u32 != ZiskOperationType::Binary as u32 {
+        if OperationBusData::get_op_type(&op_data) as u32 != ZiskOperationType::Binary as u32 {
             return true;
         }
 
-        // Additions routed to another air must not consume this instance's skip budget nor rows.
-        if OperationBusData::get_op(&op_data) == ZiskOp::Add.code()
-            && !self.add_scope.accepts(data[A], data[B])
-        {
-            return true;
-        }
+        // Additions are bucketed by shape, since the planner routes each shape independently.
+        let shape = (OperationBusData::get_op(&op_data) == ZiskOp::Add.code())
+            .then(|| add_shape(data[A], data[B]));
 
-        if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
-            return true;
+        match self.cursor.next(shape, frops_row != BinaryBasicFrops::NO_FROPS) {
+            CollectAction::Stop => false,
+            CollectAction::Pass => true,
+            CollectAction::CountFrop => {
+                self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+                true
+            }
+            CollectAction::Collect => {
+                self.inputs.push(BinaryInput::from(&op_data));
+                !self.cursor.is_done()
+            }
         }
-
-        if frops_row != BinaryBasicFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
-            return true;
-        }
-
-        if instance_complete {
-            // instance complete => no FROPS operation => discard, inputs complete
-            return true;
-        }
-        self.inputs.push(BinaryInput::from(&op_data));
-
-        self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 }
 
