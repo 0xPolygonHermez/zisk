@@ -2,7 +2,7 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use crate::{BinaryBasicFrops, BinaryInput};
+use crate::{AddScope, BinaryBasicFrops, BinaryInput};
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
     OPERATION_BUS_ID,
@@ -22,8 +22,8 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
 
     pub collect_skipper: CollectSkipper,
 
-    /// Flag to indicate that this instance comute add operations
-    with_adds: bool,
+    /// Which add shapes this instance is responsible for (the rest go to a dedicated add air).
+    add_scope: AddScope,
 
     /// Flag to indicate that force to execute to end of chunk
     force_execute_to_end: bool,
@@ -47,7 +47,7 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     pub fn new(
         num_operations: usize,
         collect_skipper: CollectSkipper,
-        with_adds: bool,
+        add_scope: AddScope,
         force_execute_to_end: bool,
         std: Arc<Std<F>>,
     ) -> Self {
@@ -59,7 +59,7 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
-            with_adds,
+            add_scope,
             force_execute_to_end,
             frops_table_id,
             std,
@@ -96,7 +96,10 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             return true;
         }
 
-        if !self.with_adds && OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
+        // Additions routed to another air must not consume this instance's skip budget nor rows.
+        if OperationBusData::get_op(&op_data) == ZiskOp::Add.code()
+            && !self.add_scope.accepts(data[A], data[B])
+        {
             return true;
         }
 

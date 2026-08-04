@@ -1,9 +1,9 @@
-//! The `BinaryAddCollector` struct represents an input collector for binary add operations.
+//! The `BinaryAddHiCollector` struct represents an input collector for the packed add operations
+//! proven by `BinaryAddHi`.
 
-use crate::{AddScope, BinaryBasicFrops};
+use crate::{add_shape, AddShape, BinaryBasicFrops};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OPERATION_BUS_ID,
 };
 use zisk_core::zisk_ops::ZiskOp;
 
@@ -11,16 +11,13 @@ use fields::PrimeField64;
 use pil_std_lib::Std;
 use std::sync::Arc;
 
-/// The `BinaryAddCollector` struct represents an input collector for binary add operations.
-pub struct BinaryAddCollector<F: PrimeField64> {
+/// The `BinaryAddHiCollector` struct represents an input collector for packed add operations.
+pub struct BinaryAddHiCollector<F: PrimeField64> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<[u64; 2]>,
 
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
-
-    /// Which add shapes this instance is responsible for.
-    add_scope: AddScope,
 
     /// Flag to indicate that force to execute to end of chunk
     force_execute_to_end: bool,
@@ -32,19 +29,18 @@ pub struct BinaryAddCollector<F: PrimeField64> {
     std: Arc<Std<F>>,
 }
 
-impl<F: PrimeField64> BinaryAddCollector<F> {
-    /// Creates a new `BinaryAddCollector`.
+impl<F: PrimeField64> BinaryAddHiCollector<F> {
+    /// Creates a new `BinaryAddHiCollector`.
     ///
     /// # Arguments
     /// * `num_operations` - The number of operations to collect.
     /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
     ///
     /// # Returns
-    /// A new `BinaryAddCollector` instance initialized with the provided parameters.
+    /// A new `BinaryAddHiCollector` instance initialized with the provided parameters.
     pub fn new(
         num_operations: usize,
         collect_skipper: CollectSkipper,
-        add_scope: AddScope,
         force_execute_to_end: bool,
         std: Arc<Std<F>>,
     ) -> Self {
@@ -55,7 +51,6 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
-            add_scope,
             force_execute_to_end,
             frops_table_id,
             std,
@@ -65,9 +60,8 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
     ///
     /// # Arguments
-    /// * `_bus_id` - The ID of the bus (unused in this implementation).
+    /// * `bus_id` - The ID of the bus sending the data.
     /// * `data` - The data received from the bus.
-    /// * `pending` – A queue of pending bus operations used to send derived inputs.
     ///
     /// # Returns
     /// A boolean indicating whether the program should continue execution or terminate.
@@ -81,22 +75,20 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
             return false;
         }
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
-
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op = OperationBusData::get_op(&op_data);
-
-        if op != ZiskOp::Add.code() {
+        if OperationBusData::get_op(&op_data) != ZiskOp::Add.code() {
             return true;
         }
 
-        // Additions routed to another air (Binary or the packed BinaryAddHi) must not consume this
-        // instance's skip budget nor its rows.
-        if !self.add_scope.accepts(data[A], data[B]) {
+        // Additions that do not fit in the low limb are proven by BinaryAdd (or Binary), so they
+        // must not consume this instance's skip budget nor its slots.
+        if add_shape(data[A], data[B]) == AddShape::Full {
             return true;
         }
+
+        let frops_row = BinaryBasicFrops::get_row(ZiskOp::Add.code(), data[A], data[B]);
 
         if self.collect_skipper.should_skip_query(frops_row == BinaryBasicFrops::NO_FROPS) {
             return true;
@@ -118,7 +110,7 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
     }
 }
 
-impl<F: PrimeField64> BusDevice<u64> for BinaryAddCollector<F> {
+impl<F: PrimeField64> BusDevice<u64> for BinaryAddHiCollector<F> {
     /// Provides a dynamic reference for downcasting purposes.
     fn as_any(self: Box<Self>) -> Box<dyn std::any::Any> {
         self

@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryBasicCollector, BinaryBasicSM};
+use crate::{AddScope, BinaryBasicCollector, BinaryBasicSM};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
@@ -28,7 +28,8 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     ictx: InstanceCtx,
 
     /// Indicates whether the instance should include ADD operations.
-    with_adds: bool,
+    /// Which add shapes this instance is responsible for, decided by the planner.
+    add_scope: AddScope,
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
@@ -61,11 +62,11 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
 
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
-        let (with_adds, collect_info) = *meta
-            .downcast::<(bool, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
+        let (add_scope, collect_info) = *meta
+            .downcast::<(AddScope, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_basic_sm, ictx, with_adds, collect_info, std }
+        Self { binary_basic_sm, ictx, add_scope, collect_info, std }
     }
 
     pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<F> {
@@ -73,7 +74,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         BinaryBasicCollector::new(
             num_ops as usize,
             collect_skipper,
-            self.with_adds,
+            self.add_scope,
             force_execute_to_end,
             self.std.clone(),
         )
@@ -153,7 +154,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         Some(Box::new(BinaryBasicCollector::new(
             num_ops as usize,
             collect_skipper,
-            self.with_adds,
+            self.add_scope,
             force_execute_to_end,
             self.std.clone(),
         )))

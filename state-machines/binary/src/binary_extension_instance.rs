@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `BinaryExtensionSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryExtensionCollector, BinaryExtensionSM};
+use crate::{BinaryExtensionCollector, BinaryExtensionSM, ExtensionScope};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
@@ -14,7 +14,10 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
     PayloadType,
 };
-use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked};
+use zisk_pil::{
+    BinaryExtensionFullTrace, BinaryExtensionFullTraceRow, BinaryExtensionFullTraceRowPacked,
+    BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked,
+};
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
 /// computations.
@@ -27,6 +30,9 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
 
     /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
     collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+
+    /// Operand shapes this instance is responsible for, decided by the planner.
+    scope: ExtensionScope,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -51,38 +57,44 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryExtensionTrace::<()>::AIR_ID,
+        assert!(
+            ictx.plan.air_id == BinaryExtensionTrace::<()>::AIR_ID
+                || ictx.plan.air_id == BinaryExtensionFullTrace::<()>::AIR_ID,
             "BinaryExtensionInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
 
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
-        let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+        let (scope, collect_info) = *meta
+            .downcast::<(ExtensionScope, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_extension_sm, collect_info, ictx, std }
+        debug_assert_eq!(
+            scope == ExtensionScope::Clean,
+            ictx.plan.air_id == BinaryExtensionTrace::<()>::AIR_ID,
+            "BinaryExtensionInstance: scope {scope:?} does not match air_id {:?}",
+            ictx.plan.air_id
+        );
+
+        Self { binary_extension_sm, collect_info, scope, ictx, std }
+    }
+
+    /// `true` when this instance proves the full air (and therefore owns the dirty shapes).
+    fn is_full(&self) -> bool {
+        self.ictx.plan.air_id == BinaryExtensionFullTrace::<()>::AIR_ID
     }
 
     pub fn build_binary_extension_collector(
         &self,
         chunk_id: ChunkId,
     ) -> BinaryExtensionCollector<F> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryExtensionTrace::<()>::AIR_ID,
-            "BinaryExtensionInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
         let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         BinaryExtensionCollector::new(
             num_ops as usize,
             collect_skipper,
             force_execute_to_end,
+            self.scope,
             self.std.clone(),
         )
     }
@@ -118,16 +130,36 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
-                self.binary_extension_sm
-                    .compute_witness::<BinaryExtensionTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
-                self.binary_extension_sm
-                    .compute_witness::<BinaryExtensionTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
+        // The two airs have different column sets, so the row type selects which one is filled.
+        match (self.is_full(), packed) {
+            (false, true) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionTrace<
+                    BinaryExtensionTraceRowPacked<F>,
+                >, BinaryExtensionTraceRowPacked<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
+            (false, false) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionTrace<
+                    BinaryExtensionTraceRow<F>,
+                >, BinaryExtensionTraceRow<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
+            (true, true) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionFullTrace<
+                    BinaryExtensionFullTraceRowPacked<F>,
+                >, BinaryExtensionFullTraceRowPacked<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
+            (true, false) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionFullTrace<
+                    BinaryExtensionFullTraceRow<F>,
+                >, BinaryExtensionFullTraceRow<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
         }
     }
 
@@ -164,6 +196,7 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             num_ops as usize,
             collect_skipper,
             force_execute_to_end,
+            self.scope,
             self.std.clone(),
         )))
     }

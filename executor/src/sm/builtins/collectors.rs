@@ -9,8 +9,8 @@ use precomp_dma::{
 };
 use sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollector};
 use sm_binary::{
-    BinaryAddCollector, BinaryAddInstance, BinaryBasicCollector, BinaryBasicInstance,
-    BinaryExtensionCollector, BinaryExtensionInstance,
+    BinaryAddCollector, BinaryAddHiCollector, BinaryAddHiInstance, BinaryAddInstance,
+    BinaryBasicCollector, BinaryBasicInstance, BinaryExtensionCollector, BinaryExtensionInstance,
 };
 use sm_mem::{
     MemAlignByteInstance, MemAlignCollector, MemAlignInstance, MemAlignReadByteInstance,
@@ -20,13 +20,14 @@ use sm_rom::{RomCollector, RomInstance};
 use zisk_common::BusDeviceMode;
 use zisk_common::{ChunkId, Instance};
 use zisk_pil::{
-    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
-    DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS,
-    DMA_64_ALIGNED_MEM_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS,
-    DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS, DMA_PRE_POST_AIR_IDS,
-    DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS, DMA_UNALIGNED_AIR_IDS,
-    INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
-    MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
+    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_AIR_IDS,
+    BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_FULL_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
+    DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
+    DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS, DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS,
+    DMA_PRE_POST_AIR_IDS, DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS,
+    DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
+    MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS,
+    ROM_DATA_AIR_IDS,
 };
 
 /// Collector for the built-in SMs.
@@ -43,6 +44,9 @@ pub struct BuiltinCollectors<F: PrimeField64> {
     pub binary_basic: Vec<(usize, BinaryBasicCollector<F>)>,
     /// Binary add operation collectors.
     pub binary_add: Vec<(usize, BinaryAddCollector<F>)>,
+
+    /// Collectors for the packed low-limb add instances.
+    pub binary_add_hi: Vec<(usize, BinaryAddHiCollector<F>)>,
     /// Binary extension operation collectors.
     pub binary_extension: Vec<(usize, BinaryExtensionCollector<F>)>,
 
@@ -72,6 +76,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             mem_align: Vec::new(),
             binary_basic: Vec::new(),
             binary_add: Vec::new(),
+            binary_add_hi: Vec::new(),
             binary_extension: Vec::new(),
             arith: Vec::new(),
             arith_inputs_generator: ArithCounterInputGen::new(BusDeviceMode::InputGenerator),
@@ -217,7 +222,17 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 self.binary_add.push((gid, inst.build_binary_add_collector(chunk)));
                 Ok(true)
             }
-            id if id == BINARY_EXTENSION_AIR_IDS[0] => {
+            id if id == BINARY_ADD_HI_AIR_IDS[0] => {
+                let inst = downcast::<F, BinaryAddHiInstance<F>>(
+                    secn,
+                    air_id,
+                    gid,
+                    "BinaryAddHiInstance",
+                )?;
+                self.binary_add_hi.push((gid, inst.build_binary_add_hi_collector(chunk)));
+                Ok(true)
+            }
+            id if id == BINARY_EXTENSION_AIR_IDS[0] || id == BINARY_EXTENSION_FULL_AIR_IDS[0] => {
                 let inst = downcast::<F, BinaryExtensionInstance<F>>(
                     secn,
                     air_id,

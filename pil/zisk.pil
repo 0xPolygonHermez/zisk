@@ -92,7 +92,7 @@ airgroup Zisk {
 
     Binary(N: 2**22);
     BinaryAdd(N: 2**22);
-    BinaryAddHi(N: 2**22, ops_by_row: 3);
+    BinaryAddHi(N: 2**22);
 
     BinaryExtension(N: 2**22, full: 0);
     BinaryExtension(N: 2**22, full: 1) alias BinaryExtensionFull;    

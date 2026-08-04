@@ -6,57 +6,54 @@ require "opids.pil"
 /*
     BinaryAddHi proves 64-bit OP_ADD operations whose result fits in the low 32 bits, i.e. the
     high 32 bits of the result are 0. Only the low limb is materialized (as two 16-bit chunks in
-    c_chunks); the high limbs of a, b and c on the bus are constants. Two shapes are supported:
+    c_chunks); the high limbs of a, b and c on the bus are constants. Every slot supports the two
+    shapes, selected by its own sel_b_hi_is_ff:
 
-    1. Non-negative add: a and b both have a zero high part, and so does the result. Proves
-       c = a + b with a, b, c in [0, 2^32), i.e. a + b < 2^32 (the low limb does NOT carry).
+    1. Non-negative add (sel_b_hi_is_ff = 0): a and b both have a zero high part, and so does the
+       result. Proves c = a + b with a, b, c in [0, 2^32), i.e. a + b < 2^32 (the low limb does NOT
+       carry).
 
-    2. Two's-complement add on b (the "neg" rows, i < neg_adds_x_row, gated by sel_b_hi_is_ff):
-       b is a sign-extended negative value whose high 32 bits are 0xFFFF_FFFF (so b lies in
-       [-2^32, -1]), while a still has a zero high part. For the result's high part to be 0 the
-       low-limb addition MUST carry, because 0xFFFF_FFFF + 1 wraps the high limb to 0; hence
-       a + b = c + 2^32. This is exactly the case where the true signed sum is non-negative
-       (e.g. with b = -1 the carry happens for any a != 0).
+    2. Two's-complement add on b (sel_b_hi_is_ff = 1): b is a sign-extended negative value whose
+       high 32 bits are 0xFFFF_FFFF (so b lies in [-2^32, -1]), while a still has a zero high part.
+       For the result's high part to be 0 the low-limb addition MUST carry, because
+       0xFFFF_FFFF + 1 wraps the high limb to 0; hence a + b = c + 2^32. This is exactly the case
+       where the true signed sum is non-negative (e.g. with b = -1 the carry happens for any
+       a != 0).
+
+    Since the carry out of the low limb is what distinguishes the two shapes, the selector is fully
+    determined by the operands, and any slot can hold either shape.
 
     Parameters:
-      adds_x_row     - independent additions packed per row. When adds_x_row > 1, prefer an ODD
-                       value: the operation-bus contributions amortize as one standalone term for
-                       the first operation plus pairs (two-by-two) for the rest — a consequence of
-                       the degree bound — so an odd count leaves no unpaired remainder.
-      neg_adds_x_row - how many of the operations (the first ones) may use shape 2. The rest use
-                       shape 1 only.
+      adds_x_row - independent additions packed per row. When adds_x_row > 1, prefer an ODD value:
+                   the operation-bus contributions amortize as one standalone term for the first
+                   operation plus pairs (two-by-two) for the rest — a consequence of the degree
+                   bound — so an odd count leaves no unpaired remainder.
 */
-airtemplate BinaryAddHi(const int N = 2**21, const int adds_x_row = 3, const int neg_adds_x_row = 1) {
+airtemplate BinaryAddHi(const int N = 2**21, const int adds_x_row = 3) {
 
     assert(adds_x_row > 0, "adds_x_row must be greater than 0");
-    assert(neg_adds_x_row <= adds_x_row, "neg_adds_x_row must be less than or equal to adds_x_row");
 
     col witness bits(32) a[adds_x_row];
     col witness bits(32) b[adds_x_row];
     col witness bits(16) c_chunks[adds_x_row][2];
-    col witness bits(1) sel_b_hi_is_ff[neg_adds_x_row];
+    col witness bits(1) sel_b_hi_is_ff[adds_x_row];
     const expr c[adds_x_row];
-
 
     for (int i = 0; i < adds_x_row; i++) {
 
         c[i] = c_chunks[i][1] * 2 ** 16 + c_chunks[i][0];
         range_check(expression: c_chunks[i][0], min: 0, max: 2**16 - 1);
         range_check(expression: c_chunks[i][1], min: 0, max: 2**16 - 1);
-        if (i < neg_adds_x_row) {
-            // sel_b_hi_is_ff selects shape 2 (b high = 0xFFFF_FFFF). The low limb carries iff
-            // sel_b_hi_is_ff = 1, so: sel = 0 => a + b = c ; sel = 1 => a + b = c + 2^32.
-            (1 - sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0]) === 0;
-            (sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0] - 0x1_0000_0000) === 0;
-            sel_b_hi_is_ff[i] * (1 - sel_b_hi_is_ff[i]) === 0;
-            proves_operation(op: OP_ADD, a:[a[i], 0], b:[b[i], sel_b_hi_is_ff[i] * 0xFFFF_FFFF], c:[c[i], 0]);
-        } else {
-            // Shape 1 only: both high parts are 0, so the low limb must not carry: a + b = c.
-            (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0]) === 0;
-            proves_operation(op: OP_ADD, a:[a[i], 0], b:[b[i], 0], c:[c[i], 0]);
-        }
+
+        // sel_b_hi_is_ff selects shape 2 (b high = 0xFFFF_FFFF). The low limb carries iff
+        // sel_b_hi_is_ff = 1, so: sel = 0 => a + b = c ; sel = 1 => a + b = c + 2^32.
+        (1 - sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0]) === 0;
+        (sel_b_hi_is_ff[i]) * (a[i] + b[i] - c_chunks[i][1] * 2 ** 16 - c_chunks[i][0] - 0x1_0000_0000) === 0;
+        sel_b_hi_is_ff[i] * (1 - sel_b_hi_is_ff[i]) === 0;
+        proves_operation(op: OP_ADD, a:[a[i], 0], b:[b[i], sel_b_hi_is_ff[i] * 0xFFFF_FFFF], c:[c[i], 0]);
     }
 
     airval padding_size;
+    // padding operation 0 + 0 = (0,0)
     assumes_padding_operation(op: OP_ADD, padding_size:);
 }

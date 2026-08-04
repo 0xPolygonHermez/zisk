@@ -2,7 +2,7 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use crate::{BinaryExtensionFrops, BinaryInput};
+use crate::{extension_requires_full, BinaryExtensionFrops, BinaryInput};
 use zisk_common::{
     BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
     OPERATION_BUS_ID,
@@ -14,6 +14,37 @@ use std::sync::Arc;
 
 use zisk_core::ZiskOperationType;
 
+/// Which extension operations an instance is responsible for.
+///
+/// The reduced air (`BinaryExtension`) can only prove operations whose unused operand parts are
+/// zero, so the planner either splits the stream in two (`Clean` + `Dirty`) or sends everything to
+/// the full air (`All`). See [`extension_requires_full`].
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ExtensionScope {
+    /// Only operations the reduced air can prove: `BinaryExtension` instances.
+    Clean,
+
+    /// Only operations that need the full air: `BinaryExtensionFull` instances when the reduced
+    /// air is used as well.
+    Dirty,
+
+    /// Every extension operation: `BinaryExtensionFull` instances when they absorb the whole
+    /// stream and no reduced instance is created.
+    All,
+}
+
+impl ExtensionScope {
+    /// Returns `true` when an operation with these operands belongs to this scope.
+    #[inline(always)]
+    pub fn accepts(&self, op: u8, a: u64, b: u64) -> bool {
+        match self {
+            ExtensionScope::All => true,
+            ExtensionScope::Clean => !extension_requires_full(op, a, b),
+            ExtensionScope::Dirty => extension_requires_full(op, a, b),
+        }
+    }
+}
+
 /// The `BinaryExtensionCollector` struct represents an input collector for binary extension
 pub struct BinaryExtensionCollector<F: PrimeField64> {
     /// Collected inputs for witness computation.
@@ -21,6 +52,9 @@ pub struct BinaryExtensionCollector<F: PrimeField64> {
 
     pub num_operations: usize,
     pub collect_skipper: CollectSkipper,
+
+    /// Operand shapes this collector is responsible for.
+    scope: ExtensionScope,
 
     /// Flag to indicate that force to execute to end of chunk
     force_execute_to_end: bool,
@@ -37,6 +71,7 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
         num_operations: usize,
         collect_skipper: CollectSkipper,
         force_execute_to_end: bool,
+        scope: ExtensionScope,
         std: Arc<Std<F>>,
     ) -> Self {
         let frops_table_id = std
@@ -46,6 +81,7 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
             inputs: Vec::with_capacity(num_operations),
             num_operations,
             collect_skipper,
+            scope,
             force_execute_to_end,
             frops_table_id,
             std,
@@ -71,8 +107,6 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
             return false;
         }
 
-        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
-
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
@@ -81,6 +115,14 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
         if op_type as u32 != ZiskOperationType::BinaryE as u32 {
             return true;
         }
+
+        // Operations of the other scope are proven by a different air, so they must not consume
+        // this instance's skip budget nor its rows.
+        if !self.scope.accepts(data[OP] as u8, data[A], data[B]) {
+            return true;
+        }
+
+        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         if self.collect_skipper.should_skip_query(frops_row == BinaryExtensionFrops::NO_FROPS) {
             return true;
