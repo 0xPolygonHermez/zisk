@@ -53,6 +53,44 @@ type CollectorSlots = Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>;
 /// the chunk, clamped to the last bucket.
 const COST_BUCKETS: usize = 17;
 
+/// User vs system CPU time, for one thread (`RUSAGE_THREAD`) or the whole process
+/// (`RUSAGE_SELF`).
+///
+/// This is the discriminator that is left. The serial steps (`pool_create`, `bus_build`,
+/// `COLLECT_MEM_PLANS`) inflate by the same ~3.2x as the 24-thread replay, so it is not
+/// CPU-count contention; ASM, a separate process, is untouched at 1.02x, so it is not
+/// host-wide memory bandwidth. Both remaining candidates are process-internal and they
+/// split here: a fault/`mmap`/allocator storm lands in **sys**, a genuine IPC collapse
+/// lands in **user**.
+///
+/// utime/stime are tick-accounted, 1 ms on these hosts (`CONFIG_HZ=1000`), so a single
+/// ~7 ms chunk carries +-1 tick of quantisation and only the per-`collect` sums are worth
+/// reading. `chunk_user_sum + chunk_sys_sum` should track `chunk_cpu_sum` (which comes from
+/// the precise per-thread clock); a gap between them means the quantisation is biting.
+#[cfg(target_os = "linux")]
+fn rusage_user_sys(who: libc::c_int) -> Option<(u64, u64)> {
+    let mut ru: libc::rusage = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrusage(who, &mut ru) } != 0 {
+        return None;
+    }
+    let ns = |tv: libc::timeval| tv.tv_sec as u64 * 1_000_000_000 + tv.tv_usec as u64 * 1_000;
+    Some((ns(ru.ru_utime), ns(ru.ru_stime)))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn rusage_user_sys(_who: i32) -> Option<(u64, u64)> {
+    None
+}
+
+#[cfg(target_os = "linux")]
+const RUSAGE_SELF: libc::c_int = libc::RUSAGE_SELF;
+#[cfg(target_os = "linux")]
+const RUSAGE_THREAD: libc::c_int = libc::RUSAGE_THREAD;
+#[cfg(not(target_os = "linux"))]
+const RUSAGE_SELF: i32 = 0;
+#[cfg(not(target_os = "linux"))]
+const RUSAGE_THREAD: i32 = 1;
+
 struct CollectStats {
     chunks: AtomicUsize,
     wall_ns: AtomicU64,
@@ -75,6 +113,15 @@ struct CollectStats {
     /// collectors into the store afterwards.
     emu_ns: AtomicU64,
     drain_ns: AtomicU64,
+    /// Per-chunk CPU split into user and system (see [`rusage_user_sys`]).
+    user_ns: AtomicU64,
+    sys_ns: AtomicU64,
+    /// Retired instructions and cycles across the chunks. CPU *time* rising on an
+    /// identical instruction stream is equally consistent with an IPC collapse and with
+    /// the core running slower; only these separate them. `insn` also cross-checks the
+    /// identical-work claim independently of `collector_pairs`.
+    insn: AtomicU64,
+    cycles: AtomicU64,
 }
 
 impl Default for CollectStats {
@@ -89,6 +136,10 @@ impl Default for CollectStats {
             bucket_ns: std::array::from_fn(|_| AtomicU64::new(0)),
             emu_ns: AtomicU64::new(0),
             drain_ns: AtomicU64::new(0),
+            user_ns: AtomicU64::new(0),
+            sys_ns: AtomicU64::new(0),
+            insn: AtomicU64::new(0),
+            cycles: AtomicU64::new(0),
         }
     }
 }
@@ -100,6 +151,8 @@ impl CollectStats {
         n_inst: usize,
         wall: std::time::Duration,
         cpu: Option<std::time::Duration>,
+        user_sys: Option<(u64, u64)>,
+        hw: Option<(u64, u64)>,
     ) {
         let ns = wall.as_nanos() as u64;
         let bucket = n_inst.min(COST_BUCKETS - 1);
@@ -109,6 +162,14 @@ impl CollectStats {
         self.wall_ns.fetch_add(ns, Ordering::Relaxed);
         if let Some(cpu) = cpu {
             self.cpu_ns.fetch_add(cpu.as_nanos() as u64, Ordering::Relaxed);
+        }
+        if let Some((user, sys)) = user_sys {
+            self.user_ns.fetch_add(user, Ordering::Relaxed);
+            self.sys_ns.fetch_add(sys, Ordering::Relaxed);
+        }
+        if let Some((insn, cycles)) = hw {
+            self.insn.fetch_add(insn, Ordering::Relaxed);
+            self.cycles.fetch_add(cycles, Ordering::Relaxed);
         }
         // Racy against a concurrent max update, so the reported id can lag the reported
         // value by one chunk. Fine for pointing at a straggler; not worth a lock on the
@@ -426,6 +487,11 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         // storm reads as an IPC collapse on byte-identical work.
         let faults_before = proofman::page_faults();
         let alloc_before = proofman::allocator_stats();
+        // Process-wide user/sys over the replay window. The per-chunk sums below cover the
+        // pool only; this one catches kernel time charged on the pool's behalf and any
+        // other thread in the process, which is where `work_cpu` already exceeds
+        // `workers x work` by 1.30x.
+        let proc_us_before = rusage_user_sys(RUSAGE_SELF);
         let t_scope = Instant::now();
         let n_workers = rayon::current_num_threads();
         rayon::in_place_scope(|scope| {
@@ -435,6 +501,12 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             }
         });
         let replay = t_scope.elapsed();
+        let (proc_user_ms, proc_sys_ms) = proc_us_before
+            .zip(rusage_user_sys(RUSAGE_SELF))
+            .map(|((u0, s0), (u1, s1))| {
+                (u1.saturating_sub(u0) as f64 / 1e6, s1.saturating_sub(s0) as f64 / 1e6)
+            })
+            .unwrap_or((f64::NAN, f64::NAN));
         let (minflt, majflt) = faults_before
             .zip(proofman::page_faults())
             .map(|((a0, b0), (a1, b1))| (a1.saturating_sub(a0), b1.saturating_sub(b0)))
@@ -503,6 +575,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let chunks_done = collect_stats.chunks.load(Ordering::Relaxed);
         let chunk_wall_ms = collect_stats.wall_ns.load(Ordering::Relaxed) as f64 / 1e6;
         let chunk_cpu_ms = collect_stats.cpu_ns.load(Ordering::Relaxed) as f64 / 1e6;
+        let chunk_user_ms = collect_stats.user_ns.load(Ordering::Relaxed) as f64 / 1e6;
+        let chunk_sys_ms = collect_stats.sys_ns.load(Ordering::Relaxed) as f64 / 1e6;
+        let insn = collect_stats.insn.load(Ordering::Relaxed);
+        let cycles = collect_stats.cycles.load(Ordering::Relaxed);
         let replay_ms = replay.as_secs_f64() * 1000.0;
         // Pool capacity over the replay window. The gap between this and chunk_wall_ms is
         // pool time NOT spent processing chunks — rayon idle/spin or work-starvation from
@@ -512,6 +588,9 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             "COLLECT_SPLIT guard_wait={:.1}ms plan={:.1}ms bus_build={:.1}ms replay={:.1}ms \
              chunks={} empty={} done={} workers={} | chunk_wall_sum={:.1}ms chunk_cpu_sum={:.1}ms \
              cpu/wall={:.2} max_chunk_wall={:.1}ms (chunk {}) | pool_capacity={:.1}ms idle={:.1}ms ({:.1}%) \
+             | insn={} cycles={} ipc={:.2} eff_ghz={:.2} \
+             | chunk_user_sum={:.1}ms chunk_sys_sum={:.1}ms chunk_sys_share={:.1}% \
+             proc_user={:.1}ms proc_sys={:.1}ms proc_sys_share={:.1}% \
              | minflt={} majflt={} faults_per_chunk={:.0} | malloc_d_mmap={}KB d_inuse={}KB d_free={}KB \
              | collector_pairs={} inst_per_chunk mean={:.2} max={} \
              | direct_rows_peak_live={} of {} at pos {} airs=[{}]",
@@ -535,6 +614,22 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             } else {
                 0.0
             },
+            insn,
+            cycles,
+            if insn > 0 && cycles > 0 { insn as f64 / cycles as f64 } else { 0.0 },
+            // cycles / cpu-time = the clock the chunks actually ran at. A drop here is a
+            // frequency problem; flat here with cycles up is a real IPC collapse.
+            if chunk_cpu_ms > 0.0 { cycles as f64 / (chunk_cpu_ms * 1e6) } else { 0.0 },
+            chunk_user_ms,
+            chunk_sys_ms,
+            if chunk_user_ms + chunk_sys_ms > 0.0 {
+                100.0 * chunk_sys_ms / (chunk_user_ms + chunk_sys_ms)
+            } else {
+                0.0
+            },
+            proc_user_ms,
+            proc_sys_ms,
+            100.0 * proc_sys_ms / (proc_user_ms + proc_sys_ms),
             minflt,
             majflt,
             if chunks_done > 0 { minflt as f64 / chunks_done as f64 } else { 0.0 },
@@ -572,10 +667,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 ) {
                     let t = Instant::now();
                     ZiskEmulator::process_emu_traces::<F, _, _>(
-                        &zisk_rom,
-                        min_traces,
-                        chunk_id,
-                        &mut bus,
+                        &zisk_rom, min_traces, chunk_id, &mut bus,
                     );
                     bench_ns.fetch_add(t.elapsed().as_nanos() as u64, Ordering::Relaxed);
                 }
@@ -600,7 +692,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             .filter_map(|b| {
                 let c = collect_stats.bucket_count[b].load(Ordering::Relaxed);
                 (c > 0).then(|| {
-                    let ms = collect_stats.bucket_ns[b].load(Ordering::Relaxed) as f64 / 1e6 / c as f64;
+                    let ms =
+                        collect_stats.bucket_ns[b].load(Ordering::Relaxed) as f64 / 1e6 / c as f64;
                     format!("n={b}:{c}x{ms:.2}ms")
                 })
             })
@@ -664,7 +757,9 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
 
             // Per-chunk wall and CPU. One straggler chunk points at a lock or a cold
             // buffer; every chunk uniformly slower points at CPU starvation.
+            let hw0 = proofman::hw_instructions_cycles();
             let cpu0 = proofman::thread_cpu_time();
+            let us0 = rusage_user_sys(RUSAGE_THREAD);
             let t0 = std::time::Instant::now();
             Self::process_one_chunk(chunk_id, data_bus, ctx);
             ctx.collect_stats.record(
@@ -672,6 +767,10 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 ctx.chunks_to_execute[chunk_id].len(),
                 t0.elapsed(),
                 cpu0.zip(proofman::thread_cpu_time()).map(|(a, b)| b.saturating_sub(a)),
+                us0.zip(rusage_user_sys(RUSAGE_THREAD))
+                    .map(|((u0, s0), (u1, s1))| (u1.saturating_sub(u0), s1.saturating_sub(s0))),
+                hw0.zip(proofman::hw_instructions_cycles())
+                    .map(|((i0, c0), (i1, c1))| (i1.saturating_sub(i0), c1.saturating_sub(c0))),
             );
         }
     }
@@ -759,7 +858,9 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 push_error(ctx.errors, "collectors_by_instance lock poisoned".to_string());
             }
         }
-        ctx.collect_stats.drain_ns.fetch_add(t_drain.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        ctx.collect_stats
+            .drain_ns
+            .fetch_add(t_drain.elapsed().as_nanos() as u64, Ordering::Relaxed);
 
         // Advance counters; on the last chunk for an instance, flip its
         // witness-ready flag and record completion stats.
