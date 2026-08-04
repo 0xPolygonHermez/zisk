@@ -17,7 +17,7 @@ use rayon::prelude::*;
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex, RwLock,
     },
     time::Instant,
@@ -36,6 +36,44 @@ use asm_runner::AsmRunnerRH;
 /// Per-instance chunk-collector slot map. Same shape as
 /// [`crate::ChunkCollectorStore::inner`].
 type CollectorSlots = Arc<RwLock<HashMap<usize, Vec<Option<ChunkCollector>>>>>;
+
+/// Per-`collect()` timing accumulators.
+///
+/// `pre_calculate` is now known to carry ~91% of the slow-mode witness excess, and its cost
+/// is essentially this one call. The chunk set is byte-identical every job, yet the call
+/// spans 185-1423 ms — so the question is whether one chunk stalls (a lock or a cold
+/// buffer) or every chunk is uniformly slower (CPU starvation). These separate the two.
+///
+/// The decisive pair is `wall_ns` vs `cpu_ns`: a chunk that is on-CPU the whole time has
+/// cpu/wall near 1 and is simply running slowly (starvation, frequency, sibling
+/// contention); a chunk with cpu/wall well below 1 is blocked on something. And comparing
+/// the summed chunk wall time against `workers x scope wall` shows how much of the pool
+/// was idle or spinning rather than processing chunks.
+#[derive(Default)]
+struct CollectStats {
+    chunks: AtomicUsize,
+    wall_ns: AtomicU64,
+    cpu_ns: AtomicU64,
+    max_wall_ns: AtomicU64,
+    max_chunk: AtomicUsize,
+}
+
+impl CollectStats {
+    fn record(&self, chunk_id: usize, wall: std::time::Duration, cpu: Option<std::time::Duration>) {
+        let ns = wall.as_nanos() as u64;
+        self.chunks.fetch_add(1, Ordering::Relaxed);
+        self.wall_ns.fetch_add(ns, Ordering::Relaxed);
+        if let Some(cpu) = cpu {
+            self.cpu_ns.fetch_add(cpu.as_nanos() as u64, Ordering::Relaxed);
+        }
+        // Racy against a concurrent max update, so the reported id can lag the reported
+        // value by one chunk. Fine for pointing at a straggler; not worth a lock on the
+        // hot path.
+        if ns > self.max_wall_ns.fetch_max(ns, Ordering::Relaxed) {
+            self.max_chunk.store(chunk_id, Ordering::Relaxed);
+        }
+    }
+}
 
 /// Borrowed context handed to each rayon worker. Bundles the 14
 /// references the chunk-processing loop needs so signatures stay
@@ -64,6 +102,9 @@ struct WorkerCtx<'a, F: PrimeField64> {
 
     // ── Error sink ──
     errors: &'a Mutex<Vec<String>>,
+
+    // ── Timing ──
+    collect_stats: &'a CollectStats,
 }
 
 /// Push a pre-formatted error message into the shared error sink.
@@ -231,14 +272,18 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         state: &ExecutionState<F>,
         secn_instances: HashMap<usize, &dyn Instance<F>>,
     ) -> ExecutorResult<()> {
+        let t_guard = Instant::now();
         let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
         let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
+        let guard_wait = t_guard.elapsed();
 
         // Compute chunks to execute
+        let t_plan = Instant::now();
         let (chunks_to_execute, global_id_chunks) =
             self.compute_chunks_to_execute(min_traces, &secn_instances);
 
         let ordered_chunks = self.order_chunks(&chunks_to_execute, &global_id_chunks);
+        let plan_time = t_plan.elapsed();
         let global_ids: Vec<usize> = secn_instances.keys().copied().collect();
 
         let collect_start_times: Vec<AtomicCell<Option<Instant>>> =
@@ -252,6 +297,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         // Build one data bus per chunk in parallel. Empty chunks
         // (no instances need them) get `None` directly without
         // running the per-chunk bundle scan.
+        let t_bus = Instant::now();
         let data_buses: Vec<Option<_>> = chunks_to_execute
             .par_iter()
             .enumerate()
@@ -270,6 +316,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 }
             })
             .collect::<ExecutorResult<_>>()?;
+        let bus_build = t_bus.elapsed();
 
         // Wrap each so chunk-player threads can write to them concurrently.
         let data_buses: Vec<_> = data_buses.into_iter().map(Mutex::new).collect();
@@ -310,6 +357,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         let zisk_rom = state.get_rom()?;
         let errors: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
+        let collect_stats = CollectStats::default();
         let ctx = WorkerCtx {
             next_chunk: &next_chunk,
             ordered_chunks: &ordered_chunks,
@@ -325,14 +373,54 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             global_ids_map: &global_ids_map,
             global_id_chunks: &global_id_chunks,
             errors: &errors,
+            collect_stats: &collect_stats,
         };
 
+        let t_scope = Instant::now();
+        let n_workers = rayon::current_num_threads();
         rayon::in_place_scope(|scope| {
-            for _ in 0..rayon::current_num_threads() {
+            for _ in 0..n_workers {
                 let ctx = &ctx;
                 scope.spawn(move |_| Self::worker_loop(ctx));
             }
         });
+        let replay = t_scope.elapsed();
+
+        let n_chunks = chunks_to_execute.len();
+        let n_empty = chunks_to_execute.iter().filter(|c| c.is_empty()).count();
+        let chunks_done = collect_stats.chunks.load(Ordering::Relaxed);
+        let chunk_wall_ms = collect_stats.wall_ns.load(Ordering::Relaxed) as f64 / 1e6;
+        let chunk_cpu_ms = collect_stats.cpu_ns.load(Ordering::Relaxed) as f64 / 1e6;
+        let replay_ms = replay.as_secs_f64() * 1000.0;
+        // Pool capacity over the replay window. The gap between this and chunk_wall_ms is
+        // pool time NOT spent processing chunks — rayon idle/spin or work-starvation from
+        // an unbalanced chunk set.
+        let pool_capacity_ms = replay_ms * n_workers as f64;
+        tracing::info!(
+            "COLLECT_SPLIT guard_wait={:.1}ms plan={:.1}ms bus_build={:.1}ms replay={:.1}ms \
+             chunks={} empty={} done={} workers={} | chunk_wall_sum={:.1}ms chunk_cpu_sum={:.1}ms \
+             cpu/wall={:.2} max_chunk_wall={:.1}ms (chunk {}) | pool_capacity={:.1}ms idle={:.1}ms ({:.1}%)",
+            guard_wait.as_secs_f64() * 1000.0,
+            plan_time.as_secs_f64() * 1000.0,
+            bus_build.as_secs_f64() * 1000.0,
+            replay_ms,
+            n_chunks,
+            n_empty,
+            chunks_done,
+            n_workers,
+            chunk_wall_ms,
+            chunk_cpu_ms,
+            if chunk_wall_ms > 0.0 { chunk_cpu_ms / chunk_wall_ms } else { 0.0 },
+            collect_stats.max_wall_ns.load(Ordering::Relaxed) as f64 / 1e6,
+            collect_stats.max_chunk.load(Ordering::Relaxed),
+            pool_capacity_ms,
+            (pool_capacity_ms - chunk_wall_ms).max(0.0),
+            if pool_capacity_ms > 0.0 {
+                100.0 * (pool_capacity_ms - chunk_wall_ms).max(0.0) / pool_capacity_ms
+            } else {
+                0.0
+            },
+        );
 
         // Collect any errors from parallel execution.
         // Use unwrap_or_else to handle poisoned mutex (e.g., if a worker thread panicked).
@@ -384,7 +472,16 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
                 }
             };
 
+            // Per-chunk wall and CPU. One straggler chunk points at a lock or a cold
+            // buffer; every chunk uniformly slower points at CPU starvation.
+            let cpu0 = proofman::thread_cpu_time();
+            let t0 = std::time::Instant::now();
             Self::process_one_chunk(chunk_id, data_bus, ctx);
+            ctx.collect_stats.record(
+                chunk_id,
+                t0.elapsed(),
+                cpu0.zip(proofman::thread_cpu_time()).map(|(a, b)| b.saturating_sub(a)),
+            );
         }
     }
 

@@ -478,11 +478,20 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();
 
+        // Process CPU across the work window, so the pool's own consumption can be
+        // compared against it: if work_cpu ~= workers x work, the pool is what is burning
+        // the CPU (running or spinning); if it is much larger, something else in the
+        // process is running concurrently and starving it.
+        let work_cpu_start = proofman::process_cpu_time();
         let work_start = Instant::now();
         let result = pool.install(|| {
             witness.pre_calculate(&pctx, &adapter, &self.state, global_ids, is_asm_emulator)
         });
         let work = work_start.elapsed();
+        let work_cpu = work_cpu_start
+            .zip(proofman::process_cpu_time())
+            .map(|(a, b)| b.saturating_sub(a).as_secs_f64() * 1000.0)
+            .unwrap_or(f64::NAN);
 
         // Explicit drop so the teardown cost is inside the measurement rather than
         // attributed to whatever runs next.
@@ -500,7 +509,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         tracing::info!(
             "PRE_CALCULATE_SPLIT n_cores={} pool_create={:.1}ms work={:.1}ms pool_drop={:.1}ms \
-             workers={} on_e={} e_share={:.1}%",
+             workers={} on_e={} e_share={:.1}% work_cpu={:.1}ms (vs workers*work={:.1}ms)",
             n_cores,
             pool_create.as_secs_f64() * 1000.0,
             work.as_secs_f64() * 1000.0,
@@ -512,6 +521,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             } else {
                 100.0 * workers_on_e as f64 / worker_cpus.len() as f64
             },
+            work_cpu,
+            work.as_secs_f64() * 1000.0 * n_cores as f64,
         );
 
         result?;
