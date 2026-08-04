@@ -405,6 +405,14 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
 
         let n_chunks = chunks_to_execute.len();
         let n_empty = chunks_to_execute.iter().filter(|c| c.is_empty()).count();
+        // One intermediate-input Vec is allocated per (chunk, instance) pair, so this is
+        // the per-collect allocation count — i.e. the size of the prize if collectors wrote
+        // trace rows directly instead of materialising inputs. `max_inst` is also the
+        // re-execution multiplier a scheme that replayed per-instance would pay, since one
+        // replay currently fans out to every instance needing that chunk.
+        let collector_pairs: usize = chunks_to_execute.iter().map(|c| c.len()).sum();
+        let max_inst = chunks_to_execute.iter().map(|c| c.len()).max().unwrap_or(0);
+        let non_empty = n_chunks - n_empty;
         let chunks_done = collect_stats.chunks.load(Ordering::Relaxed);
         let chunk_wall_ms = collect_stats.wall_ns.load(Ordering::Relaxed) as f64 / 1e6;
         let chunk_cpu_ms = collect_stats.cpu_ns.load(Ordering::Relaxed) as f64 / 1e6;
@@ -417,7 +425,8 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             "COLLECT_SPLIT guard_wait={:.1}ms plan={:.1}ms bus_build={:.1}ms replay={:.1}ms \
              chunks={} empty={} done={} workers={} | chunk_wall_sum={:.1}ms chunk_cpu_sum={:.1}ms \
              cpu/wall={:.2} max_chunk_wall={:.1}ms (chunk {}) | pool_capacity={:.1}ms idle={:.1}ms ({:.1}%) \
-             | minflt={} majflt={} faults_per_chunk={:.0} | malloc_d_mmap={}KB d_inuse={}KB d_free={}KB",
+             | minflt={} majflt={} faults_per_chunk={:.0} | malloc_d_mmap={}KB d_inuse={}KB d_free={}KB \
+             | collector_pairs={} inst_per_chunk mean={:.2} max={}",
             guard_wait.as_secs_f64() * 1000.0,
             plan_time.as_secs_f64() * 1000.0,
             bus_build.as_secs_f64() * 1000.0,
@@ -444,6 +453,9 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
             d_mmap / 1024,
             d_inuse / 1024,
             d_free / 1024,
+            collector_pairs,
+            if non_empty > 0 { collector_pairs as f64 / non_empty as f64 } else { 0.0 },
+            max_inst,
         );
 
         // Collect any errors from parallel execution.
