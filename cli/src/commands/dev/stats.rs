@@ -74,6 +74,20 @@ pub(crate) struct StatsCmd {
     #[arg(long, hide = true)]
     mpi_node: Option<usize>,
 
+    /// Simulate being one worker of a cluster partition: total compute units.
+    ///
+    /// Unlike `--mpi-node` (which needs a real MPI world), this drives the same
+    /// `set_partition` path the distributed worker uses, so a single local process gets a
+    /// genuine 1/N share of the instances. Lets per-worker properties — notably the
+    /// per-chunk instance fan-out that decides whether a per-instance replay is viable —
+    /// be measured without a cluster.
+    #[arg(long, hide = true, requires = "partition_id")]
+    partitions: Option<usize>,
+
+    /// Which compute unit of `--partitions` this process owns.
+    #[arg(long, hide = true, requires = "partitions")]
+    partition_id: Option<usize>,
+
     /// Disable packed format for trace generation
     #[arg(long, hide = true)]
     no_packed: bool,
@@ -184,6 +198,7 @@ impl StatsCmd {
 
         let guest_program = GuestProgram::from_uri(self.elf.as_ref().unwrap().to_str().unwrap())?;
         prover.setup(&guest_program).run()?;
+        self.apply_simulated_partition(&prover)?;
 
         prover.stats(
             &guest_program,
@@ -192,6 +207,23 @@ impl StatsCmd {
             self.minimal_memory,
             self.mpi_node.map(|n| n as u32),
         )
+    }
+
+    /// Take a 1/N share of the instances, as a cluster worker would.
+    fn apply_simulated_partition<T: zisk_prover_backend::ZiskBackend>(
+        &self,
+        prover: &zisk_prover_backend::ZiskProver<T>,
+    ) -> Result<()> {
+        if let (Some(partitions), Some(id)) = (self.partitions, self.partition_id) {
+            if id >= partitions {
+                anyhow::bail!("--partition-id {id} must be < --partitions {partitions}");
+            }
+            // compute_witness_ pins the partition to (1,[0],0), so setting it here would be
+            // overwritten. Proofman reads these instead.
+            std::env::set_var("PROOFMAN_SIMULATE_PARTITIONS", partitions.to_string());
+            std::env::set_var("PROOFMAN_SIMULATE_PARTITION_ID", id.to_string());
+        }
+        Ok(())
     }
 
     pub(crate) fn run_asm(
@@ -246,6 +278,8 @@ impl StatsCmd {
         if let Some(hints_stream) = hints_stream {
             prover.register_hints_stream(hints_stream)?;
         }
+        self.apply_simulated_partition(&prover)?;
+
         let mpi_node = self.mpi_node.map(|n| n as u32);
         prover.stats(&guest_program, stdin, self.debug.clone(), self.minimal_memory, mpi_node)
     }
