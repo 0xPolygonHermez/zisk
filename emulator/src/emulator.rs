@@ -256,7 +256,7 @@ impl ZiskEmulator {
 
     /// EXPAND phase
     /// Third phase of the witness computation
-    /// I have a
+    /// Replays a single minimal-trace chunk, publishing its operations on the data bus.
     pub fn process_emu_traces<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
         chunk: &EmuTrace,

@@ -4,7 +4,7 @@
 
 use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
-use sm_main::MainInstance;
+use sm_main::{MainInstance, MainPlanner, MainSmError};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
@@ -60,27 +60,38 @@ impl WitnessGenerator {
         stats_begin!(state.stats, _caller_stats_id, _stats_scope, "AIR_MAIN_WITNESS", air_id);
 
         let zisk_rom = state.get_rom()?;
-        // Clone the Arc vector under a short read lock instead of holding the
-        // guard across the whole witness computation: with main-witness
-        // advancement the emulator's reader thread keeps pushing chunks into
-        // this store (write lock) while early segments are being computed.
-        let min_traces = {
+        // Clone only this segment's chunk range (plus the preceding chunk's
+        // `last_c`) under a short read lock: with main-witness advancement the
+        // emulator's reader thread keeps pushing chunks into this store (write
+        // lock) while early segments are being computed.
+        let segment_id =
+            main_instance.ictx.plan.segment_id.ok_or(MainSmError::MissingSegmentId)?.as_usize();
+        let num_within = MainPlanner::traces_per_segment(self.chunk_size)?;
+        let (segment_min_traces, prev_chunk_last_c) = {
             let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
-            min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?.clone()
+            let store = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
+            let start = segment_id * num_within;
+            let end = (start + num_within).min(store.len());
+            (
+                store.get(start..end).unwrap_or_default().to_vec(),
+                start.checked_sub(1).and_then(|i| store.get(i)).map(|t| t.last_c),
+            )
         };
 
         // Packed ⇒ compact indexed Main row (+ instruction table); otherwise the unpacked row.
         let air_instance = if self.packed.load(Ordering::Relaxed) {
             main_instance.compute_witness::<MainTraceRowPackedIndexed<F>>(
                 &zisk_rom,
-                &min_traces,
+                &segment_min_traces,
+                prev_chunk_last_c,
                 self.chunk_size,
                 trace_buffer,
             )?
         } else {
             main_instance.compute_witness::<MainTraceRow<F>>(
                 &zisk_rom,
-                &min_traces,
+                &segment_min_traces,
+                prev_chunk_last_c,
                 self.chunk_size,
                 trace_buffer,
             )?
