@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1282e552eaca287fab4b6ea5e88423b68c5a813cf314bcd822ae1ec68381d36f";
+pub const PILOUT_HASH: &str = "af62d6c0d363d33e6125da41fb0613a17e4341a72f5b9903bf0f89b3ad43ff4e";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -149,13 +149,13 @@ values!(ZiskProofValues<F> {
 trace_row!(MainFixedRow<F> {
  SEGMENT_STEP: F, __L1__: F,
 });
-pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 4194304, 0, 0>;
+pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 8388608, 0, 0>;
 
 trace_row!(MainTraceRow<F> {
  a:[u32; 2], b:[u32; 2], c:[u32; 2], flag:bit, pc:u32, a_src_imm:bit, a_src_mem:bit, a_offset_imm0:u64, a_imm1:u32, is_precompiled:bit, b_src_imm:bit, b_src_mem:bit, b_offset_imm0:u64, b_imm1:u32, b_src_ind:bit, ind_width:ubit(4), is_external_op:bit, op:u8, store_pc:bit, store_mem:bit, store_ind:bit, store_offset:u64, set_pc:bit, jmp_offset1:u64, jmp_offset2:u64, m32:bit, addr1:u32, a_reg_prev_mem_step:ubit(38), b_reg_prev_mem_step:ubit(38), store_reg_prev_mem_step:ubit(38), store_reg_prev_value:[u32; 2], a_src_reg:bit, b_src_reg:bit, store_reg:bit,
 });
 
-pub type MainTrace<R> = GenericTrace<R, 4194304, 0, 0>;
+pub type MainTrace<R> = GenericTrace<R, 8388608, 0, 0>;
 
 trace_row!(RomFixedRow<F> {
  __L1__: F,
@@ -582,7 +582,7 @@ pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 4194304, 0, 1, 0>;
 
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[F; 2]; 31], last_reg_mem_step: [F; 31], im_direct: [FieldExtension<F>; 96],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[[F; 2]; 31]; 2], last_reg_mem_step: [[F; 31]; 2], im_direct: [FieldExtension<F>; 189],
 });
 
 values!(MemAirValues<F> {

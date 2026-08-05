@@ -37,6 +37,10 @@ impl<F: PrimeField64> MainInstance<F> {
     const MAX_SEGMENT_ID: usize =
         (((DEFAULT_MAX_STEPS + 1) / MainTrace::<()>::NUM_ROWS as u64) - 1) as usize;
 
+    /// Size in main steps of a register flush window (mirrors FLUSH_SIZE in main.pil):
+    /// registers are reloaded every `min(NUM_ROWS, FLUSH_WINDOW_ROWS)` steps.
+    const FLUSH_WINDOW_ROWS: usize = 1 << 22;
+
     /// Creates a new `MainInstance`.
     ///
     /// # Arguments
@@ -118,9 +122,26 @@ impl<F: PrimeField64> MainInstance<F> {
         );
 
         // Compute the segment's boundary mem-steps. `initial_step` is the mem-step at the
-        // end of the previous segment (0 for the first segment); `final_step` is the
-        // mem-step at the last row of this segment.
-        let (initial_step, final_step) = Self::mem_steps_for_segment(segment_id, NUM_ROWS);
+        // end of the previous segment (0 for the first segment).
+        let (initial_step, _) = Self::mem_steps_for_segment(segment_id, NUM_ROWS);
+
+        // Registers are reloaded (flushed) in windows of at most 2^22 main steps (mirrors
+        // FLUSH_COUNT / FLUSH_SIZE in main.pil): each flush restarts the register range
+        // check distance, keeping it below 2^24 regardless of NUM_ROWS.
+        let flush_size = NUM_ROWS.min(Self::FLUSH_WINDOW_ROWS);
+        let flush_count = NUM_ROWS / flush_size;
+        if chunk_size > flush_size {
+            // flush windows must be aligned to chunk boundaries
+            return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: flush_size });
+        }
+        let chunks_per_flush = flush_size / chunk_size;
+        let flush_steps: Vec<u64> = (0..flush_count)
+            .map(|flush_index| {
+                MemHelpers::main_step_to_special_mem_step(
+                    (segment_id.as_usize() * NUM_ROWS + (flush_index + 1) * flush_size) as u64 - 1,
+                )
+            })
+            .collect();
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
         // minimal trace. `chunk_size <= NUM_ROWS` and `MEM_STEPS_BY_MAIN_STEP` is a small
@@ -141,13 +162,17 @@ impl<F: PrimeField64> MainInstance<F> {
                 let mut step_range_check = vec![0; max_range];
                 let init_chunk_step = if chunk_id == 0 { initial_step } else { 0 };
                 let mut reg_trace = EmuRegTrace::from_init_step(init_chunk_step, chunk_id == 0);
+                // register values are needed at the end of every flush window (to close it)
+                // and at the last executed chunk (to close the remaining windows)
+                let last_reg_values =
+                    (chunk_id + 1) % chunks_per_flush == 0 || chunk_id == (end_idx - start_idx - 1);
                 let (pc, regs) = Self::fill_partial_trace::<R>(
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
                     &mut reg_trace,
                     &mut step_range_check,
-                    chunk_id == (end_idx - start_idx - 1),
+                    last_reg_values,
                 );
                 (pc, regs, reg_trace, step_range_check)
             })
@@ -163,6 +188,9 @@ impl<F: PrimeField64> MainInstance<F> {
         // In the range checks are values too large to store in steps_range_check, but there
         // are only a few values that exceed this limit, for this reason, are stored in a vector
 
+        // Prepare main AIR values (filled below and by the flush-window closings)
+        let mut air_values = MainAirValues::<F>::new();
+
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
         let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk::<R>(
             NUM_ROWS,
@@ -170,9 +198,28 @@ impl<F: PrimeField64> MainInstance<F> {
             &mut main_trace,
             &mut step_range_check,
             &mut reg_steps,
+            chunks_per_flush,
+            &flush_steps,
+            &mut air_values,
         )?;
 
         Self::update_reg_steps_with_last_chunk(&last_result.2, &mut reg_steps);
+
+        // Close the remaining flush windows: the one where the execution ended and any later
+        // (empty) window. Register values stay at their final state; each closing restarts
+        // `reg_steps` at its flush mem-step, so empty windows chain flush to flush.
+        let closed_windows = (fill_trace_outputs.len() - 1) / chunks_per_flush;
+        for (flush_index, &flush_step) in flush_steps.iter().enumerate().skip(closed_windows) {
+            Self::close_flush_window(
+                &mut air_values,
+                flush_index,
+                flush_step,
+                &last_result.1,
+                &mut reg_steps,
+                &mut step_range_check,
+                &mut large_range_checks,
+            );
+        }
 
         // Pad remaining rows with the last valid row.
         // In padding row must be clear of registers access, if not need to calculate previous
@@ -186,9 +233,6 @@ impl<F: PrimeField64> MainInstance<F> {
             [F::ZERO, F::ZERO]
         };
 
-        // Prepare main AIR values
-        let mut air_values = MainAirValues::<F>::new();
-
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(is_last_segment);
         air_values.segment_initial_pc = F::from_u32(main_trace[0].get_pc());
@@ -197,14 +241,6 @@ impl<F: PrimeField64> MainInstance<F> {
         air_values.segment_last_c[0] = F::from_u32(last_row.get_c(0));
         air_values.segment_last_c[1] = F::from_u32(last_row.get_c(1));
 
-        Self::update_reg_airvalues(
-            &mut air_values,
-            final_step,
-            &last_result.1,
-            &reg_steps,
-            &mut step_range_check,
-            &mut large_range_checks,
-        );
         self.update_std_range_checks(segment_id, step_range_check, &large_range_checks)?;
         // Generate and add the AIR instance
         let from_trace = FromTrace::new(&mut main_trace).with_air_values(&mut air_values);
@@ -254,32 +290,50 @@ impl<F: PrimeField64> MainInstance<F> {
     }
 
     /// Propagates per-register previous mem-step state across consecutive chunks of
-    /// the segment, mutating `main_trace` and `step_range_check` in place. Returns
-    /// the vector of out-of-range values (`large_range_checks`) for the caller to
-    /// fold into the std range-check pipeline.
+    /// the segment, mutating `main_trace` and `step_range_check` in place. Whenever a
+    /// chunk boundary is also a flush-window boundary, the corresponding flush is
+    /// closed: its airvalues record the last access of the window and `reg_steps`
+    /// restarts at the flush mem-step (the reload becomes the previous access of the
+    /// next window). Returns the vector of out-of-range values (`large_range_checks`)
+    /// for the caller to fold into the std range-check pipeline.
     ///
     /// # Errors
-    /// Returns [`MainSmError::InvalidSlot`] if `MemHelpers::mem_step_to_slot`
-    /// produces a value outside `0..=2`.
+    /// Returns [`MainSmError::InvalidSlot`] if a recorded register access slot
+    /// is outside `0..=2`.
+    #[allow(clippy::too_many_arguments)]
     fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F>>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<R>,
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
+        chunks_per_flush: usize,
+        flush_steps: &[u64],
+        air_values: &mut MainAirValues<'_, F>,
     ) -> Result<Vec<u32>, MainSmError> {
         let mut large_range_checks: Vec<u32> = vec![];
         let max_range = step_range_check.len() as u64;
         for (index, (_, _, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
+            // fold the previous chunk's last register steps into the carried steps
+            Self::update_reg_steps_with_last_chunk(&fill_trace_outputs[index - 1].2, reg_steps);
+
+            // close the flush window ending at this chunk boundary, if any
+            if index % chunks_per_flush == 0 {
+                let flush_index = index / chunks_per_flush - 1;
+                Self::close_flush_window(
+                    air_values,
+                    flush_index,
+                    flush_steps[flush_index],
+                    &fill_trace_outputs[index - 1].1,
+                    reg_steps,
+                    step_range_check,
+                    &mut large_range_checks,
+                );
+            }
+
             #[allow(clippy::needless_range_loop)]
             for reg_index in 0..REGS_IN_MAIN {
-                let reg_prev_mem_step = if fill_trace_outputs[index - 1].2.reg_steps[reg_index] == 0
-                {
-                    reg_steps[reg_index]
-                } else {
-                    fill_trace_outputs[index - 1].2.reg_steps[reg_index]
-                };
-                reg_steps[reg_index] = reg_prev_mem_step;
+                let reg_prev_mem_step = reg_steps[reg_index];
                 if let Some(mem_step) = reg_trace.first_step_uses[reg_index] {
                     let slot = MemHelpers::mem_step_to_slot(mem_step);
                     let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
@@ -324,12 +378,17 @@ impl<F: PrimeField64> MainInstance<F> {
             reg_steps[reg_index] = reg_prev_mem_step;
         }
     }
-    /// Updates the AIR values for the main instance's registers.
-    fn update_reg_airvalues(
+    /// Closes a register flush window: records in the airvalues the last access
+    /// (mem-step and value) of each register within the window, counts the range
+    /// check between that access and the flush mem-step, and restarts `reg_steps`
+    /// at the flush mem-step, since the reload becomes the previous access of the
+    /// next window (or of the next segment, for the last window).
+    fn close_flush_window(
         air_values: &mut MainAirValues<'_, F>,
-        final_step: u64,
+        flush_index: usize,
+        flush_step: u64,
         last_reg_values: &[u64],
-        reg_steps: &[u64; REGS_IN_MAIN],
+        reg_steps: &mut [u64; REGS_IN_MAIN],
         step_range_check: &mut [u32],
         large_range_checks: &mut Vec<u32>,
     ) {
@@ -337,14 +396,15 @@ impl<F: PrimeField64> MainInstance<F> {
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
             let values = [F::from_u32(reg_value as u32), F::from_u32((reg_value >> 32) as u32)];
-            air_values.last_reg_value[ireg] = values;
-            air_values.last_reg_mem_step[ireg] = F::from_u64(reg_steps[ireg]);
-            let range = (final_step - reg_steps[ireg] - 1) as usize;
+            air_values.last_reg_value[flush_index][ireg] = values;
+            air_values.last_reg_mem_step[flush_index][ireg] = F::from_u64(reg_steps[ireg]);
+            let range = (flush_step - reg_steps[ireg] - 1) as usize;
             if range >= max_range as usize {
                 large_range_checks.push(range as u32);
             } else {
                 step_range_check[range] += 1;
             }
+            reg_steps[ireg] = flush_step;
         }
     }
 
