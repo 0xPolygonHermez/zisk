@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `BinaryAddSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryAddCollector, BinaryAddSM, BinaryCollectInfo};
+use crate::{BinaryAddCollector, BinaryAddSM, ChunkCollect, ADD_KINDS};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
@@ -25,7 +25,7 @@ pub struct BinaryAddInstance<F: PrimeField64> {
 
     /// Collect info for each chunk ID: what to collect, what to skip, and which additions belong to
     /// another air.
-    collect_info: HashMap<ChunkId, BinaryCollectInfo>,
+    collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -59,7 +59,7 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, BinaryCollectInfo>>()
+            .downcast::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_add_sm, collect_info, ictx, std }

@@ -4,15 +4,14 @@
 //! It manages collected inputs and interacts with the `BinaryExtensionSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryExtensionCollector, BinaryExtensionSM, ExtensionScope};
+use crate::{BinaryExtensionCollector, BinaryExtensionSM, ChunkCollect, EXT_KINDS};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{
     BinaryExtensionFullTrace, BinaryExtensionFullTraceRow, BinaryExtensionFullTraceRowPacked,
@@ -28,11 +27,8 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
     /// Binary Extension state machine.
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
-    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
-
-    /// Operand shapes this instance is responsible for, decided by the planner.
-    scope: ExtensionScope,
+    /// Collect info for each chunk ID: what to collect of each kind and which frops it accounts for.
+    collect_info: HashMap<ChunkId, ChunkCollect<EXT_KINDS>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -66,18 +62,11 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
 
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
-        let (scope, collect_info) = *meta
-            .downcast::<(ExtensionScope, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        debug_assert_eq!(
-            scope == ExtensionScope::Clean,
-            ictx.plan.air_id == BinaryExtensionTrace::<()>::AIR_ID,
-            "BinaryExtensionInstance: scope {scope:?} does not match air_id {:?}",
-            ictx.plan.air_id
-        );
-
-        Self { binary_extension_sm, collect_info, scope, ictx, std }
+        Self { binary_extension_sm, collect_info, ictx, std }
     }
 
     /// `true` when this instance proves the full air (and therefore owns the dirty shapes).
@@ -89,14 +78,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
         &self,
         chunk_id: ChunkId,
     ) -> BinaryExtensionCollector<F> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        BinaryExtensionCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            force_execute_to_end,
-            self.scope,
-            self.std.clone(),
-        )
+        BinaryExtensionCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
 
@@ -191,12 +173,8 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryExtensionCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            force_execute_to_end,
-            self.scope,
+            self.collect_info[&chunk_id],
             self.std.clone(),
         )))
     }

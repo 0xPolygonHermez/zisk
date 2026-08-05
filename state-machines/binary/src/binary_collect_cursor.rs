@@ -1,28 +1,27 @@
-//! The cursor that decides, operation by operation, what one add-capable instance takes out of a
-//! chunk.
+//! The cursor that decides, operation by operation, what one instance takes out of a chunk.
 //!
-//! Three limits act at once and the order between them is what makes them independent:
+//! Every operation belongs to one *kind*, and the instance carries a `(count, skip)` for each: how many
+//! of that kind the airs and instances ahead of it take, and how many are then its own. Tracking the
+//! kinds apart is what keeps the decision independent of the order they are interleaved in — the
+//! planner only ever knows counts, and the cursor discovers the interleaving as it replays the chunk.
 //!
-//! 1. the additions another air proves are dropped first, so they consume neither skip budget nor
-//!    rows ([`ShapeDrop`]);
-//! 2. the operations of the instances before this one are skipped;
-//! 3. frequent operations never take a row, and are accounted for by a single instance;
-//! 4. once the quota is met the remaining operations just pass through.
+//! Frequent operations take no row, so they are settled first and separately: the instance named
+//! accountant for that kind in this chunk counts them, and nobody else does. That is what lets an
+//! instance collect a kind whose frops belong to another air.
 //!
-//! Keeping this out of the collectors themselves is what makes it testable: the collectors need a
-//! live `Std` to exist, this does not.
+//! Keeping this out of the collectors is what makes it testable: they need a live `Std` to exist, this
+//! does not.
 
-use crate::{AddShape, BinaryCollectInfo};
-use zisk_common::CollectSkipper;
+use crate::{ChunkCollect, KindCollect};
 
-/// What a collector must do with one operation of the stream it is watching.
+/// What a collector must do with one operation of the chunk it is replaying.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CollectAction {
     /// This instance is finished and nothing else in the chunk concerns it.
     Stop,
 
-    /// Not this instance's operation: another air proves it, another instance collects it, or the
-    /// quota is already met.
+    /// Not this instance's operation: another air proves it, another instance collects it, or its
+    /// share of that kind is already complete.
     Pass,
 
     /// A frequent operation this instance accounts for: bump its row in the frops table.
@@ -32,82 +31,72 @@ pub enum CollectAction {
     Collect,
 }
 
-/// Tracks what one instance of an add-capable air (`Binary`, `BinaryAdd` or `BinaryAddHi`) still has
-/// to take from the chunk being replayed.
+/// Tracks what one instance still has to take from the chunk being replayed.
 #[derive(Clone, Copy, Debug)]
-pub struct BinaryCollectCursor {
-    hi_drop: crate::ShapeDrop,
-    full_drop: crate::ShapeDrop,
-    skipper: CollectSkipper,
-    num_operations: usize,
-    collected: usize,
+pub struct BinaryCollectCursor<const K: usize> {
+    kinds: [KindCollect; K],
+    collected: [u64; K],
     force_execute_to_end: bool,
 }
 
-impl BinaryCollectCursor {
-    pub fn new(info: BinaryCollectInfo) -> Self {
+impl<const K: usize> BinaryCollectCursor<K> {
+    pub fn new(collect: ChunkCollect<K>) -> Self {
         Self {
-            hi_drop: info.hi_drop,
-            full_drop: info.full_drop,
-            skipper: info.skipper,
-            num_operations: info.count as usize,
-            collected: 0,
-            force_execute_to_end: info.force_execute_to_end,
+            kinds: collect.kinds,
+            collected: [0; K],
+            force_execute_to_end: collect.force_execute_to_end,
         }
     }
 
-    /// Number of operations collected so far.
+    /// Operations of one kind collected so far.
     #[inline(always)]
-    pub fn collected(&self) -> usize {
-        self.collected
+    pub fn collected(&self, kind: usize) -> u64 {
+        self.collected[kind]
     }
 
-    /// `true` once the quota is met and there is no reason to keep walking the chunk.
+    /// Total operations collected so far.
+    #[inline(always)]
+    pub fn total_collected(&self) -> u64 {
+        self.collected.iter().sum()
+    }
+
+    /// `true` once every kind's share is complete and there is no reason to keep walking the chunk.
     ///
-    /// An instance that still has frops to account for has to walk to the end even after its quota
-    /// is met, which is what `force_execute_to_end` marks.
+    /// An instance that still has frops to account for has to walk to the end even then, which is what
+    /// `force_execute_to_end` marks.
     #[inline(always)]
     pub fn is_done(&self) -> bool {
-        self.collected == self.num_operations && !self.force_execute_to_end
+        !self.force_execute_to_end && (0..K).all(|k| self.collected[k] == self.kinds[k].count)
     }
 
-    /// Decides what to do with the next operation of the chunk.
-    ///
-    /// `shape` is `None` for operations that are not additions, and `is_frop` marks the frequent
-    /// ones.
+    /// Decides what to do with the next operation of the chunk, given its kind.
     #[inline(always)]
-    pub fn next(&mut self, shape: Option<AddShape>, is_frop: bool) -> CollectAction {
+    pub fn next(&mut self, kind: usize, is_frop: bool) -> CollectAction {
         if self.is_done() {
             return CollectAction::Stop;
         }
 
-        // Additions another air proves must not consume this instance's skip budget nor its rows.
-        if let Some(shape) = shape {
-            let mine = match shape {
-                AddShape::Hi | AddShape::HiNeg => self.hi_drop.accepts(is_frop),
-                AddShape::Full => self.full_drop.accepts(is_frop),
-            };
-            if !mine {
-                return CollectAction::Pass;
-            }
-        }
-
-        // Operations belonging to the instances before this one. Frequent operations do not advance
-        // the boundary, since they never took a row from anyone.
-        if self.skipper.should_skip_query(!is_frop) {
-            return CollectAction::Pass;
-        }
-
+        // Frequent operations take no row, so the counts below do not govern them: the accountant of
+        // this kind in this chunk counts every one of them, and nobody else does.
         if is_frop {
-            return CollectAction::CountFrop;
+            return if self.kinds[kind].owns_frops {
+                CollectAction::CountFrop
+            } else {
+                CollectAction::Pass
+            };
         }
 
-        // Quota met: the rest of the chunk is another instance's, so it just passes through.
-        if self.collected == self.num_operations {
+        // Operations of this kind belonging to the airs and instances ahead of this one.
+        if self.kinds[kind].skipper.should_skip() {
             return CollectAction::Pass;
         }
 
-        self.collected += 1;
+        // Our share of this kind is complete: the rest is another instance's.
+        if self.collected[kind] == self.kinds[kind].count {
+            return CollectAction::Pass;
+        }
+
+        self.collected[kind] += 1;
         CollectAction::Collect
     }
 }
@@ -115,204 +104,144 @@ impl BinaryCollectCursor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ShapeDrop;
+    use zisk_common::CollectSkipper;
 
-    /// A cursor over a plain stream: skip `skip`, collect `count`, no additions involved.
-    fn plain(skip: u64, count: u64, force: bool) -> BinaryCollectCursor {
-        BinaryCollectCursor::new(BinaryCollectInfo {
+    const A: usize = 0;
+    const B: usize = 1;
+
+    /// A cursor over two kinds: `(skip, count, accountant)` for each.
+    fn cursor(a: (u64, u64, bool), b: (u64, u64, bool), force: bool) -> BinaryCollectCursor<2> {
+        let kind = |(skip, count, owns): (u64, u64, bool)| KindCollect {
             count,
             skipper: CollectSkipper::new(skip),
-            hi_drop: ShapeDrop::none(),
-            full_drop: ShapeDrop::none(),
+            owns_frops: owns,
+        };
+        BinaryCollectCursor::new(ChunkCollect {
+            kinds: [kind(a), kind(b)],
             force_execute_to_end: force,
         })
     }
 
-    /// The core case: let `n` pass, keep `k`, and let everything after that pass too.
+    /// The core case: let `n` of a kind pass, keep `k`, and let the rest pass too.
     #[test]
     fn skips_n_collects_k_then_lets_the_rest_pass() {
-        let mut cursor = plain(3, 2, true);
+        let mut c = cursor((3, 2, false), (0, 0, false), true);
 
-        // The three operations of the instances before this one.
         for _ in 0..3 {
-            assert_eq!(cursor.next(None, false), CollectAction::Pass);
+            assert_eq!(c.next(A, false), CollectAction::Pass);
         }
-        // Its own two.
-        assert_eq!(cursor.next(None, false), CollectAction::Collect);
-        assert_eq!(cursor.next(None, false), CollectAction::Collect);
-        // Everything after the quota belongs to the next instance.
+        assert_eq!(c.next(A, false), CollectAction::Collect);
+        assert_eq!(c.next(A, false), CollectAction::Collect);
         for _ in 0..4 {
-            assert_eq!(cursor.next(None, false), CollectAction::Pass);
+            assert_eq!(c.next(A, false), CollectAction::Pass);
         }
-        assert_eq!(cursor.collected(), 2);
+        assert_eq!(c.collected(A), 2);
     }
 
-    /// Without frops to account for, the cursor stops as soon as its quota is met.
+    /// Each kind is bounded on its own, so one cannot eat into another's share however they interleave.
+    /// This is what a single count over their union could not guarantee.
     #[test]
-    fn stops_once_the_quota_is_met_when_not_forced() {
-        let mut cursor = plain(0, 1, false);
+    fn each_kind_is_bounded_on_its_own() {
+        let mut c = cursor((0, 2, false), (0, 1, false), true);
 
-        assert_eq!(cursor.next(None, false), CollectAction::Collect);
-        assert_eq!(cursor.next(None, false), CollectAction::Stop);
-        assert!(cursor.is_done());
+        assert_eq!(c.next(A, false), CollectAction::Collect);
+        assert_eq!(c.next(B, false), CollectAction::Collect);
+        assert_eq!(c.next(B, false), CollectAction::Pass, "kind B's share is complete");
+        assert_eq!(c.next(A, false), CollectAction::Collect, "kind A's is not");
+        assert_eq!(c.next(A, false), CollectAction::Pass);
+        assert_eq!(c.collected(A), 2);
+        assert_eq!(c.collected(B), 1);
     }
 
-    /// A quota of zero is legitimate: the instance is only there to account for the chunk's frops.
+    /// A kind this air does not prove has a share of zero, so it simply flows past.
     #[test]
-    fn a_zero_quota_still_accounts_for_frops() {
-        let mut cursor = plain(0, 0, true);
-
-        assert_eq!(cursor.next(None, true), CollectAction::CountFrop);
-        assert_eq!(cursor.next(None, false), CollectAction::Pass);
-        assert_eq!(cursor.next(None, true), CollectAction::CountFrop);
-        assert_eq!(cursor.collected(), 0);
+    fn a_kind_with_no_share_flows_past() {
+        let mut c = cursor((0, 0, false), (0, 1, false), false);
+        assert_eq!(c.next(A, false), CollectAction::Pass);
+        assert_eq!(c.next(B, false), CollectAction::Collect);
     }
 
-    /// A zero quota with nothing to account for stops immediately.
+    /// Without frops to account for, the cursor stops once every share is complete.
     #[test]
-    fn a_zero_quota_without_frops_stops_immediately() {
-        let mut cursor = plain(0, 0, false);
-        assert_eq!(cursor.next(None, false), CollectAction::Stop);
+    fn stops_once_every_share_is_complete() {
+        let mut c = cursor((0, 1, false), (0, 1, false), false);
+        assert_eq!(c.next(A, false), CollectAction::Collect);
+        assert!(!c.is_done(), "kind B is still pending");
+        assert_eq!(c.next(B, false), CollectAction::Collect);
+        assert!(c.is_done());
+        assert_eq!(c.next(A, false), CollectAction::Stop);
     }
 
-    /// Frequent operations never take a row, so they must not advance the skip boundary: an instance
-    /// that has to skip `n` real operations still skips exactly `n`, however many frops appear
-    /// among them. The frops of that stretch belong to the previous instance.
+    /// An instance with no operations at all is legitimate: it is only there to account for frops.
     #[test]
-    fn frops_do_not_advance_the_skip_boundary() {
-        let mut cursor = plain(2, 1, true);
-
-        assert_eq!(cursor.next(None, true), CollectAction::Pass, "frop inside the skipped stretch");
-        assert_eq!(cursor.next(None, false), CollectAction::Pass);
-        assert_eq!(cursor.next(None, true), CollectAction::Pass, "still inside it");
-        assert_eq!(cursor.next(None, false), CollectAction::Pass);
-        // The skip is now exhausted, so this instance owns what follows.
-        assert_eq!(cursor.next(None, true), CollectAction::CountFrop);
-        assert_eq!(cursor.next(None, false), CollectAction::Collect);
+    fn a_zero_share_still_accounts_for_frops() {
+        let mut c = cursor((0, 0, true), (0, 0, false), true);
+        assert_eq!(c.next(A, true), CollectAction::CountFrop);
+        assert_eq!(c.next(A, false), CollectAction::Pass);
+        assert_eq!(c.next(B, true), CollectAction::Pass, "kind B is another air's");
+        assert_eq!(c.total_collected(), 0);
     }
 
-    /// A forced instance keeps accounting for frops after its quota is met — that is the whole point
-    /// of forcing it — while the real operations pass through.
+    /// Frequent operations take no row, so they must not advance a kind's boundary.
+    #[test]
+    fn frops_do_not_advance_the_boundary() {
+        let mut c = cursor((2, 1, true), (0, 0, false), true);
+
+        assert_eq!(c.next(A, true), CollectAction::CountFrop);
+        assert_eq!(c.next(A, false), CollectAction::Pass);
+        assert_eq!(c.next(A, true), CollectAction::CountFrop);
+        assert_eq!(c.next(A, false), CollectAction::Pass);
+        // The boundary is reached after exactly two real operations.
+        assert_eq!(c.next(A, false), CollectAction::Collect);
+    }
+
+    /// Accountancy is per kind and independent of what is collected: an instance can collect a kind
+    /// whose frops are another air's, and account for a kind it collects none of.
+    #[test]
+    fn accountancy_is_independent_of_what_is_collected() {
+        let mut c = cursor((0, 2, false), (0, 0, true), true);
+
+        assert_eq!(c.next(A, true), CollectAction::Pass, "collected but not accounted for");
+        assert_eq!(c.next(B, true), CollectAction::CountFrop, "accounted for but not collected");
+        assert_eq!(c.next(A, false), CollectAction::Collect);
+    }
+
+    /// A forced instance keeps accounting for frops after its shares are complete, while the real
+    /// operations pass through.
     #[test]
     fn a_forced_instance_accounts_for_the_trailing_frops() {
-        let mut cursor = plain(0, 1, true);
-
-        assert_eq!(cursor.next(None, false), CollectAction::Collect);
-        assert_eq!(cursor.next(None, true), CollectAction::CountFrop);
-        assert_eq!(cursor.next(None, false), CollectAction::Pass);
-        assert_eq!(cursor.next(None, true), CollectAction::CountFrop);
+        let mut c = cursor((0, 1, true), (0, 0, false), true);
+        assert_eq!(c.next(A, false), CollectAction::Collect);
+        assert_eq!(c.next(A, true), CollectAction::CountFrop);
+        assert_eq!(c.next(A, false), CollectAction::Pass);
     }
 
-    /// Additions another air proves are dropped before the skipper sees them, so they do not eat
-    /// into the skip budget: with a skip of 1, a dropped addition followed by one real operation
-    /// still leaves the real one skipped.
-    #[test]
-    fn dropped_additions_do_not_consume_the_skip_budget() {
-        let mut cursor = BinaryCollectCursor::new(BinaryCollectInfo {
-            count: 1,
-            skipper: CollectSkipper::new(1),
-            // Every low-limb addition belongs to another air.
-            hi_drop: ShapeDrop::all(),
-            full_drop: ShapeDrop::none(),
-            force_execute_to_end: false,
-        });
-
-        // Three low-limb additions that are not ours, interleaved with a frop.
-        assert_eq!(cursor.next(Some(AddShape::Hi), false), CollectAction::Pass);
-        assert_eq!(cursor.next(Some(AddShape::HiNeg), false), CollectAction::Pass);
-        assert_eq!(cursor.next(Some(AddShape::Hi), true), CollectAction::Pass);
-
-        // The skip budget is untouched, so the next full-shape addition is the one skipped...
-        assert_eq!(cursor.next(Some(AddShape::Full), false), CollectAction::Pass);
-        // ...and the one after it is collected.
-        assert_eq!(cursor.next(Some(AddShape::Full), false), CollectAction::Collect);
-    }
-
-    /// `ShapeDrop::all` also keeps the frops of that shape away, which is what makes the air that
-    /// owns the shape in this chunk its sole accountant.
-    #[test]
-    fn a_dropped_shape_hands_over_its_frops_too() {
-        let mut cursor = BinaryCollectCursor::new(BinaryCollectInfo {
-            count: 0,
-            skipper: CollectSkipper::new(0),
-            hi_drop: ShapeDrop::all(),
-            full_drop: ShapeDrop::none(),
-            force_execute_to_end: true,
-        });
-
-        assert_eq!(cursor.next(Some(AddShape::Hi), true), CollectAction::Pass, "not ours");
-        assert_eq!(cursor.next(Some(AddShape::Full), true), CollectAction::CountFrop, "ours");
-        assert_eq!(cursor.next(None, true), CollectAction::CountFrop, "basic frops are ours");
-    }
-
-    /// `ShapeDrop::first(n)` hands the tail of a shape over to this instance: the prefix and the
-    /// frops interleaved in it belong to the air ahead of it in the chain.
-    #[test]
-    fn a_shape_prefix_goes_to_the_air_ahead() {
-        let mut cursor = BinaryCollectCursor::new(BinaryCollectInfo {
-            count: 2,
-            skipper: CollectSkipper::new(0),
-            // The first two low-limb additions of the chunk belong to the packed air.
-            hi_drop: ShapeDrop::first(2),
-            full_drop: ShapeDrop::all(),
-            force_execute_to_end: true,
-        });
-
-        assert_eq!(
-            cursor.next(Some(AddShape::Hi), true),
-            CollectAction::Pass,
-            "frop of the prefix"
-        );
-        assert_eq!(cursor.next(Some(AddShape::Hi), false), CollectAction::Pass);
-        assert_eq!(cursor.next(Some(AddShape::HiNeg), false), CollectAction::Pass);
-        // The prefix is done, so the tail is ours — frops included.
-        assert_eq!(cursor.next(Some(AddShape::Hi), true), CollectAction::CountFrop);
-        assert_eq!(cursor.next(Some(AddShape::HiNeg), false), CollectAction::Collect);
-        assert_eq!(cursor.next(Some(AddShape::Hi), false), CollectAction::Collect);
-        // Quota met.
-        assert_eq!(cursor.next(Some(AddShape::Hi), false), CollectAction::Pass);
-    }
-
-    /// Basic operations are not additions, so no drop applies to them.
-    #[test]
-    fn basic_operations_ignore_the_shape_drops() {
-        let mut cursor = BinaryCollectCursor::new(BinaryCollectInfo {
-            count: 1,
-            skipper: CollectSkipper::new(0),
-            hi_drop: ShapeDrop::all(),
-            full_drop: ShapeDrop::all(),
-            force_execute_to_end: false,
-        });
-
-        assert_eq!(cursor.next(Some(AddShape::Hi), false), CollectAction::Pass);
-        assert_eq!(cursor.next(None, false), CollectAction::Collect);
-    }
-
-    /// Two instances sharing a chunk must together take every operation exactly once, and exactly one
-    /// of them must account for each frop.
+    /// Two instances sharing a chunk take every operation exactly once, and exactly one of them
+    /// accounts for each frop — whatever the interleaving.
     #[test]
     fn two_instances_tile_the_chunk() {
-        // A chunk of 5 real operations with frops interleaved, split 2 + 3.
-        let stream = [
-            (false, false), // real
-            (false, true),  // frop
-            (false, false), // real
-            (false, true),  // frop
-            (false, false), // real
-            (false, false), // real
-            (false, true),  // frop
-            (false, false), // real
-            (false, true),  // frop  (trailing)
-        ];
+        // Kind A: 5 real operations split 2 + 3. Kind B: 2, all the second instance's.
+        let mut first = cursor((0, 2, false), (0, 0, false), false);
+        let mut second = cursor((2, 3, true), (0, 2, true), true);
 
-        let mut first = plain(0, 2, false);
-        let mut second = plain(2, 3, true);
+        let stream = [
+            (A, false),
+            (A, true),
+            (A, false),
+            (B, true),
+            (A, false),
+            (B, false),
+            (A, false),
+            (A, false),
+            (B, false),
+            (A, true),
+        ];
 
         let mut collected = 0;
         let mut frops = 0;
-        for (_, is_frop) in stream {
-            for cursor in [&mut first, &mut second] {
-                match cursor.next(None, is_frop) {
+        for (kind, is_frop) in stream {
+            for c in [&mut first, &mut second] {
+                match c.next(kind, is_frop) {
                     CollectAction::Collect => collected += 1,
                     CollectAction::CountFrop => frops += 1,
                     CollectAction::Pass | CollectAction::Stop => {}
@@ -320,7 +249,7 @@ mod tests {
             }
         }
 
-        assert_eq!(collected, 5, "every real operation collected exactly once");
-        assert_eq!(frops, 4, "every frop accounted for exactly once");
+        assert_eq!(collected, 7, "every real operation collected exactly once");
+        assert_eq!(frops, 3, "every frop accounted for exactly once");
     }
 }

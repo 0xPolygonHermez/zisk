@@ -3,7 +3,8 @@
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
 use crate::{
-    add_shape, BinaryBasicFrops, BinaryCollectCursor, BinaryCollectInfo, BinaryInput, CollectAction,
+    add_shape, AddShape, BinaryBasicFrops, BinaryCollectCursor, BinaryInput, ChunkCollect,
+    CollectAction, ADD_KINDS, KIND_ADD_FULL, KIND_ADD_HI, KIND_BASIC,
 };
 use zisk_common::{
     BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
@@ -20,7 +21,7 @@ pub struct BinaryBasicCollector<F: PrimeField64> {
     pub inputs: Vec<BinaryInput>,
 
     /// Decides, operation by operation, what belongs to this instance.
-    cursor: BinaryCollectCursor,
+    cursor: BinaryCollectCursor<ADD_KINDS>,
 
     /// The table ID for the Binary FROPS
     frops_table_id: usize,
@@ -39,17 +40,12 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     ///
     /// # Returns
     /// A new `BinaryBasicCollector` instance initialized with the provided parameters.
-    pub fn new(collect_info: BinaryCollectInfo, std: Arc<Std<F>>) -> Self {
+    pub fn new(collect: ChunkCollect<ADD_KINDS>, std: Arc<Std<F>>) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
 
-        Self {
-            inputs: Vec::with_capacity(collect_info.count as usize),
-            cursor: BinaryCollectCursor::new(collect_info),
-            frops_table_id,
-            std,
-        }
+        Self { inputs: Vec::new(), cursor: BinaryCollectCursor::new(collect), frops_table_id, std }
     }
 
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
@@ -75,11 +71,17 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
             return true;
         }
 
-        // Additions are bucketed by shape, since the planner routes each shape independently.
-        let shape = (OperationBusData::get_op(&op_data) == ZiskOp::Add.code())
-            .then(|| add_shape(data[A], data[B]));
+        // Additions are split by operand shape, since the planner places each shape independently.
+        let kind = if OperationBusData::get_op(&op_data) == ZiskOp::Add.code() {
+            match add_shape(data[A], data[B]) {
+                AddShape::Hi | AddShape::HiNeg => KIND_ADD_HI,
+                AddShape::Full => KIND_ADD_FULL,
+            }
+        } else {
+            KIND_BASIC
+        };
 
-        match self.cursor.next(shape, frops_row != BinaryBasicFrops::NO_FROPS) {
+        match self.cursor.next(kind, frops_row != BinaryBasicFrops::NO_FROPS) {
             CollectAction::Stop => false,
             CollectAction::Pass => true,
             CollectAction::CountFrop => {

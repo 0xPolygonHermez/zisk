@@ -1,6 +1,9 @@
 //! The `BinaryAddCollector` struct represents an input collector for binary add operations.
 
-use crate::{add_shape, BinaryBasicFrops, BinaryCollectCursor, BinaryCollectInfo, CollectAction};
+use crate::{
+    add_shape, AddShape, BinaryBasicFrops, BinaryCollectCursor, ChunkCollect, CollectAction,
+    ADD_KINDS, KIND_ADD_FULL, KIND_ADD_HI,
+};
 use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OPERATION_BUS_ID};
 use zisk_core::zisk_ops::ZiskOp;
 
@@ -14,7 +17,7 @@ pub struct BinaryAddCollector<F: PrimeField64> {
     pub inputs: Vec<[u64; 2]>,
 
     /// Decides, operation by operation, what belongs to this instance.
-    cursor: BinaryCollectCursor,
+    cursor: BinaryCollectCursor<ADD_KINDS>,
 
     /// The table ID for the Binary Add FROPS
     frops_table_id: usize,
@@ -32,16 +35,11 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
     ///
     /// # Returns
     /// A new `BinaryAddCollector` instance initialized with the provided parameters.
-    pub fn new(collect_info: BinaryCollectInfo, std: Arc<Std<F>>) -> Self {
+    pub fn new(collect: ChunkCollect<ADD_KINDS>, std: Arc<Std<F>>) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
-        Self {
-            inputs: Vec::with_capacity(collect_info.count as usize),
-            cursor: BinaryCollectCursor::new(collect_info),
-            frops_table_id,
-            std,
-        }
+        Self { inputs: Vec::new(), cursor: BinaryCollectCursor::new(collect), frops_table_id, std }
     }
 
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
@@ -66,11 +64,12 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
         }
 
         let frops_row = BinaryBasicFrops::get_row(ZiskOp::Add.code(), data[A], data[B]);
+        let kind = match add_shape(data[A], data[B]) {
+            AddShape::Hi | AddShape::HiNeg => KIND_ADD_HI,
+            AddShape::Full => KIND_ADD_FULL,
+        };
 
-        match self
-            .cursor
-            .next(Some(add_shape(data[A], data[B])), frops_row != BinaryBasicFrops::NO_FROPS)
-        {
+        match self.cursor.next(kind, frops_row != BinaryBasicFrops::NO_FROPS) {
             CollectAction::Stop => false,
             CollectAction::Pass => true,
             CollectAction::CountFrop => {

@@ -2,11 +2,10 @@
 //! proven by `BinaryAddHi`.
 
 use crate::{
-    add_shape, BinaryBasicFrops, BinaryCollectCursor, BinaryCollectInfo, CollectAction, ShapeDrop,
+    add_shape, AddShape, BinaryBasicFrops, BinaryCollectCursor, ChunkCollect, CollectAction,
+    ADD_KINDS, KIND_ADD_FULL, KIND_ADD_HI,
 };
-use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OPERATION_BUS_ID,
-};
+use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OPERATION_BUS_ID};
 use zisk_core::zisk_ops::ZiskOp;
 
 use fields::PrimeField64;
@@ -19,7 +18,7 @@ pub struct BinaryAddHiCollector<F: PrimeField64> {
     pub inputs: Vec<[u64; 2]>,
 
     /// Decides, operation by operation, what belongs to this instance.
-    cursor: BinaryCollectCursor,
+    cursor: BinaryCollectCursor<ADD_KINDS>,
 
     /// The table ID for the Binary Add FROPS
     frops_table_id: usize,
@@ -32,34 +31,15 @@ impl<F: PrimeField64> BinaryAddHiCollector<F> {
     /// Creates a new `BinaryAddHiCollector`.
     ///
     /// # Arguments
-    /// * `num_operations` - The number of operations to collect.
-    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    /// * `collect_info` - What this instance collects from the chunk and which frops it accounts for.
     ///
     /// # Returns
     /// A new `BinaryAddHiCollector` instance initialized with the provided parameters.
-    pub fn new(
-        num_operations: usize,
-        collect_skipper: CollectSkipper,
-        force_execute_to_end: bool,
-        std: Arc<Std<F>>,
-    ) -> Self {
+    pub fn new(collect: ChunkCollect<ADD_KINDS>, std: Arc<Std<F>>) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
-        // This air only proves the low-limb shape, and always takes a prefix of it, so nothing of
-        // that shape is ever dropped while the full one never belongs to it.
-        Self {
-            inputs: Vec::with_capacity(num_operations),
-            cursor: BinaryCollectCursor::new(BinaryCollectInfo {
-                count: num_operations as u64,
-                skipper: collect_skipper,
-                hi_drop: ShapeDrop::none(),
-                full_drop: ShapeDrop::all(),
-                force_execute_to_end,
-            }),
-            frops_table_id,
-            std,
-        }
+        Self { inputs: Vec::new(), cursor: BinaryCollectCursor::new(collect), frops_table_id, std }
     }
 
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
@@ -83,11 +63,12 @@ impl<F: PrimeField64> BinaryAddHiCollector<F> {
         }
 
         let frops_row = BinaryBasicFrops::get_row(ZiskOp::Add.code(), data[A], data[B]);
+        let kind = match add_shape(data[A], data[B]) {
+            AddShape::Hi | AddShape::HiNeg => KIND_ADD_HI,
+            AddShape::Full => KIND_ADD_FULL,
+        };
 
-        match self
-            .cursor
-            .next(Some(add_shape(data[A], data[B])), frops_row != BinaryBasicFrops::NO_FROPS)
-        {
+        match self.cursor.next(kind, frops_row != BinaryBasicFrops::NO_FROPS) {
             CollectAction::Stop => false,
             CollectAction::Pass => true,
             CollectAction::CountFrop => {

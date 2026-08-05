@@ -4,7 +4,7 @@
 //! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryBasicCollector, BinaryBasicSM, BinaryCollectInfo};
+use crate::{BinaryBasicCollector, BinaryBasicSM, ChunkCollect, ADD_KINDS};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
@@ -28,7 +28,7 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
 
     /// Collect info for each chunk ID: what to collect, what to skip, and which additions belong to
     /// a dedicated air.
-    collect_info: HashMap<ChunkId, BinaryCollectInfo>,
+    collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
@@ -59,7 +59,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, BinaryCollectInfo>>()
+            .downcast::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_basic_sm, ictx, collect_info, std }

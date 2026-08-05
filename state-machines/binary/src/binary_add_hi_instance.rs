@@ -4,15 +4,14 @@
 //! It manages collected inputs and interacts with the `BinaryAddHiSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryAddHiCollector, BinaryAddHiSM};
+use crate::{BinaryAddHiCollector, BinaryAddHiSM, ChunkCollect, ADD_KINDS};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{BinaryAddHiTrace, BinaryAddHiTraceRow, BinaryAddHiTraceRowPacked};
 
@@ -24,10 +23,9 @@ pub struct BinaryAddHiInstance<F: PrimeField64> {
     /// Binary Add Hi state machine.
     binary_add_hi_sm: Arc<BinaryAddHiSM<F>>,
 
-    /// Collect info for each chunk ID, containing the number of operations and a skipper for
-    /// collection. One instance holds ADDS_X_ROW operations per row, so the count is in
-    /// operations, not rows.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+    /// Collect info for each chunk ID. One instance holds ADDS_X_ROW operations per row, so the
+    /// count is in operations, not rows.
+    collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -60,20 +58,14 @@ impl<F: PrimeField64> BinaryAddHiInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+            .downcast::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_add_hi_sm, collect_info, ictx, std }
     }
 
     pub fn build_binary_add_hi_collector(&self, chunk_id: ChunkId) -> BinaryAddHiCollector<F> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        BinaryAddHiCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            force_execute_to_end,
-            self.std.clone(),
-        )
+        BinaryAddHiCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
 
@@ -147,13 +139,7 @@ impl<F: PrimeField64> Instance<F> for BinaryAddHiInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(BinaryAddHiCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            force_execute_to_end,
-            self.std.clone(),
-        )))
+        Some(Box::new(BinaryAddHiCollector::new(self.collect_info[&chunk_id], self.std.clone())))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
