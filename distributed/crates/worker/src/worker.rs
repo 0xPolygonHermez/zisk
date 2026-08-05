@@ -519,6 +519,11 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.world_rank()
     }
 
+    /// Number of MPI ranks sharing this job (`1` when MPI is unused).
+    pub fn n_processes(&self) -> i32 {
+        self.prover.n_processes()
+    }
+
     /// Run setup for a guest program, storing it in the multi-program map.
     /// Skips setup if this hash_id was already set up.
     pub fn run_setup(
@@ -810,6 +815,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     /// Broadcast the contribution-phase inputs to secondary MPI ranks.
     pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
+        // No peers to broadcast to, and serializing copies the whole payload.
+        // `MpiCtx::broadcast` already no-ops below 2 ranks, so this only skips
+        // the serialization; it is point-to-point, so no peer is left probing.
+        if self.n_processes() <= 1 {
+            return Ok(());
+        }
+
         let mut serialized = {
             let job = job.lock().await;
 
@@ -854,6 +866,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
     /// Broadcast the execution-only inputs to secondary MPI ranks.
     pub async fn execution_only_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
+        // No peers to broadcast to, and serializing copies the whole payload.
+        // `MpiCtx::broadcast` already no-ops below 2 ranks, so this only skips
+        // the serialization; it is point-to-point, so no peer is left probing.
+        if self.n_processes() <= 1 {
+            return Ok(());
+        }
+
         let mut serialized = {
             let job = job.lock().await;
 
@@ -902,6 +921,13 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         job: &Mutex<JobContext>,
         challenges: Vec<ContributionsInfo>,
     ) -> Result<()> {
+        // No peers to broadcast to, and serializing copies the whole payload.
+        // `MpiCtx::broadcast` already no-ops below 2 ranks, so this only skips
+        // the serialization; it is point-to-point, so no peer is left probing.
+        if self.n_processes() <= 1 {
+            return Ok(());
+        }
+
         let mut serialized = {
             let job = job.lock().await;
 
@@ -1150,7 +1176,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            // `from_vec` needs an owned `Vec`.
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data.to_vec()),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
@@ -1161,7 +1188,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
-                    let hints_stream = StreamSource::from_vec(hints_data);
+                    let hints_stream = StreamSource::from_vec(hints_data.to_vec());
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
@@ -1214,7 +1241,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Result<(usize, Vec<u64>)> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            // `from_vec` needs an owned `Vec`.
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data.to_vec()),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
@@ -1225,7 +1253,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
-                    let hints_stream = StreamSource::from_vec(hints_data);
+                    let hints_stream = StreamSource::from_vec(hints_data.to_vec());
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
