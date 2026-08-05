@@ -13,15 +13,16 @@
 use fields::Goldilocks;
 use riscv2zisk::Riscv2zisk;
 use zisk_core::InstContext;
+use zisk_pil::{MainTraceRowInstrTable, MainTraceRowPacked, MainTraceRowPackedIndexed};
 use ziskemu::{Emu, EmuRegTrace};
-use zisk_pil::{MainTraceRowPackedIndexed, MainTraceRowInstrTable, MainTraceRowPacked};
 
 #[test]
 fn indexed_reconstruction_matches_full_packing() {
     // Defaults to the small committed ELF; override with ZISK_TEST_ELF to exercise a
     // specific program's instruction set (e.g. the reth guest).
-    let elf_path = std::env::var("ZISK_TEST_ELF")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/benches/data/my.elf").to_string());
+    let elf_path = std::env::var("ZISK_TEST_ELF").unwrap_or_else(|_| {
+        concat!(env!("CARGO_MANIFEST_DIR"), "/benches/data/my.elf").to_string()
+    });
     let elf = std::fs::read(&elf_path).expect("read test elf");
     let rom = Riscv2zisk::new(&elf).run().expect("build rom");
 
@@ -72,10 +73,26 @@ fn indexed_reconstruction_matches_full_packing() {
         assert_eq!(full.get_all_c(), compact.get_all_c(), "c @pc {pc:#x}");
         assert_eq!(full.get_flag(), compact.get_flag(), "flag @pc {pc:#x}");
         assert_eq!(full.get_addr1(), compact.get_addr1(), "addr1 @pc {pc:#x}");
-        assert_eq!(full.get_a_reg_prev_mem_step(), compact.get_a_reg_prev_mem_step(), "a_prev @pc {pc:#x}");
-        assert_eq!(full.get_b_reg_prev_mem_step(), compact.get_b_reg_prev_mem_step(), "b_prev @pc {pc:#x}");
-        assert_eq!(full.get_store_reg_prev_mem_step(), compact.get_store_reg_prev_mem_step(), "store_prev @pc {pc:#x}");
-        assert_eq!(full.get_all_store_reg_prev_value(), compact.get_all_store_reg_prev_value(), "store_val @pc {pc:#x}");
+        assert_eq!(
+            full.get_a_reg_prev_mem_step(),
+            compact.get_a_reg_prev_mem_step(),
+            "a_prev @pc {pc:#x}"
+        );
+        assert_eq!(
+            full.get_b_reg_prev_mem_step(),
+            compact.get_b_reg_prev_mem_step(),
+            "b_prev @pc {pc:#x}"
+        );
+        assert_eq!(
+            full.get_store_reg_prev_mem_step(),
+            compact.get_store_reg_prev_mem_step(),
+            "store_prev @pc {pc:#x}"
+        );
+        assert_eq!(
+            full.get_all_store_reg_prev_value(),
+            compact.get_all_store_reg_prev_value(),
+            "store_val @pc {pc:#x}"
+        );
 
         // Instruction-derived columns: reconstructed from the table entry.
         assert_eq!(full.get_pc(), tbl.get_pc(), "pc @pc {pc:#x}");
@@ -84,7 +101,11 @@ fn indexed_reconstruction_matches_full_packing() {
         assert_eq!(full.get_a_src_reg(), tbl.get_a_src_reg(), "a_src_reg @pc {pc:#x}");
         assert_eq!(full.get_a_offset_imm0(), tbl.get_a_offset_imm0(), "a_offset_imm0 @pc {pc:#x}");
         assert_eq!(full.get_a_imm1(), tbl.get_a_imm1(), "a_imm1 @pc {pc:#x}");
-        assert_eq!(full.get_is_precompiled(), tbl.get_is_precompiled(), "is_precompiled @pc {pc:#x}");
+        assert_eq!(
+            full.get_is_precompiled(),
+            tbl.get_is_precompiled(),
+            "is_precompiled @pc {pc:#x}"
+        );
         assert_eq!(full.get_b_src_imm(), tbl.get_b_src_imm(), "b_src_imm @pc {pc:#x}");
         assert_eq!(full.get_b_src_mem(), tbl.get_b_src_mem(), "b_src_mem @pc {pc:#x}");
         assert_eq!(full.get_b_src_reg(), tbl.get_b_src_reg(), "b_src_reg @pc {pc:#x}");
@@ -92,7 +113,11 @@ fn indexed_reconstruction_matches_full_packing() {
         assert_eq!(full.get_b_offset_imm0(), tbl.get_b_offset_imm0(), "b_offset_imm0 @pc {pc:#x}");
         assert_eq!(full.get_b_imm1(), tbl.get_b_imm1(), "b_imm1 @pc {pc:#x}");
         assert_eq!(full.get_ind_width(), tbl.get_ind_width(), "ind_width @pc {pc:#x}");
-        assert_eq!(full.get_is_external_op(), tbl.get_is_external_op(), "is_external_op @pc {pc:#x}");
+        assert_eq!(
+            full.get_is_external_op(),
+            tbl.get_is_external_op(),
+            "is_external_op @pc {pc:#x}"
+        );
         assert_eq!(full.get_op(), tbl.get_op(), "op @pc {pc:#x}");
         assert_eq!(full.get_store_pc(), tbl.get_store_pc(), "store_pc @pc {pc:#x}");
         assert_eq!(full.get_store_mem(), tbl.get_store_mem(), "store_mem @pc {pc:#x}");
