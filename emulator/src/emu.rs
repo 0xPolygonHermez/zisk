@@ -2509,11 +2509,7 @@ impl<'a> Emu<'a> {
         let mut current_step_idx = 0;
         let mut mem_reads_index: usize = 0;
         loop {
-            if !self.step_emu_traces(
-                &chunk.mem_reads,
-                &mut mem_reads_index,
-                data_bus,
-            ) {
+            if !self.step_emu_traces(&chunk.mem_reads, &mut mem_reads_index, data_bus) {
                 break;
             }
 

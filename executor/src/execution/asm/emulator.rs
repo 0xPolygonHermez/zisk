@@ -187,7 +187,8 @@ impl EmulatorAsm {
         zisk_rom: &ZiskRom,
         stats: &ExecutorStatsHandle,
         chunk_hook: crate::ChunkHook<'_>,
-    ) -> ExecutorResult<(Vec<std::sync::Arc<EmuTrace>>, CountersChunkMetrics, PubOutsCollector)> {
+    ) -> ExecutorResult<(Vec<std::sync::Arc<EmuTrace>>, CountersChunkMetrics, PubOutsCollector)>
+    {
         stats_begin!(stats, 0, _mt_scope, "RUN_MT_ASSEMBLY", 0);
 
         let processor: MtChunkProcessor<F> = MtChunkProcessor::new();
