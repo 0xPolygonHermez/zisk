@@ -20,7 +20,7 @@ use crate::{
     ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
 use fields::PrimeField64;
-use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_main::MainSM;
 use std::{
@@ -416,7 +416,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_begin!(self.state.stats, 0, _witness_scope, "CALCULATE_WITNESS", 0);
 
-        let pool = create_pool(n_cores);
+        let pool = lease_pool(n_cores);
         let adapter = ProofmanAdapter::new(&pctx, &sctx);
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();
@@ -457,7 +457,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             return Ok(());
         }
 
-        let pool = create_pool(n_cores);
+        let pool = lease_pool(n_cores);
         let adapter = ProofmanAdapter::new(&pctx, &sctx);
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();
