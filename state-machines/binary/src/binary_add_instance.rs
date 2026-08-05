@@ -23,8 +23,8 @@ pub struct BinaryAddInstance<F: PrimeField64> {
     /// Binary Add state machine.
     binary_add_sm: Arc<BinaryAddSM<F>>,
 
-    /// Collect info for each chunk ID: what to collect, what to skip, and which additions belong to
-    /// another air.
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for.
     collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Instance context.

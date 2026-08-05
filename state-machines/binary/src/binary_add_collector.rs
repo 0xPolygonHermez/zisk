@@ -30,11 +30,12 @@ impl<F: PrimeField64> BinaryAddCollector<F> {
     /// Creates a new `BinaryAddCollector`.
     ///
     /// # Arguments
-    /// * `num_operations` - The number of operations to collect.
-    /// * `collect_skipper` - Helper to skip instructions based on the plan's configuration.
+    /// * `collect` - What this instance takes from the chunk: a `(count, skip)` per kind of
+    ///   operation, plus which of the chunk's frequent operations it accounts for.
+    /// * `std` - PIL2 standard library utilities.
     ///
     /// # Returns
-    /// A new `BinaryAddCollector` instance initialized with the provided parameters.
+    /// A new `BinaryAddCollector` ready to replay the chunk.
     pub fn new(collect: ChunkCollect<ADD_KINDS>, std: Arc<Std<F>>) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryBasicFrops::TABLE_ID)

@@ -27,7 +27,8 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
     /// Binary Extension state machine.
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
-    /// Collect info for each chunk ID: what to collect of each kind and which frops it accounts for.
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for.
     collect_info: HashMap<ChunkId, ChunkCollect<EXT_KINDS>>,
 
     /// Instance context.

@@ -26,8 +26,8 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     /// Instance context.
     ictx: InstanceCtx,
 
-    /// Collect info for each chunk ID: what to collect, what to skip, and which additions belong to
-    /// a dedicated air.
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for.
     collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Standard library instance, providing common functionalities.

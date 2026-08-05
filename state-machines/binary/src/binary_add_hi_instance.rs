@@ -23,8 +23,9 @@ pub struct BinaryAddHiInstance<F: PrimeField64> {
     /// Binary Add Hi state machine.
     binary_add_hi_sm: Arc<BinaryAddHiSM<F>>,
 
-    /// Collect info for each chunk ID. One instance holds ADDS_X_ROW operations per row, so the
-    /// count is in operations, not rows.
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for. The counts are in operations, not rows, since one row
+    /// holds ADDS_X_ROW of them.
     collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Instance context.
