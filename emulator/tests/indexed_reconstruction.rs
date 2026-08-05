@@ -44,11 +44,13 @@ fn indexed_reconstruction_matches_full_packing() {
 
         // Arbitrary but deterministic runtime state. Values need only be identical across
         // the two fills; they need not form a valid execution state.
-        let mut ctx = InstContext::default();
-        ctx.a = 0x1122_3344_5566_7788u64 ^ (i as u64).wrapping_mul(0x9E37_79B9);
-        ctx.b = 0xAABB_CCDD_EEFF_0011u64.wrapping_add((i as u64) << 7);
-        ctx.c = 0x0F0F_0F0F_0F0F_0F0Fu64 ^ ((i as u64) << 11);
-        ctx.flag = i % 3 == 0;
+        let ctx = InstContext {
+            a: 0x1122_3344_5566_7788u64 ^ (i as u64).wrapping_mul(0x9E37_79B9),
+            b: 0xAABB_CCDD_EEFF_0011u64.wrapping_add((i as u64) << 7),
+            c: 0x0F0F_0F0F_0F0F_0F0Fu64 ^ ((i as u64) << 11),
+            flag: i % 3 == 0,
+            ..Default::default()
+        };
 
         let mut reg = EmuRegTrace::new();
         reg.reg_prev_steps = [i as u64, (i as u64).wrapping_mul(2), (i as u64).wrapping_mul(3)];
