@@ -17,14 +17,25 @@ fn main() {
 
     // Check program arguments length
     let lang_c = args.iter().any(|a| a == "--lang=c");
-    let args: Vec<String> = args.into_iter().filter(|a| a != "--lang=c").collect();
+    // Debugging: trace every executed instruction through the runtime's _print_pc()
+    let print_pc = args.iter().any(|a| a == "--print-pc");
+    // Target number of instructions per generated C function, 0 to emit the whole ROM as one
+    let chunk_size: u64 = args
+        .iter()
+        .find_map(|a| a.strip_prefix("--chunk=").and_then(|v| v.parse().ok()))
+        .unwrap_or(0);
+    let args: Vec<String> = args
+        .into_iter()
+        .filter(|a| a != "--lang=c" && a != "--print-pc" && !a.starts_with("--chunk="))
+        .collect();
     if args.len() != 4 {
         eprintln!("Error parsing arguments: invalid number of arguments={}", args.len());
         for (i, arg) in args.iter().enumerate() {
             eprintln!("Argument {i}: {arg}");
         }
         eprintln!(
-            "Usage: riscv2zisk <riscv_elf_file> <output_file> <generation_method> [--lang=c]"
+            "Usage: riscv2zisk <riscv_elf_file> <output_file> <generation_method> \
+             [--lang=c] [--chunk=<instructions_per_function>] [--print-pc]"
         );
         process::exit(1);
     }
@@ -57,7 +68,7 @@ fn main() {
 
     // Convert program, into assembly or into C
     let result = if lang_c {
-        rv2zk.runfile_c(asm_file, generation_method, true, true, false)
+        rv2zk.runfile_c(asm_file, generation_method, true, true, false, chunk_size, print_pc)
     } else {
         rv2zk.runfile(asm_file, generation_method, true, true, false)
     };

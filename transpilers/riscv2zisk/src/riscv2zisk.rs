@@ -35,6 +35,7 @@ impl<'a> Riscv2zisk<'a> {
     }
 
     /// Executes the file conversion process into C source code, by calling elf2cfile()
+    #[allow(clippy::too_many_arguments)]
     pub fn runfile_c<P: Into<PathBuf>>(
         &self,
         c_file: P,
@@ -42,9 +43,20 @@ impl<'a> Riscv2zisk<'a> {
         log_output: bool,
         comments: bool,
         hints: bool,
+        chunk_size: u64,
+        print_pc: bool,
     ) -> Result<(), Box<dyn Error>> {
         let c_file = c_file.into();
-        elf2cfile(self.elf, &c_file, generation_method, log_output, comments, hints)
+        elf2cfile(
+            self.elf,
+            &c_file,
+            generation_method,
+            log_output,
+            comments,
+            hints,
+            chunk_size,
+            print_pc,
+        )
     }
 
     /// Executes the file conversion process by calling elf2rom()

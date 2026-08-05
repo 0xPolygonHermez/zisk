@@ -33,13 +33,20 @@ use crate::{
         FCALL_PARAMS_CAPACITY, FCALL_PARAMS_LENGTH, FCALL_PARAMS_SIZE, FCALL_RESULT,
         FCALL_RESULT_CAPACITY, FCALL_RESULT_GOT, FCALL_RESULT_LENGTH, FCALL_RESULT_SIZE,
     },
-    ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, M64, ROM_ADDR,
-    ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
+    ZiskInst, ZiskRom, EXTRA_PARAMS_ADDR, FLOAT_LIB_ROM_ADDR, FREE_INPUT_ADDR, INPUT_ADDR, M64,
+    ROM_ADDR, ROM_ENTRY, SRC_C, SRC_IMM, SRC_IND, SRC_MEM, SRC_REG, SRC_STEP, STORE_IND, STORE_MEM,
     STORE_NONE, STORE_REG, UART_ADDR,
 };
+use ziskos::zisklib::FCALL_INPUT_READY_ID;
 
 /// Number of ZisK registers, i.e. the 32 RISC-V registers plus the ZisK-specific ones
 const ZISK_REGS: u64 = 35;
+
+/// Address of the counter of input bytes written so far, in the control input shared memory.
+///
+/// The client or the server writes it as the input data arrives, so this code only ever reads it.
+/// The same literal address is used by the assembly backend, see its `mem_input_written_address`.
+const INPUT_WRITTEN_ADDR: u64 = 0x7000_0010;
 
 /// What is statically known about the flag produced by an operation.
 ///
@@ -83,6 +90,12 @@ pub struct ZiskCContext {
     comments: bool,
     /// True to call the runtime's character output when the program writes to the UART address
     log_output: bool,
+    /// True to call the runtime's `_print_pc()` at the end of every instruction.
+    ///
+    /// This is a debugging aid: it prints one line per executed instruction, which is what makes the
+    /// execution comparable, step by step, against another emulator.  It is enormously slow and
+    /// verbose, so it is off unless asked for.
+    print_pc: bool,
     /// Which precompiles provide their results to this code
     precompile_results: PrecompileResults,
     a: ZiskCRegister,
@@ -90,11 +103,47 @@ pub struct ZiskCContext {
     c: ZiskCRegister,
     /// What is known about the flag produced by the current instruction's operation
     flag: FlagState,
+
+    /// Target number of instructions per generated C function, or 0 to emit the whole ROM as one
+    /// function.
+    ///
+    /// One function per ROM does not scale: the C compiler's per-function passes grow worse than
+    /// quadratically with the number of basic blocks, so a real ROM never finishes compiling.
+    /// Splitting the instruction stream into functions caps every pass at a size where the cost is
+    /// still linear, at the price of spilling the machine state at the boundaries.
+    chunk_size: u64,
+    /// Lowest program counter of the chunk being generated, inclusive
+    chunk_lo: u64,
+    /// Highest program counter of the chunk being generated, inclusive
+    chunk_hi: u64,
 }
 
 impl ZiskCContext {
     pub fn fast(&self) -> bool {
         self.mode.is_fast()
+    }
+
+    /// True if the ROM is split into several C functions instead of one
+    fn chunked(&self) -> bool {
+        self.chunk_size != 0
+    }
+
+    /// True if the given program counter belongs to the chunk being generated, i.e. a jump to it can
+    /// be a direct goto instead of a return to the dispatcher
+    fn in_chunk(&self, pc: u64) -> bool {
+        if !self.chunked() {
+            return true;
+        }
+
+        // An internal instruction lives at an odd program counter and is generated right after the
+        // instruction that depends on it, so it is in whatever chunk that one fell into, not in the
+        // chunk its own program counter would suggest.  Nothing else can reach it: odd addresses get
+        // no entry in the dispatch tables, precisely because the only way in is this fall-through.
+        if pc & 0x1 != 0 {
+            return true;
+        }
+
+        (pc >= self.chunk_lo) && (pc <= self.chunk_hi)
     }
 
     /// Creates an end-of-line comment with C syntax, or nothing if comments are disabled
@@ -139,6 +188,7 @@ pub struct ZiskRom2C {}
 
 impl ZiskRom2C {
     /// Saves ZisK rom into a C source file: first save to a string, then save the string to the file
+    #[allow(clippy::too_many_arguments)]
     pub fn save_to_c_file(
         rom: &ZiskRom,
         file_name: &Path,
@@ -146,10 +196,21 @@ impl ZiskRom2C {
         log_output: bool,
         comments: bool,
         precompile_results: bool,
+        chunk_size: u64,
+        print_pc: bool,
     ) {
         // Get a string with the C data
         let mut s = String::new();
-        Self::save_to_c(rom, &mut s, generation_method, log_output, comments, precompile_results);
+        Self::save_to_c(
+            rom,
+            &mut s,
+            generation_method,
+            log_output,
+            comments,
+            precompile_results,
+            chunk_size,
+            print_pc,
+        );
 
         // Save to file
         let path = std::path::PathBuf::from(file_name);
@@ -160,6 +221,7 @@ impl ZiskRom2C {
     }
 
     /// Saves ZisK rom into a C source data string
+    #[allow(clippy::too_many_arguments)]
     pub fn save_to_c(
         rom: &ZiskRom,
         code: &mut String,
@@ -167,6 +229,8 @@ impl ZiskRom2C {
         log_output: bool,
         comments: bool,
         precompile_results: bool,
+        chunk_size: u64,
+        print_pc: bool,
     ) {
         // Only the fast method is implemented so far.  Refuse the rest instead of emitting a program
         // that runs but silently produces no trace.
@@ -191,44 +255,67 @@ impl ZiskRom2C {
             comments,
             log_output,
             precompile_results: PrecompileResults::new(precompile_results),
+            chunk_size,
+            print_pc,
             ..Default::default()
         };
 
-        Self::preamble(&mut ctx, code, rom);
+        // Split the ROM into the functions to generate.  Without chunking there is a single function
+        // covering every instruction.
+        let chunks: Vec<(usize, usize)> = if ctx.chunked() {
+            Self::partition_chunks(rom, chunk_size)
+        } else {
+            vec![(0, rom.sorted_pc_list.len().saturating_sub(1))]
+        };
+
+        Self::preamble(&mut ctx, code, rom, &chunks);
 
         /****************/
         /* INSTRUCTIONS */
         /****************/
 
-        // Generate code for every instruction in the ROM, in ascending program counter order, so
-        // that an instruction that continues into the next one needs no jump at all
-        for k in 0..rom.sorted_pc_list.len() {
-            ctx.pc = rom.sorted_pc_list[k];
+        for (chunk_index, (first, last)) in chunks.iter().enumerate() {
+            ctx.chunk_lo = rom.sorted_pc_list[*first];
+            ctx.chunk_hi = rom.sorted_pc_list[*last];
 
-            // Skip internal, odd address instructions.  They are generated right after the
-            // non-internal instruction they depend on, in order of dependency, so that we can skip
-            // jumps
-            if ctx.pc & 0x1 != 0 {
-                continue;
+            if ctx.chunked() {
+                Self::chunk_start(&mut ctx, code, rom, chunk_index, *first, *last);
             }
 
-            // Get the instruction from ROM
-            let mut instruction = &rom.insts[&ctx.pc].i;
+            // Generate code for every instruction of this chunk, in ascending program counter order,
+            // so that an instruction that continues into the next one needs no jump at all
+            for k in *first..=*last {
+                ctx.pc = rom.sorted_pc_list[k];
 
-            // Get next instruction pc, to be used in jumps
-            ctx.next_pc = Self::next_pc(rom, k, instruction);
+                // Skip internal, odd address instructions.  They are generated right after the
+                // non-internal instruction they depend on, in order of dependency, so that we can
+                // skip jumps
+                if ctx.pc & 0x1 != 0 {
+                    continue;
+                }
 
-            // Generate code for this instruction
-            Self::instruction_to_c(&mut ctx, rom, instruction, code);
+                // Get the instruction from ROM
+                let mut instruction = &rom.insts[&ctx.pc].i;
 
-            // Iterate on the chain of internal instructions this instruction depends on, and
-            // generate code for them as well, until there are no more internal instructions
-            while instruction.next_internal_inst.is_some() {
-                let pc = instruction.next_internal_inst.unwrap();
-                ctx.pc = pc;
-                instruction = &rom.insts[&pc].i;
+                // Get next instruction pc, to be used in jumps
                 ctx.next_pc = Self::next_pc(rom, k, instruction);
+
+                // Generate code for this instruction
                 Self::instruction_to_c(&mut ctx, rom, instruction, code);
+
+                // Iterate on the chain of internal instructions this instruction depends on, and
+                // generate code for them as well, until there are no more internal instructions
+                while instruction.next_internal_inst.is_some() {
+                    let pc = instruction.next_internal_inst.unwrap();
+                    ctx.pc = pc;
+                    instruction = &rom.insts[&pc].i;
+                    ctx.next_pc = Self::next_pc(rom, k, instruction);
+                    Self::instruction_to_c(&mut ctx, rom, instruction, code);
+                }
+            }
+
+            if ctx.chunked() {
+                Self::chunk_end(&mut ctx, code);
             }
         }
 
@@ -236,19 +323,96 @@ impl ZiskRom2C {
         /* EMU END */
         /***********/
 
-        *code += "\nemu_end:\n";
-        *code += &ctx.full_line_comment(
-            "Publish the step counter so that the caller can read it".to_string(),
-        );
-        *code += "\tMEM_STEP = step;\n";
-        *code += "\treturn;\n";
-        *code += "}\n";
+        if !ctx.chunked() {
+            *code += "\nemu_end:\n";
+            *code += &ctx.full_line_comment(
+                "Publish the step counter so that the caller can read it".to_string(),
+            );
+            *code += "\tMEM_STEP = step;\n";
+            *code += "\treturn;\n";
+            *code += "}\n";
+        } else {
+            Self::dispatcher(&mut ctx, code, rom, &chunks);
+        }
 
         /********************/
         /* ROM INITIAL DATA */
         /********************/
 
         Self::write_init_data(&mut ctx, code, rom);
+    }
+
+    /*******************/
+    /* CHUNK PARTITION */
+    /*******************/
+
+    /// Splits the ROM into chunks of about `chunk_size` instructions, each of which becomes one C
+    /// function.  Returns, for every chunk, the range of indices into `rom.sorted_pc_list` it covers.
+    ///
+    /// Where a chunk ends matters for performance, not for correctness: a jump that stays inside a
+    /// chunk is a direct goto, while one that leaves it costs a return to the dispatcher and a call.
+    /// So a boundary is placed:
+    ///
+    /// - after an instruction that cannot fall through (it ends the emulation, or it always jumps),
+    ///   which keeps a hot fall-through edge from becoming a dispatcher round trip.  The search for
+    ///   such an instruction starts at the target size and gives up after a margin, in which case the
+    ///   chunk is cut at the target size anyway;
+    /// - at a large gap in the program counter sequence, because each chunk dispatches its own
+    ///   dynamic jumps through a table indexed by `pc - chunk_lo`, and a gap inside a chunk would
+    ///   make that table enormous.  The ROM entry region and the float library both sit in their own
+    ///   address range, so this is what keeps them in chunks of their own.
+    fn partition_chunks(rom: &ZiskRom, chunk_size: u64) -> Vec<(usize, usize)> {
+        // A gap wider than this starts a new chunk rather than being covered by a dispatch table
+        const MAX_PC_GAP: u64 = 4096;
+        // How far past the target size to look for an instruction that cannot fall through
+        let search_margin = (chunk_size / 5).max(16);
+
+        // Indices of the instructions that get generated, i.e. skipping the odd internal ones, which
+        // are generated as part of the instruction they belong to
+        let generated: Vec<usize> =
+            (0..rom.sorted_pc_list.len()).filter(|k| rom.sorted_pc_list[*k] & 0x1 == 0).collect();
+
+        let mut chunks: Vec<(usize, usize)> = Vec::new();
+        let mut start = 0usize; // index into `generated`
+        while start < generated.len() {
+            let mut end = start; // last index of this chunk, inclusive
+            let mut count = 0u64;
+            loop {
+                let k = generated[end];
+                let pc = rom.sorted_pc_list[k];
+                count += 1;
+
+                // Stop at the last instruction of the ROM
+                if end + 1 >= generated.len() {
+                    break;
+                }
+
+                // Stop before a large gap in the program counter sequence
+                let next = rom.sorted_pc_list[generated[end + 1]];
+                if next.saturating_sub(pc) > MAX_PC_GAP {
+                    break;
+                }
+
+                // Past the target size, stop as soon as the instruction cannot fall through, so that
+                // no fall-through edge is cut.  `end` is a terminator and `set_pc` always jumps.
+                if count >= chunk_size {
+                    let inst = &rom.insts[&pc].i;
+                    if inst.end || inst.set_pc {
+                        break;
+                    }
+                    // Give up looking and cut here rather than grow without bound
+                    if count >= chunk_size + search_margin {
+                        break;
+                    }
+                }
+
+                end += 1;
+            }
+            chunks.push((generated[start], generated[end]));
+            start = end + 1;
+        }
+
+        chunks
     }
 
     /// Program counter of the instruction that will be generated after the given one
@@ -272,8 +436,13 @@ impl ZiskRom2C {
     /*************/
 
     /// Emits the includes, the helpers, the globals shared with the C runtime, the configuration
-    /// getters, the branch table and the head of emu_start()
-    fn preamble(ctx: &mut ZiskCContext, code: &mut String, rom: &ZiskRom) {
+    /// getters, and either the head of emu_start() or the declarations the chunk functions need
+    fn preamble(
+        ctx: &mut ZiskCContext,
+        code: &mut String,
+        rom: &ZiskRom,
+        chunks: &[(usize, usize)],
+    ) {
         *code += "/* Generated by ZiskRom2C.  Do not edit. */\n\n";
         *code += "#include <stdint.h>\n\n";
 
@@ -295,11 +464,46 @@ impl ZiskRom2C {
         *code += "#define ZM16(addr) (*(zisk_u16 *)(uintptr_t)(addr))\n";
         *code += "#define ZM8(addr) (*(zisk_u8 *)(uintptr_t)(addr))\n\n";
 
-        Self::preamble_helpers(code);
+        // The globals come first: some of the helpers below read the fcall context
         Self::preamble_globals(ctx, code);
-        Self::preamble_externs(code);
+        Self::preamble_helpers(code);
+        Self::preamble_externs(ctx, code);
         Self::preamble_getters(ctx, code, rom);
-        Self::preamble_emu_start(ctx, code, rom);
+        if ctx.chunked() {
+            Self::preamble_chunked(ctx, code, chunks);
+        } else {
+            Self::preamble_emu_start(ctx, code, rom);
+        }
+    }
+
+    /// Emits what the chunk functions need in scope: the machine state they hand to each other, the
+    /// sentinel that ends the emulation, and one prototype per chunk so that emu_start can be
+    /// generated after them
+    fn preamble_chunked(ctx: &mut ZiskCContext, code: &mut String, chunks: &[(usize, usize)]) {
+        *code += &ctx.full_line_comment(format!(
+            "{} chunks of about {} instructions",
+            chunks.len(),
+            ctx.chunk_size
+        ));
+        *code += "/* The machine state the chunk functions hand to each other.  Each of them copies it\n";
+        *code +=
+            "   into locals on entry and back on exit, so that within a chunk the C compiler is\n";
+        *code += "   free to keep it all in machine registers. */\n";
+        *code += "typedef struct {\n";
+        *code += "\tuint64_t a, b, c, flag, step, pc;\n";
+        *code += &format!("\tuint64_t reg[{ZISK_REGS}];\n");
+        *code += "} ZiskState;\n\n";
+
+        *code += &format!(
+            "#define ZISK_END {} /* returned by a chunk when the emulation is over */\n\n",
+            u64_lit(M64)
+        );
+
+        *code += "/* One function per chunk */\n";
+        for i in 0..chunks.len() {
+            *code += &format!("static uint64_t zisk_chunk_{i}(ZiskState *s);\n");
+        }
+        *code += "\n";
     }
 
     /// Emits the operations that are not a single C expression, as static helpers, so that the
@@ -405,6 +609,27 @@ impl ZiskRom2C {
             "\t\tif (byte_a != byte_b) return (uint64_t)((int64_t)byte_a - (int64_t)byte_b);\n";
         *code += "\t}\n";
         *code += "\treturn 0;\n}\n\n";
+
+        // The input copy takes its bytes from the result of the last fcall instead of from guest
+        // memory.  It starts at the word the free input mechanism is about to hand out, result[got-1],
+        // and consumes the words it copies, so that the next free input is the first word it did not
+        // copy.  This mirrors fast_inputcpy in emulator-asm/src/dma.
+        *code += "static inline uint64_t zisk_dma_inputcpy(uint64_t dst, uint64_t count) {\n";
+        *code += &format!("\tuint64_t got = fcall_ctx[{FCALL_RESULT_GOT}];\n");
+        *code += &format!(
+            "\tconst uint8_t *src = (const uint8_t *)&fcall_ctx[{FCALL_RESULT} + got - 1];\n"
+        );
+        *code += "\tfor (uint64_t i = 0; i < count; i++) ZM8(dst + i) = src[i];\n";
+        *code += "\tgot += (count + 7) >> 3;\n";
+        *code += &format!("\tfcall_ctx[{FCALL_RESULT_GOT}] = got;\n");
+        // Reading past the result yields a zero free input, as in opc_dma_inputcpy().  The assembly
+        // backend reads the word that follows the result instead, which only differs once the result
+        // is exhausted, i.e. only for a program that reads more input than it asked for.
+        *code += &format!(
+            "\tMEM_FREE_INPUT = (got > fcall_ctx[{FCALL_RESULT_SIZE}]) ? 0 : \
+             fcall_ctx[{FCALL_RESULT} + got - 1];\n"
+        );
+        *code += "\treturn dst;\n}\n\n";
     }
 
     /// Emits the global variables the C runtime reads, matching the `.comm` symbols of the assembly
@@ -421,12 +646,23 @@ impl ZiskRom2C {
         *code += "uint64_t MEM_CHUNK_START_STEP = 0;\n";
         *code += "uint64_t MEM_FREE_INPUT = 0;\n";
         *code += &format!("uint64_t fcall_ctx[{FCALL_LENGTH}] = {{0}};\n\n");
+
+        // Another process writes this counter, so the read must not be cached: without volatile the
+        // compiler would be free to reuse the value loaded for an earlier check
+        *code += "/* Input bytes written so far, in the control input shared memory */\n";
+        *code += &format!(
+            "#define ZISK_INPUT_WRITTEN (*(volatile uint64_t *)(uintptr_t){})\n\n",
+            u64_lit(INPUT_WRITTEN_ADDR)
+        );
     }
 
     /// Emits the declarations of the runtime functions the generated code calls.  These are the same
     /// symbols the assembly backend declares `.extern`.
-    fn preamble_externs(code: &mut String) {
+    fn preamble_externs(ctx: &ZiskCContext, code: &mut String) {
         *code += "/* Runtime-provided functions (see emulator-asm/src/emu.c) */\n";
+        if ctx.print_pc {
+            *code += "extern int _print_pc(uint64_t pc, uint64_t c);\n";
+        }
         *code += "extern int _print_char(uint64_t param);\n";
         *code += "extern int _opcode_keccak(uint64_t address);\n";
         *code += "extern int _opcode_poseidon2(uint64_t address);\n";
@@ -451,7 +687,8 @@ impl ZiskRom2C {
         *code += "extern int _opcode_bls12_381_complex_sub(uint64_t *address);\n";
         *code += "extern int _opcode_bls12_381_complex_mul(uint64_t *address);\n";
         *code += "extern uint64_t _opcode_add256(uint64_t *address);\n";
-        *code += "extern int _opcode_fcall(void *ctx);\n\n";
+        *code += "extern int _opcode_fcall(void *ctx);\n";
+        *code += "extern int _wait_for_input_avail(uint64_t required_input_bytes);\n\n";
     }
 
     /// Emits the configuration getters the C main program queries to check that the generated code
@@ -482,7 +719,15 @@ impl ZiskRom2C {
         *code += &format!("\tuint64_t reg[{ZISK_REGS}] = {{0}};\n\n");
 
         Self::branch_table(ctx, code, rom);
+        Self::emit_state_init(ctx, code);
 
+        // Silence "set but not used" for the locals a ROM may never happen to need
+        *code += "\t(void)a; (void)b; (void)flag; (void)addr; (void)pc;\n";
+    }
+
+    /// Emits the initialization of the state the C runtime observes.  Shared by both modes: the
+    /// runtime cannot tell whether the ROM was generated as one function or many.
+    fn emit_state_init(ctx: &mut ZiskCContext, code: &mut String) {
         *code += &ctx.full_line_comment("ASM memory initialization".to_string());
         *code += "\tMEM_END = 0;\n";
         *code += "\tMEM_ERROR = 0;\n";
@@ -495,9 +740,202 @@ impl ZiskRom2C {
         *code += &format!("\tfcall_ctx[{FCALL_RESULT_CAPACITY}] = {FCALL_RESULT_LENGTH};\n");
         *code += &format!("\tfcall_ctx[{FCALL_RESULT_SIZE}] = 0;\n");
         *code += &format!("\tfcall_ctx[{FCALL_RESULT_GOT}] = 0;\n");
+    }
 
-        // Silence "set but not used" for the locals a ROM may never happen to need
-        *code += "\t(void)a; (void)b; (void)flag; (void)addr; (void)pc;\n";
+    /*******************/
+    /* CHUNK FUNCTIONS */
+    /*******************/
+
+    /// Emits the head of a chunk function: the machine state copied into locals, and the dispatch that
+    /// enters the chunk at whatever program counter it was called with.
+    ///
+    /// The same table serves the entry dispatch and every dynamic jump that stays inside the chunk, so
+    /// an indirect jump to a nearby address remains a single indirect branch rather than a return to
+    /// the top-level dispatcher.
+    fn chunk_start(
+        ctx: &mut ZiskCContext,
+        code: &mut String,
+        rom: &ZiskRom,
+        chunk_index: usize,
+        first: usize,
+        last: usize,
+    ) {
+        *code += &format!("\n/* chunk {chunk_index} */\n");
+        *code += &ctx.full_line_comment(format!(
+            "program counters 0x{:x} to 0x{:x}, {} instructions",
+            ctx.chunk_lo,
+            ctx.chunk_hi,
+            last - first + 1
+        ));
+        *code += &format!("static uint64_t zisk_chunk_{chunk_index}(ZiskState *s) {{\n");
+
+        // Copy the machine state into locals.  Within the chunk everything below is a local whose
+        // address is never taken, so the C compiler allocates it as it sees fit; the copy back in
+        // chunk_end() is the price of the boundary.
+        *code += &ctx.full_line_comment("machine state into locals".to_string());
+        *code += "\tuint64_t a = s->a, b = s->b, c = s->c, flag = s->flag;\n";
+        *code += "\tuint64_t step = s->step, pc = s->pc, addr = 0, ret;\n";
+        *code += &format!("\tuint64_t reg[{ZISK_REGS}];\n");
+        *code += &format!("\tfor (int i = 0; i < {ZISK_REGS}; i++) reg[i] = s->reg[i];\n");
+        *code += "\t(void)a; (void)b; (void)flag; (void)addr;\n\n";
+
+        // Dispatch table for this chunk, indexed by (pc - chunk_lo) / 2.  Program counters step by at
+        // least 2 bytes, and the odd ones are internal instructions that cannot be jumped to.
+        *code += &ctx.full_line_comment(
+            "dispatch table for this chunk, indexed by (pc - chunk_lo) / 2".to_string(),
+        );
+        *code += "\tstatic void *const local_map[] = {\n";
+        let mut entries: u64 = 0;
+        let mut pc = ctx.chunk_lo;
+        while pc <= ctx.chunk_hi {
+            // Only even program counters that are real instructions of this chunk are reachable
+            let is_instruction = (pc & 0x1 == 0)
+                && rom
+                    .sorted_pc_list
+                    .binary_search(&pc)
+                    .map(|k| k >= first && k <= last)
+                    .unwrap_or(false);
+            if is_instruction {
+                *code += &format!("\t\t&&pc_{pc:x},\n");
+            } else {
+                // Not an instruction: behave like the single function mode, which sends a jump to an
+                // unknown program counter to the end of the emulation
+                *code += "\t\t&&zisk_unknown_pc,\n";
+            }
+            entries += 1;
+            pc += 2;
+        }
+        *code += "\t};\n";
+        *code += &ctx.full_line_comment(format!("{entries} entries"));
+
+        *code += &format!(
+            "\tgoto *local_map[(pc - {}) >> 1];{}\n",
+            u64_lit(ctx.chunk_lo),
+            ctx.comment_str("enter at the requested pc")
+        );
+    }
+
+    /// Emits the tail of a chunk function: the exits, the copy of the machine state back, and the
+    /// program counter the top-level dispatcher continues from
+    fn chunk_end(ctx: &mut ZiskCContext, code: &mut String) {
+        *code += "\n";
+        *code += &ctx
+            .full_line_comment("a jump to a pc that is not an instruction ends here".to_string());
+        *code += "zisk_unknown_pc:\n";
+        *code += "\tret = ZISK_END;\n";
+        *code += "\tgoto zisk_spill;\n\n";
+
+        *code += &ctx.full_line_comment("the emulation is over".to_string());
+        *code += "zisk_end:\n";
+        *code += "\tret = ZISK_END;\n";
+        *code += "\tgoto zisk_spill;\n\n";
+
+        *code += &ctx.full_line_comment("control left this chunk: hand the pc back".to_string());
+        *code += "zisk_leave:\n";
+        *code += "\tret = pc;\n\n";
+
+        *code += "zisk_spill:\n";
+        *code += "\ts->a = a; s->b = b; s->c = c; s->flag = flag;\n";
+        *code += "\ts->step = step; s->pc = pc;\n";
+        *code += &format!("\tfor (int i = 0; i < {ZISK_REGS}; i++) s->reg[i] = reg[i];\n");
+        *code += "\treturn ret;\n";
+        *code += "}\n";
+    }
+
+    /// Emits the top-level dispatcher and emu_start().
+    ///
+    /// The dispatcher maps a program counter to the chunk that contains it.  Chunks cover contiguous
+    /// program counter ranges, but the ROM as a whole does not: the entry region and the float library
+    /// live in address ranges of their own.  So the chunks are grouped into clusters of adjacent
+    /// ranges, and each cluster gets its own table; the dispatcher picks the cluster with a range
+    /// check.  In practice there are only a handful of clusters.
+    fn dispatcher(
+        ctx: &mut ZiskCContext,
+        code: &mut String,
+        rom: &ZiskRom,
+        chunks: &[(usize, usize)],
+    ) {
+        // Group chunks whose program counter ranges are adjacent into clusters
+        struct Cluster {
+            lo: u64,
+            hi: u64,
+            first_chunk: usize,
+        }
+        let mut clusters: Vec<Cluster> = Vec::new();
+        for (i, (first, last)) in chunks.iter().enumerate() {
+            let lo = rom.sorted_pc_list[*first];
+            let hi = rom.sorted_pc_list[*last];
+            match clusters.last_mut() {
+                Some(cluster) if lo.saturating_sub(cluster.hi) <= 4096 => cluster.hi = hi,
+                _ => clusters.push(Cluster { lo, hi, first_chunk: i }),
+            }
+        }
+
+        *code += "\n/* Top-level dispatch */\n";
+        *code += "typedef uint64_t (*zisk_chunk_fn)(ZiskState *);\n";
+        *code += "static const zisk_chunk_fn zisk_chunks[] = {\n";
+        for i in 0..chunks.len() {
+            *code += &format!("\tzisk_chunk_{i},\n");
+        }
+        *code += "};\n\n";
+
+        // One table per cluster, mapping a program counter to the chunk that contains it
+        for (ci, cluster) in clusters.iter().enumerate() {
+            *code +=
+                &format!("/* cluster {}: pc 0x{:x} to 0x{:x} */\n", ci, cluster.lo, cluster.hi);
+            *code += &format!("static const uint32_t zisk_chunk_of_pc_{ci}[] = {{\n");
+            let mut chunk = cluster.first_chunk;
+            let mut pc = cluster.lo;
+            while pc <= cluster.hi {
+                // Advance to the chunk that contains this program counter
+                while chunk + 1 < chunks.len() && pc > rom.sorted_pc_list[chunks[chunk].1] {
+                    chunk += 1;
+                }
+                *code += &format!("\t{chunk},\n");
+                pc += 2;
+            }
+            *code += "};\n\n";
+        }
+
+        *code += "void emu_start(void) {\n";
+        *code += "\tZiskState state;\n";
+        *code += "\tZiskState *s = &state;\n";
+        *code += &ctx.full_line_comment("ZisK machine state starts at zero".to_string());
+        *code += "\ts->a = 0; s->b = 0; s->c = 0; s->flag = 0; s->step = 0; s->pc = 0;\n";
+        *code += &format!("\tfor (int i = 0; i < {ZISK_REGS}; i++) s->reg[i] = 0;\n");
+        Self::emit_state_init(ctx, code);
+
+        // The first instruction of the ROM is where execution starts
+        let first_pc = rom.sorted_pc_list.first().copied().unwrap_or(ROM_ENTRY);
+        *code += &format!(
+            "\n\tuint64_t pc = {};{}\n",
+            u64_lit(first_pc),
+            ctx.comment_str("start at the first instruction of the ROM")
+        );
+        *code += "\twhile (pc != ZISK_END) {\n";
+        *code += "\t\tuint32_t chunk;\n";
+        for (ci, cluster) in clusters.iter().enumerate() {
+            *code += &format!(
+                "\t\t{}if (pc >= {} && pc <= {}) chunk = zisk_chunk_of_pc_{ci}[(pc - {}) >> 1];\n",
+                if ci == 0 { "" } else { "else " },
+                u64_lit(cluster.lo),
+                u64_lit(cluster.hi),
+                u64_lit(cluster.lo)
+            );
+        }
+        *code += &ctx.full_line_comment(
+            "\ta pc outside the ROM ends the emulation, like the single function mode".to_string(),
+        );
+        *code += "\t\telse break;\n";
+        *code += "\t\ts->pc = pc;\n";
+        *code += "\t\tpc = zisk_chunks[chunk](s);\n";
+        *code += "\t}\n\n";
+
+        *code += &ctx.full_line_comment(
+            "Publish the step counter so that the caller can read it".to_string(),
+        );
+        *code += "\tMEM_STEP = s->step;\n";
+        *code += "}\n";
     }
 
     /// Emits the dynamic jump table: one label address per ROM byte address, so that a dynamic jump
@@ -592,6 +1030,16 @@ impl ZiskRom2C {
         Self::operation_to_c(ctx, instruction, code);
         Self::store_c(ctx, instruction, code);
 
+        // Debugging: hand this instruction to the runtime's tracer, at the same point of the
+        // instruction where the assembly backend calls it, so that the two traces are comparable
+        if ctx.print_pc {
+            *code += &format!(
+                "\t_print_pc({}, c);{}\n",
+                u64_lit(ctx.pc),
+                ctx.comment_str("trace this instruction")
+            );
+        }
+
         // Count the step
         *code += &format!("\tstep++;{}\n", ctx.comment_str("increment step"));
 
@@ -599,7 +1047,7 @@ impl ZiskRom2C {
         if instruction.end {
             *code += &format!("\tMEM_END = 1;{}\n", ctx.comment_str("end = 1"));
             *code += &format!("\tpc = {};{}\n", u64_lit(ctx.pc), ctx.comment_str("pc = this pc"));
-            *code += "\tgoto emu_end;\n";
+            *code += if ctx.chunked() { "\tgoto zisk_end;\n" } else { "\tgoto emu_end;\n" };
             return;
         }
 
@@ -1309,13 +1757,13 @@ impl ZiskRom2C {
                 set_c(code, a.clone(), "dma_memset: c = dst");
             }
 
-            /* Not implemented by this backend yet */
+            // Unlike the other DMA operations, the count is b: there is no extended variant
             ZiskOp::DmaInputCpy => {
-                panic!(
-                    "ZiskRom2C::operation_to_c() dma_inputcpy is not implemented by the C backend \
-                     yet, pc={}",
-                    ctx.pc
-                )
+                set_c(
+                    code,
+                    format!("zisk_dma_inputcpy({a}, {b})"),
+                    "dma_inputcpy: c = dst",
+                );
             }
             ZiskOp::Profile => {
                 panic!("ZiskRom2C::operation_to_c() Internal opcode Profile, pc={}", ctx.pc)
@@ -1430,18 +1878,17 @@ impl ZiskRom2C {
     fn fcall(ctx: &mut ZiskCContext, code: &mut String, b: &str) {
         *code += &ctx.full_line_comment("fcall".to_string());
         *code += &format!("\tc = {b};{}\n", ctx.comment_str("fcall: c = b"));
-        *code += &format!(
-            "\tfcall_ctx[{FCALL_FUNCTION_ID}] = {};{}\n",
-            ctx.a.expr,
-            ctx.comment_str("ctx.function_id = a")
-        );
-        *code += &format!("\t_opcode_fcall(fcall_ctx);{}\n", ctx.comment_str("call the runtime"));
 
-        // The first result word, if any, becomes the free input
-        *code += &format!(
-            "\tMEM_FREE_INPUT = fcall_ctx[{FCALL_RESULT_SIZE}] ? fcall_ctx[{FCALL_RESULT}] : 0;{}\n",
-            ctx.comment_str("free_input = ctx.result_size ? ctx.result[0] : 0")
-        );
+        // One function id is not a call into the runtime's fcall proxy at all, but a request to wait
+        // for input data, so it is generated as such and produces no result
+        if ctx.a.is_constant && (ctx.a.constant_value == FCALL_INPUT_READY_ID as u64) {
+            Self::wait_for_input_ready(ctx, code);
+        } else {
+            Self::fcall_runtime(ctx, code);
+        }
+
+        // Both paths leave the parameters consumed and the first result word as the free input, which
+        // for the input ready case means no result at all
         *code += &format!(
             "\tfcall_ctx[{FCALL_PARAMS_SIZE}] = 0;{}\n",
             ctx.comment_str("ctx.params_size = 0")
@@ -1454,6 +1901,59 @@ impl ZiskRom2C {
         ctx.c.is_constant = ctx.b.is_constant;
         ctx.c.constant_value = ctx.b.constant_value;
         ctx.flag = FlagState::AlwaysZero;
+    }
+
+    /// Emits the ordinary fcall: hand the accumulated parameters to the runtime and take its first
+    /// result word, if it produced any, as the free input
+    fn fcall_runtime(ctx: &mut ZiskCContext, code: &mut String) {
+        *code += &format!(
+            "\tfcall_ctx[{FCALL_FUNCTION_ID}] = {};{}\n",
+            ctx.a.expr,
+            ctx.comment_str("ctx.function_id = a")
+        );
+        *code += &format!("\t_opcode_fcall(fcall_ctx);{}\n", ctx.comment_str("call the runtime"));
+        *code += &format!(
+            "\tMEM_FREE_INPUT = fcall_ctx[{FCALL_RESULT_SIZE}] ? fcall_ctx[{FCALL_RESULT}] : 0;{}\n",
+            ctx.comment_str("free_input = ctx.result_size ? ctx.result[0] : 0")
+        );
+    }
+
+    /// Emits the FCALL_INPUT_READY_ID case of fcall, which waits until the input data the program is
+    /// about to read has been written to the input region.
+    ///
+    /// The single parameter is the address of the last byte the program requires.  The runtime counts
+    /// input in bytes from INPUT_ADDR, so the address becomes a count; it is rounded down to the u64
+    /// that contains the byte, because a u64 only ever arrives whole.  The runtime is called only when
+    /// the data is not there yet, as that call blocks; a non zero return means the emulation is over
+    /// (the other side exited or asked for a reset), which ends it here exactly like the assembly
+    /// backend's jump to its end label.
+    fn wait_for_input_ready(ctx: &mut ZiskCContext, code: &mut String) {
+        assert!(ctx.a.is_constant, "ZiskRom2C::wait_for_input_ready() a must be constant");
+
+        *code +=
+            &ctx.full_line_comment("fcall: wait for the input data to be available".to_string());
+
+        // A block, so that several of these can live in the same C function
+        *code += "\t{\n";
+        *code += &format!(
+            "\t\tuint64_t required_bytes = (fcall_ctx[{FCALL_PARAMS}] - {}) & ~(uint64_t)0x7;{}\n",
+            u64_lit(INPUT_ADDR),
+            ctx.comment_str("params[0] = address of the last required byte")
+        );
+        *code += &format!(
+            "\t\tif (required_bytes > ZISK_INPUT_WRITTEN) {{{}\n",
+            ctx.comment_str("not written yet: block in the runtime")
+        );
+        *code += &format!(
+            "\t\t\tif (_wait_for_input_avail(required_bytes) != 0) goto {};{}\n",
+            if ctx.chunked() { "zisk_end" } else { "emu_end" },
+            ctx.comment_str("the emulation is over")
+        );
+        *code += "\t\t}\n";
+        *code += "\t}\n";
+
+        // The input ready fcall produces no result
+        *code += &format!("\tMEM_FREE_INPUT = 0;{}\n", ctx.comment_str("free_input = 0"));
     }
 
     /// Emits the fcall_get operation, which advances through the results of the last fcall.
@@ -1537,12 +2037,14 @@ impl ZiskRom2C {
             let pc_if_clear = (ctx.pc as i64 + instruction.jmp_offset2) as u64;
 
             // Branch on the less likely successor and let the other one fall through when it is the
-            // instruction that follows
-            if pc_if_clear == ctx.next_pc {
+            // instruction that follows.  Only when that instruction is in this chunk: the last
+            // instruction of a chunk has nothing to fall through to, so both successors have to be
+            // jumps, or the flag=0 path would run into the chunk's exit labels and end the emulation
+            if pc_if_clear == ctx.next_pc && ctx.in_chunk(pc_if_clear) {
                 *code += &format!("\tif (flag) {{{}\n", ctx.comment_str("flag=1: jump"));
                 Self::indented_jump(ctx, code, rom, pc_if_set, "flag=1: pc += jmp_offset1");
                 *code += "\t}\n";
-            } else if pc_if_set == ctx.next_pc {
+            } else if pc_if_set == ctx.next_pc && ctx.in_chunk(pc_if_set) {
                 *code += &format!("\tif (!flag) {{{}\n", ctx.comment_str("flag=0: jump"));
                 Self::indented_jump(ctx, code, rom, pc_if_clear, "flag=0: pc += jmp_offset2");
                 *code += "\t}\n";
@@ -1565,8 +2067,9 @@ impl ZiskRom2C {
         new_pc: u64,
         comment: &str,
     ) {
-        if new_pc == ctx.next_pc {
-            // Fall through to the next instruction: no pc update and no jump needed
+        // Falling through to the next instruction needs no jump at all, but only when that
+        // instruction is in this chunk: otherwise control has to go back to the dispatcher
+        if new_pc == ctx.next_pc && ctx.in_chunk(new_pc) {
             *code += &ctx.full_line_comment(format!("{comment} (falls through)"));
             return;
         }
@@ -1575,7 +2078,8 @@ impl ZiskRom2C {
     }
 
     /// Emits a jump to a program counter known at generation time: a direct goto when the target is
-    /// a real instruction, and a dynamic jump otherwise
+    /// a real instruction of this chunk, a return to the dispatcher when it is in another chunk, and
+    /// a dynamic jump when it is not an instruction at all
     fn jump_to(
         ctx: &mut ZiskCContext,
         code: &mut String,
@@ -1584,7 +2088,11 @@ impl ZiskRom2C {
         comment: &str,
     ) {
         if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
-            *code += &format!("\tgoto pc_{new_pc:x};{}\n", ctx.comment_str(comment));
+            if ctx.in_chunk(new_pc) {
+                *code += &format!("\tgoto pc_{new_pc:x};{}\n", ctx.comment_str(comment));
+            } else {
+                *code += &format!("\tgoto zisk_leave;{}\n", ctx.comment_str("leaves this chunk"));
+            }
         } else {
             // The target is not an instruction of this ROM, so let the branch table decide, exactly
             // like the assembly backend does
@@ -1602,19 +2110,41 @@ impl ZiskRom2C {
     ) {
         *code += &format!("\t\tpc = {};{}\n", u64_lit(new_pc), ctx.comment_str(comment));
         if rom.sorted_pc_list.binary_search(&new_pc).is_ok() {
-            *code += &format!("\t\tgoto pc_{new_pc:x};\n");
+            if ctx.in_chunk(new_pc) {
+                *code += &format!("\t\tgoto pc_{new_pc:x};\n");
+            } else {
+                *code += "\t\tgoto zisk_leave;\n";
+            }
+        } else if ctx.chunked() {
+            *code += "\t\tgoto zisk_unknown_pc;\n";
         } else {
             *code += &format!("\t\tgoto *zisk_map_pc[pc - {}];\n", u64_lit(ROM_ADDR));
         }
     }
 
-    /// Emits a jump through the branch table, for a program counter only known at run time
+    /// Emits a jump to a program counter only known at run time.
+    ///
+    /// Without chunking there is one table covering the whole ROM.  With chunking, a target inside
+    /// this chunk is still a single indirect branch through the chunk's own table, and only a target
+    /// elsewhere costs a return to the dispatcher.
     fn jump_to_dynamic_pc(ctx: &mut ZiskCContext, code: &mut String) {
+        if !ctx.chunked() {
+            *code += &format!(
+                "\tgoto *zisk_map_pc[pc - {}];{}\n",
+                u64_lit(ROM_ADDR),
+                ctx.comment_str("jump to dynamic pc")
+            );
+            return;
+        }
+
         *code += &format!(
-            "\tgoto *zisk_map_pc[pc - {}];{}\n",
-            u64_lit(ROM_ADDR),
-            ctx.comment_str("jump to dynamic pc")
+            "\tif (pc >= {} && pc <= {}) goto *local_map[(pc - {}) >> 1];{}\n",
+            u64_lit(ctx.chunk_lo),
+            u64_lit(ctx.chunk_hi),
+            u64_lit(ctx.chunk_lo),
+            ctx.comment_str("dynamic pc inside this chunk")
         );
+        *code += &format!("\tgoto zisk_leave;{}\n", ctx.comment_str("dynamic pc elsewhere"));
     }
 
     /*********************/

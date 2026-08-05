@@ -422,6 +422,7 @@ pub fn elf2romfile(
 
 /// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result as C
 /// source code.  This is the C counterpart of elf2romfile().
+#[allow(clippy::too_many_arguments)]
 pub fn elf2cfile(
     elf: &[u8],
     c_file: &Path,
@@ -429,9 +430,20 @@ pub fn elf2cfile(
     log_output: bool,
     comments: bool,
     hints: bool,
+    chunk_size: u64,
+    print_pc: bool,
 ) -> Result<(), Box<dyn Error>> {
     let rom = elf2rom(elf)?;
-    ZiskRom2C::save_to_c_file(&rom, c_file, generation_method, log_output, comments, hints);
+    ZiskRom2C::save_to_c_file(
+        &rom,
+        c_file,
+        generation_method,
+        log_output,
+        comments,
+        hints,
+        chunk_size,
+        print_pc,
+    );
 
     Ok(())
 }
