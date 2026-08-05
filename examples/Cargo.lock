@@ -616,6 +616,7 @@ dependencies = [
  "mem-common",
  "mem-planner-cpp",
  "named-sem",
+ "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
  "thiserror 2.0.19",
