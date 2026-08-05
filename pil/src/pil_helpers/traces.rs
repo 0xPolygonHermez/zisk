@@ -380,13 +380,13 @@ pub type ArithEq384Trace<R> = GenericTrace<R, 1048576, 0, 20>;
 trace_row!(KeccakfFixedRow<F> {
  CLK_0: F, __L1__: F,
 });
-pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 131072, 0, 21>;
+pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 262144, 0, 21>;
 
 trace_row!(KeccakfTraceRow<F> {
  in_use:bit, in_use_clk_0:bit, state:[bit; 1600], chunk_acc:[ubit(22); 534], step_addr:ubit(40),
 });
 
-pub type KeccakfTrace<R> = GenericTrace<R, 131072, 0, 21>;
+pub type KeccakfTrace<R> = GenericTrace<R, 262144, 0, 21>;
 
 trace_row!(Sha256fFixedRow<F> {
  CLK_0: F, __L1__: F,
