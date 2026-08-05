@@ -8,7 +8,7 @@ use sm_main::MainInstance;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
-use zisk_pil::{MainTraceRow, MainTraceRowPacked};
+use zisk_pil::{MainTraceRow, MainTraceRowPackedIndexed};
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;
@@ -23,6 +23,8 @@ pub struct WitnessGenerator {
     /// Chunk size for trace processing.
     chunk_size: u64,
 
+    /// Packed trace layout. For Main this means the compact indexed row
+    /// ([`MainTraceRowPackedIndexed`]) + instruction table.
     packed: AtomicBool,
 }
 
@@ -61,8 +63,9 @@ impl WitnessGenerator {
         let min_traces_guard = state.min_traces.read_or_poison("min_traces")?;
         let min_traces = min_traces_guard.as_ref().ok_or(ExecutorError::MinTracesNotSet)?;
 
+        // Packed ⇒ compact indexed Main row (+ instruction table); otherwise the unpacked row.
         let air_instance = if self.packed.load(Ordering::Relaxed) {
-            main_instance.compute_witness::<MainTraceRowPacked<F>>(
+            main_instance.compute_witness::<MainTraceRowPackedIndexed<F>>(
                 &zisk_rom,
                 min_traces,
                 self.chunk_size,
@@ -150,5 +153,10 @@ impl WitnessGenerator {
 
     pub fn set_packed(&self, packed: bool) {
         self.packed.store(packed, Ordering::SeqCst);
+    }
+
+    /// Whether Main is built in the compact indexed form — i.e. packed.
+    pub fn is_packed(&self) -> bool {
+        self.packed.load(Ordering::Relaxed)
     }
 }
