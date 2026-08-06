@@ -708,15 +708,22 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 for i in 0..8 {
                     // Calculate carry
                     let previous_cin = cin;
-                    cout = 0;
-                    if a_bytes[i] <= b_bytes[i] {
+
+                    if a_bytes[i] < b_bytes[i] {
+                        cout = 0;
+                    } else if a_bytes[i] == b_bytes[i] {
+                        cout = cin;
+                    } else {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & SIGN_BYTE) != (b_bytes[i] & SIGN_BYTE)
-                    {
-                        cout = c;
+                    if plast[i] == 1 {
+                        cout = 1 - cout;
+
+                        if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                            && (a_bytes[i] & SIGN_BYTE) != (b_bytes[i] & SIGN_BYTE)
+                        {
+                            cout = if a_bytes[i] & SIGN_BYTE != 0 { 1 } else { 0 };
+                        }
                     }
                     cin = cout;
                     carry[i] = cin as u8;
