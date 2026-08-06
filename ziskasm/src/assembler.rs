@@ -331,7 +331,16 @@ fn encode_op(
     }
 
     match &op.control {
-        Control::Fallthrough => zib.j(INST_SIZE, INST_SIZE),
+        // Fall-through: pc advances by jmp_offset2 (flag is false). For a regular op
+        // jmp_offset1 is also the instruction size, but precompiles must have
+        // jmp_offset1 == 0 for proof generation: they never raise the register flag,
+        // so jmp_offset1 carries no control flow, and the constraint system requires
+        // it to be 0. (DMA precompiles that pass a third parameter in jmp_offset1 are
+        // written with an explicit `j(...)`, i.e. the `Control::Jump` arm below.)
+        Control::Fallthrough => {
+            let jmp1 = if zib.i.is_precompiled { 0 } else { INST_SIZE };
+            zib.j(jmp1, INST_SIZE);
+        }
         Control::Jump(j1, j2) => {
             let o1 = resolve(j1, pc, symbols)?;
             let o2 = match j2 {
