@@ -46,7 +46,7 @@ main:
 	ltu(0, r10), j(_report)
 	call pack                       ; 0x0bxx
 	ltu(0, r10), j(_report)
-ifndef ASM   ; these ops are unsupported by the x86 asm generator (Zba/Zbc/Zbkx/Zicond)
+ifdef EXPERIMENTAL   ; ops unsupported by the x86 asm generator AND by proof generation (Zba/Zbc/Zbkx/Zicond); excluded unless EXPERIMENTAL is defined
 	call shxadd                     ; 0x0cxx
 	ltu(0, r10), j(_report)
 	call clmul                      ; 0x0dxx

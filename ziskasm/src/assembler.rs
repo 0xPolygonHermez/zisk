@@ -112,10 +112,13 @@ pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
 
     let addr_of = |i: usize| (ROM_ADDR as i64 + INST_SIZE * i as i64) as u64;
 
-    // Lay out data: `const` goes in ROM right after the code (8-byte aligned),
-    // non-`const` in RAM at GENERAL_RAM_ADDR. This yields the initialized sections
-    // and each data symbol's address.
-    let rom_data_base = align8(addr_of(ordered.len()));
+    // Lay out data: `const` goes in ROM right after the code, non-`const` in RAM
+    // at GENERAL_RAM_ADDR. This yields the initialized sections and each data
+    // symbol's address.
+    // 32-byte align the ROM data base: the ROM-init trace commits data in 4-u64
+    // (32-byte) rows anchored at the section address (state-machines/rom), matching
+    // the RISC-V transpiler's aligned section starts, so proving works.
+    let rom_data_base = addr_of(ordered.len()).next_multiple_of(32);
     let (ro_section, rw_section, data_syms) = layout_data(&program.data, rom_data_base);
 
     // Symbol table: labels (code addresses) + data names. Used to resolve jump
@@ -165,11 +168,6 @@ pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
     Ok(rom)
 }
 
-/// Rounds an address up to the next multiple of 8.
-fn align8(addr: u64) -> u64 {
-    (addr + 7) & !7
-}
-
 /// Lays out the `const` (ROM, at `rom_data_base`) and non-`const` (RAM, at
 /// `GENERAL_RAM_ADDR`) data declarations, packing each element into one 8-byte
 /// slot in declaration order. Returns the two initialized sections (if non-empty)
@@ -189,6 +187,14 @@ fn layout_data(
             buf.push(d.values.get(k).copied().unwrap_or(0));
         }
     }
+    // Pad each section to a multiple of 4 u64s (32 bytes). The ROM-init trace packs
+    // data into 4-u64 rows (state-machines/rom/src/custom_rom.rs), so a section's
+    // length must be a multiple of 4 for the ROM to be provable — mirroring the
+    // RISC-V transpiler's `RO_SECTION_ALIGN`. Padding appends zeros after all
+    // symbols, so it does not shift any data address. (Harmless for emulation.)
+    ro.resize(ro.len().next_multiple_of(4), 0);
+    rw.resize(rw.len().next_multiple_of(4), 0);
+
     let ro_section = (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro });
     let rw_section = (!rw.is_empty()).then_some(DataSection64 { addr: GENERAL_RAM_ADDR, data: rw });
     (ro_section, rw_section, syms)

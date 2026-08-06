@@ -151,6 +151,12 @@ Notes:
   transpiler's zero-run carving / normalization
   (`normalize_rw_data_sections`) is a *build-time* concern; the container simply
   serializes whatever sections the built ROM contains.
+- **Provability constraint:** each section's `word_count` must be a multiple of 4
+  (32 bytes) and its `addr` 32-byte aligned. The ROM-init trace commits data in
+  4-u64 rows anchored at `addr` (`state-machines/rom/src/custom_rom.rs`), so a
+  non-conforming section is rejected during proving (though the emulator accepts
+  it). Producers must pad/align: the RISC-V transpiler does via `RO_SECTION_ALIGN`,
+  and the ziskasm assembler pads both sections and 32-byte-aligns the ROM data base.
 - `word` uses raw 8 bytes (not varint): data words are arbitrary and often large,
   and large all-zero runs are already carved out upstream. (A future version may
   add a varint-per-word or RLE profile bit if a workload benefits.)
