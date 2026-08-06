@@ -666,9 +666,9 @@ mod tests {
             let meta = plan.meta.as_ref().expect("every plan carries its collects");
             if let Some(chunks) = meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>() {
                 for (chunk, c) in chunks {
-                    for k in 0..ADD_KINDS {
-                        add_seen[chunk.0][k] += c.kinds[k].count;
-                        if c.kinds[k].owns_frops {
+                    for (k, kind) in c.kinds.iter().enumerate() {
+                        add_seen[chunk.0][k] += kind.count;
+                        if kind.owns_frops {
                             *accountants.entry((0, chunk.0, k)).or_default() += 1;
                         }
                     }
@@ -677,9 +677,9 @@ mod tests {
                 meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>()
             {
                 for (chunk, c) in chunks {
-                    for k in 0..EXT_KINDS {
-                        ext_seen[chunk.0][k] += c.kinds[k].count;
-                        if c.kinds[k].owns_frops {
+                    for (k, kind) in c.kinds.iter().enumerate() {
+                        ext_seen[chunk.0][k] += kind.count;
+                        if kind.owns_frops {
                             *accountants.entry((1, chunk.0, k)).or_default() += 1;
                         }
                     }

@@ -244,8 +244,8 @@ mod tests {
         let mut totals = vec![[0u64; K]; chunks];
         for plan in plans {
             for (chunk_id, c) in plan.chunks.iter() {
-                for k in 0..K {
-                    totals[chunk_id.0][k] += c.kinds[k].count;
+                for (total, kind) in totals[chunk_id.0].iter_mut().zip(&c.kinds) {
+                    *total += kind.count;
                 }
             }
         }
@@ -258,7 +258,7 @@ mod tests {
         assert_eq!(collected(plans, ops.len()), ops, "operations lost or duplicated");
 
         for (chunk, kinds) in ops.iter().enumerate() {
-            for k in 0..K {
+            for (k, &expected) in kinds.iter().enumerate() {
                 let mut ranges: Vec<(u64, u64)> = plans
                     .iter()
                     .filter_map(|p| p.chunks.get(&ChunkId(chunk)))
@@ -271,7 +271,7 @@ mod tests {
                     assert_eq!(skip, at, "chunk {chunk} kind {k}: gap or overlap at {skip}");
                     at += count;
                 }
-                assert_eq!(at, kinds[k], "chunk {chunk} kind {k}: not fully covered");
+                assert_eq!(at, expected, "chunk {chunk} kind {k}: not fully covered");
             }
         }
     }
@@ -352,7 +352,7 @@ mod tests {
         assert_tiles(&plans, &ops);
 
         for (chunk, kinds) in frops.iter().enumerate() {
-            for k in 0..3 {
+            for (k, &count) in kinds.iter().enumerate() {
                 let owners = plans
                     .iter()
                     .filter(|p| {
@@ -361,9 +361,8 @@ mod tests {
                     .count();
                 assert_eq!(
                     owners,
-                    usize::from(kinds[k] > 0),
-                    "chunk {chunk} kind {k} has {owners} accountants for {} frops",
-                    kinds[k]
+                    usize::from(count > 0),
+                    "chunk {chunk} kind {k} has {owners} accountants for {count} frops"
                 );
             }
         }
