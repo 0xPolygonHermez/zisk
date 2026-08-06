@@ -119,6 +119,44 @@ impl<F: PrimeField64> BinaryPlanner<F> {
         )
     }
 
+    /// Cost of one instance of each add-family air, in slot order.
+    fn add_instance_costs() -> [u64; 3] {
+        let (basic, add, add_hi, _, _) = Self::rows();
+        [add_hi * columns::BINARY_ADD_HI, add * columns::BINARY_ADD, basic * columns::BINARY]
+    }
+
+    /// Cost of one instance of each extension-family air, in slot order.
+    fn ext_instance_costs() -> [u64; 2] {
+        let (_, _, _, ext, ext_full) = Self::rows();
+        [ext * columns::BINARY_EXTENSION, ext_full * columns::BINARY_EXTENSION_FULL]
+    }
+
+    /// Makes sure every kind that has frequent operations has an air able to account for them.
+    ///
+    /// Frops take no row, so they do not enter the instance sizing at all: a family whose operations are
+    /// all frequent gets no instance from it, leaving nobody to count them. An instance of the cheapest
+    /// air that *sees* the kind is opened for that — seeing it is enough, since counting a frequent
+    /// operation takes no row — and only when no existing instance already sees it, so this is the last
+    /// resort rather than the common path.
+    ///
+    /// Such an instance collects no operation at all. It is only reached when a whole family's
+    /// operations are frequent, or when a kind only one air sees has none of its own.
+    fn cover_frops<const K: usize>(frops: &[u64; K], airs: &mut [AirSlot<K>], costs: &[u64]) {
+        for (k, &count) in frops.iter().enumerate() {
+            if count == 0 || airs.iter().any(|a| a.sees[k] && a.instances > 0) {
+                continue;
+            }
+            let cheapest = airs
+                .iter()
+                .enumerate()
+                .filter(|(_, a)| a.sees[k])
+                .min_by_key(|(i, _)| costs[*i])
+                .map(|(i, _)| i)
+                .expect("every kind is seen by at least one air");
+            airs[cheapest].instances += 1;
+        }
+    }
+
     /// Cost of the layout described by `counts`: each air's columns times its rows, per instance.
     fn cost_of(counts: &InstanceCounts) -> u64 {
         let (basic, add, add_hi, ext, ext_full) = Self::rows();
@@ -279,18 +317,34 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
 
         let counts = Self::best_counts(&totals);
 
-        tracing::debug!(
-            "··· Binary instances: basic={} add={} add_hi={} ext={} ext_full={} (cost {})",
-            counts.basic,
-            counts.add,
-            counts.add_hi,
-            counts.ext,
-            counts.ext_full,
-            Self::cost_of(&counts),
-        );
+        let mut add_airs = add_family(counts.add_hi, counts.add, counts.basic);
+        let mut ext_airs = ext_family(counts.ext, counts.ext_full);
 
-        let add_airs = add_family(counts.add_hi, counts.add, counts.basic);
-        let ext_airs = ext_family(counts.ext, counts.ext_full);
+        // The sizing above only saw operations. A kind whose operations are all frequent would be left
+        // with no air to account for them, so coverage is topped up here.
+        let mut add_frops_total = [0u64; ADD_KINDS];
+        for f in &add_frops {
+            for (total, count) in add_frops_total.iter_mut().zip(f) {
+                *total += count;
+            }
+        }
+        let mut ext_frops_total = [0u64; EXT_KINDS];
+        for f in &ext_frops {
+            for (total, count) in ext_frops_total.iter_mut().zip(f) {
+                *total += count;
+            }
+        }
+        Self::cover_frops(&add_frops_total, &mut add_airs, &Self::add_instance_costs());
+        Self::cover_frops(&ext_frops_total, &mut ext_airs, &Self::ext_instance_costs());
+
+        tracing::debug!(
+            "··· Binary instances: add_hi={} add={} basic={} ext={} ext_full={}",
+            add_airs[0].instances,
+            add_airs[1].instances,
+            add_airs[2].instances,
+            ext_airs[0].instances,
+            ext_airs[1].instances,
+        );
 
         let mut plans = Self::plans_of(&add_ops, &add_frops, &add_airs);
         plans.append(&mut Self::plans_of(&ext_ops, &ext_frops, &ext_airs));
@@ -492,6 +546,86 @@ mod tests {
             TestPlanner::best_counts(&Totals { ext_dirty: 1_000_000, ..Default::default() });
         assert_eq!(counts.ext, 0);
         assert_eq!(counts.ext_full, 1);
+    }
+
+    /// A workload whose binary operations are *all* frequent still has to be planned: the frops
+    /// multiplicities have to be counted or the frequent-operations lookup will not balance, and only a
+    /// collector can count them. The sizing sees no operations, so this is the one case where a binary
+    /// instance ends up collecting none — which the state machines handle by padding the whole trace.
+    #[test]
+    fn a_frops_only_workload_still_gets_accountants() {
+        let boxed: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = (0..3)
+            .map(|i| {
+                let c = BinaryCounter {
+                    counter_basic_wo_add: Counter { inst_count: 0, frops_count: 4 },
+                    counter_add_hi: Counter { inst_count: 0, frops_count: 2 },
+                    counter_add: Counter { inst_count: 0, frops_count: 3 },
+                    counter_extension: Counter { inst_count: 0, frops_count: 5 },
+                    counter_extension_full: Counter { inst_count: 0, frops_count: 1 },
+                };
+                (ChunkId(i), Box::new(c) as Box<dyn BusDeviceMetrics>)
+            })
+            .collect();
+
+        let plans = TestPlanner::new().plan(boxed);
+        assert!(!plans.is_empty(), "the frops still need an accountant");
+
+        let mut accountants: HashMap<(usize, usize, usize), usize> = HashMap::new();
+        for plan in &plans {
+            let meta = plan.meta.as_ref().unwrap();
+            let CheckPoint::Multiple(chunks) = &plan.check_point else {
+                panic!("expected a multi-chunk checkpoint");
+            };
+            assert!(!chunks.is_empty(), "an instance with no chunk would never run");
+
+            if let Some(cs) = meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>() {
+                for (chunk, c) in cs {
+                    assert!(chunks.contains(chunk));
+                    for (k, kind) in c.kinds.iter().enumerate() {
+                        assert_eq!(kind.count, 0, "there is nothing to collect");
+                        if kind.owns_frops {
+                            *accountants.entry((0, chunk.0, k)).or_default() += 1;
+                        }
+                    }
+                }
+            } else if let Some(cs) =
+                meta.downcast_ref::<HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>()
+            {
+                for (chunk, c) in cs {
+                    assert!(chunks.contains(chunk));
+                    for (k, kind) in c.kinds.iter().enumerate() {
+                        assert_eq!(kind.count, 0);
+                        if kind.owns_frops {
+                            *accountants.entry((1, chunk.0, k)).or_default() += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        for chunk in 0..3 {
+            for k in 0..ADD_KINDS {
+                assert_eq!(accountants.get(&(0, chunk, k)), Some(&1), "chunk {chunk} add kind {k}");
+            }
+            for k in 0..EXT_KINDS {
+                assert_eq!(accountants.get(&(1, chunk, k)), Some(&1), "chunk {chunk} ext kind {k}");
+            }
+        }
+    }
+
+    /// Frops of a kind no existing instance sees are the only reason to open one, and it is the cheapest
+    /// air that sees them: basic operations are only visible to `Binary`, so its instance is unavoidable,
+    /// whereas add frops ride in whatever add instance already exists.
+    #[test]
+    fn an_instance_is_opened_only_when_nothing_sees_the_kind() {
+        let mut airs = add_family(0, 1, 0); // an add instance already exists
+        TestPlanner::cover_frops(&[4, 0, 0], &mut airs, &TestPlanner::add_instance_costs());
+        assert_eq!(airs[2].instances, 1, "only Binary sees basic operations");
+
+        // Add frops, by contrast, are already visible to the existing add instance.
+        let mut airs = add_family(0, 1, 0);
+        TestPlanner::cover_frops(&[0, 4, 0], &mut airs, &TestPlanner::add_instance_costs());
+        assert_eq!(airs.iter().map(|a| a.instances).sum::<u64>(), 1, "no instance is opened");
     }
 
     /// End-to-end: the plans must cover every chunk of every air, kind by kind, and exactly one

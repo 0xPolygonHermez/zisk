@@ -32,6 +32,8 @@ pub fn add_family(add_hi: u64, add: u64, basic: u64) -> [AirSlot<ADD_KINDS>; 3] 
             air_id: BinaryAddHiTrace::<()>::AIR_ID,
             ops_per_instance: crate::ADDS_X_ROW as u64 * BinaryAddHiTrace::<()>::NUM_ROWS as u64,
             proves: [false, true, false],
+            // Its collector filters by `op == Add`, so it also sees the full-shape additions.
+            sees: [false, true, true],
             instances: add_hi,
         },
         AirSlot {
@@ -39,6 +41,7 @@ pub fn add_family(add_hi: u64, add: u64, basic: u64) -> [AirSlot<ADD_KINDS>; 3] 
             air_id: BinaryAddTrace::<()>::AIR_ID,
             ops_per_instance: BinaryAddTrace::<()>::NUM_ROWS as u64,
             proves: [false, true, true],
+            sees: [false, true, true],
             instances: add,
         },
         AirSlot {
@@ -46,6 +49,7 @@ pub fn add_family(add_hi: u64, add: u64, basic: u64) -> [AirSlot<ADD_KINDS>; 3] 
             air_id: BinaryTrace::<()>::AIR_ID,
             ops_per_instance: BinaryTrace::<()>::NUM_ROWS as u64,
             proves: [true, true, true],
+            sees: [true, true, true],
             instances: basic,
         },
     ]
@@ -60,6 +64,8 @@ pub fn ext_family(reduced: u64, full: u64) -> [AirSlot<EXT_KINDS>; 2] {
             air_id: BinaryExtensionTrace::<()>::AIR_ID,
             ops_per_instance: BinaryExtensionTrace::<()>::NUM_ROWS as u64,
             proves: [true, false],
+            // Its collector filters by operation type, so it also sees the dirty operations.
+            sees: [true, true],
             instances: reduced,
         },
         AirSlot {
@@ -67,6 +73,7 @@ pub fn ext_family(reduced: u64, full: u64) -> [AirSlot<EXT_KINDS>; 2] {
             air_id: BinaryExtensionFullTrace::<()>::AIR_ID,
             ops_per_instance: BinaryExtensionFullTrace::<()>::NUM_ROWS as u64,
             proves: [true, true],
+            sees: [true, true],
             instances: full,
         },
     ]

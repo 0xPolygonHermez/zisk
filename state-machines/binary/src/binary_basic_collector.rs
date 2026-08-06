@@ -62,11 +62,10 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
 
-        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
-
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
+        // Cheapest test first: every operation on the bus reaches here, and most are not this air's.
         if OperationBusData::get_op_type(&op_data) as u32 != ZiskOperationType::Binary as u32 {
             return true;
         }
@@ -80,6 +79,8 @@ impl<F: PrimeField64> BinaryBasicCollector<F> {
         } else {
             KIND_BASIC
         };
+
+        let frops_row = BinaryBasicFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         match self.cursor.next(kind, frops_row != BinaryBasicFrops::NO_FROPS) {
             CollectAction::Stop => false,
