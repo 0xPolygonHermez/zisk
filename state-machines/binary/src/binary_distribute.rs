@@ -230,6 +230,12 @@ fn name_frops_accountants<const K: usize>(
 mod tests {
     use super::*;
 
+    // Labels for the synthetic airs these tests build. They stand for "most specialised", "dedicated"
+    // and "general" in the hand-out order; the real air ids come from the PIL and are irrelevant here.
+    const PACKED: usize = 0;
+    const DEDICATED: usize = 1;
+    const GENERAL: usize = 2;
+
     fn air<const K: usize>(
         air_id: usize,
         cap: u64,
@@ -286,9 +292,9 @@ mod tests {
 
         // The packed air holds 7 of them, then a dedicated air 5, then the general one the rest.
         let airs = [
-            air(12, 7, [false, true, false], 1),
-            air(11, 5, [false, true, true], 1),
-            air(10, 100, [true, true, true], 1),
+            air(PACKED, 7, [false, true, false], 1),
+            air(DEDICATED, 5, [false, true, true], 1),
+            air(GENERAL, 100, [true, true, true], 1),
         ];
 
         let plans = distribute(&ops, &frops, &airs);
@@ -303,9 +309,9 @@ mod tests {
                 .map(|c| c.kinds[1].count)
                 .sum()
         };
-        assert_eq!(per_air(12), 7);
-        assert_eq!(per_air(11), 5);
-        assert_eq!(per_air(10), 8);
+        assert_eq!(per_air(PACKED), 7);
+        assert_eq!(per_air(DEDICATED), 5);
+        assert_eq!(per_air(GENERAL), 8);
     }
 
     /// A kind an air cannot prove flows past it untouched.
@@ -314,14 +320,14 @@ mod tests {
         let ops = [[4, 0, 6]];
         let frops = [[0, 0, 0]];
         let airs = [
-            air(12, 100, [false, true, false], 1), // low-limb only: proves nothing here
-            air(10, 100, [true, false, true], 1),
+            air(PACKED, 100, [false, true, false], 1), // low-limb only: proves nothing here
+            air(GENERAL, 100, [true, false, true], 1),
         ];
 
         let plans = distribute(&ops, &frops, &airs);
         assert_tiles(&plans, &ops);
         assert!(
-            plans.iter().all(|p| airs[p.air].air_id != 12),
+            plans.iter().all(|p| airs[p.air].air_id != PACKED),
             "the packed air must not open an instance for kinds it cannot prove"
         );
     }
@@ -331,7 +337,7 @@ mod tests {
     fn instances_fill_in_order() {
         let ops = [[0, 0, 25]];
         let frops = [[0, 0, 0]];
-        let airs = [air(11, 10, [false, false, true], 3)];
+        let airs = [air(DEDICATED, 10, [false, false, true], 3)];
 
         let plans = distribute(&ops, &frops, &airs);
         assert_tiles(&plans, &ops);
@@ -346,7 +352,8 @@ mod tests {
     fn exactly_one_accountant_per_chunk_and_kind() {
         let ops = [[3, 4, 0], [0, 0, 0]];
         let frops = [[2, 1, 5], [7, 0, 0]];
-        let airs = [air(12, 2, [false, true, false], 1), air(10, 100, [true, true, true], 1)];
+        let airs =
+            [air(PACKED, 2, [false, true, false], 1), air(GENERAL, 100, [true, true, true], 1)];
 
         let plans = distribute(&ops, &frops, &airs);
         assert_tiles(&plans, &ops);
@@ -384,7 +391,8 @@ mod tests {
         let ops = [[0, 0, 0]];
         let frops = [[0, 4, 0]];
         // The strategy saw no operations, so it granted the packed air one instance for the frops.
-        let airs = [air(12, 10, [false, true, false], 1), air(10, 10, [true, true, true], 0)];
+        let airs =
+            [air(PACKED, 10, [false, true, false], 1), air(GENERAL, 10, [true, true, true], 0)];
 
         let plans = distribute(&ops, &frops, &airs);
         let owners = plans
@@ -404,7 +412,7 @@ mod tests {
         let airs = [
             AirSlot {
                 airgroup_id: 0,
-                air_id: 12,
+                air_id: PACKED,
                 ops_per_instance: 10,
                 proves: [false, true, false],
                 sees: [false, true, true],
@@ -412,7 +420,7 @@ mod tests {
             },
             AirSlot {
                 airgroup_id: 0,
-                air_id: 11,
+                air_id: DEDICATED,
                 ops_per_instance: 10,
                 proves: [false, true, true],
                 sees: [false, true, true],
@@ -435,7 +443,7 @@ mod tests {
         // Operations live in chunk 0; chunk 2 has nothing but frops.
         let ops = [[0, 4, 0], [0, 0, 0], [0, 0, 0]];
         let frops = [[0, 0, 0], [0, 0, 0], [0, 3, 0]];
-        let airs = [air(12, 10, [false, true, false], 1)];
+        let airs = [air(PACKED, 10, [false, true, false], 1)];
 
         let plans = distribute(&ops, &frops, &airs);
         assert_eq!(plans.len(), 1, "no extra instance is opened for the frops-only chunk");
@@ -455,10 +463,10 @@ mod tests {
         let ops = [[0, 0, 5], [0, 6, 0]];
         let frops = [[0, 2, 0], [0, 0, 0]];
         let airs = [
-            air(12, 10, [false, true, false], 1), // walks chunk 1
+            air(PACKED, 10, [false, true, false], 1), // walks chunk 1
             AirSlot {
                 airgroup_id: 0,
-                air_id: 10,
+                air_id: GENERAL,
                 ops_per_instance: 10,
                 proves: [true, true, true],
                 sees: [true, true, true],
@@ -502,11 +510,11 @@ mod tests {
         let frops = [[5, 3, 2]];
         // The general air is the only one seeing every kind, and the strategy granted it one instance.
         let airs = [
-            air(12, 10, [false, true, false], 0),
-            air(11, 10, [false, true, true], 0),
+            air(PACKED, 10, [false, true, false], 0),
+            air(DEDICATED, 10, [false, true, true], 0),
             AirSlot {
                 airgroup_id: 0,
-                air_id: 10,
+                air_id: GENERAL,
                 ops_per_instance: 10,
                 proves: [true, true, true],
                 sees: [true, true, true],
@@ -526,7 +534,7 @@ mod tests {
     fn too_few_instances_is_an_error() {
         let ops = [[0, 0, 30]];
         let frops = [[0, 0, 0]];
-        let airs = [air(11, 10, [false, false, true], 2)];
+        let airs = [air(DEDICATED, 10, [false, false, true], 2)];
         distribute(&ops, &frops, &airs);
     }
 }
