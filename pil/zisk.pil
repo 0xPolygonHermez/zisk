@@ -18,6 +18,7 @@ require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_add.pil"
+require "binary/pil/binary_add_hi.pil"
 require "arith/pil/arith.pil"
 require "big_int/pil/big_int_add.pil"
 require "arith_eq/pil/arith_eq.pil"
@@ -96,8 +97,12 @@ airgroup Zisk {
 
     Binary(N: 2**22);
     BinaryAdd(N: 2**22);
+    BinaryAddHi(N: 2**22);
+
+    BinaryExtension(N: 2**22, full: 0);
+    BinaryExtension(N: 2**22, full: 1) alias BinaryExtensionFull;    
+
     virtual BinaryTable();
-    BinaryExtension(N: 2**22);
     virtual BinaryExtensionTable();
 
     virtual FrequentOps(table_id: BINARY_FROPS_TABLE_ID, 

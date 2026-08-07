@@ -14,7 +14,9 @@ use precomp_evm::{JumpDestCollector, JumpDestCounterInputGen};
 use precompiles_common::{MemCollectorProcessor, MemProcessor};
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
-use sm_binary::{BinaryAddCollector, BinaryBasicCollector, BinaryExtensionCollector};
+use sm_binary::{
+    BinaryAddCollector, BinaryAddHiCollector, BinaryBasicCollector, BinaryExtensionCollector,
+};
 use sm_mem::{MemAlignCollector, MemModuleCollector};
 use sm_rom::RomCollector;
 use zisk_common::ChunkId;
@@ -56,6 +58,9 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
     binary_basic_collector: Vec<(usize, BinaryBasicCollector<F>)>,
     /// Binary add operation collectors.
     binary_add_collector: Vec<(usize, BinaryAddCollector<F>)>,
+
+    /// Collectors for the packed low-limb add instances.
+    binary_add_hi_collector: Vec<(usize, BinaryAddHiCollector<F>)>,
     /// Binary extension operation collectors.
     binary_extension_collector: Vec<(usize, BinaryExtensionCollector<F>)>,
 
@@ -136,6 +141,7 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             arith_inputs_generator: builtins.arith_inputs_generator,
             binary_basic_collector: builtins.binary_basic,
             binary_add_collector: builtins.binary_add,
+            binary_add_hi_collector: builtins.binary_add_hi,
             binary_extension_collector: builtins.binary_extension,
             dma_collector: builtins.dma,
             dma_pre_post_collector: builtins.dma_pre_post,
@@ -174,6 +180,10 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                 BINARY_TYPE => {
                     for (_, binary_add_collector) in &mut self.binary_add_collector {
                         binary_add_collector.process_data(&bus_id, data);
+                    }
+
+                    for (_, binary_add_hi_collector) in &mut self.binary_add_hi_collector {
+                        binary_add_hi_collector.process_data(&bus_id, data);
                     }
 
                     for (_, binary_basic_collector) in &mut self.binary_basic_collector {
@@ -299,6 +309,10 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
         }
 
         for (id, collector) in self.binary_add_collector {
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
+        }
+
+        for (id, collector) in self.binary_add_hi_collector {
             result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 

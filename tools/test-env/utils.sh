@@ -306,6 +306,19 @@ get_zisk_repo_dir() {
     fi
 }
 
+# ensure_submodules: Check out a repo's git submodules (idempotent, no-op without
+# .gitmodules). Required when a submodule is wired as a Cargo `path` dependency —
+# e.g. zisk-eth-client's third_party/ziskethone — since cargo resolves paths before
+# any build runs and fails outright when the files are missing.
+# Usage: ensure_submodules <repo_dir>
+ensure_submodules() {
+    local repo_dir="$1"
+
+    if [[ ! -f "${repo_dir}/.gitmodules" ]]; then
+        return 0
+    fi
+    ensure git -C "${repo_dir}" submodule update --init --recursive || return 1
+}
 
 # patch_cargo_dep: Repoint a git dependency in a Cargo.toml to a local path.
 # Comments out the existing `<crate> = { git = ... }` line and inserts (idempotently)
@@ -330,7 +343,19 @@ patch_cargo_dep() {
     local crate_re
     crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
 
-    local new_line="${crate} = { path = \"${dep_path}\" }"
+    # Carry over `default-features` / `features`; dropping them rebuilds the dep
+    # with default features only (e.g. `input` loses `cli`, so `Client` stops
+    # deriving clap's ValueEnum). Matches the git line commented or not, so a
+    # rerun rebuilds the same path line and stays idempotent.
+    local extra_opts="" orig_line opt frag
+    orig_line=$(grep -m1 -E "^#?[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}" || true)
+    for opt in 'default-features[[:space:]]*=[[:space:]]*(true|false)' \
+               'features[[:space:]]*=[[:space:]]*\[[^]]*\]'; do
+        frag=$(printf '%s' "${orig_line}" | grep -oE "${opt}" | head -n1 || true)
+        [[ -n "${frag}" ]] && extra_opts+=", ${frag}"
+    done
+
+    local new_line="${crate} = { path = \"${dep_path}\"${extra_opts} }"
 
     # Comment out the git dependency line and add a local path entry right below it, in a
     # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
