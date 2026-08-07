@@ -40,8 +40,8 @@ use zisk_common::{
     StatsType,
 };
 use zisk_pil::{
-    JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JUMP_DEST_BITMAP_TABLE_ID,
-    JUMP_DEST_COMPRESSOR_TABLE_ID,
+    JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JumpDestTraceRowOps,
+    JumpDestTraceRowPacked, JUMP_DEST_BITMAP_TABLE_ID, JUMP_DEST_COMPRESSOR_TABLE_ID,
 };
 
 use crate::{
@@ -139,10 +139,10 @@ impl<F: PrimeField64> JumpDestSM<F> {
     /// `on_op` is handed every op of an active row, which is where the lookup
     /// multiplicities are raised. It is a parameter so the row logic can be
     /// exercised without a `Std`.
-    fn process_input(
+    fn process_input<R: JumpDestTraceRowOps<F>>(
         input: &JumpDestInput,
         skip_rows: usize,
-        trace: &mut [JumpDestTraceRow<F>],
+        trace: &mut [R],
         mut on_op: impl FnMut(&JumpDestOp),
     ) -> (usize, Cursor) {
         let ops = expand_jump_dest_ops(input.count as usize, &input.words);
@@ -203,7 +203,7 @@ impl<F: PrimeField64> JumpDestSM<F> {
     }
 
     /// Writes the columns that say where the walk stands.
-    fn set_cursor(row: &mut JumpDestTraceRow<F>, cursor: &Cursor) {
+    fn set_cursor<R: JumpDestTraceRowOps<F>>(row: &mut R, cursor: &Cursor) {
         row.set_src64(cursor.src64);
         row.set_dst64(cursor.dst64);
         row.set_main_step(cursor.main_step);
@@ -211,7 +211,7 @@ impl<F: PrimeField64> JumpDestSM<F> {
     }
 
     /// Writes the per-operation columns of one row.
-    fn set_ops(row: &mut JumpDestTraceRow<F>, slice: &[JumpDestOp]) {
+    fn set_ops<R: JumpDestTraceRowOps<F>>(row: &mut R, slice: &[JumpDestOp]) {
         let mut data = [[0u16; JUMP_DEST_OPS_X_ROW]; 4];
         let mut cdata = [[0u8; JUMP_DEST_OPS_X_ROW]; 4];
         let mut sel_mem_load = [false; JUMP_DEST_OPS_X_ROW];
@@ -244,7 +244,7 @@ impl<F: PrimeField64> JumpDestSM<F> {
     /// `state[0] == 'state[op_x_row]` true row to row, and since the last active
     /// row is a `seq_end`, where `count == total_bytes_used`, the first inactive
     /// row lands on zero and stays there.
-    fn fill_inactive(from: usize, cursor: &Cursor, trace: &mut [JumpDestTraceRow<F>]) {
+    fn fill_inactive<R: JumpDestTraceRowOps<F>>(from: usize, cursor: &Cursor, trace: &mut [R]) {
         let mut cursor = *cursor;
         let state = [cursor.state; JUMP_DEST_OPS_X_ROW + 1];
 
@@ -264,7 +264,7 @@ impl<F: PrimeField64> JumpDestSM<F> {
     /// the segment that came before on the first one, and gated by `sel` so that
     /// an inactive block opens no sequence — it is the multiplicity of
     /// `proves_operation` and the selector of the `EXTRA_PARAMS` read.
-    fn fill_seq_start(rows: &mut [JumpDestTraceRow<F>], mut carry: bool) {
+    fn fill_seq_start<R: JumpDestTraceRowOps<F>>(rows: &mut [R], mut carry: bool) {
         for row in rows.iter_mut() {
             let seq_end = row.get_seq_end();
             row.set_seq_start(carry && row.get_sel());
@@ -279,8 +279,36 @@ impl<F: PrimeField64> JumpDestSM<F> {
         segment_id: SegmentId,
         is_last_segment: bool,
         trace_buffer: Vec<F>,
+        packed: bool,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = JumpDestTrace::<JumpDestTraceRow<F>>::new_from_vec_zeroes(trace_buffer)?;
+        if packed {
+            self.compute_witness_inner::<JumpDestTraceRowPacked<F>>(
+                inputs,
+                skip_rows,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        } else {
+            self.compute_witness_inner::<JumpDestTraceRow<F>>(
+                inputs,
+                skip_rows,
+                segment_id,
+                is_last_segment,
+                trace_buffer,
+            )
+        }
+    }
+
+    fn compute_witness_inner<R: JumpDestTraceRowOps<F>>(
+        &self,
+        inputs: &[Vec<JumpDestInput>],
+        skip_rows: usize,
+        segment_id: SegmentId,
+        is_last_segment: bool,
+        trace_buffer: Vec<F>,
+    ) -> ProofmanResult<AirInstance<F>> {
+        let mut trace = JumpDestTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
         let num_rows = trace.num_rows();
         let rows = trace.buffer.as_mut_slice();
 
@@ -427,7 +455,7 @@ impl<F: PrimeField64> Instance<F> for JumpDestInstance<F> {
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
-        _packed: bool,
+        packed: bool,
     ) -> ProofmanResult<Option<AirInstance<F>>> {
         let mut skip_rows = 0usize;
         let mut inputs = Vec::with_capacity(collectors.len());
@@ -446,6 +474,7 @@ impl<F: PrimeField64> Instance<F> for JumpDestInstance<F> {
             self.ictx.plan.segment_id.unwrap(),
             self.is_last_segment,
             trace_buffer,
+            packed,
         )?))
     }
 
