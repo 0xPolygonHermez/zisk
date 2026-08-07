@@ -10,9 +10,13 @@ to be kept current as the feature evolves.
 | Path | What it is |
 |------|-----------|
 | [`ziskasm.md`](ziskasm.md) | The language **specification** (syntax, sources, storage, jump/setpc, call/ret, definitions, labels). |
+| [`ziskbin.md`](ziskbin.md) | Binary format spec: serializing a `ZiskRom` into an ELF (`zisk2zisk --elf`), decoded by `elf2rom`. |
+| [`zisklib.md`](zisklib.md) | Guide: calling hand-written `.zisk` routines (precompiles) from a guest program via the Rust `zisklib` bindings. |
 | [`src/parser.rs`](src/parser.rs) | Line-oriented `.zisk` parser → instruction AST. |
-| [`src/assembler.rs`](src/assembler.rs) | Two-pass assembler: AST → `ZiskRom`. |
-| [`bin/zisk2zisk.rs`](bin/zisk2zisk.rs) | Binary: `.zisk` → x86-64 NASM (the fast-emulator source), mirroring `riscv2zisk`. |
+| [`src/assembler.rs`](src/assembler.rs) | Two-pass assembler: AST → `ZiskRom` (incl. library mode). |
+| [`bin/zisk2zisk.rs`](bin/zisk2zisk.rs) | Binary: `.zisk` → x86-64 NASM (mirroring `riscv2zisk`) or a ziskbin ELF (`--elf`). |
+| [`lib/`](lib/) | Hand-written ZisK-assembly library routines (`zisklib_*.zisk`), one file per family. |
+| [`lang/rust/`](lang/rust/) | Crate `zisklib`: Rust bindings (stubs + wrappers) guests call to reach `lib/` routines. |
 | [`examples/doubler/`](examples/doubler/) | Worked example: `ziskos.zisk` (explicit launcher) + `doubler.zisk` (program) + `input.bin`. |
 | [`examples/doubler-min/`](examples/doubler-min/) | Same program as a single `main:` file — the assembler synthesizes the launcher. |
 | [`examples/sum/`](examples/sum/) | Data declarations: sums a `const` ROM array into a RAM accumulator. |
