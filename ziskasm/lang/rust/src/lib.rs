@@ -64,3 +64,32 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
     unsafe { ziskos_keccak(input.as_ptr(), input.len(), out.as_mut_ptr()) };
     out
 }
+
+/// `a^(-1) mod 2^256` if it exists, else "not invertible". Raw ABI boundary
+/// redirected to `zisklib_uint256.zisk`'s `zisklib_inv256`: returns `1` and writes
+/// `result[0..4]` when `a` is invertible (odd), `0` otherwise. The placeholder
+/// writes a sentinel and returns an argument-dependent value so the optimizer
+/// keeps the call and sets up both argument registers.
+///
+/// # Safety
+/// `a` must point to a valid `[u64; 4]` and `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_inv256(a: *const u64, result: *mut u64) -> u64 {
+    let (a, result) = black_box((a, result));
+    for i in 0..4usize {
+        result.add(i).write(0x0BAD_0BAD_0BAD_0BAD);
+    }
+    black_box(a as u64)
+}
+
+/// Ergonomic Rust API over [`ziskos_inv256`]: the modular inverse of `a` mod
+/// 2^256, or `None` if `a` is not invertible (i.e. even). Mirrors ziskos
+/// `inv256`. The ziskasm routine hints the inverse and verifies `a * inv ≡ 1`
+/// (mod 2^256) with the arith256 precompile before returning it.
+pub fn inv256(a: &[u64; 4]) -> Option<[u64; 4]> {
+    let mut result = [0u64; 4];
+    // SAFETY: `a` is a `[u64; 4]`; `result` is a writable `[u64; 4]`.
+    let invertible = unsafe { ziskos_inv256(a.as_ptr(), result.as_mut_ptr()) };
+    (invertible != 0).then_some(result)
+}

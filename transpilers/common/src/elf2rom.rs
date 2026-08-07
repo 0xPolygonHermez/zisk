@@ -64,10 +64,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     const ZISK_LIBRARY: &[(&str, &str)] = &[
         ("zisklib_add", include_str!("../../../ziskasm/lib/zisklib_add.zisk")),
         ("zisklib_keccak", include_str!("../../../ziskasm/lib/zisklib_keccak.zisk")),
+        ("zisklib_uint256", include_str!("../../../ziskasm/lib/zisklib_uint256.zisk")),
     ];
     // (guest stub symbol, library function symbol)
-    const REDIRECTS: &[(&str, &str)] =
-        &[("ziskos_add", "zisklib_add"), ("ziskos_keccak", "zisklib_keccak")];
+    const REDIRECTS: &[(&str, &str)] = &[
+        ("ziskos_add", "zisklib_add"),
+        ("ziskos_keccak", "zisklib_keccak"),
+        ("ziskos_inv256", "zisklib_inv256"),
+    ];
 
     let library =
         ziskasm::assemble_library_sources(ZISK_LIBRARY, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR)

@@ -1,0 +1,111 @@
+; ============================================================================
+; zisklib_uint256.zisk - 256-bit unsigned integer routines for the ZisK library,
+; callable from a RISC-V guest via the elf2rom symbol redirect. See
+; zisklib_keccak.zisk for the shared calling convention. (More uint256 functions
+; will be added here later.)
+;
+; Internal labels are prefixed `u2_` so they stay unique when the library files
+; are merged.
+; ============================================================================
+
+define FREE_INPUT        0x40000000     ; a u64 load here yields the fcall free-input
+define FCALL_UINT256_INV 20             ; FCALL_UINT256_INV_ID
+
+; ROM constant: the 256-bit zero (the `c` addend for the verification multiply).
+const u64 U256_ZERO[4] =
+	0, 0, 0, 0
+
+; RAM scratch (ZISKLIB_RAM): the hinted inverse, the arith256 outputs, and the
+; arith256 pointer header [&a, &inv, &zero, &dl, &dh].
+u64 U256_INV[4] = 0, 0, 0, 0
+u64 U256_DL[4] = 0, 0, 0, 0
+u64 U256_DH[4] = 0, 0, 0, 0
+u64 U256_HDR[5] = 0, 0, 0, 0, 0
+
+; ----------------------------------------------------------------------------
+; u64 zisklib_inv256(const u64* a, u64* result)
+;   Computes a^(-1) mod 2^256 if it exists. Mirrors ziskos `inv256`:
+;     - hint the inverse via fcall FCALL_UINT256_INV (flag + 4 words),
+;     - if invertible, verify a*inv == 1 (mod 2^256) with the arith256 precompile
+;       and copy the inverse to `result`.
+;   Returns r10 = 1 and writes result[0..4] if invertible (a odd); r10 = 0
+;   otherwise (a even). Halts (like the reference `assert!`) if the hinted inverse
+;   fails verification — unreachable given a correct hint.
+;
+;   Args: r10 = a, r11 = result. Caller-saved regs only (r5-r7, r12-r15 scratch;
+;   r10/r11 persist), so it is ABI-safe as a callee.
+; ----------------------------------------------------------------------------
+zisklib_inv256:
+	; --- hint the inverse: fcall(a) -> free_input = flag, then 4 inverse words ---
+	fcall_param(4, r10) -> r4          ; append a[0..4] (r10 = &a)
+	fcall(FCALL_UINT256_INV, 0) -> r4  ; free_input = flag, result_size = 5
+	copyb(0, [FREE_INPUT]) -> r5       ; r5 = flag (1 if invertible)
+	eq(r5, 0), j(u2_noinv)             ; a even -> not invertible
+
+	; --- read the 4-word hinted inverse into U256_INV ---
+	copyb(0, U256_INV) -> r6
+	copyb(0, 4) -> r7
+u2_read:
+	eq(r7, 0), j(u2_verify)
+	fcall_get(0, 0) -> r4
+	copyb(0, [FREE_INPUT]) -> r13
+	copyb(r6, r13) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(u2_read)
+
+u2_verify:
+	; --- build the arith256 header [&a, &inv, &zero, &dl, &dh] ---
+	copyb(0, U256_HDR) -> r12
+	copyb(r12, r10) -> 8[a + 0]        ; &a
+	copyb(0, U256_INV) -> r13
+	copyb(r12, r13) -> 8[a + 8]        ; &inv
+	copyb(0, U256_ZERO) -> r13
+	copyb(r12, r13) -> 8[a + 16]       ; &zero (the c addend)
+	copyb(0, U256_DL) -> r13
+	copyb(r12, r13) -> 8[a + 24]       ; &dl (low 256 bits of a*inv)
+	copyb(0, U256_DH) -> r13
+	copyb(r12, r13) -> 8[a + 32]       ; &dh (high 256 bits, ignored)
+	arith256(0, r12) -> r13            ; dl:dh = a*inv + 0
+
+	; --- verify dl == 1 (a*inv ≡ 1 mod 2^256) ---
+	copyb(0, U256_DL) -> r6
+	copyb(r6, 8[a + 0]) -> r13
+	eq(r13, 1), j(u2_hi)               ; dl[0] == 1 ?
+	jump(u2_panic)
+u2_hi:
+	copyb(0, 3) -> r7                  ; dl[1..4] must all be 0
+	add(r6, 8) -> r6
+u2_hi_loop:
+	eq(r7, 0), j(u2_ok)
+	copyb(r6, 8[a + 0]) -> r13
+	eq(r13, 0), j(u2_hi_next)
+	jump(u2_panic)
+u2_hi_next:
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(u2_hi_loop)
+
+u2_ok:
+	; --- copy the verified inverse to result, return 1 ---
+	copyb(0, U256_INV) -> r5
+	copyb(0, 4) -> r7
+u2_copy:
+	eq(r7, 0), j(u2_ret1)
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(r11, r13) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(u2_copy)
+u2_ret1:
+	copyb(0, 1) -> r10
+	ret
+
+u2_noinv:
+	copyb(0, 0) -> r10
+	ret
+
+u2_panic:
+	; hinted inverse failed verification (unreachable with a correct hint): halt
+	copyb(0, 0) -> r10, end
