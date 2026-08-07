@@ -81,7 +81,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `verbose_mode` - Verbose mode for logging.
     /// * `shared_tables` - Whether to use shared tables for execution.
     /// * `with_asm_emulator` - Whether the executor supports the ASM backend at runtime.
-    /// * `packed` - Whether to use packed representation for witness computation.
+    /// * `packed` - Whether to use packed representation for witness computation. For Main
+    ///   this selects the compact indexed row (+ instruction table).
     pub fn new(
         wcm: &WitnessManager<F>,
         verbose_mode: proofman_common::VerboseMode,
@@ -182,6 +183,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         if let Some(witness) = self.witness.as_ref() {
             witness.set_packed(packed);
         }
+    }
+
+    /// Whether the Main trace is built in the compact indexed form (i.e. packed).
+    pub fn is_packed(&self) -> bool {
+        self.witness.as_ref().map(|w| w.is_packed()).unwrap_or(false)
     }
 
     /// Sets the standard input for execution.

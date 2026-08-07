@@ -20,7 +20,7 @@ use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REG
 use zisk_pil::MainAirValues;
 use ziskemu::{Emu, EmuRegTrace};
 
-use zisk_pil::{MainTrace, MainTraceRowOps};
+use zisk_pil::{IndexedFill, MainTrace, MainTraceRowOps};
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
@@ -69,7 +69,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///   ([`MainSmError::EmptyFillTraceOutput`]).
     /// - `MemHelpers::mem_step_to_slot` returned a slot outside `0..=2`
     ///   ([`MainSmError::InvalidSlot`]).
-    pub fn compute_witness<R: MainTraceRowOps<F>>(
+    pub fn compute_witness<R: MainTraceRowOps<F> + IndexedFill>(
         &self,
         zisk_rom: &ZiskRom,
         min_traces: &[EmuTrace],
@@ -191,7 +191,11 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(is_last_segment);
-        air_values.segment_initial_pc = F::from_u32(main_trace[0].get_pc());
+        // From the ROM, not the trace: row 0's `pc` column is instruction-derived, so
+        // `main_trace[0].get_pc()` is 0 on the compact indexed row.
+        let segment_initial_pc =
+            zisk_rom.get_instruction(segment_min_traces[0].start_state.pc).paddr as u32;
+        air_values.segment_initial_pc = F::from_u32(segment_initial_pc);
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c[0] = F::from_u32(last_row.get_c(0));
@@ -221,7 +225,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace<R: MainTraceRowOps<F>>(
+    fn fill_partial_trace<R: MainTraceRowOps<F> + IndexedFill>(
         zisk_rom: &ZiskRom,
         main_trace: &mut [R],
         min_trace: &EmuTrace,
@@ -261,7 +265,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// # Errors
     /// Returns [`MainSmError::InvalidSlot`] if `MemHelpers::mem_step_to_slot`
     /// produces a value outside `0..=2`.
-    fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F>>(
+    fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F> + IndexedFill>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<R>,

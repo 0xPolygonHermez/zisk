@@ -423,7 +423,7 @@ impl<F: PrimeField64> JumpDestInstance<F> {
 impl<F: PrimeField64> Instance<F> for JumpDestInstance<F> {
     fn compute_witness(
         &self,
-        pctx: &ProofCtx<F>,
+        _pctx: &ProofCtx<F>,
         _sctx: &SetupCtx<F>,
         collectors: Vec<(usize, Box<dyn BusDevice<PayloadType>>)>,
         trace_buffer: Vec<F>,
