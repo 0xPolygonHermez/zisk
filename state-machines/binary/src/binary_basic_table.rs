@@ -22,7 +22,7 @@ pub enum BinaryBasicTableOp {
     Eq = EQ_OP as u16,
     Add = ADD_OP as u16,
     Sub = SUB_OP as u16,
-    Leu = LEUW_OP as u16,
+    Leu = LEU_OP as u16,
     Le = LE_OP as u16,
     And = AND_OP as u16,
     Or = OR_OP as u16,
