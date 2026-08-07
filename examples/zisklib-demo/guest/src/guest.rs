@@ -13,7 +13,7 @@ use zisklib::{
     add_mod256, checked_add256, checked_div256, checked_mul256, checked_pow256, checked_square256,
     checked_sub256, div_ceil256, div_rem256, inv256, inv_mod256, keccak256, mul_mod256,
     overflowing_add256, overflowing_mul256, overflowing_pow256, pow_mod256, reduce_mod256,
-    saturating_pow256, saturating_sub256, square_mod256, wrapping_add256, wrapping_mul256,
+    saturating_pow256, saturating_sub256, sha256, square_mod256, wrapping_add256, wrapping_mul256,
     wrapping_neg256, wrapping_pow256, wrapping_rem256, wrapping_square256, wrapping_sub256,
     ziskos_add,
 };
@@ -35,10 +35,31 @@ const KECCAK_13: [u8; 32] = [
     0x84, 0xcd, 0xad, 0x57, 0x3d, 0xfc, 0x2e, 0x3b, 0xb3, 0x2d, 0x42, 0x25, 0xd6, 0xbf, 0xe9, 0x89,
 ];
 
+// SHA-256 digests (FIPS 180-4 test vectors): the empty string, "abc", and 56
+// bytes of 'a' (which forces the two-block final-padding path).
+const SHA256_EMPTY: [u8; 32] = [
+    0xe3, 0xb0, 0xc4, 0x42, 0x98, 0xfc, 0x1c, 0x14, 0x9a, 0xfb, 0xf4, 0xc8, 0x99, 0x6f, 0xb9, 0x24,
+    0x27, 0xae, 0x41, 0xe4, 0x64, 0x9b, 0x93, 0x4c, 0xa4, 0x95, 0x99, 0x1b, 0x78, 0x52, 0xb8, 0x55,
+];
+const SHA256_ABC: [u8; 32] = [
+    0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae, 0x22, 0x23,
+    0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61, 0xf2, 0x00, 0x15, 0xad,
+];
+const SHA256_56A: [u8; 32] = [
+    0xb3, 0x54, 0x39, 0xa4, 0xac, 0x6f, 0x09, 0x48, 0xb6, 0xd6, 0xf9, 0xe3, 0xc6, 0xaf, 0x0f, 0x5f,
+    0x59, 0x0c, 0xe2, 0x0f, 0x1b, 0xde, 0x70, 0x90, 0xef, 0x79, 0x70, 0x68, 0x6e, 0xc6, 0x73, 0x8a,
+];
+
 /// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → redirected
 /// `zisklib_keccak`), checked against a hardcoded expected digest.
 fn keccak_matches(input: &[u8], expected: &[u8; 32]) -> bool {
     &keccak256(input) == expected
+}
+
+/// SHA-256 via `zisklib::sha256` (→ redirected `zisklib_sha256`), checked against
+/// a hardcoded expected digest.
+fn sha256_matches(input: &[u8], expected: &[u8; 32]) -> bool {
+    &sha256(input) == expected
 }
 
 fn main() {
@@ -58,6 +79,12 @@ fn main() {
     // Non-multiple-of-8 length (13 bytes): exercises the byte-level final block.
     let odd: [u8; 13] = core::array::from_fn(|i| i as u8);
     let odd_ok = keccak_matches(&odd, &KECCAK_13);
+
+    // 2b. SHA-256: empty, "abc", and 56×'a' (the two-block padding boundary).
+    let a56: [u8; 56] = [b'a'; 56];
+    let sha_ok = sha256_matches(&[], &SHA256_EMPTY)
+        && sha256_matches(b"abc", &SHA256_ABC)
+        && sha256_matches(&a56, &SHA256_56A);
 
     // 3. inv256: an odd input is invertible (the ziskasm routine verifies
     // a*inv ≡ 1 mod 2^256 before returning); an even input is not.
@@ -134,6 +161,7 @@ fn main() {
         && empty_ok
         && big_ok
         && odd_ok
+        && sha_ok
         && inv_ok
         && noinv_ok
         && addsub_ok
@@ -144,6 +172,6 @@ fn main() {
         && pow_ok;
     ziskos::io::commit(&ok);
     println!(
-        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} => ok={ok}"
+        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} => ok={ok}"
     );
 }

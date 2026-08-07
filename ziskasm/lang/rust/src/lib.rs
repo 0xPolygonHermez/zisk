@@ -62,6 +62,32 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
     out
 }
 
+/// `sha256(input[0..len])` → `output[0..32]`. Raw ABI boundary redirected to
+/// `zisklib_sha256` (any `len`, any `input` alignment). Distinct sentinel byte
+/// (`0x5A`) from [`ziskos_keccak`]'s `0xBA` so identical-code folding cannot merge
+/// the two same-signature stubs (see the crate docs).
+///
+/// # Safety
+/// `input` must point to `len` readable bytes and `output` to 32 writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_sha256(input: *const u8, len: usize, output: *mut u8) {
+    let (_input, _len, output) = black_box((input, len, output));
+    for i in 0..32usize {
+        output.add(i).write(0x5A);
+    }
+}
+
+/// Ergonomic Rust API over the raw [`ziskos_sha256`] boundary: the SHA2-256 digest
+/// of `input` (any length, any alignment). Marshals the `&[u8]` into `(ptr, len)`
+/// and returns the `[u8; 32]` buffer.
+pub fn sha256(input: &[u8]) -> [u8; 32] {
+    let mut out = [0u8; 32];
+    // SAFETY: `input` is a valid slice of `input.len()` bytes; `out` is 32 writable bytes.
+    unsafe { ziskos_sha256(input.as_ptr(), input.len(), out.as_mut_ptr()) };
+    out
+}
+
 /// `a^(-1) mod 2^256` if it exists, else "not invertible". Raw ABI boundary
 /// redirected to `zisklib_uint256.zisk`'s `zisklib_inv256`: returns `1` and writes
 /// `result[0..4]` when `a` is invertible (odd), `0` otherwise. The placeholder

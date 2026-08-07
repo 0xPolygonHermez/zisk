@@ -1,0 +1,167 @@
+; ============================================================================
+; zisklib_sha256.zisk - SHA2-256 (FIPS 180-4) for the ZisK library, callable from
+; a RISC-V guest via the elf2rom symbol redirect. See zisklib_keccak.zisk for the
+; shared calling convention.
+;
+; Mirrors ziskos `sha256`: absorb 64-byte (512-bit) blocks with the `sha256`
+; precompile, then a padded final block (0x80, zero fill, 64-bit big-endian bit
+; length in the last 8 bytes; two blocks when the remainder leaves < 9 bytes).
+; The precompile takes a 2-pointer header [&state, &input]: `state` = 8 u32 packed
+; as 4 u64 (updated in place), `input` = one 64-byte block as 8 u64. Input bytes
+; and the length field are consumed verbatim; the precompile does SHA-256's
+; big-endian message schedule internally.
+;
+; Internal labels are prefixed `sh_`.
+; ============================================================================
+
+; SHA-256 initial hash values [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+; 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19] as 8 u32 packed little-endian
+; into 4 u64 (word 2i in the low half, word 2i+1 in the high half).
+const u64 SHA_STATE_INIT[4] =
+	0xbb67ae856a09e667, 0xa54ff53a3c6ef372, 0x9b05688c510e527f, 0x5be0cd191f83d9ab
+
+; RAM scratch: the running state (updated in place by the precompile), one
+; 64-byte input block, and the 2-pointer precompile header [&state, &input].
+u64 SHA_STATE[4] = 0, 0, 0, 0
+u64 SHA_INPUT[8] = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SHA_HDR[2]   = 0, 0
+
+; ----------------------------------------------------------------------------
+; void zisklib_sha256(const u8* input, u64 len, u8* output)
+;   output[0..32] = SHA-256(input[0..len]). Args: r10=input, r11=len, r12=output.
+;   Caller-saved regs only: r5 holds the header address across every compress;
+;   r13 is the byte offset / remaining / output-word index; r6/r7/r14/r15 scratch.
+; ----------------------------------------------------------------------------
+zisklib_sha256:
+	; --- initialise the state from SHA_STATE_INIT ---
+	copyb(0, SHA_STATE_INIT) -> r6
+	copyb(0, SHA_STATE) -> r7
+	copyb(0, 4) -> r14
+sh_init:
+	eq(r14, 0), j(sh_hdr)
+	copyb(r6, 8[a + 0]) -> r15
+	copyb(r7, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r14, 1) -> r14
+	jump(sh_init)
+sh_hdr:
+	; --- build the [&state, &input] header once (both pointers are fixed) ---
+	copyb(0, SHA_HDR) -> r5
+	copyb(0, SHA_STATE) -> r6
+	copyb(r5, r6) -> 8[a + 0]           ; &state
+	copyb(0, SHA_INPUT) -> r6
+	copyb(r5, r6) -> 8[a + 8]           ; &input
+	; r5 = &header, reserved for every sha256(0, r5) below
+
+	; --- absorb complete 64-byte blocks ---
+	copyb(0, 0) -> r13                  ; offset = 0
+sh_full:
+	add(r13, 64) -> r6
+	ltu(r11, r6), j(sh_final)           ; len < offset + 64 -> no more full blocks
+	add(r10, r13) -> r6                 ; &input[offset]
+	copyb(0, SHA_INPUT) -> r7
+	copyb(0, 8) -> r14
+sh_cpb:
+	eq(r14, 0), j(sh_comp)
+	copyb(r6, 8[a + 0]) -> r15          ; unaligned-safe 8-byte load
+	copyb(r7, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r14, 1) -> r14
+	jump(sh_cpb)
+sh_comp:
+	sha256(0, r5)                       ; state <- compress(state, block), in place
+	add(r13, 64) -> r13
+	jump(sh_full)
+
+sh_final:
+	; --- final block(s): r13 = offset, remaining = len - offset (0..63) ---
+	add(r10, r13) -> r10                ; r10 = &input[offset] (start of the tail)
+	sub(r11, r13) -> r13                ; r13 = remaining; r11 keeps len (for bit length)
+	; zero the block
+	copyb(0, SHA_INPUT) -> r6
+	copyb(0, 8) -> r7
+sh_zero:
+	eq(r7, 0), j(sh_crem)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sh_zero)
+sh_crem:
+	; copy the `remaining` tail bytes into the block
+	copyb(0, SHA_INPUT) -> r6
+	copyb(0, r13) -> r7                 ; count = remaining
+sh_cr:
+	eq(r7, 0), j(sh_pad)
+	copyb(r10, 1[a + 0]) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	add(r10, 1) -> r10
+	add(r6, 1) -> r6
+	sub(r7, 1) -> r7
+	jump(sh_cr)
+sh_pad:
+	; r6 now points at byte `remaining` -> the 0x80 terminator
+	copyb(r6, 0x80) -> 1[a + 0]
+	ltu(r13, 56), j(sh_len)             ; remaining < 56 -> length fits in this block
+	; remaining >= 56: compress this block, then put the length in a fresh block
+	sha256(0, r5)
+	copyb(0, SHA_INPUT) -> r6
+	copyb(0, 8) -> r7
+sh_z2:
+	eq(r7, 0), j(sh_len)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sh_z2)
+sh_len:
+	; write bit_len = len*8 as 8 big-endian bytes at block offsets 56..63
+	sll(r11, 3) -> r15                  ; bit length
+	copyb(0, SHA_INPUT) -> r6
+	add(r6, 56) -> r6
+	copyb(0, 56) -> r7                  ; shift = 56, 48, ..., 0 (MSB first)
+sh_lenl:
+	srl(r15, r7) -> r14
+	and(r14, 0xff) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	eq(r7, 0), j(sh_out)
+	sub(r7, 8) -> r7
+	add(r6, 1) -> r6
+	jump(sh_lenl)
+sh_out:
+	sha256(0, r5)
+
+	; --- write the 8 state words as 32 big-endian bytes to output ---
+	copyb(0, 0) -> r13                  ; j = 0 (u32 word index)
+	copyb(0, r12) -> r6                 ; output cursor
+sh_ow:
+	eq(r13, 8), j(sh_done)
+	srl(r13, 1) -> r7                   ; u64 index = j / 2
+	sll(r7, 3) -> r7
+	copyb(0, SHA_STATE) -> r14
+	add(r14, r7) -> r14
+	copyb(r14, 8[a + 0]) -> r14         ; w = SHA_STATE[j/2]
+	and(r13, 1) -> r7
+	eq(r7, 0), j(sh_lo)
+	srl(r14, 32) -> r14                 ; odd j -> high u32
+sh_lo:
+	and(r14, 0xffffffff) -> r14         ; v = the u32 word
+	srl(r14, 24) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	srl(r14, 16) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	srl(r14, 8) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	and(r14, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	add(r13, 1) -> r13
+	jump(sh_ow)
+sh_done:
+	ret

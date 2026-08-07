@@ -89,6 +89,7 @@ reference `ziskos::zisklib::keccak256`) is in
 | Rust API (`zisklib::`) | ziskasm routine | Notes |
 |------------------------|-----------------|-------|
 | `keccak256(input: &[u8]) -> [u8; 32]` | `zisklib_keccak` | keccak256 digest of any-length, any-alignment input. |
+| `sha256(input: &[u8]) -> [u8; 32]` | `zisklib_sha256` | SHA2-256 (FIPS 180-4) digest of any-length, any-alignment input. |
 | `{overflowing,checked,saturating,wrapping}_add256` / `_sub256` | `zisklib_overflowing_add256` / `_sub256` | 256-bit (`[u64; 4]`) add / subtract; the variants are Rust wrappers over the two overflowing cores. |
 | `{overflowing,checked,wrapping}_neg256` | (`zisklib_overflowing_sub256`) | 256-bit negation (`0 - a`). |
 | `{overflowing,checked,saturating,wrapping}_mul256` / `_square256` | `zisklib_overflowing_mul256` | 256-bit multiply / square (low 256 bits + overflow); square = `mul(a, a)`. |
