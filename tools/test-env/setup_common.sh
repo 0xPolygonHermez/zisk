@@ -12,11 +12,11 @@
 #   INCLUDE_PATHS   --include arg for compile-pil
 #
 # Functions this defines:
-#   generate_frops       cargo-run the three frops generators (honors SKIP_COMPILE_PIL)
+#   generate_fixed_data  cargo-run the fixed-column generators (honors SKIP_COMPILE_PIL)
 #   compute_input_hash   print sha256 of the cache-key inputs to stdout
 #
 # Variables this reads (defaulted if unset):
-#   SKIP_COMPILE_PIL     0|1 — when 1, generate_frops is a no-op
+#   SKIP_COMPILE_PIL     0|1 — when 1, generate_fixed_data is a no-op
 
 : "${SKIP_COMPILE_PIL:=0}"
 
@@ -75,20 +75,24 @@ echo "proofman dir: $PROOFMAN_DIR" >&2
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
 INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
 
+# Fixed columns that a PIL loads from disk rather than building itself, either
+# because an interpreted PIL loop would cost minutes of compile time (the
+# jump_dest bitmap table) or because the data comes from a generator (frops).
 # Required inputs to compile-pil and to the input-hash. Cheap to regenerate.
 # Skipped under SKIP_COMPILE_PIL=1: the on-disk *_fixed.bin files are paired
-# with the reused pilout, and frops generation is idempotent given unchanged
+# with the reused pilout, and generation is idempotent given unchanged
 # sources, so regenerating only burns cargo-build time. compute_input_hash
 # checks the bins exist and errors cleanly if they don't.
-generate_frops() {
+generate_fixed_data() {
   if [ "$SKIP_COMPILE_PIL" -eq 1 ]; then
-    echo "==> generating frops fixed data (SKIPPED — reusing existing *_fixed.bin)"
+    echo "==> generating fixed data (SKIPPED — reusing existing *_fixed.bin)"
     return
   fi
-  echo "==> generating frops fixed data"
+  echo "==> generating fixed data"
   cargo run --release --bin arith_frops_fixed_gen
   cargo run --release --bin binary_basic_frops_fixed_gen
   cargo run --release --bin binary_extension_frops_fixed_gen
+  cargo run --release --bin jump_dest_bitmap_table_gen
 }
 
 compute_input_hash() (
@@ -107,6 +111,7 @@ compute_input_hash() (
     state-machines/arith/src/arith_frops_fixed.bin
     state-machines/binary/src/binary_basic_frops_fixed.bin
     state-machines/binary/src/binary_extension_frops_fixed.bin
+    precompiles/evm/src/jump_dest_bitmap_table_fixed.bin
   )
   for f in "${fixed_bins[@]}"; do
     [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; exit 1; }

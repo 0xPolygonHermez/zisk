@@ -374,6 +374,7 @@ impl StatsCmd {
             val if val == DMA_PRE_POST_AIR_IDS[0] => "DMA_PRE_POST".to_string(),
             val if val == DMA_PRE_POST_MEM_CPY_AIR_IDS[0] => "DMA_PRE_POST_MEM_CPY".to_string(),
             val if val == DMA_PRE_POST_INPUT_CPY_AIR_IDS[0] => "DMA_PRE_POST_INPUT_CPY".to_string(),
+            val if val == JUMP_DEST_AIR_IDS[0] => "JUMP_DEST".to_string(),
             val if val == MAIN_AIR_IDS[0] => "MAIN".to_string(),
             val if val == ROM_AIR_IDS[0] => "ROM".to_string(),
             val if val == MEM_AIR_IDS[0] => "MEM".to_string(),

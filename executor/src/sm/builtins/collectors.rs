@@ -7,6 +7,7 @@ use precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
     DmaPrePostCollector, DmaPrePostInstance, DmaUnalignedCollector, DmaUnalignedInstance,
 };
+use precomp_evm::{JumpDestCollector, JumpDestCounterInputGen, JumpDestInstance};
 use sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollector};
 use sm_binary::{
     BinaryAddCollector, BinaryAddHiCollector, BinaryAddHiInstance, BinaryAddInstance,
@@ -25,7 +26,7 @@ use zisk_pil::{
     DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
     DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS, DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS,
     DMA_PRE_POST_AIR_IDS, DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS,
-    DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
+    DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
     MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS,
     ROM_DATA_AIR_IDS,
 };
@@ -65,6 +66,11 @@ pub struct BuiltinCollectors<F: PrimeField64> {
     pub dma_unaligned: Vec<(usize, DmaUnalignedCollector)>,
     /// DMA input generator.
     pub dma_inputs_generator: DmaCounterInputGen,
+
+    /// EVM `jump_dest` collectors.
+    pub jump_dest: Vec<(usize, JumpDestCollector)>,
+    /// EVM `jump_dest` input generator.
+    pub jump_dest_inputs_generator: JumpDestCounterInputGen,
 }
 
 impl<F: PrimeField64> BuiltinCollectors<F> {
@@ -85,6 +91,8 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             dma_64_aligned: Vec::new(),
             dma_unaligned: Vec::new(),
             dma_inputs_generator: DmaCounterInputGen::new(BusDeviceMode::InputGenerator),
+            jump_dest: Vec::new(),
+            jump_dest_inputs_generator: JumpDestCounterInputGen::new(BusDeviceMode::InputGenerator),
         }
     }
 
@@ -115,6 +123,9 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
             return Ok(true);
         }
         if self.try_push_dma(air_id, secn_instance, chunk_id, global_idx)? {
+            return Ok(true);
+        }
+        if self.try_push_jump_dest(air_id, secn_instance, chunk_id, global_idx)? {
             return Ok(true);
         }
         Ok(false)
@@ -259,6 +270,22 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         }
         let inst = downcast::<F, ArithFullInstance<F>>(secn, air_id, gid, "ArithFullInstance")?;
         self.arith.push((gid, inst.build_arith_collector(chunk)));
+        Ok(true)
+    }
+
+    #[inline]
+    fn try_push_jump_dest(
+        &mut self,
+        air_id: usize,
+        secn: &dyn Instance<F>,
+        chunk: ChunkId,
+        gid: usize,
+    ) -> ExecutorResult<bool> {
+        if air_id != JUMP_DEST_AIR_IDS[0] {
+            return Ok(false);
+        }
+        let inst = downcast::<F, JumpDestInstance<F>>(secn, air_id, gid, "JumpDestInstance")?;
+        self.jump_dest.push((gid, inst.build_jump_dest_collector(chunk)));
         Ok(true)
     }
 

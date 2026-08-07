@@ -2182,6 +2182,7 @@ dependencies = [
  "precomp-big-int",
  "precomp-blake2",
  "precomp-dma",
+ "precomp-evm",
  "precomp-keccakf",
  "precomp-poseidon",
  "precomp-sha256f",
@@ -2276,6 +2277,7 @@ dependencies = [
  "cfg-if",
  "num-bigint",
  "paste",
+ "proofman-starks-lib-c",
  "serde",
 ]
 
@@ -4340,6 +4342,21 @@ dependencies = [
  "proofman-util",
  "rayon",
  "tracing",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+]
+
+[[package]]
+name = "precomp-evm"
+version = "1.1.0-alpha"
+dependencies = [
+ "clap",
+ "fields",
+ "pil-std-lib",
+ "precompiles-common",
+ "precompiles-helpers",
+ "proofman-common",
  "zisk-common",
  "zisk-core",
  "zisk-pil",

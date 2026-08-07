@@ -84,7 +84,8 @@ pub enum ZiskOperationType {
     ArithEq,
     ArithEq384,
     BigInt, // Note: Add new core operations here
-    Dma,    // Note: To add extra params to precompiles calls
+    Evm,
+    Dma, // Note: To add extra params to precompiles calls
     // ZisK Free Input Operations
     FcallParam,
     Fcall,
@@ -104,6 +105,7 @@ pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
 pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
 pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
 pub const BIG_INT_OP_TYPE_ID: u32 = ZiskOperationType::BigInt as u32;
+pub const EVM_OP_TYPE_ID: u32 = ZiskOperationType::Evm as u32;
 pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;

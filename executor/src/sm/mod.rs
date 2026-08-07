@@ -150,7 +150,7 @@ pub fn plan_sec<F: PrimeField64>(
         .expect("num_chunks > 0 is upheld by the caller (min_traces.len())");
     plans.insert(ROM_POSITION, rom_plan);
 
-    for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION] {
+    for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION, JUMP_DEST_POSITION] {
         if let Some(counters) = vec_counters.remove(&pos) {
             let planner = BuiltinSMs::<F>::planner_for_position(pos, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));
