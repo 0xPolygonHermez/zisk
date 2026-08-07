@@ -80,11 +80,17 @@ ziskemu -e <guest>.elf -i input.bin -c          # emulate
 cargo-zisk prove -e <guest>.elf -i input.bin    # prove
 ```
 
-A complete, self-checking example (which also diffs the result against the
-reference `ziskos::zisklib::keccak256`) is in
-[`examples/zisklib-demo/guest/`](../examples/zisklib-demo/guest/).
+A complete, self-checking example is in
+[`examples/zisklib-demo/guest/`](../examples/zisklib-demo/guest/): it exercises
+every routine below against hardcoded known-answer vectors and commits a single
+`ok` boolean.
 
 ## Current API
+
+Grouped by family: **hashes** (keccak256, sha256, blake2b), and the **256-bit
+integer** suite (`[u64; 4]`, little-endian limbs) covering arithmetic, division,
+modular arithmetic, inverses, and exponentiation. Every routine below is verified
+against known-answer vectors in the demo guest.
 
 | Rust API (`zisklib::`) | ziskasm routine | Notes |
 |------------------------|-----------------|-------|
@@ -155,6 +161,22 @@ registers):
 See [`ziskasm/lib/zisklib_keccak.zisk`](lib/zisklib_keccak.zisk) for a full example
 (a keccak256 sponge that calls the `keccak` op once per rate block).
 
+Two recurring shapes are worth knowing (both used throughout `zisklib_uint256.zisk`):
+
+- **Precompile with a pointer header.** Most precompiles (`arith256`,
+  `arith256_mod`, `add256`, `sha256`, `blake2`) take a small header — a run of
+  pointers (and sometimes a direct value) — whose *address* goes in the `b`
+  operand: e.g. `arith256_mod` reads `[&a, &b, &c, &module, &d]` and writes `d`.
+  Build the header in a `ZISKLIB_RAM` scratch buffer at runtime, then invoke the op
+  (`arith256_mod(0, r5)`). Precompiles never raise the register flag, so a plain
+  fall-through follows (`jmp_offset1` is forced to 0 by the assembler).
+- **Hint-then-verify.** For results that are cheap to *check* but expensive to
+  *compute* (division, inverses), an `fcall` supplies an untrusted answer that the
+  routine then verifies with a precompile (e.g. `div_rem256` hints `(q, r)`, then
+  checks `q·b + r == a` and `r < b`); a bad hint halts via `copyb(...) , end`,
+  mirroring the reference `assert!`. **The fcall passthrough throwaway must target a
+  caller-saved register** (e.g. `r14`), never `r4` (`tp`), which is callee-saved.
+
 ### 2. Register it in the transpiler — `transpilers/common/src/elf2rom.rs`
 
 Add the source file to `ZISK_LIBRARY` and the redirect pair to `REDIRECTS`:
@@ -223,7 +245,15 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
 - **Performance:** keep the hot loop cheap. `zisklib_keccak` absorbs full rate
   blocks in a tight word loop (same cost whatever the length) and does byte-level
   work only for the ≤7-byte final tail, so arbitrary-length support adds no penalty
-  to word-aligned inputs — no need for a separate fast path.
+  to word-aligned inputs. The `pow`/`pow_mod` routines find the exponent's
+  most-significant set bit first, so a small exponent costs only as many
+  squarings as it has bits.
+- **Test the routine in isolation first.** Assemble the `.zisk` file with a small
+  hand-written caller and run it under `ziskemu -z <dir> -c` before wiring the
+  redirect — it's far faster than the ~30 s guest rebuild. Compare against a
+  *independently* produced golden vector (`sha256sum`, `b2sum`, a throwaway host
+  harness): a value transcribed by hand is itself suspect, and a mismatch is as
+  likely a bad expected constant as a bad routine — check element-by-element.
 
 ## File map
 
