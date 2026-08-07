@@ -11,12 +11,22 @@ ziskos::entrypoint!(main);
 use core::hint::black_box;
 use zisklib::{inv256, keccak256, ziskos_add};
 
+// Hardcoded expected keccak256 digests (independent of any keccak API), so the
+// test is self-contained. keccak256("") is the canonical empty-string vector.
+const KECCAK_EMPTY: [u8; 32] = [
+    0xc5, 0xd2, 0x46, 0x01, 0x86, 0xf7, 0x23, 0x3c, 0x92, 0x7e, 0x7d, 0xb2, 0xdc, 0xc7, 0x03, 0xc0,
+    0xe5, 0x00, 0xb6, 0x53, 0xca, 0x82, 0x27, 0x3b, 0x7b, 0xfa, 0xd8, 0x04, 0x5d, 0x85, 0xa4, 0x70,
+];
+// keccak256 of the 144-byte input built below (byte value i repeated 8 times, i = 0..17).
+const KECCAK_BIG144: [u8; 32] = [
+    0x52, 0xa0, 0x48, 0xee, 0x61, 0x22, 0x1c, 0x82, 0x92, 0xa1, 0x24, 0x59, 0x91, 0xe1, 0x22, 0x27,
+    0x69, 0x41, 0x71, 0x29, 0x5a, 0xab, 0xc4, 0x03, 0xf0, 0x15, 0xe9, 0xc9, 0x57, 0x2c, 0x5e, 0xbd,
+];
+
 /// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → redirected
-/// `zisklib_keccak`), checked against the reference ziskos sponge.
-fn keccak_matches(input: &[u8]) -> bool {
-    let reference = ziskos::zisklib::keccak256(input);
-    let mine = keccak256(input);
-    mine == reference
+/// `zisklib_keccak`), checked against a hardcoded expected digest.
+fn keccak_matches(input: &[u8], expected: &[u8; 32]) -> bool {
+    &keccak256(input) == expected
 }
 
 fn main() {
@@ -29,10 +39,10 @@ fn main() {
     // are 8-byte aligned with len % 8 == 0 (the current zisklib_keccak constraint):
     // the empty message (padding-only, one permutation) and a 144-byte message
     // (one full rate block + a final block, exercising the absorb loop).
-    let empty_ok = keccak_matches(&[]);
+    let empty_ok = keccak_matches(&[], &KECCAK_EMPTY);
     let words: [u64; 18] = core::array::from_fn(|i| (i as u64).wrapping_mul(0x0101_0101_0101_0101));
     let big: &[u8] = unsafe { core::slice::from_raw_parts(words.as_ptr() as *const u8, 18 * 8) };
-    let big_ok = keccak_matches(big);
+    let big_ok = keccak_matches(big, &KECCAK_BIG144);
 
     // 3. inv256: an odd input is invertible (the ziskasm routine verifies
     // a*inv ≡ 1 mod 2^256 before returning); an even input is not.
