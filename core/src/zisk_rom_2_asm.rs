@@ -6391,6 +6391,53 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::JumpDest => {
+                *code += &ctx.full_line_comment("JumpDest".to_string());
+
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = bitmap")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rsi = b = bytecode")
+                );
+                *code += &format!(
+                    "\tmov rdx, 0x{:08x} {}\n",
+                    EXTRA_PARAMS_ADDR,
+                    ctx.comment_str("rdx = @EXTERN_PARAM")
+                );
+                *code += &format!("\tmov rdx, [rdx] {}\n", ctx.comment_str("rdx = [EXTERN_PARAM]"));
+
+                assert_eq!(REG_MEM_READS_ADDRESS, "r12");
+                assert_eq!(REG_MEM_READS_SIZE, "r13");
+
+                match ctx.mode {
+                    AsmGenerationMethod::AsmMinimalTraces => {
+                        // The trace carries the whole source range, 1 + count/8
+                        // qwords, so it needs the dynamic trace check.
+                        *code += "\tcall direct_jump_dest_mtrace_with_count_check\n";
+                    }
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
+                        // ROM hasn't a variable trace, only multiplicities
+                        *code += "\tcall jump_dest_fast\n";
+                    }
+                    AsmGenerationMethod::AsmMemOp => {
+                        // Unlike the DMA ops, the mops count is not bounded by a
+                        // constant: loads can alternate word on / word off, so the
+                        // reads cost up to ceil(count/16) entries on top of the
+                        // EXTRA_PARAM read and the bitmap write block.
+                        *code += "\tcall direct_jump_dest_mops_with_count_check\n";
+                    }
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }

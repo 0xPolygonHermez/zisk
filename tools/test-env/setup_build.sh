@@ -15,14 +15,14 @@
 #                      <build-dir>/provingKey/. Errors out if that directory
 #                      is missing — populate it first with setup_build.sh
 #                      (no flag).
-#   --compile-pil      run only frops + compile-pil + regenerate
+#   --compile-pil      run only fixed-data gen + compile-pil + regenerate
 #                      pil/src/pil_helpers/traces.rs. No setup.
 #   --compressed-final re-run only vadcop_final_compressed on top of an existing
 #                      <build-dir>/provingKey/<name>/vadcop_final/.
 #   --gen-exps-only    (re)generate per-AIR Q-expression CUDA kernels (.exps.so)
 #                      on top of an existing <build-dir>/provingKey/, without
 #                      re-running setup. No-op if nvcc is not on PATH.
-#   --stats            run frops + compile-pil + proofman-setup stats.
+#   --stats            run fixed-data gen + compile-pil + proofman-setup stats.
 #
 # pil-helpers (pil/src/pil_helpers/traces.rs) is regenerated as the last step
 # of compile-pil in every mode that compiles the PIL, so traces.rs stays in
@@ -35,7 +35,7 @@
 #   - every *.pil under  pil/ state-machines/ precompiles/
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
 #   - state-machines/starkstructs.json
-#   - the three *_fixed.bin files written by the frops generators
+#   - the *_fixed.bin files written by the fixed-data generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
 #     ${PROOFMAN_DIR}/package.json
 #   - pil2-stark-setup ref: its git source string from Cargo.lock, or — when
@@ -100,7 +100,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          to gha_pil2_compiler_branch in Cargo.toml; unset there
                          too => proofman's own pinned version. Also settable via
                          PIL2_COMPILER_BRANCH env var.
-  --compile-pil          Run only frops + compile-pil + pil-helpers regen
+  --compile-pil          Run only fixed-data gen + compile-pil + pil-helpers regen
                          (writes pil/zisk.pilout and pil/src/pil_helpers/).
                          No setup.
   --no-aggregation       Setup without -r.
@@ -116,7 +116,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          the --gen-exps flag, which runs it during a full setup.)
   --stats                Run proofman-setup stats.
   --print-hash           Print the build-input sha256 (the cache key) and exit.
-                         Runs frops generation but no compile-pil / setup.
+                         Runs fixed-data generation but no compile-pil / setup.
 
 To package the result (provingKey + circom + snark tarballs), run:
   (cd tools/test-env && ./upload_setup.sh)
@@ -206,7 +206,7 @@ else
 fi
 cd "$ROOT_DIR"
 
-# Resolves PROOFMAN_DIR, defines generate_frops / compute_input_hash, and sets
+# Resolves PROOFMAN_DIR, defines generate_fixed_data / compute_input_hash, and sets
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
@@ -306,14 +306,14 @@ run_gen_exps() {
 case "$MODE" in
 
   compile_pil)
-    generate_frops
+    generate_fixed_data
     run_compile_pil
     echo "done. pil/zisk.pilout and pil/src/pil_helpers/ regenerated."
     exit 0
     ;;
 
   stats)
-    generate_frops
+    generate_fixed_data
     run_compile_pil
     echo "==> proofman-setup stats"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
@@ -382,15 +382,15 @@ case "$MODE" in
 
   print_hash)
     # Keep stdout clean: only compute_input_hash's 64-hex line goes to stdout
-    # (its own progress already goes to stderr). frops generation is noisy, so
+    # (its own progress already goes to stderr). fixed-data generation is noisy, so
     # send its output to stderr too — consumers capture stdout as the hash.
-    generate_frops 1>&2
+    generate_fixed_data 1>&2
     compute_input_hash
     exit 0
     ;;
 
   build|no_aggregation)
-    generate_frops
+    generate_fixed_data
     LOCAL_HASH="$(compute_input_hash)"
     echo "local input hash: $LOCAL_HASH"
 

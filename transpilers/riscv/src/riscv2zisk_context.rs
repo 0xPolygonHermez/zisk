@@ -10,9 +10,9 @@ use zisk_definitions::{
     SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
     SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
     SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID,
-    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID,
-    SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
+    SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
+    SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
+    SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
 };
 
 use zisk_core::zisk_rom::ZiskRom;
@@ -1724,7 +1724,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         let rom_address = i.rom_address;
         // Special DMA patterns that can have rd != 0
         match i.csr as u16 {
-            SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID => {
+            SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID | SYSCALL_JUMP_DEST_ID => {
                 assert!(!next_instructions.is_empty());
                 return self.transpile_dma_memcpy_memcmp_pattern(i, next_instructions);
             }
@@ -2514,8 +2514,13 @@ impl<'a> Riscv2ZiskContext<'a> {
             let next_pc = next_instructions[1].rom_address;
 
             if next_instructions[0].inst_name == RiscvInstName::Add && next_instructions.len() > 1 {
-                let op =
-                    if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 { "dma_memcpy" } else { "dma_memcmp" };
+                let op = if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 {
+                    "dma_memcpy"
+                } else if i.csr == SYSCALL_DMA_MEMCMP_ID as u32 {
+                    "dma_memcmp"
+                } else {
+                    "jump_dest"
+                };
                 if next_instructions[0].rd == 0 {
                     // memcpy/memcmp transpilation pattern:
                     //
@@ -2546,6 +2551,17 @@ impl<'a> Riscv2ZiskContext<'a> {
                 }
             }
             if next_instructions[0].inst_name == RiscvInstName::Addi {
+                // Only the DMA has an opcode for an immediate count (the x variants), which carries
+                // it in extended_arg. jump_dest has a single opcode that takes its count from
+                // EXTRA_PARAMS, so it never reaches here: ziskos_jump_dest! always materialises the
+                // size in a register and emits Add. Serving both sources would mean a second opcode
+                // or a flag in the AIR to pick between them, for a case that does not occur — the
+                // length of a bytecode is not known at compile time.
+                assert!(
+                    i.csr != SYSCALL_JUMP_DEST_ID as u32,
+                    "jump_dest with an immediate size at pc 0x{:08x}: the guest must pass it in a register",
+                    i.rom_address
+                );
                 let op = if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 {
                     "dma_xmemcpy"
                 } else {
@@ -2588,6 +2604,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             i.csr, i.rom_address, next_0
         );
     }
+
     fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         if i.imme == 0 && next_instructions.len() > 1 {
             let next_pc = next_instructions[1].rom_address;

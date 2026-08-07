@@ -49,6 +49,7 @@ members = [
   "precompiles/blake2",
   "precompiles/big_int",
   "precompiles/dma",
+  "precompiles/evm",
   "precompiles/poseidon",
   "lib-c",
   "lib-float",
@@ -104,6 +105,7 @@ precomp-blake2 = { path = "precompiles/blake2" }
 precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
+precomp-evm = { path = "precompiles/evm" }
 riscv = { path = "transpilers/riscv" }
 transpilers-common = { path = "transpilers/common" }
 riscv2zisk = { path = "transpilers/riscv2zisk" }

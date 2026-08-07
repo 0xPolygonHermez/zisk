@@ -42,6 +42,7 @@ precomp-arith-eq = { workspace = true }
 precomp-arith-eq-384 = { workspace = true }
 precomp-big-int = { workspace = true }
 precomp-dma = { workspace = true }
+precomp-evm = { workspace = true }
 
 sm-arith = { workspace = true }
 sm-binary = { workspace = true }

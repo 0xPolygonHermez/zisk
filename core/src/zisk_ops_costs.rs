@@ -46,6 +46,7 @@ pub const DMA_INPUTCPY_COST: u64 = 40;
 pub const DMA_MEMCMP_COST: u64 = DMA_COST;
 pub const DMA_MEMCPY_COST: u64 = 46;
 pub const DMA_MEMSET_COST: u64 = DMA_COST;
+pub const JUMP_DEST_COST: u64 = 63 * 4; // Cost for computing the jumpdest bitmap 1 64-bit word
 
 // Costs for DMA PrePost
 

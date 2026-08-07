@@ -947,6 +947,24 @@ impl OperationBusData<u64> {
                 }
             },
 
+            ZiskOperationType::Evm => match inst.op {
+                ZiskOp::JUMP_DEST => {
+                    // The header is a single word, the byte count; the source words
+                    // travel separately through data_ext.
+                    let len =
+                        OPERATION_PRECOMPILED_BUS_DATA_SIZE + ctx.precompiled.input_data.len();
+                    buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
+                        .copy_from_slice(&[op, op_type, a, b, step]);
+                    buffer[OPERATION_PRECOMPILED_BUS_DATA_SIZE..len]
+                        .copy_from_slice(&ctx.precompiled.input_data);
+                    &buffer[..len]
+                }
+                _ => {
+                    buffer[0..OPERATION_BUS_DATA_SIZE].copy_from_slice(&[op, op_type, a, b]);
+                    &buffer[..OPERATION_BUS_DATA_SIZE]
+                }
+            },
+
             ZiskOperationType::Dma => match inst.op {
                 ZiskOp::DMA_MEMCPY
                 | ZiskOp::DMA_MEMCMP

@@ -10,6 +10,7 @@ use precomp_dma::DmaCollector;
 use precomp_dma::DmaCounterInputGen;
 use precomp_dma::DmaPrePostCollector;
 use precomp_dma::DmaUnalignedCollector;
+use precomp_evm::{JumpDestCollector, JumpDestCounterInputGen};
 use precompiles_common::{MemCollectorProcessor, MemProcessor};
 use sm_arith::ArithCounterInputGen;
 use sm_arith::ArithInstanceCollector;
@@ -69,6 +70,12 @@ pub struct StaticDataBusCollect<D, F: PrimeField64> {
     /// Dma inputs generator.
     dma_inputs_generator: DmaCounterInputGen,
 
+    /// EVM `jump_dest` collectors.
+    jump_dest_collector: Vec<(usize, JumpDestCollector)>,
+
+    /// EVM `jump_dest` input generator.
+    jump_dest_inputs_generator: JumpDestCounterInputGen,
+
     /// Per-precompile collectors + input generators.
     precompiles: PrecompileCollectors<F>,
 
@@ -80,6 +87,7 @@ const BINARY_TYPE: u64 = ZiskOperationType::Binary as u64;
 const BINARY_E_TYPE: u64 = ZiskOperationType::BinaryE as u64;
 const ARITH_TYPE: u64 = ZiskOperationType::Arith as u64;
 const DMA_OP_TYPE_ID: u64 = ZiskOperationType::Dma as u64;
+const EVM_OP_TYPE_ID_U64: u64 = ZiskOperationType::Evm as u64;
 
 impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
     /// Constructs a collector-phase data bus for a single chunk. Each
@@ -134,6 +142,8 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
             dma_64_aligned_collector: builtins.dma_64_aligned,
             dma_unaligned_collector: builtins.dma_unaligned,
             dma_inputs_generator: builtins.dma_inputs_generator,
+            jump_dest_collector: builtins.jump_dest,
+            jump_dest_inputs_generator: builtins.jump_dest_inputs_generator,
             precompiles,
             pending_transfers: VecDeque::with_capacity(64),
         })
@@ -201,6 +211,21 @@ impl<F: PrimeField64> StaticDataBusCollect<PayloadType, F> {
                     }
 
                     self.dma_inputs_generator.process_data(
+                        &bus_id,
+                        data,
+                        data_ext,
+                        &mut MemCollectorProcessor::new(
+                            &mut self.mem_collector,
+                            &mut self.mem_align_collector,
+                        ),
+                    );
+                }
+                EVM_OP_TYPE_ID_U64 => {
+                    for (_, jump_dest_collector) in &mut self.jump_dest_collector {
+                        jump_dest_collector.process_data(&bus_id, data, data_ext);
+                    }
+
+                    self.jump_dest_inputs_generator.process_data(
                         &bus_id,
                         data,
                         data_ext,
@@ -300,6 +325,10 @@ impl<F: PrimeField64> DataBusTrait<PayloadType, Box<dyn BusDevice<PayloadType>>>
         }
 
         for (id, collector) in self.dma_unaligned_collector {
+            result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
+        }
+
+        for (id, collector) in self.jump_dest_collector {
             result.push((id, Box::new(collector) as Box<dyn BusDevice<PayloadType>>));
         }
 
