@@ -9,7 +9,14 @@
 ziskos::entrypoint!(main);
 
 use core::hint::black_box;
-use zisklib::{inv256, keccak256, ziskos_add};
+use zisklib::{
+    add_mod256, checked_add256, checked_div256, checked_mul256, checked_pow256, checked_square256,
+    checked_sub256, div_ceil256, div_rem256, inv256, inv_mod256, keccak256, mul_mod256,
+    overflowing_add256, overflowing_mul256, overflowing_pow256, pow_mod256, reduce_mod256,
+    saturating_pow256, saturating_sub256, square_mod256, wrapping_add256, wrapping_mul256,
+    wrapping_neg256, wrapping_pow256, wrapping_rem256, wrapping_square256, wrapping_sub256,
+    ziskos_add,
+};
 
 // Hardcoded expected keccak256 digests (independent of any keccak API), so the
 // test is self-contained. keccak256("") is the canonical empty-string vector.
@@ -63,9 +70,80 @@ fn main() {
     let inv_ok = inv256(&black_box([3u64, 0, 0, 0])) == Some(inv_expected);
     let noinv_ok = inv256(&black_box([2u64, 0, 0, 0])).is_none();
 
-    let ok = sum == 7 && empty_ok && big_ok && odd_ok && inv_ok && noinv_ok;
+    // 4. 256-bit add/sub/neg (all derived from the two overflowing cores).
+    let max = [u64::MAX; 4];
+    let three = black_box([3u64, 0, 0, 0]);
+    let five = black_box([5u64, 0, 0, 0]);
+    let addsub_ok = checked_add256(&black_box(max), &black_box([1, 0, 0, 0])).is_none()      // overflow
+        && wrapping_add256(&black_box(max), &black_box([1, 0, 0, 0])) == [0, 0, 0, 0]         // wraps to 0
+        && overflowing_add256(&black_box([5, 0, 0, 0]), &three) == ([8, 0, 0, 0], false)      // 5+3=8
+        && checked_sub256(&three, &five).is_none()                                            // underflow
+        && wrapping_sub256(&three, &five) == [0xffff_ffff_ffff_fffe, u64::MAX, u64::MAX, u64::MAX] // 3-5
+        && saturating_sub256(&three, &five) == [0, 0, 0, 0]                                   // saturates to 0
+        && wrapping_neg256(&black_box([1, 0, 0, 0])) == max;                                  // -1 = 2^256-1
+
+    // 5. 256-bit mul/square (derived from the overflowing_mul256 core).
+    let p128 = black_box([0u64, 0, 1, 0]); // 2^128
+    let mul_ok = checked_mul256(&p128, &p128).is_none()                                      // 2^128·2^128 = 2^256 overflows
+        && wrapping_mul256(&black_box([6, 0, 0, 0]), &black_box([7, 0, 0, 0])) == [42, 0, 0, 0]
+        && overflowing_mul256(&p128, &p128) == ([0, 0, 0, 0], true)                          // low bits 0, overflow
+        && wrapping_square256(&black_box([u64::MAX, 0, 0, 0])) == [1, 0xffff_ffff_ffff_fffe, 0, 0] // (2^64-1)^2
+        && checked_square256(&p128).is_none();
+
+    // 6. 256-bit div/rem (hint via fcall + arith256 verify + 256-bit compare).
+    let hundred = black_box([100u64, 0, 0, 0]);
+    let seven = black_box([7u64, 0, 0, 0]);
+    let div_ok = div_rem256(&hundred, &seven) == ([14, 0, 0, 0], [2, 0, 0, 0])               // 100 = 7·14 + 2
+        && checked_div256(&hundred, &black_box([0, 0, 0, 0])).is_none()                      // ÷0 -> None
+        && wrapping_rem256(&hundred, &seven) == [2, 0, 0, 0]
+        && div_ceil256(&hundred, &seven) == [15, 0, 0, 0]                                    // ceil(100/7) = 15
+        && div_ceil256(&black_box([42, 0, 0, 0]), &seven) == [6, 0, 0, 0]                    // exact -> 6
+        && div_rem256(&black_box([u64::MAX, u64::MAX, 0, 0]), &black_box([0, 1, 0, 0]))      // (2^128-1)/2^64
+            == ([u64::MAX, 0, 0, 0], [u64::MAX, 0, 0, 0]);
+
+    // 7. 256-bit modular arithmetic (arith256_mod precompile).
+    let m7 = black_box([7u64, 0, 0, 0]);
+    let p128 = black_box([0u64, 0, 1, 0]); // 2^128
+    let p64 = black_box([0u64, 1, 0, 0]); // 2^64
+    let mod_ok = reduce_mod256(&black_box([100, 0, 0, 0]), &m7) == [2, 0, 0, 0]              // 100 mod 7
+        && reduce_mod256(&black_box([3, 0, 0, 0]), &m7) == [3, 0, 0, 0]                       // already reduced
+        && reduce_mod256(&black_box([5, 0, 0, 0]), &black_box([0, 0, 0, 0])) == [0, 0, 0, 0]  // modulus 0 -> 0
+        && add_mod256(&black_box([6, 0, 0, 0]), &black_box([6, 0, 0, 0]), &m7) == [5, 0, 0, 0] // (6+6) mod 7
+        && mul_mod256(&black_box([5, 0, 0, 0]), &black_box([4, 0, 0, 0]), &m7) == [6, 0, 0, 0] // (5·4) mod 7
+        && mul_mod256(&p128, &p128, &p64) == [0, 0, 0, 0]                                      // 2^256 mod 2^64
+        && square_mod256(&black_box([5, 0, 0, 0]), &m7) == [4, 0, 0, 0];                       // 25 mod 7
+
+    // 8. 256-bit modular inverse (fcall hint + verify, or gcd witness for none).
+    let invmod_ok = inv_mod256(&black_box([3, 0, 0, 0]), &m7) == Some([5, 0, 0, 0])           // 3·5 ≡ 1 (mod 7)
+        && inv_mod256(&black_box([3, 0, 0, 0]), &black_box([11, 0, 0, 0])) == Some([4, 0, 0, 0]) // 3·4 ≡ 1 (mod 11)
+        && inv_mod256(&black_box([4, 0, 0, 0]), &black_box([8, 0, 0, 0])).is_none()            // gcd(4,8)=4
+        && inv_mod256(&black_box([6, 0, 0, 0]), &black_box([9, 0, 0, 0])).is_none();           // gcd(6,9)=3
+
+    // 9. 256-bit exponentiation: modular (pow_mod) and mod-2^256 (pow) with overflow.
+    let pow_ok = pow_mod256(&black_box([2, 0, 0, 0]), &black_box([100, 0, 0, 0]), &black_box([13, 0, 0, 0])) == [3, 0, 0, 0] // 2^100 mod 13
+        && pow_mod256(&black_box([2, 0, 0, 0]), &black_box([10, 0, 0, 0]), &black_box([1000, 0, 0, 0])) == [24, 0, 0, 0]     // 2^10 mod 1000
+        && pow_mod256(&black_box([7, 0, 0, 0]), &black_box([3, 0, 0, 0]), &black_box([1, 0, 0, 0])) == [0, 0, 0, 0]          // mod 1 -> 0
+        && checked_pow256(&black_box([2, 0, 0, 0]), &black_box([10, 0, 0, 0])) == Some([1024, 0, 0, 0])
+        && overflowing_pow256(&black_box([3, 0, 0, 0]), &black_box([5, 0, 0, 0])) == ([243, 0, 0, 0], false)
+        && checked_pow256(&black_box([2, 0, 0, 0]), &black_box([256, 0, 0, 0])).is_none()                                    // 2^256 overflows
+        && wrapping_pow256(&black_box([2, 0, 0, 0]), &black_box([256, 0, 0, 0])) == [0, 0, 0, 0]
+        && saturating_pow256(&black_box([2, 0, 0, 0]), &black_box([256, 0, 0, 0])) == [u64::MAX; 4]
+        && wrapping_pow256(&black_box([2, 0, 0, 0]), &black_box([255, 0, 0, 0])) == [0, 0, 0, 0x8000_0000_0000_0000];        // 2^255
+
+    let ok = sum == 7
+        && empty_ok
+        && big_ok
+        && odd_ok
+        && inv_ok
+        && noinv_ok
+        && addsub_ok
+        && mul_ok
+        && div_ok
+        && mod_ok
+        && invmod_ok
+        && pow_ok;
     ziskos::io::commit(&ok);
     println!(
-        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} inv256={inv_ok} noinv={noinv_ok} => ok={ok}"
+        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} => ok={ok}"
     );
 }

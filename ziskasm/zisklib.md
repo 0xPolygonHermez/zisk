@@ -89,6 +89,15 @@ reference `ziskos::zisklib::keccak256`) is in
 | Rust API (`zisklib::`) | ziskasm routine | Notes |
 |------------------------|-----------------|-------|
 | `keccak256(input: &[u8]) -> [u8; 32]` | `zisklib_keccak` | keccak256 digest of any-length, any-alignment input. |
+| `{overflowing,checked,saturating,wrapping}_add256` / `_sub256` | `zisklib_overflowing_add256` / `_sub256` | 256-bit (`[u64; 4]`) add / subtract; the variants are Rust wrappers over the two overflowing cores. |
+| `{overflowing,checked,wrapping}_neg256` | (`zisklib_overflowing_sub256`) | 256-bit negation (`0 - a`). |
+| `{overflowing,checked,saturating,wrapping}_mul256` / `_square256` | `zisklib_overflowing_mul256` | 256-bit multiply / square (low 256 bits + overflow); square = `mul(a, a)`. |
+| `div_rem256` / `{wrapping,checked}_div256` / `_rem256` / `div_ceil256` | `zisklib_div_rem256` | 256-bit Euclidean division (hint + arith256 verify + `r < b` check); `checked_*` guard `b == 0` in Rust, the others panic/halt. |
+| `reduce_mod256` / `add_mod256` / `mul_mod256` / `square_mod256` | `zisklib_reduce_mod256` / `_add_mod256` / `_mul_mod256` | modular reduce / add / multiply / square (`arith256_mod` precompile); `modulus == 0` returns `0` (guarded in Rust). |
+| `inv256(a: &[u64; 4]) -> Option<[u64; 4]>` | `zisklib_inv256` | Inverse mod 2^256 (hint + arith256 verify). |
+| `inv_mod256(a, modulus) -> Option<[u64; 4]>` | `zisklib_inv_mod256` | Modular inverse (fcall hint; verifies `a·inv ≡ 1 (mod m)` or a gcd witness for non-existence). |
+| `pow_mod256(base, exp, modulus)` | `zisklib_pow_mod256` | Modular exponentiation `base^exp mod m` (square-and-multiply over `arith256_mod`); `m in {0,1}` → 0. |
+| `{overflowing,checked,saturating,wrapping}_pow256` | `zisklib_overflowing_pow256` | `base^exp mod 2^256` with overflow flag (square-and-multiply over `arith256`). |
 | `ziskos_add(a: u64, b: u64) -> u64` | `zisklib_add` | Demo / smoke-test (a + b). |
 
 The surface grows over time; see "Adding a routine" below.
@@ -196,6 +205,12 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
   body), leaving garbage for the real routine. A stub whose result is a pure
   constant is likewise folded away and its symbol garbage-collected — make the body
   observably depend on its inputs / have a side effect.
+- **Give each stub a distinct body.** Two stubs with byte-identical bodies (same
+  signature, same placeholder) are merged by identical-code folding into a single
+  symbol at one address, so their separate `REDIRECTS` entries collide and both
+  route to whichever was registered last. Use a per-stub sentinel constant to keep
+  the machine code distinct. (Symptom: `readelf -s` shows two `ziskos_*` at the same
+  address.)
 - **Respect the callee-saved contract.** A routine that clobbers `s0..s11`,
   `sp`, `gp`, or `tp` will corrupt the guest after it returns.
 - **Placeholder ≠ native implementation.** The stub body only runs off-target (it

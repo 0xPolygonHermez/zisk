@@ -71,6 +71,16 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_add", "zisklib_add"),
         ("ziskos_keccak", "zisklib_keccak"),
         ("ziskos_inv256", "zisklib_inv256"),
+        ("ziskos_overflowing_add256", "zisklib_overflowing_add256"),
+        ("ziskos_overflowing_sub256", "zisklib_overflowing_sub256"),
+        ("ziskos_overflowing_mul256", "zisklib_overflowing_mul256"),
+        ("ziskos_div_rem256", "zisklib_div_rem256"),
+        ("ziskos_reduce_mod256", "zisklib_reduce_mod256"),
+        ("ziskos_add_mod256", "zisklib_add_mod256"),
+        ("ziskos_mul_mod256", "zisklib_mul_mod256"),
+        ("ziskos_inv_mod256", "zisklib_inv_mod256"),
+        ("ziskos_pow_mod256", "zisklib_pow_mod256"),
+        ("ziskos_overflowing_pow256", "zisklib_overflowing_pow256"),
     ];
 
     let library =

@@ -90,3 +90,490 @@ pub fn inv256(a: &[u64; 4]) -> Option<[u64; 4]> {
     let invertible = unsafe { ziskos_inv256(a.as_ptr(), result.as_mut_ptr()) };
     (invertible != 0).then_some(result)
 }
+
+/// The 256-bit numeric bounds and one, for the saturating / modular helpers below.
+const MAX_256: [u64; 4] = [u64::MAX; 4];
+const ZERO_256: [u64; 4] = [0; 4];
+const ONE_256: [u64; 4] = [1, 0, 0, 0];
+
+/// Raw ABI boundary redirected to `zisklib_overflowing_add256`: writes `a + b`
+/// (mod 2^256) to `result` and returns the carry-out (1 on overflow, else 0).
+/// Placeholder touches all args and has a side effect so the call site survives.
+///
+/// # Safety
+/// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_overflowing_add256(
+    a: *const u64,
+    b: *const u64,
+    result: *mut u64,
+) -> u64 {
+    // The sentinel is unique per stub: two stubs with identical bodies would be
+    // merged by identical-code folding into a single symbol/address, collapsing
+    // their distinct redirect entries. A distinct constant keeps the code distinct.
+    let (a, b, result) = black_box((a, b, result));
+    let _ = b;
+    for i in 0..4usize {
+        result.add(i).write(0x0ADD_0ADD_0ADD_0ADD);
+    }
+    black_box(a as u64)
+}
+
+/// Raw ABI boundary redirected to `zisklib_overflowing_sub256`: writes `a - b`
+/// (mod 2^256) to `result` and returns 1 on borrow/underflow (`a < b`), else 0.
+///
+/// # Safety
+/// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_overflowing_sub256(
+    a: *const u64,
+    b: *const u64,
+    result: *mut u64,
+) -> u64 {
+    // Distinct sentinel from `ziskos_overflowing_add256` — see the note there.
+    let (a, b, result) = black_box((a, b, result));
+    let _ = b;
+    for i in 0..4usize {
+        result.add(i).write(0x05AB_05AB_05AB_05AB);
+    }
+    black_box(a as u64)
+}
+
+// --- 256-bit addition ---------------------------------------------------------
+
+/// `a + b` (mod 2^256) with the carry-out flag (`true` on overflow).
+pub fn overflowing_add256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], bool) {
+    let mut r = [0u64; 4];
+    // SAFETY: all three are valid `[u64; 4]` (`r` writable).
+    let carry = unsafe { ziskos_overflowing_add256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
+    (r, carry != 0)
+}
+
+/// `a + b` (mod 2^256), wrapping on overflow.
+pub fn wrapping_add256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    overflowing_add256(a, b).0
+}
+
+/// `a + b`, or `None` on overflow.
+pub fn checked_add256(a: &[u64; 4], b: &[u64; 4]) -> Option<[u64; 4]> {
+    let (r, overflow) = overflowing_add256(a, b);
+    (!overflow).then_some(r)
+}
+
+/// `a + b`, saturating to `2^256 - 1` on overflow.
+pub fn saturating_add256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    let (r, overflow) = overflowing_add256(a, b);
+    if overflow {
+        MAX_256
+    } else {
+        r
+    }
+}
+
+// --- 256-bit subtraction ------------------------------------------------------
+
+/// `a - b` (mod 2^256) with the borrow flag (`true` on underflow, `a < b`).
+pub fn overflowing_sub256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], bool) {
+    let mut r = [0u64; 4];
+    // SAFETY: all three are valid `[u64; 4]` (`r` writable).
+    let borrow = unsafe { ziskos_overflowing_sub256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
+    (r, borrow != 0)
+}
+
+/// `a - b` (mod 2^256), wrapping on underflow.
+pub fn wrapping_sub256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    overflowing_sub256(a, b).0
+}
+
+/// `a - b`, or `None` on underflow (`a < b`).
+pub fn checked_sub256(a: &[u64; 4], b: &[u64; 4]) -> Option<[u64; 4]> {
+    let (r, underflow) = overflowing_sub256(a, b);
+    (!underflow).then_some(r)
+}
+
+/// `a - b`, saturating to `0` on underflow.
+pub fn saturating_sub256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    let (r, underflow) = overflowing_sub256(a, b);
+    if underflow {
+        ZERO_256
+    } else {
+        r
+    }
+}
+
+// --- 256-bit negation (= 0 - a) ----------------------------------------------
+
+/// `-a` (mod 2^256) with the flag (`true` unless `a == 0`).
+pub fn overflowing_neg256(a: &[u64; 4]) -> ([u64; 4], bool) {
+    overflowing_sub256(&ZERO_256, a)
+}
+
+/// `-a` (mod 2^256), wrapping.
+pub fn wrapping_neg256(a: &[u64; 4]) -> [u64; 4] {
+    overflowing_sub256(&ZERO_256, a).0
+}
+
+/// `-a`, or `None` unless `a == 0`.
+pub fn checked_neg256(a: &[u64; 4]) -> Option<[u64; 4]> {
+    let (r, flag) = overflowing_sub256(&ZERO_256, a);
+    (!flag).then_some(r)
+}
+
+// --- 256-bit multiplication ---------------------------------------------------
+
+/// Raw ABI boundary redirected to `zisklib_overflowing_mul256`: writes the low 256
+/// bits of `a * b` to `result` and returns 1 if the product overflows 256 bits
+/// (high 256 bits != 0), else 0. Distinct sentinel body (see the ICF note above).
+///
+/// # Safety
+/// `a`, `b` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_overflowing_mul256(
+    a: *const u64,
+    b: *const u64,
+    result: *mut u64,
+) -> u64 {
+    let (a, b, result) = black_box((a, b, result));
+    let _ = b;
+    for i in 0..4usize {
+        result.add(i).write(0x0AF0_0AF0_0AF0_0AF0);
+    }
+    black_box(a as u64)
+}
+
+/// Low 256 bits of `a * b`, with the overflow flag (`true` if the true product
+/// exceeds 256 bits).
+pub fn overflowing_mul256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], bool) {
+    let mut r = [0u64; 4];
+    // SAFETY: all three are valid `[u64; 4]` (`r` writable).
+    let overflow = unsafe { ziskos_overflowing_mul256(a.as_ptr(), b.as_ptr(), r.as_mut_ptr()) };
+    (r, overflow != 0)
+}
+
+/// `a * b` (mod 2^256), wrapping on overflow.
+pub fn wrapping_mul256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    overflowing_mul256(a, b).0
+}
+
+/// `a * b`, or `None` on overflow.
+pub fn checked_mul256(a: &[u64; 4], b: &[u64; 4]) -> Option<[u64; 4]> {
+    let (r, overflow) = overflowing_mul256(a, b);
+    (!overflow).then_some(r)
+}
+
+/// `a * b`, saturating to `2^256 - 1` on overflow.
+pub fn saturating_mul256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    let (r, overflow) = overflowing_mul256(a, b);
+    if overflow {
+        MAX_256
+    } else {
+        r
+    }
+}
+
+// --- 256-bit squaring (= a * a) -----------------------------------------------
+
+/// Low 256 bits of `a^2`, with the overflow flag.
+pub fn overflowing_square256(a: &[u64; 4]) -> ([u64; 4], bool) {
+    overflowing_mul256(a, a)
+}
+
+/// `a^2` (mod 2^256), wrapping on overflow.
+pub fn wrapping_square256(a: &[u64; 4]) -> [u64; 4] {
+    overflowing_mul256(a, a).0
+}
+
+/// `a^2`, or `None` on overflow.
+pub fn checked_square256(a: &[u64; 4]) -> Option<[u64; 4]> {
+    let (r, overflow) = overflowing_mul256(a, a);
+    (!overflow).then_some(r)
+}
+
+/// `a^2`, saturating to `2^256 - 1` on overflow.
+pub fn saturating_square256(a: &[u64; 4]) -> [u64; 4] {
+    let (r, overflow) = overflowing_mul256(a, a);
+    if overflow {
+        MAX_256
+    } else {
+        r
+    }
+}
+
+// --- 256-bit division / remainder ---------------------------------------------
+
+/// Raw ABI boundary redirected to `zisklib_div_rem256`: writes `a / b` to `q` and
+/// `a % b` to `r`. Halts on `b == 0` on-target (the `checked_*` wrappers guard
+/// against that in Rust first). Distinct sentinel bodies (see the ICF note above);
+/// writing two output buffers already makes this body distinct from the one-output
+/// add/sub/mul stubs.
+///
+/// # Safety
+/// `a`, `b` must point to valid `[u64; 4]`; `q`, `r` to writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_div_rem256(a: *const u64, b: *const u64, q: *mut u64, r: *mut u64) {
+    let (a, b, q, r) = black_box((a, b, q, r));
+    let _ = (a, b);
+    for i in 0..4usize {
+        q.add(i).write(0x0D10_0D10_0D10_0D10);
+        r.add(i).write(0x0DE0_0DE0_0DE0_0DE0);
+    }
+}
+
+/// `(a / b, a % b)` (Euclidean). **Panics on `b == 0`** (halts on-target).
+pub fn div_rem256(a: &[u64; 4], b: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
+    let mut q = [0u64; 4];
+    let mut r = [0u64; 4];
+    // SAFETY: `a`, `b` are valid `[u64; 4]`; `q`, `r` are writable `[u64; 4]`.
+    unsafe { ziskos_div_rem256(a.as_ptr(), b.as_ptr(), q.as_mut_ptr(), r.as_mut_ptr()) };
+    (q, r)
+}
+
+/// `a / b`. **Panics on `b == 0`.**
+pub fn wrapping_div256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    div_rem256(a, b).0
+}
+
+/// `a % b`. **Panics on `b == 0`.**
+pub fn wrapping_rem256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    div_rem256(a, b).1
+}
+
+/// `a / b`, or `None` if `b == 0`.
+pub fn checked_div256(a: &[u64; 4], b: &[u64; 4]) -> Option<[u64; 4]> {
+    (b != &ZERO_256).then(|| div_rem256(a, b).0)
+}
+
+/// `a % b`, or `None` if `b == 0`.
+pub fn checked_rem256(a: &[u64; 4], b: &[u64; 4]) -> Option<[u64; 4]> {
+    (b != &ZERO_256).then(|| div_rem256(a, b).1)
+}
+
+/// Ceiling of `a / b` (rounds a nonzero remainder up). **Panics on `b == 0`.**
+pub fn div_ceil256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
+    let (q, r) = div_rem256(a, b);
+    if r == ZERO_256 {
+        q
+    } else {
+        wrapping_add256(&q, &[1, 0, 0, 0])
+    }
+}
+
+// --- 256-bit modular arithmetic (arith256_mod: d = (a*b + c) mod module) -------
+//
+// The precompile requires `module != 0`; the wrappers short-circuit that case to
+// `ZERO_256` (matching ziskos, which returns zero rather than panicking) and never
+// call the stub with a zero modulus. Inputs need not be `< module`; the result is
+// always reduced. Each stub carries a distinct sentinel (ICF, see the note above).
+
+/// Raw ABI boundary redirected to `zisklib_reduce_mod256`: `result = a mod m`.
+///
+/// # Safety
+/// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_reduce_mod256(a: *const u64, m: *const u64, result: *mut u64) {
+    let (a, m, result) = black_box((a, m, result));
+    let _ = (a, m);
+    for i in 0..4usize {
+        result.add(i).write(0x0BED_0BED_0BED_0BED);
+    }
+}
+
+/// Raw ABI boundary redirected to `zisklib_add_mod256`: `result = (a + b) mod m`.
+///
+/// # Safety
+/// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_add_mod256(
+    a: *const u64,
+    b: *const u64,
+    m: *const u64,
+    result: *mut u64,
+) {
+    let (a, b, m, result) = black_box((a, b, m, result));
+    let _ = (a, b, m);
+    for i in 0..4usize {
+        result.add(i).write(0x0A0D_0A0D_0A0D_0A0D);
+    }
+}
+
+/// Raw ABI boundary redirected to `zisklib_mul_mod256`: `result = (a * b) mod m`.
+///
+/// # Safety
+/// `a`, `b`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_mul_mod256(
+    a: *const u64,
+    b: *const u64,
+    m: *const u64,
+    result: *mut u64,
+) {
+    let (a, b, m, result) = black_box((a, b, m, result));
+    let _ = (a, b, m);
+    for i in 0..4usize {
+        result.add(i).write(0x03D0_03D0_03D0_03D0);
+    }
+}
+
+/// `a mod modulus` (`0` if `modulus == 0`).
+pub fn reduce_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
+    if modulus == &ZERO_256 {
+        return ZERO_256;
+    }
+    let mut d = [0u64; 4];
+    // SAFETY: `a`, `modulus` are valid `[u64; 4]`; `d` is a writable `[u64; 4]`.
+    unsafe { ziskos_reduce_mod256(a.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
+    d
+}
+
+/// `(a + b) mod modulus` (`0` if `modulus == 0`).
+pub fn add_mod256(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
+    if modulus == &ZERO_256 {
+        return ZERO_256;
+    }
+    let mut d = [0u64; 4];
+    // SAFETY: `a`, `b`, `modulus` are valid `[u64; 4]`; `d` is a writable `[u64; 4]`.
+    unsafe { ziskos_add_mod256(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
+    d
+}
+
+/// `(a * b) mod modulus` (`0` if `modulus == 0`).
+pub fn mul_mod256(a: &[u64; 4], b: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
+    if modulus == &ZERO_256 {
+        return ZERO_256;
+    }
+    let mut d = [0u64; 4];
+    // SAFETY: `a`, `b`, `modulus` are valid `[u64; 4]`; `d` is a writable `[u64; 4]`.
+    unsafe { ziskos_mul_mod256(a.as_ptr(), b.as_ptr(), modulus.as_ptr(), d.as_mut_ptr()) };
+    d
+}
+
+/// `a^2 mod modulus` (`0` if `modulus == 0`).
+pub fn square_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
+    mul_mod256(a, a, modulus)
+}
+
+/// Raw ABI boundary redirected to `zisklib_inv_mod256`: writes `a^(-1) mod m` to
+/// `result` and returns 1 if the inverse exists, else 0. On-target the routine
+/// verifies whichever outcome the hint claims (the inverse, or a gcd witness that
+/// none exists). Distinct sentinel (ICF, see the note above).
+///
+/// # Safety
+/// `a`, `m` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_inv_mod256(a: *const u64, m: *const u64, result: *mut u64) -> u64 {
+    let (a, m, result) = black_box((a, m, result));
+    let _ = m;
+    for i in 0..4usize {
+        result.add(i).write(0x0117_0117_0117_0117);
+    }
+    black_box(a as u64)
+}
+
+/// Modular inverse: `a^(-1) mod modulus`, or `None` if it does not exist (i.e.
+/// `gcd(a, modulus) > 1`). `modulus == 0` yields `None`. The ziskasm routine hints
+/// the result and verifies it (`a·inv ≡ 1 (mod m)` with `inv < m`, or a gcd witness
+/// for non-existence) before returning.
+pub fn inv_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> Option<[u64; 4]> {
+    if modulus == &ZERO_256 {
+        return None;
+    }
+    let mut result = [0u64; 4];
+    // SAFETY: `a`, `modulus` are valid `[u64; 4]`; `result` is a writable `[u64; 4]`.
+    let has_inv = unsafe { ziskos_inv_mod256(a.as_ptr(), modulus.as_ptr(), result.as_mut_ptr()) };
+    (has_inv != 0).then_some(result)
+}
+
+// --- 256-bit modular exponentiation -------------------------------------------
+
+/// Raw ABI boundary redirected to `zisklib_pow_mod256`: `result = base^exp mod m`.
+/// `m in {0, 1}` is handled by the wrapper. Distinct sentinel (ICF).
+///
+/// # Safety
+/// `base`, `exp`, `m` must point to valid `[u64; 4]`; `result` to a writable one.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_pow_mod256(
+    base: *const u64,
+    exp: *const u64,
+    m: *const u64,
+    result: *mut u64,
+) {
+    let (base, exp, m, result) = black_box((base, exp, m, result));
+    let _ = (base, exp, m);
+    for i in 0..4usize {
+        result.add(i).write(0x0B0E_0B0E_0B0E_0B0E);
+    }
+}
+
+/// `base^exp mod modulus`. `modulus in {0, 1}` yields `0` (every value is `0` mod 1).
+pub fn pow_mod256(base: &[u64; 4], exp: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
+    if modulus == &ZERO_256 || modulus == &ONE_256 {
+        return ZERO_256;
+    }
+    let mut r = [0u64; 4];
+    // SAFETY: `base`, `exp`, `modulus` are valid `[u64; 4]`; `r` is writable.
+    unsafe { ziskos_pow_mod256(base.as_ptr(), exp.as_ptr(), modulus.as_ptr(), r.as_mut_ptr()) };
+    r
+}
+
+// --- 256-bit exponentiation (mod 2^256) ---------------------------------------
+
+/// Raw ABI boundary redirected to `zisklib_overflowing_pow256`: writes
+/// `base^exp mod 2^256` to `result` and returns 1 if the true power exceeded 256
+/// bits at any step, else 0. Distinct sentinel (ICF).
+///
+/// # Safety
+/// `base`, `exp` must point to valid `[u64; 4]`; `result` to a writable `[u64; 4]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_overflowing_pow256(
+    base: *const u64,
+    exp: *const u64,
+    result: *mut u64,
+) -> u64 {
+    let (base, exp, result) = black_box((base, exp, result));
+    let _ = exp;
+    for i in 0..4usize {
+        result.add(i).write(0x0B07_0B07_0B07_0B07);
+    }
+    black_box(base as u64)
+}
+
+/// `base^exp mod 2^256`, with the overflow flag (`true` if the true power exceeds
+/// 256 bits).
+pub fn overflowing_pow256(base: &[u64; 4], exp: &[u64; 4]) -> ([u64; 4], bool) {
+    let mut r = [0u64; 4];
+    // SAFETY: `base`, `exp` are valid `[u64; 4]`; `r` is a writable `[u64; 4]`.
+    let overflow =
+        unsafe { ziskos_overflowing_pow256(base.as_ptr(), exp.as_ptr(), r.as_mut_ptr()) };
+    (r, overflow != 0)
+}
+
+/// `base^exp` (mod 2^256), wrapping on overflow.
+pub fn wrapping_pow256(base: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
+    overflowing_pow256(base, exp).0
+}
+
+/// `base^exp`, or `None` on overflow.
+pub fn checked_pow256(base: &[u64; 4], exp: &[u64; 4]) -> Option<[u64; 4]> {
+    let (r, overflow) = overflowing_pow256(base, exp);
+    (!overflow).then_some(r)
+}
+
+/// `base^exp`, saturating to `2^256 - 1` on overflow.
+pub fn saturating_pow256(base: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
+    let (r, overflow) = overflowing_pow256(base, exp);
+    if overflow {
+        MAX_256
+    } else {
+        r
+    }
+}
