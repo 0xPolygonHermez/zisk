@@ -30,7 +30,7 @@ alloy-sol-types = { version = "1.5.7" }
 bincode = { workspace = true }
 paste = { workspace = true }
 crossbeam-queue = "0.3"
-tikv-jemallocator = { workspace = true, optional = true, features = ["stats"] }
+tikv-jemallocator = { workspace = true, optional = true }
 
 [features]
 default = ["jemalloc"]

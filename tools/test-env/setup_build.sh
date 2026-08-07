@@ -38,8 +38,13 @@
 #   - the three *_fixed.bin files written by the frops generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
 #     ${PROOFMAN_DIR}/package.json
-#   - pil2-stark-setup ref: its git source string from Cargo.lock, or — when
-#     proofman is a local path dep — a content key from the local checkout
+#   - pil2-stark-setup: a content key over the setup-relevant proofman paths
+#     (setup/ pil2-stark/ provers/starks-lib-c — git tree OIDs + dirty state),
+#     so proofman bumps that only touch prover runtime code keep the same key
+#
+# FORCE_SETUP_BUILD=1 ignores a cache hit and rebuilds (then refreshes the
+# entry) — the escape hatch if a setup-relevant change slipped past the
+# content key's path list.
 #
 # The pil2-proofman checkout is resolved from `cargo metadata` — whatever cargo
 # compiled into cargo-zisk-dev, be it the git dep's checkout under
@@ -406,7 +411,9 @@ case "$MODE" in
       [ "$MODE" = "no_aggregation" ] && cache_key="${short_hash}-no-aggregation"
       CACHE_ENTRY="$CACHE_DIR/$cache_platform/$cache_key"
 
-      if [ -d "$CACHE_ENTRY/provingKey" ]; then
+      if [ "${FORCE_SETUP_BUILD:-0}" = "1" ] && [ -d "$CACHE_ENTRY/provingKey" ]; then
+        echo "==> FORCE_SETUP_BUILD=1 — ignoring cache hit at $CACHE_ENTRY (will rebuild, then refresh)"
+      elif [ -d "$CACHE_ENTRY/provingKey" ]; then
         echo "==> cache hit: $CACHE_ENTRY (skipping compile-pil + setup)"
         rm -rf "$BUILD_DIR/provingKey"
         mkdir -p "$BUILD_DIR"
