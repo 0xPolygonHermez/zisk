@@ -1,10 +1,10 @@
-//! The `BinaryBasicInstance` module defines an instance to perform witness computations
-//! for binary-related operations using the Binary Basic State Machine.
+//! The `BinaryAddHiInstance` module defines an specific instance to perform witness computations
+//! for the packed add operations proven by the Binary Add Hi State Machine.
 //!
-//! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
+//! It manages collected inputs and interacts with the `BinaryAddHiSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryBasicCollector, BinaryBasicSM, ChunkCollect, ADD_KINDS};
+use crate::{BinaryAddHiCollector, BinaryAddHiSM, ChunkCollect, ADD_KINDS};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
@@ -13,46 +13,46 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryTrace, BinaryTraceRow, BinaryTraceRowPacked};
+use zisk_pil::{BinaryAddHiTrace, BinaryAddHiTraceRow, BinaryAddHiTraceRowPacked};
 
-/// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
+/// The `BinaryAddHiInstance` struct represents an instance for packed add witness computations.
 ///
-/// It encapsulates the `BinaryBasicSM` and its associated context, and it processes input data
-/// to compute witnesses for binary operations.
-pub struct BinaryBasicInstance<F: PrimeField64> {
-    /// Binary Basic state machine.
-    binary_basic_sm: Arc<BinaryBasicSM<F>>,
+/// It encapsulates the `BinaryAddHiSM` and its associated context, and it processes input data
+/// to compute witnesses for the additions whose result fits in the low 32-bit limb.
+pub struct BinaryAddHiInstance<F: PrimeField64> {
+    /// Binary Add Hi state machine.
+    binary_add_hi_sm: Arc<BinaryAddHiSM<F>>,
+
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for. The counts are in operations, not rows, since one row
+    /// holds ADDS_X_ROW of them.
+    collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Instance context.
     ictx: InstanceCtx,
-
-    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
-    /// frequent operations it accounts for.
-    collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
 }
 
-impl<F: PrimeField64> BinaryBasicInstance<F> {
-    /// Creates a new `BinaryBasicInstance`.
+impl<F: PrimeField64> BinaryAddHiInstance<F> {
+    /// Creates a new `BinaryAddHiInstance`.
     ///
     /// # Arguments
-    /// * `binary_basic_sm` - An `Arc`-wrapped reference to the Binary Basic State Machine.
+    /// * `binary_add_hi_sm` - An `Arc`-wrapped reference to the Binary Add Hi State Machine.
     /// * `ictx` - The `InstanceCtx` associated with this instance, containing the execution plan.
     ///
     /// # Returns
-    /// A new `BinaryBasicInstance` instance initialized with the provided state machine and
-    /// context.
+    /// A new `BinaryAddHiInstance` initialized with the provided state machine and context.
     pub fn new(
-        binary_basic_sm: Arc<BinaryBasicSM<F>>,
+        binary_add_hi_sm: Arc<BinaryAddHiSM<F>>,
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
         assert_eq!(
             ictx.plan.air_id,
-            BinaryTrace::<()>::AIR_ID,
-            "BinaryBasicInstance: Unsupported air_id: {:?}",
+            BinaryAddHiTrace::<()>::AIR_ID,
+            "BinaryAddHiInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
 
@@ -62,18 +62,18 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
             .downcast::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_basic_sm, ictx, collect_info, std }
+        Self { binary_add_hi_sm, collect_info, ictx, std }
     }
 
-    pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<F> {
-        BinaryBasicCollector::new(self.collect_info[&chunk_id], self.std.clone())
+    pub fn build_binary_add_hi_collector(&self, chunk_id: ChunkId) -> BinaryAddHiCollector<F> {
+        BinaryAddHiCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
 
-impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
-    /// Computes the witness for the binary execution plan.
+impl<F: PrimeField64> Instance<F> for BinaryAddHiInstance<F> {
+    /// Computes the witness for the packed add execution plan.
     ///
-    /// This method leverages the `BinaryBasicSM` to generate an `AirInstance` using the collected
+    /// This method leverages the `BinaryAddHiSM` to generate an `AirInstance` using the collected
     /// inputs.
     ///
     /// # Arguments
@@ -94,19 +94,20 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
         let inputs: Vec<_> = collectors
             .into_iter()
             .map(|(_, collector)| {
-                let _collector = collector.as_any().downcast::<BinaryBasicCollector<F>>().unwrap();
-                _collector.inputs
+                let collector = collector.as_any().downcast::<BinaryAddHiCollector<F>>().unwrap();
+                collector.inputs
             })
             .collect();
 
         if packed {
             Ok(Some(
-                self.binary_basic_sm
-                    .compute_witness::<BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?,
+                self.binary_add_hi_sm
+                    .compute_witness::<BinaryAddHiTraceRowPacked<F>>(&inputs, trace_buffer)?,
             ))
         } else {
             Ok(Some(
-                self.binary_basic_sm.compute_witness::<BinaryTraceRow<F>>(&inputs, trace_buffer)?,
+                self.binary_add_hi_sm
+                    .compute_witness::<BinaryAddHiTraceRow<F>>(&inputs, trace_buffer)?,
             ))
         }
     }
@@ -139,7 +140,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(BinaryBasicCollector::new(self.collect_info[&chunk_id], self.std.clone())))
+        Some(Box::new(BinaryAddHiCollector::new(self.collect_info[&chunk_id], self.std.clone())))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
