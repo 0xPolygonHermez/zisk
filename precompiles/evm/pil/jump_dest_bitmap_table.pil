@@ -77,14 +77,14 @@ const int JD_CDATA4_SHIFT = P2_6;      // state_in takes bits 0..5
 const int JD_MEM_LOAD_SHIFT = 2**38;   // cdata4 takes bits 6..37 (P2_38 is not defined)
 
 // The rows themselves come from a generated binary, not from a loop here:
-// building 86k rows out of an interpreted PIL loop costs minutes of compile
-// time. The generator is precompiles/evm/src/jump_dest_table.rs, run through
+// building its rows out of an interpreted PIL loop costs minutes of compile
+// time. The generator is precompiles/evm/src/jump_dest_bitmap_table_gen.rs,
+// which tools/test-env/setup_common.sh runs before compile-pil, or by hand:
 //
-//     cargo build --release --bin jump_dest_bitmap_table_gen
-//     ./target/release/jump_dest_bitmap_table_gen
+//     cargo run --release --bin jump_dest_bitmap_table_gen
 //
-// and it asserts the very row count declared above, so the two cannot drift
-// apart silently. N is left at 0 and taken from the binary.
+// It asserts the very row count declared above, so the two cannot drift apart
+// silently. N is left at 0 and taken from the binary.
 
 airtemplate JumpDestBitmapTable(int N = 0,
                                 const string bin_file = "precompiles/evm/src/jump_dest_bitmap_table_fixed.bin") {

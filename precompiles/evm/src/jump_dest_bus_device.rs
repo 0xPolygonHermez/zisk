@@ -134,7 +134,9 @@ impl JumpDestCounterInputGen {
     fn should_skip<P: MemProcessor>(data: &[u64], mem_processors: &mut P) -> bool {
         let count = data[COUNT_OFFSET] as usize;
         if count == 0 {
-            return !mem_processors.skip_addr(EXTRA_PARAMS_ADDR as u32);
+            // Unreachable: count > 0 is a precondition the emulator asserts. Kept total anyway,
+            // and an empty call would touch nothing but the count read.
+            return mem_processors.skip_addr(EXTRA_PARAMS_ADDR as u32);
         }
         let bitmap_addr = data[A] as u32;
         let bitmap_last = bitmap_addr + ((bitmap_words(count) - 1) * BYTES_PER_WORD) as u32;

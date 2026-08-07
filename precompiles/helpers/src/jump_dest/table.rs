@@ -1,8 +1,8 @@
 //! Fixed-column generation for `JumpDestBitmapTable`.
 //!
 //! The table is described in `pil/jump_dest_bitmap_table.pil`; that file is the
-//! specification and this is the generator, because producing 86k rows from an
-//! interpreted PIL loop costs minutes of compile time. Keep the two in step: the
+//! specification and this is the generator, because producing its 138953 rows
+//! from an interpreted PIL loop costs minutes of compile time. Keep the two in step: the
 //! PIL declares the columns and the row count, this fills them.
 //!
 //! ROW ORDER is part of the contract: the witness has to name the row it looks

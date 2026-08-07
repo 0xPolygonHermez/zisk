@@ -1,7 +1,7 @@
 //! Writes the fixed columns of `JumpDestBitmapTable` to a binary file.
 //!
-//! The PIL declares the table but does not build it: 86k rows out of an
-//! interpreted loop costs minutes of compile time, so the columns come from here
+//! The PIL declares the table but does not build it: its 138953 rows out of an
+//! interpreted loop cost minutes of compile time, so the columns come from here
 //! through `#pragma extern_fixed_file`, the same route the FrequentOps tables
 //! take.
 
