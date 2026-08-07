@@ -83,6 +83,10 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
+# Replacement global allocator. glibc retains freed multi-MB collector
+# buffers in per-thread arenas that never shrink; jemalloc bounds the arena
+# count and purges dirty pages back to the OS on a decay timer.
+tikv-jemallocator = "0.6"
 # Internal crates
 zisk-common = { path = "common" }
 zisk-stream = { path = "stream" }

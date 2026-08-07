@@ -4,6 +4,8 @@
 #![warn(rustdoc::all)]
 #![deny(rustdoc::missing_crate_level_docs)]
 
+/// Global allocator selection.
+pub mod allocator;
 mod bus;
 mod component;
 mod emu_minimal_trace;
