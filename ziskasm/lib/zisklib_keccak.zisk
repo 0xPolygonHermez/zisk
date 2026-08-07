@@ -1,37 +1,30 @@
 ; ============================================================================
-; zisklib.zisk - hand-written ZisK library routines callable from a RISC-V guest.
+; zisklib_keccak.zisk - keccak256 for the ZisK library, callable from a RISC-V
+; guest via the elf2rom symbol redirect (guest stub `ziskos_keccak`).
 ;
-; These functions are assembled in "library mode" (no launcher/_start/BIOS) and
-; placed at ZISKLIB_ROM_ADDR, just below the float library. A RISC-V guest calls
-; a matching `ziskos_*` stub; the transpiler (elf2rom) redirects the stub's entry
-; to the `zisklib_*` implementation here (symbol redirect), and the routine's
-; `ret` returns to the guest caller.
-;
-; ABI (RISC-V C convention; ZisK registers = RISC-V registers):
+; Shared zisklib ABI (RISC-V C convention; ZisK registers = RISC-V registers):
 ;   - arguments in r10..r17 (a0..a7), return value in r10 (a0)
-;   - return address in r1 (ra); reached via a tail-jump, so `ret` goes to the guest
+;   - reached via a tail-jump, so r1 (ra) holds the guest return; `ret` returns there
 ;   - a callee MUST preserve r8/r9 and r18..r27 (s0..s11), r2 (sp), r3/r4 (gp/tp);
 ;     scratch freely in r5..r7 (t0..t2), r12..r17, r28..r31 (t3..t6)
+;
+; Each family gets its own file; keep labels prefixed per family (here `zk_`) so
+; they stay unique when the files are merged into one library.
 ; ============================================================================
-
-; u64 zisklib_add(u64 a, u64 b) -> a + b
-zisklib_add:
-	add(r10, r11) -> r10           ; r10 = a0 + a1
-	ret
 
 ; ----------------------------------------------------------------------------
 ; void zisklib_keccak(const u8* input, usize len, u8* output)
 ;   Computes keccak256(input[0..len]) into output[0..32], using the `keccak` op
-;   (Keccak-f[1600] permutation) once per absorbed rate block. Mirrors
-;   ziskos zisklib keccak256 (rate = 136 bytes = 17 u64; pad10*1).
+;   (Keccak-f[1600] permutation) once per absorbed rate block (rate = 136 bytes
+;   = 17 u64; pad10*1). Mirrors ziskos zisklib keccak256.
 ;
 ;   CONSTRAINT (current word-level implementation): `len` must be a multiple of 8
 ;   and `input` 8-byte aligned. Arbitrary byte lengths are future work.
 ;
 ;   Args: r10 = input, r11 = len, r12 = output. Uses caller-saved regs only
-;   (r5-r7, r13-r15 scratch; r10-r12 persist), so it is ABI-safe as a callee.
-;   State scratch (KECCAK_STATE, 25 u64) lives in ZISKLIB_RAM (writable, as the
-;   keccak op permutes it in place); it is re-zeroed each call (non-reentrant).
+;   (r5-r7, r13-r15 scratch; r10-r12 persist). State scratch (KECCAK_STATE, 25
+;   u64) lives in ZISKLIB_RAM (writable, as the keccak op permutes it in place);
+;   it is re-zeroed each call (non-reentrant).
 ; ----------------------------------------------------------------------------
 u64 KECCAK_STATE[25] =
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

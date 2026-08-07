@@ -102,6 +102,26 @@ pub fn assemble_library_files<P: AsRef<Path>>(
     assemble_library(&program, rom_base, ram_base)
 }
 
+/// Assembles several in-memory `.zisk` sources as one [`ZiskLibrary`] (library
+/// mode). Each entry is `(name, source)`; the sources are concatenated in order
+/// (functions placed in that order). Use this to build the library from files
+/// embedded at compile time (`include_str!`), one per precompile family, without
+/// touching the filesystem. Symbol names (labels + data) must be unique across
+/// all sources.
+pub fn assemble_library_sources(
+    sources: &[(&str, &str)],
+    rom_base: u64,
+    ram_base: u64,
+) -> Result<ZiskLibrary, String> {
+    let mut program = Program::default();
+    for (name, src) in sources {
+        let parsed = parser::parse_program(src, name)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
+    }
+    assemble_library(&program, rom_base, ram_base)
+}
+
 /// Assembles an already-parsed program as a [`ZiskLibrary`] at the given bases.
 /// Functions are placed in file order at `rom_base + 4*i`; `const` data follows the
 /// code (32-byte aligned), non-`const` data goes to `ram_base`. No BIOS / launcher /

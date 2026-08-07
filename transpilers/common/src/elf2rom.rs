@@ -59,17 +59,19 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // Assemble the hand-written ZisK library (library mode) at its reserved region,
     // then build the guest-symbol → library-entry redirect map: a RISC-V call to an
     // intercepted `ziskos_*` stub is redirected to the matching `zisklib_*` routine.
-    const ZISK_LIBRARY_SRC: &str = include_str!("../../../ziskasm/lib/zisklib.zisk");
+    // The library sources are embedded at compile time, one file per precompile
+    // family; add a family by dropping in its `.zisk` file and listing it here.
+    const ZISK_LIBRARY: &[(&str, &str)] = &[
+        ("zisklib_add", include_str!("../../../ziskasm/lib/zisklib_add.zisk")),
+        ("zisklib_keccak", include_str!("../../../ziskasm/lib/zisklib_keccak.zisk")),
+    ];
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] =
         &[("ziskos_add", "zisklib_add"), ("ziskos_keccak", "zisklib_keccak")];
 
-    let library = {
-        let program = ziskasm::parser::parse_program(ZISK_LIBRARY_SRC, "zisklib")
+    let library =
+        ziskasm::assemble_library_sources(ZISK_LIBRARY, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR)
             .map_err(|e| format!("assembling ZisK library: {e}"))?;
-        ziskasm::assemble_library(&program, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR)
-            .map_err(|e| format!("assembling ZisK library: {e}"))?
-    };
 
     let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
     let guest_syms = get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;

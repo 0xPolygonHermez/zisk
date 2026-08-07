@@ -10,6 +10,6 @@ pub mod utils;
 
 pub use assembler::{
     assemble, assemble_files, assemble_files_with_defines, assemble_library,
-    assemble_library_files, ZiskLibrary,
+    assemble_library_files, assemble_library_sources, ZiskLibrary,
 };
 pub use utils::collect_zisk_files;
