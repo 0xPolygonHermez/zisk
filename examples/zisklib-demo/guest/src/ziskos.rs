@@ -20,3 +20,24 @@
 pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
     0xBAD_0000_0000_u64.wrapping_add(a).wrapping_add(b)
 }
+
+/// `keccak256(input[0..len])` → `output[0..32]`. Implemented in ziskasm as
+/// `zisklib_keccak` (current constraint: `len % 8 == 0`, `input` 8-byte aligned).
+/// The placeholder fills the output with a sentinel (`0xBA`), so a correct hash
+/// proves the ziskasm routine ran in its place.
+///
+/// `black_box` on ALL arguments is essential: the redirected `zisklib_keccak`
+/// reads `input`/`len` from `a0`/`a1`, but a placeholder that ignored them would
+/// let the optimizer elide setting up those argument registers at the call site
+/// (it only needs `output`), leaving garbage in `a0`/`a1` for the real routine.
+///
+/// # Safety
+/// `input` must point to `len` readable bytes and `output` to 32 writable bytes.
+#[unsafe(no_mangle)]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_keccak(input: *const u8, len: usize, output: *mut u8) {
+    let (_input, _len, output) = core::hint::black_box((input, len, output));
+    for i in 0..32usize {
+        unsafe { output.add(i).write(0xBA) };
+    }
+}

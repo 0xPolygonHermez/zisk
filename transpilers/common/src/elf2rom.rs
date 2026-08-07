@@ -61,7 +61,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // intercepted `ziskos_*` stub is redirected to the matching `zisklib_*` routine.
     const ZISK_LIBRARY_SRC: &str = include_str!("../../../ziskasm/lib/zisklib.zisk");
     // (guest stub symbol, library function symbol)
-    const REDIRECTS: &[(&str, &str)] = &[("ziskos_add", "zisklib_add")];
+    const REDIRECTS: &[(&str, &str)] =
+        &[("ziskos_add", "zisklib_add"), ("ziskos_keccak", "zisklib_keccak")];
 
     let library = {
         let program = ziskasm::parser::parse_program(ZISK_LIBRARY_SRC, "zisklib")
