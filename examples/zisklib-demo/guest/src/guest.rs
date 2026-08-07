@@ -8,19 +8,14 @@
 
 ziskos::entrypoint!(main);
 
-#[path = "ziskos.rs"]
-mod stubs;
-
 use core::hint::black_box;
-use stubs::{ziskos_add, ziskos_keccak};
+use zisklib::{keccak256, ziskos_add};
 
-/// keccak256 via the redirected ziskasm `zisklib_keccak`, checked against the
-/// reference ziskos sponge. Returns whether they match.
+/// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → redirected
+/// `zisklib_keccak`), checked against the reference ziskos sponge.
 fn keccak_matches(input: &[u8]) -> bool {
     let reference = ziskos::zisklib::keccak256(input);
-    let mut mine = [0u8; 32];
-    // SAFETY: `input` is a valid slice; `mine` is 32 writable bytes.
-    unsafe { ziskos_keccak(input.as_ptr(), input.len(), mine.as_mut_ptr()) };
+    let mine = keccak256(input);
     mine == reference
 }
 

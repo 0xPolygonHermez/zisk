@@ -8163,6 +8163,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisklib"
+version = "0.1.0"
+
+[[package]]
 name = "ziskos"
 version = "1.2.0-alpha"
 dependencies = [

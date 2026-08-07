@@ -7303,9 +7303,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zisklib"
+version = "0.1.0"
+
+[[package]]
 name = "zisklib-demo-guest"
 version = "0.1.0"
 dependencies = [
+ "zisklib",
  "ziskos",
 ]
 
