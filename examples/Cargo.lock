@@ -1090,9 +1090,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5add81bb678e6cb321aff7fa0dc7689ad82b112dbc032cea19f91d6b8e3582b9"
+checksum = "9066c49992464636f92905fa096ec58baaa4d57ec19a5c096c68d3e25ef3d136"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1531,7 +1531,7 @@ dependencies = [
 [[package]]
 name = "curves"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "fields",
  "num-bigint",
@@ -1933,7 +1933,7 @@ dependencies = [
 [[package]]
 name = "exps-codegen"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "anyhow",
  "rayon",
@@ -2020,7 +2020,7 @@ dependencies = [
 [[package]]
 name = "fields"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -2030,9 +2030,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+checksum = "26b73573e6edcd2af0cdf47bd6cb58f0b3839491263c314eaad1ccf24430e1de"
 
 [[package]]
 name = "fixed-cache"
@@ -3635,7 +3635,7 @@ dependencies = [
 [[package]]
 name = "pil-std-lib"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "colored",
  "fields",
@@ -3655,7 +3655,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "anyhow",
  "clap",
@@ -3682,7 +3682,7 @@ dependencies = [
 [[package]]
 name = "pilout"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -4051,7 +4051,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "bincode",
  "blake3",
@@ -4085,7 +4085,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "bincode",
  "borsh",
@@ -4116,7 +4116,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "fields",
  "itoa",
@@ -4129,7 +4129,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4139,7 +4139,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "crossbeam-channel",
  "tracing",
@@ -4148,7 +4148,7 @@ dependencies = [
 [[package]]
 name = "proofman-util"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "bincode",
  "colored",
@@ -4159,7 +4159,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "bincode",
  "fields",
@@ -5540,7 +5540,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 [[package]]
 name = "stark-recurser"
 version = "0.1.0"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "anyhow",
  "fields",
@@ -5797,6 +5797,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d050e60b33d41c19108b32cea32164033a9013fe3b46cbd4457559bfbf77afaa"
 dependencies = [
  "num_cpus",
+]
+
+[[package]]
+name = "tikv-jemalloc-sys"
+version = "0.6.1+5.3.0-1-ge13ca993e8ccb9ba9847cc330696e02839f328f7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd8aa5b2ab86a2cefa406d889139c162cbb230092f7d1d7cbc1716405d852a3b"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
+name = "tikv-jemallocator"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0359b4327f954e0567e69fb191cf1436617748813819c94b8cd4a431422d053a"
+dependencies = [
+ "libc",
+ "tikv-jemalloc-sys",
 ]
 
 [[package]]
@@ -6879,7 +6899,7 @@ checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 [[package]]
 name = "witness"
 version = "1.0.0-beta"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#bc3fc0c972030883e24c1c65863c1c16ac571f33"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.1.0-alpha#ec89f233e3bb85c355e2e10c0ca69f7e3e190954"
 dependencies = [
  "colored",
  "fields",
@@ -7109,6 +7129,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.19",
+ "tikv-jemallocator",
  "tracing",
  "zisk-core",
  "zisk-definitions",

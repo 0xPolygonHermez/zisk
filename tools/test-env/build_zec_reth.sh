@@ -31,6 +31,9 @@ main() {
         fi
     fi
 
+    # Also covers DISABLE_CLONE_REPO=1, where the checkout is reused as-is.
+    ensure_submodules "zisk-eth-client" || return 1
+
     GUEST_DIR="zisk-eth-client/bin/guests/stateless-validator-reth"
     ELF_FILE="${GUEST_DIR}/target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth"
     GUEST_CARGO_TOML="${GUEST_DIR}/Cargo.toml"
