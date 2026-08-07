@@ -88,7 +88,7 @@ reference `ziskos::zisklib::keccak256`) is in
 
 | Rust API (`zisklib::`) | ziskasm routine | Notes |
 |------------------------|-----------------|-------|
-| `keccak256(input: &[u8]) -> [u8; 32]` | `zisklib_keccak` | keccak256 digest. **Constraint (current impl):** `input.len() % 8 == 0` and `input` 8-byte aligned. |
+| `keccak256(input: &[u8]) -> [u8; 32]` | `zisklib_keccak` | keccak256 digest of any-length, any-alignment input. |
 | `ziskos_add(a: u64, b: u64) -> u64` | `zisklib_add` | Demo / smoke-test (a + b). |
 
 The surface grows over time; see "Adding a routine" below.
@@ -203,9 +203,10 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
   run natively, give the wrapper a real fallback behind `#[cfg(not(zisk_guest))]`.
 - **Use the repository `cargo-zisk`** to build guests (`target/debug/cargo-zisk`),
   not a stale installed release.
-- **Current keccak constraint:** `len % 8 == 0`, 8-byte-aligned input. The wrapper
-  is the right place to later hide this (copy into an aligned, length-padded
-  buffer) so the API accepts an arbitrary `&[u8]`.
+- **Performance:** keep the hot loop cheap. `zisklib_keccak` absorbs full rate
+  blocks in a tight word loop (same cost whatever the length) and does byte-level
+  work only for the ≤7-byte final tail, so arbitrary-length support adds no penalty
+  to word-aligned inputs — no need for a separate fast path.
 
 ## File map
 

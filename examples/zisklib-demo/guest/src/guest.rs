@@ -22,6 +22,11 @@ const KECCAK_BIG144: [u8; 32] = [
     0x52, 0xa0, 0x48, 0xee, 0x61, 0x22, 0x1c, 0x82, 0x92, 0xa1, 0x24, 0x59, 0x91, 0xe1, 0x22, 0x27,
     0x69, 0x41, 0x71, 0x29, 0x5a, 0xab, 0xc4, 0x03, 0xf0, 0x15, 0xe9, 0xc9, 0x57, 0x2c, 0x5e, 0xbd,
 ];
+// keccak256 of the 13-byte input [0,1,..,12] — a non-multiple-of-8 length.
+const KECCAK_13: [u8; 32] = [
+    0xa1, 0xb3, 0x65, 0xd4, 0x5c, 0x3c, 0xde, 0x59, 0xc2, 0x47, 0xb8, 0x1f, 0xcf, 0xee, 0xb1, 0xc5,
+    0x84, 0xcd, 0xad, 0x57, 0x3d, 0xfc, 0x2e, 0x3b, 0xb3, 0x2d, 0x42, 0x25, 0xd6, 0xbf, 0xe9, 0x89,
+];
 
 /// keccak256 via the ziskasm-backed wrapper (`zisklib::keccak256` → redirected
 /// `zisklib_keccak`), checked against a hardcoded expected digest.
@@ -43,6 +48,9 @@ fn main() {
     let words: [u64; 18] = core::array::from_fn(|i| (i as u64).wrapping_mul(0x0101_0101_0101_0101));
     let big: &[u8] = unsafe { core::slice::from_raw_parts(words.as_ptr() as *const u8, 18 * 8) };
     let big_ok = keccak_matches(big, &KECCAK_BIG144);
+    // Non-multiple-of-8 length (13 bytes): exercises the byte-level final block.
+    let odd: [u8; 13] = core::array::from_fn(|i| i as u8);
+    let odd_ok = keccak_matches(&odd, &KECCAK_13);
 
     // 3. inv256: an odd input is invertible (the ziskasm routine verifies
     // a*inv ≡ 1 mod 2^256 before returning); an even input is not.
@@ -55,9 +63,9 @@ fn main() {
     let inv_ok = inv256(&black_box([3u64, 0, 0, 0])) == Some(inv_expected);
     let noinv_ok = inv256(&black_box([2u64, 0, 0, 0])).is_none();
 
-    let ok = sum == 7 && empty_ok && big_ok && inv_ok && noinv_ok;
+    let ok = sum == 7 && empty_ok && big_ok && odd_ok && inv_ok && noinv_ok;
     ziskos::io::commit(&ok);
     println!(
-        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} inv256={inv_ok} noinv={noinv_ok} => ok={ok}"
+        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} inv256={inv_ok} noinv={noinv_ok} => ok={ok}"
     );
 }

@@ -35,10 +35,10 @@ pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
 }
 
 /// `keccak256(input[0..len])` → `output[0..32]`. Raw ABI boundary redirected to
-/// `zisklib_keccak` (current constraint: `len % 8 == 0`, `input` 8-byte aligned).
-/// The placeholder fills `output` with a sentinel (`0xBA`), so a correct hash
-/// proves the ziskasm routine ran. `black_box` on all arguments is essential (see
-/// the crate docs): otherwise the optimizer would elide the `a0`/`a1` setup.
+/// `zisklib_keccak` (any `len`, any `input` alignment). The placeholder fills
+/// `output` with a sentinel (`0xBA`), so a correct hash proves the ziskasm routine
+/// ran. `black_box` on all arguments is essential (see the crate docs): otherwise
+/// the optimizer would elide the `a0`/`a1` setup.
 ///
 /// # Safety
 /// `input` must point to `len` readable bytes and `output` to 32 writable bytes.
@@ -52,12 +52,9 @@ pub unsafe extern "C" fn ziskos_keccak(input: *const u8, len: usize, output: *mu
 }
 
 /// Ergonomic Rust API over the raw [`ziskos_keccak`] boundary: the keccak256 digest
-/// of `input`. Marshals the `&[u8]` into `(ptr, len)` and returns the `[u8; 32]`
-/// buffer; only those flattened primitives cross into ziskasm.
-///
-/// Current constraint inherited from `zisklib_keccak`: `input.len() % 8 == 0` and
-/// `input` 8-byte aligned. (A future version can hide this by copying into an
-/// aligned, length-padded scratch buffer.)
+/// of `input` (any length, any alignment). Marshals the `&[u8]` into `(ptr, len)`
+/// and returns the `[u8; 32]` buffer; only those flattened primitives cross into
+/// ziskasm.
 pub fn keccak256(input: &[u8]) -> [u8; 32] {
     let mut out = [0u8; 32];
     // SAFETY: `input` is a valid slice of `input.len()` bytes; `out` is 32 writable bytes.
