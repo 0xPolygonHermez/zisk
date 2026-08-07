@@ -10,7 +10,7 @@
 //! Input memory is populated by the emulator; the program reads it and writes its
 //! output to `OUTPUT_ADDR`, which the BIOS finalization reads back on return.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 
 use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp};
@@ -66,6 +66,88 @@ pub fn assemble_files_with_defines<P: AsRef<Path>>(
     assemble(&program)
 }
 
+/// A hand-written `.zisk` library assembled for merging into a program ROM. Unlike
+/// [`assemble`], there is no launcher / `_start` / BIOS: it is a set of callable
+/// functions placed at a fixed base, plus the exported symbol table (label / data
+/// name → address) used to resolve calls into it (see the RISC-V symbol-redirect in
+/// `transpilers/common/src/elf2rom.rs`).
+pub struct ZiskLibrary {
+    /// Assembled instructions keyed by ROM address (`rom_base + 4*i`, file order).
+    pub insts: BTreeMap<u64, ZiskInstBuilder>,
+    /// Read-only (`const`) data sections, placed right after the code.
+    pub ro_data: Vec<DataSection64>,
+    /// Read-write (non-`const`) data sections, placed at `ram_base`.
+    pub rw_data: Vec<DataSection64>,
+    /// Exported symbols: every label and data name → its address.
+    pub symbols: HashMap<String, u64>,
+}
+
+/// Reads and assembles `.zisk` source files as a [`ZiskLibrary`] (library mode:
+/// no launcher, code at `rom_base`, non-`const` data at `ram_base`).
+pub fn assemble_library_files<P: AsRef<Path>>(
+    paths: &[P],
+    rom_base: u64,
+    ram_base: u64,
+) -> Result<ZiskLibrary, String> {
+    let mut program = Program::default();
+    for path in paths {
+        let path = path.as_ref();
+        let name = path.to_string_lossy().to_string();
+        let src =
+            std::fs::read_to_string(path).map_err(|e| format!("cannot read `{name}`: {e}"))?;
+        let parsed = parser::parse_program(&src, &name)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
+    }
+    assemble_library(&program, rom_base, ram_base)
+}
+
+/// Assembles an already-parsed program as a [`ZiskLibrary`] at the given bases.
+/// Functions are placed in file order at `rom_base + 4*i`; `const` data follows the
+/// code (32-byte aligned), non-`const` data goes to `ram_base`. No BIOS / launcher /
+/// entry point is added, and the pc→instruction lookup is left for the host ROM to
+/// rebuild after the merge.
+pub fn assemble_library(
+    program: &Program,
+    rom_base: u64,
+    ram_base: u64,
+) -> Result<ZiskLibrary, String> {
+    let instructions = &program.instructions;
+    let addr_of = |i: usize| rom_base + INST_SIZE as u64 * i as u64;
+
+    // `const` data right after the code (32-byte aligned, as the ROM-init trace
+    // requires); non-`const` data at `ram_base`.
+    let rom_data_base = addr_of(instructions.len()).next_multiple_of(32);
+    let (ro_section, rw_section, data_syms) = layout_data(&program.data, rom_data_base, ram_base);
+
+    // Symbol table: every label (function/local) and data name → address.
+    let mut sym_ref: HashMap<&str, u64> = HashMap::new();
+    for (i, inst) in instructions.iter().enumerate() {
+        if let Some(label) = &inst.label {
+            if sym_ref.insert(label.as_str(), addr_of(i)).is_some() {
+                return Err(format!("duplicate symbol `{label}`"));
+            }
+        }
+    }
+    for &(name, addr) in &data_syms {
+        if sym_ref.insert(name, addr).is_some() {
+            return Err(format!("duplicate symbol `{name}`"));
+        }
+    }
+
+    // Encode into a throwaway ROM (no BIOS / launcher / optimize); `bios_finalize`
+    // is unused because library code returns via `ret`, never `ret_to_bios`.
+    let mut rom = ZiskRom::default();
+    rom.ro_data_64.extend(ro_section);
+    rom.rw_data_64.extend(rw_section);
+    for (i, inst) in instructions.iter().enumerate() {
+        encode(&mut rom, addr_of(i), inst, &sym_ref, 0)?;
+    }
+
+    let symbols = sym_ref.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+    Ok(ZiskLibrary { insts: rom.insts, ro_data: rom.ro_data_64, rw_data: rom.rw_data_64, symbols })
+}
+
 /// Assembles an already-parsed program (instructions + data) into a `ZiskRom`.
 pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
     if program.instructions.is_empty() {
@@ -119,7 +201,8 @@ pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
     // (32-byte) rows anchored at the section address (state-machines/rom), matching
     // the RISC-V transpiler's aligned section starts, so proving works.
     let rom_data_base = addr_of(ordered.len()).next_multiple_of(32);
-    let (ro_section, rw_section, data_syms) = layout_data(&program.data, rom_data_base);
+    let (ro_section, rw_section, data_syms) =
+        layout_data(&program.data, rom_data_base, GENERAL_RAM_ADDR);
 
     // Symbol table: labels (code addresses) + data names. Used to resolve jump
     // targets and symbolic operands. Names must be unique across both.
@@ -175,12 +258,13 @@ pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
 fn layout_data(
     data: &[DataDecl],
     rom_data_base: u64,
+    ram_data_base: u64,
 ) -> (Option<DataSection64>, Option<DataSection64>, Vec<(&str, u64)>) {
     let mut ro: Vec<u64> = Vec::new();
     let mut rw: Vec<u64> = Vec::new();
     let mut syms: Vec<(&str, u64)> = Vec::new();
     for d in data {
-        let base = if d.is_const { rom_data_base } else { GENERAL_RAM_ADDR };
+        let base = if d.is_const { rom_data_base } else { ram_data_base };
         let buf = if d.is_const { &mut ro } else { &mut rw };
         syms.push((d.name.as_str(), base + buf.len() as u64 * 8));
         for k in 0..d.count {
@@ -196,7 +280,7 @@ fn layout_data(
     rw.resize(rw.len().next_multiple_of(4), 0);
 
     let ro_section = (!ro.is_empty()).then_some(DataSection64 { addr: rom_data_base, data: ro });
-    let rw_section = (!rw.is_empty()).then_some(DataSection64 { addr: GENERAL_RAM_ADDR, data: rw });
+    let rw_section = (!rw.is_empty()).then_some(DataSection64 { addr: ram_data_base, data: rw });
     (ro_section, rw_section, syms)
 }
 

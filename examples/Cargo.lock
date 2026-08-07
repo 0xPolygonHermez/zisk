@@ -6241,6 +6241,7 @@ dependencies = [
  "riscv",
  "zisk-core",
  "zisk-definitions",
+ "ziskasm",
 ]
 
 [[package]]
@@ -7263,6 +7264,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ziskasm"
+version = "1.2.0-alpha"
+dependencies = [
+ "riscv",
+ "zisk-core",
+]
+
+[[package]]
 name = "ziskemu"
 version = "1.2.0-alpha"
 dependencies = [
@@ -7290,6 +7299,14 @@ dependencies = [
  "zisk-core",
  "zisk-definitions",
  "zisk-pil",
+ "ziskasm",
+]
+
+[[package]]
+name = "zisklib-demo-guest"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
 ]
 
 [[package]]

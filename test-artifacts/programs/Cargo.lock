@@ -6157,6 +6157,7 @@ dependencies = [
  "riscv",
  "zisk-core",
  "zisk-definitions",
+ "ziskasm",
 ]
 
 [[package]]

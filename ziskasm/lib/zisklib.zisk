@@ -1,0 +1,20 @@
+; ============================================================================
+; zisklib.zisk - hand-written ZisK library routines callable from a RISC-V guest.
+;
+; These functions are assembled in "library mode" (no launcher/_start/BIOS) and
+; placed at ZISKLIB_ROM_ADDR, just below the float library. A RISC-V guest calls
+; a matching `ziskos_*` stub; the transpiler (elf2rom) redirects the stub's entry
+; to the `zisklib_*` implementation here (symbol redirect), and the routine's
+; `ret` returns to the guest caller.
+;
+; ABI (RISC-V C convention; ZisK registers = RISC-V registers):
+;   - arguments in r10..r17 (a0..a7), return value in r10 (a0)
+;   - return address in r1 (ra); reached via a tail-jump, so `ret` goes to the guest
+;   - a callee MUST preserve r8/r9 and r18..r27 (s0..s11), r2 (sp), r3/r4 (gp/tp);
+;     scratch freely in r5..r7 (t0..t2), r12..r17, r28..r31 (t3..t6)
+; ============================================================================
+
+; u64 zisklib_add(u64 a, u64 b) -> a + b
+zisklib_add:
+	add(r10, r11) -> r10           ; r10 = a0 + a1
+	ret

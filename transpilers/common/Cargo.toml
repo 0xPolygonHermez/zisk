@@ -11,6 +11,7 @@ categories = { workspace = true }
 zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
 riscv = { workspace = true }
+ziskasm = { workspace = true }
 elf = "0.7.4"
 
 [build-dependencies]

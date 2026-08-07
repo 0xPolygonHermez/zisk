@@ -1,16 +1,17 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::elf_extraction::{
-    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_ro_sections,
+    collect_elf_payload_from_bytes, get_symbol_addresses_and_sizes_from_bytes, merge_ro_sections,
     validate_entry_point, ElfPayload,
 };
 use riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, add_zisk_code};
+use std::collections::HashMap;
 use std::{error::Error, path::Path};
 use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
-use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
+use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR, ZISKLIB_RAM_ADDR, ZISKLIB_ROM_ADDR};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
@@ -55,8 +56,31 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // e_entry rather than booting from a fixed address).
     validate_entry_point(&payloads[elf_index])?;
 
-    // Get DMA function addresses: (memcpy, memcmp, memset, memmove)
-    let dma_addrs = get_dma_symbol_addresses(elf);
+    // Assemble the hand-written ZisK library (library mode) at its reserved region,
+    // then build the guest-symbol → library-entry redirect map: a RISC-V call to an
+    // intercepted `ziskos_*` stub is redirected to the matching `zisklib_*` routine.
+    const ZISK_LIBRARY_SRC: &str = include_str!("../../../ziskasm/lib/zisklib.zisk");
+    // (guest stub symbol, library function symbol)
+    const REDIRECTS: &[(&str, &str)] = &[("ziskos_add", "zisklib_add")];
+
+    let library = {
+        let program = ziskasm::parser::parse_program(ZISK_LIBRARY_SRC, "zisklib")
+            .map_err(|e| format!("assembling ZisK library: {e}"))?;
+        ziskasm::assemble_library(&program, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR)
+            .map_err(|e| format!("assembling ZisK library: {e}"))?
+    };
+
+    let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
+    let guest_syms = get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;
+    let mut redirects: HashMap<u64, (u64, u64)> = HashMap::new();
+    for (guest_name, lib_name) in REDIRECTS {
+        if let Some(&(guest_addr, size)) = guest_syms.get(*guest_name) {
+            let lib_addr = *library.symbols.get(*lib_name).ok_or_else(|| {
+                format!("ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)")
+            })?;
+            redirects.insert(guest_addr, (lib_addr, size));
+        }
+    }
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
@@ -71,9 +95,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     for (i, payload) in payloads.into_iter().enumerate() {
         let ElfPayload { entry_point, exec, ro, rw } = payload;
 
-        // Add executable code sections
+        // Add executable code sections (redirects intercept guest library stubs).
         for section in &exec {
-            add_zisk_code(&mut rom, section.addr, &section.data, dma_addrs);
+            add_zisk_code(&mut rom, section.addr, &section.data, &redirects);
         }
 
         // Add read-only data sections.  They will be stored in ROM, but there can be some RAM
@@ -214,6 +238,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             DataSection64 { addr: section.addr, data }
         })
         .collect();
+
+    // Merge the ZisK library (only when something redirects into it): its
+    // instructions and data live in the reserved region, disjoint from the guest.
+    if !redirects.is_empty() {
+        rom.insts.extend(library.insts);
+        rom.ro_data_64.extend(library.ro_data);
+        rom.rw_data_64.extend(library.rw_data);
+    }
 
     // Preprocess the ROM
     // Split the ROM instructions based on their address to improve performance when
@@ -392,21 +424,6 @@ fn normalize_rw_data_sections(sections: Vec<DataSection>) -> Vec<DataSection> {
     }
 
     result
-}
-
-/// Get DMA function addresses from ELF data
-/// Returns (memcpy, memcmp, memset, memmove), with 0 for missing symbols
-fn get_dma_symbol_addresses(elf_data: &[u8]) -> (u64, u64, u64, u64) {
-    let symbols = ["memcpy", "memcmp", "memset", "memmove"];
-    match get_symbol_addresses_from_bytes(elf_data, &symbols) {
-        Ok(addrs) => (
-            addrs.get("memcpy").copied().unwrap_or(0),
-            addrs.get("memcmp").copied().unwrap_or(0),
-            addrs.get("memset").copied().unwrap_or(0),
-            addrs.get("memmove").copied().unwrap_or(0),
-        ),
-        Err(_) => (0, 0, 0, 0),
-    }
 }
 
 /// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a

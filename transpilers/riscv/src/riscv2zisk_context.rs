@@ -1517,6 +1517,21 @@ impl Riscv2ZiskContext<'_> {
     //    jal rd, label
     //          flag(0,0), j(pc + imm) -> [rd]
     /// Implements the RISC-V jump-and-link inconditional jump instruction
+    /// Emits a tail-jump from an intercepted guest function's entry to a ziskasm
+    /// library entry. A *static* jump to a constant address (`copyb` imm + `set_pc`),
+    /// so `ra`/`r1` is untouched and the library's `ret` returns to the guest caller —
+    /// the same shape as ziskasm's `jump()`. Compiles to a direct `jmp` on x86.
+    pub fn emit_symbol_redirect(&mut self, at_addr: u64, lib_addr: u64) {
+        let mut zib = ZiskInstBuilder::new_from_riscv(at_addr, "zisklib_redirect".to_string());
+        zib.src_a("imm", 0, false);
+        zib.src_b("imm", lib_addr, false);
+        zib.op("copyb").unwrap();
+        zib.set_pc();
+        zib.j(0, 4);
+        zib.verbose(&format!("zisklib redirect -> 0x{lib_addr:x}"));
+        zib.build(self.rom);
+    }
+
     pub fn jal(&mut self, i: &RiscvInst, inst_size: u64) {
         assert!(inst_size == 4 || inst_size == 2);
         let mut zib = ZiskInstBuilder::new_from_riscv(i.rom_address, i.inst_name.to_string());
@@ -2598,9 +2613,20 @@ impl Riscv2ZiskContext<'_> {
 /// Converts a buffer with RISC-V data into a vector of Zisk instructions, using the
 /// Riscv2ZiskContext to perform the instruction transpilation
 /// dma_addrs: (memcpy, memcmp, memset, memmove) addresses, 0 if not present
-pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64, u64, u64, u64)) {
-    //print!("add_zisk_code() addr={}\n", addr);
-
+/// Transpiles a RISC-V code section into ZisK instructions.
+///
+/// `redirects` maps an intercepted guest-function entry address to
+/// `(library_entry_address, function_byte_size)`. When transpilation reaches such
+/// an entry, it emits a single tail-jump into the ZisK library (via
+/// [`Riscv2ZiskContext::emit_symbol_redirect`]) and skips the function body, so
+/// the hand-written `.zisk` implementation runs in the guest function's place. An
+/// empty map transpiles the section verbatim.
+pub fn add_zisk_code(
+    rom: &mut ZiskRom,
+    addr: u64,
+    data: &[u8],
+    redirects: &std::collections::HashMap<u64, (u64, u64)>,
+) {
     // Convert input data to a u32 vector
     let code_vector: Vec<u16> = convert_vector(data);
 
@@ -2617,20 +2643,32 @@ pub fn add_zisk_code(rom: &mut ZiskRom, addr: u64, data: &[u8], _dma_addrs: (u64
     };
 
     // For all RISCV instructions
+    let mut skip_until: u64 = 0;
     for (i, riscv_instruction) in riscv_instructions.iter().enumerate() {
-        //print!("add_zisk_code() converting RISCV instruction={}\n",
-        // riscv_instruction.to_string());
+        let inst_addr = riscv_instruction.rom_address;
+
+        // Inside the body of an intercepted function: skip (it was redirected).
+        if inst_addr < skip_until {
+            continue;
+        }
+
+        // At an intercepted function's entry: emit a tail-jump to the library and
+        // skip the rest of the original body.
+        if let Some(&(lib_addr, size)) = redirects.get(&inst_addr) {
+            ctx.emit_symbol_redirect(inst_addr, lib_addr);
+            skip_until = inst_addr + size;
+            continue;
+        }
 
         // Get slice of remaining instructions after current one
         let next_instructions = &riscv_instructions[(i + 1)..];
 
-        // Convert RICV instruction to ZisK instruction and store it in rom.insts
+        // Convert RISCV instruction to ZisK instruction and store it in rom.insts
         ctx.input_precompile = ctx.output_precompile;
         ctx.output_precompile = None;
         ctx.input_precompile_reg = ctx.output_precompile_reg;
         ctx.output_precompile_reg = None;
         ctx.convert(riscv_instruction, next_instructions);
-        //print!("   to: {}", ctx.insts.iter().last().)
     }
 }
 
