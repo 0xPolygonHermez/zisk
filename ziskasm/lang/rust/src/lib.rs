@@ -88,6 +88,42 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
     out
 }
 
+/// BLAKE2b compression function F (RFC 7693). Raw ABI boundary redirected to
+/// `zisklib_blake2b_compress`: mixes message block `message[0..16]` into state
+/// `state[0..8]` over `rounds` rounds with 128-bit counter `offset[0..2]` and
+/// finalization flag `final_block`; `state` is updated in place. This is the
+/// low-level primitive — the caller handles message blocking and padding.
+/// Distinct sentinel (`0x0B2B…`); the 5-argument signature is unique anyway.
+///
+/// # Safety
+/// `state` must point to a writable `[u64; 8]`, `message` to a readable `[u64; 16]`,
+/// and `offset` to a readable `[u64; 2]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_blake2b_compress(
+    rounds: u32,
+    state: *mut u64,
+    message: *const u64,
+    offset: *const u64,
+    final_block: u8,
+) {
+    let (rounds, state, message, offset, final_block) =
+        black_box((rounds, state, message, offset, final_block));
+    let _ = (rounds, message, offset, final_block);
+    for i in 0..8usize {
+        state.add(i).write(0x0B2B_0B2B_0B2B_0B2B);
+    }
+}
+
+/// Ergonomic wrapper over [`ziskos_blake2b_compress`]: one BLAKE2b compression,
+/// mixing message block `m` into state `h` over `rounds` rounds with counter `t`
+/// and finalization flag `f` (`h` updated in place). Mirrors ziskos
+/// `blake2b_compress`.
+pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 2], f: bool) {
+    // SAFETY: `h`/`m`/`t` are valid arrays of the required lengths (`h` writable).
+    unsafe { ziskos_blake2b_compress(rounds, h.as_mut_ptr(), m.as_ptr(), t.as_ptr(), f as u8) };
+}
+
 /// `a^(-1) mod 2^256` if it exists, else "not invertible". Raw ABI boundary
 /// redirected to `zisklib_uint256.zisk`'s `zisklib_inv256`: returns `1` and writes
 /// `result[0..4]` when `a` is invertible (odd), `0` otherwise. The placeholder

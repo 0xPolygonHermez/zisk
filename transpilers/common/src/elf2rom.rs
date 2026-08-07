@@ -65,6 +65,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("zisklib_add", include_str!("../../../ziskasm/lib/zisklib_add.zisk")),
         ("zisklib_keccak", include_str!("../../../ziskasm/lib/zisklib_keccak.zisk")),
         ("zisklib_sha256", include_str!("../../../ziskasm/lib/zisklib_sha256.zisk")),
+        ("zisklib_blake2b", include_str!("../../../ziskasm/lib/zisklib_blake2b.zisk")),
         ("zisklib_uint256", include_str!("../../../ziskasm/lib/zisklib_uint256.zisk")),
     ];
     // (guest stub symbol, library function symbol)
@@ -72,6 +73,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_add", "zisklib_add"),
         ("ziskos_keccak", "zisklib_keccak"),
         ("ziskos_sha256", "zisklib_sha256"),
+        ("ziskos_blake2b_compress", "zisklib_blake2b_compress"),
         ("ziskos_inv256", "zisklib_inv256"),
         ("ziskos_overflowing_add256", "zisklib_overflowing_add256"),
         ("ziskos_overflowing_sub256", "zisklib_overflowing_sub256"),

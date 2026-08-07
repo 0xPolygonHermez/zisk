@@ -1,0 +1,139 @@
+; ============================================================================
+; zisklib_blake2b.zisk - BLAKE2b compression function F (RFC 7693) for the ZisK
+; library, callable from a RISC-V guest via the elf2rom symbol redirect. See
+; zisklib_keccak.zisk for the shared calling convention.
+;
+; This is a 1:1 port of ziskos `blake2b_compress`: it mixes one message block `m`
+; into the hash state `h` over `rounds` iterations, using the 128-bit counter `t`
+; and the finalization flag `f`. It is the low-level primitive; message blocking
+; and padding are the caller's responsibility.
+;
+; Each round is one `blake2` precompile call. The precompile takes a 3-word header
+; [index, &state, &input]: `index` is the round index in [0,10) (a direct value),
+; `state` is the 16-u64 working vector `v` (updated in place), `input` is the
+; 16-u64 message block `m`.
+;
+; Internal labels are prefixed `b2_`.
+; ============================================================================
+
+; BLAKE2b initialization vectors.
+const u64 BLK_IV[8] =
+	0x6A09E667F3BCC908, 0xBB67AE8584CAA73B, 0x3C6EF372FE94F82B, 0xA54FF53A5F1D36F1,
+	0x510E527FADE682D1, 0x9B05688C2B3E6C1F, 0x1F83D9ABFB41BD6B, 0x5BE0CD19137E2179
+
+; RAM scratch: the 16-u64 working vector `v` and the 3-word precompile header
+; [index, &v, &m].
+u64 BLK_V[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLK_HDR[3] = 0, 0, 0
+
+; ----------------------------------------------------------------------------
+; void zisklib_blake2b_compress(u32 rounds, u64* h, const u64* m, const u64* t,
+;                               u8 f)
+;   Updates h[0..8] in place: mixes message block m[0..16] over `rounds` rounds
+;   with counter t[0..2] and finalization flag f. Args: r10=rounds, r11=&h,
+;   r12=&m, r13=&t, r14=f. Caller-saved regs only; r5 holds the header address
+;   across every round.
+; ----------------------------------------------------------------------------
+zisklib_blake2b_compress:
+	; --- v[0..8] = h[0..8] ---
+	copyb(0, r11) -> r6
+	copyb(0, BLK_V) -> r7
+	copyb(0, 8) -> r15
+b2_cph:
+	eq(r15, 0), j(b2_iv)
+	copyb(r6, 8[a + 0]) -> r5
+	copyb(r7, r5) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r15, 1) -> r15
+	jump(b2_cph)
+b2_iv:
+	; --- v[8..12] = IV[0..4] ---
+	copyb(0, BLK_IV) -> r6
+	copyb(0, BLK_V) -> r7
+	add(r7, 64) -> r7                  ; &v[8]
+	copyb(0, 4) -> r15
+b2_civ:
+	eq(r15, 0), j(b2_t)
+	copyb(r6, 8[a + 0]) -> r5
+	copyb(r7, r5) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r15, 1) -> r15
+	jump(b2_civ)
+b2_t:
+	; --- v[12] = t[0] ^ IV[4] ---
+	copyb(r13, 8[a + 0]) -> r5         ; t[0]
+	copyb(0, BLK_IV) -> r6
+	add(r6, 32) -> r6                  ; &IV[4]
+	copyb(r6, 8[a + 0]) -> r7
+	xor(r5, r7) -> r5
+	copyb(0, BLK_V) -> r6
+	add(r6, 96) -> r6                  ; &v[12]
+	copyb(r6, r5) -> 8[a + 0]
+	; --- v[13] = t[1] ^ IV[5] ---
+	copyb(r13, 8[a + 8]) -> r5         ; t[1]
+	copyb(0, BLK_IV) -> r6
+	add(r6, 40) -> r6                  ; &IV[5]
+	copyb(r6, 8[a + 0]) -> r7
+	xor(r5, r7) -> r5
+	copyb(0, BLK_V) -> r6
+	add(r6, 104) -> r6                 ; &v[13]
+	copyb(r6, r5) -> 8[a + 0]
+	; --- v[14] = IV[6] ^ (f ? 0xff..ff : 0) ---
+	copyb(0, BLK_IV) -> r6
+	add(r6, 48) -> r6                  ; &IV[6]
+	copyb(r6, 8[a + 0]) -> r5          ; IV[6]
+	eq(r14, 0), j(b2_v14)              ; f == 0 -> no inversion
+	xor(r5, 0xffffffffffffffff) -> r5
+b2_v14:
+	copyb(0, BLK_V) -> r6
+	add(r6, 112) -> r6                 ; &v[14]
+	copyb(r6, r5) -> 8[a + 0]
+	; --- v[15] = IV[7] ---
+	copyb(0, BLK_IV) -> r6
+	add(r6, 56) -> r6                  ; &IV[7]
+	copyb(r6, 8[a + 0]) -> r5
+	copyb(0, BLK_V) -> r6
+	add(r6, 120) -> r6                 ; &v[15]
+	copyb(r6, r5) -> 8[a + 0]
+
+	; --- round loop: for r in 0..rounds, blake2(index = r % 10, v, m) ---
+	copyb(0, BLK_HDR) -> r5            ; r5 = &header (reserved from here)
+	copyb(0, BLK_V) -> r6
+	copyb(r5, r6) -> 8[a + 8]          ; header[1] = &v
+	copyb(r5, r12) -> 8[a + 16]        ; header[2] = &m
+	copyb(0, 0) -> r13                 ; index = 0 (cycles 0..9)
+b2_round:
+	eq(r10, 0), j(b2_finalize)
+	copyb(r5, r13) -> 8[a + 0]         ; header[0] = index
+	blake2(0, r5)                      ; one round; v updated in place
+	add(r13, 1) -> r13
+	ltu(r13, 10), j(b2_dec)            ; index stays < 10
+	copyb(0, 0) -> r13                 ; wrap 10 -> 0
+b2_dec:
+	sub(r10, 1) -> r10
+	jump(b2_round)
+
+b2_finalize:
+	; --- h[i] ^= v[i] ^ v[i+8] for i in 0..8 ---
+	copyb(0, r11) -> r6                ; &h[i]
+	copyb(0, BLK_V) -> r7              ; &v[i]
+	copyb(0, BLK_V) -> r14
+	add(r14, 64) -> r14                ; &v[i+8]
+	copyb(0, 8) -> r15
+b2_fin:
+	eq(r15, 0), j(b2_done)
+	copyb(r6, 8[a + 0]) -> r5          ; h[i]
+	copyb(r7, 8[a + 0]) -> r13         ; v[i]
+	xor(r5, r13) -> r5
+	copyb(r14, 8[a + 0]) -> r13        ; v[i+8]
+	xor(r5, r13) -> r5
+	copyb(r6, r5) -> 8[a + 0]          ; h[i] = h[i] ^ v[i] ^ v[i+8]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	add(r14, 8) -> r14
+	sub(r15, 1) -> r15
+	jump(b2_fin)
+b2_done:
+	ret

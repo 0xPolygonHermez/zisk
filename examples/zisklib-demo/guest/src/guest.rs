@@ -10,12 +10,12 @@ ziskos::entrypoint!(main);
 
 use core::hint::black_box;
 use zisklib::{
-    add_mod256, checked_add256, checked_div256, checked_mul256, checked_pow256, checked_square256,
-    checked_sub256, div_ceil256, div_rem256, inv256, inv_mod256, keccak256, mul_mod256,
-    overflowing_add256, overflowing_mul256, overflowing_pow256, pow_mod256, reduce_mod256,
-    saturating_pow256, saturating_sub256, sha256, square_mod256, wrapping_add256, wrapping_mul256,
-    wrapping_neg256, wrapping_pow256, wrapping_rem256, wrapping_square256, wrapping_sub256,
-    ziskos_add,
+    add_mod256, blake2b_compress, checked_add256, checked_div256, checked_mul256, checked_pow256,
+    checked_square256, checked_sub256, div_ceil256, div_rem256, inv256, inv_mod256, keccak256,
+    mul_mod256, overflowing_add256, overflowing_mul256, overflowing_pow256, pow_mod256,
+    reduce_mod256, saturating_pow256, saturating_sub256, sha256, square_mod256, wrapping_add256,
+    wrapping_mul256, wrapping_neg256, wrapping_pow256, wrapping_rem256, wrapping_square256,
+    wrapping_sub256, ziskos_add,
 };
 
 // Hardcoded expected keccak256 digests (independent of any keccak API), so the
@@ -85,6 +85,32 @@ fn main() {
     let sha_ok = sha256_matches(&[], &SHA256_EMPTY)
         && sha256_matches(b"abc", &SHA256_ABC)
         && sha256_matches(&a56, &SHA256_56A);
+
+    // 2c. BLAKE2b compression: one final compression of the empty message
+    // reproduces blake2b512("") = 786a02f7...9be2ce, checking the state ends up
+    // equal to that digest's eight little-endian words.
+    let mut h = black_box([
+        0x6A09_E667_F2BD_C948, // IV[0] ^ 0x01010040 (nn=64, kk=0)
+        0xBB67_AE85_84CA_A73B,
+        0x3C6E_F372_FE94_F82B,
+        0xA54F_F53A_5F1D_36F1,
+        0x510E_527F_ADE6_82D1,
+        0x9B05_688C_2B3E_6C1F,
+        0x1F83_D9AB_FB41_BD6B,
+        0x5BE0_CD19_137E_2179,
+    ]);
+    blake2b_compress(12, &mut h, &black_box([0u64; 16]), &black_box([0u64; 2]), true);
+    let blake2b_ok = h
+        == [
+            0x0359_0142_F702_6A78,
+            0x72D2_5225_85FD_C6C6,
+            0x6147_58E1_4047_2F91,
+            0x1954_1FF7_17E2_868A,
+            0x5358_EEAF_3110_5ED2,
+            0x4BB0_4E93_4464_8913,
+            0x55B7_4814_5B68_3A90,
+            0xCEE2_9BFE_1A70_6FD5,
+        ];
 
     // 3. inv256: an odd input is invertible (the ziskasm routine verifies
     // a*inv ≡ 1 mod 2^256 before returning); an even input is not.
@@ -162,6 +188,7 @@ fn main() {
         && big_ok
         && odd_ok
         && sha_ok
+        && blake2b_ok
         && inv_ok
         && noinv_ok
         && addsub_ok
@@ -172,6 +199,6 @@ fn main() {
         && pow_ok;
     ziskos::io::commit(&ok);
     println!(
-        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} => ok={ok}"
+        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} blake2b={blake2b_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} => ok={ok}"
     );
 }
