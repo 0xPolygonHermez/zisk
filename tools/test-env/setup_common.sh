@@ -157,11 +157,17 @@ compute_input_hash() (
     pil2_stark_setup_source="trees:$(printf '%s\nworktree:%s\n' "$trees" "$wt" | sha256_hex)"
   else
     # Not a git checkout — content-hash the source files of the same paths.
+    # Same extension set as the untracked-file filter above, so a build input
+    # that busts the key in a checkout busts it here too. Paths go into the
+    # digest alongside contents, so a rename or a swap of two files is visible.
     wt="$(cd "$PROOFMAN_DIR" && find "${setup_tree_paths[@]}" -type f \
             \( -name '*.rs' -o -name '*.toml' -o -name '*.cpp' -o -name '*.hpp' \
                -o -name '*.c' -o -name '*.h' -o -name '*.cu' -o -name '*.cuh' \
-               -o -name '*.asm' -o -name '*.json' -o -name '*.circom' -o -name Makefile \) \
-          2>/dev/null | LC_ALL=C sort | xargs cat 2>/dev/null | sha256_hex)"
+               -o -name '*.asm' -o -name '*.json' -o -name '*.circom' -o -name '*.ejs' \
+               -o -name '*.js' -o -name '*.sh' -o -name '*.mk' -o -name Makefile \) \
+          2>/dev/null | LC_ALL=C sort \
+          | while IFS= read -r f; do printf '== %s ==\n' "$f"; cat "$f" || true; done \
+          | sha256_hex)"
     pil2_stark_setup_source="local-content:$wt"
   fi
   echo "pil2-stark-setup key: $pil2_stark_setup_source" >&2
