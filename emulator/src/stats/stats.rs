@@ -309,12 +309,19 @@ impl Stats {
 
     /// Acts on the status code returned by `memory_read`/`memory_write`: an invalid access is an
     /// error, and a monitored access is logged with its execution context.
-    fn handle_mem_status(&self, status: u32, is_write: bool, address: u64, width: u64, value: u64) {
+    fn handle_mem_status(
+        &self,
+        status: u32,
+        is_write: bool,
+        address: u64,
+        width: u64,
+        _value: u64,
+    ) {
         if status & MEM_ACCESS_INVALID != 0 {
             self.report_invalid_mem_access(is_write, address, width);
         }
         if status & MEM_ACCESS_MONITOR != 0 {
-            self.monitor_mem_access(is_write, address, width, value);
+            // self.monitor_mem_access(is_write, address, width, value);
         }
     }
 
@@ -343,6 +350,7 @@ impl Stats {
 
     /// Logs a monitored memory access (e.g. a double 4/8-byte access) with its execution context:
     /// pc, function, address, width, read/write, misalignment offset (`address % 8`) and value.
+    #[allow(dead_code)]
     fn monitor_mem_access(&self, is_write: bool, address: u64, width: u64, value: u64) {
         let pc = self.current_pc;
         if is_write {
