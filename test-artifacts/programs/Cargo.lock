@@ -2949,6 +2949,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "keccakf_cache"
+version = "0.1.0"
+dependencies = [
+ "ziskos",
+]
+
+[[package]]
 name = "konst"
 version = "0.2.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"

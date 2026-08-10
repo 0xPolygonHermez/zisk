@@ -64,8 +64,11 @@ const CSR_FCALL_ADDR_END: u16 = 0x8DF;
 const CSR_FCALL_GET_ADDR: u16 = 0xFFE;
 const CSR_FCALL_PARAM_ADDR_START: u16 = 0x8F0;
 const CSR_FCALL_PARAM_ADDR_END: u16 = 0x8FF;
+/// Word count of each fcall parameter port, indexed by its offset from
+/// [`CSR_FCALL_PARAM_ADDR_START`]. Must match `words_to_port` in ziskos's `ziskos_fcall_param!`:
+/// the guest picks the port from this table, the transpiler reads the count back out of it.
 const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
-    [1, 2, 4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 128, 256];
+    [1, 2, 4, 8, 12, 16, 20, 24, 25, 32, 48, 64, 80, 96, 128, 256];
 
 const CAUSE_EXIT: u64 = 93;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;

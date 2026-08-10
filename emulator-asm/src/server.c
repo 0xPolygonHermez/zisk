@@ -23,6 +23,7 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
+#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
 
 /****************************/
 /* EMULATION FAULT RECOVERY */
@@ -946,6 +947,9 @@ void server_reset_fast (void)
 
 void server_reset_slow (void)
 {
+    // Release the Keccak-f cache built during the emulation that just finished
+    keccakf_cache_free();
+
     // Reset RAM and ROM data for next emulation
     {
 #ifdef DEBUG
@@ -1009,6 +1013,9 @@ void server_run (void)
     {
         memset((void *)trace_address, 0, trace_size);
     }
+
+    // Start this emulation with an empty Keccak-f cache: it only lives for one execution
+    keccakf_cache_reset();
 
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
