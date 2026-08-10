@@ -11,7 +11,7 @@ pub enum ExecutorError {
     /// The ASM MT reader delivered a chunk whose index does not extend the
     /// progressive minimal-trace store contiguously (main-witness advancement
     /// relies on in-order delivery).
-    #[error("main advancement: chunk {got} delivered with store at {expected}")]
+    #[error("main advancement: expected next chunk index {expected}, got {got}")]
     ChunkOutOfOrder {
         /// Index the reader delivered.
         got: usize,

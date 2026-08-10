@@ -126,8 +126,8 @@ impl ExecutionPhase {
                 caller_stats_scope,
                 chunk_hook,
             ),
-            // Rust emulator returns only on completion: the hook is not called
-            // per chunk; the caller's finalize covers all segments instead.
+            // Rust emulator returns only on completion: the hook is never called;
+            // the caller's post-run batch path releases every Main instance.
             None => self.emulator_rust.execute::<F>(zisk_rom, stdin),
         }
     }
