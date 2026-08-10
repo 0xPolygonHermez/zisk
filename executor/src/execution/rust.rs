@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use crate::{
     pub_outs_collector::PubOutsCollector, BackendArtifacts, CountersChunkMetrics, ExecutionOutput,
@@ -54,7 +54,7 @@ impl EmulatorRust {
 
         // Wrap once at the boundary: downstream (planning, witness, the
         // progressive main store) shares chunks as Arcs.
-        let min_traces = min_traces.into_iter().map(std::sync::Arc::new).collect();
+        let min_traces = min_traces.into_iter().map(Arc::new).collect();
 
         Ok(ExecutionOutput {
             min_traces,

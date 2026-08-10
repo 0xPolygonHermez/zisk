@@ -49,7 +49,7 @@ struct WorkerCtx<'a, F: PrimeField64> {
 
     // ── Inputs ──
     zisk_rom: &'a ZiskRom,
-    min_traces: &'a [std::sync::Arc<EmuTrace>],
+    min_traces: &'a [Arc<EmuTrace>],
     pctx: &'a ProofCtx<F>,
 
     // ── Output sinks ──
@@ -110,7 +110,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// - `global_id_chunks[global_id]` = list of chunk_ids this instance needs
     pub fn compute_chunks_to_execute(
         &self,
-        min_traces: &[std::sync::Arc<EmuTrace>],
+        min_traces: &[Arc<EmuTrace>],
         secn_instances: &HashMap<usize, &dyn Instance<F>>,
     ) -> (Vec<Vec<usize>>, HashMap<usize, Vec<usize>>) {
         let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];

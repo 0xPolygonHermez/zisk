@@ -1,7 +1,7 @@
 //! [`InstanceSet`] — populated main + secondary state-machine instance maps.
 
 use std::collections::HashMap;
-use std::sync::{PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock};
 
 use fields::PrimeField64;
 use sm_main::MainInstance;
@@ -14,7 +14,7 @@ pub struct InstanceSet<F: PrimeField64> {
     // drops the guard before computing, so the incremental main advancement
     // (which takes the write lock from the emulator's reader thread) is never
     // blocked behind a witness computation.
-    pub main_instances: RwLock<HashMap<usize, std::sync::Arc<MainInstance<F>>>>,
+    pub main_instances: RwLock<HashMap<usize, Arc<MainInstance<F>>>>,
 
     /// Secondary state machine instances, indexed by their global ID.
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
