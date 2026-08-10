@@ -407,8 +407,10 @@ impl<F: PrimeField64> MainInstance<F> {
     /// chunk range, and padding the missing rows would quietly yield a truncated
     /// Main witness that only surfaces as a global-constraint failure.
     ///
-    /// An empty slice is left to [`MainSmError::EmptyFillTraceOutput`], which
-    /// already rejects it further down `compute_witness`.
+    /// An empty *non-final* segment is short like any other and is rejected here.
+    /// An empty *final* segment is the one case left to
+    /// [`MainSmError::EmptyFillTraceOutput`], which already rejects it further
+    /// down `compute_witness` and names the actual problem.
     ///
     /// # Errors
     /// - [`MainSmError::IncompleteSegment`] if a non-final segment is short.
