@@ -1,0 +1,10 @@
+; ============================================================================
+; zisklib_fcall.zisk - fcall IDs shared across every ZisK library precompile
+; family. Holds only `pub define`s (visible library-wide via the multi-file
+; pre-pass); no routines or data. Mirrors ziskos keeping the FCALL_*_ID constants
+; in a shared `fcalls/mod.rs` rather than per operation.
+; ============================================================================
+
+pub define FCALL_UINT256_DIV     19 ; hints quotient + remainder
+pub define FCALL_UINT256_INV     20 ; hints inverse mod 2^256
+pub define FCALL_UINT256_INV_MOD 21 ; hints modular inverse / gcd witness

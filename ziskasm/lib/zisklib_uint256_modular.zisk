@@ -9,7 +9,7 @@
 ; header [&a, &b, &c, &module, &d]. The precompile requires module != 0, so the
 ; Rust wrappers short-circuit module in {0,1} and never call these with such a
 ; modulus. Inputs need not be canonical (< module); the result is always reduced.
-; FREE_INPUT / FCALL_UINT256_INV_MOD come from the common file's `pub define`s.
+; FREE_INPUT / FCALL_UINT256_INV_MOD are `pub define`s in zisklib_mem/zisklib_fcall.
 ; ============================================================================
 
 ; RAM scratch for inv_mod's no-inverse witness, stored contiguously:

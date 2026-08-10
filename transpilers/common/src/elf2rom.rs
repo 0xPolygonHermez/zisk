@@ -62,6 +62,10 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // The library sources are embedded at compile time, one file per precompile
     // family; add a family by dropping in its `.zisk` file and listing it here.
     const ZISK_LIBRARY: &[(&str, &str)] = &[
+        // Library-wide shared `pub define`s (memory-map constants and fcall IDs),
+        // visible to every family file via the multi-file pre-pass.
+        ("zisklib_mem", include_str!("../../../ziskasm/lib/zisklib_mem.zisk")),
+        ("zisklib_fcall", include_str!("../../../ziskasm/lib/zisklib_fcall.zisk")),
         ("zisklib_add", include_str!("../../../ziskasm/lib/zisklib_add.zisk")),
         ("zisklib_keccak", include_str!("../../../ziskasm/lib/zisklib_keccak.zisk")),
         ("zisklib_sha256", include_str!("../../../ziskasm/lib/zisklib_sha256.zisk")),

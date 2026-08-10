@@ -4,7 +4,7 @@
 ; saturating/wrapping mul & square variants are Rust wrappers over the
 ; overflowing core; `inv256` also lives in mul.rs there). Shared data lives in
 ; zisklib_uint256_common.zisk. Internal labels: `um_` (mul), `u2_` (inv256).
-; FREE_INPUT / FCALL_UINT256_INV come from the common file's `pub define`s.
+; FREE_INPUT / FCALL_UINT256_INV are `pub define`s in zisklib_mem/zisklib_fcall.
 ; ============================================================================
 
 ; ----------------------------------------------------------------------------

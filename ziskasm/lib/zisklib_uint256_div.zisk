@@ -3,7 +3,7 @@
 ; ziskos/entrypoint/src/zisklib/lib/uint256/div.rs (the wrapping/checked div &
 ; rem and div_ceil variants are Rust wrappers over this core). Shared data lives
 ; in zisklib_uint256_common.zisk. Internal labels: `ud_`.
-; FREE_INPUT / FCALL_UINT256_DIV come from the common file's `pub define`s.
+; FREE_INPUT / FCALL_UINT256_DIV are `pub define`s in zisklib_mem/zisklib_fcall.
 ; ============================================================================
 
 ; RAM scratch: the hinted quotient (words 0..4) and remainder (words 4..8),
