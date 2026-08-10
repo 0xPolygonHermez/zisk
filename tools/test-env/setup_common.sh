@@ -12,11 +12,11 @@
 #   INCLUDE_PATHS   --include arg for compile-pil
 #
 # Functions this defines:
-#   generate_frops       cargo-run the three frops generators (honors SKIP_COMPILE_PIL)
+#   generate_fixed_data  cargo-run the fixed-column generators (honors SKIP_COMPILE_PIL)
 #   compute_input_hash   print sha256 of the cache-key inputs to stdout
 #
 # Variables this reads (defaulted if unset):
-#   SKIP_COMPILE_PIL     0|1 — when 1, generate_frops is a no-op
+#   SKIP_COMPILE_PIL     0|1 — when 1, generate_fixed_data is a no-op
 
 : "${SKIP_COMPILE_PIL:=0}"
 
@@ -75,20 +75,24 @@ echo "proofman dir: $PROOFMAN_DIR" >&2
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
 INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
 
+# Fixed columns that a PIL loads from disk rather than building itself, either
+# because an interpreted PIL loop would cost minutes of compile time (the
+# jump_dest bitmap table) or because the data comes from a generator (frops).
 # Required inputs to compile-pil and to the input-hash. Cheap to regenerate.
 # Skipped under SKIP_COMPILE_PIL=1: the on-disk *_fixed.bin files are paired
-# with the reused pilout, and frops generation is idempotent given unchanged
+# with the reused pilout, and generation is idempotent given unchanged
 # sources, so regenerating only burns cargo-build time. compute_input_hash
 # checks the bins exist and errors cleanly if they don't.
-generate_frops() {
+generate_fixed_data() {
   if [ "$SKIP_COMPILE_PIL" -eq 1 ]; then
-    echo "==> generating frops fixed data (SKIPPED — reusing existing *_fixed.bin)"
+    echo "==> generating fixed data (SKIPPED — reusing existing *_fixed.bin)"
     return
   fi
-  echo "==> generating frops fixed data"
+  echo "==> generating fixed data"
   cargo run --release --bin arith_frops_fixed_gen
   cargo run --release --bin binary_basic_frops_fixed_gen
   cargo run --release --bin binary_extension_frops_fixed_gen
+  cargo run --release --bin jump_dest_bitmap_table_gen
 }
 
 compute_input_hash() (
@@ -107,6 +111,7 @@ compute_input_hash() (
     state-machines/arith/src/arith_frops_fixed.bin
     state-machines/binary/src/binary_basic_frops_fixed.bin
     state-machines/binary/src/binary_extension_frops_fixed.bin
+    precompiles/evm/src/jump_dest_bitmap_table_fixed.bin
   )
   for f in "${fixed_bins[@]}"; do
     [ -f "$f" ] || { echo "missing fixed binary: $f — run its generator first" >&2; exit 1; }
@@ -126,43 +131,51 @@ compute_input_hash() (
       { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
   fi
 
-  # pil2-stark-setup is a transitive dep, not a workspace member. Prefer its
-  # source straight from Cargo.lock: for a git dep that's a stable
-  #   source = "git+https://.../pil2-proofman.git?branch=X#<sha>"
-  # — the same string on every machine (so the cache key is host-independent).
-  # A local path dep has no `source` line; that case is handled below.
-  # (No jq / cargo-metadata — coreutils only.)
-  pil2_stark_setup_source="$(awk '
-    /^\[\[package\]\]/                { p=0 }
-    /^name = "pil2-stark-setup"$/      { p=1 }
-    p && /^source = /                  { sub(/^source = "/, ""); sub(/"$/, ""); print; exit }
-  ' "$ROOT_DIR/Cargo.lock")"
-  if [ -z "$pil2_stark_setup_source" ]; then
-    # No `source` line => local path dep (local dev). The key is necessarily
-    # machine-specific here, which is correct: on a local checkout you're editing
-    # proofman, so the key MUST track those edits or a stale setup gets reused.
-    # Derive it from the checkout's HEAD plus the working-tree state of the
-    # pil2-stark-setup crate, so uncommitted edits bust the cache.
-    local stark_dir head wt
-    stark_dir="$PROOFMAN_DIR/setup/pil2-stark"
-    if git -C "$PROOFMAN_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-      head="$(git -C "$PROOFMAN_DIR" rev-parse HEAD 2>/dev/null)"
-      # Hash tracked-but-modified + untracked files under the crate dir. Empty
-      # (clean tree) => stable hash of "", so a clean checkout keys off HEAD alone.
-      wt="$( { git -C "$PROOFMAN_DIR" diff HEAD -- "$stark_dir";
-               git -C "$PROOFMAN_DIR" ls-files --others --exclude-standard -- "$stark_dir" \
-                 | while IFS= read -r f; do printf '== %s ==\n' "$f"; cat "$PROOFMAN_DIR/$f"; done
-             } 2>/dev/null | sha256_hex )"
-      pil2_stark_setup_source="local-path:$head:$wt"
-    else
-      # Not a git checkout — hash the crate's source tree contents. cat the files
-      # in sorted order through one digest so the result is path-stable.
-      wt="$(find "$stark_dir" -type f \( -name '*.rs' -o -name '*.toml' \) \
-        | LC_ALL=C sort | xargs cat 2>/dev/null | sha256_hex)"
-      pil2_stark_setup_source="local-path:$wt"
-    fi
-    echo "pil2-stark-setup is a local path dep — using content-derived cache key ($pil2_stark_setup_source)" >&2
+  # pil2-stark-setup is a transitive dep, not a workspace member. Key it by the
+  # content (git tree OIDs + dirty state) of the proofman paths that feed setup
+  # generation — not by the repo SHA from Cargo.lock, which rotates on every
+  # proofman bump even when only prover runtime code changed. The setup crates'
+  # library deps (common/ fields/ pilout/ util/) are deliberately not keyed; if
+  # a proof fails after a bump that cache-hit here, rebuild once with
+  # FORCE_SETUP_BUILD=1 and add the offending path below.
+  local setup_tree_paths=(
+    setup                  # pil2-stark-setup + stark-recurser + exps-codegen
+    pil2-stark             # C++ library that computes the setup artifacts
+    provers/starks-lib-c   # FFI wrapper + build.rs that drives the C++ build
+  )
+  local trees wt p
+  if git -C "$PROOFMAN_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    trees="$(for p in "${setup_tree_paths[@]}"; do
+      printf '%s:%s\n' "$p" \
+        "$(git -C "$PROOFMAN_DIR" rev-parse -q --verify "HEAD:$p" 2>/dev/null || echo absent)"
+    done)"
+    # Uncommitted edits must bust the cache. Untracked files are filtered to
+    # source extensions so build artifacts (libstarks.a lands inside
+    # pil2-stark/) never leak into the key; `|| true` because an empty match
+    # must not abort under pipefail.
+    wt="$( { git -C "$PROOFMAN_DIR" diff HEAD -- "${setup_tree_paths[@]}";
+             git -C "$PROOFMAN_DIR" ls-files --others --exclude-standard -- "${setup_tree_paths[@]}" \
+               | { grep -E '\.(rs|toml|cpp|hpp|c|h|cu|cuh|asm|json|circom|ejs|js|sh|mk)$|(^|/)Makefile$' || true; } \
+               | LC_ALL=C sort \
+               | while IFS= read -r f; do printf '== %s ==\n' "$f"; cat "$PROOFMAN_DIR/$f" || true; done
+           } 2>/dev/null | sha256_hex )"
+    pil2_stark_setup_source="trees:$(printf '%s\nworktree:%s\n' "$trees" "$wt" | sha256_hex)"
+  else
+    # Not a git checkout — content-hash the source files of the same paths.
+    # Same extension set as the untracked-file filter above, so a build input
+    # that busts the key in a checkout busts it here too. Paths go into the
+    # digest alongside contents, so a rename or a swap of two files is visible.
+    wt="$(cd "$PROOFMAN_DIR" && find "${setup_tree_paths[@]}" -type f \
+            \( -name '*.rs' -o -name '*.toml' -o -name '*.cpp' -o -name '*.hpp' \
+               -o -name '*.c' -o -name '*.h' -o -name '*.cu' -o -name '*.cuh' \
+               -o -name '*.asm' -o -name '*.json' -o -name '*.circom' -o -name '*.ejs' \
+               -o -name '*.js' -o -name '*.sh' -o -name '*.mk' -o -name Makefile \) \
+          2>/dev/null | LC_ALL=C sort \
+          | while IFS= read -r f; do printf '== %s ==\n' "$f"; cat "$f" || true; done \
+          | sha256_hex)"
+    pil2_stark_setup_source="local-content:$wt"
   fi
+  echo "pil2-stark-setup key: $pil2_stark_setup_source" >&2
 
   echo "hashing $(wc -l < "$pil_list") .pil files + starkstructs.json + ${#fixed_bins[@]} *_fixed.bin + tool refs" >&2
   {

@@ -14,7 +14,10 @@ use proofman::{
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
-use zisk_pil::get_packed_info;
+use zisk_pil::{
+    get_packed_info, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
+    ZISK_AIRGROUP_ID,
+};
 
 use anyhow::{anyhow, Result};
 use asm_runner::HintsShmem;
@@ -36,39 +39,71 @@ use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 /// ASM-specific configuration options
 #[derive(Clone, Default)]
 pub struct AsmOptions {
+    /// Directory where generated ASM binaries are cached (default when `None`).
     pub asm_path: Option<PathBuf>,
+    /// Skip automatic ROM setup, assuming the artifacts already exist.
     pub no_auto_setup: bool,
+    /// Unlock mapped memory to avoid paging the ASM shared-memory regions.
     pub unlock_mapped_memory: bool,
+    /// Write the ASM emulator's output to a file instead of shared memory.
     pub asm_out_file: bool,
+    /// Run the ASM backend in distributed (multi-process) mode.
     pub is_distributed: bool,
 }
 
 impl AsmOptions {
+    /// Set the ASM binary cache directory.
     pub fn asm_path(mut self, path: PathBuf) -> Self {
         self.asm_path = Some(path);
         self
     }
 
+    /// Enable [`no_auto_setup`](Self::no_auto_setup).
     pub fn no_auto_setup(mut self) -> Self {
         self.no_auto_setup = true;
         self
     }
 
+    /// Enable [`unlock_mapped_memory`](Self::unlock_mapped_memory).
     pub fn unlock_mapped_memory(mut self) -> Self {
         self.unlock_mapped_memory = true;
         self
     }
 
+    /// Enable [`asm_out_file`](Self::asm_out_file).
     pub fn asm_out_file(mut self) -> Self {
         self.asm_out_file = true;
         self
     }
 
+    /// Enable [`is_distributed`](Self::is_distributed).
     pub fn is_distributed(mut self) -> Self {
         self.is_distributed = true;
         self
     }
 }
+
+/// Airs whose const *tree* is kept preallocated on-device, as `(airgroup_id, air_id)`.
+/// Cascades to each air's Basic and Recursive1 circuits. Airgroup 0's Recursive2 tree is
+/// always resident and must not be listed. Costs `const_tree_size` of VRAM per entry and
+/// saves a disk load on every proof of that air, so this is the expensive knob.
+///
+/// Main reproduces the residency proofman hardcoded before it became caller-chosen;
+/// dropping it would silently make every Main proof reload its tree from disk.
+const PRELOADED_CONST_TREE_GPU: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0])];
+
+/// Airs proved at most once per run, as `(airgroup_id, air_id)`. Lets proofman drop their
+/// `("const", false)` region and unpack into the const tree's node area instead, saving
+/// `N * nConstants` of aux trace per stream. Only airs big enough to build their const tree
+/// on the fly are affected; the rest keep the normal layout.
+///
+/// The two virtual tables qualify: each is registered once via `add_table`/`add_table_all`,
+/// so nothing ever reuses their const pols across proofs. Listing an air that IS proved more
+/// than once would re-merkelize its fixed columns on every proof.
+const TABLE_AIRS_GPU: &[(usize, usize)] = &[
+    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0]),
+    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_1_AIR_IDS[0]),
+];
 
 /// Comprehensive prover configuration containing all settings
 #[derive(Clone)]
@@ -152,14 +187,21 @@ impl BackendProverOpts {
 
         if self.gpu {
             options.gpu();
+            // GPU-only knobs, fixed in code rather than exposed as user options: the right
+            // choice depends on the air mix and the card, not on the caller. See the
+            // constants above before changing either list.
+            options.preloaded_const_tree_gpu(PRELOADED_CONST_TREE_GPU.to_vec());
+            options.table_airs_gpu(TABLE_AIRS_GPU.to_vec());
         }
 
         if self.packed {
             options.packed();
         }
 
-        // Only call packed_info when packed or gpu is enabled
-        if self.packed || self.gpu {
+        // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
+        // is the single source of truth — gpu() force-enables it and the executor's row-type gate
+        // reads the same flag — so the two sides can't diverge.
+        if options.packed {
             options.packed_info(get_packed_info());
         }
 
@@ -176,72 +218,87 @@ impl BackendProverOpts {
         options
     }
 
+    /// The ASM-specific options.
     pub fn asm_options(&self) -> &AsmOptions {
         &self.asm_options
     }
 
+    /// Mutable access to the ASM-specific options.
     pub fn asm_options_mut(&mut self) -> &mut AsmOptions {
         &mut self.asm_options
     }
 
+    /// The configured proving-key path, if any (otherwise a default is used).
     pub fn get_proving_key(&self) -> Option<&PathBuf> {
         self.proving_key.as_ref()
     }
 
+    /// The configured SNARK proving-key path, if any.
     pub fn get_proving_key_snark(&self) -> Option<&PathBuf> {
         self.proving_key_snark.as_ref()
     }
 
+    /// Whether PLONK/SNARK proving keys are preloaded.
     pub fn preload_plonk(&self) -> bool {
         self.preload_plonk
     }
 
+    /// Whether the CPU minimal-ops path is enabled.
     pub fn cpu_mops_enabled(&self) -> bool {
         self.cpu_mops
     }
 
     // Builder methods for all configuration
+    /// Enable or disable proof aggregation.
     pub fn aggregation(mut self, value: bool) -> Self {
         self.aggregation = value;
         self
     }
 
+    /// Disable proof aggregation.
     pub fn no_aggregation(mut self) -> Self {
         self.aggregation = false;
         self
     }
 
+    /// Switch to constraint-verification mode (also disables aggregation).
     pub fn verify_constraints(mut self) -> Self {
         self.verify_constraints = true;
         self.aggregation = false;
         self
     }
 
+    /// Verify each generated proof after producing it.
     pub fn verify_proofs(mut self) -> Self {
         self.verify_proofs = true;
         self
     }
 
+    /// Prefer lower memory usage at the cost of speed.
     pub fn minimal_memory(mut self) -> Self {
         self.minimal_memory = true;
         self
     }
 
+    /// Set the verbosity level (`0` = quiet).
     pub fn verbose(mut self, level: u8) -> Self {
         self.verbose = level;
         self
     }
 
+    /// Set the proving-key path.
     pub fn proving_key(mut self, path: PathBuf) -> Self {
         self.proving_key = Some(path);
         self
     }
 
+    /// Set the PLONK/SNARK proving-key path.
     pub fn proving_key_plonk(mut self, path: PathBuf) -> Self {
         self.proving_key_snark = Some(path);
         self
     }
 
+    /// Enable PLONK/SNARK proof generation, optionally preloading its keys.
     pub fn plonk(mut self, preload: bool) -> Self {
         self.plonk = true;
         if preload {
@@ -250,53 +307,72 @@ impl BackendProverOpts {
         self
     }
 
+    /// Use the GPU proving path.
     pub fn gpu(mut self) -> Self {
         self.gpu = true;
         self
     }
 
+    /// Use the CPU minimal-ops path.
     pub fn cpu_mops(mut self) -> Self {
         self.cpu_mops = true;
         self
     }
 
+    /// Enable packed witness/trace layout.
     pub fn packed(mut self) -> Self {
         self.packed = true;
         self
     }
 
+    /// Cap the number of witnesses kept in memory at once.
     pub fn max_witness_stored(mut self, max: usize) -> Self {
         self.max_witness_stored = Some(max);
         self
     }
 
+    /// Set the size of the witness-generation thread pool.
     pub fn number_threads_witness(mut self, threads: usize) -> Self {
         self.number_threads_witness = Some(threads);
         self
     }
 
+    /// Cap the number of concurrent proving streams.
     pub fn max_streams(mut self, max: usize) -> Self {
         self.max_streams = Some(max);
         self
     }
 
+    /// Cap the number of concurrent recursive (aggregation) streams.
     pub fn max_recursive_streams(mut self, max: usize) -> Self {
         self.max_recursive_streams = Some(max);
         self
     }
 
+    /// Replace the ASM-specific options.
     pub fn with_asm_options(mut self, options: AsmOptions) -> Self {
         self.asm_options = options;
         self
     }
 }
 
+/// Result of a single proving phase (alias for proofman's `ProvePhaseResult`).
 pub type ZiskPhaseResult = ProvePhaseResult;
 
+/// Result of the in-job aggregation phase: the aggregated proofs produced by
+/// joining this job's workers.
 pub struct ZiskAggPhaseResult {
+    /// The aggregated proofs.
     pub agg_proofs: Vec<AggProofs>,
 }
 
+/// Backend-specific proving engine.
+///
+/// Implemented by each backend ([`EmuProver`], [`AsmProver`]) to drive setup,
+/// execution, proving, and the distributed/recursion phases. [`ZiskProver`]
+/// wraps an implementor and exposes it through a uniform API. Most methods are
+/// only meaningful for the ASM (distributed worker) backend; those default to
+/// an error or no-op elsewhere, as noted per method.
 pub trait ProverEngine {
     /// Builder type returned by setup()
     type Builder<'a>
@@ -317,14 +393,22 @@ pub trait ProverEngine {
     /// before executing with `.run()`.
     fn setup<'a>(&'a self, elf: &'a GuestProgram) -> Self::Builder<'a>;
 
+    /// This rank's index in the global MPI context (`0` when MPI is unused).
     fn world_rank(&self) -> i32;
 
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    fn n_processes(&self) -> i32;
+
+    /// This rank's index within its node (`0` when MPI is unused).
     fn local_rank(&self) -> i32;
 
+    /// Set the standard input for the next execution or proof.
     fn set_stdin(&self, stdin: ZiskStdin) -> Result<()>;
 
+    /// Register a previously set-up program as the active one.
     fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()>;
 
+    /// Number of steps executed by the last execution or proof run.
     fn executed_steps(&self) -> u64;
 
     /// Per-type execution cost from the last execution or proof run.
@@ -333,8 +417,10 @@ pub trait ProverEngine {
     /// Per-AIR instance plan from the last execution or proof run.
     fn execution_plan(&self) -> Vec<AirInstanceCount>;
 
+    /// Witness metadata and executor timing from the last run.
     fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)>;
 
+    /// Read a range of witness rows for the given instance.
     fn get_instance_trace(
         &self,
         instance_id: usize,
@@ -343,8 +429,10 @@ pub trait ProverEngine {
         offset: Option<usize>,
     ) -> Result<Vec<RowInfo>>;
 
+    /// Read the AIR (air-group) values for the given instance.
     fn get_instance_air_values(&self, instance_id: usize) -> Result<Vec<u64>>;
 
+    /// Read a range of fixed-column rows for the given instance.
     fn get_instance_fixed(
         &self,
         instance_id: usize,
@@ -353,8 +441,11 @@ pub trait ProverEngine {
         offset: Option<usize>,
     ) -> Result<Vec<RowInfo>>;
 
+    /// Run the program without proving and return its output.
     fn execute(&self, program: &GuestProgram, stdin: ZiskStdin) -> Result<ExecuteOutput>;
 
+    /// Collect execution statistics (optionally with debug info); returns the
+    /// world/local ranks and an optional stats handle.
     fn stats(
         &self,
         program: &GuestProgram,
@@ -364,6 +455,7 @@ pub trait ProverEngine {
         mpi_node: Option<u32>,
     ) -> Result<(i32, i32, Option<ExecutorStatsHandle>)>;
 
+    /// Run the program and check its constraints without producing a proof.
     fn verify_constraints(
         &self,
         program: &GuestProgram,
@@ -371,6 +463,7 @@ pub trait ProverEngine {
         debug_info: Option<Option<String>>,
     ) -> Result<VerifyConstraintsOutput>;
 
+    /// Run the program and generate a proof of the requested kind.
     fn prove(
         &self,
         program: &GuestProgram,
@@ -390,6 +483,7 @@ pub trait ProverEngine {
         proof_kind: ProofKind,
     ) -> Result<ProveOutput>;
 
+    /// Run a single proving phase (distributed pipeline).
     fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
@@ -397,6 +491,8 @@ pub trait ProverEngine {
         phase: ProvePhase,
     ) -> Result<ZiskPhaseResult>;
 
+    /// Assign this rank's share of the work: total compute units, the
+    /// per-rank allocation, and this rank's id.
     fn set_partition(
         &self,
         total_compute_units: usize,
@@ -418,10 +514,14 @@ pub trait ProverEngine {
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>>;
 
+    /// The Vadcop verification key (`minimal` selects the minimal variant).
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>>;
 
+    /// Register a recurser setup so it can prove; one-time, must precede
+    /// [`prove_recurser`](Self::prove_recurser).
     fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()>;
 
+    /// Fold two recurser proofs through an already-registered recurser.
     fn prove_recurser(
         &self,
         recurser_id: &str,
@@ -435,6 +535,7 @@ pub trait ProverEngine {
     /// Hash family the loaded proving key was generated with (e.g. "Poseidon1" / "Poseidon2").
     fn hash(&self) -> Result<String>;
 
+    /// Broadcast `data` from rank 0 to all MPI ranks.
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()>;
 
     // --- ASM-only operations ---
@@ -444,36 +545,45 @@ pub trait ProverEngine {
     // State operations (set_active_services, reset) default to no-ops because
     // they are safe to skip when there are no ASM resources to manage.
 
+    /// Submit a precompile-hint blob (ASM only; errors on other backends).
     fn submit_hint(&self, _bytes: &[u8]) -> Result<()> {
         Err(anyhow::anyhow!("submit_hint not supported by this backend"))
     }
 
+    /// Submit an input blob (ASM only; errors on other backends).
     fn submit_input(&self, _bytes: &[u8]) -> Result<()> {
         Err(anyhow::anyhow!("submit_input not supported by this backend"))
     }
 
+    /// Append raw input bytes (ASM only; errors on other backends).
     fn append_raw_input(&self, _bytes: &[u8]) -> Result<()> {
         Err(anyhow::anyhow!("append_raw_input not supported by this backend"))
     }
 
+    /// Register a hints stream source (ASM only; errors on other backends).
     fn register_hints_stream(&self, _stream: StreamSource) -> Result<()> {
         Err(anyhow::anyhow!("register_hints_stream not supported by this backend"))
     }
 
+    /// Register an inputs stream source (ASM only; errors on other backends).
     fn register_inputs_stream(&self, _stream: StreamSource) -> Result<()> {
         Err(anyhow::anyhow!("register_inputs_stream not supported by this backend"))
     }
 
+    /// The precompile hints processor for this backend.
     fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>>;
 
+    /// Activate the backend's out-of-process services (ASM only; no-op elsewhere).
     fn set_active_services(&self, _is_first_process: bool) -> Result<()> {
         Ok(())
     }
 
+    /// Reset per-job backend state (ASM only; no-op elsewhere).
     fn reset(&self) -> Result<()> {
         Ok(())
     }
 
+    /// Notify the backend that the cluster job was cancelled (no-op by default).
     fn notify_cluster_cancellation(&self) {}
 
     /// Collective MPI barrier across all ranks. All ranks must call this for
@@ -496,11 +606,19 @@ pub trait ProverEngine {
     fn wait_until_proofman_ready(&self) {}
 }
 
+/// Marker trait tying a backend to its [`ProverEngine`] implementation.
 pub trait ZiskBackend: Send + Sync {
+    /// The proving engine used by this backend.
     type Prover: ProverEngine + Send + Sync;
 }
 
+/// A configured prover for backend `C`.
+///
+/// Wraps the backend's [`ProverEngine`], caches parsed programs, and exposes
+/// the full execute/prove/verify API. Construct one via
+/// [`ProverClientBuilder`](crate::ProverClientBuilder).
 pub struct ZiskProver<C: ZiskBackend> {
+    /// The underlying backend proving engine.
     pub prover: C::Prover,
     program_cache: RwLock<HashMap<ProgramId, Arc<ZiskRom>>>,
     prover_options: BackendProverOpts,
@@ -512,6 +630,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Self { prover, program_cache: RwLock::new(HashMap::new()), prover_options }
     }
 
+    /// Look up a previously cached parsed program by id.
     pub fn get_cached_program(&self, program_id: &ProgramId) -> Result<Arc<ZiskRom>> {
         let cache =
             self.program_cache.read().map_err(|_| anyhow!("Failed to acquire read lock"))?;
@@ -524,6 +643,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_stdin(stdin)
     }
 
+    /// Make a previously set-up program the active one for the next run.
     pub fn register_program(&self, program_id: &ProgramId, with_hints: bool) -> Result<()> {
         self.prover.register_program(program_id, with_hints)
     }
@@ -532,6 +652,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// If MPI is not used, this will always return 0.
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    pub fn n_processes(&self) -> i32 {
+        self.prover.n_processes()
     }
 
     /// Get the local rank of the prover. The local rank is the rank of the prover in the local MPI context.
@@ -560,6 +685,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         Ok(self.prover.get_execution_info()?.1)
     }
 
+    /// Witness metadata and executor timing from the last run.
     pub fn get_execution_info(&self) -> Result<(WitnessInfo, ZiskExecutorTime)> {
         self.prover.get_execution_info()
     }
@@ -652,6 +778,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         WrapBuilder::new(&self.prover, proof, proof_kind)
     }
 
+    /// Run a single proving phase (distributed pipeline).
     pub fn prove_phase(
         &self,
         phase_inputs: ProvePhaseInputs,
@@ -661,6 +788,7 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.prove_phase(phase_inputs, options, phase)
     }
 
+    /// Assign this rank's share of the work across the cluster.
     pub fn set_partition(
         &self,
         total_compute_units: usize,
@@ -670,10 +798,12 @@ impl<C: ZiskBackend> ZiskProver<C> {
         self.prover.set_partition(total_compute_units, allocation, rank_id)
     }
 
+    /// Register partial proofs received from peer workers of the same job.
     pub fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
         self.prover.register_worker_proofs(agg_proofs)
     }
 
+    /// Join the workers' partial proofs into the job's aggregated proof.
     pub fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
@@ -731,50 +861,62 @@ impl<C: ZiskBackend> ZiskProver<C> {
         )
     }
 
+    /// Submit a precompile-hint blob (ASM backend only).
     pub fn submit_hint(&self, bytes: &[u8]) -> Result<()> {
         self.prover.submit_hint(bytes)
     }
 
+    /// Submit an input blob (ASM backend only).
     pub fn submit_input(&self, bytes: &[u8]) -> Result<()> {
         self.prover.submit_input(bytes)
     }
 
+    /// Append raw input bytes (ASM backend only).
     pub fn append_raw_input(&self, bytes: &[u8]) -> Result<()> {
         self.prover.append_raw_input(bytes)
     }
 
+    /// Register a hints stream source (ASM backend only).
     pub fn register_hints_stream(&self, stream: StreamSource) -> Result<()> {
         self.prover.register_hints_stream(stream)
     }
 
+    /// Register an inputs stream source (ASM backend only).
     pub fn register_inputs_stream(&self, stream: StreamSource) -> Result<()> {
         self.prover.register_inputs_stream(stream)
     }
 
+    /// The precompile hints processor for this backend.
     pub fn get_hints_processor(&self) -> Result<Arc<HintsProcessor<HintsShmem>>> {
         self.prover.get_hints_processor()
     }
 
+    /// Activate the backend's out-of-process services (ASM backend only).
     pub fn set_active_services(&self, is_first_process: bool) -> Result<()> {
         self.prover.set_active_services(is_first_process)
     }
 
+    /// Reset per-job backend state.
     pub fn reset(&self) -> Result<()> {
         self.prover.reset()
     }
 
+    /// Notify the backend that the cluster job was cancelled.
     pub fn notify_cluster_cancellation(&self) {
         self.prover.notify_cluster_cancellation()
     }
 
+    /// Collective MPI barrier across all ranks.
     pub fn cluster_barrier(&self) {
         self.prover.cluster_barrier()
     }
 
+    /// Cancel the in-flight job.
     pub fn cancel(&self) -> Result<()> {
         self.prover.cancel()
     }
 
+    /// Block until any in-flight proofman entry point has returned.
     pub fn wait_until_proofman_ready(&self) {
         self.prover.wait_until_proofman_ready()
     }

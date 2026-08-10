@@ -1,7 +1,7 @@
 use anyhow::Result;
 use borsh::{BorshDeserialize, BorshSerialize};
 use proofman::{AggProofs, AggProofsRegister, ContributionsInfo};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
@@ -79,13 +79,28 @@ where
     }
 }
 
+/// In-flight work handed back by a cancel so the caller can drain it off the
+/// event loop before the prover/shmem is reset for the next job. Both handles
+/// ride the same drain path, so no cancel can leave half its cleanup pending.
+#[derive(Default)]
+pub struct CancelledWork {
+    /// The compute task (proofman/executor round-trip), if one was running.
+    /// Its presence is the authoritative "had a live computation" signal.
+    pub compute: Option<JoinHandle<()>>,
+    /// The stream-ordering thread's shutdown+join task, if a stream was active.
+    pub stream: Option<JoinHandle<()>>,
+}
+
 /// Result from computation tasks
 #[derive(Debug)]
 pub enum ComputationResult {
     /// Execution-only task (no proof generation)
     Execution {
+        /// The job this result belongs to.
         job_id: JobId,
+        /// Whether the task succeeded.
         success: bool,
+        /// On success: `(witness_info, exec_time, instances, executed_steps, cost_per_type, plan)`.
         #[allow(clippy::type_complexity)]
         result: Result<(
             WitnessInfo,
@@ -95,27 +110,43 @@ pub enum ComputationResult {
             StatsCostPerType,
             Vec<AirInstanceCount>,
         )>, // (witness_info, exec_time, instances, executed_steps, cost_per_type, plan)
+        /// When the originating task was received (for latency accounting).
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
     /// Partial contribution with challenges
     Contribution {
+        /// The job this result belongs to.
         job_id: JobId,
+        /// Whether the task succeeded.
         success: bool,
+        /// On success: `(witness_info, exec_time, contributions, instances, cost_per_type)`.
         result:
             Result<(WitnessInfo, ZiskExecutorTime, Vec<ContributionsInfo>, u64, StatsCostPerType)>,
+        /// When the originating task was received.
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
     },
+    /// Partial proofs produced by the prove phase.
     Proofs {
+        /// The job this result belongs to.
         job_id: JobId,
+        /// Whether the task succeeded.
         success: bool,
+        /// The per-airgroup partial proofs on success.
         result: Result<Vec<AggProofs>>,
     },
+    /// Aggregated proof produced by the aggregate phase.
     AggProof {
+        /// The job this result belongs to.
         job_id: JobId,
+        /// Whether the task succeeded.
         success: bool,
+        /// The aggregated proof words on success (`None` for a non-final step).
         result: Result<Option<Vec<Vec<u64>>>>,
+        /// Steps executed for the job (carried through for reporting).
         executed_steps: u64,
+        /// The kind of proof produced.
         proof_type: ProofKind,
+        /// Number of AIR instances (carried through for reporting).
         instances: u64,
     },
     /// Recurser setup or prove result. The blocking handler builds
@@ -124,8 +155,27 @@ pub enum ComputationResult {
     /// way so the heavy work runs off the message loop (heartbeats keep flowing)
     /// without threading recurser-specific shaping through this shared enum.
     RecurserAck {
+        /// The job this ack belongs to.
         job_id: JobId,
+        /// The fully-formed ack message to forward to the coordinator.
         ack: zisk_cluster_api::WorkerMessage,
+    },
+    /// Guest-program setup finished off the message loop. The event loop does the
+    /// `&mut self` registration (map inserts) and forwards the `SetupProgramAck`,
+    /// so the heavy `setup_internal`/ELF write runs without blocking heartbeats.
+    SetupProgramComplete {
+        /// The job the setup was requested for.
+        job_id: JobId,
+        /// The worker that ran the setup (echoed back in the ack).
+        worker_id: String,
+        /// Hash id of the guest program that was set up.
+        hash_id: String,
+        /// Whether the program was set up with hints.
+        with_hints: bool,
+        /// Whether the program was set up for emulation only.
+        emulator_only: bool,
+        /// On success: the verification key and the loaded guest program to register.
+        result: Result<(ProgramVK, Arc<GuestProgram>)>,
     },
 }
 
@@ -138,7 +188,9 @@ pub enum ComputationResult {
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum LoopEvent {
+    /// A computation task finished (boxed because it carries a large payload).
     Computation(Box<ComputationResult>),
+    /// A recovery handshake completed.
     RecoveryComplete(zisk_cluster_api::WorkerRecoveryComplete),
 }
 
@@ -161,14 +213,17 @@ impl std::fmt::Display for LoopChannelClosed {
 impl std::error::Error for LoopChannelClosed {}
 
 impl LoopEventSender {
+    /// Wrap an unbounded channel sender.
     pub fn new(tx: mpsc::UnboundedSender<LoopEvent>) -> Self {
         Self(tx)
     }
 
+    /// Send a computation result to the event loop.
     pub fn send_computation(&self, result: ComputationResult) -> Result<(), LoopChannelClosed> {
         self.0.send(LoopEvent::Computation(Box::new(result))).map_err(|_| LoopChannelClosed)
     }
 
+    /// Send a recovery-complete event to the event loop.
     pub fn send_recovery_complete(
         &self,
         rc: zisk_cluster_api::WorkerRecoveryComplete,
@@ -177,6 +232,7 @@ impl LoopEventSender {
     }
 }
 
+/// Resolved prover configuration for a worker (keys, backend, and tuning knobs).
 pub struct ProverConfig {
     /// Flag indicating whether to use the prebuilt emulator
     pub emulator: bool,
@@ -208,6 +264,9 @@ pub struct ProverConfig {
     /// Enable GPU acceleration
     pub gpu: bool,
 
+    /// Run mops planner on CPU even with GPU proving (leaves proof generation on GPU)
+    pub cpu_mops: bool,
+
     /// Enable PLONK proofs
     pub plonk: bool,
 
@@ -228,6 +287,8 @@ pub struct ProverConfig {
 }
 
 impl ProverConfig {
+    /// Resolve a [`ProverConfig`] from the raw DTO, filling in default key
+    /// paths, building the debug info, and forcing the emulator backend on macOS.
     pub fn load(prover_service_config: ProverServiceConfigDto) -> Result<Self> {
         let proving_key = ZiskPaths::get_proving_key(prover_service_config.proving_key.as_ref());
         let proving_key_snark = if prover_service_config.plonk {
@@ -258,6 +319,7 @@ impl ProverConfig {
             asm_out_file: prover_service_config.asm_out_file,
             minimal_memory: prover_service_config.minimal_memory,
             gpu: prover_service_config.gpu,
+            cpu_mops: prover_service_config.cpu_mops,
             max_streams: prover_service_config.max_streams,
             max_recursive_streams: prover_service_config.max_recursive_streams,
             number_threads_witness: prover_service_config.number_threads_witness,
@@ -271,19 +333,34 @@ impl ProverConfig {
 /// Current job context
 #[derive(Debug, Clone)]
 pub struct JobContext {
+    /// The job's id.
     pub job_id: JobId,
+    /// Content hash of the guest program being proven.
     pub hash_id: String,
+    /// Input/hints data context for the job.
     pub data_ctx: DataCtx,
+    /// This worker's rank within the job.
     pub rank_id: u32,
+    /// Total number of workers assigned to the job.
     pub total_workers: u32,
-    pub allocation: Vec<u32>, // Worker allocation for this job, vector of all computed units assigned
-    pub total_compute_units: u32, // Total compute units for the whole job
+    /// Per-worker compute-unit allocation for this job.
+    pub allocation: Vec<u32>,
+    /// Total compute units across the whole job.
+    pub total_compute_units: u32,
+    /// Current phase of the job.
     pub phase: JobPhase,
+    /// Steps executed so far.
     pub executed_steps: u64,
+    /// Number of AIR instances for the job.
     pub instances: u64,
+    /// When the current task was received (for latency accounting).
     pub task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+    /// Job-level metadata propagated from the coordinator.
+    pub metadata: Option<BTreeMap<String, String>>,
 }
 
+/// A ZisK worker over backend `T`: holds the prover, the current job context
+/// and in-flight compute/MPI tasks, and the set-up guest programs.
 pub struct Worker<T: ZiskBackend + 'static> {
     state: WorkerState,
     current_job: Option<Arc<Mutex<JobContext>>>,
@@ -307,6 +384,7 @@ pub struct Worker<T: ZiskBackend + 'static> {
 }
 
 impl<T: ZiskBackend + 'static> Worker<T> {
+    /// Build an emulator-backed worker from the resolved prover config.
     pub fn new_emu(prover_config: ProverConfig) -> Result<Worker<Emu>> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
@@ -329,6 +407,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
         if prover_config.gpu {
             prover_options = prover_options.gpu();
+        }
+        if prover_config.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
         if let Some(max_streams) = prover_config.max_streams {
             prover_options = prover_options.max_streams(max_streams);
@@ -360,6 +441,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
+    /// Build an ASM-backed worker (distributed mode) from the resolved config.
     pub fn new_asm(prover_config: ProverConfig) -> Result<Worker<Asm>> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
@@ -382,6 +464,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
         if prover_config.gpu {
             prover_options = prover_options.gpu();
+        }
+        if prover_config.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
         if let Some(max_streams) = prover_config.max_streams {
             prover_options = prover_options.max_streams(max_streams);
@@ -424,12 +509,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
+    /// This worker's local MPI rank.
     pub fn local_rank(&self) -> i32 {
         self.prover.local_rank()
     }
 
+    /// This worker's global MPI rank.
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    /// Number of MPI ranks sharing this job (`1` when MPI is unused).
+    pub fn n_processes(&self) -> i32 {
+        self.prover.n_processes()
     }
 
     /// Run setup for a guest program, storing it in the multi-program map.
@@ -437,59 +529,109 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     pub fn run_setup(
         &mut self,
         hash_id: &str,
-        elf_bytes: &[u8],
         with_hints: bool,
         emulator_only: bool,
         new_guest_program: Arc<GuestProgram>,
     ) -> Result<ProgramVK> {
         // Skip if already set up for this (hash_id, with_hints, emulator_only) combination.
-        if let Some(vk) = self.program_vks.get(&SetupKey::new(hash_id, with_hints, emulator_only)) {
+        if let Some(vk) = self.program_vk(hash_id, with_hints, emulator_only) {
             info!(
                 "Received same guest program for setup (hash_id={}, with_hints={}, emulator_only={}). Skipping setup",
                 hash_id, with_hints, emulator_only
             );
-            return Ok(vk.clone());
+            return Ok(vk);
         }
 
+        let vk = Self::setup_compute(
+            self.prover.as_ref(),
+            hash_id,
+            with_hints,
+            emulator_only,
+            &new_guest_program,
+        )?;
+        self.register_setup(hash_id, with_hints, emulator_only, new_guest_program, vk.clone());
+        Ok(vk)
+    }
+
+    /// Content-addressed skip check: returns the cached VK if this program was
+    /// already set up for the given `(hash_id, with_hints, emulator_only)`.
+    pub fn program_vk(
+        &self,
+        hash_id: &str,
+        with_hints: bool,
+        emulator_only: bool,
+    ) -> Option<ProgramVK> {
+        self.program_vks.get(&SetupKey::new(hash_id, with_hints, emulator_only)).cloned()
+    }
+
+    /// Records a completed setup (guest program + VK) so later job dispatch can
+    /// find them and skip re-setup. Takes `&mut self`, so it runs on the event
+    /// loop — see `WorkerNode`'s `SetupProgramComplete` handling.
+    pub fn register_setup(
+        &mut self,
+        hash_id: &str,
+        with_hints: bool,
+        emulator_only: bool,
+        program: Arc<GuestProgram>,
+        vk: ProgramVK,
+    ) {
+        self.guest_programs.insert(hash_id.to_string(), program);
+        self.program_vks.insert(SetupKey::new(hash_id, with_hints, emulator_only), vk);
+    }
+
+    /// Blocking setup compute: broadcasts the ELF to secondary MPI ranks and runs
+    /// `setup_internal`. Split out of `run_setup` so it can run on a blocking pool
+    /// without the `&mut self` map access (which stays on the event loop via
+    /// [`Self::register_setup`]). Does not touch `self`.
+    pub fn setup_compute(
+        prover: &ZiskProver<T>,
+        hash_id: &str,
+        with_hints: bool,
+        emulator_only: bool,
+        guest_program: &Arc<GuestProgram>,
+    ) -> Result<ProgramVK> {
         // Broadcast ELF to secondary MPI ranks before setup (they have no gRPC connection).
         let message = SetupMessage {
             hash_id: hash_id.to_string(),
-            program_name: new_guest_program.name().to_string(),
-            elf_bytes: elf_bytes.to_vec(),
+            program_name: guest_program.name().to_string(),
+            elf_bytes: guest_program.elf().to_vec(),
             with_hints,
             emulator_only,
         };
         let mut serialized = borsh::to_vec(&(WorkerMpiTag::Setup, message))
             .map_err(|e| anyhow::anyhow!("Failed to serialize Setup MPI broadcast: {}", e))?;
-        self.prover.mpi_broadcast(&mut serialized)?;
+        prover.mpi_broadcast(&mut serialized)?;
 
-        let vk =
-            self.prover.prover.setup_internal(&new_guest_program, with_hints, emulator_only)?;
-        self.guest_programs.insert(hash_id.to_string(), new_guest_program);
-        self.program_vks.insert(SetupKey::new(hash_id, with_hints, emulator_only), vk.clone());
+        let vk = prover.prover.setup_internal(guest_program, with_hints, emulator_only)?;
         Ok(vk)
     }
 
+    /// Steps executed by the prover so far.
     pub fn get_executed_steps(&self) -> u64 {
         self.prover.executed_steps()
     }
 
+    /// The worker's current lifecycle state.
     pub fn state(&self) -> &WorkerState {
         &self.state
     }
 
+    /// The resolved prover configuration.
     pub fn connection_config(&self) -> &ProverConfig {
         &self.prover_config
     }
 
+    /// Set the worker's lifecycle state.
     pub fn set_state(&mut self, state: WorkerState) {
         self.state = state;
     }
 
+    /// The current job context, if a job is active.
     pub fn current_job(&self) -> Option<Arc<Mutex<JobContext>>> {
         self.current_job.clone()
     }
 
+    /// Set (or clear, with `None`) the current job context.
     pub fn set_current_job(&mut self, job: Option<JobContext>) {
         if let Some(job) = job {
             self.current_job = Some(Arc::new(Mutex::new(job)));
@@ -498,14 +640,36 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         }
     }
 
+    /// Take the current compute task handle, leaving `None`.
     pub fn take_current_computation(&mut self) -> Option<JoinHandle<()>> {
         self.current_computation.take()
     }
 
+    /// Store the handle of the in-flight compute task.
     pub fn set_current_computation(&mut self, handle: JoinHandle<()>) {
+        if self.has_live_computation() {
+            // Overwriting a live handle DETACHES the running task (drop of a
+            // tokio JoinHandle does not abort): the old proofman computation
+            // keeps running, invisible to cancel/recovery, and can corrupt this
+            // or the next job's GPU work. The dispatch guards should make this
+            // unreachable; scream if it ever happens.
+            tracing::error!(
+                "[DETACHED-COMPUTATION] set_current_computation called while previous computation is still running — old task is now untracked"
+            );
+        }
         self.current_computation = Some(handle);
     }
 
+    /// True while a previously dispatched computation task is still running.
+    /// Used to refuse duplicate phase dispatches: a second concurrent
+    /// `prove_phase`/contribution on the same proofman corrupts stream and
+    /// challenge state (proofs bound to mixed state -> spurious verification
+    /// failures at aggregation).
+    pub fn has_live_computation(&self) -> bool {
+        self.current_computation.as_ref().is_some_and(|h| !h.is_finished())
+    }
+
+    /// The Vadcop verification key (`minimal` selects the minimal variant).
     pub fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.prover.get_vadcop_vk(minimal)
     }
@@ -515,10 +679,12 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.hash()
     }
 
+    /// A shared handle to the underlying prover.
     pub fn prover_arc(&self) -> Arc<ZiskProver<T>> {
         self.prover.clone()
     }
 
+    /// The set-up guest program for `hash_id`, if any.
     pub fn guest_program(&self, hash_id: &str) -> Option<Arc<GuestProgram>> {
         self.guest_programs.get(hash_id).cloned()
     }
@@ -527,34 +693,41 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     /// (its Err arm does the ASM cleanup). Returns the compute handle rather
     /// than dropping it, so recovery can await it off the event loop — letting
     /// the ASM child finish resetting before a new job reuses its shmem.
-    pub fn cancel_current_computation(&mut self) -> Option<JoinHandle<()>> {
+    pub fn cancel_current_computation(&mut self) -> CancelledWork {
         if let Err(e) = self.prover.cancel() {
             tracing::warn!("cancel_current_computation: prover.cancel failed: {e:#}");
         }
 
-        let handle = self.current_computation.take();
-        if handle.is_some() {
+        let compute = self.current_computation.take();
+        if compute.is_some() {
             self.prover.notify_cluster_cancellation();
         }
 
-        if let Some(stream_actor) = self.stream_actor.take() {
+        // Shut the ordering thread down on the blocking pool and hand the join
+        // handle back so the caller drains it (off the event loop, via the same
+        // path as the compute handle) before the next job's `prover.reset()`.
+        // A still-running old ordering thread would otherwise race `process_hints`
+        // on the new stream against the shared HintsProcessor.
+        let stream = self.stream_actor.take().map(|stream_actor| {
             tokio::task::spawn_blocking(move || {
                 stream_actor.shutdown_and_join(STREAM_ACTOR_SHUTDOWN_TIMEOUT);
-            });
-        }
+            })
+        });
 
-        handle
+        CancelledWork { compute, stream }
     }
 
     /// Cancels any in-flight computation and clears the current job context.
     /// Returns the compute handle (if any) for recovery to await — see
     /// [`Self::cancel_current_computation`].
-    pub fn clear_current_job(&mut self) -> Option<JoinHandle<()>> {
-        let handle = self.cancel_current_computation();
+    pub fn clear_current_job(&mut self) -> CancelledWork {
+        let cancelled = self.cancel_current_computation();
         self.current_job = None;
-        handle
+        cancelled
     }
 
+    /// Register the program, reset backend state, and (re)activate services in
+    /// preparation for a new job on this worker.
     pub fn prepare_for_new_job(
         &self,
         hash_id: &str,
@@ -568,12 +741,32 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             .program_id
             .clone();
 
+        // GATE: register_program/reset/set_active_services do NOT take proofman's
+        // `computing` mutex, so they can run concurrently with a still-live
+        // `_generate_proof` from a cancelled previous job (the CancelStaleJob
+        // reconnect path flips the worker Ready via SetupProgramAck without
+        // waiting for the cancelled compute to drain). Resetting proving state
+        // under a live proof corrupts it -> internally inconsistent proofs in
+        // the NEXT job. Block here until the prover is truly idle; log loudly
+        // if we actually had to wait — each occurrence is a caught overlap.
+        let wait_start = std::time::Instant::now();
+        self.prover.wait_until_proofman_ready();
+        let waited = wait_start.elapsed();
+        if waited.as_millis() > 50 {
+            tracing::error!(
+                "[LATE-DRAIN] prepare_for_new_job waited {:?} for a previous computation to exit before reset — premature-Ready overlap caught and prevented",
+                waited
+            );
+        }
+
         self.prover.register_program(&program_id, with_hints)?;
         self.prover.reset()?;
         self.prover.set_active_services(is_first_process)?;
         Ok(())
     }
 
+    /// Install a fresh [`JobContext`] as the current job and mark the worker
+    /// `Computing`. Returns the shared context handle.
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     pub fn new_job(
@@ -586,6 +779,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         allocation: Vec<u32>,
         total_compute_units: u32,
         task_received_time: Option<chrono::DateTime<chrono::Utc>>,
+        metadata: Option<BTreeMap<String, String>>,
     ) -> Arc<Mutex<JobContext>> {
         let current_job = Arc::new(Mutex::new(JobContext {
             job_id: job_id.clone(),
@@ -599,6 +793,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             executed_steps: 0,
             task_received_time,
             instances: 0,
+            metadata,
         }));
         self.current_job = Some(current_job.clone());
 
@@ -607,6 +802,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         current_job
     }
 
+    /// Broadcast the contribution task to peer ranks, then spawn the local
+    /// contribution computation. Returns the compute task handle.
     pub async fn handle_partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -616,7 +813,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(self.partial_contribution(job, tx))
     }
 
+    /// Broadcast the contribution-phase inputs to secondary MPI ranks.
     pub async fn partial_contribution_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
+        // No peers to broadcast to, and serializing copies the whole payload.
+        // `MpiCtx::broadcast` already no-ops below 2 ranks, so this only skips
+        // the serialization; it is point-to-point, so no peer is left probing.
+        if self.n_processes() <= 1 {
+            return Ok(());
+        }
+
         let mut serialized = {
             let job = job.lock().await;
 
@@ -647,6 +852,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
+    /// Broadcast the execution-only task to peer ranks, then spawn the local
+    /// execution. Returns the compute task handle.
     pub async fn handle_execution_only(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -657,7 +864,15 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(self.execution_only(job, hash_id, tx))
     }
 
+    /// Broadcast the execution-only inputs to secondary MPI ranks.
     pub async fn execution_only_mpi_broadcast(&self, job: &Mutex<JobContext>) -> Result<()> {
+        // No peers to broadcast to, and serializing copies the whole payload.
+        // `MpiCtx::broadcast` already no-ops below 2 ranks, so this only skips
+        // the serialization; it is point-to-point, so no peer is left probing.
+        if self.n_processes() <= 1 {
+            return Ok(());
+        }
+
         let mut serialized = {
             let job = job.lock().await;
 
@@ -688,6 +903,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
+    /// Broadcast the prove task (with challenges) to peer ranks, then spawn the
+    /// local prove computation. Returns the compute task handle.
     pub async fn handle_prove(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -698,11 +915,19 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(self.prove(job, challenges, tx))
     }
 
+    /// Broadcast the prove-phase inputs (challenges) to secondary MPI ranks.
     pub async fn prove_mpi_broadcast(
         &self,
         job: &Mutex<JobContext>,
         challenges: Vec<ContributionsInfo>,
     ) -> Result<()> {
+        // No peers to broadcast to, and serializing copies the whole payload.
+        // `MpiCtx::broadcast` already no-ops below 2 ranks, so this only skips
+        // the serialization; it is point-to-point, so no peer is left probing.
+        if self.n_processes() <= 1 {
+            return Ok(());
+        }
+
         let mut serialized = {
             let job = job.lock().await;
 
@@ -720,6 +945,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
+    /// Spawn the aggregation of the given worker proofs. Returns the task handle.
     pub fn handle_aggregate_proofs(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -729,6 +955,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.aggregate(job, agg_params, tx)
     }
 
+    /// Spawn the local contribution computation on a blocking task, emitting a
+    /// [`ComputationResult::Contribution`] to `tx` when done.
     pub fn partial_contribution(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -822,6 +1050,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
+    /// Spawn the local execution-only computation on a blocking task, emitting a
+    /// [`ComputationResult::Execution`] to `tx` when done.
     pub fn execution_only(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -930,6 +1160,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
+    /// Run the contribution phase synchronously: set up stdin/hints and the
+    /// partition, then generate this worker's contribution challenges.
     #[allow(clippy::too_many_arguments)]
     pub fn execute_contribution_task(
         job_id: JobId,
@@ -944,7 +1176,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
 
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            // `from_vec` needs an owned `Vec`.
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data.to_vec()),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
@@ -955,7 +1188,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
-                    let hints_stream = StreamSource::from_vec(hints_data);
+                    let hints_stream = StreamSource::from_vec(hints_data.to_vec());
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
@@ -995,6 +1228,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(challenge)
     }
 
+    /// Run the execute-only phase synchronously and return
+    /// `(num_instances, public_outputs)`. Ends with a cluster barrier so all
+    /// ranks finish before success is reported.
     #[allow(clippy::too_many_arguments)]
     pub fn execute_execution_task(
         prover: &ZiskProver<T>,
@@ -1005,7 +1241,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     ) -> Result<(usize, Vec<u64>)> {
         let stdin = match input_source {
             InputSourceDto::InputPath(inputs_uri) => ZiskStdin::from_file(inputs_uri)?,
-            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data),
+            // `from_vec` needs an owned `Vec`.
+            InputSourceDto::InputData(input_data) => ZiskStdin::from_vec(input_data.to_vec()),
             InputSourceDto::InputNull => ZiskStdin::new(),
         };
 
@@ -1016,7 +1253,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsData(hints_data) => {
-                    let hints_stream = StreamSource::from_vec(hints_data);
+                    let hints_stream = StreamSource::from_vec(hints_data.to_vec());
                     prover.register_hints_stream(hints_stream)?;
                 }
                 HintsSourceDto::HintsStream(_) | HintsSourceDto::HintsNull => {
@@ -1118,6 +1355,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(())
     }
 
+    /// Assign this worker's partition (compute units, allocation, index).
     pub fn set_partition(
         &self,
         total_compute_units: usize,
@@ -1127,6 +1365,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         self.prover.set_partition(total_compute_units, allocation, worker_idx)
     }
 
+    /// Spawn the local prove computation on a blocking task, emitting a
+    /// [`ComputationResult::Proofs`] to `tx` when done.
     pub fn prove(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -1181,6 +1421,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         })
     }
 
+    /// Run the internal prove phase synchronously and return this worker's
+    /// partial proofs.
     pub fn execute_prove_task(
         job_id: JobId,
         prover: &ZiskProver<T>,
@@ -1210,6 +1452,8 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         Ok(proof)
     }
 
+    /// Register peer worker proofs and spawn the join/aggregate computation,
+    /// emitting a [`ComputationResult::AggProof`] to `tx` when done.
     pub fn aggregate(
         &self,
         job: Arc<Mutex<JobContext>>,
@@ -1229,34 +1473,32 @@ impl<T: ZiskBackend + 'static> Worker<T> {
             })
             .collect();
 
-        if let Err(error) = prover.register_worker_proofs(agg_proofs_register) {
-            let job_guard = job.blocking_lock();
-            let job_id = job_guard.job_id.clone();
-            let executed_steps = job_guard.executed_steps;
-            let instances = job_guard.instances;
-
-            if tx
-                .send_computation(ComputationResult::AggProof {
-                    job_id,
-                    success: false,
-                    result: Err(error),
-                    executed_steps,
-                    proof_type: agg_params.proof_type,
-                    instances,
-                })
-                .is_err()
-            {
-                warn!("Failed to send aggregation register error: event loop channel closed");
-            }
-
-            return tokio::spawn(async {});
-        }
-
         tokio::task::spawn_blocking(move || {
             let (job_id, executed_steps, instances) = {
                 let guard = job.blocking_lock();
                 (guard.job_id.clone(), guard.executed_steps, guard.instances)
             };
+
+            // Register peer proofs on the blocking thread: it can fail, and the
+            // error path reads job context via `blocking_lock`, which panics when
+            // called on an async runtime thread. (This previously ran inline on the
+            // event-loop thread, so a registration failure crashed the loop.)
+            if let Err(error) = prover.register_worker_proofs(agg_proofs_register) {
+                if tx
+                    .send_computation(ComputationResult::AggProof {
+                        job_id,
+                        success: false,
+                        result: Err(error),
+                        executed_steps,
+                        proof_type: agg_params.proof_type,
+                        instances,
+                    })
+                    .is_err()
+                {
+                    warn!("Failed to send aggregation register error: event loop channel closed");
+                }
+                return;
+            }
 
             info!("Starting aggregation step for {job_id}");
 
@@ -1347,6 +1589,9 @@ impl<T: ZiskBackend + 'static> Worker<T> {
     // MPI Broadcast handlers for receiving and executing tasks
     // --------------------------------------------------------------------------
 
+    /// Receive one MPI broadcast on a secondary rank and act on its tag:
+    /// feed stream data to the running task, or run setup/execution/
+    /// contribution/prove (with recovery on failure). Aggregate is rejected.
     pub async fn handle_mpi_broadcast_request(&mut self) -> Result<()> {
         let mut bytes: Vec<u8> = Vec::new();
 

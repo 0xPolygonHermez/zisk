@@ -17,8 +17,8 @@ void count_and_plan_destroy(void* h) {
 
 // ─── Pipeline ───────────────────────────────────────────────────────
 bool count_and_plan_setup(void* h, void* d_buf, size_t bytes,
-               uint32_t n_workers, uint32_t worker_id) {
-    return static_cast<CountAndPlan*>(h)->setup(d_buf, bytes, n_workers, worker_id);
+               uint32_t n_workers, uint32_t worker_id, int gpu_id) {
+    return static_cast<CountAndPlan*>(h)->setup(d_buf, bytes, n_workers, worker_id, gpu_id);
 }
 
 bool count_and_plan_add_chunk(void* h, const MemOp* memops, uint32_t n) {
@@ -42,6 +42,11 @@ void count_and_plan_reset(void* h) {
 bool count_and_plan_register_input_pinned(void* h, void* ptr, size_t bytes) {
     if (!h) return false;
     return static_cast<CountAndPlan*>(h)->register_input_pinned(ptr, bytes);
+}
+
+size_t count_and_plan_max_used_bytes(void* h) {
+    if (h == nullptr) return 0;
+    return static_cast<CountAndPlan*>(h)->max_used_bytes();
 }
 
 void count_and_plan_unregister_input_pinned(void* h, void* ptr) {

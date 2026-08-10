@@ -1,4 +1,5 @@
 #include "fcall.hpp"
+#include "../keccakf_cache/keccakf_cache.hpp"
 #include "../common/utils.hpp"
 #include "../common/globals.hpp"
 #include "../bn254/bn254_fe.hpp"
@@ -123,6 +124,16 @@ int Fcall (
         case FCALL_BIGINT_DIV_ID:
         {
             iresult = BigIntDivCtx(ctx);
+            break;
+        }
+        case FCALL_SET_KECCAKF_CACHE_INDEX_ID:
+        {
+            iresult = KeccakfCacheSetIndexCtx(ctx);
+            break;
+        }
+        case FCALL_GET_KECCAKF_CACHE_INDEX_ID:
+        {
+            iresult = KeccakfCacheGetIndexCtx(ctx);
             break;
         }
         default:
@@ -1291,4 +1302,50 @@ int InverseFnEcR1Ctx (
         ctx->result_size = 0;
     }
     return iresult;
+}
+
+/********************/
+/* KECCAK-F CACHE   */
+/********************/
+
+// Asks the cache to register the input state of the next Keccak-f that is executed under the
+// index given as the only parameter. Returns no result
+int KeccakfCacheSetIndexCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    if (ctx->params_size != 1)
+    {
+        printf("KeccakfCacheSetIndexCtx() got params_size=%lu, expected 1\n", ctx->params_size);
+        return -1;
+    }
+    if (ctx->params[0] == KECCAKF_CACHE_INDEX_NOT_FOUND)
+    {
+        printf("KeccakfCacheSetIndexCtx() got the reserved not-found index 0x%lx\n", ctx->params[0]);
+        return -1;
+    }
+
+    keccakf_cache_pending_index = ctx->params[0];
+
+    ctx->result_size = 0;
+    return 0;
+}
+
+// Returns the index the Keccak-f input state given as parameters (25 words) was registered
+// under, or KECCAKF_CACHE_INDEX_NOT_FOUND if it has not been cached
+int KeccakfCacheGetIndexCtx (
+    struct FcallContext * ctx  // fcall context
+)
+{
+    if (ctx->params_size != KECCAKF_STATE_WORDS)
+    {
+        printf("KeccakfCacheGetIndexCtx() got params_size=%lu, expected %d\n",
+            ctx->params_size, KECCAKF_STATE_WORDS);
+        return -1;
+    }
+
+    ctx->result[0] = keccakf_cache_get_index(ctx->params);
+
+    ctx->result_size = 1;
+    return 1;
 }

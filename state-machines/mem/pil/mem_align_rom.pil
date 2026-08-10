@@ -314,13 +314,20 @@ airtemplate MemAlignRom(const int N = MEM_ALIGN_ROM_SIZE, const int CHUNK_NUM = 
         PC[i] = pc;
         DELTA_PC[i] = delta_pc;
         DELTA_ADDR[i] = delta_addr;
+
+        const int is_load_prove = (is_non_aligned_op == 1 && is_write == 0) ? 1 : 0; // 1 in RV and RVR value rows
+        const int sel_w_lt8 = (is_load_prove == 1 && WIDTH[i] < 8) ? 1 : 0;
+        const int sel_w_lt4 = (is_load_prove == 1 && WIDTH[i] < 4) ? 1 : 0;
+        const int sel_w_lt2  = (is_load_prove == 1 && WIDTH[i] < 2) ? 1 : 0;
+
         int flags = 0;
         for (int j = 0; j < CHUNK_NUM; j++) {
             flags += sel[j] * 2**j;
         }
         flags += is_write * 2**CHUNK_NUM + reset * 2**(CHUNK_NUM + 1) + 
                  sel_up_to_down * 2**(CHUNK_NUM + 2) + sel_down_to_up * 2**(CHUNK_NUM + 3) +
-                 is_non_aligned_op * 2**(CHUNK_NUM + 4);
+                 is_non_aligned_op * 2**(CHUNK_NUM + 4) + sel_w_lt8 * 2**(CHUNK_NUM + 5) +
+                 sel_w_lt4 * 2**(CHUNK_NUM + 6) + sel_w_lt2 * 2**(CHUNK_NUM + 7);
         FLAGS[i] = flags;
     }
 

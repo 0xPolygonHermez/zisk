@@ -20,7 +20,7 @@ use crate::{
     ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
 use fields::PrimeField64;
-use proofman_common::{create_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
 use sm_main::MainSM;
 use std::{
@@ -81,7 +81,8 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `verbose_mode` - Verbose mode for logging.
     /// * `shared_tables` - Whether to use shared tables for execution.
     /// * `with_asm_emulator` - Whether the executor supports the ASM backend at runtime.
-    /// * `packed` - Whether to use packed representation for witness computation.
+    /// * `packed` - Whether to use packed representation for witness computation. For Main
+    ///   this selects the compact indexed row (+ instruction table).
     pub fn new(
         wcm: &WitnessManager<F>,
         verbose_mode: proofman_common::VerboseMode,
@@ -182,6 +183,11 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         if let Some(witness) = self.witness.as_ref() {
             witness.set_packed(packed);
         }
+    }
+
+    /// Whether the Main trace is built in the compact indexed form (i.e. packed).
+    pub fn is_packed(&self) -> bool {
+        self.witness.as_ref().map(|w| w.is_packed()).unwrap_or(false)
     }
 
     /// Sets the standard input for execution.
@@ -301,9 +307,12 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         // MO runner joined in `run_secondary`; release the buffer back to proofman.
         // Earlier error paths skip the release on purpose: the MO thread may
-        // still be using the buffer (see `release_gpu_buffer` docs).
+        // still be using the buffer.
         if is_asm_emulator {
             if let Some(extras) = proofman_extras {
+                if let Some(used) = secn_artifacts.gpu_mops_used_bytes {
+                    extras.pctx().report_first_gpu_buffer_usage(used);
+                }
                 extras.release_gpu_buffer();
             }
         }
@@ -407,7 +416,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
 
         stats_begin!(self.state.stats, 0, _witness_scope, "CALCULATE_WITNESS", 0);
 
-        let pool = create_pool(n_cores);
+        let pool = lease_pool(n_cores);
         let adapter = ProofmanAdapter::new(&pctx, &sctx);
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();
@@ -448,7 +457,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             return Ok(());
         }
 
-        let pool = create_pool(n_cores);
+        let pool = lease_pool(n_cores);
         let adapter = ProofmanAdapter::new(&pctx, &sctx);
         let is_asm_emulator = self.execution.is_asm_execution();
         let witness = self.witness_or_panic();

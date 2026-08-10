@@ -4,15 +4,14 @@
 //! It manages collected inputs and interacts with the `BinaryBasicSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryBasicCollector, BinaryBasicSM};
+use crate::{BinaryBasicCollector, BinaryBasicSM, ChunkCollect, ADD_KINDS};
 use fields::PrimeField64;
 use pil_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{BinaryTrace, BinaryTraceRow, BinaryTraceRowPacked};
 
@@ -27,11 +26,9 @@ pub struct BinaryBasicInstance<F: PrimeField64> {
     /// Instance context.
     ictx: InstanceCtx,
 
-    /// Indicates whether the instance should include ADD operations.
-    with_adds: bool,
-
-    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for.
+    collect_info: HashMap<ChunkId, ChunkCollect<ADD_KINDS>>,
 
     /// Standard library instance, providing common functionalities.
     std: Arc<Std<F>>,
@@ -61,22 +58,15 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
 
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
-        let (with_adds, collect_info) = *meta
-            .downcast::<(bool, HashMap<ChunkId, (u64, bool, CollectSkipper)>)>()
+        let collect_info = *meta
+            .downcast::<HashMap<ChunkId, ChunkCollect<ADD_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
-        Self { binary_basic_sm, ictx, with_adds, collect_info, std }
+        Self { binary_basic_sm, ictx, collect_info, std }
     }
 
     pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<F> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        BinaryBasicCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            self.with_adds,
-            force_execute_to_end,
-            self.std.clone(),
-        )
+        BinaryBasicCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
 
@@ -149,14 +139,7 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        Some(Box::new(BinaryBasicCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            self.with_adds,
-            force_execute_to_end,
-            self.std.clone(),
-        )))
+        Some(Box::new(BinaryBasicCollector::new(self.collect_info[&chunk_id], self.std.clone())))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

@@ -124,6 +124,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.witness_generator.set_packed(packed);
     }
 
+    pub fn is_packed(&self) -> bool {
+        self.witness_generator.is_packed()
+    }
+
     pub fn reset(&self) -> ExecutorResult<()> {
         *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")? =
             vec![F::ZERO; RomTrace::<F>::NUM_ROWS];

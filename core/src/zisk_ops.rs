@@ -18,8 +18,8 @@ use crate::{
     ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST,
     DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST,
     DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST,
-    INPUT_ADDR, INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0,
-    SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
+    INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST,
+    REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
 };
 use fields::{
     poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
@@ -32,7 +32,10 @@ use std::{
     str::FromStr,
 };
 use tiny_keccak::keccakf;
-use ziskos::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::{
+    keccakf_cache::KECCAKF_STATE_WORDS, FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_INPUT_READY_ID,
+    FCALL_SET_KECCAKF_CACHE_INDEX_ID,
+};
 
 use crate::ops_core::*;
 use crate::ops_core_context::*;
@@ -59,6 +62,7 @@ pub enum OpType {
     Fcall,
     ArithEq384,
     BigInt,
+    Evm,
     Dma,
     Blake2,
     Profile,
@@ -79,6 +83,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Fcall => ZiskOperationType::Fcall,
             OpType::ArithEq384 => ZiskOperationType::ArithEq384,
             OpType::BigInt => ZiskOperationType::BigInt,
+            OpType::Evm => ZiskOperationType::Evm,
             OpType::Dma => ZiskOperationType::Dma,
             OpType::Blake2 => ZiskOperationType::Blake2,
             OpType::Profile => ZiskOperationType::Profile,
@@ -103,6 +108,7 @@ impl Display for OpType {
             Self::Fcall => write!(f, "Fcall"),
             Self::ArithEq384 => write!(f, "Arith384"),
             Self::BigInt => write!(f, "BigInt"),
+            Self::Evm => write!(f, "Evm"),
             Self::Dma => write!(f, "Dma"),
             Self::Blake2 => write!(f, "Blake2"),
             Self::Profile => write!(f, "Profile"),
@@ -128,6 +134,7 @@ impl FromStr for OpType {
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
             "bint" => Ok(Self::BigInt),
+            "evm" => Ok(Self::Evm),
             "dma" => Ok(Self::Dma),
             "bl" => Ok(Self::Blake2),
             "profile" => Ok(Self::Profile),
@@ -486,7 +493,10 @@ define_ops! {
     (RemuW, "remu_w", ArithA32, ARITHA32_COST, 0xbd, 0, 0, opc_remu_w, op_remu_w, ops_none),
     (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, 0, opc_div_w, op_div_w, ops_none),
     (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, 0, opc_rem_w, op_rem_w, ops_none),
-    // opcpdes 0xc0-0xcf are available
+    // input_size = 8: one synthesized minimal-trace header word (count + number of loaded
+    // source words), followed by the loaded words themselves via data_ext_len.
+    (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
+    // opcpdes 0xc1-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
@@ -543,12 +553,22 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     const WORDS: usize = 25;
     let mut data = [0u64; WORDS];
 
+    // Index this permutation must be cached under, if fcall_set_keccakf_cache_index() asked for
+    // it. It is consumed whatever the emulation mode is, so that a request always applies to the
+    // Keccak-f that follows it
+    let cache_index = ctx.keccakf_cache.take_pending_index();
+
     // Get input data from memory or from the precompiled context
     match ctx.emulation_mode {
         EmulationMode::Mem => {
             // Read data from the memory address
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Cache the input state, before it is overwritten by the permutation
+            if let Some(index) = cache_index {
+                ctx.keccakf_cache.store(&data, index);
             }
 
             // Call keccakf
@@ -569,6 +589,11 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             ctx.precompiled.input_data.clear();
             for (i, d) in data.iter_mut().enumerate() {
                 ctx.precompiled.input_data.push(*d);
+            }
+
+            // Cache the input state, before it is overwritten by the permutation
+            if let Some(index) = cache_index {
+                ctx.keccakf_cache.store(&data, index);
             }
 
             // Call keccakf
@@ -1921,6 +1946,29 @@ pub fn opc_fcall(ctx: &mut InstContext) {
             );
         }
         0
+    } else if function_id == FCALL_SET_KECCAKF_CACHE_INDEX_ID as u64 {
+        if ctx.fcall.parameters_size != 1 {
+            panic!(
+                "opc_fcall() FCALL_SET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != 1",
+                ctx.fcall.parameters_size
+            );
+        }
+
+        // The next keccak instruction will cache its input state under this index
+        ctx.keccakf_cache.set_pending_index(ctx.fcall.parameters[0]);
+        0
+    } else if function_id == FCALL_GET_KECCAKF_CACHE_INDEX_ID as u64 {
+        if ctx.fcall.parameters_size != KECCAKF_STATE_WORDS as u64 {
+            panic!(
+                "opc_fcall() FCALL_GET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != {}",
+                ctx.fcall.parameters_size, KECCAKF_STATE_WORDS
+            );
+        }
+
+        // Returns the index the state was cached under, or KECCAKF_CACHE_INDEX_NOT_FOUND
+        let index = ctx.keccakf_cache.get(&ctx.fcall.parameters[..KECCAKF_STATE_WORDS]);
+        ctx.fcall.result[0] = index;
+        1
     } else {
         fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result)
     };

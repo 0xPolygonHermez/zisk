@@ -5,6 +5,8 @@
 # Env vars (loaded from .env / shell / Cargo.toml via load_env):
 #   USE_CACHE_SETUP              Reuse/populate a local provingKey cache under
 #                                $OUTPUT_DIR, keyed by <platform>/<input-hash>.
+#   FORCE_SETUP_BUILD            Ignore a cache hit and rebuild the setup (the
+#                                fresh build then refreshes the cache entry).
 #   DISABLE_RECURSIVE_SETUP      Build without aggregation (setup without -r).
 #   INSTALL_SETUP                Install the provingKey into $HOME/.zisk
 #   INCLUDE_SNARK                After the proving key, also build the snark setup
@@ -48,8 +50,8 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP \
-        INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
+    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD \
+        DISABLE_RECURSIVE_SETUP INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
         HASH PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
 
     # Default the hash function when neither the shell, .env, nor Cargo.toml set

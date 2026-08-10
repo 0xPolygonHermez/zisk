@@ -49,6 +49,11 @@ vergen-git2 = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
+# Integration tests (tests/) can only see dev-dependencies, so the crates the
+# ELF-payload assertions need are repeated here.
+zisk-common = { workspace = true }
+zisk-core = { workspace = true }
+transpilers-common = { workspace = true }
 
 [[bench]]
 name = "benchmark"

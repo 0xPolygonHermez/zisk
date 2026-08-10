@@ -7,11 +7,11 @@ repository = "https://github.com/0xPolygonHermez/zisk"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_zisk_ethproofs_branch = "develop-0.11.1"
-gha_zisk_eth_client_branch = "develop-0.10.1"
+gha_zisk_ethproofs_branch = "feature/integrate-zisk-eth-client"
+gha_zisk_eth_client_branch = "develop-0.11.0"
 gha_zisk_template_branch = "pre-develop-1.1.0-alpha"
-gha_zisk_testvectors_branch = "zisk-1.0.0"
-gha_pil2_compiler_branch = "develop-0.12.0"
+gha_zisk_testvectors_branch = "develop-0.4.0"
+gha_pil2_compiler_branch = "develop-0.13.0"
 
 [workspace]
 members = [
@@ -49,6 +49,7 @@ members = [
   "precompiles/blake2",
   "precompiles/big_int",
   "precompiles/dma",
+  "precompiles/evm",
   "precompiles/poseidon",
   "lib-c",
   "lib-float",
@@ -83,6 +84,10 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
+# Replacement global allocator. glibc retains freed multi-MB collector
+# buffers in per-thread arenas that never shrink; jemalloc bounds the arena
+# count and purges dirty pages back to the OS on a decay timer.
+tikv-jemallocator = "0.6"
 # Internal crates
 zisk-common = { path = "common" }
 zisk-stream = { path = "stream" }
@@ -104,6 +109,7 @@ precomp-blake2 = { path = "precompiles/blake2" }
 precomp-poseidon = { path = "precompiles/poseidon" }
 precomp-big-int = { path = "precompiles/big_int" }
 precomp-dma = { path = "precompiles/dma" }
+precomp-evm = { path = "precompiles/evm" }
 riscv = { path = "transpilers/riscv" }
 transpilers-common = { path = "transpilers/common" }
 riscv2zisk = { path = "transpilers/riscv2zisk" }

@@ -50,9 +50,11 @@ main() {
     ZISK_REPO_DIR="$(get_zisk_repo_dir)"
     ZISK_ETH_CLIENT_REPO_DIR="${WORKSPACE_DIR}/zisk-eth-client"
 
-    # Client Cargo.toml: depends on zisk-common, ziskos and zisk-sdk.
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-common" "${ZISK_REPO_DIR}/common"            || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"      "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
+    # `input` pulls input-ziskethone, whose rust-input-gen lives in the ziskethone
+    # submodule; cargo cannot resolve the workspace without it.
+    ensure_submodules "${ZISK_ETH_CLIENT_REPO_DIR}" || return 1
+
+    # Client Cargo.toml: depends on zisk-sdk.
     patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"    "${ZISK_REPO_DIR}/sdk"               || return 1
 
     patch_cargo_dep "${CLIENT_CARGO_TOML}" "input"       "${ZISK_ETH_CLIENT_REPO_DIR}/crates/input"  || return 1

@@ -1,0 +1,102 @@
+require "std_lookup.pil"
+require "opids.pil"
+// require "jump_dest_compressor_table.pil"   // JD_I/N/J/P and the cdata layout
+
+// JumpDestBitmapTable
+// ─────────────────────────────────────────────────────────────────────────────
+// Final verification of one source word: takes the four chunk compressions the
+// JumpDestCompressorTable certified, packed into CDATA4, plus the flags coming
+// from the previous op, and yields the bitmap byte, the bytes consumed and the
+// flags carried on.
+//
+// This is where the four chunks are forced to be coherent. The compressor is
+// deliberately loose — the same 2 bytes admit several compressions, one per way
+// the walk could have entered them — and it is the chain here that pins the
+// right one: chunk j's exit state must be chunk j+1's entry state.
+//
+// STATE
+//   0..32  PUSH bytes still pending when the word starts
+//   33     the bytecode is finished. Once it ends there is nothing left to read,
+//          so the pending count of a truncated PUSH need not be carried.
+//
+// COLUMN PACKING
+//   The whole input side travels in one field element:
+//
+//       bits  0..5   state_in
+//       bits  6..37  cdata4
+//       bit  38      sel_mem_load
+//
+//   Every field is sized by the declared bits(n) of the machine column, not by
+//   its tighter useful range, so no value can alias into another field however
+//   the prover fills it. That is what lets this table hold four fixed columns
+//   instead of six, and it is also what binds sel_mem_load to the state: their
+//   pairing is verified here instead of being left free in the machine.
+//
+//   The output side stays bare. STATE_OUT carries no load bit because the op it
+//   feeds verifies its own on its input side.
+//
+// WHY THE INPUT COLUMN IS NOT A KEY
+//   The byte states cannot tell "PUSH32 with its 32 data bytes present" from
+//   "PUSH32 at the end of the bytecode with the trailing zeros omitted": both
+//   compress to the same cdata4. So one input value admits up to 8 rows, one per
+//   position where the bytecode may end, and it is the count constraint in the
+//   machine that picks. 54272 keys, 19960 of them with more than one row.
+//
+// ROW ORDER — the enumeration walks (state_in, cdata0..cdata3, BYTES_USED) in
+// dense lexicographic order, dropping incoherent combinations. That ordering is
+// deliberate: the witness has to locate a row, and lexicographic layout makes
+// the index follow from prefix counts. A pruned depth-first enumeration would be
+// shorter to write and impossible to invert.
+//
+// EVERY op looks this table up, skipped words included. A word whose state is
+// >= 8 lies entirely inside PUSH data and is not loaded, but it still gets a row
+// here rather than an arithmetic transition, for two reasons:
+//
+//   - Nothing else would tie sel_mem_load to the state. A prover could clear
+//     sel_mem_load on a word that had to be read, skip the JUMPDEST in it and
+//     claim state_out = state_in - 8. Since sel_mem_load rides inside the packed
+//     input, going through this table is what binds the two together.
+//
+// So the multiplicity of the lookup is the row selector, not sel_mem_load.
+//
+// SIZE: 138953 rows = 138702 for loaded words + 251 for skipped ones, and all 34
+// state_in values are covered. It needs 2^18: 2^17 held the 86252 rows of the
+// earlier design, where a word that used all 8 of its bytes could not be the one
+// that finishes the bytecode. It has to be, or the next op starts with a state
+// under 8 and loads a word past the end — sel_mem_load follows the state alone.
+// So every full-word row now comes in two readings, told apart by state_out, and
+// count is what picks between them.
+
+const int JUMP_DEST_BITMAP_TABLE_ROWS = 138953;
+
+const int JD_CDATA_VALUES = 137;   // cdata is 0..136 with no gaps
+const int JD_STATE_FINISHED = 33;
+
+// Field offsets of the packed input column, in the order its name reads.
+const int JD_CDATA4_SHIFT = P2_6;      // state_in takes bits 0..5
+const int JD_MEM_LOAD_SHIFT = 2**38;   // cdata4 takes bits 6..37 (P2_38 is not defined)
+
+// The rows themselves come from a generated binary, not from a loop here:
+// building its rows out of an interpreted PIL loop costs minutes of compile
+// time. The generator is precompiles/evm/src/jump_dest_bitmap_table_gen.rs,
+// which tools/test-env/setup_common.sh runs before compile-pil, or by hand:
+//
+//     cargo run --release --bin jump_dest_bitmap_table_gen
+//
+// It asserts the very row count declared above, so the two cannot drift apart
+// silently. N is left at 0 and taken from the binary.
+
+airtemplate JumpDestBitmapTable(int N = 0,
+                                const string bin_file = "precompiles/evm/src/jump_dest_bitmap_table_fixed.bin") {
+
+    #pragma extern_fixed_file `${bin_file}`
+
+    col fixed STATE_CDATA4_MEM_LOAD;  // state_in + 2^6 * cdata4 + 2^38 * sel_mem_load
+    col fixed BYTES_USED;             // bytes of this word inside the bytecode, 0..8
+    col fixed BITMAP_BYTE;            // one bit per byte of the word, set on JUMPDEST
+    col fixed STATE_OUT;              // state carried to the next op, 0..33
+
+    col witness multiplicity;
+    lookup_proves(JUMP_DEST_BITMAP_TABLE_ID, mul: multiplicity,
+                  expressions: [STATE_CDATA4_MEM_LOAD, BYTES_USED, BITMAP_BYTE, STATE_OUT]);
+}

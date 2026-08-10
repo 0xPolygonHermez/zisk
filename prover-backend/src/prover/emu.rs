@@ -29,6 +29,8 @@ use zisk_core::ZiskRom;
 
 use anyhow::Result;
 
+/// Backend marker for the pure-Rust emulator. Selects [`EmuProver`] as the
+/// proving engine.
 pub struct Emu;
 
 impl ZiskBackend for Emu {
@@ -52,12 +54,17 @@ impl<'a> EmuSetupBuilder<'a> {
     }
 }
 
+/// Proving engine for the EMU backend. Wraps an [`EmuCoreProver`] and caches
+/// each program's parsed `ZiskRom` so repeated proofs of the same program skip
+/// ELF parsing.
 pub struct EmuProver {
     pub(crate) core_prover: EmuCoreProver,
     program_cache: Arc<RwLock<HashMap<ProgramId, Arc<ZiskRom>>>>,
 }
 
 impl EmuProver {
+    /// Build an EMU prover, loading proving keys from `proving_key` (and
+    /// `proving_key_snark` when `snark_wrapper` is set, optionally preloaded).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         snark_wrapper: bool,
@@ -112,6 +119,10 @@ impl ProverEngine for EmuProver {
 
     fn world_rank(&self) -> i32 {
         self.core_prover.rank_info.world_rank
+    }
+
+    fn n_processes(&self) -> i32 {
+        self.core_prover.rank_info.n_processes
     }
 
     fn local_rank(&self) -> i32 {
@@ -328,12 +339,17 @@ impl ProverEngine for EmuProver {
     }
 }
 
+/// Low-level EMU prover holding the initialized `ProofMan` backend and this
+/// process's [`RankInfo`] (for distributed proving).
 pub struct EmuCoreProver {
     backend: ProverBackend,
     rank_info: RankInfo,
 }
 
 impl EmuCoreProver {
+    /// Initialize `ProofMan` from `proving_key`, set up logging and the
+    /// distributed barrier, and optionally build the SNARK wrapper from
+    /// `proving_key_snark` when `use_snark_wrapper` is set.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         use_snark_wrapper: bool,

@@ -13,6 +13,7 @@
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/secp256r1/secp256r1.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
+#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
 #include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
@@ -537,6 +538,10 @@ extern int _opcode_keccak(uint64_t address)
     }
 #endif
 #endif
+
+    // Cache the input state if fcall_set_keccakf_cache_index() asked for it, before the
+    // permutation overwrites it
+    keccakf_cache_on_keccakf((const uint64_t *)address);
 
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)

@@ -1,2 +1,11 @@
-#[no_mangle]
-pub unsafe extern "C" fn hint_keccak256(_input_ptr: *const u8, _input_len: usize) {}
+use crate::hints::macros::define_hint_ptr;
+use zisk_definitions::{HINT_KECCAK256, KECCAK_RESULTS};
+
+define_hint_ptr! {
+    keccak256 => {
+        hint_id: HINT_KECCAK256,
+        param: input,
+        is_result: false,
+        enabled: KECCAK_RESULTS,
+    }
+}

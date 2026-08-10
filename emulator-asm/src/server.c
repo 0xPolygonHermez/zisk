@@ -23,6 +23,7 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
+#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
 
 /****************************/
 /* EMULATION FAULT RECOVERY */
@@ -946,6 +947,9 @@ void server_reset_fast (void)
 
 void server_reset_slow (void)
 {
+    // Release the Keccak-f cache built during the emulation that just finished
+    keccakf_cache_free();
+
     // Reset RAM and ROM data for next emulation
     {
 #ifdef DEBUG
@@ -1009,6 +1013,9 @@ void server_run (void)
     {
         memset((void *)trace_address, 0, trace_size);
     }
+
+    // Start this emulation with an empty Keccak-f cache: it only lives for one execution
+    keccakf_cache_reset();
 
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
@@ -1191,8 +1198,19 @@ void server_run (void)
     }
     else if (emulation_aborted && call_chunk_done)
     {
+        // Do NOT post `_chunk_done()` on the abort path. The chunk_done semaphore
+        // is persistent and epoch-less: if the consumer already exited (its own
+        // timeout) before this post lands, the post survives in the semaphore and
+        // the NEXT job's consumer wakes on it, reading a shifted/stale chunk
+        // stream -> wrong minimal trace -> wrong proof (VerifyEvaluations/
+        // VerifyGlobalConstraints, cross-job, non-reproducible). Regression
+        // introduced in 0.18 ("ASM fixes to support signals"); 0.17 had the child
+        // die on a fault (no persistent contamination). The abort is still
+        // reported to the client via the stdio response result (MEM_ERROR -> 1),
+        // and the consumer fails cleanly on its wait timeout — the 0.17 semantics
+        // without killing the long-running service. write_abort_chunk() is kept
+        // (harmless shmem terminal marker) but the leaking post is removed.
         write_abort_chunk();
-        _chunk_done();
     }
 
 
