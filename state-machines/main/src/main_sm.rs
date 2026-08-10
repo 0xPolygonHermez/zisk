@@ -68,6 +68,8 @@ impl<F: PrimeField64> MainInstance<F> {
     ///   ([`MainSmError::InvalidSegmentMetadata`]).
     /// - The segment has no minimal traces to process
     ///   ([`MainSmError::EmptyFillTraceOutput`]).
+    /// - A non-final segment was given fewer than `num_within` minimal traces
+    ///   ([`MainSmError::IncompleteSegment`]).
     /// - `MemHelpers::mem_step_to_slot` returned a slot outside `0..=2`
     ///   ([`MainSmError::InvalidSlot`]).
     pub fn compute_witness<R: MainTraceRowOps<F> + IndexedFill>(
@@ -101,6 +103,13 @@ impl<F: PrimeField64> MainInstance<F> {
 
         // Determine the number of minimal traces per segment
         let num_within = NUM_ROWS / chunk_size;
+
+        Self::check_segment_complete(
+            segment_id,
+            segment_min_traces.len(),
+            num_within,
+            is_last_segment,
+        )?;
 
         // Calculate total filled rows
         let filled_rows: usize =
@@ -392,6 +401,33 @@ impl<F: PrimeField64> MainInstance<F> {
         (initial_step, final_step)
     }
 
+    /// Rejects a non-final segment that was handed fewer minimal traces than it
+    /// spans. Only the last segment may be partial; anywhere else a short slice
+    /// means the caller's minimal-trace store did not hold this segment's whole
+    /// chunk range, and padding the missing rows would quietly yield a truncated
+    /// Main witness that only surfaces as a global-constraint failure.
+    ///
+    /// An empty slice is left to [`MainSmError::EmptyFillTraceOutput`], which
+    /// already rejects it further down `compute_witness`.
+    ///
+    /// # Errors
+    /// - [`MainSmError::IncompleteSegment`] if a non-final segment is short.
+    fn check_segment_complete(
+        segment_id: SegmentId,
+        got: usize,
+        num_within: usize,
+        is_last_segment: bool,
+    ) -> Result<(), MainSmError> {
+        if !is_last_segment && got != num_within {
+            return Err(MainSmError::IncompleteSegment {
+                segment_id: segment_id.as_usize(),
+                got,
+                expected: num_within,
+            });
+        }
+        Ok(())
+    }
+
     /// Decodes `segment_id` and `is_last_segment` from the plan handed to this
     /// instance.
     ///
@@ -450,6 +486,48 @@ mod tests {
 
     fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any + Send + Sync>>) -> Plan {
         Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)
+    }
+
+    #[test]
+    fn full_non_final_segment_is_accepted() {
+        // The common case: a middle segment carrying exactly `num_within` chunks.
+        MI::check_segment_complete(SegmentId(1), 16, 16, false).expect("complete segment");
+    }
+
+    #[test]
+    fn short_non_final_segment_is_rejected() {
+        // Only the last segment may be partial. A short middle segment means the
+        // caller's store didn't hold the whole chunk range; computing it would pad
+        // the missing rows and silently produce a truncated Main witness.
+        let err = MI::check_segment_complete(SegmentId(2), 9, 16, false)
+            .expect_err("truncated middle segment");
+        assert!(matches!(
+            err,
+            MainSmError::IncompleteSegment { segment_id: 2, got: 9, expected: 16 }
+        ));
+    }
+
+    #[test]
+    fn empty_non_final_segment_is_rejected() {
+        let err = MI::check_segment_complete(SegmentId(0), 0, 16, false)
+            .expect_err("empty middle segment");
+        assert!(matches!(err, MainSmError::IncompleteSegment { got: 0, expected: 16, .. }));
+    }
+
+    #[test]
+    fn partial_final_segment_is_accepted() {
+        // The execution's tail is legitimately partial — this must not false-fire.
+        for got in 1..=16 {
+            MI::check_segment_complete(SegmentId(3), got, 16, true)
+                .unwrap_or_else(|e| panic!("final segment with {got} chunks rejected: {e}"));
+        }
+    }
+
+    #[test]
+    fn empty_final_segment_defers_to_empty_fill_trace_output() {
+        // Not this check's job: `compute_witness` rejects an empty segment later
+        // with `EmptyFillTraceOutput`, which names the actual problem.
+        MI::check_segment_complete(SegmentId(3), 0, 16, true).expect("deferred");
     }
 
     #[test]

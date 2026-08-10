@@ -71,6 +71,22 @@ impl MainPlanner {
         Ok(NUM_ROWS / chunk_size)
     }
 
+    /// The Main segment that chunk `chunk_idx` completes, or `None` when that
+    /// chunk neither fills a segment nor ends the execution.
+    ///
+    /// `num_within` comes from [`Self::traces_per_segment`] (always `>= 1`).
+    /// Incremental main advancement calls this once per streamed minimal-trace
+    /// chunk: a segment is complete either at its own boundary (`chunk_idx + 1`
+    /// is a multiple of `num_within`) or on the chunk that ends the execution,
+    /// which closes the final — possibly partial — segment.
+    pub fn segment_completed_by(
+        chunk_idx: usize,
+        num_within: usize,
+        is_last_chunk: bool,
+    ) -> Option<usize> {
+        ((chunk_idx + 1) % num_within == 0 || is_last_chunk).then_some(chunk_idx / num_within)
+    }
+
     /// Builds the plan of a single Main segment. Used by the incremental
     /// main-witness advancement: segments become plannable one by one while
     /// the emulation streams chunks (`is_last_segment` for a full segment is
@@ -178,6 +194,69 @@ mod tests {
         assert!(matches!(plan.instance_type, InstanceType::Instance));
         // Checkpoint's ChunkId is the same usize as segment_id.
         assert!(matches!(plan.check_point, CheckPoint::Single(ChunkId(0))));
+    }
+
+    #[test]
+    fn segment_completed_by_releases_only_on_boundaries() {
+        // num_within = 4: only chunk 3 completes segment 0, only chunk 7 segment 1.
+        let released: Vec<Option<usize>> =
+            (0..8).map(|idx| MainPlanner::segment_completed_by(idx, 4, false)).collect();
+        assert_eq!(
+            released,
+            vec![None, None, None, Some(0), None, None, None, Some(1)],
+            "a segment is released by its last chunk only"
+        );
+    }
+
+    #[test]
+    fn segment_completed_by_closes_partial_segment_on_last_chunk() {
+        // Chunk 5 is mid-segment, but it ends the execution: segment 1 is released
+        // partial rather than waiting for a boundary that will never arrive.
+        assert_eq!(MainPlanner::segment_completed_by(5, 4, true), Some(1));
+        // A single chunk that is also the last one closes segment 0.
+        assert_eq!(MainPlanner::segment_completed_by(0, 4, true), Some(0));
+    }
+
+    #[test]
+    fn segment_completed_by_boundary_and_last_release_one_segment() {
+        // Chunk 7 both fills segment 1 and ends the execution — it must resolve to
+        // exactly one segment, not release segment 1 and then a phantom segment 2.
+        assert_eq!(MainPlanner::segment_completed_by(7, 4, true), Some(1));
+    }
+
+    #[test]
+    fn segment_completed_by_one_chunk_per_segment() {
+        // chunk_size == NUM_ROWS ⇒ num_within = 1: every chunk completes its own segment.
+        for idx in 0..4 {
+            assert_eq!(MainPlanner::segment_completed_by(idx, 1, false), Some(idx));
+        }
+    }
+
+    #[test]
+    fn incremental_release_matches_batch_plan() {
+        // Releasing chunk-by-chunk must yield exactly what the batch planner
+        // yields — same segment ids, same order, same `is_last_segment` flags —
+        // for every chunk count, partial tails included.
+        let chunk_size = (NUM_ROWS as u64) / 4;
+        let num_within = MainPlanner::traces_per_segment(chunk_size).unwrap();
+
+        for num_chunks in 1..=13usize {
+            let incremental: Vec<(usize, bool)> = (0..num_chunks)
+                .filter_map(|idx| {
+                    let is_last_chunk = idx == num_chunks - 1;
+                    MainPlanner::segment_completed_by(idx, num_within, is_last_chunk)
+                        .map(|segment| (segment, is_last_chunk))
+                })
+                .collect();
+
+            let batch: Vec<(usize, bool)> = MainPlanner::plan_count(num_chunks, chunk_size)
+                .unwrap()
+                .iter()
+                .map(|plan| (plan.segment_id.unwrap().as_usize(), is_last(plan)))
+                .collect();
+
+            assert_eq!(incremental, batch, "chunk count {num_chunks}");
+        }
     }
 
     #[test]
