@@ -65,7 +65,7 @@ impl AsmRunnerMT {
         _stats: ExecutorStatsHandle,
     ) -> Result<(Vec<Arc<EmuTrace>>, AsmExecutionInfo)>
     where
-        F: FnMut(usize, Arc<EmuTrace>),
+        F: FnMut(usize, &[Arc<EmuTrace>], bool),
         R: FnOnce() -> Result<()>,
     {
         stats_begin!(_stats, 0, _runner_scope, "ASM_MT_RUNNER", 0);
@@ -170,8 +170,8 @@ impl AsmRunnerMT {
                     let emu_trace = Arc::new(AsmMTChunk::to_emu_trace(&mut data_ptr));
                     let should_exit = emu_trace.end;
 
-                    on_chunk(chunk_id.0, emu_trace.clone());
                     emu_traces.push(emu_trace);
+                    on_chunk(chunk_id.0, &emu_traces, should_exit);
 
                     if should_exit {
                         break Ok(0);

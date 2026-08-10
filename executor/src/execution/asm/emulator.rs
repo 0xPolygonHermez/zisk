@@ -199,7 +199,8 @@ impl EmulatorAsm {
 
         let scope_result: ExecutorResult<_> = rayon::in_place_scope(|scope| {
             let processor_ref = &processor;
-            let on_chunk = |idx: usize, emu_trace: std::sync::Arc<EmuTrace>| {
+            let on_chunk = |idx: usize, emu_traces: &[std::sync::Arc<EmuTrace>], last: bool| {
+                let emu_trace = emu_traces[idx].clone();
                 // Main-witness advancement: runs on the reader thread, in chunk
                 // order, BEFORE the counting task is spawned. Cheap (store push +
                 // occasional per-segment instance assignment).
