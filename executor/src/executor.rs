@@ -299,7 +299,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
                 InstanceAssigner::assign_main_instances(registry, global_ids, vec![plan])?;
             witness.populate_main_instances(registry, &self.state, assignments)
         };
-        let chunk_hook: crate::ChunkHook<'_> = Some(&on_chunk);
+        let chunk_hook = &on_chunk;
 
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let start_partial = Instant::now();
