@@ -59,6 +59,8 @@ criterion = { workspace = true, features = ["html_reports"] }
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-transpiler-common = { workspace = true }
+zisk-transpiler-wasm = { workspace = true }
+wat = { workspace = true }
 
 [[bench]]
 name = "benchmark"
