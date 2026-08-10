@@ -1,0 +1,38 @@
+; ============================================================================
+; zisklib_uint256_common.zisk - shared data for the 256-bit unsigned integer
+; routines. The uint256 library is split one file per ziskos source file
+; (mirroring ziskos/entrypoint/src/zisklib/lib/uint256/{add,mul,div,modular,pow}.rs);
+; this file holds the constants and scratch buffers those files share, analogous
+; to the `constants`/`utils` modules each `uint256/*.rs` imports from. It declares
+; no routines. The ziskasm library is assembled as one program with a global
+; symbol table, so these labels resolve from every sibling file.
+;
+; Scratch is static (ZISKLIB_RAM), not stack-allocated; the routines are
+; non-reentrant, so sharing these buffers across families is safe.
+; ============================================================================
+
+; Public defines (visible to every sibling file via `pub define`): the free-input
+; load address and the fcall IDs, declared once here rather than repeated per
+; file. Mirrors ziskos keeping the FCALL_*_ID constants in a shared `fcalls/mod.rs`.
+pub define FREE_INPUT            0x40000000 ; a u64 load here yields the fcall free-input
+pub define FCALL_UINT256_DIV     19         ; hints quotient + remainder
+pub define FCALL_UINT256_INV     20         ; hints inverse mod 2^256
+pub define FCALL_UINT256_INV_MOD 21         ; hints modular inverse / gcd witness
+
+; ROM constants: the 256-bit zero (the `c` addend for a verification multiply)
+; and the 256-bit one (the `b` multiplier for the modular reduce/add).
+const u64 U256_ZERO[4] =
+	0, 0, 0, 0
+const u64 U256_ONE[4] =
+	1, 0, 0, 0
+
+; Shared arith256 / arith256_mod pointer header [&a, &b, &c, &(module|dl), &(d|dh)]
+; and the precompile output words. U256_INV holds a hinted inverse (inv256 /
+; inv_mod256); U256_POW_RES/TMP are the running result and ping-pong temp for the
+; square-and-multiply in pow256 / pow_mod256.
+u64 U256_HDR[5] = 0, 0, 0, 0, 0
+u64 U256_DL[4] = 0, 0, 0, 0
+u64 U256_DH[4] = 0, 0, 0, 0
+u64 U256_INV[4] = 0, 0, 0, 0
+u64 U256_POW_RES[4] = 0, 0, 0, 0
+u64 U256_POW_TMP[4] = 0, 0, 0, 0

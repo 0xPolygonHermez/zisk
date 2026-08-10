@@ -66,7 +66,20 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("zisklib_keccak", include_str!("../../../ziskasm/lib/zisklib_keccak.zisk")),
         ("zisklib_sha256", include_str!("../../../ziskasm/lib/zisklib_sha256.zisk")),
         ("zisklib_blake2b", include_str!("../../../ziskasm/lib/zisklib_blake2b.zisk")),
-        ("zisklib_uint256", include_str!("../../../ziskasm/lib/zisklib_uint256.zisk")),
+        // uint256 — split one file per ziskos source file (add/mul/div/modular/pow)
+        // plus a common file holding the shared constants and scratch buffers.
+        (
+            "zisklib_uint256_common",
+            include_str!("../../../ziskasm/lib/zisklib_uint256_common.zisk"),
+        ),
+        ("zisklib_uint256_add", include_str!("../../../ziskasm/lib/zisklib_uint256_add.zisk")),
+        ("zisklib_uint256_mul", include_str!("../../../ziskasm/lib/zisklib_uint256_mul.zisk")),
+        ("zisklib_uint256_div", include_str!("../../../ziskasm/lib/zisklib_uint256_div.zisk")),
+        (
+            "zisklib_uint256_modular",
+            include_str!("../../../ziskasm/lib/zisklib_uint256_modular.zisk"),
+        ),
+        ("zisklib_uint256_pow", include_str!("../../../ziskasm/lib/zisklib_uint256_pow.zisk")),
     ];
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[

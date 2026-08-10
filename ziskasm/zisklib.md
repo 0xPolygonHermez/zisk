@@ -161,7 +161,7 @@ registers):
 See [`ziskasm/lib/zisklib_keccak.zisk`](lib/zisklib_keccak.zisk) for a full example
 (a keccak256 sponge that calls the `keccak` op once per rate block).
 
-Two recurring shapes are worth knowing (both used throughout `zisklib_uint256.zisk`):
+Two recurring shapes are worth knowing (both used throughout the `zisklib_uint256_*.zisk` files):
 
 - **Precompile with a pointer header.** Most precompiles (`arith256`,
   `arith256_mod`, `add256`, `sha256`, `blake2`) take a small header — a run of

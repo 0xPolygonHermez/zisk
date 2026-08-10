@@ -80,6 +80,21 @@ Example:
 define RAM_MEM 0x9000000
 ```
 
+A plain `define` is **file-local**: it is only visible in the file that declares
+it. In a multi-file assembly (a library, or a `-z <dir>` run) a definition can be
+made visible to **every** file by prefixing it with `pub`:
+
+```
+pub define FREE_INPUT 0x40000000
+```
+
+The assembler gathers all `pub define`s across the sources in a pre-pass and seeds
+every file's parse with them, so a constant used by several files can be declared
+once (typically in a shared/common file) instead of repeated in each. A `pub
+define` still behaves like a normal `define` within its own file. Publicly
+defining the same name twice with **different** values is an error. (`pub` has no
+effect in a single-file program — there are no sibling files to export to.)
+
 ## Conditional compilation
 
 Parts of a program can be included or excluded at assembly time with directives written at the beginning of the line (not indented), like definitions:
@@ -387,5 +402,8 @@ Define macros with parameters and multi-line code, e.g. define my_macro(a,b,c) .
 Import a file.elf (e.g. libfloat.elf)
 
 Start working on the Eth client
+
+Call a function with parameters:
+call my_func(a, b, c, d, e) -> save a into a0, b into a1... call my_func
 
 -->

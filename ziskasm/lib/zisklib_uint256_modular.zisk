@@ -1,0 +1,418 @@
+; ============================================================================
+; zisklib_uint256_modular.zisk - 256-bit modular arithmetic. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/uint256/modular.rs: reduce_mod256,
+; add_mod256, mul_mod256, pow_mod256, inv_mod256 (square_mod256 is a Rust wrapper
+; over mul_mod256). Shared data lives in zisklib_uint256_common.zisk. Internal
+; labels: `pm_` (pow_mod), `im_` (inv_mod).
+;
+; reduce/add/mul use the arith256_mod precompile: d = (a*b + c) mod module,
+; header [&a, &b, &c, &module, &d]. The precompile requires module != 0, so the
+; Rust wrappers short-circuit module in {0,1} and never call these with such a
+; modulus. Inputs need not be canonical (< module); the result is always reduced.
+; FREE_INPUT / FCALL_UINT256_INV_MOD come from the common file's `pub define`s.
+; ============================================================================
+
+; RAM scratch for inv_mod's no-inverse witness, stored contiguously:
+; gcd (words 0..4), qa (words 4..8), qm (words 8..12).
+u64 U256_NOINV[12] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+; void zisklib_reduce_mod256(const u64* a, const u64* m, u64* result)
+;   result = a mod m, computed as (a*1 + 0) mod m. Args: r10=a, r11=m, r12=result.
+zisklib_reduce_mod256:
+	copyb(0, U256_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &a
+	copyb(0, U256_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &one
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero (c addend)
+	copyb(r5, r11) -> 8[a + 24]        ; &module
+	copyb(r5, r12) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_add_mod256(const u64* a, const u64* b, const u64* m, u64* result)
+;   result = (a + b) mod m, computed as (a*1 + b) mod m.
+;   Args: r10=a, r11=b, r12=m, r13=result.
+zisklib_add_mod256:
+	copyb(0, U256_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &a
+	copyb(0, U256_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &one
+	copyb(r5, r11) -> 8[a + 16]        ; &b (c addend)
+	copyb(r5, r12) -> 8[a + 24]        ; &module
+	copyb(r5, r13) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_mul_mod256(const u64* a, const u64* b, const u64* m, u64* result)
+;   result = (a * b) mod m, computed as (a*b + 0) mod m.
+;   Args: r10=a, r11=b, r12=m, r13=result.
+zisklib_mul_mod256:
+	copyb(0, U256_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &a
+	copyb(r5, r11) -> 8[a + 8]         ; &b
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero (c addend)
+	copyb(r5, r12) -> 8[a + 24]        ; &module
+	copyb(r5, r13) -> 8[a + 32]        ; &d = result
+	arith256_mod(0, r5) -> r14
+	ret
+
+; ----------------------------------------------------------------------------
+; void zisklib_pow_mod256(const u64* base, const u64* exp, const u64* m, u64* result)
+;   result = base^exp mod m, via left-to-right square-and-multiply. The exponent
+;   bits are read directly from `exp` (cheap srl/and on the main SM — no fcall
+;   hint to verify). We find the exponent's most-significant set bit and iterate
+;   from there, so small exponents cost only as many squarings as they have bits.
+;   Each square/multiply is one arith256_mod precompile. Edge cases m in {0,1} are
+;   handled by the Rust wrapper; here m >= 2 is assumed, and exp == 0 yields 1
+;   (correct for m >= 2, including 0^0 = 1). Args: r10=base, r11=exp, r12=m,
+;   r13=result. r15 holds the bit index across the loop (survives the precompile
+;   and copy loops, which use only r5-r7/r14); r14 is the precompile throwaway.
+; ----------------------------------------------------------------------------
+zisklib_pow_mod256:
+	; === find the exponent's MSB position (top); exp == 0 -> result = 1 ===
+	copyb(0, r11) -> r5
+	add(r5, 24) -> r5                  ; &exp[3] (scan from the highest word)
+	copyb(0, 3) -> r6                  ; word index
+pm_findw:
+	copyb(r5, 8[a + 0]) -> r7          ; w = exp[wi]
+	ltu(0, r7), j(pm_foundw)           ; w != 0 -> highest nonzero word
+	eq(r6, 0), j(pm_expzero)           ; word 0 was zero too -> exp == 0
+	sub(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(pm_findw)
+pm_foundw:
+	sll(r6, 6) -> r6                   ; top = wi*64 (+ hb, accumulated below)
+pm_hb:
+	srl(r7, 1) -> r14                  ; tmp = w >> 1
+	eq(r14, 0), j(pm_reduce)           ; w's MSB reached -> top complete
+	copyb(0, r14) -> r7                ; w >>= 1
+	add(r6, 1) -> r6                   ; top += 1
+	jump(pm_hb)
+
+pm_reduce:
+	; === result = base mod m (base^1 for the always-set top bit) ===
+	; arith256_mod [&base, &one, &zero, &m, &RES]
+	copyb(0, U256_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &base
+	copyb(0, U256_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &one
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(r5, r12) -> 8[a + 24]        ; &m
+	copyb(0, U256_POW_RES) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &RES
+	arith256_mod(0, r5) -> r14
+	eq(r6, 0), j(pm_write)             ; top == 0 (exp == 1) -> done
+	sub(r6, 1) -> r15                  ; p = top - 1 (loop bit index)
+
+pm_loop:
+	; --- RES = RES^2 mod m: arith256_mod [&RES, &RES, &zero, &m, &TMP] ---
+	copyb(0, U256_HDR) -> r5
+	copyb(0, U256_POW_RES) -> r7
+	copyb(r5, r7) -> 8[a + 0]          ; &RES
+	copyb(r5, r7) -> 8[a + 8]          ; &RES (squared)
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(r5, r12) -> 8[a + 24]        ; &m
+	copyb(0, U256_POW_TMP) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &TMP
+	arith256_mod(0, r5) -> r14
+	copyb(0, U256_POW_TMP) -> r5
+	copyb(0, U256_POW_RES) -> r6
+	copyb(0, 4) -> r7
+pm_sqcp:
+	eq(r7, 0), j(pm_bit)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(pm_sqcp)
+
+pm_bit:
+	; --- extract bit p (r15) of exp: word = p>>6, bitpos = p&63 ---
+	srl(r15, 6) -> r6
+	sll(r6, 3) -> r6                   ; word byte offset
+	add(r11, r6) -> r6                 ; &exp[word]
+	copyb(r6, 8[a + 0]) -> r6          ; w
+	and(r15, 63) -> r7                 ; bitpos
+	srl(r6, r7) -> r6
+	and(r6, 1) -> r6
+	eq(r6, 0), j(pm_next)              ; bit clear -> no multiply
+
+	; --- RES = RES * base mod m: arith256_mod [&RES, &base, &zero, &m, &TMP] ---
+	copyb(0, U256_HDR) -> r5
+	copyb(0, U256_POW_RES) -> r7
+	copyb(r5, r7) -> 8[a + 0]          ; &RES
+	copyb(r5, r10) -> 8[a + 8]         ; &base
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(r5, r12) -> 8[a + 24]        ; &m
+	copyb(0, U256_POW_TMP) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &TMP
+	arith256_mod(0, r5) -> r14
+	copyb(0, U256_POW_TMP) -> r5
+	copyb(0, U256_POW_RES) -> r6
+	copyb(0, 4) -> r7
+pm_mulcp:
+	eq(r7, 0), j(pm_next)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(pm_mulcp)
+
+pm_next:
+	eq(r15, 0), j(pm_write)            ; just processed bit 0 -> done
+	sub(r15, 1) -> r15
+	jump(pm_loop)
+
+pm_write:
+	copyb(0, U256_POW_RES) -> r5
+	copyb(0, 4) -> r7
+pm_wr:
+	eq(r7, 0), j(pm_done)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r13, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r13, 8) -> r13
+	sub(r7, 1) -> r7
+	jump(pm_wr)
+pm_done:
+	ret
+
+pm_expzero:
+	; exp == 0 -> base^0 = 1 (reduced: 1 for m >= 2)
+	copyb(0, r13) -> r5
+	copyb(r5, 1) -> 8[a + 0]
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	ret
+
+; ----------------------------------------------------------------------------
+; u64 zisklib_inv_mod256(const u64* a, const u64* m, u64* result)
+;   Modular inverse: writes a^(-1) mod m to result and returns 1 if it exists,
+;   else returns 0 (result untouched). Mirrors ziskos `inv_mod256`: the fcall
+;   FCALL_UINT256_INV_MOD hints either the inverse or a "no-inverse" witness, and
+;   BOTH outcomes are verified (soundness — a prover must not be able to fake
+;   either):
+;     - inverse `x`: check x < m and a*x == 1 (mod m) via arith256_mod;
+;     - no inverse: a witness (gcd d, qa, qm) with d > 1, d|a (qa*d == a) and
+;       d|m (qm*d == m), proving gcd(a,m) > 1.
+;   A bad hint halts (like the reference asserts). The Rust wrapper guards m == 0.
+;   Args: r10 = a, r11 = m, r12 = result. Caller-saved regs only (r14 = fcall/
+;   precompile passthrough throwaway).
+; ----------------------------------------------------------------------------
+zisklib_inv_mod256:
+	fcall_param(4, r10) -> r14         ; append a[0..4]
+	fcall_param(4, r11) -> r14         ; append m[0..4]
+	fcall(FCALL_UINT256_INV_MOD, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r5       ; result[0] = has_inv flag
+	eq(r5, 0), j(im_noinv)
+
+	; ===== invertible: read inv[0..4] into U256_INV =====
+	copyb(0, U256_INV) -> r6
+	copyb(0, 4) -> r7
+im_rdinv:
+	eq(r7, 0), j(im_ltchk)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r15
+	copyb(r6, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(im_rdinv)
+
+im_ltchk:
+	; --- verify inv < m (256-bit unsigned, most-significant word first) ---
+	copyb(0, U256_INV) -> r5
+	add(r5, 24) -> r5                  ; &inv[3]
+	copyb(0, r11) -> r6
+	add(r6, 24) -> r6                  ; &m[3]
+	copyb(0, 4) -> r7
+im_lt_loop:
+	eq(r7, 0), j(im_panic)             ; inv == m -> not < -> bad hint
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(im_mul)           ; inv_word < m_word -> inv < m  -> OK
+	ltu(r15, r14), j(im_panic)         ; inv_word > m_word -> inv > m  -> bad hint
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(im_lt_loop)
+
+im_mul:
+	; --- verify a*inv mod m == 1: arith256_mod [&a, &inv, &ZERO, &m, &dl] ---
+	copyb(0, U256_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]         ; &a
+	copyb(0, U256_INV) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &inv
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &zero
+	copyb(r5, r11) -> 8[a + 24]        ; &m
+	copyb(0, U256_DL) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &d = dl
+	arith256_mod(0, r5) -> r14         ; dl = a*inv mod m
+
+	; dl must equal 1 = [1, 0, 0, 0]
+	copyb(0, U256_DL) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(im_v_hi)
+	jump(im_panic)
+im_v_hi:
+	copyb(0, 3) -> r7
+	add(r5, 8) -> r5
+im_v_loop:
+	eq(r7, 0), j(im_writeinv)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(im_v_next)
+	jump(im_panic)
+im_v_next:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(im_v_loop)
+
+im_writeinv:
+	; --- copy verified inverse to result, return 1 ---
+	copyb(0, U256_INV) -> r5
+	copyb(0, 4) -> r7
+im_wcopy:
+	eq(r7, 0), j(im_ret1)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r7, 1) -> r7
+	jump(im_wcopy)
+im_ret1:
+	copyb(0, 1) -> r10
+	ret
+
+im_noinv:
+	; ===== no inverse: read gcd,qa,qm (12 words) into U256_NOINV, verify witness =
+	copyb(0, U256_NOINV) -> r6
+	copyb(0, 12) -> r7
+im_rdwit:
+	eq(r7, 0), j(im_gt1)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r15
+	copyb(r6, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(im_rdwit)
+
+im_gt1:
+	; --- verify gcd > 1: any high word nonzero => >= 2^64 > 1; else gcd[0] > 1 ---
+	copyb(0, U256_NOINV) -> r5
+	add(r5, 8) -> r5                   ; &gcd[1]
+	copyb(0, 3) -> r7
+im_gt1_hi:
+	eq(r7, 0), j(im_gt1_lo)
+	copyb(r5, 8[a + 0]) -> r14
+	ltu(0, r14), j(im_dvda)            ; high word != 0 -> gcd > 1 -> OK
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(im_gt1_hi)
+im_gt1_lo:
+	copyb(0, U256_NOINV) -> r5
+	copyb(r5, 8[a + 0]) -> r14         ; gcd[0]
+	ltu(1, r14), j(im_dvda)            ; 1 < gcd[0] -> gcd > 1 -> OK
+	jump(im_panic)                     ; gcd <= 1 -> invalid witness
+
+im_dvda:
+	; --- verify d | a: qa * gcd == a. arith256 [&qa, &gcd, &ZERO, &dl, &dh] ---
+	copyb(0, U256_HDR) -> r5
+	copyb(0, U256_NOINV) -> r7
+	add(r7, 32) -> r7                  ; &qa = &NOINV[4]
+	copyb(r5, r7) -> 8[a + 0]          ; arith a = qa
+	copyb(0, U256_NOINV) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; arith b = gcd (&NOINV[0])
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; c = 0
+	copyb(0, U256_DL) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &dl
+	copyb(0, U256_DH) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &dh
+	arith256(0, r5) -> r14             ; dl:dh = qa*gcd
+	; dh must be 0
+	copyb(0, U256_DH) -> r5
+	copyb(0, 4) -> r7
+im_da_hi:
+	eq(r7, 0), j(im_da_lo)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(im_da_hi_n)
+	jump(im_panic)
+im_da_hi_n:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(im_da_hi)
+im_da_lo:
+	; dl must equal a (r10)
+	copyb(0, U256_DL) -> r5
+	copyb(0, r10) -> r6
+	copyb(0, 4) -> r7
+im_da_eq:
+	eq(r7, 0), j(im_dvdm)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(im_da_eq_n)
+	jump(im_panic)
+im_da_eq_n:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(im_da_eq)
+
+im_dvdm:
+	; --- verify d | m: qm * gcd == m. arith256 [&qm, &gcd, &ZERO, &dl, &dh] ---
+	copyb(0, U256_HDR) -> r5
+	copyb(0, U256_NOINV) -> r7
+	add(r7, 64) -> r7                  ; &qm = &NOINV[8]
+	copyb(r5, r7) -> 8[a + 0]          ; arith a = qm
+	copyb(0, U256_NOINV) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; arith b = gcd
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; c = 0
+	copyb(0, U256_DL) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &dl
+	copyb(0, U256_DH) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &dh
+	arith256(0, r5) -> r14             ; dl:dh = qm*gcd
+	; dh must be 0
+	copyb(0, U256_DH) -> r5
+	copyb(0, 4) -> r7
+im_dm_hi:
+	eq(r7, 0), j(im_dm_lo)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(im_dm_hi_n)
+	jump(im_panic)
+im_dm_hi_n:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(im_dm_hi)
+im_dm_lo:
+	; dl must equal m (r11)
+	copyb(0, U256_DL) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, 4) -> r7
+im_dm_eq:
+	eq(r7, 0), j(im_ret0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(im_dm_eq_n)
+	jump(im_panic)
+im_dm_eq_n:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(im_dm_eq)
+
+im_ret0:
+	copyb(0, 0) -> r10                 ; witness valid -> no inverse
+	ret
+
+im_panic:
+	copyb(0, 0) -> r10, end

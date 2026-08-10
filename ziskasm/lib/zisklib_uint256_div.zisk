@@ -1,0 +1,145 @@
+; ============================================================================
+; zisklib_uint256_div.zisk - 256-bit Euclidean division. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/uint256/div.rs (the wrapping/checked div &
+; rem and div_ceil variants are Rust wrappers over this core). Shared data lives
+; in zisklib_uint256_common.zisk. Internal labels: `ud_`.
+; FREE_INPUT / FCALL_UINT256_DIV come from the common file's `pub define`s.
+; ============================================================================
+
+; RAM scratch: the hinted quotient (words 0..4) and remainder (words 4..8),
+; stored contiguously so the arith256 verify can reference both.
+u64 U256_QR[8] = 0, 0, 0, 0, 0, 0, 0, 0
+
+; ----------------------------------------------------------------------------
+; void zisklib_div_rem256(const u64* a, const u64* b, u64* q_out, u64* r_out)
+;   Euclidean division: q = a / b, r = a % b (with a = q*b + r, 0 <= r < b).
+;   Mirrors ziskos `div_rem256`: hint (q, r) via the uint256_div fcall, then
+;   verify the division lemma with the arith256 precompile (q*b + r must equal a,
+;   with a zero high part) and that r < b. Halts (like the reference `assert!`) on
+;   b == 0 or on a hint that fails verification — both unreachable in normal use.
+;   Args: r10 = a, r11 = b, r12 = q_out, r13 = r_out. Caller-saved regs only
+;   (r5-r7, r14/r15 scratch; r14 doubles as the fcall passthrough throwaway).
+; ----------------------------------------------------------------------------
+zisklib_div_rem256:
+	; --- division-by-zero guard: halt if b == 0 (all four words zero) ---
+	copyb(0, r11) -> r5                ; r5 = &b (walk a copy; keep r11)
+	copyb(0, 4) -> r6
+ud_bz:
+	eq(r6, 0), j(ud_panic)             ; scanned all words, none nonzero -> b == 0
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(ud_hint)             ; 0 < word -> b != 0 -> proceed
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(ud_bz)
+
+ud_hint:
+	; --- hint q,r: fcall(a, b) -> 8 results = q[0..4] ‖ r[0..4] ---
+	fcall_param(4, r10) -> r14         ; append a[0..4]
+	fcall_param(4, r11) -> r14         ; append b[0..4]
+	fcall(FCALL_UINT256_DIV, 0) -> r14 ; free_input = result[0] = q[0], result_size = 8
+	; store all 8 result words contiguously into U256_QR (q first, then r)
+	copyb(0, U256_QR) -> r5
+	copyb(0, [FREE_INPUT]) -> r6       ; result[0] = q[0]
+	copyb(r5, r6) -> 8[a + 0]
+	add(r5, 8) -> r5
+	copyb(0, 7) -> r6                  ; 7 remaining words (q[1..4], r[0..4])
+ud_read:
+	eq(r6, 0), j(ud_verify)
+	fcall_get(0, 0) -> r14             ; advance to the next result word
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r5, r7) -> 8[a + 0]
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(ud_read)
+
+ud_verify:
+	; --- arith256: dl:dh = q*b + r, header [&q, &b, &r, &dl, &dh] ---
+	copyb(0, U256_HDR) -> r5           ; r5 = header base (kept for arith256)
+	copyb(0, U256_QR) -> r7
+	copyb(r5, r7) -> 8[a + 0]          ; &q  = &QR[0]
+	copyb(r5, r11) -> 8[a + 8]         ; &b
+	copyb(0, U256_QR) -> r7
+	add(r7, 32) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &r  = &QR[4]  (the c addend)
+	copyb(0, U256_DL) -> r7
+	copyb(r5, r7) -> 8[a + 24]         ; &dl
+	copyb(0, U256_DH) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &dh
+	arith256(0, r5) -> r14             ; dl:dh = q*b + r
+
+	; --- verify dl == a (the dividend) ---
+	copyb(0, U256_DL) -> r5
+	copyb(0, r10) -> r6                ; &a
+	copyb(0, 4) -> r7
+ud_eq:
+	eq(r7, 0), j(ud_dh)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(ud_eq_next)
+	jump(ud_panic)                     ; q*b + r != a -> bad hint
+ud_eq_next:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ud_eq)
+
+ud_dh:
+	; --- verify dh == 0 (q*b + r fits in 256 bits) ---
+	copyb(0, U256_DH) -> r5
+	copyb(0, 4) -> r7
+ud_dh_loop:
+	eq(r7, 0), j(ud_lt)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(ud_dh_next)
+	jump(ud_panic)                     ; high part nonzero -> bad hint
+ud_dh_next:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(ud_dh_loop)
+
+ud_lt:
+	; --- verify r < b (256-bit unsigned compare, most-significant word first) ---
+	copyb(0, U256_QR) -> r5
+	add(r5, 56) -> r5                  ; &r[3] = &QR[7]
+	copyb(0, r11) -> r6
+	add(r6, 24) -> r6                  ; &b[3]
+	copyb(0, 4) -> r7
+ud_lt_loop:
+	eq(r7, 0), j(ud_panic)             ; all words equal -> r == b, not < -> bad hint
+	copyb(r5, 8[a + 0]) -> r14         ; r word
+	copyb(r6, 8[a + 0]) -> r15         ; b word
+	ltu(r14, r15), j(ud_store)         ; r_word < b_word -> r < b  -> OK
+	ltu(r15, r14), j(ud_panic)         ; r_word > b_word -> r > b  -> bad hint
+	sub(r5, 8) -> r5                   ; equal -> compare next lower word
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ud_lt_loop)
+
+ud_store:
+	; --- copy q = QR[0..4] -> q_out, r = QR[4..8] -> r_out ---
+	copyb(0, U256_QR) -> r5
+	copyb(0, 4) -> r7
+ud_cpq:
+	eq(r7, 0), j(ud_cpr)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r7, 1) -> r7
+	jump(ud_cpq)
+ud_cpr:
+	copyb(0, 4) -> r7                  ; r5 now points at &QR[4] (the remainder)
+ud_cpr_loop:
+	eq(r7, 0), j(ud_done)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r13, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r13, 8) -> r13
+	sub(r7, 1) -> r7
+	jump(ud_cpr_loop)
+ud_done:
+	ret
+
+ud_panic:
+	; b == 0 or a hint that failed verification: halt (mirrors the Rust asserts)
+	copyb(0, 0) -> r10, end

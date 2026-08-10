@@ -53,17 +53,53 @@ pub fn assemble_files_with_defines<P: AsRef<Path>>(
     defines: &[&str],
 ) -> Result<ZiskRom, String> {
     let predefined: HashSet<String> = defines.iter().map(|s| s.to_string()).collect();
+    let srcs = read_sources(paths)?;
+    let seed = merge_public_defines(srcs.iter().map(|(_, s)| s.as_str()))?;
     let mut program = Program::default();
-    for path in paths {
-        let path = path.as_ref();
-        let name = path.to_string_lossy().to_string();
-        let src =
-            std::fs::read_to_string(path).map_err(|e| format!("cannot read `{name}`: {e}"))?;
-        let parsed = parser::parse_program_with_defines(&src, &name, &predefined)?;
+    for (name, src) in &srcs {
+        let parsed = parser::parse_program_seeded(src, name, &predefined, &seed)?;
         program.instructions.extend(parsed.instructions);
         program.data.extend(parsed.data);
     }
     assemble(&program)
+}
+
+/// Reads several `.zisk` files into `(name, source)` pairs (used so a multi-file
+/// assembly can gather `pub define`s before parsing any file).
+fn read_sources<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<(String, String)>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            let path = path.as_ref();
+            let name = path.to_string_lossy().to_string();
+            let src =
+                std::fs::read_to_string(path).map_err(|e| format!("cannot read `{name}`: {e}"))?;
+            Ok((name, src))
+        })
+        .collect()
+}
+
+/// Gathers every `pub define` across the given sources into one value map that
+/// seeds each file's parse (so a public define is visible assembly-wide). Errors
+/// if a name is publicly defined twice with different values.
+fn merge_public_defines<'a>(
+    sources: impl Iterator<Item = &'a str>,
+) -> Result<HashMap<String, String>, String> {
+    let mut map: HashMap<String, String> = HashMap::new();
+    for src in sources {
+        for (name, value) in parser::collect_public_defines(src) {
+            if let Some(prev) = map.get(&name) {
+                if *prev != value {
+                    return Err(format!(
+                        "conflicting `pub define {name}` values: `{prev}` and `{value}`"
+                    ));
+                }
+            } else {
+                map.insert(name, value);
+            }
+        }
+    }
+    Ok(map)
 }
 
 /// A hand-written `.zisk` library assembled for merging into a program ROM. Unlike
@@ -89,13 +125,11 @@ pub fn assemble_library_files<P: AsRef<Path>>(
     rom_base: u64,
     ram_base: u64,
 ) -> Result<ZiskLibrary, String> {
+    let srcs = read_sources(paths)?;
+    let seed = merge_public_defines(srcs.iter().map(|(_, s)| s.as_str()))?;
     let mut program = Program::default();
-    for path in paths {
-        let path = path.as_ref();
-        let name = path.to_string_lossy().to_string();
-        let src =
-            std::fs::read_to_string(path).map_err(|e| format!("cannot read `{name}`: {e}"))?;
-        let parsed = parser::parse_program(&src, &name)?;
+    for (name, src) in &srcs {
+        let parsed = parser::parse_program_seeded(src, name, &HashSet::new(), &seed)?;
         program.instructions.extend(parsed.instructions);
         program.data.extend(parsed.data);
     }
@@ -113,9 +147,10 @@ pub fn assemble_library_sources(
     rom_base: u64,
     ram_base: u64,
 ) -> Result<ZiskLibrary, String> {
+    let seed = merge_public_defines(sources.iter().map(|(_, s)| *s))?;
     let mut program = Program::default();
     for (name, src) in sources {
-        let parsed = parser::parse_program(src, name)?;
+        let parsed = parser::parse_program_seeded(src, name, &HashSet::new(), &seed)?;
         program.instructions.extend(parsed.instructions);
         program.data.extend(parsed.data);
     }

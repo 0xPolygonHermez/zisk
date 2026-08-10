@@ -215,7 +215,40 @@ pub fn parse_program_with_defines(
     file: &str,
     predefined: &HashSet<String>,
 ) -> Result<Program, String> {
-    let mut defs: HashMap<String, String> = HashMap::new();
+    parse_program_seeded(src, file, predefined, &HashMap::new())
+}
+
+/// Scans a source for `pub define NAME VALUE` directives and returns their
+/// `(name, value)` pairs. A `pub define` is visible to every file of a multi-file
+/// assembly (a library or a `-z` directory), whereas a plain `define` is
+/// file-local. Multi-file assemblers collect these across all sources and pass
+/// them as the `seed` to [`parse_program_seeded`] for every file, so a constant
+/// can be declared once and used everywhere. (Comment-stripped, whole-line scan;
+/// `pub define`s are meant to be unconditional top-level declarations.)
+pub fn collect_public_defines(src: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    for raw in src.lines() {
+        let code = raw.split(';').next().unwrap_or("").trim();
+        if let Some(rest) = code.strip_prefix("pub define ") {
+            let mut it = rest.split_whitespace();
+            if let (Some(name), Some(value)) = (it.next(), it.next()) {
+                out.push((name.to_string(), value.to_string()));
+            }
+        }
+    }
+    out
+}
+
+/// Core program parser. `predefined` are names `ifdef`/`ifndef` can test (no
+/// value); `seed` are value-carrying defines injected before parsing begins (used
+/// to propagate `pub define`s from sibling files — see [`collect_public_defines`]).
+pub fn parse_program_seeded(
+    src: &str,
+    file: &str,
+    predefined: &HashSet<String>,
+    seed: &HashMap<String, String>,
+) -> Result<Program, String> {
+    let mut defs: HashMap<String, String> = seed.clone();
     let mut pending_label: Option<String> = None;
     let mut program = Program::default();
     let mut cond: Vec<CondFrame> = Vec::new();
@@ -244,8 +277,13 @@ pub fn parse_program_with_defines(
             continue;
         }
 
-        // Definition: `define NAME VALUE`.
-        if let Some(rest) = code.strip_prefix("define ") {
+        // Definition: `define NAME VALUE`, or `pub define NAME VALUE` (public —
+        // visible to sibling files in a multi-file assembly, collected by
+        // `collect_public_defines` and seeded here; within this file it behaves
+        // like a normal define).
+        if let Some(rest) =
+            code.strip_prefix("pub define ").or_else(|| code.strip_prefix("define "))
+        {
             let mut it = rest.split_whitespace();
             let name = it.next().ok_or_else(|| err(file, line, "define without identifier"))?;
             let value = it.next().ok_or_else(|| err(file, line, "define without value"))?;

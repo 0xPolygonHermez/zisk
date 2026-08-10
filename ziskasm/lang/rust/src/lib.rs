@@ -125,7 +125,7 @@ pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 
 }
 
 /// `a^(-1) mod 2^256` if it exists, else "not invertible". Raw ABI boundary
-/// redirected to `zisklib_uint256.zisk`'s `zisklib_inv256`: returns `1` and writes
+/// redirected to `zisklib_uint256_mul.zisk`'s `zisklib_inv256`: returns `1` and writes
 /// `result[0..4]` when `a` is invertible (odd), `0` otherwise. The placeholder
 /// writes a sentinel and returns an argument-dependent value so the optimizer
 /// keeps the call and sets up both argument registers.
