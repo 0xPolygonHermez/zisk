@@ -53,8 +53,9 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Arguments
     /// * `zisk_rom` - Reference to the Zisk ROM used for execution.
-    /// * `min_traces` - A vector of the minimal traces, each segment has num_within minimal traces
-    ///   inside.
+    /// * `segment_min_traces` - This segment's minimal traces (at most `num_within`).
+    /// * `prev_chunk_last_c` - `last_c` of the chunk preceding the segment (`None` for the
+    ///   first segment).
     /// * `chunk_size` - The size of the minimal traces.
     ///
     /// The computed trace is added to the proof context's air instance repository.
@@ -72,7 +73,8 @@ impl<F: PrimeField64> MainInstance<F> {
     pub fn compute_witness<R: MainTraceRowOps<F> + IndexedFill>(
         &self,
         zisk_rom: &ZiskRom,
-        min_traces: &[EmuTrace],
+        segment_min_traces: &[std::sync::Arc<EmuTrace>],
+        prev_chunk_last_c: Option<u64>,
         chunk_size: u64,
         trace_buffer: Vec<F>,
     ) -> Result<AirInstance<F>, MainSmError> {
@@ -99,11 +101,6 @@ impl<F: PrimeField64> MainInstance<F> {
 
         // Determine the number of minimal traces per segment
         let num_within = NUM_ROWS / chunk_size;
-
-        // Determine trace slice for the current segment
-        let start_idx = segment_id.as_usize() * num_within;
-        let end_idx = (start_idx + num_within).min(min_traces.len());
-        let segment_min_traces = &min_traces[start_idx..end_idx];
 
         // Calculate total filled rows
         let filled_rows: usize =
@@ -147,7 +144,7 @@ impl<F: PrimeField64> MainInstance<F> {
                     &segment_min_traces[chunk_id],
                     &mut reg_trace,
                     &mut step_range_check,
-                    chunk_id == (end_idx - start_idx - 1),
+                    chunk_id == (segment_min_traces.len() - 1),
                 );
                 (pc, regs, reg_trace, step_range_check)
             })
@@ -180,10 +177,9 @@ impl<F: PrimeField64> MainInstance<F> {
         let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, NUM_ROWS);
 
         // Determine the last row of the previous segment
-        let prev_segment_last_c = if start_idx > 0 {
-            Emu::intermediate_value(min_traces[start_idx - 1].last_c)
-        } else {
-            [F::ZERO, F::ZERO]
+        let prev_segment_last_c = match prev_chunk_last_c {
+            Some(last_c) => Emu::intermediate_value(last_c),
+            None => [F::ZERO, F::ZERO],
         };
 
         // Prepare main AIR values

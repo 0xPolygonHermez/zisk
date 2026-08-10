@@ -22,14 +22,14 @@ use crate::{
 use fields::PrimeField64;
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use sm_main::MainSM;
+use sm_main::{MainPlanner, MainSM};
 use std::{
-    sync::{Arc, RwLock},
+    sync::{atomic::AtomicUsize, atomic::Ordering, Arc, Mutex, RwLock},
     time::Instant,
 };
 use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId,
+    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
     ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
@@ -55,6 +55,114 @@ pub struct PlanSummaryEntry {
 
 /// The maximum number of steps to execute in the emulator or assembly runner.
 pub(crate) const MAX_NUM_STEPS: u64 = 1 << 36;
+
+/// Incremental Main-instance advancement: as the ASM emulator streams chunks
+/// (in order, on the MT reader thread), chunks are pushed into the progressive
+/// `state.min_traces` store and every Main segment whose chunks are all
+/// published is planned, assigned and marked witness-ready IMMEDIATELY — so
+/// main witness computation (and its GPU streaming-slot commit) overlaps the
+/// rest of the emulation and the gpu-mops window instead of waiting for
+/// `await_mem_plans`.
+///
+/// A full segment `s` is only released once a chunk BEYOND it exists
+/// (`watermark > (s+1)*num_within`), which is the moment `is_last_segment =
+/// false` becomes a fact rather than a guess. The final (possibly partial)
+/// segment is released by [`Self::finalize`] once the total chunk count is
+/// known. Global-id order is identical to the previous batch path: ROM first
+/// (assigned before the run), then Main segments in order, then secondary.
+struct MainAdvancer<'a, F: PrimeField64> {
+    registry: &'a dyn ProofRegistry,
+    global_ids: &'a RwLock<Vec<usize>>,
+    witness: &'a WitnessPhase<F>,
+    state: &'a ExecutionState<F>,
+    /// Minimal-trace chunks per Main segment.
+    num_within: usize,
+    /// Next segment to release (all below are already assigned + ready).
+    next_segment: AtomicUsize,
+    /// First error hit on the reader thread; checked by `finalize`.
+    error: Mutex<Option<crate::error::ExecutorError>>,
+}
+
+impl<'a, F: PrimeField64> MainAdvancer<'a, F> {
+    fn new(
+        registry: &'a dyn ProofRegistry,
+        global_ids: &'a RwLock<Vec<usize>>,
+        witness: &'a WitnessPhase<F>,
+        state: &'a ExecutionState<F>,
+        num_within: usize,
+    ) -> Self {
+        Self {
+            registry,
+            global_ids,
+            witness,
+            state,
+            num_within,
+            next_segment: AtomicUsize::new(0),
+            error: Mutex::new(None),
+        }
+    }
+
+    /// Per-chunk hook body (reader thread, sequential, chunk order). Errors are
+    /// latched: the run itself is never interrupted, `finalize` surfaces them.
+    fn on_chunk(&self, idx: usize, trace: &Arc<EmuTrace>) {
+        if self.error.lock().map(|g| g.is_some()).unwrap_or(true) {
+            return;
+        }
+        if let Err(e) = self.on_chunk_inner(idx, trace) {
+            *self.error.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(e);
+        }
+    }
+
+    fn on_chunk_inner(&self, idx: usize, trace: &Arc<EmuTrace>) -> ExecutorResult<()> {
+        let watermark = {
+            let mut guard = self.state.min_traces.write_or_poison("min_traces")?;
+            let store = guard.get_or_insert_with(Vec::new);
+            if store.len() != idx {
+                return Err(crate::error::ExecutorError::ChunkOutOfOrder {
+                    got: idx,
+                    expected: store.len(),
+                });
+            }
+            store.push(trace.clone());
+            store.len()
+        };
+
+        // Release every full segment that now has a chunk beyond it.
+        loop {
+            let segment = self.next_segment.load(Ordering::Relaxed);
+            if (segment + 1) * self.num_within >= watermark {
+                break;
+            }
+            self.release_segment(segment, false)?;
+            self.next_segment.store(segment + 1, Ordering::Relaxed);
+        }
+        Ok(())
+    }
+
+    fn release_segment(&self, segment: usize, is_last: bool) -> ExecutorResult<()> {
+        let plan = MainPlanner::plan_segment(segment, is_last);
+        let assignments =
+            InstanceAssigner::assign_main_instances(self.registry, self.global_ids, vec![plan])?;
+        self.witness.populate_main_instances(self.registry, self.state, assignments)
+    }
+
+    /// Releases the remaining segments (at least the final one) and returns the
+    /// total Main instance count. Call after the run, once `num_chunks` is final.
+    fn finalize(&self, num_chunks: usize) -> ExecutorResult<usize> {
+        if let Some(e) = self.error.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+        {
+            return Err(e);
+        }
+        let total = num_chunks.div_ceil(self.num_within);
+        let mut segment = self.next_segment.load(Ordering::Relaxed);
+        while segment < total {
+            self.release_segment(segment, segment == total - 1)?;
+            segment += 1;
+        }
+        self.next_segment.store(segment, Ordering::Relaxed);
+        Ok(total)
+    }
+}
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
@@ -255,8 +363,34 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
 
         // ────────────────────────────────────────────────────────────
-        // Phase 1.1: Emulate
+        // Phase 1.1: Emulate (+ incremental Main advancement)
         // ────────────────────────────────────────────────────────────
+        // ROM instance is assigned BEFORE the run so the global-id sequence
+        // (ROM, Main segments in order, secondary) is identical to the old
+        // batch path while Main segments are now assigned mid-emulation.
+        InstanceAssigner::assign_rom_instance(registry)?;
+
+        // Main advancement: witness mode only (standalone keeps the batch path).
+        let advancer = match self.witness.as_ref() {
+            Some(witness) => Some(MainAdvancer::new(
+                registry,
+                global_ids,
+                witness,
+                &self.state,
+                MainPlanner::traces_per_segment(self.plan.chunk_size())?,
+            )),
+            None => None,
+        };
+        if advancer.is_some() {
+            // Progressive store: the hook fills it chunk by chunk.
+            *self.state.min_traces.write_or_poison("min_traces")? = Some(Vec::new());
+        }
+        let chunk_hook_closure = advancer
+            .as_ref()
+            .map(|adv| move |idx: usize, trace: &Arc<EmuTrace>| adv.on_chunk(idx, trace));
+        let chunk_hook: crate::ChunkHook<'_> =
+            chunk_hook_closure.as_ref().map(|h| h as &dyn Fn(usize, &Arc<EmuTrace>));
+
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let start_partial = Instant::now();
 
@@ -269,6 +403,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
+            chunk_hook,
         )?;
 
         let execution_duration = start_partial.elapsed();
@@ -282,16 +417,26 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
 
-        InstanceAssigner::assign_rom_instance(registry)?;
-        let main_plans = self.plan.run_main(&min_traces, &self.state.stats, &_exec_scope)?;
+        // The store must hold every chunk BEFORE the final segment is released
+        // (its witness computation reads the tail). Idempotent when the hook
+        // already filled it progressively; the whole vector on the Rust path.
         *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
 
-        let main_assignments =
-            InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
-        let main_instances_count = main_assignments.len();
-        if let Some(witness) = self.witness.as_ref() {
-            witness.populate_main_instances(registry, &self.state, main_assignments)?;
-        }
+        let main_instances_count = match advancer.as_ref() {
+            // Releases the remaining segments (at least the final one) and
+            // surfaces any error latched on the reader thread.
+            Some(adv) => adv.finalize(num_chunks)?,
+            None => {
+                let main_plans = self.plan.run_main(num_chunks, &self.state.stats, &_exec_scope)?;
+                let main_assignments =
+                    InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
+                let count = main_assignments.len();
+                if let Some(witness) = self.witness.as_ref() {
+                    witness.populate_main_instances(registry, &self.state, main_assignments)?;
+                }
+                count
+            }
+        };
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.3: Plan secondary, await async, configure + populate (witness only)

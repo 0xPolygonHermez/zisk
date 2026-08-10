@@ -1267,10 +1267,15 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
     d_ops_pool_cap_u32_  = (arena_bytes_ - cursor_) / 4;
     d_ops_pool_used_u32_ = 0;
 
+    // Highest device priority: the count/plan pipeline is the executor's critical
+    // path, and proofman's streaming-commit slots (priority 0) may run concurrently
+    // on this GPU 
+    int leastPrio = 0, greatestPrio = 0;
+    CUDA_CHECK(cudaDeviceGetStreamPriorityRange(&leastPrio, &greatestPrio));
     for (int s = 0; s < N_STREAMS; s++)
-        CUDA_CHECK(cudaStreamCreate(&streams_[s]));
-    CUDA_CHECK(cudaStreamCreate(&d2h_stream_));
-    CUDA_CHECK(cudaStreamCreate(&meta_stream_));
+        CUDA_CHECK(cudaStreamCreateWithPriority(&streams_[s], cudaStreamDefault, greatestPrio));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&d2h_stream_, cudaStreamDefault, greatestPrio));
+    CUDA_CHECK(cudaStreamCreateWithPriority(&meta_stream_, cudaStreamDefault, greatestPrio));
     CUDA_CHECK(cudaEventCreate(&e_after_preproc_));
     CUDA_CHECK(cudaEventCreate(&e_after_prepare_));
     CUDA_CHECK(cudaEventCreate(&e_metas_ready_));
@@ -1801,7 +1806,12 @@ void CountAndPlan::process_worker_() {
         d_fml_, num_active_, n_chunks_, num_ops_);
     CUDA_CHECK_LAUNCH();
 
-    CUDA_CHECK(cudaDeviceSynchronize());
+    // Everything process_worker_ launched sits on the legacy default stream, and
+    // the sync memcpys below already order against it (and against the blocking
+    // count streams). A device-wide sync would additionally wait for FOREIGN
+    // non-blocking streams -- e.g. proofman's streaming-commit slots -- adopting
+    // their whole backlog into this critical path. Sync only our own stream.
+    CUDA_CHECK(cudaStreamSynchronize(nullptr));
     CUDA_CHECK(cudaMemcpy(h_active_first_.data(), d_active_first_, num_active_ * 4, cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_active_last_.data(),  d_active_last_,  num_active_ * 4, cudaMemcpyDeviceToHost));
 
