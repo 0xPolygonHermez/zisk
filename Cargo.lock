@@ -8306,6 +8306,7 @@ dependencies = [
  "sysinfo 0.38.4",
  "time",
  "vergen-git2",
+ "wat",
  "zisk-common",
  "zisk-core",
  "zisk-definitions",
@@ -8316,6 +8317,7 @@ dependencies = [
  "zisk-sm-mem-common",
  "zisk-transpiler-common",
  "zisk-transpiler-riscv",
+ "zisk-transpiler-wasm",
 ]
 
 [[package]]
