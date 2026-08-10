@@ -1269,7 +1269,7 @@ bool CountAndPlan::setup(void* d_buf, size_t bytes,
 
     // Highest device priority: the count/plan pipeline is the executor's critical
     // path, and proofman's streaming-commit slots (priority 0) may run concurrently
-    // on this GPU 
+    // on this GPU.
     int leastPrio = 0, greatestPrio = 0;
     CUDA_CHECK(cudaDeviceGetStreamPriorityRange(&leastPrio, &greatestPrio));
     for (int s = 0; s < N_STREAMS; s++)
