@@ -1767,9 +1767,43 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_sdk_top_functions(options.top_functions);
         self.ctx.stats.set_mem_stats(options.mem_stats);
         self.ctx.stats.set_mem_full_stats(options.mem_full_stats);
+        // Byte-offset counters feed the on-screen table (--mem-full-stats) and the snapshot
+        // (--save-stats / --ref-stats), so collect them whenever any of those is requested.
+        self.ctx.stats.set_collect_offsets(
+            options.mem_full_stats || options.save_stats.is_some() || options.ref_stats.is_some(),
+        );
+        self.ctx.stats.set_log_costly_unaligned(options.log_costly_unaligned);
+        self.ctx.stats.set_callstack_strict(options.callstack_mode == "strict");
+        self.ctx.stats.set_opcode_breakdown(options.opcode_breakdown);
+        self.ctx.stats.set_duplicates(options.duplicates);
+        self.ctx.stats.set_duplicates_depth(options.duplicates_depth);
+        self.ctx.stats.set_duplicates_detail(options.duplicates_detail);
+        if let Some(list) = &options.duplicates_ops {
+            // Parse the comma-separated opcode names, keeping only supported precompiles.
+            let supported: std::collections::HashSet<u8> =
+                crate::Stats::dup_supported_opcodes().into_iter().collect();
+            let mut set = std::collections::HashSet::new();
+            for name in list.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                match ZiskOp::try_from_name(name) {
+                    Ok(op) if supported.contains(&op.code()) => {
+                        set.insert(op.code());
+                    }
+                    Ok(op) => eprintln!(
+                        "--duplicates-ops: '{name}' (0x{:02x}) is not a duplicate-analyzed \
+                         precompile, ignoring",
+                        op.code()
+                    ),
+                    Err(_) => {
+                        eprintln!("--duplicates-ops: unknown opcode name '{name}', ignoring")
+                    }
+                }
+            }
+            self.ctx.stats.set_duplicates_ops(Some(set));
+        }
         self.ctx.stats.set_sdk_width(options.sdk_width);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
         self.ctx.stats.set_legacy_frops(options.legacy_frops);
+        self.ctx.stats.set_sort_by_units(options.sort_by_units);
         if let Some(profiler_output) = &options.profiler_output {
             self.ctx.stats.set_profiler_output(profiler_output.clone());
         }
@@ -1840,6 +1874,8 @@ impl<'a> Emu<'a> {
             || options.legacy_stats
             || options.trace_steps
             || options.store_op_output.is_some()
+            || options.save_stats.is_some()
+            || options.ref_stats.is_some()
             || options.trace_changes_enabled();
 
         // While not done
@@ -1917,12 +1953,39 @@ impl<'a> Emu<'a> {
 
         // Print stats report (only for real stats; a pure `--trace-steps` run
         // turns on do_stats just to emit the per-op trace, not the report).
-        if options.stats || options.legacy_stats {
+        // `--save-stats` / `--ref-stats` also need this path to write / compare the snapshot.
+        if options.stats
+            || options.legacy_stats
+            || options.save_stats.is_some()
+            || options.ref_stats.is_some()
+        {
             self.ctx.stats.on_finish(&self.ctx.inst_ctx);
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
                 self.ctx.stats.flush_op_data_to_file(store_op_output_file).unwrap();
+            }
+
+            // Save an aggregate stats snapshot for later comparison.
+            if let Some(save_path) = &options.save_stats {
+                match std::fs::write(save_path, self.ctx.stats.stats_csv(options.csv_sep())) {
+                    Ok(()) => println!("Stats snapshot saved to: {save_path}"),
+                    Err(e) => eprintln!("Failed to save stats snapshot to {save_path}: {e}"),
+                }
+            }
+
+            // Compare this run against a previously saved reference snapshot.
+            if let Some(ref_path) = &options.ref_stats {
+                let color = crate::resolve_color(&options.color);
+                match self.ctx.stats.compare_stats(
+                    ref_path,
+                    options.diff_use_csv(),
+                    color,
+                    options.csv_sep(),
+                ) {
+                    Ok(comparison) => println!("{comparison}"),
+                    Err(e) => eprintln!("Failed to read reference stats snapshot {ref_path}: {e}"),
+                }
             }
 
             // Generate disassembly if requested

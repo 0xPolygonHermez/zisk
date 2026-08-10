@@ -121,6 +121,71 @@ pub struct EmuOptions {
     /// coverage statistics, so a new FROPS version can be compared against the previous one.
     #[clap(long, value_name = "LEGACY_FROPS", default_value = "false")]
     pub legacy_frops: bool,
+    /// Sort the opcode / precompiled / FROPS statistics sections by operation count (units)
+    /// instead of by cost. Requires option: -X
+    #[clap(long, value_name = "SORT_BY_UNITS", default_value = "false")]
+    pub sort_by_units: bool,
+    /// Save an aggregate statistics snapshot (semicolon-separated, no per-function detail) to this
+    /// file, so a later run can compare against it with `--ref-stats`. Requires option: -X
+    #[clap(long, value_name = "SAVE_STATS")]
+    pub save_stats: Option<String>,
+    /// Load an aggregate statistics snapshot saved with `--save-stats` and print a comparison
+    /// (reference vs current) of the cost distribution, base opcodes, precompiles and FROPS.
+    /// Requires option: -X
+    #[clap(long, value_name = "REF_STATS")]
+    pub ref_stats: Option<String>,
+    /// Compare two statistics snapshots saved with `--save-stats` and print the comparison, without
+    /// running the emulator. Takes two files: `<OLD> <NEW>` (OLD is the reference; deltas are
+    /// NEW - OLD). No ELF/input is needed.
+    #[clap(long, num_args = 2, value_names = ["OLD", "NEW"])]
+    pub diff_stats: Option<Vec<String>>,
+    /// Colourize the stats comparison (`--ref-stats` / `--diff-stats`): `auto` (colour only when
+    /// stdout is a terminal), `always`, or `never`.
+    #[clap(long, value_name = "WHEN", default_value = "auto")]
+    pub color: String,
+    /// Format of the stats comparison output: `color` (human-readable, colour-coded — the default)
+    /// or `csv` (the previous plain, semicolon-separated view, for scripting).
+    #[clap(long, value_name = "FORMAT", default_value = "color")]
+    pub diff_format: String,
+    /// Render the stats comparison in the previous plain view (equivalent to `--diff-format csv`).
+    /// Also implied by `--sdk`.
+    #[clap(long, value_name = "LEGACY_DISPLAY", default_value = "false")]
+    pub legacy_display: bool,
+    /// Field separator for the CSV stats output (`--save-stats` and the `csv` comparison view).
+    /// A single character; defaults to a comma.
+    #[clap(long, value_name = "SEP", default_value = ",")]
+    pub csv_separator: String,
+    /// Log every costly unaligned memory access (double 4B/8B word-crossing) with its execution
+    /// context (pc, function, address, offset, value). Off by default. Requires option: -X
+    #[clap(long, value_name = "LOG_COSTLY_UNALIGNED", default_value = "false")]
+    pub log_costly_unaligned: bool,
+    /// Call-stack tracking mode for the per-function report (`-S -X`): `auto` (default) resyncs the
+    /// call stack when a mismatch is detected — needed for GCC/C++ tail-recursion such as
+    /// std::sort's __introsort_loop; `strict` keeps the original behaviour (disable on mismatch).
+    #[clap(long, value_name = "MODE", default_value = "auto")]
+    pub callstack_mode: String,
+    /// Show a per-opcode breakdown of cheaper-to-prove variants under each opcode in the report,
+    /// e.g. `add` split into `add_hi0` / `add_hif` (BinaryAddHi shapes). Requires option: -X
+    #[clap(long, value_name = "OPCODE_BREAKDOWN", default_value = "false")]
+    pub opcode_breakdown: bool,
+    /// Analyze duplicate precompile calls: report, per precompile, how many calls repeat the same
+    /// input content (same input → same output) and the cost spent on those repeats (the potential
+    /// deduplication saving). Covers every precompile except DMA. Requires option: -X
+    #[clap(long, value_name = "DUPLICATES", default_value = "false")]
+    pub duplicates: bool,
+    /// Restrict the duplicate analysis (`--duplicates`) to these precompiles, comma-separated by
+    /// opcode name (e.g. `keccak,sha256,arith256`). If omitted, all supported precompiles are
+    /// analyzed. Requires option: --duplicates
+    #[clap(long, value_name = "OPCODES")]
+    pub duplicates_ops: Option<String>,
+    /// Number of innermost call-stack functions (leaf + callers) to record per precompile call for
+    /// the duplicate detail report (`--duplicates-detail`). Requires option: --duplicates
+    #[clap(long, value_name = "DEPTH", default_value = "4")]
+    pub duplicates_depth: usize,
+    /// Show the per-precompile call-path detail (level 2) of the duplicate report: where the
+    /// duplicates come from, most costly first. Requires options: -S --duplicates
+    #[clap(long, value_name = "DUPLICATES_DETAIL", default_value = "false")]
+    pub duplicates_detail: bool,
     /// Load function names and symbols from the ELF file.
     #[clap(short = 'S', long, value_name = "READ_SYMBOLS", default_value = "false")]
     pub read_symbols: bool,
@@ -239,6 +304,21 @@ impl Default for EmuOptions {
             generate_minimal_traces: false,
             store_op_output: None,
             legacy_frops: false,
+            sort_by_units: false,
+            save_stats: None,
+            ref_stats: None,
+            diff_stats: None,
+            color: "auto".to_string(),
+            diff_format: "color".to_string(),
+            legacy_display: false,
+            csv_separator: ",".to_string(),
+            log_costly_unaligned: false,
+            callstack_mode: "auto".to_string(),
+            opcode_breakdown: false,
+            duplicates: false,
+            duplicates_ops: None,
+            duplicates_depth: 4,
+            duplicates_detail: false,
             read_symbols: false,
             roi_callers: 10,
             top_roi: 25,
@@ -317,6 +397,17 @@ impl fmt::Display for EmuOptions {
 }
 
 impl EmuOptions {
+    /// Whether the stats comparison should use the previous plain semicolon-separated view instead
+    /// of the colour-coded one: explicit `--diff-format csv`, `--legacy-display`, or SDK mode.
+    pub fn diff_use_csv(&self) -> bool {
+        self.diff_format == "csv" || self.legacy_display || self.sdk
+    }
+
+    /// The CSV field separator as a single character (first char of `--csv-separator`, `,` if empty).
+    pub fn csv_sep(&self) -> char {
+        self.csv_separator.chars().next().unwrap_or(',')
+    }
+
     /// Returns true if the configuration allows to emulate in fast mode, maximizing the performance
     pub fn is_fast(&self) -> bool {
         self.chunk_size.is_none()
@@ -332,6 +423,9 @@ impl EmuOptions {
             && !self.generate_minimal_traces
             && !self.log_output
             && !self.log_output_riscof
+            // A full stats snapshot / comparison needs the per-opcode + memory collection path.
+            && self.save_stats.is_none()
+            && self.ref_stats.is_none()
     }
 
     /// True if a change-trace window was requested (via `--trace-from`/`--trace-to`).

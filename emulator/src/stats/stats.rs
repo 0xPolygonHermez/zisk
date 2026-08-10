@@ -34,8 +34,8 @@ use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
     CallPathProfiler, MemoryOperationsStats, OpsCosts, OpsCount, RamMonitor, RegionsOfInterest,
-    StatsCosts, StatsCoverageReport, StatsReport, BASE_COST, MAIN_COST, MEM_ACCESS_INVALID,
-    MEM_ACCESS_MONITOR, MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
+    StatsCosts, StatsCoverageReport, StatsReport, BASE_COST, BINARY_ADD_HI_COST, MAIN_COST,
+    MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR, MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
 };
 
 #[derive(Debug, Clone)]
@@ -52,11 +52,68 @@ pub struct CallStackEntry {
 
 const OP_DATA_BUFFER_DEFAULT_CAPACITY: usize = 128 * 1024 * 1024;
 const CAT_MASK: [u64; 3] = [0xFFFF_FFFF_0000_0000, 0xFFFF_FFFF_FFFF_0000, 0x0000_0000_FFFF_FFFF];
-const OP_CATEGORIES: usize = 4 * 3;
+const OP_MASK_CATEGORIES: usize = 4 * 3;
+const OP_BIN_EXT_LT_64_CATS: usize = 2;
+const OP_CATEGORIES: usize = OP_MASK_CATEGORIES + OP_BIN_EXT_LT_64_CATS;
+const OP_BIN_EXT_A_LT_64_CAT: usize = OP_MASK_CATEGORIES;
+const OP_BIN_EXT_B_LT_64_CAT: usize = OP_BIN_EXT_A_LT_64_CAT + 1;
 
 const REG_RA_IDX: u8 = 1;
 const REG_T0_IDX: u8 = 5;
 const RETURN_REGS: [u8; 2] = [REG_RA_IDX, REG_T0_IDX];
+
+// ------------------------------------------------------------------------------------------------
+// Cheap opcode variants: opcodes whose operands meet a condition that makes them cheaper to prove,
+// counted separately so their reduced cost can be accounted for and shown as a per-opcode
+// breakdown. A general mechanism — currently the BinaryAddHi shapes of ADD:
+//   add_hi0 : hi32(a)=hi32(c)=0 and hi32(b)=0            (both operands fit in 32 bits)
+//   add_hif : hi32(a)=hi32(c)=0 and hi32(b)=0xFFFF_FFFF  (a subtraction encoded as an addition)
+// ------------------------------------------------------------------------------------------------
+const ADD_CODE: u8 = ZiskOp::Add.code();
+const HI32_MASK: u64 = 0xFFFF_FFFF_0000_0000;
+const CHEAP_ADD_HI0: usize = 0;
+const CHEAP_ADD_HIF: usize = 1;
+const CHEAP_VARIANT_COUNT: usize = 2;
+/// (base opcode, label, reduced cost) for each cheap variant, indexed by `CHEAP_*`.
+const CHEAP_VARIANTS: [(u8, &str, u64); CHEAP_VARIANT_COUNT] =
+    [(ADD_CODE, "add_hi0", BINARY_ADD_HI_COST), (ADD_CODE, "add_hif", BINARY_ADD_HI_COST)];
+
+// ------------------------------------------------------------------------------------------------
+// Precompile duplicate analysis: detect precompile calls that repeat the same computation (same
+// input content → same output) so the redundant proving cost (the potential deduplication saving)
+// can be reported. Works for every precompile except DMA — the ones with a content descriptor
+// below. The key is the operand *content*, not the `b` address, so identical inputs stored at
+// different memory buffers are still detected as duplicates.
+// ------------------------------------------------------------------------------------------------
+/// Maximum number of innermost call-stack ROIs (leaf + callers) recorded per precompile call, so
+/// the detail report can show where the duplicates come from. The actual depth is configurable
+/// (`--duplicates-depth`) up to this maximum.
+const DUP_MAX_ROI_DEPTH: usize = 8;
+
+/// One segment of a precompile's input content, describing where to read operand words from,
+/// relative to the parameter block at `ctx.b` (all addresses are 8-byte words).
+#[derive(Clone, Copy)]
+enum DupSeg {
+    /// In-place operands: read `words` consecutive words starting at `ctx.b` (no indirection),
+    /// appended after any previous `Direct` segment.
+    Direct { words: usize },
+    /// Indirected operand: the param at `ctx.b + 8*param` is a pointer; read `words` words from it.
+    Indirect { param: usize, words: usize },
+    /// Inline scalar: the param at `ctx.b + 8*param` is a literal value (e.g. add256 carry-in,
+    /// blake2 block index), included as a single content word.
+    Literal { param: usize },
+}
+
+/// Per-precompile duplicate-analysis state.
+#[derive(Debug, Default)]
+struct DupStats {
+    /// Occurrence count of each input-content fingerprint (the number of words is precompile-fixed).
+    states: HashMap<Box<[u64]>, u32>,
+    /// Per-call-path stats: the innermost `duplicates_depth` ROIs (leaf first, padded with
+    /// `usize::MAX`) → (total calls on that path, of which duplicates). Lets the detail report
+    /// attribute the redundant calls to their call paths.
+    call_paths: HashMap<[usize; DUP_MAX_ROI_DEPTH], (u64, u64)>,
+}
 
 #[derive(Debug)]
 pub struct ProfileStats {
@@ -100,9 +157,29 @@ pub struct Stats {
     store_ops: bool,
     /// Flag to use the legacy FROPS tables when computing FROPS coverage statistics
     legacy_frops: bool,
+    /// Sort opcode/precompiled/FROPS report sections by operation count instead of by cost
+    sort_by_units: bool,
     costs: StatsCosts,
     // Global costs
     op_categories: OpsCount<OP_CATEGORIES>,
+    /// Execution count of each cheap opcode variant (see `CHEAP_VARIANTS`), e.g. add_hi0 / add_hif.
+    cheap_variant_counts: [u64; CHEAP_VARIANT_COUNT],
+    /// Show the per-opcode breakdown of cheap variants in the report (`--opcode-breakdown`).
+    opcode_breakdown: bool,
+    /// Analyze duplicate precompile calls: count how many calls repeat the same input content
+    /// (same input → same output) and the cost spent on those repeats, per precompile
+    /// (`--duplicates`).
+    duplicates: bool,
+    /// Restrict the duplicate analysis to these opcodes (`--duplicates-ops`). `None` = every
+    /// supported precompile (all with a content descriptor, i.e. all except DMA).
+    duplicates_ops: Option<HashSet<u8>>,
+    /// How many innermost call-stack ROIs to record per precompile call for the detail report
+    /// (`--duplicates-depth`), clamped to `1..=DUP_MAX_ROI_DEPTH`.
+    duplicates_depth: usize,
+    /// Show the per-precompile call-path detail (level 2) in the report (`--duplicates-detail`).
+    duplicates_detail: bool,
+    /// Per-precompile duplicate-analysis state, keyed by opcode.
+    dup_stats: HashMap<u8, DupStats>,
     /// Buffer to store operation data before writing to file
     op_data_buffer: Vec<u8>,
     rois_by_pc: BTreeMap<u32, u32>,
@@ -122,6 +199,13 @@ pub struct Stats {
     sdk_top_functions: bool,
     mem_stats: bool,
     mem_full_stats: bool,
+    /// Accumulate the per-offset byte read/write counters (MEM_OFFSETS). Enabled by
+    /// `--mem-full-stats` for the on-screen table, and by `--save-stats` / `--ref-stats` so the
+    /// snapshot always includes them.
+    collect_offsets: bool,
+    /// Log every costly unaligned memory access (double 4B/8B, i.e. `MEM_ACCESS_MONITOR`) with its
+    /// execution context. Off by default; enabled by `--log-costly-unaligned`.
+    log_costly_unaligned: bool,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
     previous_pc: u64,
@@ -140,6 +224,11 @@ pub struct Stats {
     use_thousands_sep: bool,
     top_rois_filter: bool,
     disable_call_stack: bool,
+    /// Call-stack tracking mode. `false` (auto, default): on a stack mismatch, resync by unwinding
+    /// the collapsed self-recursive frames (handles GCC/C++ tail-recursion, e.g. std::sort's
+    /// __introsort_loop). `true` (strict): the original behaviour — report the mismatch and disable
+    /// the call stack.
+    callstack_strict: bool,
     use_colors: bool,
     compact_cost: bool,
     compact_names: Option<usize>,
@@ -193,6 +282,7 @@ impl Default for Stats {
             op_data_buffer: vec![],
             store_ops: false,
             legacy_frops: false,
+            sort_by_units: false,
             rois,
             rois_by_pc,
             current_roi: None,
@@ -222,6 +312,7 @@ impl Default for Stats {
             use_thousands_sep: true,
             top_rois_filter: false,
             disable_call_stack: false,
+            callstack_strict: false,
             use_colors: std::io::stdout().is_terminal(),
             compact_cost: true,
             compact_names: None,
@@ -231,6 +322,8 @@ impl Default for Stats {
             sdk_top_functions: false,
             mem_stats: false,
             mem_full_stats: false,
+            collect_offsets: false,
+            log_costly_unaligned: false,
             ram_monitor: RamMonitor::new(),
             profile_tags_map: HashMap::new(),
             profile_tags: Vec::new(),
@@ -252,6 +345,13 @@ impl Default for Stats {
             rom_init_count: 0,
             ram_init_count: 0,
             op_categories: OpsCount::<OP_CATEGORIES>::new(),
+            cheap_variant_counts: [0; CHEAP_VARIANT_COUNT],
+            opcode_breakdown: false,
+            duplicates: false,
+            duplicates_ops: None,
+            duplicates_depth: 4,
+            duplicates_detail: false,
+            dup_stats: HashMap::new(),
             byte_reads: [0; 8],
             byte_clean_writes: [0; 8],
             byte_dirty_writes: [0; 8],
@@ -286,7 +386,7 @@ impl Stats {
 
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
-        if self.mem_full_stats && width == 1 {
+        if self.collect_offsets && width == 1 {
             self.byte_reads[(address as usize) & 0x7] += 1;
         }
         let status = self.costs.memory_read(address, width);
@@ -295,7 +395,7 @@ impl Stats {
 
     /// Called every time some data is writen to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
-        if self.mem_full_stats && width == 1 {
+        if self.collect_offsets && width == 1 {
             let offset = (address as usize) & 0x7;
             if value < 0x100 {
                 self.byte_clean_writes[offset] += 1;
@@ -309,19 +409,12 @@ impl Stats {
 
     /// Acts on the status code returned by `memory_read`/`memory_write`: an invalid access is an
     /// error, and a monitored access is logged with its execution context.
-    fn handle_mem_status(
-        &self,
-        status: u32,
-        is_write: bool,
-        address: u64,
-        width: u64,
-        _value: u64,
-    ) {
+    fn handle_mem_status(&self, status: u32, is_write: bool, address: u64, width: u64, value: u64) {
         if status & MEM_ACCESS_INVALID != 0 {
             self.report_invalid_mem_access(is_write, address, width);
         }
-        if status & MEM_ACCESS_MONITOR != 0 {
-            // self.monitor_mem_access(is_write, address, width, value);
+        if self.log_costly_unaligned && status & MEM_ACCESS_MONITOR != 0 {
+            self.monitor_mem_access(is_write, address, width, value);
         }
     }
 
@@ -575,42 +668,79 @@ impl Stats {
             // At this point ROI change, search the new ROI
             // let roi = &mut self.rois[*index as usize];
             // If return after call, need to add delta costs
-            if let Some(return_call) = return_call {
+            if let Some(mut return_call) = return_call {
                 if return_call.caller_roi_index != Some(roi_index) {
-                    self.call_stack_error(
-                        "ERROR: STACK MISMATCH DETECTED, disabled call stack feature",
-                    );
-                    #[cfg(feature = "debug_call_stack")]
-                    {
-                        println!("**** STACK MISMATCH DETECTED ****\n");
-                        println!(
-                            "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
-                            self.regs[1], self.previous_pc
+                    // The popped frame does not return into the ROI we landed in. With GCC/C++
+                    // tail-recursion (e.g. std::__introsort_loop from std::sort) a single machine
+                    // `ret` unwinds several nested self-recursive frames the heuristic tracked as
+                    // separate calls. In `auto` mode (default) we resync by discarding the extra
+                    // frames until the one that returns into the current ROI; `strict` keeps the
+                    // original behaviour (report the mismatch and disable the call stack).
+                    if self.callstack_strict {
+                        self.call_stack_error(
+                            "ERROR: STACK MISMATCH DETECTED, disabled call stack feature",
                         );
-                        if let Some(caller_roi_index) = return_call.caller_roi_index {
-                            let _roi = &self.rois[caller_roi_index];
-                            println!("caller_roi_index (expected): {caller_roi_index} [0x{:08x}, 0x{:08x}] {}", _roi.from_pc, _roi.to_pc, _roi.name);
-                        } else {
-                            println!("caller_roi_index (expected): None !!");
-                        }
-                        let _roi = &self.rois[roi_index];
-                        println!(
-                            "caller_roi_index (current): {roi_index} [0x{:08x}, 0x{:08x}] {}",
-                            _roi.from_pc, _roi.to_pc, _roi.name
-                        );
-                        if let Some(called_roi_index) = return_call.called_roi_index {
-                            let _roi = &self.rois[called_roi_index];
+                        #[cfg(feature = "debug_call_stack")]
+                        {
+                            println!("**** STACK MISMATCH DETECTED ****\n");
                             println!(
-                                "called_roi_index: {called_roi_index} [0x{:08x}, 0x{:08x}] {}",
+                                "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
+                                self.regs[1], self.previous_pc
+                            );
+                            if let Some(caller_roi_index) = return_call.caller_roi_index {
+                                let _roi = &self.rois[caller_roi_index];
+                                println!("caller_roi_index (expected): {caller_roi_index} [0x{:08x}, 0x{:08x}] {}", _roi.from_pc, _roi.to_pc, _roi.name);
+                            } else {
+                                println!("caller_roi_index (expected): None !!");
+                            }
+                            let _roi = &self.rois[roi_index];
+                            println!(
+                                "caller_roi_index (current): {roi_index} [0x{:08x}, 0x{:08x}] {}",
                                 _roi.from_pc, _roi.to_pc, _roi.name
                             );
-                        } else {
-                            println!("called_roi_index (expected): None !!");
+                            if let Some(called_roi_index) = return_call.called_roi_index {
+                                let _roi = &self.rois[called_roi_index];
+                                println!(
+                                    "called_roi_index: {called_roi_index} [0x{:08x}, 0x{:08x}] {}",
+                                    _roi.from_pc, _roi.to_pc, _roi.name
+                                );
+                            } else {
+                                println!("called_roi_index (expected): None !!");
+                            }
+                            println!("\n");
+                            Self::static_print_call_stack(&self.call_stack, "");
                         }
-                        println!("\n");
-                        Self::static_print_call_stack(&self.call_stack, "");
+                        return;
                     }
-                    return;
+
+                    // auto: a single machine `ret` unwound several collapsed self-recursive frames
+                    // (`return_call`, the top frame, was already popped above). Find the nearest
+                    // remaining frame that returns into the current ROI and drop the extra frames
+                    // above it, keeping the profiler call path balanced; the dropped frame becomes
+                    // the effective return. If no such frame exists the mismatch is not a collapsed
+                    // recursion, so fall back to the strict behaviour (report and disable) without
+                    // mutating the stack further.
+                    match self
+                        .call_stack
+                        .iter()
+                        .rposition(|f| f.caller_roi_index == Some(roi_index))
+                    {
+                        Some(idx) => {
+                            while self.call_stack.len() > idx {
+                                if let Some(profiler) = &mut self.profiler {
+                                    let ram_usage = self.ram_monitor.get_usage(inst_ctx);
+                                    profiler.pop_call_path(self.costs.total_cost(), ram_usage);
+                                }
+                                return_call = self.call_stack.pop().unwrap();
+                            }
+                        }
+                        None => {
+                            self.call_stack_error(
+                                "ERROR: STACK MISMATCH DETECTED, disabled call stack feature",
+                            );
+                            return;
+                        }
+                    }
                 }
 
                 let (last_caller_in_stack, ok_return_call) =
@@ -965,10 +1095,67 @@ impl Stats {
                         self.op_categories.inc(inst.op, i_mask * 4 + 3);
                     }
                 }
+                if inst.op_type == ZiskOperationType::BinaryE {
+                    match inst.op {
+                        ZiskOp::PACK | ZiskOp::PACK_H | ZiskOp::PACK_W => {
+                            if inst_ctx.a < 0x1_0000_0000 && inst_ctx.b < 0x1_0000_0000 {
+                                self.op_categories.inc(inst.op, OP_BIN_EXT_A_LT_64_CAT);
+                            }
+                        }
+                        _ => {
+                            if inst_ctx.a < 64 {
+                                self.op_categories.inc(inst.op, OP_BIN_EXT_A_LT_64_CAT);
+                            }
+                            if inst_ctx.b < 64 {
+                                self.op_categories.inc(inst.op, OP_BIN_EXT_B_LT_64_CAT);
+                            }
+                        }
+                    }
+                }
             }
-            self.costs.add_fixed_cost_op(inst.op);
+            // Cheap opcode variants (e.g. BinaryAddHi shapes of ADD) are counted and charged their
+            // reduced cost, so the per-opcode and aggregate costs reflect the saving. Only for
+            // non-FROPS fixed-cost ops, so the counts are a subset of the opcode's count.
+            if let Some(variant) = Self::cheap_variant(inst.op, inst_ctx.a, inst_ctx.b, inst_ctx.c)
+            {
+                self.cheap_variant_counts[variant] += 1;
+                self.costs.add_cost_op(inst.op, CHEAP_VARIANTS[variant].2);
+            } else {
+                self.costs.add_fixed_cost_op(inst.op);
+            }
         } else {
             self.costs.add_variable_cost_op(inst.op, self.current_variable_cost);
+        }
+
+        // Precompile duplicate analysis: fingerprint the input content of each precompile call
+        // (following its memory layout, dereferencing indirections, so the key is the content —
+        // not the `b` address) and mark the call a duplicate if that content was seen before.
+        if self.duplicates && self.dup_op_enabled(inst.op) {
+            if let Some(content) = Self::precompile_content(inst.op, inst_ctx) {
+                let depth = self.duplicates_depth;
+                let stats = self.dup_stats.entry(inst.op).or_default();
+                let entry = stats.states.entry(content.into_boxed_slice()).or_insert(0);
+                let is_duplicate = *entry > 0;
+                *entry += 1;
+
+                // Innermost `depth` call-stack ROIs (leaf first): current function plus its
+                // callers, so the detail report shows the call path a duplicate comes from. Only
+                // the first `depth` levels are filled, so paths aggregate at the configured depth.
+                let mut path = [usize::MAX; DUP_MAX_ROI_DEPTH];
+                path[0] = self.current_roi.unwrap_or(usize::MAX);
+                let n = self.call_stack.len();
+                for i in 0..depth.saturating_sub(1) {
+                    if i < n {
+                        path[i + 1] =
+                            self.call_stack[n - 1 - i].caller_roi_index.unwrap_or(usize::MAX);
+                    }
+                }
+                let path_stats = stats.call_paths.entry(path).or_insert((0, 0));
+                path_stats.0 += 1;
+                if is_duplicate {
+                    path_stats.1 += 1;
+                }
+            }
         }
 
         // Increase the PC histogram entry for this PC
@@ -1124,6 +1311,11 @@ impl Stats {
     pub fn set_legacy_frops(&mut self, legacy: bool) {
         self.legacy_frops = legacy;
     }
+    /// When true, the opcode/precompiled/FROPS report sections are sorted by operation count
+    /// (units) instead of by cost.
+    pub fn set_sort_by_units(&mut self, sort_by_units: bool) {
+        self.sort_by_units = sort_by_units;
+    }
     /// Store operation data in memory buffer
     fn store_op_data(&mut self, op: u8, a: u64, b: u64) {
         // Reserve space for: 1 byte (op) + 8 bytes (a) + 8 bytes (b) = 17 bytes
@@ -1232,9 +1424,13 @@ impl Stats {
         ops: &OpsCosts,
         base: bool,
         precompiled: bool,
+        breakdown: bool,
     ) {
-        let top_opcodes = ops.top_cost_opcodes(5, base, precompiled);
         let extended = base && !ops.is_frops();
+
+        // Collect the opcodes to report, then order them from highest to lowest by cost (default) or
+        // by operation count (units) when `sort_by_units` is set.
+        let mut entries: Vec<(u8, u64, u64)> = Vec::new(); // (opcode, count, cost)
         for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
             if let Some((count, cost)) = ops.get_opcode_count_and_cost(opcode) {
                 if count == 0 {
@@ -1247,29 +1443,53 @@ impl Stats {
                     if !precompiled && inst.is_precompiled() {
                         continue;
                     }
-                    let rank = if let Some(pos) = top_opcodes.iter().position(|&op| op == opcode) {
-                        format!(" #{}", pos + 1)
-                    } else {
-                        String::new()
-                    };
-                    if extended {
-                        let categories =
-                            self.op_categories.get_by_opcode(opcode).map(|c| &c[..]).unwrap_or(&[]);
-                        report.add_count_cost_perc2_extended(
-                            &format!("{title} {:}", inst.name()),
-                            count as u64,
-                            cost,
-                            &rank,
-                            categories,
-                        );
-                    } else {
-                        report.add_count_cost_perc2(
-                            &format!("{title} {:}", inst.name()),
-                            count as u64,
-                            cost,
-                            &rank,
-                        );
-                    }
+                    entries.push((opcode, count as u64, cost));
+                }
+            }
+        }
+        if self.sort_by_units {
+            entries.sort_by_key(|&(_, count, cost)| std::cmp::Reverse((count, cost)));
+        } else {
+            entries.sort_by_key(|&(_, count, cost)| std::cmp::Reverse((cost, count)));
+        }
+
+        for (opcode, count, cost) in entries {
+            let inst = match ZiskOp::try_from_code(opcode) {
+                Ok(inst) => inst,
+                Err(_) => continue,
+            };
+            if extended {
+                let categories =
+                    self.op_categories.get_by_opcode(opcode).map(|c| &c[..]).unwrap_or(&[]);
+                report.add_count_cost_perc2_extended(
+                    &format!("{title} {:}", inst.name()),
+                    count,
+                    cost,
+                    "",
+                    categories,
+                );
+            } else {
+                report.add_count_cost_perc2(&format!("{title} {:}", inst.name()), count, cost, "");
+            }
+
+            // Per-opcode breakdown of cheap variants (e.g. add → add_hif / add_hi0), as a tree.
+            if breakdown {
+                let mut variants: Vec<(usize, &str, u64)> = CHEAP_VARIANTS
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, (vop, _, _))| *vop == opcode && self.cheap_variant_counts[*i] > 0)
+                    .map(|(i, (_, label, vcost))| (i, *label, *vcost))
+                    .collect();
+                variants.sort_by_key(|&(i, _, _)| std::cmp::Reverse(self.cheap_variant_counts[i]));
+                for (n, (i, label, vcost)) in variants.iter().enumerate() {
+                    let glyph = if n + 1 == variants.len() { "└" } else { "├" };
+                    let vcount = self.cheap_variant_counts[*i];
+                    report.add_count_cost_perc2(
+                        &format!("{glyph} {label}"),
+                        vcount,
+                        vcount * vcost,
+                        "",
+                    );
                 }
             }
         }
@@ -1427,7 +1647,9 @@ impl Stats {
     }
 
     pub fn report_frops_hit(&self, report: &mut StatsReport, title: &str) {
-        let top_opcodes = self.costs.top_cost_frops_opcodes(5);
+        // Collect the FROPS opcodes, then order them from highest to lowest by cost (default) or by
+        // FROPS count (units) when `sort_by_units` is set.
+        let mut entries: Vec<(u8, u64, u64, u64)> = Vec::new(); // (opcode, frops_count, no_frops_count, frops_cost)
         for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
             if let Some((frops_count, frops_cost)) =
                 self.costs.get_opcode_frops_count_and_cost(opcode)
@@ -1442,21 +1664,508 @@ impl Stats {
                     }
                     let (no_frops_count, _) =
                         self.costs.get_opcode_count_and_cost(opcode).unwrap_or((0, 0));
-                    let rank = if let Some(pos) = top_opcodes.iter().position(|&op| op == opcode) {
-                        format!(" #{}", pos + 1)
-                    } else {
-                        String::new()
-                    };
-                    report.add_count_perc_cost_perc(
-                        &format!("{title} {:}", inst.name()),
-                        frops_count as u64,
-                        (frops_count as f64 * 100.0) / ((frops_count + no_frops_count) as f64),
-                        frops_cost,
-                        &rank,
-                    );
+                    entries.push((opcode, frops_count as u64, no_frops_count as u64, frops_cost));
                 }
             }
         }
+        if self.sort_by_units {
+            entries.sort_by_key(|&(_, frops_count, _, frops_cost)| {
+                std::cmp::Reverse((frops_count, frops_cost))
+            });
+        } else {
+            entries.sort_by_key(|&(_, frops_count, _, frops_cost)| {
+                std::cmp::Reverse((frops_cost, frops_count))
+            });
+        }
+
+        for (opcode, frops_count, no_frops_count, frops_cost) in entries {
+            let inst = match ZiskOp::try_from_code(opcode) {
+                Ok(inst) => inst,
+                Err(_) => continue,
+            };
+            report.add_count_perc_cost_perc(
+                &format!("{title} {:}", inst.name()),
+                frops_count,
+                (frops_count as f64 * 100.0) / ((frops_count + no_frops_count) as f64),
+                frops_cost,
+                "",
+            );
+        }
+    }
+
+    /// Reports the precompile duplicate analysis. Level 1 (always) is a per-precompile summary
+    /// table: total calls, unique inputs, duplicates and the cost spent on those duplicates (what
+    /// deduplication could save). Level 2 (`--duplicates-detail`) adds, per precompile with
+    /// duplicates, the call paths where the duplicates come from — most costly first.
+    fn report_duplicates(&self, report: &mut StatsReport, total_cost: u64) {
+        // One summary row per precompile that had calls, ordered by duplicate cost (most first).
+        struct DupRow {
+            op: u8,
+            total: u64,
+            unique: u64,
+            dup: u64,
+            max_dup: u64,
+            dup_cost: u64,
+        }
+        let mut rows: Vec<DupRow> = self
+            .dup_stats
+            .iter()
+            .filter(|(_, s)| !s.states.is_empty())
+            .map(|(&op, s)| {
+                let total: u64 = s.states.values().map(|&c| c as u64).sum();
+                let unique = s.states.len() as u64;
+                let dup = total.saturating_sub(unique);
+                let max_dup = s.states.values().copied().max().unwrap_or(0) as u64;
+                let (count, cost) = self.costs.get_opcode_count_and_cost(op).unwrap_or((0, 0));
+                let per_call = if count > 0 { cost / count as u64 } else { 0 };
+                DupRow { op, total, unique, dup, max_dup, dup_cost: dup * per_call }
+            })
+            .collect();
+        if rows.is_empty() {
+            return;
+        }
+        rows.sort_by_key(|r| std::cmp::Reverse((r.dup_cost, r.dup)));
+
+        // --- Level 1: summary table ---------------------------------------------------------
+        let pct = |num: u64, den: u64| -> String {
+            if den == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * num as f64 / den as f64)
+            }
+        };
+        let fmt_row = |c: &[String; 9]| -> String {
+            format!(
+                "{:<22} {:>12} {:>12} {:>8} {:>12} {:>8} {:>9} {:>15} {:>8}\n",
+                c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]
+            )
+        };
+        let header = [
+            "PRECOMPILE".to_string(),
+            "TOTAL".to_string(),
+            "UNIQUE".to_string(),
+            "%".to_string(),
+            "DUP".to_string(),
+            "%".to_string(),
+            "MAX DUP".to_string(),
+            "DUP COST".to_string(),
+            "%".to_string(),
+        ];
+        let header_line = fmt_row(&header);
+        let width = header_line.trim_end().len();
+        report.add("\nPRECOMPILE DUPLICATES\n");
+        report.add(&header_line);
+        report.add(&format!("{}\n", "-".repeat(width)));
+
+        let (mut t_total, mut t_unique, mut t_dup, mut t_cost) = (0u64, 0u64, 0u64, 0u64);
+        for r in &rows {
+            let name =
+                ZiskOp::try_from_code(r.op).map(|z| z.name().to_string()).unwrap_or_default();
+            report.add(&fmt_row(&[
+                name,
+                report.format_number(r.total),
+                report.format_number(r.unique),
+                pct(r.unique, r.total),
+                report.format_number(r.dup),
+                pct(r.dup, r.total),
+                report.format_number(r.max_dup),
+                report.format_number(r.dup_cost),
+                pct(r.dup_cost, total_cost),
+            ]));
+            t_total += r.total;
+            t_unique += r.unique;
+            t_dup += r.dup;
+            t_cost += r.dup_cost;
+        }
+        if rows.len() > 1 {
+            report.add(&format!("{}\n", "-".repeat(width)));
+            report.add(&fmt_row(&[
+                "TOTAL".to_string(),
+                report.format_number(t_total),
+                report.format_number(t_unique),
+                pct(t_unique, t_total),
+                report.format_number(t_dup),
+                pct(t_dup, t_total),
+                "-".to_string(),
+                report.format_number(t_cost),
+                pct(t_cost, total_cost),
+            ]));
+        }
+
+        // --- Level 2: per-precompile call-path detail ---------------------------------------
+        if !self.duplicates_detail {
+            return;
+        }
+        let depth = self.duplicates_depth.clamp(1, DUP_MAX_ROI_DEPTH);
+        let top_n = self.top_rois.max(1);
+        let roi_name = |roi: usize| -> String {
+            if roi == usize::MAX {
+                "-".to_string()
+            } else {
+                self.format_roi_name(&self.rois[roi].name)
+            }
+        };
+        for r in &rows {
+            if r.dup == 0 {
+                continue;
+            }
+            let stats = match self.dup_stats.get(&r.op) {
+                Some(s) => s,
+                None => continue,
+            };
+            let mut paths: Vec<([usize; DUP_MAX_ROI_DEPTH], u64, u64)> = stats
+                .call_paths
+                .iter()
+                .map(|(&p, &(t, d))| (p, t, d))
+                .filter(|&(_, _, d)| d > 0)
+                .collect();
+            if paths.is_empty() {
+                continue;
+            }
+            paths.sort_by_key(|&(_, _, d)| std::cmp::Reverse(d));
+            let name =
+                ZiskOp::try_from_code(r.op).map(|z| z.name().to_string()).unwrap_or_default();
+            report.title(&format!("{} DUPLICATES BY CALL PATH", name.to_uppercase()));
+            for (path, path_total, dup) in paths.iter().take(top_n) {
+                report.add(&format!(
+                    "{} duplicates / {} total  ({:.2}%)\n",
+                    report.format_number(*dup),
+                    report.format_number(*path_total),
+                    100.0 * *dup as f64 / *path_total as f64,
+                ));
+                for (level, &roi) in path.iter().take(depth).enumerate() {
+                    let prefix = if level == 0 { "    " } else { "    <- " };
+                    report.add(&format!("{prefix}{}\n", roi_name(roi)));
+                }
+            }
+            if paths.len() > top_n {
+                report.add(&format!("... and {} more call paths\n", paths.len() - top_n));
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Aggregate stats snapshot (semicolon-separated) — save one run and compare against it later.
+    // No per-function/ROI detail is included, only aggregate counters.
+    // ------------------------------------------------------------------------------------------
+
+    /// Cost-distribution totals, mirroring [`Self::report`]:
+    /// `(steps, main, opcodes, precompiled, memory, base, total, frops)`.
+    fn cost_distribution(&self) -> (u64, u64, u64, u64, u64, u64, u64, u64) {
+        let ops_cost = self.costs.base_ops_cost();
+        let precompiled_cost = self.costs.precompiled_ops_cost();
+        let steps = self.costs.steps;
+        let mem_cost = self.costs.mops.get_cost()
+            + self.rom_init_count as u64 * ROM_READ_COST
+            + self.ram_init_count as u64 * MEM_WRITE_COST;
+        let main_cost = steps * MAIN_COST;
+        let base_cost = BASE_COST as u64;
+        let total_cost = base_cost + mem_cost + main_cost + ops_cost + precompiled_cost;
+        (
+            steps,
+            main_cost,
+            ops_cost,
+            precompiled_cost,
+            mem_cost,
+            base_cost,
+            total_cost,
+            self.costs.frops_cost(),
+        )
+    }
+
+    /// Collects opcode rows `(name, count, cost)` for base or precompiled ops, sorted desc by cost.
+    fn csv_opcode_rows(&self, precompiled: bool) -> Vec<(String, u64, u64)> {
+        let mut rows: Vec<(String, u64, u64)> = Vec::new();
+        for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
+            if let Some((count, cost)) = self.costs.get_opcode_count_and_cost(opcode) {
+                if count == 0 {
+                    continue;
+                }
+                if let Ok(inst) = ZiskOp::try_from_code(opcode) {
+                    if inst.is_precompiled() != precompiled {
+                        continue;
+                    }
+                    rows.push((inst.name().to_string(), count as u64, cost));
+                }
+            }
+        }
+        rows.sort_by_key(|(_, count, cost)| std::cmp::Reverse((*cost, *count)));
+        rows
+    }
+
+    /// Collects FROP rows `(name, count, hit_percentage, cost)`, sorted desc by cost.
+    fn csv_frop_rows(&self) -> Vec<(String, u64, f64, u64)> {
+        let mut rows: Vec<(String, u64, f64, u64)> = Vec::new();
+        for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
+            if let Some((frops_count, frops_cost)) =
+                self.costs.get_opcode_frops_count_and_cost(opcode)
+            {
+                if frops_count == 0 {
+                    continue;
+                }
+                if let Ok(inst) = ZiskOp::try_from_code(opcode) {
+                    if inst.is_precompiled() {
+                        continue;
+                    }
+                    let (no_frops_count, _) =
+                        self.costs.get_opcode_count_and_cost(opcode).unwrap_or((0, 0));
+                    let hit = frops_count as f64 * 100.0 / (frops_count + no_frops_count) as f64;
+                    rows.push((inst.name().to_string(), frops_count as u64, hit, frops_cost));
+                }
+            }
+        }
+        rows.sort_by_key(|(_, count, _, cost)| std::cmp::Reverse((*cost, *count)));
+        rows
+    }
+
+    /// Appends the memory sections (`MEM` cost by type, `DETAILED_MEM` and `DETAILED_MEM FULL`) to
+    /// `s`. Percentages are relative to the total memory count/cost; zero-cost rows are skipped
+    /// (mirroring the pretty report's hidden-no-cost behaviour).
+    fn append_mem_csv(&self, s: &mut String) {
+        let mops = &self.costs.mops;
+        let rom_init = self.rom_init_count as u64;
+        let ram_init = self.ram_init_count as u64;
+        let mem_count = mops.get_count() + rom_init + ram_init;
+        let mem_cost = mops.get_cost() + rom_init * ROM_READ_COST + ram_init * MEM_WRITE_COST;
+        let pct = |v: u64, total: u64| -> String {
+            if total == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * v as f64 / total as f64)
+            }
+        };
+        let row = |s: &mut String, tag: &str, label: &str, count: u64, cost: u64| {
+            if cost == 0 {
+                return; // hidden-no-cost
+            }
+            s.push_str(&format!(
+                "{tag};{label};{count};{};{cost};{}\n",
+                pct(count, mem_count),
+                pct(cost, mem_cost)
+            ));
+        };
+
+        // MEM cost by type.
+        s.push_str("MEM;COST BY TYPE;COUNT;%;COST;%\n");
+        row(
+            s,
+            "MEM",
+            "RAM STACK ALIGNED",
+            mops.get_ram_stack_aligned_count(),
+            mops.get_ram_stack_aligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "RAM NO STACK ALIGNED",
+            mops.get_ram_no_stack_aligned_count(),
+            mops.get_ram_no_stack_aligned_cost(),
+        );
+        row(s, "MEM", "RAM INIT", ram_init, ram_init * MEM_WRITE_COST);
+        row(s, "MEM", "ROM ALIGNED", mops.get_rom_aligned_count(), mops.get_rom_aligned_cost());
+        row(s, "MEM", "ROM INIT", rom_init, rom_init * ROM_READ_COST);
+        row(
+            s,
+            "MEM",
+            "INPUT ALIGNED",
+            mops.get_input_aligned_count(),
+            mops.get_input_aligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "RAM STACK UNALIGNED",
+            mops.get_ram_stack_unaligned_count(),
+            mops.get_ram_stack_unaligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "RAM NO STACK UNALIGNED",
+            mops.get_ram_no_stack_unaligned_count(),
+            mops.get_ram_no_stack_unaligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "ROM UNALIGNED",
+            mops.get_rom_unaligned_count(),
+            mops.get_rom_unaligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "INPUT UNALIGNED",
+            mops.get_input_unaligned_count(),
+            mops.get_input_unaligned_cost(),
+        );
+        s.push('\n');
+        row(
+            s,
+            "MEM",
+            "TOTAL ALIGNED",
+            mops.get_aligned_count() + ram_init + rom_init,
+            mops.get_aligned_cost() + ram_init * MEM_WRITE_COST + rom_init * ROM_READ_COST,
+        );
+        row(s, "MEM", "TOTAL UNALIGNED", mops.get_unaligned_count(), mops.get_unaligned_cost());
+        row(s, "MEM", "TOTAL RAM STACK", mops.get_ram_stack_count(), mops.get_ram_stack_cost());
+        row(
+            s,
+            "MEM",
+            "TOTAL RAM NO STACK",
+            mops.get_ram_no_stack_count(),
+            mops.get_ram_no_stack_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "TOTAL RAM",
+            mops.get_ram_count() + ram_init,
+            mops.get_ram_cost() + ram_init * MEM_WRITE_COST,
+        );
+        row(
+            s,
+            "MEM",
+            "TOTAL ROM",
+            mops.get_rom_count() + rom_init,
+            mops.get_rom_cost() + rom_init * ROM_READ_COST,
+        );
+        row(s, "MEM", "TOTAL INPUT", mops.get_input_count(), mops.get_input_cost());
+        s.push('\n');
+
+        // Detailed memory: per-subtype rows first, then aggregate totals (after the first empty
+        // separator returned by `get_detailed_items`) tagged as DETAILED_MEM FULL.
+        s.push_str("DETAILED_MEM;TYPE;COUNT;%;COST;%\n");
+        let mut full = false;
+        for (title, count, cost) in mops.get_detailed_items(rom_init, ram_init) {
+            if title.is_empty() {
+                full = true;
+                s.push('\n');
+                continue;
+            }
+            let tag = if full { "DETAILED_MEM FULL" } else { "DETAILED_MEM" };
+            s.push_str(&format!(
+                "{tag};{title};{count};{};{cost};{}\n",
+                pct(count, mem_count),
+                pct(cost, mem_cost)
+            ));
+        }
+        s.push('\n');
+    }
+
+    /// Builds the aggregate snapshot of this run, delimited by `sep`. The first column tags the
+    /// section (`STEPS`, `COST`, `MEM`, `DETAILED_MEM`, `MEM_OFFSETS`, `OP_BASE`, `PRECOMPILES`,
+    /// `FROP`); sections are separated by a blank line. Numbers are raw (no thousands separators)
+    /// for easy parsing.
+    pub fn stats_csv(&self, sep: char) -> String {
+        let (
+            steps,
+            main_cost,
+            ops_cost,
+            precompiled_cost,
+            mem_cost,
+            base_cost,
+            total_cost,
+            frops_cost,
+        ) = self.cost_distribution();
+        let variable = total_cost - base_cost;
+        let pct = |v: u64, total: u64| -> String {
+            if total == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * v as f64 / total as f64)
+            }
+        };
+
+        let mut s = String::new();
+        s += &format!("STEPS;{steps}\n\n");
+
+        s += "COST;COST DISTRIBUTION;COST;%\n";
+        s += &format!("COST;MAIN;{main_cost};{}\n", pct(main_cost, total_cost));
+        s += &format!("COST;OPCODES;{ops_cost};{}\n", pct(ops_cost, total_cost));
+        s +=
+            &format!("COST;PRECOMPILES;{precompiled_cost};{}\n", pct(precompiled_cost, total_cost));
+        s += &format!("COST;MEMORY;{mem_cost};{}\n", pct(mem_cost, total_cost));
+        s += &format!("COST;VARIABLE;{variable};{}\n", pct(variable, total_cost));
+        s += &format!("COST;BASE;{base_cost};{}\n", pct(base_cost, total_cost));
+        s += &format!("COST;TOTAL;{total_cost};{}\n", pct(total_cost, total_cost));
+        s += &format!("COST;FROPS;{frops_cost};{}\n\n", pct(frops_cost, variable));
+
+        if self.ram_monitor.ram_size > 0 {
+            s += &format!(
+                "RAM USAGE;{};{}\n",
+                self.ram_monitor.ram_used,
+                pct(self.ram_monitor.ram_used, self.ram_monitor.ram_size)
+            );
+        }
+        let rom_used_rows =
+            self.inst_count + self.rom_init_count.div_ceil(4) + self.ram_init_count.div_ceil(4);
+        let rom_size = RomRomTrace::<Goldilocks>::NUM_ROWS as u64;
+        s += &format!("ROM USAGE;{};{}\n\n", rom_used_rows, pct(rom_used_rows as u64, rom_size));
+
+        self.append_mem_csv(&mut s);
+
+        s += "MEM_OFFSETS;offset;0;1;2;3;4;5;6;7;total\n";
+        for (label, vals) in [
+            ("reads", &self.byte_reads),
+            ("clean writes", &self.byte_clean_writes),
+            ("dirty writes", &self.byte_dirty_writes),
+        ] {
+            let total: u64 = vals.iter().sum();
+            let joined = vals.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(";");
+            s += &format!("MEM_OFFSETS;{label};{joined};{total}\n");
+        }
+        s.push('\n');
+
+        s += "OP_BASE;OPCODE;COUNT;%;COST;%\n";
+        for (name, count, cost) in self.csv_opcode_rows(false) {
+            s += &format!(
+                "OP_BASE;{name};{count};{};{cost};{}\n",
+                pct(count, steps),
+                pct(cost, total_cost)
+            );
+        }
+        s.push('\n');
+
+        for (name, count, cost) in self.csv_opcode_rows(true) {
+            s += &format!(
+                "PRECOMPILES;{name};{count};{};{cost};{}\n",
+                pct(count, steps),
+                pct(cost, total_cost)
+            );
+        }
+        s.push('\n');
+
+        for (name, count, hit, cost) in self.csv_frop_rows() {
+            s += &format!("FROP;{name};{count};{hit:.2}%;{cost};{}\n", pct(cost, variable));
+        }
+
+        // Built internally with ';'; swap to the requested separator (field content never
+        // contains ';', so this is safe).
+        if sep != ';' {
+            s = s.replace(';', &sep.to_string());
+        }
+        s
+    }
+
+    /// Compares the current run against a reference snapshot saved with `--save-stats`. With
+    /// `csv = false` it returns the human-readable, colour-coded report (red = higher cost/calls,
+    /// green = lower; sign always shown); with `csv = true` it returns the previous plain
+    /// semicolon-separated view (used by SDK mode / `--legacy-display` / `--diff-format csv`).
+    pub fn compare_stats(
+        &self,
+        ref_path: &str,
+        csv: bool,
+        color: bool,
+        sep: char,
+    ) -> std::io::Result<String> {
+        let ref_text = std::fs::read_to_string(ref_path)?;
+        let cur_text = self.stats_csv(sep);
+        Ok(if csv {
+            diff_snapshots_csv(ref_path, &ref_text, "current run", &cur_text, sep)
+        } else {
+            diff_snapshots(ref_path, &ref_text, "current run", &cur_text, color)
+        })
     }
 
     fn sdk_report(&self) -> String {
@@ -1713,14 +2422,25 @@ impl Stats {
         }
 
         if show_opcodes {
-            report.title_count_cost_perc2("COST BY BASE OPCODE", "COUNT", "COST", " RANK");
-            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), true, false);
+            report.title_count_cost_perc2("COST BY BASE OPCODE", "COUNT", "COST", "");
+            self.report_opcodes(
+                &mut report,
+                "OP",
+                self.costs.ops_costs(),
+                true,
+                false,
+                self.opcode_breakdown,
+            );
 
-            report.title_count_cost_perc2("COST BY PRECOMPILED OPCODE", "COUNT", "COST", " RANK");
-            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), false, true);
+            report.title_count_cost_perc2("COST BY PRECOMPILED OPCODE", "COUNT", "COST", "");
+            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), false, true, false);
 
-            report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", " RANK");
+            report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", "");
             self.report_frops_hit(&mut report, "FROP");
+        }
+
+        if self.duplicates {
+            self.report_duplicates(&mut report, total_cost);
         }
 
         if self.coverage {
@@ -1804,8 +2524,8 @@ impl Stats {
                         roi_report.pop_label_width();
                     }
 
-                    roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
-                    self.report_opcodes(&mut roi_report, "OP", roi.ops_costs(), true, true);
+                    roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", "");
+                    self.report_opcodes(&mut roi_report, "OP", roi.ops_costs(), true, true, false);
 
                     roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
                     let mut callers: Vec<_> = roi.get_callers().collect();
@@ -2066,27 +2786,28 @@ impl Stats {
         let mut current_internal_from = None;
         let mut current_internal_to = None;
         while let Some(inst) = rom.get_internal_instruction(internal_pc) {
-            let pc = inst.external_ref_addr.unwrap() as u32;
-            if pc >= current_roi_from && pc <= current_roi_to {
-                current_internal_to = Some(internal_pc as u32);
-            } else {
-                if let Some(internal_from) = current_internal_from {
-                    if let Some(roi_index) = current_roi_index {
-                        if !(self.update_roi_internal_pc_range(
-                            roi_index,
-                            internal_from,
-                            current_internal_to.unwrap_or(internal_from),
-                        )) {
-                            return;
+            if let Some(pc) = inst.external_ref_addr {
+                if pc as u32 >= current_roi_from && pc as u32 <= current_roi_to {
+                    current_internal_to = Some(internal_pc as u32);
+                } else {
+                    if let Some(internal_from) = current_internal_from {
+                        if let Some(roi_index) = current_roi_index {
+                            if !(self.update_roi_internal_pc_range(
+                                roi_index,
+                                internal_from,
+                                current_internal_to.unwrap_or(internal_from),
+                            )) {
+                                return;
+                            }
                         }
                     }
-                }
-                if let Some((roi_index, roi)) = self.get_roi_from_pc(pc) {
-                    current_roi_index = Some(roi_index);
-                    current_roi_from = roi.from_pc;
-                    current_roi_to = roi.to_pc;
-                    current_internal_from = Some(internal_pc as u32);
-                    current_internal_to = None;
+                    if let Some((roi_index, roi)) = self.get_roi_from_pc(pc as u32) {
+                        current_roi_index = Some(roi_index);
+                        current_roi_from = roi.from_pc;
+                        current_roi_to = roi.to_pc;
+                        current_internal_from = Some(internal_pc as u32);
+                        current_internal_to = None;
+                    }
                 }
             }
 
@@ -2197,6 +2918,166 @@ impl Stats {
     }
     pub fn set_mem_full_stats(&mut self, value: bool) {
         self.mem_full_stats = value;
+    }
+    /// Enables accumulation of the per-offset byte read/write counters (MEM_OFFSETS).
+    pub fn set_collect_offsets(&mut self, value: bool) {
+        self.collect_offsets = value;
+    }
+    /// Enables logging of costly unaligned memory accesses (double 4B/8B) with execution context.
+    pub fn set_log_costly_unaligned(&mut self, value: bool) {
+        self.log_costly_unaligned = value;
+    }
+    /// Selects strict call-stack tracking (original behaviour): a stack mismatch disables the call
+    /// stack instead of resyncing by unwinding collapsed recursive frames.
+    pub fn set_callstack_strict(&mut self, value: bool) {
+        self.callstack_strict = value;
+    }
+    /// Shows the per-opcode breakdown of cheap variants (e.g. add → add_hi0 / add_hif).
+    pub fn set_opcode_breakdown(&mut self, value: bool) {
+        self.opcode_breakdown = value;
+    }
+    /// Enables the precompile duplicate analysis.
+    pub fn set_duplicates(&mut self, value: bool) {
+        self.duplicates = value;
+    }
+    /// Restricts the duplicate analysis to the given opcodes (`None` = every supported precompile).
+    pub fn set_duplicates_ops(&mut self, value: Option<HashSet<u8>>) {
+        self.duplicates_ops = value;
+    }
+    /// Sets the recorded call-path depth for the duplicate detail report (clamped to a sane range).
+    pub fn set_duplicates_depth(&mut self, value: usize) {
+        self.duplicates_depth = value.clamp(1, DUP_MAX_ROI_DEPTH);
+    }
+    /// Enables the per-precompile call-path detail (level 2) of the duplicate report.
+    pub fn set_duplicates_detail(&mut self, value: bool) {
+        self.duplicates_detail = value;
+    }
+
+    /// Classifies an executed operation into a cheap variant (index into `CHEAP_VARIANTS`), or
+    /// `None` if it is a regular operation. Currently the BinaryAddHi shapes of ADD:
+    /// hi32(a)=hi32(c)=0 with hi32(b)=0 (add_hi0) or hi32(b)=0xFFFF_FFFF (add_hif).
+    #[inline(always)]
+    fn cheap_variant(op: u8, a: u64, b: u64, c: u64) -> Option<usize> {
+        if op == ADD_CODE && a & HI32_MASK == 0 && c & HI32_MASK == 0 {
+            if b & HI32_MASK == 0 {
+                return Some(CHEAP_ADD_HI0);
+            } else if b & HI32_MASK == HI32_MASK {
+                return Some(CHEAP_ADD_HIF);
+            }
+        }
+        None
+    }
+
+    /// Content descriptor for a precompile opcode, or `None` if the opcode is not a precompile
+    /// eligible for duplicate analysis (this excludes DMA, EVM `jump_dest`, `halt`, fcalls, etc.).
+    /// See the layout notes in `DupSeg`. The segments read the operand *content* (dereferencing
+    /// indirections) so two calls with the same inputs at different buffers are seen as duplicates.
+    fn dup_descriptor(op: u8) -> Option<&'static [DupSeg]> {
+        use DupSeg::{Direct, Indirect, Literal};
+        let z = ZiskOp::try_from_code(op).ok()?;
+        Some(match z {
+            // In-place operands read directly from `ctx.b`.
+            ZiskOp::Keccak => &[Direct { words: 25 }][..],
+            ZiskOp::Poseidon1 | ZiskOp::Poseidon2 => &[Direct { words: 16 }][..],
+            ZiskOp::Secp256k1Dbl | ZiskOp::Secp256r1Dbl | ZiskOp::Bn254CurveDbl => {
+                &[Direct { words: 8 }][..]
+            }
+            ZiskOp::Bls12_381CurveDbl => &[Direct { words: 12 }][..],
+            // Indirected operands: `ctx.b` holds pointers to the operand buffers.
+            ZiskOp::Sha256 => {
+                &[Indirect { param: 0, words: 4 }, Indirect { param: 1, words: 8 }][..]
+            }
+            ZiskOp::Blake2 => &[
+                Literal { param: 0 },
+                Indirect { param: 1, words: 16 },
+                Indirect { param: 2, words: 16 },
+            ][..],
+            ZiskOp::Add256 => &[
+                Indirect { param: 0, words: 4 },
+                Indirect { param: 1, words: 4 },
+                Literal { param: 2 },
+            ][..],
+            ZiskOp::Arith256 => &[
+                Indirect { param: 0, words: 4 },
+                Indirect { param: 1, words: 4 },
+                Indirect { param: 2, words: 4 },
+            ][..],
+            ZiskOp::Arith256Mod => &[
+                Indirect { param: 0, words: 4 },
+                Indirect { param: 1, words: 4 },
+                Indirect { param: 2, words: 4 },
+                Indirect { param: 3, words: 4 },
+            ][..],
+            ZiskOp::Secp256k1Add
+            | ZiskOp::Secp256r1Add
+            | ZiskOp::Bn254CurveAdd
+            | ZiskOp::Bn254ComplexAdd
+            | ZiskOp::Bn254ComplexSub
+            | ZiskOp::Bn254ComplexMul => {
+                &[Indirect { param: 0, words: 8 }, Indirect { param: 1, words: 8 }][..]
+            }
+            ZiskOp::Arith384Mod => &[
+                Indirect { param: 0, words: 6 },
+                Indirect { param: 1, words: 6 },
+                Indirect { param: 2, words: 6 },
+                Indirect { param: 3, words: 6 },
+            ][..],
+            ZiskOp::Bls12_381CurveAdd
+            | ZiskOp::Bls12_381ComplexAdd
+            | ZiskOp::Bls12_381ComplexSub
+            | ZiskOp::Bls12_381ComplexMul => {
+                &[Indirect { param: 0, words: 12 }, Indirect { param: 1, words: 12 }][..]
+            }
+            _ => return None,
+        })
+    }
+
+    /// Reads the input-content fingerprint of a precompile call from memory, following the layout
+    /// in `dup_descriptor`. Returns `None` for opcodes that are not duplicate-analyzed precompiles.
+    /// Read post-execution (as `on_op` runs after the op): for in-place ops the words are the
+    /// output state, but since the precompile is deterministic, identical inputs still map to an
+    /// identical fingerprint — which is all duplicate detection needs.
+    fn precompile_content(op: u8, ctx: &InstContext) -> Option<Vec<u64>> {
+        let segs = Self::dup_descriptor(op)?;
+        let base = ctx.b;
+        let mut content = Vec::new();
+        let mut direct_off = 0u64;
+        for seg in segs {
+            match *seg {
+                DupSeg::Direct { words } => {
+                    for i in 0..words as u64 {
+                        content.push(ctx.mem.read(base + 8 * (direct_off + i), 8));
+                    }
+                    direct_off += words as u64;
+                }
+                DupSeg::Indirect { param, words } => {
+                    let ptr = ctx.mem.read(base + 8 * param as u64, 8);
+                    for i in 0..words as u64 {
+                        content.push(ctx.mem.read(ptr + 8 * i, 8));
+                    }
+                }
+                DupSeg::Literal { param } => {
+                    content.push(ctx.mem.read(base + 8 * param as u64, 8));
+                }
+            }
+        }
+        Some(content)
+    }
+
+    /// Whether the duplicate analysis should process this opcode: it must be a supported precompile
+    /// and, if a restriction list was given (`--duplicates-ops`), be in it.
+    fn dup_op_enabled(&self, op: u8) -> bool {
+        match &self.duplicates_ops {
+            Some(set) => set.contains(&op),
+            None => true,
+        }
+    }
+
+    /// The opcodes eligible for duplicate analysis (every precompile with a content descriptor).
+    pub fn dup_supported_opcodes() -> Vec<u8> {
+        (ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE)
+            .filter(|&op| Self::dup_descriptor(op).is_some())
+            .collect()
     }
     pub fn set_sdk_width(&mut self, value: usize) {
         self.sdk_width = value;
@@ -2315,5 +3196,486 @@ impl OpStats for Stats {
     }
     fn set_variable_cost(&mut self, cost: u64) {
         self.current_variable_cost = cost;
+    }
+}
+
+// ==============================================================================================
+// Stats snapshot comparison — human-readable, colour-coded diff of two runs.
+// Red  = value went up (more cost / more calls → regression).
+// Green = value went down (improvement).  Dim = unchanged.  Magenta = hit% (inverted axis).
+// The sign is always printed, so the diff reads correctly with colour disabled.
+// ==============================================================================================
+
+const C_RESET: &str = "\x1b[0m";
+const C_RED: &str = "\x1b[31m";
+const C_GREEN: &str = "\x1b[32m";
+const C_DIM: &str = "\x1b[2m";
+const C_MAGENTA: &str = "\x1b[35m";
+const C_HEAD: &str = "\x1b[36m";
+
+#[derive(Default)]
+struct OpRow {
+    name: String,
+    count: u64,
+    count_pct: String,
+    cost: u64,
+    cost_pct: String,
+}
+
+#[derive(Default)]
+struct FrRow {
+    name: String,
+    count: u64,
+    hit: f64,
+    hit_pct: String,
+    cost: u64,
+    cost_pct: String,
+}
+
+#[derive(Default)]
+struct Snap {
+    steps: u64,
+    cost_rows: Vec<(String, u64, String)>, // (metric, cost, pct string)
+    cost_map: HashMap<String, u64>,
+    op_rows: Vec<OpRow>,
+    op_map: HashMap<String, (u64, u64)>,
+    pc_rows: Vec<OpRow>,
+    pc_map: HashMap<String, (u64, u64)>,
+    fr_rows: Vec<FrRow>,
+    fr_map: HashMap<String, (u64, u64, f64)>, // (count, cost, hit)
+}
+
+/// Detects the field separator of a snapshot: the character right after the leading `STEPS` tag on
+/// the first `STEPS` line. Defaults to `,` (also handles files saved with `;` or any single char).
+fn detect_sep(text: &str) -> char {
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("STEPS") {
+            if let Some(c) = rest.chars().next() {
+                return c;
+            }
+        }
+    }
+    ','
+}
+
+/// Parses a `--save-stats` snapshot, preserving row order and the original share-of-total strings.
+/// The field separator is auto-detected, so snapshots saved with any separator parse correctly.
+fn parse_snapshot(text: &str) -> Snap {
+    let sep = detect_sep(text);
+    let mut snap = Snap::default();
+    for line in text.lines() {
+        let f: Vec<&str> = line.split(sep).collect();
+        match f.first().copied() {
+            Some("STEPS") if f.len() >= 2 => {
+                snap.steps = f[1].parse().unwrap_or(0);
+            }
+            Some("COST") if f.len() >= 4 && f[1] != "COST DISTRIBUTION" => {
+                if let Ok(c) = f[2].parse::<u64>() {
+                    snap.cost_rows.push((f[1].to_string(), c, f[3].to_string()));
+                    snap.cost_map.insert(f[1].to_string(), c);
+                }
+            }
+            Some("OP_BASE") if f.len() >= 6 && f[1] != "OPCODE" => {
+                if let (Ok(cnt), Ok(cst)) = (f[2].parse::<u64>(), f[4].parse::<u64>()) {
+                    snap.op_rows.push(OpRow {
+                        name: f[1].into(),
+                        count: cnt,
+                        count_pct: f[3].into(),
+                        cost: cst,
+                        cost_pct: f[5].into(),
+                    });
+                    snap.op_map.insert(f[1].into(), (cnt, cst));
+                }
+            }
+            Some("PRECOMPILES") if f.len() >= 6 && f[1] != "OPCODE" => {
+                if let (Ok(cnt), Ok(cst)) = (f[2].parse::<u64>(), f[4].parse::<u64>()) {
+                    snap.pc_rows.push(OpRow {
+                        name: f[1].into(),
+                        count: cnt,
+                        count_pct: f[3].into(),
+                        cost: cst,
+                        cost_pct: f[5].into(),
+                    });
+                    snap.pc_map.insert(f[1].into(), (cnt, cst));
+                }
+            }
+            Some("FROP") if f.len() >= 6 && f[1] != "OPCODE" => {
+                if let (Ok(cnt), Ok(cst)) = (f[2].parse::<u64>(), f[4].parse::<u64>()) {
+                    let hit = f[3].trim_end_matches('%').parse::<f64>().unwrap_or(0.0);
+                    snap.fr_rows.push(FrRow {
+                        name: f[1].into(),
+                        count: cnt,
+                        hit,
+                        hit_pct: f[3].into(),
+                        cost: cst,
+                        cost_pct: f[5].into(),
+                    });
+                    snap.fr_map.insert(f[1].into(), (cnt, cst, hit));
+                }
+            }
+            _ => {}
+        }
+    }
+    snap
+}
+
+/// Groups a non-negative integer with thousands separators: `1234567` -> `"1,234,567"`.
+fn group_u64(n: u64) -> String {
+    let s = n.to_string();
+    let len = s.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Signed, grouped delta: `1203` -> `"+1,203"`, `-48720` -> `"-48,720"`, `0` -> `"+0"`.
+fn fmt_delta(d: i64) -> String {
+    format!("{}{}", if d < 0 { "-" } else { "+" }, group_u64(d.unsigned_abs()))
+}
+
+/// Percentage change of `cur` vs `ref`, signed. `n/a` when the reference is zero but current isn't.
+fn pct_change(r: u64, c: u64) -> String {
+    if r == 0 {
+        if c == 0 {
+            "0.00%".to_string()
+        } else {
+            "n/a".to_string()
+        }
+    } else {
+        format!("{:+.2}%", 100.0 * (c as i64 - r as i64) as f64 / r as f64)
+    }
+}
+
+/// ANSI colour for a delta: red up (worse), green down (better), dim when flat.
+fn dir(d: i64) -> &'static str {
+    if d > 0 {
+        C_RED
+    } else if d < 0 {
+        C_GREEN
+    } else {
+        C_DIM
+    }
+}
+
+fn wrap(on: bool, code: &str, text: &str) -> String {
+    if on {
+        format!("{code}{text}{C_RESET}")
+    } else {
+        text.to_string()
+    }
+}
+
+/// The `Δ (Δ%)` cell for a cost/value delta, tagging brand-new and removed entries.
+fn delta_cell(r: u64, c: u64) -> String {
+    let d = c as i64 - r as i64;
+    if r == 0 && c > 0 {
+        format!("{} (new)", fmt_delta(d))
+    } else if c == 0 && r > 0 {
+        format!("{} (gone)", fmt_delta(d))
+    } else {
+        format!("{} ({})", fmt_delta(d), pct_change(r, c))
+    }
+}
+
+/// Joins pre-padded cells `(text, colour_code)` with single spaces, applying colour when enabled.
+/// `colour_code` empty means no colour. Widths live in the padded `text`, so alignment is preserved.
+fn row_line(color: bool, cells: &[(String, &str)]) -> String {
+    cells
+        .iter()
+        .map(|(text, code)| if code.is_empty() { text.clone() } else { wrap(color, code, text) })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Renders an opcode-style section (base opcodes or precompiles): current value + share%, then a
+/// coloured signed delta for count and for cost. Reference-only entries are appended as `(gone)`.
+fn render_op_section(
+    out: &mut String,
+    color: bool,
+    title: &str,
+    prefix: &str,
+    cur_rows: &[OpRow],
+    ref_map: &HashMap<String, (u64, u64)>,
+) {
+    let header: [(String, &str); 7] = [
+        (format!("{:<24}", ""), C_DIM),
+        (format!("{:>12}", "COUNT"), C_DIM),
+        (format!("{:>7}", "%"), C_DIM),
+        (format!("{:>12}", "Δ"), C_DIM),
+        (format!("{:>15}", "COST"), C_DIM),
+        (format!("{:>7}", "%"), C_DIM),
+        (format!("{:>24}", "Δ (Δ%)"), C_DIM),
+    ];
+    out.push('\n');
+    out.push_str(&wrap(color, C_HEAD, title));
+    out.push('\n');
+    let plain_len = header.iter().map(|(t, _)| t.len()).sum::<usize>() + header.len() - 1;
+    out.push_str(&row_line(color, &header));
+    out.push('\n');
+    out.push_str(&wrap(color, C_DIM, &"-".repeat(plain_len)));
+    out.push('\n');
+
+    let mut seen: HashSet<String> = HashSet::new();
+    for row in cur_rows {
+        seen.insert(row.name.clone());
+        let (rcount, rcost) = ref_map.get(&row.name).copied().unwrap_or((0, 0));
+        let dcount = row.count as i64 - rcount as i64;
+        let dcost = row.cost as i64 - rcost as i64;
+        let cells: [(String, &str); 7] = [
+            (format!("{:<24}", format!("{prefix}{}", row.name)), ""),
+            (format!("{:>12}", group_u64(row.count)), ""),
+            (format!("{:>7}", row.count_pct), C_DIM),
+            (format!("{:>12}", fmt_delta(dcount)), dir(dcount)),
+            (format!("{:>15}", group_u64(row.cost)), ""),
+            (format!("{:>7}", row.cost_pct), C_DIM),
+            (format!("{:>24}", delta_cell(rcost, row.cost)), dir(dcost)),
+        ];
+        out.push_str(&row_line(color, &cells));
+        out.push('\n');
+    }
+    let mut removed: Vec<(&String, &(u64, u64))> =
+        ref_map.iter().filter(|(k, _)| !seen.contains(*k)).collect();
+    removed.sort_by_key(|(_, (_, cost))| std::cmp::Reverse(*cost));
+    for (rname, (rcount, rcost)) in removed {
+        let cells: [(String, &str); 7] = [
+            (format!("{:<24}", format!("{prefix}{rname}")), ""),
+            (format!("{:>12}", "0"), ""),
+            (format!("{:>7}", "-"), C_DIM),
+            (format!("{:>12}", fmt_delta(-(*rcount as i64))), dir(-(*rcount as i64))),
+            (format!("{:>15}", "0"), ""),
+            (format!("{:>7}", "-"), C_DIM),
+            (format!("{:>24}", delta_cell(*rcost, 0)), dir(-(*rcost as i64))),
+        ];
+        out.push_str(&row_line(color, &cells));
+        out.push('\n');
+    }
+}
+
+/// Renders a human-readable, colour-coded comparison of two snapshots (each in the `--save-stats`
+/// format). `ref_*` is the baseline, `cur_*` the run being evaluated; deltas are `cur - ref`.
+/// Pass `color = false` for plain output (piped / `--color=never`).
+pub fn diff_snapshots(
+    ref_label: &str,
+    ref_text: &str,
+    cur_label: &str,
+    cur_text: &str,
+    color: bool,
+) -> String {
+    let refs = parse_snapshot(ref_text);
+    let cur = parse_snapshot(cur_text);
+    let mut out = String::new();
+
+    out.push('\n');
+    out.push_str(&wrap(color, C_HEAD, &format!("COMPARISON   {ref_label}  →  {cur_label}")));
+    out.push('\n');
+    out.push_str(&wrap(
+        color,
+        C_DIM,
+        "red = higher / worse   green = lower / better   % = share of total   sign always shown",
+    ));
+    out.push('\n');
+
+    // STEPS
+    let dsteps = cur.steps as i64 - refs.steps as i64;
+    out.push('\n');
+    out.push_str(&row_line(
+        color,
+        &[
+            (format!("{:<24}", "STEPS"), ""),
+            (format!("{:>12}", group_u64(cur.steps)), ""),
+            (format!("{:>7}", ""), ""),
+            (format!("{:>24}", delta_cell(refs.steps, cur.steps)), dir(dsteps)),
+        ],
+    ));
+    out.push('\n');
+
+    // COST DISTRIBUTION
+    let cd_header: [(String, &str); 4] = [
+        (format!("{:<24}", "COST DISTRIBUTION"), C_DIM),
+        (format!("{:>15}", "COST"), C_DIM),
+        (format!("{:>8}", "%"), C_DIM),
+        (format!("{:>26}", "Δ (Δ%)"), C_DIM),
+    ];
+    out.push('\n');
+    let cd_len = cd_header.iter().map(|(t, _)| t.len()).sum::<usize>() + cd_header.len() - 1;
+    out.push_str(&row_line(color, &cd_header));
+    out.push('\n');
+    out.push_str(&wrap(color, C_DIM, &"-".repeat(cd_len)));
+    out.push('\n');
+    for (metric, cost, pct) in &cur.cost_rows {
+        let r = refs.cost_map.get(metric).copied().unwrap_or(0);
+        let d = *cost as i64 - r as i64;
+        out.push_str(&row_line(
+            color,
+            &[
+                (format!("{metric:<24}"), ""),
+                (format!("{:>15}", group_u64(*cost)), ""),
+                (format!("{pct:>8}"), C_DIM),
+                (format!("{:>26}", delta_cell(r, *cost)), dir(d)),
+            ],
+        ));
+        out.push('\n');
+    }
+
+    // Base opcodes and precompiles.
+    render_op_section(&mut out, color, "COST BY BASE OPCODE", "OP ", &cur.op_rows, &refs.op_map);
+    render_op_section(
+        &mut out,
+        color,
+        "COST BY PRECOMPILED OPCODE",
+        "OP ",
+        &cur.pc_rows,
+        &refs.pc_map,
+    );
+
+    // FROPS — hit% is an inverted axis (up is good), shown in magenta with an explicit sign.
+    let fr_header: [(String, &str); 7] = [
+        (format!("{:<24}", "FROPS BY OPCODE"), C_DIM),
+        (format!("{:>12}", "COUNT"), C_DIM),
+        (format!("{:>8}", "HIT"), C_DIM),
+        (format!("{:>9}", "ΔHIT"), C_DIM),
+        (format!("{:>15}", "COST"), C_DIM),
+        (format!("{:>7}", "%"), C_DIM),
+        (format!("{:>24}", "Δ (Δ%)"), C_DIM),
+    ];
+    out.push('\n');
+    let fr_len = fr_header.iter().map(|(t, _)| t.len()).sum::<usize>() + fr_header.len() - 1
+        + "ΔHIT".chars().count(); // ΔHIT header has a 2-byte char; pad-len uses bytes, keep rule long enough
+    out.push_str(&row_line(color, &fr_header));
+    out.push('\n');
+    out.push_str(&wrap(color, C_DIM, &"-".repeat(fr_len.min(120))));
+    out.push('\n');
+    for row in &cur.fr_rows {
+        let (rcount, rcost, rhit) = refs.fr_map.get(&row.name).copied().unwrap_or((0, 0, 0.0));
+        let present = refs.fr_map.contains_key(&row.name);
+        let dhit = if present { format!("{:+.1}pp", row.hit - rhit) } else { "new".to_string() };
+        let dcost = row.cost as i64 - rcost as i64;
+        let _ = rcount;
+        out.push_str(&row_line(
+            color,
+            &[
+                (format!("{:<24}", format!("FROP {}", row.name)), ""),
+                (format!("{:>12}", group_u64(row.count)), ""),
+                (format!("{:>8}", row.hit_pct), C_DIM),
+                (format!("{dhit:>9}"), C_MAGENTA),
+                (format!("{:>15}", group_u64(row.cost)), ""),
+                (format!("{:>7}", row.cost_pct), C_DIM),
+                (format!("{:>24}", delta_cell(rcost, row.cost)), dir(dcost)),
+            ],
+        ));
+        out.push('\n');
+    }
+
+    out
+}
+
+/// Renders the comparison of two snapshots in the previous plain, semicolon-separated view
+/// (machine-friendly, no colour). Used by SDK mode, `--legacy-display`, and `--diff-format csv`.
+pub fn diff_snapshots_csv(
+    ref_label: &str,
+    ref_text: &str,
+    cur_label: &str,
+    cur_text: &str,
+    sep: char,
+) -> String {
+    let refs = parse_snapshot(ref_text);
+    let cur = parse_snapshot(cur_text);
+    let mut s = String::new();
+    s += &format!("\nCOMPARISON: {ref_label} (ref) -> {cur_label}\n\n");
+
+    s += "COST;metric;ref;current;delta;%\n";
+    for name in ["MAIN", "OPCODES", "PRECOMPILES", "MEMORY", "VARIABLE", "BASE", "TOTAL", "FROPS"] {
+        let r = refs.cost_map.get(name).copied().unwrap_or(0);
+        let c = cur.cost_map.get(name).copied().unwrap_or(0);
+        s += &format!("COST;{name};{r};{c};{:+};{}\n", c as i64 - r as i64, pct_change(r, c));
+    }
+    s.push('\n');
+
+    // Diffs a (name, count, cost) section: current rows first (order preserved), then
+    // reference-only entries (removed in the current run), sorted by cost.
+    let diff_cc = |tag: &str,
+                   cur_rows: &[(&str, u64, u64)],
+                   ref_map: &HashMap<String, (u64, u64)>|
+     -> String {
+        let mut out =
+            format!("{tag};name;ref_count;cur_count;d_count;ref_cost;cur_cost;d_cost;%\n");
+        let mut seen: HashSet<String> = HashSet::new();
+        for (name, ccount, ccost) in cur_rows {
+            seen.insert((*name).to_string());
+            let (rcount, rcost) = ref_map.get(*name).copied().unwrap_or((0, 0));
+            out += &format!(
+                "{tag};{name};{rcount};{ccount};{:+};{rcost};{ccost};{:+};{}\n",
+                *ccount as i64 - rcount as i64,
+                *ccost as i64 - rcost as i64,
+                pct_change(rcost, *ccost),
+            );
+        }
+        let mut removed: Vec<(&String, &(u64, u64))> =
+            ref_map.iter().filter(|(k, _)| !seen.contains(*k)).collect();
+        removed.sort_by_key(|(_, (_, cost))| std::cmp::Reverse(*cost));
+        for (name, (rcount, rcost)) in removed {
+            out += &format!(
+                "{tag};{name};{rcount};0;{:+};{rcost};0;{:+};{}\n",
+                -(*rcount as i64),
+                -(*rcost as i64),
+                pct_change(*rcost, 0),
+            );
+        }
+        out
+    };
+
+    let op_rows: Vec<(&str, u64, u64)> =
+        cur.op_rows.iter().map(|r| (r.name.as_str(), r.count, r.cost)).collect();
+    let pc_rows: Vec<(&str, u64, u64)> =
+        cur.pc_rows.iter().map(|r| (r.name.as_str(), r.count, r.cost)).collect();
+    let fr_rows: Vec<(&str, u64, u64)> =
+        cur.fr_rows.iter().map(|r| (r.name.as_str(), r.count, r.cost)).collect();
+    let fr_ref: HashMap<String, (u64, u64)> =
+        refs.fr_map.iter().map(|(k, (c, co, _))| (k.clone(), (*c, *co))).collect();
+
+    s += &diff_cc("OP_BASE", &op_rows, &refs.op_map);
+    s.push('\n');
+    s += &diff_cc("PRECOMPILES", &pc_rows, &refs.pc_map);
+    s.push('\n');
+    s += &diff_cc("FROP", &fr_rows, &fr_ref);
+
+    // Built internally with ';'; swap to the requested separator (field content never contains ';').
+    if sep != ';' {
+        s = s.replace(';', &sep.to_string());
+    }
+    s
+}
+
+/// Compares two aggregate stats snapshots (each saved with `--save-stats`) without running the
+/// emulator. `old_path` is the reference; deltas are `new - old`. `csv = true` selects the previous
+/// plain view (delimited by `sep`); otherwise the colour-coded view (honouring `color`).
+pub fn diff_stats_files(
+    old_path: &str,
+    new_path: &str,
+    csv: bool,
+    color: bool,
+    sep: char,
+) -> std::io::Result<String> {
+    let old_text = std::fs::read_to_string(old_path)?;
+    let new_text = std::fs::read_to_string(new_path)?;
+    Ok(if csv {
+        diff_snapshots_csv(old_path, &old_text, new_path, &new_text, sep)
+    } else {
+        diff_snapshots(old_path, &old_text, new_path, &new_text, color)
+    })
+}
+
+/// Resolves a `--color=auto|always|never` choice to an on/off flag. `auto` (and any unknown value)
+/// enables colour only when stdout is a terminal.
+pub fn resolve_color(when: &str) -> bool {
+    match when {
+        "always" => true,
+        "never" => false,
+        _ => std::io::stdout().is_terminal(),
     }
 }
