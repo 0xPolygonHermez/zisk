@@ -47,6 +47,7 @@ vergen-git2 = { workspace = true }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", features = ["html_reports"] }
+wat = { workspace = true }
 
 [[bench]]
 name = "benchmark"

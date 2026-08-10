@@ -63,6 +63,7 @@ mod ops_core_context;
 pub mod riscv2zisk;
 pub mod riscv2zisk_context;
 mod utils;
+pub mod wasm;
 pub mod zisk_definitions;
 pub mod zisk_inst;
 pub mod zisk_inst_builder;
