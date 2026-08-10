@@ -16,12 +16,15 @@ use fields::PrimeField64;
 use zisk_common::{io::ZiskStdin, AsmExecutionInfo, ExecutorStatsHandle, StatsScope};
 use zisk_core::ZiskRom;
 
-/// Per-chunk callback invoked by the ASM MT reader thread, in chunk order,
-/// as each minimal-trace chunk is published. Used for main-witness
-/// advancement: the executor pushes the chunk into the progressive store and
-/// releases fully-covered Main segments for witness computation while the
-/// emulation is still running. Runs on the reader thread — must be cheap.
-pub type ChunkHook<'a> = Option<&'a dyn Fn(usize, &std::sync::Arc<zisk_common::EmuTrace>)>;
+/// Per-chunk callback invoked by the ASM MT reader thread, in chunk order, as
+/// each minimal-trace chunk is published. Receives every chunk published so far
+/// (`idx` is the last) and whether `idx` ends the execution, which is all the
+/// executor needs to release a Main instance the moment its chunks are complete
+/// — while the emulation is still running. Runs on the reader thread, so it
+/// does real work only on the chunks that complete an instance. Returning `Err`
+/// aborts the ASM run.
+pub type ChunkHook<'a> =
+    Option<&'a dyn Fn(usize, &[Arc<zisk_common::EmuTrace>], bool) -> ExecutorResult<()>>;
 
 /// Phase-1 actor: runs the chosen emulator backend, returns a  [`ExecutionOutput`]
 /// regardless of which backend ran.

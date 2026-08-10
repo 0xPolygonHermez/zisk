@@ -199,18 +199,22 @@ impl EmulatorAsm {
 
         let scope_result: ExecutorResult<_> = rayon::in_place_scope(|scope| {
             let processor_ref = &processor;
-            let on_chunk = |idx: usize, emu_traces: &[std::sync::Arc<EmuTrace>], last: bool| {
+            let on_chunk = |idx: usize,
+                            emu_traces: &[std::sync::Arc<EmuTrace>],
+                            last: bool|
+             -> anyhow::Result<()> {
                 let emu_trace = emu_traces[idx].clone();
-                // Main-witness advancement: runs on the reader thread, in chunk
-                // order, BEFORE the counting task is spawned. Cheap (store push +
-                // occasional per-segment instance assignment).
-                if let Some(hook) = chunk_hook {
-                    hook(idx, &emu_trace);
-                }
                 let chunk_id = ChunkId(idx);
                 scope.spawn(move |_| {
                     processor_ref.process_chunk(chunk_id, &emu_trace, zisk_rom, stats, mt_scope_id);
                 });
+                // Main-instance advancement: runs on the reader thread, in chunk
+                // order, once the counting task is on its way. Does real work only
+                // on the chunks that complete a Main instance (or end the run).
+                if let Some(hook) = chunk_hook {
+                    hook(idx, emu_traces, last).map_err(anyhow::Error::from)?;
+                }
+                Ok(())
             };
 
             let asm_resources = self.transport.resources()?;
