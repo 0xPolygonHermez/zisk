@@ -1,0 +1,187 @@
+; ============================================================================
+; secp256k1/schnorr.zisk - BIP-340 Schnorr verification. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256k1/schnorr.rs (schnorr_verify).
+; Uses the GLV-accelerated glv_double_scalar_mul_with_g, zisklib_sha256 for the
+; challenge, and a 32-byte reversal (`ecu_rev32`) for LE-limb <-> BE-byte
+; conversion. Internal labels: `er32_` (rev32), `sv_` (verify).
+; ============================================================================
+
+; TAG = SHA256("BIP0340/challenge"), stored in byte-buffer (LE-word) layout so a
+; word-copy reproduces its 32 bytes.
+const u64 SECP_SCH_TAG[4] =
+	0x3258ef9f7a2db57b, 0x82b37d407abfb13e, 0x4f22b11bd8f2f3d2, 0x7cd3486d8f51fe49
+
+u64 SECP_SCH_PKX[1]  = 0
+u64 SECP_SCH_R[1]    = 0
+u64 SECP_SCH_S[1]    = 0
+u64 SECP_SCH_MSG[1]  = 0
+u64 SECP_SCH_MLEN[1] = 0
+u64 SECP_SCH_PP[8]   = 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_SCH_BUF[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 SECP_SCH_EHASH[4] = 0, 0, 0, 0
+u64 SECP_SCH_ETMP[4]  = 0, 0, 0, 0
+u64 SECP_SCH_E[4]     = 0, 0, 0, 0
+u64 SECP_SCH_NEGE[4]  = 0, 0, 0, 0
+u64 SECP_SCH_PR[8]    = 0, 0, 0, 0, 0, 0, 0, 0
+
+; void ecu_rev32(const u8* src, u8* dst)  [r10=src, r11=dst]
+;   Reverses 32 bytes (dst[k] = src[31-k]). Converts a 256-bit value between
+;   little-endian u64 limbs and big-endian bytes (the conversion is symmetric).
+ecu_rev32:
+	copyb(0, r10) -> r5
+	add(r5, 31) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, 32) -> r7
+er32_l:
+	eq(r7, 0), j(er32_done)
+	copyb(r5, 1[a + 0]) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	sub(r5, 1) -> r5
+	add(r6, 1) -> r6
+	sub(r7, 1) -> r7
+	jump(er32_l)
+er32_done:
+	ret
+
+; u64 zisklib_schnorr_verify_secp256k1(const u64* pk_x, const u64* r,
+;                                      const u64* s, const u8* msg, u64 msg_len)
+;   [r10=pk_x, r11=r, r12=s, r13=msg, r14=msg_len] -> r10 = 1 if the BIP-340
+;   signature (r, s) over msg verifies under x-only public key pk_x, else 0.
+;   pk_x, r, s are 256-bit little-endian limbs; msg is raw bytes. Mirrors
+;   schnorr_verify: range-check pk_x,r < P and s < N; P = lift_x(pk_x, even);
+;   e = int(SHA(tag||tag||r||pk_x||msg)) mod n; R = s*G + (-e)*P; accept iff R has
+;   even y and R.x == r. Non-leaf: args saved to RAM, ra via push/pop.
+zisklib_schnorr_verify_secp256k1:
+	push r1
+	copyb(0, SECP_SCH_PKX) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_SCH_R) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, SECP_SCH_S) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, SECP_SCH_MSG) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, SECP_SCH_MLEN) -> r5
+	copyb(r5, r14) -> 8[a + 0]
+
+	; --- pk_x < P, r < P, s < N   (lt(x, m) == gt(m, x)) ---
+	copyb(0, SECP_P) -> r10
+	copyb(0, SECP_SCH_PKX) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_gt
+	eq(r10, 0), j(sv_false)
+	copyb(0, SECP_P) -> r10
+	copyb(0, SECP_SCH_R) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_gt
+	eq(r10, 0), j(sv_false)
+	copyb(0, SECP_N) -> r10
+	copyb(0, SECP_SCH_S) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_gt
+	eq(r10, 0), j(sv_false)
+
+	; --- P = lift_x(pk_x, even) ---
+	copyb(0, SECP_SCH_PKX) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, 0) -> r11
+	copyb(0, SECP_SCH_PP) -> r12
+	call zisklib_lift_x_secp256k1
+	ltu(0, r10), j(sv_false)
+
+	; --- challenge buffer: TAG || TAG || BE(r) || BE(pk_x) || msg ---
+	copyb(0, SECP_SCH_TAG) -> r5
+	copyb(0, SECP_SCH_BUF) -> r6
+	copyb(0, 4) -> r7
+sv_tag1:
+	eq(r7, 0), j(sv_tag2)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sv_tag1)
+sv_tag2:
+	copyb(0, SECP_SCH_TAG) -> r5
+	copyb(0, 4) -> r7
+sv_tag2l:
+	eq(r7, 0), j(sv_rbe)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sv_tag2l)
+sv_rbe:
+	copyb(0, SECP_SCH_R) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_SCH_BUF) -> r11
+	add(r11, 64) -> r11
+	call ecu_rev32
+	copyb(0, SECP_SCH_PKX) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_SCH_BUF) -> r11
+	add(r11, 96) -> r11
+	call ecu_rev32
+	; copy msg bytes to BUF+128
+	copyb(0, SECP_SCH_MSG) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, SECP_SCH_BUF) -> r6
+	add(r6, 128) -> r6
+	copyb(0, SECP_SCH_MLEN) -> r14
+	copyb(r14, 8[a + 0]) -> r7
+sv_msgcp:
+	eq(r7, 0), j(sv_hash)
+	copyb(r5, 1[a + 0]) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	add(r5, 1) -> r5
+	add(r6, 1) -> r6
+	sub(r7, 1) -> r7
+	jump(sv_msgcp)
+sv_hash:
+	; e_hash = sha256(BUF, 128 + msg_len)
+	copyb(0, SECP_SCH_BUF) -> r10
+	copyb(0, SECP_SCH_MLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 128) -> r11
+	copyb(0, SECP_SCH_EHASH) -> r12
+	call zisklib_sha256
+	; e = reduce_fn(int(e_hash) big-endian)
+	copyb(0, SECP_SCH_EHASH) -> r10
+	copyb(0, SECP_SCH_ETMP) -> r11
+	call ecu_rev32
+	copyb(0, SECP_SCH_ETMP) -> r10
+	copyb(0, SECP_SCH_E) -> r11
+	call zisklib_reduce_fn_secp256k1
+	; neg_e = -e (mod n)
+	copyb(0, SECP_SCH_E) -> r10
+	copyb(0, SECP_SCH_NEGE) -> r11
+	call zisklib_neg_fn_secp256k1
+	; R = s*G + (-e)*P
+	copyb(0, SECP_SCH_S) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, SECP_SCH_NEGE) -> r11
+	copyb(0, SECP_SCH_PP) -> r12
+	copyb(0, SECP_SCH_PR) -> r13
+	call zisklib_glv_double_scalar_mul_with_g_secp256k1
+	ltu(0, r10), j(sv_false)
+	; R.y must be even
+	copyb(0, SECP_SCH_PR) -> r5
+	add(r5, 32) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	and(r6, 1) -> r6
+	ltu(0, r6), j(sv_false)
+	; R.x == r ?
+	copyb(0, SECP_SCH_PR) -> r10
+	copyb(0, SECP_SCH_R) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call ecu_eq
+	ltu(0, r10), j(sv_true)
+sv_false:
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+sv_true:
+	copyb(0, 1) -> r10
+	pop r1
+	ret

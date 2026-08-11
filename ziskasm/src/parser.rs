@@ -329,6 +329,92 @@ pub fn parse_program_seeded(
             continue;
         }
 
+        // push/pop pseudo-instructions: a software stack on `sp` (r2). `push rN`
+        // decrements sp by 8 and stores rN at [sp]; `pop rN` loads rN from [sp]
+        // and increments sp by 8. Each expands to two ops; a preceding label binds
+        // to the first. Non-leaf routines use these to save/restore `ra` (r1) — and
+        // any values live across a nested `call` — since ziskasm has no other stack
+        // idiom and r1 is clobbered by every `call`.
+        {
+            let mut toks = code.split_whitespace();
+            let mnem = toks.next().unwrap_or("");
+            if mnem == "push" || mnem == "pop" {
+                let reg_s = toks.next().ok_or_else(|| {
+                    err(file, line, &format!("`{mnem}` needs a register operand"))
+                })?;
+                if toks.next().is_some() {
+                    return Err(err(file, line, &format!("`{mnem}` takes a single register")));
+                }
+                if !is_reg(reg_s) {
+                    return Err(err(
+                        file,
+                        line,
+                        &format!("`{mnem}` operand must be a register (got `{reg_s}`)"),
+                    ));
+                }
+                let n = parse_reg(reg_s)?;
+                let sp = 2u64; // r2
+                let (op1, op2) = if mnem == "push" {
+                    (
+                        // sp -= 8
+                        Op {
+                            op: "sub".into(),
+                            a: ASource::Reg(sp),
+                            b: BSource::Imm(Num::Lit(8)),
+                            store: Some(Store::Reg(sp)),
+                            control: Control::Fallthrough,
+                            end: false,
+                        },
+                        // [sp] = rN
+                        Op {
+                            op: "copyb".into(),
+                            a: ASource::Reg(sp),
+                            b: BSource::Reg(n),
+                            store: Some(Store::Ind { width: 8, offset: 0 }),
+                            control: Control::Fallthrough,
+                            end: false,
+                        },
+                    )
+                } else {
+                    (
+                        // rN = [sp]
+                        Op {
+                            op: "copyb".into(),
+                            a: ASource::Reg(sp),
+                            b: BSource::Ind { width: 8, offset: 0 },
+                            store: Some(Store::Reg(n)),
+                            control: Control::Fallthrough,
+                            end: false,
+                        },
+                        // sp += 8
+                        Op {
+                            op: "add".into(),
+                            a: ASource::Reg(sp),
+                            b: BSource::Imm(Num::Lit(8)),
+                            store: Some(Store::Reg(sp)),
+                            control: Control::Fallthrough,
+                            end: false,
+                        },
+                    )
+                };
+                program.instructions.push(Instruction {
+                    label: pending_label.take(),
+                    kind: Kind::Op(op1),
+                    verbose: code.to_string(),
+                    file: file.to_string(),
+                    line,
+                });
+                program.instructions.push(Instruction {
+                    label: None,
+                    kind: Kind::Op(op2),
+                    verbose: code.to_string(),
+                    file: file.to_string(),
+                    line,
+                });
+                continue;
+            }
+        }
+
         // Instruction. Keep the original (pre-substitution) text as `verbose`.
         let verbose = code.to_string();
         let substituted = substitute(code, &defs);

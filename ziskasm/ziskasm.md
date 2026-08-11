@@ -290,9 +290,9 @@ This field sets the field `end` of the ZiskInst instance to true.
 
 ## Pseudo-instructions
 
-Pseudo-instructions are convenience mnemonics that the assembler expands into a single ZisK instruction.
+Pseudo-instructions are convenience mnemonics that the assembler expands into one or more ZisK instructions.
 
-`call` and `ret` provide function-call semantics equivalent to RISC-V, using register `r1` as the return-address register (the RISC-V `ra`).
+`call` and `ret` provide function-call semantics equivalent to RISC-V, using register `r1` as the return-address register (the RISC-V `ra`). `push`/`pop` provide a software stack on `sp` (`r2`) for saving `r1` (and any live values) across nested calls.
 
 ### call
 
@@ -350,6 +350,28 @@ ret_to_bios
 The `ret_to_bios` pseudo-instruction returns control to the ZisK BIOS finalization code, which reads the program output from `OUTPUT_ADDR` and ends the program.  The BIOS entered the program (its `_start`) leaving this return address in `r1`, so `ret_to_bios` jumps there.
 
 It assembles to a static `jump` to the BIOS finalization address, which the assembler derives from the BIOS layout (it is not hard-coded).  A dynamic `ret` cannot be used here: the return address is a low (`< ROM_ADDR`) address, and the x86 assembly generator's dynamic-jump path assumes high addresses.
+
+### push / pop
+
+```
+push rN
+pop rN
+```
+
+`push`/`pop` maintain a downward-growing software stack on the stack pointer `sp` (`r2`), which the launcher (and, for a redirected library routine, the guest) initialises to a valid stack region.  Each expands to **two** ZisK instructions:
+
+- `push rN` → `sub(r2, 8) -> r2` then `copyb(r2, rN) -> 8[a + 0]` (decrement `sp`, store `rN` at `[sp]`).
+- `pop rN` → `copyb(r2, 8[a + 0]) -> rN` then `add(r2, 8) -> r2` (load `rN` from `[sp]`, increment `sp`).
+
+A label preceding a `push`/`pop` binds to its first instruction.  These are the idiom for a non-leaf routine to preserve the return address across a nested `call` (`call` overwrites `r1`), and to spill any values that must survive a call — ZisK has no other stack mechanism.  Typical prologue/epilogue:
+
+```
+myfunc:
+    push r1          ; save return address
+    ; ... body, may `call` other routines ...
+    pop r1           ; restore it
+    ret
+```
 
 ## Program entry and automatic launcher
 

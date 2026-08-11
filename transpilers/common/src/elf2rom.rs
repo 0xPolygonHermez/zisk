@@ -79,6 +79,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("uint256/div", include_str!("../../../ziskasm/zisklib/uint256/div.zisk")),
         ("uint256/modular", include_str!("../../../ziskasm/zisklib/uint256/modular.zisk")),
         ("uint256/pow", include_str!("../../../ziskasm/zisklib/uint256/pow.zisk")),
+        // secp256k1 — one file per ziskos source file under `zisklib/secp256k1/`.
+        ("secp256k1/constants", include_str!("../../../ziskasm/zisklib/secp256k1/constants.zisk")),
+        ("secp256k1/field", include_str!("../../../ziskasm/zisklib/secp256k1/field.zisk")),
+        ("secp256k1/scalar", include_str!("../../../ziskasm/zisklib/secp256k1/scalar.zisk")),
+        ("secp256k1/curve", include_str!("../../../ziskasm/zisklib/secp256k1/curve.zisk")),
+        ("secp256k1/ecdsa", include_str!("../../../ziskasm/zisklib/secp256k1/ecdsa.zisk")),
+        ("secp256k1/glv", include_str!("../../../ziskasm/zisklib/secp256k1/glv.zisk")),
+        ("secp256k1/schnorr", include_str!("../../../ziskasm/zisklib/secp256k1/schnorr.zisk")),
     ];
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[
