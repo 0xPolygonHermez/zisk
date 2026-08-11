@@ -87,6 +87,12 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("secp256k1/ecdsa", include_str!("../../../ziskasm/zisklib/secp256k1/ecdsa.zisk")),
         ("secp256k1/glv", include_str!("../../../ziskasm/zisklib/secp256k1/glv.zisk")),
         ("secp256k1/schnorr", include_str!("../../../ziskasm/zisklib/secp256k1/schnorr.zisk")),
+        // secp256r1 (NIST P-256) — one file per ziskos source file.
+        ("secp256r1/constants", include_str!("../../../ziskasm/zisklib/secp256r1/constants.zisk")),
+        ("secp256r1/field", include_str!("../../../ziskasm/zisklib/secp256r1/field.zisk")),
+        ("secp256r1/scalar", include_str!("../../../ziskasm/zisklib/secp256r1/scalar.zisk")),
+        ("secp256r1/curve", include_str!("../../../ziskasm/zisklib/secp256r1/curve.zisk")),
+        ("secp256r1/ecdsa", include_str!("../../../ziskasm/zisklib/secp256r1/ecdsa.zisk")),
     ];
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[
@@ -105,6 +111,10 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_inv_mod256", "zisklib_inv_mod256"),
         ("ziskos_pow_mod256", "zisklib_pow_mod256"),
         ("ziskos_overflowing_pow256", "zisklib_overflowing_pow256"),
+        ("ziskos_ecdsa_verify_secp256k1", "zisklib_ecdsa_verify_secp256k1"),
+        ("ziskos_ecdsa_recover_secp256k1", "zisklib_ecdsa_recover_secp256k1"),
+        ("ziskos_schnorr_verify_secp256k1", "zisklib_schnorr_verify_secp256k1"),
+        ("ziskos_ecdsa_verify_secp256r1", "zisklib_ecdsa_verify_secp256r1"),
     ];
 
     let library =

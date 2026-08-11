@@ -639,3 +639,147 @@ pub fn saturating_pow256(base: &[u64; 4], exp: &[u64; 4]) -> [u64; 4] {
         r
     }
 }
+
+// ===========================================================================
+// Elliptic-curve routines (secp256k1 + secp256r1)
+//
+// Points and scalars cross the ABI as 256-bit little-endian limb arrays: a
+// scalar/coordinate is `[u64; 4]` and an affine point is `[u64; 8]` = x‖y.
+// Redirected to the hand-written `zisklib_*_secp256{k1,r1}` routines under
+// `ziskasm/zisklib/secp256{k1,r1}/`.
+// ===========================================================================
+
+/// secp256k1 ECDSA verification, redirected to `zisklib_ecdsa_verify_secp256k1`.
+/// Returns `1` iff `(r, s)` verifies over hash `z` under public key `pk`.
+///
+/// # Safety
+/// `pk` points to 8 readable `u64`; `z`, `r`, `s` each to 4 readable `u64`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256k1(
+    pk: *const u64,
+    z: *const u64,
+    r: *const u64,
+    s: *const u64,
+) -> u64 {
+    let (pk, z, r, s) = black_box((pk, z, r, s));
+    // Distinct sentinel base (see note on the r1 stub): keeps this body from being
+    // merged with `ziskos_ecdsa_verify_secp256r1` by identical-code-folding, which
+    // would collapse the two redirects onto a single routine.
+    black_box(0xBAD_5EC_256C1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
+}
+
+/// Ergonomic API over [`ziskos_ecdsa_verify_secp256k1`]: `true` iff the signature
+/// `(r, s)` over hash `z` is valid for public key `pk` (x‖y, little-endian limbs).
+pub fn secp256k1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u64; 4]) -> bool {
+    // SAFETY: all pointers reference the correctly-sized local arrays.
+    unsafe { ziskos_ecdsa_verify_secp256k1(pk.as_ptr(), z.as_ptr(), r.as_ptr(), s.as_ptr()) != 0 }
+}
+
+/// secp256k1 public-key recovery, redirected to `zisklib_ecdsa_recover_secp256k1`.
+/// Writes the recovered public key (x‖y) to `result` and returns an error code
+/// (`0` = success; nonzero = failure, see the wrapper).
+///
+/// # Safety
+/// `r`, `s`, `z` each point to 4 readable `u64`; `result` to 8 writable `u64`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_ecdsa_recover_secp256k1(
+    r: *const u64,
+    s: *const u64,
+    z: *const u64,
+    recid: u64,
+    result: *mut u64,
+) -> u64 {
+    let (r, s, z, recid, result) = black_box((r, s, z, recid, result));
+    for i in 0..8usize {
+        result.add(i).write(0x0BAD_0BAD_0BAD_0BAD);
+    }
+    black_box(0xBAD_u64 ^ r as u64 ^ s as u64 ^ z as u64 ^ recid)
+}
+
+/// Ergonomic API over [`ziskos_ecdsa_recover_secp256k1`]: recover the public key
+/// (x‖y, little-endian limbs) that produced signature `(r, s)` over hash `z` with
+/// recovery id `recid`. `Ok(pk)` on success, or `Err(code)` (`1` invalid r, `2`
+/// invalid s, `3` invalid recid, `4` point not on curve, `5` recovery failed).
+pub fn secp256k1_ecdsa_recover(
+    r: &[u64; 4],
+    s: &[u64; 4],
+    z: &[u64; 4],
+    recid: u64,
+) -> Result<[u64; 8], u64> {
+    let mut pk = [0u64; 8];
+    // SAFETY: `r`, `s`, `z` are `[u64; 4]`; `pk` is a writable `[u64; 8]`.
+    let err = unsafe {
+        ziskos_ecdsa_recover_secp256k1(r.as_ptr(), s.as_ptr(), z.as_ptr(), recid, pk.as_mut_ptr())
+    };
+    if err == 0 {
+        Ok(pk)
+    } else {
+        Err(err)
+    }
+}
+
+/// secp256k1 BIP-340 Schnorr verification, redirected to
+/// `zisklib_schnorr_verify_secp256k1`. Returns `1` iff `(r, s)` verifies over
+/// `msg` under the x-only public key `pk_x`.
+///
+/// # Safety
+/// `pk_x`, `r`, `s` each point to 4 readable `u64`; `msg` to `msg_len` bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_schnorr_verify_secp256k1(
+    pk_x: *const u64,
+    r: *const u64,
+    s: *const u64,
+    msg: *const u8,
+    msg_len: u64,
+) -> u64 {
+    let (pk_x, r, s, msg, msg_len) = black_box((pk_x, r, s, msg, msg_len));
+    black_box(0xBAD_u64 ^ pk_x as u64 ^ r as u64 ^ s as u64 ^ msg as u64 ^ msg_len)
+}
+
+/// Ergonomic API over [`ziskos_schnorr_verify_secp256k1`]: `true` iff the BIP-340
+/// signature `(r, s)` over `msg` is valid for x-only public key `pk_x` (little-
+/// endian limbs). `msg` is raw bytes of any length.
+pub fn secp256k1_schnorr_verify(pk_x: &[u64; 4], r: &[u64; 4], s: &[u64; 4], msg: &[u8]) -> bool {
+    // SAFETY: limb arrays are `[u64; 4]`; `msg` is a valid slice of `msg.len()` bytes.
+    unsafe {
+        ziskos_schnorr_verify_secp256k1(
+            pk_x.as_ptr(),
+            r.as_ptr(),
+            s.as_ptr(),
+            msg.as_ptr(),
+            msg.len() as u64,
+        ) != 0
+    }
+}
+
+/// secp256r1 (NIST P-256) ECDSA verification, redirected to
+/// `zisklib_ecdsa_verify_secp256r1`. Returns `1` iff `(r, s)` verifies over hash
+/// `z` under public key `pk`.
+///
+/// # Safety
+/// `pk` points to 8 readable `u64`; `z`, `r`, `s` each to 4 readable `u64`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256r1(
+    pk: *const u64,
+    z: *const u64,
+    r: *const u64,
+    s: *const u64,
+) -> u64 {
+    let (pk, z, r, s) = black_box((pk, z, r, s));
+    // Distinct sentinel base so this body is not identical to (and thus folded
+    // with) `ziskos_ecdsa_verify_secp256k1`; each stub must keep its own symbol so
+    // its own redirect resolves.
+    black_box(0xBAD_5EC_256F1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
+}
+
+/// Ergonomic API over [`ziskos_ecdsa_verify_secp256r1`]: `true` iff the signature
+/// `(r, s)` over hash `z` is valid for P-256 public key `pk` (x‖y, little-endian
+/// limbs).
+pub fn secp256r1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u64; 4]) -> bool {
+    // SAFETY: all pointers reference the correctly-sized local arrays.
+    unsafe { ziskos_ecdsa_verify_secp256r1(pk.as_ptr(), z.as_ptr(), r.as_ptr(), s.as_ptr()) != 0 }
+}
