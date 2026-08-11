@@ -1,0 +1,71 @@
+; ============================================================================
+; bn254/util.zisk - small generic helpers shared across the bn254 tower.
+; Leaves (no nested calls), so any routine may call them after saving its own ra.
+; Prefixes `bcp_` / `beq_`.
+; ============================================================================
+
+; void bn254_memcpy(const u64* src, u64* dst, u64 nwords)  [r10=src, r11=dst, r12=n]
+bn254_memcpy:
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, r12) -> r7
+bcp_loop:
+	eq(r7, 0), j(bcp_done)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bcp_loop)
+bcp_done:
+	ret
+
+; u64 bn254_eqn(const u64* a, const u64* b, u64 nwords)  [r10=a, r11=b, r12=n]
+;   -> r10 = 1 if all n u64 limbs are equal, else 0.
+bn254_eqn:
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, r12) -> r7
+beq_loop:
+	eq(r7, 0), j(beq_eq)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(beq_next)
+	copyb(0, 0) -> r10
+	ret
+beq_next:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(beq_loop)
+beq_eq:
+	copyb(0, 1) -> r10
+	ret
+
+; u64 bn254_ltn(const u64* a, const u64* b, u64 nwords)  [r10=a, r11=b, r12=n]
+;   -> r10 = 1 if a < b (unsigned, MSW-first), else 0.
+bn254_ltn:
+	copyb(0, r10) -> r5
+	copyb(0, r11) -> r6
+	copyb(0, r12) -> r7
+	sub(r7, 1) -> r14
+	sll(r14, 3) -> r14
+	add(r5, r14) -> r5
+	add(r6, r14) -> r6
+	copyb(0, r12) -> r7
+bltn_loop:
+	eq(r7, 0), j(bltn_ge)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(bltn_lt)
+	ltu(r15, r14), j(bltn_ge)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bltn_loop)
+bltn_lt:
+	copyb(0, 1) -> r10
+	ret
+bltn_ge:
+	copyb(0, 0) -> r10
+	ret

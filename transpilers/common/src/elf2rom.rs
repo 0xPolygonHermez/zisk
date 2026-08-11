@@ -93,6 +93,20 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("secp256r1/scalar", include_str!("../../../ziskasm/zisklib/secp256r1/scalar.zisk")),
         ("secp256r1/curve", include_str!("../../../ziskasm/zisklib/secp256r1/curve.zisk")),
         ("secp256r1/ecdsa", include_str!("../../../ziskasm/zisklib/secp256r1/ecdsa.zisk")),
+        // bn254 (alt_bn128) — one file per ziskos source file.
+        ("bn254/constants", include_str!("../../../ziskasm/zisklib/bn254/constants.zisk")),
+        ("bn254/util", include_str!("../../../ziskasm/zisklib/bn254/util.zisk")),
+        ("bn254/fp", include_str!("../../../ziskasm/zisklib/bn254/fp.zisk")),
+        ("bn254/fr", include_str!("../../../ziskasm/zisklib/bn254/fr.zisk")),
+        ("bn254/fp2", include_str!("../../../ziskasm/zisklib/bn254/fp2.zisk")),
+        ("bn254/curve", include_str!("../../../ziskasm/zisklib/bn254/curve.zisk")),
+        ("bn254/fp6", include_str!("../../../ziskasm/zisklib/bn254/fp6.zisk")),
+        ("bn254/fp12", include_str!("../../../ziskasm/zisklib/bn254/fp12.zisk")),
+        ("bn254/twist", include_str!("../../../ziskasm/zisklib/bn254/twist.zisk")),
+        ("bn254/cyclotomic", include_str!("../../../ziskasm/zisklib/bn254/cyclotomic.zisk")),
+        ("bn254/miller_loop", include_str!("../../../ziskasm/zisklib/bn254/miller_loop.zisk")),
+        ("bn254/final_exp", include_str!("../../../ziskasm/zisklib/bn254/final_exp.zisk")),
+        ("bn254/pairing", include_str!("../../../ziskasm/zisklib/bn254/pairing.zisk")),
     ];
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[
@@ -115,6 +129,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_ecdsa_recover_secp256k1", "zisklib_ecdsa_recover_secp256k1"),
         ("ziskos_schnorr_verify_secp256k1", "zisklib_schnorr_verify_secp256k1"),
         ("ziskos_ecdsa_verify_secp256r1", "zisklib_ecdsa_verify_secp256r1"),
+        ("ziskos_pairing_check_bn254", "zisklib_pairing_check_bn254"),
     ];
 
     let library =

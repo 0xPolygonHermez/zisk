@@ -1,0 +1,367 @@
+; ============================================================================
+; bn254/curve.zisk - G1 point arithmetic on E/Fp: y² = x³ + 3. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/bn254/curve.rs. Uses bn254_curve_add
+; (header [&p1,&p2], p1+=p2 in place) and bn254_curve_dbl (b=&point, in place).
+; G1 point = 8 u64 (x‖y). Identity = all-zero. Prefixes bcv_/boc_/bsm_/bj2a_.
+; ============================================================================
+
+u64 BN_OC_P[1]     = 0
+u64 BN_OC_LHS[4]   = 0, 0, 0, 0
+u64 BN_OC_X2[4]    = 0, 0, 0, 0
+u64 BN_OC_X3[4]    = 0, 0, 0, 0
+u64 BN_OC_RHS[4]   = 0, 0, 0, 0
+
+u64 BN_ADD_HDR[2]  = 0, 0
+u64 BN_ADD_P1[1]   = 0
+u64 BN_ADD_P2[1]   = 0
+u64 BN_ADD_RES[1]  = 0
+
+u64 BN_SM_PPTR[1]  = 0
+u64 BN_SM_RESPTR[1]= 0
+u64 BN_SM_K[4]     = 0, 0, 0, 0
+u64 BN_SM_Q[8]     = 0, 0, 0, 0, 0, 0, 0, 0
+u64 BN_SM_HDR[2]   = 0, 0
+
+u64 BN_J2A_P[1]    = 0
+u64 BN_J2A_ZINV[4] = 0, 0, 0, 0
+u64 BN_J2A_ZSQ[4]  = 0, 0, 0, 0
+u64 BN_J2A_T[4]    = 0, 0, 0, 0
+
+; u64 zisklib_is_on_curve_bn254(const u64* p)  [r10=&p] -> r10 (1 if on curve)
+;   y² == x³ + 3, or p is the all-zero identity.
+zisklib_is_on_curve_bn254:
+	push r1
+	copyb(0, BN_OC_P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; lhs = y²   (y = p + 32)
+	add(r10, 32) -> r10
+	copyb(0, BN_OC_LHS) -> r11
+	call zisklib_square_fp_bn254
+	; x2 = x²
+	copyb(0, BN_OC_P) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BN_OC_X2) -> r11
+	call zisklib_square_fp_bn254
+	; x3 = x2 · x
+	copyb(0, BN_OC_X2) -> r10
+	copyb(0, BN_OC_P) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, BN_OC_X3) -> r12
+	call zisklib_mul_fp_bn254
+	; rhs = x3 + 3
+	copyb(0, BN_OC_X3) -> r10
+	copyb(0, BN_E_B) -> r11
+	copyb(0, BN_OC_RHS) -> r12
+	call zisklib_add_fp_bn254
+	; lhs == rhs ?
+	copyb(0, BN_OC_LHS) -> r10
+	copyb(0, BN_OC_RHS) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	ltu(0, r10), j(boc_true)
+	; else: p == identity ?
+	copyb(0, BN_OC_P) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BN_G1_IDENTITY) -> r11
+	copyb(0, 8) -> r12
+	call bn254_eqn
+	pop r1
+	ret
+boc_true:
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+
+; void zisklib_dbl_bn254(const u64* p, u64* result)  [r10=p, r11=result]
+;   result = 2·p (p non-identity). Leaf.
+zisklib_dbl_bn254:
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, r14) -> 8[a + 24]
+	copyb(r10, 8[a + 32]) -> r14
+	copyb(r11, r14) -> 8[a + 32]
+	copyb(r10, 8[a + 40]) -> r14
+	copyb(r11, r14) -> 8[a + 40]
+	copyb(r10, 8[a + 48]) -> r14
+	copyb(r11, r14) -> 8[a + 48]
+	copyb(r10, 8[a + 56]) -> r14
+	copyb(r11, r14) -> 8[a + 56]
+	bn254_curve_dbl(0, r11) -> r14
+	ret
+
+; void zisklib_neg_bn254(const u64* p, u64* result)  [r10=p, r11=result]
+;   result = (x, -y).
+zisklib_neg_bn254:
+	push r1
+	; result[0..4] = x = p[0..4]
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	copyb(r10, 8[a + 8]) -> r14
+	copyb(r11, r14) -> 8[a + 8]
+	copyb(r10, 8[a + 16]) -> r14
+	copyb(r11, r14) -> 8[a + 16]
+	copyb(r10, 8[a + 24]) -> r14
+	copyb(r11, r14) -> 8[a + 24]
+	; result[4..8] = neg_fp(p[4..8])
+	add(r10, 32) -> r10
+	add(r11, 32) -> r11
+	call zisklib_neg_fp_bn254
+	pop r1
+	ret
+
+; void zisklib_add_bn254(const u64* p1, const u64* p2, u64* result)  [r10,r11,r12]
+;   result = p1 + p2 (both non-identity, on-curve). x1==x2 -> dbl (if y1==y2) or
+;   identity; else the chord addition via the precompile.
+zisklib_add_bn254:
+	push r1
+	copyb(0, BN_ADD_P1) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BN_ADD_P2) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; x1 == x2 ?
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	eq(r10, 0), j(bcv_add_generic)
+	; x1 == x2: y1 == y2 ?
+	copyb(0, BN_ADD_P1) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, BN_ADD_P2) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 32) -> r11
+	copyb(0, 4) -> r12
+	call bn254_eqn
+	eq(r10, 0), j(bcv_add_inf)
+	; y1 == y2: doubling
+	copyb(0, BN_ADD_P1) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	call zisklib_dbl_bn254
+	pop r1
+	ret
+bcv_add_inf:
+	; result = identity (all zero)
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	pop r1
+	ret
+bcv_add_generic:
+	; result = p1, then result += p2 via bn254_curve_add
+	copyb(0, BN_ADD_P1) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, BN_ADD_HDR) -> r5
+	copyb(0, BN_ADD_RES) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BN_ADD_P2) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	bn254_curve_add(0, r5) -> r14
+	pop r1
+	ret
+
+; u64 zisklib_scalar_mul_bn254(const u64* p, const u64* k, u64* result)
+;   [r10=p, r11=k, r12=result] -> r10 = 1 if result is identity, else 0.
+;   result = k·p; k reduced mod R first. Reads k bits directly (trusted memory).
+zisklib_scalar_mul_bn254:
+	push r1
+	copyb(0, BN_SM_PPTR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BN_SM_RESPTR) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, r11) -> r10
+	copyb(0, BN_SM_K) -> r11
+	call zisklib_reduce_fr_bn254
+	; dispatch on small k
+	copyb(0, BN_SM_K) -> r5
+	copyb(r5, 8[a + 8]) -> r6
+	copyb(r5, 8[a + 16]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 24]) -> r7
+	or(r6, r7) -> r6
+	ltu(0, r6), j(bsm_general)
+	copyb(r5, 8[a + 0]) -> r7
+	eq(r7, 0), j(bsm_zero)
+	eq(r7, 1), j(bsm_one)
+	eq(r7, 2), j(bsm_two)
+bsm_general:
+	; q = p
+	copyb(0, BN_SM_PPTR) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BN_SM_Q) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	; find MSB position of k (scan 255..0)
+	copyb(0, 255) -> r13
+bsm_msb:
+	srl(r13, 6) -> r5
+	and(r13, 63) -> r6
+	sll(r5, 3) -> r5
+	copyb(0, BN_SM_K) -> r7
+	add(r7, r5) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	srl(r7, r6) -> r7
+	and(r7, 1) -> r7
+	ltu(0, r7), j(bsm_loopstart)
+	sub(r13, 1) -> r13
+	jump(bsm_msb)
+bsm_loopstart:
+	eq(r13, 0), j(bsm_done)     ; k == 1 case (already handled), guard anyway
+	sub(r13, 1) -> r13
+bsm_loop:
+	; q = 2q
+	copyb(0, BN_SM_Q) -> r5
+	bn254_curve_dbl(0, r5) -> r14
+	; bit r13 of k
+	srl(r13, 6) -> r5
+	and(r13, 63) -> r6
+	sll(r5, 3) -> r5
+	copyb(0, BN_SM_K) -> r7
+	add(r7, r5) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	srl(r7, r6) -> r7
+	and(r7, 1) -> r7
+	eq(r7, 0), j(bsm_noadd)
+	; q += p
+	copyb(0, BN_SM_HDR) -> r5
+	copyb(0, BN_SM_Q) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BN_SM_PPTR) -> r7
+	copyb(r7, 8[a + 0]) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	bn254_curve_add(0, r5) -> r14
+bsm_noadd:
+	eq(r13, 0), j(bsm_done)
+	sub(r13, 1) -> r13
+	jump(bsm_loop)
+bsm_done:
+	copyb(0, BN_SM_Q) -> r10
+	copyb(0, BN_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+bsm_zero:
+	copyb(0, BN_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	copyb(0, 1) -> r10
+	pop r1
+	ret
+bsm_one:
+	copyb(0, BN_SM_PPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BN_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 8) -> r12
+	call bn254_memcpy
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+bsm_two:
+	copyb(0, BN_SM_PPTR) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BN_SM_RESPTR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	call zisklib_dbl_bn254
+	copyb(0, 0) -> r10
+	pop r1
+	ret
+
+; void zisklib_jacobian_to_affine_bn254(const u64* p, u64* result)
+;   [r10=p (12 u64 x‖y‖z), r11=result (8 u64)]. z==0 -> identity; z==1 -> (x,y);
+;   else affine = (x/z², y/z³).
+zisklib_jacobian_to_affine_bn254:
+	push r1
+	copyb(0, BN_J2A_P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	; save result ptr in BN_ADD_RES (reuse scratch, add not active here)
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	; z == 0 ? (p[8..12] all zero) -> identity
+	copyb(0, r10) -> r5
+	add(r5, 64) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(r5, 8[a + 8]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 16]) -> r7
+	or(r6, r7) -> r6
+	copyb(r5, 8[a + 24]) -> r7
+	or(r6, r7) -> r6
+	ltu(0, r6), j(bj2a_nz)
+	; identity
+	copyb(0, BN_ADD_RES) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(r11, 0) -> 8[a + 0]
+	copyb(r11, 0) -> 8[a + 8]
+	copyb(r11, 0) -> 8[a + 16]
+	copyb(r11, 0) -> 8[a + 24]
+	copyb(r11, 0) -> 8[a + 32]
+	copyb(r11, 0) -> 8[a + 40]
+	copyb(r11, 0) -> 8[a + 48]
+	copyb(r11, 0) -> 8[a + 56]
+	pop r1
+	ret
+bj2a_nz:
+	; zinv = inv_fp(z)
+	copyb(0, BN_J2A_P) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 64) -> r10
+	copyb(0, BN_J2A_ZINV) -> r11
+	call zisklib_inv_fp_bn254
+	; zsq = zinv²
+	copyb(0, BN_J2A_ZINV) -> r10
+	copyb(0, BN_J2A_ZSQ) -> r11
+	call zisklib_square_fp_bn254
+	; result.x = x · zsq
+	copyb(0, BN_J2A_P) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, BN_J2A_ZSQ) -> r11
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	call zisklib_mul_fp_bn254
+	; t = y · zsq
+	copyb(0, BN_J2A_P) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, BN_J2A_ZSQ) -> r11
+	copyb(0, BN_J2A_T) -> r12
+	call zisklib_mul_fp_bn254
+	; result.y = t · zinv
+	copyb(0, BN_J2A_T) -> r10
+	copyb(0, BN_J2A_ZINV) -> r11
+	copyb(0, BN_ADD_RES) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 32) -> r12
+	call zisklib_mul_fp_bn254
+	pop r1
+	ret

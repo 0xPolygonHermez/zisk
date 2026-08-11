@@ -15,4 +15,11 @@ pub define FCALL_SECP256K1_FN_INV        2  ; hints 1/x in Fn
 pub define FCALL_SECP256K1_FP_SQRT       3  ; hints sqrt in Fp (is_qr + sqrt)
 pub define FCALL_SECP256K1_GLV_DECOMPOSE 4  ; hints GLV scalar decomposition
 pub define FCALL_SECP256R1_FN_INV        5  ; hints 1/x in the secp256r1 scalar field
+
+; bn254 (alt_bn128) hints.
+pub define FCALL_BN254_FP_INV               6 ; hints 1/x in Fp
+pub define FCALL_BN254_FP2_INV              7 ; hints 1/a in Fp2
+pub define FCALL_BN254_TWIST_ADD_LINE_COEFFS 8 ; hints (λ,μ) of the G2 add line
+pub define FCALL_BN254_TWIST_DBL_LINE_COEFFS 9 ; hints (λ,μ) of the G2 double line
+
 pub define FCALL_MSB_POS_256             17 ; hints most-significant set-bit position

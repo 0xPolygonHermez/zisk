@@ -1,0 +1,171 @@
+; ============================================================================
+; bn254/fp.zisk - base-field (Fp) arithmetic for BN254. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/bn254/fp.rs: add / neg / mul / square via the
+; arith256_mod precompile (fixed modulus P), and inv via the FCALL_BN254_FP_INV
+; hint + verify. All leaves except inv (leaf too: no nested calls). Prefix `bfp_`.
+; Fp element = 4 u64 LE limbs.
+; ============================================================================
+
+u64 BN_FP_HDR[5] = 0, 0, 0, 0, 0
+u64 BN_FP_INV[4] = 0, 0, 0, 0
+u64 BN_FP_DL[4]  = 0, 0, 0, 0
+
+; void zisklib_add_fp_bn254(const u64* x, const u64* y, u64* result)
+;   result = (x + y) mod P = (x*1 + y) mod P.  [r10=x, r11=y, r12=result]
+zisklib_add_fp_bn254:
+	copyb(0, BN_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BN_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(r5, r11) -> 8[a + 16]        ; &y (c addend)
+	copyb(0, BN_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_neg_fp_bn254(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = (-x) mod P = (x*(P-1) + 0) mod P.
+zisklib_neg_fp_bn254:
+	copyb(0, BN_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BN_P_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, BN_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BN_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_mul_fp_bn254(const u64* x, const u64* y, u64* result)
+;   result = (x * y) mod P = (x*y + 0) mod P.  [r10=x, r11=y, r12=result]
+zisklib_mul_fp_bn254:
+	copyb(0, BN_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	copyb(0, BN_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BN_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_square_fp_bn254(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = (x * x) mod P.
+zisklib_square_fp_bn254:
+	copyb(0, BN_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, BN_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BN_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_inv_fp_bn254(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = x^(-1) mod P (0 if x == 0). Hint FCALL_BN254_FP_INV, then verify the
+;   inverse is canonical (< P) and x*inv == 1 mod P; halt on a bad hint.
+zisklib_inv_fp_bn254:
+	; x == 0 ? -> result = 0
+	copyb(0, r10) -> r5
+	copyb(0, 4) -> r6
+bfp_inv_zchk:
+	eq(r6, 0), j(bfp_inv_zero)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(bfp_inv_hint)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(bfp_inv_zchk)
+bfp_inv_zero:
+	copyb(0, r11) -> r5
+	copyb(0, 4) -> r6
+bfp_inv_zl:
+	eq(r6, 0), j(bfp_inv_done)
+	copyb(r5, 0) -> 8[a + 0]
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(bfp_inv_zl)
+bfp_inv_done:
+	ret
+bfp_inv_hint:
+	fcall_param(4, r10) -> r14
+	fcall(FCALL_BN254_FP_INV, 0) -> r14
+	copyb(0, BN_FP_INV) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 3) -> r15
+bfp_inv_rd:
+	eq(r15, 0), j(bfp_inv_lt)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(bfp_inv_rd)
+bfp_inv_lt:
+	; canonical check: inv < P (MSW-first compare)
+	copyb(0, BN_FP_INV) -> r5
+	add(r5, 24) -> r5
+	copyb(0, BN_P) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+bfp_inv_ltl:
+	eq(r7, 0), j(bfp_inv_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(bfp_inv_vfy)
+	ltu(r15, r14), j(bfp_inv_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bfp_inv_ltl)
+bfp_inv_vfy:
+	; verify x*inv == 1 mod P
+	copyb(0, BN_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BN_FP_INV) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, BN_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, BN_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, BN_FP_DL) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	copyb(0, BN_FP_DL) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(bfp_inv_hi)
+	jump(bfp_inv_panic)
+bfp_inv_hi:
+	copyb(0, 3) -> r7
+	add(r5, 8) -> r5
+bfp_inv_hil:
+	eq(r7, 0), j(bfp_inv_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(bfp_inv_hin)
+	jump(bfp_inv_panic)
+bfp_inv_hin:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(bfp_inv_hil)
+bfp_inv_wr:
+	copyb(0, BN_FP_INV) -> r5
+	copyb(0, 4) -> r7
+bfp_inv_wrl:
+	eq(r7, 0), j(bfp_inv_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(bfp_inv_wrl)
+bfp_inv_ret:
+	ret
+bfp_inv_panic:
+	copyb(0, 0) -> r10, end

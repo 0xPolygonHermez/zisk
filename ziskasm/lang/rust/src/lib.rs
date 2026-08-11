@@ -783,3 +783,34 @@ pub fn secp256r1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u6
     // SAFETY: all pointers reference the correctly-sized local arrays.
     unsafe { ziskos_ecdsa_verify_secp256r1(pk.as_ptr(), z.as_ptr(), r.as_ptr(), s.as_ptr()) != 0 }
 }
+
+/// BN254 (alt_bn128) optimal-ate pairing check (EIP-197 ecPairing), redirected to
+/// `zisklib_pairing_check_bn254`. `g1`/`g2` are `n` points (affine, x‖y, little-
+/// endian limbs; G1 = 8 u64, G2 = 16 u64). Returns a status code: `0` = the
+/// pairing product is 1 (accept), `1` = it is not (reject), `2`..`6` = input
+/// validation errors (see the wrapper).
+///
+/// # Safety
+/// `g1` points to `8*n` readable `u64`, `g2` to `16*n` readable `u64`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_pairing_check_bn254(g1: *const u64, g2: *const u64, n: u64) -> u64 {
+    let (g1, g2, n) = black_box((g1, g2, n));
+    black_box(0x0BAD_B254_u64 ^ g1 as u64 ^ g2 as u64 ^ n)
+}
+
+/// Ergonomic API over [`ziskos_pairing_check_bn254`]: returns the raw status code
+/// for the BN254 pairing check over `n` pairs (`g1[i]`, `g2[i]`). `0` accepts
+/// (∏ e(g1ᵢ, g2ᵢ) == 1); `1` rejects; `2` G1 not canonical; `3` G1 not on curve;
+/// `4` G2 not canonical; `5` G2 not on curve; `6` G2 not in subgroup.
+pub fn bn254_pairing_check(g1: &[[u64; 8]], g2: &[[u64; 16]]) -> u64 {
+    assert_eq!(g1.len(), g2.len(), "g1 and g2 must have the same number of points");
+    // SAFETY: `g1`/`g2` are contiguous arrays of `len` points of 8/16 u64 each.
+    unsafe {
+        ziskos_pairing_check_bn254(
+            g1.as_ptr() as *const u64,
+            g2.as_ptr() as *const u64,
+            g1.len() as u64,
+        )
+    }
+}
