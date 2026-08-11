@@ -1,5 +1,5 @@
 ; ============================================================================
-; zisklib_uint256_common.zisk - shared data for the 256-bit unsigned integer
+; uint256/common.zisk - shared data for the 256-bit unsigned integer
 ; routines. The uint256 library is split one file per ziskos source file
 ; (mirroring ziskos/entrypoint/src/zisklib/lib/uint256/{add,mul,div,modular,pow}.rs);
 ; this file holds the constants and scratch buffers those files share, analogous
@@ -11,7 +11,7 @@
 ; non-reentrant, so sharing these buffers across families is safe.
 ;
 ; The FREE_INPUT address and the FCALL_* ids these routines use are library-wide
-; `pub define`s in zisklib_mem.zisk / zisklib_fcall.zisk, not declared here.
+; `pub define`s in mem.zisk / fcall.zisk, not declared here.
 ; ============================================================================
 
 ; ROM constants: the 256-bit zero (the `c` addend for a verification multiply)

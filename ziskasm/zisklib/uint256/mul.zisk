@@ -1,10 +1,10 @@
 ; ============================================================================
-; zisklib_uint256_mul.zisk - 256-bit multiply / square and inverse mod 2^256.
+; uint256/mul.zisk - 256-bit multiply / square and inverse mod 2^256.
 ; Mirrors ziskos/entrypoint/src/zisklib/lib/uint256/mul.rs (the checked/
 ; saturating/wrapping mul & square variants are Rust wrappers over the
 ; overflowing core; `inv256` also lives in mul.rs there). Shared data lives in
-; zisklib_uint256_common.zisk. Internal labels: `um_` (mul), `u2_` (inv256).
-; FREE_INPUT / FCALL_UINT256_INV are `pub define`s in zisklib_mem/zisklib_fcall.
+; common.zisk. Internal labels: `um_` (mul), `u2_` (inv256).
+; FREE_INPUT / FCALL_UINT256_INV are `pub define`s in mem/fcall.
 ; ============================================================================
 
 ; ----------------------------------------------------------------------------

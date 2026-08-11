@@ -1,5 +1,5 @@
 ; ============================================================================
-; zisklib_keccak.zisk - keccak256 for the ZisK library, callable from a RISC-V
+; keccak.zisk - keccak256 for the ZisK library, callable from a RISC-V
 ; guest via the elf2rom symbol redirect (guest stub `ziskos_keccak`).
 ;
 ; Shared zisklib ABI (RISC-V C convention; ZisK registers = RISC-V registers):

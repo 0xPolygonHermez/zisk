@@ -2,6 +2,6 @@
 name = "zisklib"
 version = "0.1.0"
 edition = "2021"
-description = "Rust bindings for the ZisK assembly library (ziskasm/lib): guest-side stubs redirected to hand-written .zisk routines during transpilation, plus ergonomic wrappers."
+description = "Rust bindings for the ZisK assembly library (ziskasm/zisklib): guest-side stubs redirected to hand-written .zisk routines during transpilation, plus ergonomic wrappers."
 
 [dependencies]

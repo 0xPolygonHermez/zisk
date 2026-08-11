@@ -1,7 +1,7 @@
 ; ============================================================================
-; zisklib_blake2b.zisk - BLAKE2b compression function F (RFC 7693) for the ZisK
+; blake2b.zisk - BLAKE2b compression function F (RFC 7693) for the ZisK
 ; library, callable from a RISC-V guest via the elf2rom symbol redirect. See
-; zisklib_keccak.zisk for the shared calling convention.
+; keccak.zisk for the shared calling convention.
 ;
 ; This is a 1:1 port of ziskos `blake2b_compress`: it mixes one message block `m`
 ; into the hash state `h` over `rounds` iterations, using the 128-bit counter `t`

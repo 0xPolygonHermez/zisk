@@ -353,7 +353,7 @@ It assembles to a static `jump` to the BIOS finalization address, which the asse
 
 ## Program entry and automatic launcher
 
-The program entry point is the `_start` label, which the assembler places at `ROM_ADDR` (the ELF convention that the entry point is the program base).  Source files may be supplied in any order — a `-z <dir>` run collects them sorted by name — and the assembler moves the file that defines `_start` first.
+The program entry point is the `_start` label, which the assembler places at `ROM_ADDR` (the ELF convention that the entry point is the program base).  Source files may be supplied in any order — a `-z <dir>` run collects every `.zisk` file in the directory *and its subdirectories* (recursively), sorted by path — and the assembler moves the file that defines `_start` first.
 
 If a program does not define `_start`, the assembler synthesizes a launcher automatically around the program's entry label — `main`, or otherwise `_zisk_main` — mirroring `ziskos::_start`:
 

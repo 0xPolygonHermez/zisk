@@ -17,7 +17,7 @@ guest (Rust)                       zisklib::keccak256(&[u8]) -> [u8;32]     ← 
                                         │  marshals &[u8] -> (ptr,len), returns [u8;32]
 raw ABI boundary (C ABI)           ziskos_keccak(*const u8, usize, *mut u8) ← #[no_mangle] stub, placeholder body
                                         │  (transpile-time symbol redirect)
-ziskasm routine                    zisklib_keccak:  … keccak op per block …  ← ziskasm/lib/zisklib_keccak.zisk
+ziskasm routine                    zisklib_keccak:  … keccak op per block …  ← ziskasm/zisklib/keccak.zisk
                                                                                 (placed in the reserved ZISKLIB ROM region)
 ```
 
@@ -26,7 +26,7 @@ ziskasm routine                    zisklib_keccak:  … keccak op per block … 
   throwaway body.
 - During transpilation, [`elf2rom`](../transpilers/common/src/elf2rom.rs) finds the
   stub's symbol in the guest ELF and **redirects its entry** to the matching
-  hand-written `zisklib_*` routine (assembled from `ziskasm/lib/*.zisk` and merged
+  hand-written `zisklib_*` routine (assembled from `ziskasm/zisklib/*.zisk` and merged
   into the ROM at a reserved region). The routine returns straight to the guest
   caller.
 
@@ -114,7 +114,7 @@ The surface grows over time; see "Adding a routine" below.
 
 ## How the redirect works
 
-1. **Reserved ROM/RAM regions.** `ziskasm/lib/*.zisk` is assembled in *library
+1. **Reserved ROM/RAM regions.** `ziskasm/zisklib/*.zisk` is assembled in *library
    mode* (no launcher / `_start` / BIOS) at `ZISKLIB_ROM_ADDR` — a 1 MB region
    carved just below the float library (see `core/src/mem.rs`). Its `const` data
    sits right after the code; its mutable scratch/variables go to `ZISKLIB_RAM_ADDR`
@@ -138,7 +138,7 @@ registered stub, so unused guests pay nothing.
 
 Three edits plus the implementation. Say you want `zisklib_foo`.
 
-### 1. Write the ziskasm routine — `ziskasm/lib/zisklib_foo.zisk`
+### 1. Write the ziskasm routine — `ziskasm/zisklib/foo.zisk`
 
 Follow the calling convention (RISC-V C ABI; ZisK registers *are* the RISC-V
 registers):
@@ -158,10 +158,10 @@ registers):
 - **Prefix internal labels** per family (e.g. `zk_` for keccak) so they stay unique
   when all `.zisk` files are concatenated into one library.
 
-See [`ziskasm/lib/zisklib_keccak.zisk`](lib/zisklib_keccak.zisk) for a full example
+See [`ziskasm/zisklib/keccak.zisk`](zisklib/keccak.zisk) for a full example
 (a keccak256 sponge that calls the `keccak` op once per rate block).
 
-Two recurring shapes are worth knowing (both used throughout the `zisklib_uint256_*.zisk` files):
+Two recurring shapes are worth knowing (both used throughout the `zisklib/uint256/*.zisk` files):
 
 - **Precompile with a pointer header.** Most precompiles (`arith256`,
   `arith256_mod`, `add256`, `sha256`, `blake2`) take a small header — a run of
@@ -184,7 +184,7 @@ Add the source file to `ZISK_LIBRARY` and the redirect pair to `REDIRECTS`:
 ```rust
 const ZISK_LIBRARY: &[(&str, &str)] = &[
     // …
-    ("zisklib_foo", include_str!("../../../ziskasm/lib/zisklib_foo.zisk")),
+    ("foo", include_str!("../../../ziskasm/zisklib/foo.zisk")),
 ];
 const REDIRECTS: &[(&str, &str)] = &[
     // …
@@ -260,7 +260,7 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
 | Path | Role |
 |------|------|
 | [`ziskasm/lang/rust/`](lang/rust/) | Crate `zisklib`: Rust stubs + ergonomic wrappers. |
-| [`ziskasm/lib/zisklib_*.zisk`](lib/) | Hand-written ziskasm routines, one file per family. |
+| [`ziskasm/zisklib/`](zisklib/) | Hand-written ziskasm routines, one file per family (`keccak.zisk`, …); large families get a subdirectory (`zisklib/uint256/`). Shared `pub define`s live in `mem.zisk` / `fcall.zisk`. |
 | [`transpilers/common/src/elf2rom.rs`](../transpilers/common/src/elf2rom.rs) | `ZISK_LIBRARY` + `REDIRECTS` registries; assembles, merges, and redirects. |
 | `core/src/mem.rs` | `ZISKLIB_ROM_ADDR` / `ZISKLIB_RAM_ADDR` reserved regions. |
 | [`ziskasm/src/assembler.rs`](src/assembler.rs) | `assemble_library*` (library mode). |

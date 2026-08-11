@@ -1,8 +1,8 @@
 ; ============================================================================
-; zisklib_uint256_pow.zisk - 256-bit exponentiation mod 2^256. Mirrors
+; uint256/pow.zisk - 256-bit exponentiation mod 2^256. Mirrors
 ; ziskos/entrypoint/src/zisklib/lib/uint256/pow.rs (the checked/saturating/
 ; wrapping_pow256 variants are Rust wrappers over this overflowing core).
-; Shared data lives in zisklib_uint256_common.zisk. Internal labels: `op_`.
+; Shared data lives in common.zisk. Internal labels: `op_`.
 ; ============================================================================
 
 ; RAM scratch: sticky overflow flag, set whenever an arith256 high word is

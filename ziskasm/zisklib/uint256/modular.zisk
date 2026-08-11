@@ -1,15 +1,15 @@
 ; ============================================================================
-; zisklib_uint256_modular.zisk - 256-bit modular arithmetic. Mirrors
+; uint256/modular.zisk - 256-bit modular arithmetic. Mirrors
 ; ziskos/entrypoint/src/zisklib/lib/uint256/modular.rs: reduce_mod256,
 ; add_mod256, mul_mod256, pow_mod256, inv_mod256 (square_mod256 is a Rust wrapper
-; over mul_mod256). Shared data lives in zisklib_uint256_common.zisk. Internal
+; over mul_mod256). Shared data lives in common.zisk. Internal
 ; labels: `pm_` (pow_mod), `im_` (inv_mod).
 ;
 ; reduce/add/mul use the arith256_mod precompile: d = (a*b + c) mod module,
 ; header [&a, &b, &c, &module, &d]. The precompile requires module != 0, so the
 ; Rust wrappers short-circuit module in {0,1} and never call these with such a
 ; modulus. Inputs need not be canonical (< module); the result is always reduced.
-; FREE_INPUT / FCALL_UINT256_INV_MOD are `pub define`s in zisklib_mem/zisklib_fcall.
+; FREE_INPUT / FCALL_UINT256_INV_MOD are `pub define`s in mem/fcall.
 ; ============================================================================
 
 ; RAM scratch for inv_mod's no-inverse witness, stored contiguously:

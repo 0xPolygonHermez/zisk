@@ -1,9 +1,9 @@
-//! Rust bindings for the ZisK assembly library (`ziskasm/lib/`).
+//! Rust bindings for the ZisK assembly library (`ziskasm/zisklib/`).
 //!
 //! A guest program links this crate and calls its functions. Each `ziskos_*` item
 //! is a raw C-ABI **stub** with a stable `#[no_mangle]` symbol and a placeholder
 //! body; during transpilation (`elf2rom`) the stub's entry is redirected to the
-//! matching hand-written `zisklib_*` routine in `ziskasm/lib/*.zisk`, so the
+//! matching hand-written `zisklib_*` routine in `ziskasm/zisklib/*.zisk`, so the
 //! ziskasm implementation runs in the guest's place. On top of the raw stubs sit
 //! ergonomic Rust wrappers (e.g. [`keccak256`]) that marshal idiomatic Rust types
 //! (`&[u8]`, `[u8; 32]`) into the flat `(ptr, len, ...)` primitives the ABI
@@ -125,7 +125,7 @@ pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 
 }
 
 /// `a^(-1) mod 2^256` if it exists, else "not invertible". Raw ABI boundary
-/// redirected to `zisklib_uint256_mul.zisk`'s `zisklib_inv256`: returns `1` and writes
+/// redirected to `uint256/mul.zisk`'s `zisklib_inv256`: returns `1` and writes
 /// `result[0..4]` when `a` is invertible (odd), `0` otherwise. The placeholder
 /// writes a sentinel and returns an argument-dependent value so the optimizer
 /// keeps the call and sets up both argument registers.

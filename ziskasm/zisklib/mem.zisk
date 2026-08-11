@@ -1,5 +1,5 @@
 ; ============================================================================
-; zisklib_mem.zisk - memory-map constants shared across every ZisK library
+; mem.zisk - memory-map constants shared across every ZisK library
 ; precompile family. Holds only `pub define`s (visible library-wide via the
 ; multi-file pre-pass); no routines or data. Declared once here rather than
 ; repeated in each family file.

@@ -1,4 +1,4 @@
-//! Demo guest: calls a function implemented in the ZisK library (`ziskasm/lib/`)
+//! Demo guest: calls a function implemented in the ZisK library (`ziskasm/zisklib/`)
 //! rather than in Rust. The `ziskos_add` stub (see `ziskos.rs`) is redirected by
 //! the transpiler to the hand-written `zisklib_add` routine, which runs as ZisK
 //! instructions in the guest's place. The committed result (7) proves the

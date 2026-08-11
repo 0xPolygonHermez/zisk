@@ -1,8 +1,8 @@
 ; ============================================================================
-; zisklib_uint256_add.zisk - 256-bit addition / subtraction. Mirrors
+; uint256/add.zisk - 256-bit addition / subtraction. Mirrors
 ; ziskos/entrypoint/src/zisklib/lib/uint256/add.rs (the checked/saturating/
 ; wrapping/neg variants are Rust wrappers over these two overflowing cores).
-; Shared data lives in zisklib_uint256_common.zisk. Internal labels: `us_`.
+; Shared data lives in common.zisk. Internal labels: `us_`.
 ; ============================================================================
 
 ; RAM scratch: the add256 pointer header [&a, &b, cin, &c] and, for subtraction,

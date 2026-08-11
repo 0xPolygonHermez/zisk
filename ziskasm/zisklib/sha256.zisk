@@ -1,6 +1,6 @@
 ; ============================================================================
-; zisklib_sha256.zisk - SHA2-256 (FIPS 180-4) for the ZisK library, callable from
-; a RISC-V guest via the elf2rom symbol redirect. See zisklib_keccak.zisk for the
+; sha256.zisk - SHA2-256 (FIPS 180-4) for the ZisK library, callable from
+; a RISC-V guest via the elf2rom symbol redirect. See keccak.zisk for the
 ; shared calling convention.
 ;
 ; Mirrors ziskos `sha256`: absorb 64-byte (512-bit) blocks with the `sha256`

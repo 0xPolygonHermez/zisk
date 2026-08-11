@@ -64,26 +64,21 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     const ZISK_LIBRARY: &[(&str, &str)] = &[
         // Library-wide shared `pub define`s (memory-map constants and fcall IDs),
         // visible to every family file via the multi-file pre-pass.
-        ("zisklib_mem", include_str!("../../../ziskasm/lib/zisklib_mem.zisk")),
-        ("zisklib_fcall", include_str!("../../../ziskasm/lib/zisklib_fcall.zisk")),
-        ("zisklib_add", include_str!("../../../ziskasm/lib/zisklib_add.zisk")),
-        ("zisklib_keccak", include_str!("../../../ziskasm/lib/zisklib_keccak.zisk")),
-        ("zisklib_sha256", include_str!("../../../ziskasm/lib/zisklib_sha256.zisk")),
-        ("zisklib_blake2b", include_str!("../../../ziskasm/lib/zisklib_blake2b.zisk")),
-        // uint256 — split one file per ziskos source file (add/mul/div/modular/pow)
-        // plus a common file holding the shared constants and scratch buffers.
-        (
-            "zisklib_uint256_common",
-            include_str!("../../../ziskasm/lib/zisklib_uint256_common.zisk"),
-        ),
-        ("zisklib_uint256_add", include_str!("../../../ziskasm/lib/zisklib_uint256_add.zisk")),
-        ("zisklib_uint256_mul", include_str!("../../../ziskasm/lib/zisklib_uint256_mul.zisk")),
-        ("zisklib_uint256_div", include_str!("../../../ziskasm/lib/zisklib_uint256_div.zisk")),
-        (
-            "zisklib_uint256_modular",
-            include_str!("../../../ziskasm/lib/zisklib_uint256_modular.zisk"),
-        ),
-        ("zisklib_uint256_pow", include_str!("../../../ziskasm/lib/zisklib_uint256_pow.zisk")),
+        ("mem", include_str!("../../../ziskasm/zisklib/mem.zisk")),
+        ("fcall", include_str!("../../../ziskasm/zisklib/fcall.zisk")),
+        ("add", include_str!("../../../ziskasm/zisklib/add.zisk")),
+        ("keccak", include_str!("../../../ziskasm/zisklib/keccak.zisk")),
+        ("sha256", include_str!("../../../ziskasm/zisklib/sha256.zisk")),
+        ("blake2b", include_str!("../../../ziskasm/zisklib/blake2b.zisk")),
+        // uint256 — one file per ziskos source file under `zisklib/uint256/`
+        // (add/mul/div/modular/pow) plus a common file holding the shared
+        // constants and scratch buffers.
+        ("uint256/common", include_str!("../../../ziskasm/zisklib/uint256/common.zisk")),
+        ("uint256/add", include_str!("../../../ziskasm/zisklib/uint256/add.zisk")),
+        ("uint256/mul", include_str!("../../../ziskasm/zisklib/uint256/mul.zisk")),
+        ("uint256/div", include_str!("../../../ziskasm/zisklib/uint256/div.zisk")),
+        ("uint256/modular", include_str!("../../../ziskasm/zisklib/uint256/modular.zisk")),
+        ("uint256/pow", include_str!("../../../ziskasm/zisklib/uint256/pow.zisk")),
     ];
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[

@@ -1,5 +1,5 @@
 ; ============================================================================
-; zisklib_fcall.zisk - fcall IDs shared across every ZisK library precompile
+; fcall.zisk - fcall IDs shared across every ZisK library precompile
 ; family. Holds only `pub define`s (visible library-wide via the multi-file
 ; pre-pass); no routines or data. Mirrors ziskos keeping the FCALL_*_ID constants
 ; in a shared `fcalls/mod.rs` rather than per operation.
