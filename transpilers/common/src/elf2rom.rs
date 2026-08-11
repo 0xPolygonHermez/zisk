@@ -107,6 +107,25 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("bn254/miller_loop", include_str!("../../../ziskasm/zisklib/bn254/miller_loop.zisk")),
         ("bn254/final_exp", include_str!("../../../ziskasm/zisklib/bn254/final_exp.zisk")),
         ("bn254/pairing", include_str!("../../../ziskasm/zisklib/bn254/pairing.zisk")),
+        // bls12_381 (384-bit Fp) — one file per ziskos source file.
+        ("bls12_381/constants", include_str!("../../../ziskasm/zisklib/bls12_381/constants.zisk")),
+        ("bls12_381/fp", include_str!("../../../ziskasm/zisklib/bls12_381/fp.zisk")),
+        ("bls12_381/fp2", include_str!("../../../ziskasm/zisklib/bls12_381/fp2.zisk")),
+        ("bls12_381/curve", include_str!("../../../ziskasm/zisklib/bls12_381/curve.zisk")),
+        ("bls12_381/fp6", include_str!("../../../ziskasm/zisklib/bls12_381/fp6.zisk")),
+        ("bls12_381/fp12", include_str!("../../../ziskasm/zisklib/bls12_381/fp12.zisk")),
+        ("bls12_381/twist", include_str!("../../../ziskasm/zisklib/bls12_381/twist.zisk")),
+        ("bls12_381/cyclotomic", include_str!("../../../ziskasm/zisklib/bls12_381/cyclotomic.zisk")),
+        ("bls12_381/miller_loop", include_str!("../../../ziskasm/zisklib/bls12_381/miller_loop.zisk")),
+        ("bls12_381/final_exp", include_str!("../../../ziskasm/zisklib/bls12_381/final_exp.zisk")),
+        ("bls12_381/subgroup", include_str!("../../../ziskasm/zisklib/bls12_381/subgroup.zisk")),
+        ("bls12_381/pairing", include_str!("../../../ziskasm/zisklib/bls12_381/pairing.zisk")),
+        ("bls12_381/map", include_str!("../../../ziskasm/zisklib/bls12_381/map.zisk")),
+        ("bls12_381/map_g2", include_str!("../../../ziskasm/zisklib/bls12_381/map_g2.zisk")),
+        ("bls12_381/hash", include_str!("../../../ziskasm/zisklib/bls12_381/hash.zisk")),
+        ("bls12_381/verify", include_str!("../../../ziskasm/zisklib/bls12_381/verify.zisk")),
+        ("bls12_381/kzg", include_str!("../../../ziskasm/zisklib/bls12_381/kzg.zisk")),
+        ("bls12_381/fr", include_str!("../../../ziskasm/zisklib/bls12_381/fr.zisk")),
     ];
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[
@@ -130,6 +149,12 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_schnorr_verify_secp256k1", "zisklib_schnorr_verify_secp256k1"),
         ("ziskos_ecdsa_verify_secp256r1", "zisklib_ecdsa_verify_secp256r1"),
         ("ziskos_pairing_check_bn254", "zisklib_pairing_check_bn254"),
+        ("ziskos_pairing_check_bls12_381", "zisklib_pairing_check_bls12_381"),
+        ("ziskos_map_to_curve_g1_bls12_381", "zisklib_map_to_curve_g1_bls12_381"),
+        ("ziskos_map_to_curve_g2_bls12_381", "zisklib_map_to_curve_g2_bls12_381"),
+        ("ziskos_hash_to_curve_g2_bls12_381", "zisklib_hash_to_curve_g2_bls12_381"),
+        ("ziskos_bls_verify_bls12_381", "zisklib_bls_verify_bls12_381"),
+        ("ziskos_verify_kzg_proof_bls12_381", "zisklib_verify_kzg_proof_bls12_381"),
     ];
 
     let library =

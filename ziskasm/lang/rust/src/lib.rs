@@ -814,3 +814,203 @@ pub fn bn254_pairing_check(g1: &[[u64; 8]], g2: &[[u64; 16]]) -> u64 {
         )
     }
 }
+
+/// BLS12-381 optimal-ate pairing check (EIP-2537), redirected to
+/// `zisklib_pairing_check_bls12_381`. `g1`/`g2` are `n` points (affine, x‖y,
+/// little-endian limbs; G1 = 12 u64, G2 = 24 u64). Returns a status code: `0` =
+/// the pairing product is 1 (accept), `1` = it is not (reject), `2`..`7` = input
+/// validation errors (see the wrapper).
+///
+/// # Safety
+/// `g1` points to `12*n` readable `u64`, `g2` to `24*n` readable `u64`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_pairing_check_bls12_381(
+    g1: *const u64,
+    g2: *const u64,
+    n: u64,
+) -> u64 {
+    let (g1, g2, n) = black_box((g1, g2, n));
+    black_box(0x0BAD_B157_0381_u64 ^ g1 as u64 ^ g2 as u64 ^ n)
+}
+
+/// Ergonomic API over [`ziskos_pairing_check_bls12_381`]: returns the raw status
+/// code for the BLS12-381 pairing check over `n` pairs (`g1[i]`, `g2[i]`). `0`
+/// accepts (∏ e(g1ᵢ, g2ᵢ) == 1); `1` rejects; `2` G1 not canonical; `3` G1 not
+/// on curve; `4` G1 not in subgroup; `5` G2 not canonical; `6` G2 not on curve;
+/// `7` G2 not in subgroup.
+pub fn bls12_381_pairing_check(g1: &[[u64; 12]], g2: &[[u64; 24]]) -> u64 {
+    assert_eq!(g1.len(), g2.len(), "g1 and g2 must have the same number of points");
+    // SAFETY: `g1`/`g2` are contiguous arrays of `len` points of 12/24 u64 each.
+    unsafe {
+        ziskos_pairing_check_bls12_381(
+            g1.as_ptr() as *const u64,
+            g2.as_ptr() as *const u64,
+            g1.len() as u64,
+        )
+    }
+}
+
+/// BLS12-381 map field element Fp → G1 (EIP-2537 MAP_FP_TO_G1), redirected to
+/// `zisklib_map_to_curve_g1_bls12_381`. Writes the resulting G1 point (12 u64,
+/// x‖y little-endian) to `result`; returns `0` on success, `1` if `u ≥ p`.
+///
+/// # Safety
+/// `u` points to 6 readable `u64`, `result` to 12 writable `u64`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_map_to_curve_g1_bls12_381(u: *const u64, result: *mut u64) -> u64 {
+    let (u, result) = black_box((u, result));
+    black_box(0x0BAD_A11_C001_u64 ^ u as u64 ^ result as u64)
+}
+
+/// Ergonomic API over [`ziskos_map_to_curve_g1_bls12_381`]: maps `u ∈ Fp` to a
+/// G1 point. Returns `Ok(point)` (12 u64, x‖y) or `Err(1)` when `u ≥ p`.
+pub fn bls12_381_map_to_curve_g1(u: &[u64; 6]) -> Result<[u64; 12], u64> {
+    let mut point = [0u64; 12];
+    // SAFETY: `u` is 6 u64, `point` is 12 u64.
+    let status = unsafe { ziskos_map_to_curve_g1_bls12_381(u.as_ptr(), point.as_mut_ptr()) };
+    if status == 0 {
+        Ok(point)
+    } else {
+        Err(status)
+    }
+}
+
+/// BLS12-381 map field element Fp2 → G2 (EIP-2537 MAP_FP2_TO_G2), redirected to
+/// `zisklib_map_to_curve_g2_bls12_381`. Writes the resulting G2 point (24 u64,
+/// x‖y little-endian, each Fp2) to `result`; returns `0` on success, `1` if
+/// either coordinate of `u` is `≥ p`.
+///
+/// # Safety
+/// `u` points to 12 readable `u64`, `result` to 24 writable `u64`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_map_to_curve_g2_bls12_381(u: *const u64, result: *mut u64) -> u64 {
+    let (u, result) = black_box((u, result));
+    black_box(0x0BAD_A22_C002_u64 ^ u as u64 ^ result as u64)
+}
+
+/// Ergonomic API over [`ziskos_map_to_curve_g2_bls12_381`]: maps `u ∈ Fp2` to a
+/// G2 point. Returns `Ok(point)` (24 u64, x‖y each Fp2) or `Err(1)` when either
+/// coordinate of `u` is `≥ p`.
+pub fn bls12_381_map_to_curve_g2(u: &[u64; 12]) -> Result<[u64; 24], u64> {
+    let mut point = [0u64; 24];
+    // SAFETY: `u` is 12 u64, `point` is 24 u64.
+    let status = unsafe { ziskos_map_to_curve_g2_bls12_381(u.as_ptr(), point.as_mut_ptr()) };
+    if status == 0 {
+        Ok(point)
+    } else {
+        Err(status)
+    }
+}
+
+/// BLS12-381 hash-to-curve to G2 (RFC 9380, suite BLS12381G2_XMD:SHA-256_SSWU_RO_),
+/// redirected to `zisklib_hash_to_curve_g2_bls12_381`. Hashes `msg` under domain
+/// tag `dst` to a G2 point (24 u64, x‖y each Fp2) written to `result`.
+///
+/// # Safety
+/// `msg`/`dst` are readable for `msg_len`/`dst_len` bytes; `result` is 24 writable u64.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_hash_to_curve_g2_bls12_381(
+    msg: *const u8,
+    msg_len: u64,
+    dst: *const u8,
+    dst_len: u64,
+    result: *mut u64,
+) {
+    let (msg, msg_len, dst, dst_len, result) = black_box((msg, msg_len, dst, dst_len, result));
+    let _ = black_box(
+        0x0BAD_A233_C002_u64 ^ msg as u64 ^ msg_len ^ dst as u64 ^ dst_len ^ result as u64,
+    );
+}
+
+/// Ergonomic API over [`ziskos_hash_to_curve_g2_bls12_381`]: returns the G2 point
+/// (24 u64, x‖y each Fp2) that `msg` hashes to under domain-separation tag `dst`.
+pub fn bls12_381_hash_to_curve_g2(msg: &[u8], dst: &[u8]) -> [u64; 24] {
+    let mut point = [0u64; 24];
+    // SAFETY: slices are valid for their lengths; `point` is 24 u64.
+    unsafe {
+        ziskos_hash_to_curve_g2_bls12_381(
+            msg.as_ptr(),
+            msg.len() as u64,
+            dst.as_ptr(),
+            dst.len() as u64,
+            point.as_mut_ptr(),
+        );
+    }
+    point
+}
+
+/// BLS12-381 signature verification (minimal-pubkey-size / G2 signatures, basic
+/// scheme, DST `BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_`), redirected to
+/// `zisklib_bls_verify_bls12_381`. `pk` is a 48-byte compressed G1 public key,
+/// `sig` a 96-byte compressed G2 signature. Returns `true` iff the signature is
+/// valid for `msg`.
+///
+/// # Safety
+/// `pk` points to 48 bytes, `sig` to 96 bytes, `msg` to `msg_len` bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_bls_verify_bls12_381(
+    pk: *const u8,
+    msg: *const u8,
+    msg_len: u64,
+    sig: *const u8,
+) -> u64 {
+    let (pk, msg, msg_len, sig) = black_box((pk, msg, msg_len, sig));
+    black_box(0x0BAD_B15_5169_u64 ^ pk as u64 ^ msg as u64 ^ msg_len ^ sig as u64)
+}
+
+/// Ergonomic API over [`ziskos_bls_verify_bls12_381`]: verifies a BLS signature
+/// (48-byte compressed G1 `pk`, 96-byte compressed G2 `sig`) over `msg`.
+pub fn bls12_381_verify(pk: &[u8; 48], msg: &[u8], sig: &[u8; 96]) -> bool {
+    // SAFETY: `pk`/`sig` are fixed-size; `msg` is valid for its length.
+    let r = unsafe {
+        ziskos_bls_verify_bls12_381(pk.as_ptr(), msg.as_ptr(), msg.len() as u64, sig.as_ptr())
+    };
+    r == 1
+}
+
+/// BLS12-381 KZG proof verification (EIP-4844 point evaluation), redirected to
+/// `zisklib_verify_kzg_proof_bls12_381`. Checks that a polynomial committed to by
+/// `commitment` (48-byte compressed G1) evaluates to `y` at `z` with the given
+/// `proof` (48-byte compressed G1). `z`/`y` are 32-byte big-endian field scalars.
+/// Returns `true` iff the proof is valid.
+///
+/// # Safety
+/// `z`/`y` point to 32 bytes each; `commitment`/`proof` to 48 bytes each.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_verify_kzg_proof_bls12_381(
+    z: *const u8,
+    y: *const u8,
+    commitment: *const u8,
+    proof: *const u8,
+) -> u64 {
+    let (z, y, commitment, proof) = black_box((z, y, commitment, proof));
+    black_box(0x0BAD_442_6202_u64 ^ z as u64 ^ y as u64 ^ commitment as u64 ^ proof as u64)
+}
+
+/// Ergonomic API over [`ziskos_verify_kzg_proof_bls12_381`]: verifies an EIP-4844
+/// KZG evaluation proof that the polynomial behind `commitment` takes value `y`
+/// at point `z`, given `proof`. `z`/`y` are 32-byte big-endian scalars;
+/// `commitment`/`proof` are 48-byte compressed G1 points.
+pub fn bls12_381_verify_kzg_proof(
+    z: &[u8; 32],
+    y: &[u8; 32],
+    commitment: &[u8; 48],
+    proof: &[u8; 48],
+) -> bool {
+    // SAFETY: all inputs are fixed-size arrays of the documented lengths.
+    let r = unsafe {
+        ziskos_verify_kzg_proof_bls12_381(
+            z.as_ptr(),
+            y.as_ptr(),
+            commitment.as_ptr(),
+            proof.as_ptr(),
+        )
+    };
+    r == 1
+}

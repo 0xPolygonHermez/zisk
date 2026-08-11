@@ -10,7 +10,9 @@ ziskos::entrypoint!(main);
 
 use core::hint::black_box;
 use zisklib::{
-    add_mod256, blake2b_compress, bn254_pairing_check, checked_add256, checked_div256,
+    add_mod256, blake2b_compress, bls12_381_hash_to_curve_g2, bls12_381_map_to_curve_g1,
+    bls12_381_map_to_curve_g2, bls12_381_pairing_check, bls12_381_verify,
+    bls12_381_verify_kzg_proof, bn254_pairing_check, checked_add256, checked_div256,
     checked_mul256, checked_pow256, checked_square256, checked_sub256, div_ceil256, div_rem256,
     inv_mod256, inv256, keccak256, mul_mod256, overflowing_add256, overflowing_mul256,
     overflowing_pow256, pow_mod256, reduce_mod256, saturating_pow256, saturating_sub256,
@@ -72,6 +74,212 @@ const BN_PC_G2: [[u64; 16]; 2] = [
         0xec9e99ad690c3395,
         0x090689d0585ff075,
     ],
+];
+
+const BLS_PC_G1: [[u64; 12]; 2] = [
+    [
+        0xfb3af00adb22c6bb,
+        0x6c55e83ff97a1aef,
+        0xa14e3a3f171bac58,
+        0xc3688c4f9774b905,
+        0x2695638c4fa9ac0f,
+        0x17f1d3a73197d794,
+        0x0caa232946c5e7e1,
+        0xd03cc744a2888ae4,
+        0x00db18cb2c04b3ed,
+        0xfcf5e095d5d00af6,
+        0xa09e30ed741d8ae4,
+        0x08b3f481e3aaa0f1,
+    ],
+    [
+        0xfb3af00adb22c6bb,
+        0x6c55e83ff97a1aef,
+        0xa14e3a3f171bac58,
+        0xc3688c4f9774b905,
+        0x2695638c4fa9ac0f,
+        0x17f1d3a73197d794,
+        0xad54dcd6b939c2ca,
+        0x4e6f38ba0ecb751b,
+        0x6655b9d5caac4236,
+        0x67816aef1db507c9,
+        0xaa7d76c8cf2e21f2,
+        0x114d1d6855d545a8,
+    ],
+];
+const BLS_PC_G2: [[u64; 24]; 2] = [
+    [
+        0xd48056c8c121bdb8,
+        0x0bac0326a805bbef,
+        0xb4510b647ae3d177,
+        0xc6e47ad4fa403b02,
+        0x260805272dc51051,
+        0x024aa2b2f08f0a91,
+        0xe5ac7d055d042b7e,
+        0x334cf11213945d57,
+        0xb5da61bbdc7f5049,
+        0x596bd0d09920b61a,
+        0x7dacd3a088274f65,
+        0x13e02b6052719f60,
+        0xe193548608b82801,
+        0x923ac9cc3baca289,
+        0x6d429a695160d12c,
+        0xadfd9baa8cbdd3a7,
+        0x8cc9cdc6da2e351a,
+        0x0ce5d527727d6e11,
+        0xaaa9075ff05f79be,
+        0x3f370d275cec1da1,
+        0x267492ab572e99ab,
+        0xcb3e287e85a763af,
+        0x32acd2b02bc28b99,
+        0x0606c4a02ea734cc,
+    ],
+    [
+        0xd48056c8c121bdb8,
+        0x0bac0326a805bbef,
+        0xb4510b647ae3d177,
+        0xc6e47ad4fa403b02,
+        0x260805272dc51051,
+        0x024aa2b2f08f0a91,
+        0xe5ac7d055d042b7e,
+        0x334cf11213945d57,
+        0xb5da61bbdc7f5049,
+        0x596bd0d09920b61a,
+        0x7dacd3a088274f65,
+        0x13e02b6052719f60,
+        0xe193548608b82801,
+        0x923ac9cc3baca289,
+        0x6d429a695160d12c,
+        0xadfd9baa8cbdd3a7,
+        0x8cc9cdc6da2e351a,
+        0x0ce5d527727d6e11,
+        0xaaa9075ff05f79be,
+        0x3f370d275cec1da1,
+        0x267492ab572e99ab,
+        0xcb3e287e85a763af,
+        0x32acd2b02bc28b99,
+        0x0606c4a02ea734cc,
+    ],
+];
+
+const BLS_MAP_U1: [u64; 6] = [
+    0x000000000000002a,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+];
+const BLS_MAP_G1: [u64; 12] = [
+    0x7a9e1d8543273a30,
+    0xc566ab55d828dfd0,
+    0xdfb472ff2be55501,
+    0x2004453b4435bbf1,
+    0x283e06ec543b6ebc,
+    0x149c845640b62922,
+    0xae34ebe0b048dfa6,
+    0xcf887e0ee0638d57,
+    0xa4917f4bbc9bd2f2,
+    0xf9c4454adb818220,
+    0xded4192633c38864,
+    0x0e868eb185f23102,
+];
+const BLS_MAP_U2: [u64; 12] = [
+    0x000000000000002a,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x000000000000002b,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+    0x0000000000000000,
+];
+const BLS_MAP_G2: [u64; 24] = [
+    0x40f41de54925cf4f,
+    0x3b807ddc1628c68d,
+    0xed8806f295c7815b,
+    0x657c645ccf514547,
+    0x00fc5a63d535803c,
+    0x0c9c9c6129ac3470,
+    0x43cd782600ef9685,
+    0xaf4b54391659dabf,
+    0xf21a8c7f8b8a5098,
+    0xcf0e22984e23fe98,
+    0x8f76f5776084dd24,
+    0x01e3689c3b5768e9,
+    0x0fb941f07cf8398d,
+    0x68cef9e267f9ecbe,
+    0xf73284f519e48deb,
+    0xa344f592f29b0726,
+    0x2e07d41eb79eb8be,
+    0x0f6f344b91984752,
+    0xc4e3e743136a1671,
+    0x768da8d06cc394c3,
+    0x6533573f6b96b846,
+    0xea5aacb5a473bebf,
+    0x16f16ffb33eb5dbc,
+    0x157f85373609d68b,
+];
+
+const BLS_HTC_MSG: [u8; 3] = [97, 98, 99];
+const BLS_HTC_DST: [u8; 12] = [66, 76, 83, 95, 84, 69, 83, 84, 95, 68, 83, 84];
+const BLS_HTC_EXP: [u64; 24] = [
+    0xd49b9fa0ab72d14e,
+    0x398b10f6999cc8a0,
+    0x0cb15d5c7598bad7,
+    0x392a5a344b088989,
+    0x26083375405e0d59,
+    0x0c657161524f9e91,
+    0xdb9e9c7c081f770a,
+    0x33e6329d094d42fd,
+    0x7f72678ed54a58fb,
+    0xcc59b6cbf17a1555,
+    0x9bbe6791f4c39042,
+    0x0c85113990e68b08,
+    0xbda5a508a8690e11,
+    0xd686da17caacd12f,
+    0xdbb8256360b0518f,
+    0x7aa2a9fff073a7d6,
+    0xda97f6a4d4498387,
+    0x1543ad0462f91be6,
+    0x072c15da68a36e3e,
+    0x92a1249fedff369e,
+    0xd64579a5e8216fdb,
+    0xf8f2a8407b06d9c6,
+    0x3498a80c3b22756b,
+    0x0add0ca265636311,
+];
+const BLS_SIG_PK: [u8; 48] = [
+    185, 85, 48, 112, 180, 18, 163, 118, 116, 59, 0, 172, 214, 155, 235, 81, 72, 38, 205, 250, 43,
+    149, 53, 0, 129, 133, 58, 138, 61, 113, 35, 163, 130, 138, 72, 118, 16, 7, 129, 117, 235, 124,
+    62, 117, 202, 4, 233, 108,
+];
+const BLS_SIG_MSG: [u8; 3] = [97, 98, 99];
+const BLS_SIG_SIG: [u8; 96] = [
+    152, 151, 210, 163, 4, 65, 253, 53, 217, 112, 10, 95, 122, 109, 169, 209, 110, 144, 223, 232,
+    178, 64, 16, 170, 199, 41, 213, 55, 201, 159, 134, 239, 153, 7, 36, 71, 152, 68, 172, 113, 110,
+    92, 254, 28, 106, 238, 190, 98, 10, 110, 26, 11, 95, 250, 212, 99, 237, 111, 2, 175, 152, 215,
+    16, 9, 60, 214, 3, 211, 89, 11, 104, 20, 67, 128, 180, 25, 54, 27, 151, 122, 120, 12, 32, 146,
+    234, 87, 235, 72, 143, 152, 119, 23, 238, 249, 239, 88,
+];
+const BLS_KZG_Z: [u8; 32] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+];
+const BLS_KZG_Y: [u8; 32] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5,
+];
+const BLS_KZG_COMM: [u8; 48] = [
+    173, 62, 181, 1, 33, 19, 154, 163, 77, 177, 213, 69, 9, 58, 201, 55, 74, 183, 188, 162, 192,
+    243, 191, 40, 226, 124, 141, 205, 143, 199, 203, 66, 210, 89, 38, 252, 12, 151, 179, 54, 233,
+    240, 251, 53, 229, 160, 76, 129,
+];
+const BLS_KZG_PROOF: [u8; 48] = [
+    151, 241, 211, 167, 49, 151, 215, 148, 38, 149, 99, 140, 79, 169, 172, 15, 195, 104, 140, 79,
+    151, 116, 185, 5, 161, 78, 58, 63, 23, 27, 172, 88, 108, 85, 232, 63, 249, 122, 26, 239, 251,
+    58, 240, 10, 219, 34, 198, 187,
 ];
 
 // ---- Elliptic-curve golden vectors (generated by pure-Python EC math; each
@@ -353,6 +561,33 @@ fn main() {
     let bn_pair_ok = bn254_pairing_check(&BN_PC_G1, &BN_PC_G2) == 0
         && bn254_pairing_check(&BN_PC_G1[..1], &BN_PC_G2[..1]) == 1;
 
+    // 15. BLS12-381 pairing (EIP-2537): e(G1,G2)·e(-G1,G2) == 1 accepts (status 0);
+    // the single pair e(G1,G2) != 1 rejects (status 1).
+    let bls_pair_ok = bls12_381_pairing_check(&BLS_PC_G1, &BLS_PC_G2) == 0
+        && bls12_381_pairing_check(&BLS_PC_G1[..1], &BLS_PC_G2[..1]) == 1;
+
+    // 16. BLS12-381 map-to-curve (EIP-2537 MAP_FP_TO_G1 / MAP_FP2_TO_G2): mapped
+    // points match the off-chain reference.
+    let bls_map_ok = bls12_381_map_to_curve_g1(&black_box(BLS_MAP_U1)) == Ok(BLS_MAP_G1)
+        && bls12_381_map_to_curve_g2(&black_box(BLS_MAP_U2)) == Ok(BLS_MAP_G2);
+
+    // 17. BLS12-381 hash-to-curve (RFC 9380): matches the off-chain reference.
+    let bls_htc_ok = bls12_381_hash_to_curve_g2(&BLS_HTC_MSG, &BLS_HTC_DST) == BLS_HTC_EXP;
+
+    // 18. BLS signature verify: a valid signature verifies; a tampered one fails.
+    let mut bad_sig = BLS_SIG_SIG;
+    bad_sig[95] ^= 1;
+    let bls_sig_ok = bls12_381_verify(&BLS_SIG_PK, &BLS_SIG_MSG, &BLS_SIG_SIG)
+        && !bls12_381_verify(&BLS_SIG_PK, &BLS_SIG_MSG, &bad_sig);
+
+    // 19. KZG proof verify (EIP-4844): a valid evaluation proof verifies; a wrong
+    // claimed value fails.
+    let mut bad_y = BLS_KZG_Y;
+    bad_y[31] ^= 1;
+    let bls_kzg_ok =
+        bls12_381_verify_kzg_proof(&BLS_KZG_Z, &BLS_KZG_Y, &BLS_KZG_COMM, &BLS_KZG_PROOF)
+            && !bls12_381_verify_kzg_proof(&BLS_KZG_Z, &bad_y, &BLS_KZG_COMM, &BLS_KZG_PROOF);
+
     let ok = sum == 7
         && empty_ok
         && big_ok
@@ -374,6 +609,6 @@ fn main() {
         && bn_pair_ok;
     ziskos::io::commit(&ok);
     println!(
-        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} blake2b={blake2b_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} k1_ecdsa={k1_ecdsa_ok} k1_recover={k1_recover_ok} k1_schnorr={k1_schnorr_ok} r1_ecdsa={r1_ecdsa_ok} bn254_pairing={bn_pair_ok} => ok={ok}"
+        "add=0x{sum:x} keccak(empty)={empty_ok} keccak(144B)={big_ok} keccak(13B)={odd_ok} sha256={sha_ok} blake2b={blake2b_ok} inv256={inv_ok} noinv={noinv_ok} addsub={addsub_ok} mul={mul_ok} div={div_ok} mod={mod_ok} invmod={invmod_ok} pow={pow_ok} k1_ecdsa={k1_ecdsa_ok} k1_recover={k1_recover_ok} k1_schnorr={k1_schnorr_ok} r1_ecdsa={r1_ecdsa_ok} bn254_pairing={bn_pair_ok} bls_pairing={bls_pair_ok} bls_map={bls_map_ok} bls_htc={bls_htc_ok} bls_sig={bls_sig_ok} bls_kzg={bls_kzg_ok} => ok={ok}"
     );
 }
