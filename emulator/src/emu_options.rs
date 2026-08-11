@@ -168,6 +168,11 @@ pub struct EmuOptions {
     /// e.g. `add` split into `add_hi0` / `add_hif` (BinaryAddHi shapes). Requires option: -X
     #[clap(long, value_name = "OPCODE_BREAKDOWN", default_value = "false")]
     pub opcode_breakdown: bool,
+    /// Show an operand pattern-analysis section: per base opcode, the operand categories that cover
+    /// a significant share of its operations (more than 10% of the opcode's operations and at least
+    /// 4,000 in absolute terms). Requires option: -X
+    #[clap(long, value_name = "PATTERN_ANALYSIS", default_value = "false")]
+    pub pattern_analysis: bool,
     /// Analyze duplicate precompile calls: report, per precompile, how many calls repeat the same
     /// input content (same input → same output) and the cost spent on those repeats (the potential
     /// deduplication saving). Covers every precompile except DMA. Requires option: -X
@@ -186,6 +191,29 @@ pub struct EmuOptions {
     /// duplicates come from, most costly first. Requires options: -S --duplicates
     #[clap(long, value_name = "DUPLICATES_DETAIL", default_value = "false")]
     pub duplicates_detail: bool,
+    /// Analyze the step distance between consecutive accesses of each register: report per register
+    /// the accesses, the maximum distance and its ratio to the limit, the same maximum assuming a
+    /// periodic flush (`--reg-step-flush-bits`), and how many gaps reach 80% / 100% / 200% of the
+    /// limit (`--reg-step-limit-bits`). Requires option: -X
+    #[clap(long, value_name = "REG_STEP_DISTANCE", default_value = "false")]
+    pub reg_step_distance: bool,
+    /// Distance limit, in bits, for the register step-distance thresholds: the limit is 2^bits
+    /// steps. Default 22, i.e. 4194304 steps.
+    #[clap(long, value_name = "BITS", default_value = "22")]
+    pub reg_step_limit_bits: u32,
+    /// Flush period, in bits, for the `--reg-step-distance` analysis: every 2^bits steps every
+    /// register is assumed to be forcibly accessed (a flush). These forced accesses are not counted
+    /// in the ACCESSES column, they only feed the MAX FDIST / FRATIO columns. Default 22.
+    #[clap(long, value_name = "BITS", default_value = "22")]
+    pub reg_step_flush_bits: u32,
+    /// Fast one-line check of the register step distances, so a whole program can be simulated
+    /// quickly just to see this. Splits the execution in instances of 2^bits steps
+    /// (`--reg-step-flush-bits`), each one starting with a flush that accesses every register, and
+    /// reports how many instances hold at least one distance above the limit
+    /// (`--reg-step-limit-bits`).
+    /// Unlike `--reg-step-distance` it does not need -X and runs on the fast emulation path.
+    #[clap(long, value_name = "REG_STEP_CHECK", default_value = "false")]
+    pub reg_step_check: bool,
     /// Load function names and symbols from the ELF file.
     #[clap(short = 'S', long, value_name = "READ_SYMBOLS", default_value = "false")]
     pub read_symbols: bool,
@@ -315,10 +343,15 @@ impl Default for EmuOptions {
             log_costly_unaligned: false,
             callstack_mode: "auto".to_string(),
             opcode_breakdown: false,
+            pattern_analysis: false,
             duplicates: false,
             duplicates_ops: None,
             duplicates_depth: 4,
             duplicates_detail: false,
+            reg_step_distance: false,
+            reg_step_limit_bits: 22,
+            reg_step_flush_bits: 22,
+            reg_step_check: false,
             read_symbols: false,
             roi_callers: 10,
             top_roi: 25,
@@ -426,6 +459,12 @@ impl EmuOptions {
             // A full stats snapshot / comparison needs the per-opcode + memory collection path.
             && self.save_stats.is_none()
             && self.ref_stats.is_none()
+    }
+
+    /// Register step-distance limit in steps, i.e. 2^`--reg-step-limit-bits` (clamped to a
+    /// representable limit).
+    pub fn reg_step_limit(&self) -> u64 {
+        1u64 << self.reg_step_limit_bits.min(63)
     }
 
     /// True if a change-trace window was requested (via `--trace-from`/`--trace-to`).

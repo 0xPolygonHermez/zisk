@@ -17,7 +17,7 @@ use std::{
     io::{BufWriter, IsTerminal, Write},
 };
 use zisk_core::{
-    zisk_ops::{OpStats, ZiskOp},
+    zisk_ops::{OpStats, OpType, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
     ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
 };
@@ -57,6 +57,53 @@ const OP_BIN_EXT_LT_64_CATS: usize = 2;
 const OP_CATEGORIES: usize = OP_MASK_CATEGORIES + OP_BIN_EXT_LT_64_CATS;
 const OP_BIN_EXT_A_LT_64_CAT: usize = OP_MASK_CATEGORIES;
 const OP_BIN_EXT_B_LT_64_CAT: usize = OP_BIN_EXT_A_LT_64_CAT + 1;
+
+// Pattern analysis (`--pattern-analysis`): human-readable label for each operand category (see the
+// `CAT_MASK` handling in `on_op`). For each mask the four shapes are: a,b,c masked bits all zero;
+// a zero / b all-ones; a all-ones / b zero; a,b all-ones. `hi32`/`hi48` = the high 32/48 bits,
+// `lo32` = the low 32 bits; `=0` means those bits are zero, `=1` means all ones.
+//
+// The second label is the one used for the single-operand opcodes of `B_ONLY_OPS`, whose `a` is
+// zero by definition: the condition on `a` holds trivially and is dropped from the label. `None`
+// means the whole category is vacuous for them — either it only constrains `a` (`a<64`), or it
+// requires `a` to be all-ones, which can never happen — so the pattern is not reported at all.
+const CAT_LABELS: [(&str, Option<&str>); OP_CATEGORIES] = [
+    ("a,b,c hi32=0", Some("b,c hi32=0")),
+    ("a hi32=0,b hi32=1", Some("b hi32=1")),
+    ("a hi32=1,b hi32=0", None),
+    ("a,b hi32=1", None),
+    ("a,b,c hi48=0", Some("b,c hi48=0")),
+    ("a hi48=0,b hi48=1", Some("b hi48=1")),
+    ("a hi48=1,b hi48=0", None),
+    ("a,b hi48=1", None),
+    ("a,b,c lo32=0", Some("b,c lo32=0")),
+    ("a lo32=0,b lo32=1", Some("b lo32=1")),
+    ("a lo32=1,b lo32=0", None),
+    ("a,b lo32=1", None),
+    ("a<64", None),
+    ("b<64", Some("b<64")),
+];
+/// Opcodes that take a single operand: their `op_*` implementation ignores `a` (see `op_rev8`,
+/// `op_signextend_b`, … in `zisk_core`), so `a` is always zero and any pattern constraining it is
+/// true by definition. They are reported with the reduced `CAT_LABELS` labels.
+const B_ONLY_OPS: [u8; 12] = [
+    ZiskOp::SIGNEXTEND_B,
+    ZiskOp::SIGNEXTEND_H,
+    ZiskOp::SIGNEXTEND_W,
+    ZiskOp::REV8,
+    ZiskOp::BREV8,
+    ZiskOp::CLZ,
+    ZiskOp::CLZ_W,
+    ZiskOp::CTZ,
+    ZiskOp::CTZ_W,
+    ZiskOp::CPOP,
+    ZiskOp::CPOP_W,
+    ZiskOp::ORC_B,
+];
+/// A category is reported as a pattern only if it covers more than this percentage of the opcode's
+/// operations AND at least `PATTERN_MIN_COUNT` operations in absolute terms.
+const PATTERN_MIN_PCT: f64 = 10.0;
+const PATTERN_MIN_COUNT: u64 = 4_000;
 
 const REG_RA_IDX: u8 = 1;
 const REG_T0_IDX: u8 = 5;
@@ -166,6 +213,9 @@ pub struct Stats {
     cheap_variant_counts: [u64; CHEAP_VARIANT_COUNT],
     /// Show the per-opcode breakdown of cheap variants in the report (`--opcode-breakdown`).
     opcode_breakdown: bool,
+    /// Show the operand pattern-analysis section (`--pattern-analysis`): per opcode, the operand
+    /// categories that cover a significant share of its operations.
+    pattern_analysis: bool,
     /// Analyze duplicate precompile calls: count how many calls repeat the same input content
     /// (same input → same output) and the cost spent on those repeats, per precompile
     /// (`--duplicates`).
@@ -212,6 +262,36 @@ pub struct Stats {
     /// pc of the instruction currently being executed, set once per step; used to give execution
     /// context when reporting an invalid memory access.
     current_pc: u64,
+    /// step of the instruction currently being executed, set once per step; used by the
+    /// register step-distance analysis to timestamp each register access.
+    current_step: u64,
+    // --- Register step-distance analysis (`--reg-step-distance`) -------------------------------
+    /// Whether to measure, per register, the gap in steps between consecutive accesses.
+    reg_step_distance: bool,
+    /// Distance limit against which the 80% / 100% / 200% counters are compared (`--reg-step-limit-bits`).
+    reg_step_limit: u64,
+    /// Flush period in bits (`--reg-step-flush-bits`): every 2^bits steps every register is assumed
+    /// to be forcibly accessed. Kept only to label the report.
+    reg_flush_bits: u32,
+    /// Flush period in steps, i.e. 2^`reg_flush_bits`; always >= 1.
+    reg_flush_period: u64,
+    /// Program start step (minimum step seen): the baseline for the first-access distance, so the
+    /// gap from the program start to a register's first access is counted like any other gap.
+    reg_start_step: u64,
+    /// Last step each register was accessed (read or write); `None` until first accessed.
+    reg_last_step: [Option<u64>; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Maximum step distance seen per register.
+    reg_max_dist: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Maximum step distance seen per register once the periodic flush accesses are inserted, i.e.
+    /// the longest a register keeps a value if it is forcibly accessed every `reg_flush_period`
+    /// steps. Never larger than `reg_flush_period`.
+    reg_max_fdist: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Per-register count of distances reaching >=80% of the limit.
+    reg_near80: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Per-register count of distances reaching >=100% of the limit (over the limit).
+    reg_over: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Per-register count of distances reaching >=200% of the limit (double the limit).
+    reg_double: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
     call_stack: Vec<CallStackEntry>,
     is_call: bool,
     is_return: bool,
@@ -297,6 +377,18 @@ impl Default for Stats {
             pc_histogram: HashMap::new(),
             previous_pc: 0,
             current_pc: 0,
+            current_step: 0,
+            reg_step_distance: false,
+            reg_step_limit: 1 << 22,
+            reg_flush_bits: 22,
+            reg_flush_period: 1 << 22,
+            reg_start_step: u64::MAX,
+            reg_last_step: [None; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_max_dist: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_max_fdist: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_near80: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_over: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_double: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             call_stack: Vec::new(),
             is_call: false,
             is_tail_call: false,
@@ -347,6 +439,7 @@ impl Default for Stats {
             op_categories: OpsCount::<OP_CATEGORIES>::new(),
             cheap_variant_counts: [0; CHEAP_VARIANT_COUNT],
             opcode_breakdown: false,
+            pattern_analysis: false,
             duplicates: false,
             duplicates_ops: None,
             duplicates_depth: 4,
@@ -378,10 +471,76 @@ impl Stats {
         }
     }
 
-    /// Records the pc of the instruction currently being executed (set once per step), so an invalid
-    /// memory access can be reported with the pc/function where it happened.
-    pub fn set_current_pc(&mut self, pc: u64) {
+    /// Records the pc and step of the instruction currently being executed (set once per step,
+    /// before its register/memory accesses). The pc gives execution context when reporting an
+    /// invalid memory access; the step timestamps register accesses for the step-distance analysis.
+    pub fn set_current_pc(&mut self, pc: u64, step: u64) {
         self.current_pc = pc;
+        self.current_step = step;
+        // The first step seen is the program start, used as the baseline for the first-access gap.
+        if self.reg_step_distance && step < self.reg_start_step {
+            self.reg_start_step = step;
+        }
+    }
+
+    /// Register step-distance bookkeeping shared by reads and writes: records the gap in steps
+    /// since this register was last accessed (or since the program start, for the first access)
+    /// and updates the max / threshold counters. The final gap to the program end is added later
+    /// in `report_reg_step_distance`.
+    #[inline(always)]
+    fn on_register_access(&mut self, reg: usize) {
+        if !self.reg_step_distance {
+            return;
+        }
+        let step = self.current_step;
+        // Baseline: the previous access, or the program start for the first access — so the gap
+        // the register holds its initial value (start -> first access) is counted like any other.
+        let last = self.reg_last_step[reg].unwrap_or(self.reg_start_step);
+        self.account_reg_distance(reg, last, step);
+        self.reg_last_step[reg] = Some(step);
+    }
+
+    /// Folds the gap `last` -> `step` of one register into its max and threshold counters, both
+    /// without flushes (`reg_max_dist`) and with them (`reg_max_fdist`).
+    #[inline(always)]
+    fn account_reg_distance(&mut self, reg: usize, last: u64, step: u64) {
+        let dist = step - last;
+        if dist > self.reg_max_dist[reg] {
+            self.reg_max_dist[reg] = dist;
+        }
+        let fdist = Self::flushed_distance(last, step, self.reg_flush_period);
+        if fdist > self.reg_max_fdist[reg] {
+            self.reg_max_fdist[reg] = fdist;
+        }
+        let limit = self.reg_step_limit;
+        if dist >= limit / 5 * 4 {
+            self.reg_near80[reg] += 1;
+        }
+        if dist >= limit {
+            self.reg_over[reg] += 1;
+        }
+        if dist >= limit * 2 {
+            self.reg_double[reg] += 1;
+        }
+    }
+
+    /// Largest sub-gap inside `(last, step]` once the forced flush accesses — one at every multiple
+    /// of `period` steps — are inserted between the two real accesses. Since a flush touches every
+    /// register, a gap spanning two or more flushes is broken into pieces of at most `period`, so
+    /// the result is never larger than `period`.
+    #[inline(always)]
+    fn flushed_distance(last: u64, step: u64, period: u64) -> u64 {
+        // First flush strictly after `last`: a flush landing on `last` coincides with that access.
+        let first_flush = (last / period + 1) * period;
+        if first_flush > step {
+            // No flush in between, the gap is untouched.
+            return step - last;
+        }
+        let last_flush = step / period * period;
+        // Head (last access -> first flush), tail (last flush -> this access) and, when there is
+        // more than one flush in between, the full flush-to-flush gaps of `period` steps.
+        let mid = if last_flush > first_flush { period } else { 0 };
+        (first_flush - last).max(step - last_flush).max(mid)
     }
 
     /// Called every time some data is read from memory, if statistics are enabled
@@ -465,12 +624,14 @@ impl Stats {
     pub fn on_register_read(&mut self, reg: usize) {
         assert!(reg < REGS_IN_MAIN_TOTAL_NUMBER);
         self.regs[reg] += 1;
+        self.on_register_access(reg);
     }
 
     /// Called every time a register is written, if statistics are enabled
     pub fn on_register_write(&mut self, reg: usize) {
         assert!(reg < REGS_IN_MAIN_TOTAL_NUMBER);
         self.regs[reg] += 1;
+        self.on_register_access(reg);
     }
 
     /// Called at every step with the current number of executed steps, if statistics are enabled
@@ -1426,8 +1587,6 @@ impl Stats {
         precompiled: bool,
         breakdown: bool,
     ) {
-        let extended = base && !ops.is_frops();
-
         // Collect the opcodes to report, then order them from highest to lowest by cost (default) or
         // by operation count (units) when `sort_by_units` is set.
         let mut entries: Vec<(u8, u64, u64)> = Vec::new(); // (opcode, count, cost)
@@ -1458,19 +1617,7 @@ impl Stats {
                 Ok(inst) => inst,
                 Err(_) => continue,
             };
-            if extended {
-                let categories =
-                    self.op_categories.get_by_opcode(opcode).map(|c| &c[..]).unwrap_or(&[]);
-                report.add_count_cost_perc2_extended(
-                    &format!("{title} {:}", inst.name()),
-                    count,
-                    cost,
-                    "",
-                    categories,
-                );
-            } else {
-                report.add_count_cost_perc2(&format!("{title} {:}", inst.name()), count, cost, "");
-            }
+            report.add_count_cost_perc2(&format!("{title} {:}", inst.name()), count, cost, "");
 
             // Per-opcode breakdown of cheap variants (e.g. add → add_hif / add_hi0), as a tree.
             if breakdown {
@@ -1491,6 +1638,125 @@ impl Stats {
                         "",
                     );
                 }
+            }
+        }
+    }
+
+    /// Reports the operand pattern analysis: for each ALU opcode, the operand categories (see
+    /// `CAT_LABELS`) that cover a significant share of its operations — more than `PATTERN_MIN_PCT`%
+    /// of the opcode's operations AND at least `PATTERN_MIN_COUNT` in absolute terms. Reuses the
+    /// per-opcode category counters collected in `on_op`.
+    ///
+    /// Only arithmetic and binary opcodes are considered: the operand shape of the rest (fcalls,
+    /// pubout, profile, internal and precompiled opcodes) says nothing about how they are proven.
+    /// Patterns that are true by definition rather than by data are dropped too — see
+    /// `B_ONLY_OPS`, whose `a` operand is always zero.
+    ///
+    /// Rows are grouped by opcode, one group per opcode ordered like the opcode tables (by cost,
+    /// or by operation count with `--sort-by-units`), and the patterns inside each group ordered by
+    /// count, so a single opcode can be followed at a glance.
+    fn report_pattern_analysis(&self, report: &mut StatsReport) {
+        // One group per opcode, with the significant patterns found for it.
+        struct PatternGroup {
+            /// Opcode name, the group header.
+            name: &'static str,
+            /// Operations of this opcode, the base of the percentages below.
+            op_count: u64,
+            /// Cost / count pair the groups are ordered by (see `sort_by_units`).
+            sort_key: (u64, u64),
+            /// (label, operations matching it, percentage of `op_count`), most first.
+            patterns: Vec<(&'static str, u64, f64)>,
+        }
+        let mut groups: Vec<PatternGroup> = Vec::new();
+        for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
+            let (op_count, op_cost) = match self.costs.get_opcode_count_and_cost(opcode) {
+                Some((count, cost)) if count > 0 => (count as u64, cost),
+                _ => continue,
+            };
+            let inst = match ZiskOp::try_from_code(opcode) {
+                Ok(inst) => inst,
+                Err(_) => continue,
+            };
+            // Only the ALU opcodes: categories are not collected for precompiled opcodes, and for
+            // the remaining types (fcall, pubout, profile, internal, evm, dma) the operand shape
+            // is meaningless.
+            if !matches!(
+                inst.op_type(),
+                OpType::Arith
+                    | OpType::ArithA32
+                    | OpType::ArithAm32
+                    | OpType::Binary
+                    | OpType::BinaryE
+            ) {
+                continue;
+            }
+            let cats = match self.op_categories.get_by_opcode(opcode) {
+                Some(cats) => cats,
+                None => continue,
+            };
+            let b_only = B_ONLY_OPS.contains(&opcode);
+            let mut patterns: Vec<(&str, u64, f64)> = Vec::new();
+            for (i, &cat) in cats.iter().enumerate() {
+                if cat < PATTERN_MIN_COUNT {
+                    continue;
+                }
+                let pct = cat as f64 * 100.0 / op_count as f64;
+                if pct <= PATTERN_MIN_PCT {
+                    continue;
+                }
+                let Some(&(full_label, reduced_label)) = CAT_LABELS.get(i) else {
+                    continue;
+                };
+                // For single-operand opcodes the conditions on `a` hold by definition: report the
+                // pattern without them, or skip it when nothing is left to say.
+                let label = if b_only {
+                    match reduced_label {
+                        Some(label) => label,
+                        None => continue,
+                    }
+                } else {
+                    full_label
+                };
+                patterns.push((label, cat, pct));
+            }
+            if patterns.is_empty() {
+                continue;
+            }
+            patterns.sort_by_key(|&(_, count, _)| std::cmp::Reverse(count));
+            let sort_key =
+                if self.sort_by_units { (op_count, op_cost) } else { (op_cost, op_count) };
+            groups.push(PatternGroup { name: inst.name(), op_count, sort_key, patterns });
+        }
+        if groups.is_empty() {
+            return;
+        }
+        groups.sort_by_key(|group| std::cmp::Reverse(group.sort_key));
+
+        let fmt_row = |label: &str, count: &str, pct: &str| -> String {
+            format!("{label:<34} {count:>15} {pct:>8}\n")
+        };
+        let header = fmt_row("PATTERN", "COUNT", "%");
+        let width = header.trim_end().len();
+        report.add(&format!(
+            "\nOPERAND PATTERN ANALYSIS (>{:.0}% of opcode ops and >={})\n",
+            PATTERN_MIN_PCT,
+            report.format_number(PATTERN_MIN_COUNT),
+        ));
+        report.add(&header);
+        report.add(&format!("{}\n", "-".repeat(width)));
+        for group in &groups {
+            // Group header: the opcode and its total operations, the base of the percentages below.
+            report.add(&fmt_row(
+                &format!("OP {}", group.name),
+                &report.format_number(group.op_count),
+                "100.00%",
+            ));
+            for (label, count, pct) in &group.patterns {
+                report.add(&fmt_row(
+                    &format!("  {label}"),
+                    &report.format_number(*count),
+                    &format!("{pct:.2}%"),
+                ));
             }
         }
     }
@@ -1842,6 +2108,103 @@ impl Stats {
                 report.add(&format!("... and {} more call paths\n", paths.len() - top_n));
             }
         }
+    }
+
+    /// Reports the register step-distance analysis: for each register, the gap in steps between
+    /// consecutive accesses (read or write), including the boundary gaps — from the program start
+    /// to the first access and from the last access to the program end. Shows the number of
+    /// accesses, the maximum gap and its ratio to the limit (`--reg-step-limit-bits`), the same maximum
+    /// once a forced access every 2^bits steps is assumed (`MAX FDIST` / `FRATIO`, see
+    /// `--reg-step-flush-bits`; those flushes are not counted as accesses), and how many gaps
+    /// reached 80% / 100% / 200% of the limit. Large gaps are a concern because a register holds
+    /// its value across the whole gap, which the proof must carry. Rows are in register-number
+    /// order.
+    fn report_reg_step_distance(&self, report: &mut StatsReport) {
+        let limit = self.reg_step_limit;
+        let start = if self.reg_start_step == u64::MAX { 0 } else { self.reg_start_step };
+        // Program end: the last step executed (current_step is monotonic and set every step).
+        let end = self.current_step;
+        let near80_thr = limit / 5 * 4;
+
+        let fmt_row = |c: &[String; 9]| -> String {
+            format!(
+                "{:<12} {:>13} {:>13} {:>8} {:>13} {:>8} {:>10} {:>10} {:>10}\n",
+                c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]
+            )
+        };
+        let ratio = |dist: u64| -> String { format!("{:.2}", dist as f64 / limit as f64) };
+        let header = [
+            "REGISTER".to_string(),
+            "ACCESSES".to_string(),
+            "MAX DIST".to_string(),
+            "RATIO".to_string(),
+            "MAX FDIST".to_string(),
+            "FRATIO".to_string(),
+            ">=80%".to_string(),
+            ">=LIMIT".to_string(),
+            ">=2x".to_string(),
+        ];
+        let header_line = fmt_row(&header);
+        let width = header_line.trim_end().len();
+        report.add(&format!(
+            "\nREGISTER STEP DISTANCE (limit {}, flush 2^{} = {} steps, {} steps)\n",
+            report.format_number(limit),
+            self.reg_flush_bits,
+            report.format_number(self.reg_flush_period),
+            report.format_number(end.saturating_sub(start)),
+        ));
+        report.add(&header_line);
+        report.add(&format!("{}\n", "-".repeat(width)));
+
+        // Accessed registers, in register-number order.
+        let order: Vec<usize> =
+            (0..REGS_IN_MAIN_TOTAL_NUMBER).filter(|&r| self.regs[r] > 0).collect();
+
+        let (mut t_acc, mut t_max, mut t_fmax, mut t_n80, mut t_over, mut t_dbl) =
+            (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+        for r in order {
+            let name = RiscVRegisters::name_from_usize(r).unwrap_or("?");
+            let last = self.reg_last_step[r].unwrap_or(start);
+            let end_dist = end.saturating_sub(last);
+            // reg_max_dist / reg_max_fdist / counters already cover the start gap and the
+            // inter-access gaps; fold in the final gap (last access -> program end) here so the
+            // reported values are complete.
+            let max_dist = self.reg_max_dist[r].max(end_dist);
+            let max_fdist =
+                self.reg_max_fdist[r].max(Self::flushed_distance(last, end, self.reg_flush_period));
+            let near80 = self.reg_near80[r] + (end_dist >= near80_thr) as u64;
+            let over = self.reg_over[r] + (end_dist >= limit) as u64;
+            let double = self.reg_double[r] + (end_dist >= 2 * limit) as u64;
+            report.add(&fmt_row(&[
+                format!("x{r} ({name})"),
+                report.format_number(self.regs[r]),
+                report.format_number(max_dist),
+                ratio(max_dist),
+                report.format_number(max_fdist),
+                ratio(max_fdist),
+                report.format_number(near80),
+                report.format_number(over),
+                report.format_number(double),
+            ]));
+            t_acc += self.regs[r];
+            t_max = t_max.max(max_dist);
+            t_fmax = t_fmax.max(max_fdist);
+            t_n80 += near80;
+            t_over += over;
+            t_dbl += double;
+        }
+        report.add(&format!("{}\n", "-".repeat(width)));
+        report.add(&fmt_row(&[
+            "TOTAL".to_string(),
+            report.format_number(t_acc),
+            report.format_number(t_max),
+            ratio(t_max),
+            report.format_number(t_fmax),
+            ratio(t_fmax),
+            report.format_number(t_n80),
+            report.format_number(t_over),
+            report.format_number(t_dbl),
+        ]));
     }
 
     // ------------------------------------------------------------------------------------------
@@ -2439,8 +2802,16 @@ impl Stats {
             self.report_frops_hit(&mut report, "FROP");
         }
 
+        if self.pattern_analysis {
+            self.report_pattern_analysis(&mut report);
+        }
+
         if self.duplicates {
             self.report_duplicates(&mut report, total_cost);
+        }
+
+        if self.reg_step_distance {
+            self.report_reg_step_distance(&mut report);
         }
 
         if self.coverage {
@@ -2524,7 +2895,8 @@ impl Stats {
                         roi_report.pop_label_width();
                     }
 
-                    roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", "");
+                    // `_perc2`: the rows carry a percentage for both the count and the cost.
+                    roi_report.title_count_cost_perc2("COST BY OPCODE", "COUNT", "COST", "");
                     self.report_opcodes(&mut roi_report, "OP", roi.ops_costs(), true, true, false);
 
                     roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
@@ -2936,6 +3308,10 @@ impl Stats {
     pub fn set_opcode_breakdown(&mut self, value: bool) {
         self.opcode_breakdown = value;
     }
+    /// Enables the operand pattern-analysis section.
+    pub fn set_pattern_analysis(&mut self, value: bool) {
+        self.pattern_analysis = value;
+    }
     /// Enables the precompile duplicate analysis.
     pub fn set_duplicates(&mut self, value: bool) {
         self.duplicates = value;
@@ -2951,6 +3327,20 @@ impl Stats {
     /// Enables the per-precompile call-path detail (level 2) of the duplicate report.
     pub fn set_duplicates_detail(&mut self, value: bool) {
         self.duplicates_detail = value;
+    }
+    /// Enables the register step-distance analysis.
+    pub fn set_reg_step_distance(&mut self, value: bool) {
+        self.reg_step_distance = value;
+    }
+    /// Sets the distance limit for the register step-distance thresholds (must be > 0).
+    pub fn set_reg_step_limit(&mut self, value: u64) {
+        self.reg_step_limit = value.max(1);
+    }
+    /// Sets the flush period, in bits, of the register step-distance analysis: every 2^bits steps
+    /// every register is assumed to be forcibly accessed. Clamped to a representable period.
+    pub fn set_reg_step_flush_bits(&mut self, value: u32) {
+        self.reg_flush_bits = value.min(63);
+        self.reg_flush_period = 1u64 << self.reg_flush_bits;
     }
 
     /// Classifies an executed operation into a cheap variant (index into `CHEAP_VARIANTS`), or
@@ -3677,5 +4067,59 @@ pub fn resolve_color(when: &str) -> bool {
         "always" => true,
         "never" => false,
         _ => std::io::stdout().is_terminal(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reference implementation of `Stats::flushed_distance`: builds the explicit list of accesses
+    /// (the two real ones plus every flush in between) and takes the largest consecutive gap.
+    fn flushed_distance_ref(last: u64, step: u64, period: u64) -> u64 {
+        let mut points = vec![last];
+        let mut flush = (last / period + 1) * period;
+        while flush <= step {
+            points.push(flush);
+            flush += period;
+        }
+        points.push(step);
+        points.windows(2).map(|w| w[1] - w[0]).max().unwrap()
+    }
+
+    #[test]
+    fn flushed_distance_matches_reference() {
+        for period in [1u64, 2, 3, 4, 8, 16] {
+            for last in 0..40u64 {
+                for step in last..80u64 {
+                    assert_eq!(
+                        Stats::flushed_distance(last, step, period),
+                        flushed_distance_ref(last, step, period),
+                        "last={last} step={step} period={period}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn flushed_distance_splits_a_gap_that_straddles_one_flush() {
+        // Two accesses at 2^22 - 10 and 2^22 + 20 with a flush at 2^22: the raw gap is 30, but the
+        // flush splits it into 10 + 20, so the longest the register holds a value is 20.
+        let p = 1u64 << 22;
+        assert_eq!(Stats::flushed_distance(p - 10, p + 20, p), 20);
+        assert_eq!(Stats::flushed_distance(p - 20, p + 10, p), 20);
+    }
+
+    #[test]
+    fn flushed_distance_is_capped_by_the_flush_period() {
+        // However far apart the two real accesses are, the flushes in between break the gap into
+        // pieces of at most `period` steps.
+        assert_eq!(Stats::flushed_distance(3, 1_000_000, 64), 64);
+        // A gap that fits between two flushes is left untouched.
+        assert_eq!(Stats::flushed_distance(65, 100, 64), 35);
+        // A flush landing exactly on an access does not create a zero-length gap of its own.
+        assert_eq!(Stats::flushed_distance(64, 100, 64), 36);
+        assert_eq!(Stats::flushed_distance(50, 128, 64), 64);
     }
 }

@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::mem;
 
-use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions};
+use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions, RegStepCheck};
 use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
@@ -23,6 +23,23 @@ use zisk_core::{
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
+
+/// Feeds the fast register step-distance check (`--reg-step-check`) with the registers accessed by
+/// one instruction: the `a` and `b` operands when they are sourced from a register, and the store
+/// destination when it is a register. Which registers those are mirrors `source_a`, `source_b` and
+/// `store_c`. All of them are accounted at the same step, so their relative order is irrelevant.
+#[inline(always)]
+fn track_reg_step_check(check: &mut RegStepCheck, instruction: &ZiskInst, step: u64) {
+    if instruction.a_src == SRC_REG {
+        check.on_access(instruction.a_offset_imm0 as usize, step);
+    }
+    if instruction.b_src == SRC_REG {
+        check.on_access(instruction.b_offset_imm0 as usize, step);
+    }
+    if instruction.store == STORE_REG {
+        check.on_access(instruction.store_offset as usize, step);
+    }
+}
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -1528,7 +1545,11 @@ impl<'a> Emu<'a> {
     /// Run the whole program, fast
     #[inline(always)]
     pub fn run_fast(&mut self, options: &EmuOptions) {
-        if options.with_progress {
+        if self.ctx.reg_step_check.is_some() {
+            // `--reg-step-check` gets its own loop so that `step_fast`, the hot path, stays free of
+            // any check of its own.
+            self.run_fast_reg_step_check(options);
+        } else if options.with_progress {
             while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
                 self.step_fast_with_progress();
             }
@@ -1544,6 +1565,20 @@ impl<'a> Emu<'a> {
                 "Emu::run_fast() finished with error at step={} pc=0x{:x}",
                 self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
             );
+        }
+    }
+
+    /// Run the whole program fast while measuring the register step distances (`--reg-step-check`).
+    /// Same loop as `run_fast`, only adding the per-instruction register accounting, which is a
+    /// handful of comparisons per step.
+    fn run_fast_reg_step_check(&mut self, options: &EmuOptions) {
+        while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
+            let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+            let step = self.ctx.inst_ctx.step;
+            if let Some(check) = self.ctx.reg_step_check.as_mut() {
+                track_reg_step_check(check, instruction, step);
+            }
+            self.step_fast_inst(instruction);
         }
     }
 
@@ -1605,6 +1640,14 @@ impl<'a> Emu<'a> {
         //     );*/
         //     [0u64; 32]
         // };
+        self.step_fast_inst(instruction);
+    }
+
+    /// Body of `step_fast` for an already fetched instruction, so a caller that has to inspect the
+    /// instruction before executing it (`run_fast_reg_step_check`) does not look it up twice. Always
+    /// inlined, so `step_fast` keeps the exact same shape it had.
+    #[inline(always)]
+    fn step_fast_inst(&mut self, instruction: &ZiskInst) {
         self.source_a(instruction);
         self.source_b(instruction);
 
@@ -1775,6 +1818,7 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_log_costly_unaligned(options.log_costly_unaligned);
         self.ctx.stats.set_callstack_strict(options.callstack_mode == "strict");
         self.ctx.stats.set_opcode_breakdown(options.opcode_breakdown);
+        self.ctx.stats.set_pattern_analysis(options.pattern_analysis);
         self.ctx.stats.set_duplicates(options.duplicates);
         self.ctx.stats.set_duplicates_depth(options.duplicates_depth);
         self.ctx.stats.set_duplicates_detail(options.duplicates_detail);
@@ -1799,6 +1843,15 @@ impl<'a> Emu<'a> {
                 }
             }
             self.ctx.stats.set_duplicates_ops(Some(set));
+        }
+        self.ctx.stats.set_reg_step_distance(options.reg_step_distance);
+        self.ctx.stats.set_reg_step_limit(options.reg_step_limit());
+        self.ctx.stats.set_reg_step_flush_bits(options.reg_step_flush_bits);
+        if options.reg_step_check {
+            self.ctx.reg_step_check = Some(Box::new(RegStepCheck::new(
+                options.reg_step_limit(),
+                options.reg_step_flush_bits,
+            )));
         }
         self.ctx.stats.set_sdk_width(options.sdk_width);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
@@ -2014,6 +2067,11 @@ impl<'a> Emu<'a> {
                 }
             }
         }
+
+        // Single-line verdict of the fast register step-distance check (`--reg-step-check`).
+        if let Some(check) = &self.ctx.reg_step_check {
+            println!("{}", check.report(self.ctx.inst_ctx.step));
+        }
     }
 
     /// Run the whole program
@@ -2136,7 +2194,14 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         if self.ctx.do_stats {
-            self.ctx.stats.set_current_pc(pc);
+            self.ctx.stats.set_current_pc(pc, self.ctx.inst_ctx.step);
+        }
+
+        // `--reg-step-check` normally runs on the fast path (`run_fast_reg_step_check`); this keeps
+        // it working when another option forces the full emulation path, e.g. combined with -X.
+        let step = self.ctx.inst_ctx.step;
+        if let Some(check) = &mut self.ctx.reg_step_check {
+            track_reg_step_check(check, instruction, step);
         }
 
         if options.with_progress && self.ctx.inst_ctx.step & 0xF_FFFF == 0 {
