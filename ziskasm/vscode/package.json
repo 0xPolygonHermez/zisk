@@ -1,0 +1,36 @@
+{
+  "name": "ziskasm",
+  "displayName": "ZisK Assembly",
+  "description": "Syntax highlighting for ZisK assembly (.zisk) source files.",
+  "version": "0.1.0",
+  "publisher": "zisk",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.60.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "ziskasm",
+        "aliases": [
+          "ZisK Assembly",
+          "ziskasm"
+        ],
+        "extensions": [
+          ".zisk"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ziskasm",
+        "scopeName": "source.ziskasm",
+        "path": "./syntaxes/ziskasm.tmLanguage.json"
+      }
+    ]
+  }
+}
