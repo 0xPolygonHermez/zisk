@@ -121,3 +121,59 @@ fn full_instances_specialized_remainder_pooled() {
         assert!(ae.op_counts[ArithEqOp::Arith256Mod.index()] > 0);
     }
 }
+
+#[test]
+fn a_bulk_keeps_the_narrow_air_and_its_tail_shares_the_wider_one() {
+    // The mix that per-family assignment could not handle: plenty of arith256 plus a handful of
+    // arith256_mod. Only `Arith256X` covers both, but `Arith256` (11 columns vs 19) covers the bulk
+    // — and the bulk's tail can then ride along in the `Arith256X` instance the mod ops need anyway.
+    let cap_arith = cap(&meta_of(Arith256Trace::<()>::AIR_ID));
+    let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_arith + 10), (ArithEqOp::Arith256Mod, 1)]);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
+    assert_conserves(&plan, &totals);
+
+    let narrow = plan.iter().find(|p| p.air_id == Arith256Trace::<()>::AIR_ID).unwrap();
+    assert_eq!(narrow.op_counts[ArithEqOp::Arith256.index()], 3 * cap_arith);
+    assert_eq!(narrow.instances, 3);
+
+    let wide = plan.iter().find(|p| p.air_id == Arith256XTrace::<()>::AIR_ID).unwrap();
+    assert_eq!(wide.op_counts[ArithEqOp::Arith256.index()], 10);
+    assert_eq!(wide.op_counts[ArithEqOp::Arith256Mod.index()], 1);
+    assert_eq!(wide.instances, 1);
+
+    // Strictly better than proving the whole equation group in Arith256X, which is all a
+    // per-family assignment could do.
+    let all_in_wide = area(&meta_of(Arith256XTrace::<()>::AIR_ID), 3 * cap_arith + 11);
+    assert!(plan_area(&plan) < all_in_wide, "{} !< {all_in_wide}", plan_area(&plan));
+}
+
+#[test]
+fn ops_without_a_specialized_air_go_to_the_universal_one() {
+    let totals = counts(&[(ArithEqOp::Secp256r1Add, 3), (ArithEqOp::Secp256r1Dbl, 2)]);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
+    assert_conserves(&plan, &totals);
+
+    assert_eq!(plan.len(), 1);
+    assert_eq!(plan[0].air_id, ArithEqTrace::<()>::AIR_ID);
+}
+
+#[test]
+fn absent_airs_are_never_planned() {
+    // Without Arith256X in the pilout, arith256_mod has only the universal air left, and pooling
+    // the arith256 ops there with it beats keeping a separate Arith256 instance.
+    let totals = counts(&[(ArithEqOp::Arith256, 2), (ArithEqOp::Arith256Mod, 1)]);
+    let present = vec![ArithEqTrace::<()>::AIR_ID, Arith256Trace::<()>::AIR_ID];
+    let plan = plan_air_strategy(&present, &totals);
+    assert_conserves(&plan, &totals);
+
+    assert!(plan.iter().all(|p| present.contains(&p.air_id)));
+    assert_eq!(plan.len(), 1);
+    assert_eq!(plan[0].air_id, ArithEqTrace::<()>::AIR_ID);
+}
+
+#[test]
+#[should_panic(expected = "covered by no present air")]
+fn an_op_no_present_air_covers_panics() {
+    let totals = counts(&[(ArithEqOp::Secp256r1Add, 1)]);
+    plan_air_strategy(&[Arith256Trace::<()>::AIR_ID], &totals);
+}

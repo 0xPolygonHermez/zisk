@@ -2,7 +2,7 @@
 //!
 //! The counter tallies each sub-operation separately (`[u64; ARITH_EQ_OP_NUM]`). This module turns
 //! those totals — together with the airs actually present in the pilout — into a per-air, per-op
-//! assignment that covers every observed operation at (heuristically) minimal total area.
+//! assignment that covers every observed operation at minimal total area.
 //!
 //! Area model: every instance is a full `num_rows` trace regardless of how full it is, so its area is
 //! `instances · num_rows · row_size`. A specialized air (fewer columns → smaller `row_size`) is the
@@ -10,27 +10,28 @@
 //! instance can cost more area than folding its leftover into a broader air shared with other
 //! leftovers.
 //!
-//! Strategy (per family = PIL equation group):
-//!   * Its `full = count / cap` **full instances always go to its specialized air** (cheapest per-op).
-//!   * Its `remainder = count % cap` is either kept in one extra partial specialized instance, or
-//!     **pooled into the universal (full `ArithEq`) air** together with other families' leftovers.
+//! Strategy, per operation (not per PIL equation group: an air may cover only part of a group, and
+//! `Arith256` is proved by both the 11-column `Arith256` air and the 19-column `Arith256X` one):
+//!   * Its `bulk = ⌊count/cap⌋·cap` — the part that fills whole instances — **always goes to the
+//!     covering air with the smallest row**. Since `cap = num_rows / ARITH_EQ_ROWS_BY_OP`, a filled
+//!     instance costs `ARITH_EQ_ROWS_BY_OP · row_size` per operation whatever `num_rows` is, so no
+//!     other air can prove those instances for less. And a bulk is a whole number of instances, so
+//!     it can never absorb anyone's leftover: the choice is independent of everything below.
+//!   * Its `tail = count % cap` may go to **any** air that covers it — its own cheapest air (i.e.
+//!     one extra partial instance), another specialized air whose partial instance it can share, or
+//!     the universal air pooling every leftover.
 //!
-//! We enumerate which remainders to pool and pick the least total area. Because a remainder can be
-//! pooled, a single operation type may be **split** across its specialized air (its full instances)
-//! and the universal air (its remainder) — the per-air `op_counts` capture that split, and the
-//! planner's filler assigns non-overlapping per-op collect windows (specialized ranks first).
+//! Only the tails are searched, exhaustively, so the result is optimal within that model. Because a
+//! tail can land elsewhere, a single operation may be **split** across two airs — the per-air
+//! `op_counts` capture that split, and the planner's filler assigns non-overlapping per-op collect
+//! windows in the order the plans are returned.
 
 use crate::{air_metas, ArithEqAirMeta, ArithEqOp, ARITH_EQ_OP_NUM, ARITH_EQ_ROWS_BY_OP};
 
-/// Intrinsic `ArithEq` operation families (PIL equation groups): ops within a family are proved by
-/// the same specialized air.
-const FAMILIES: &[&[ArithEqOp]] = &[
-    &[ArithEqOp::Arith256, ArithEqOp::Arith256Mod],
-    &[ArithEqOp::Secp256k1Add, ArithEqOp::Secp256k1Dbl],
-    &[ArithEqOp::Bn254CurveAdd, ArithEqOp::Bn254CurveDbl],
-    &[ArithEqOp::Bn254ComplexAdd, ArithEqOp::Bn254ComplexSub, ArithEqOp::Bn254ComplexMul],
-    &[ArithEqOp::Secp256r1Add, ArithEqOp::Secp256r1Dbl],
-];
+/// Upper bound on the tail placements this exhaustive search will enumerate. The current air table
+/// yields `3 · 2^8 = 768`; the bound is here so that adding heavily overlapping airs fails loudly
+/// instead of silently hanging, since optimal tail placement is a bin-packing problem.
+const MAX_TAIL_COMBINATIONS: u64 = 1 << 20;
 
 /// One planned air: how many of each operation it proves. Ops with a non-zero count feed this air;
 /// the same op may also appear (with the complementary count) in another air when split.
@@ -48,172 +49,155 @@ impl ArithEqAirPlan {
     }
 }
 
+/// Operations one instance of `m` can prove.
 #[inline]
 fn cap(m: &ArithEqAirMeta) -> u64 {
     m.num_rows as u64 / ARITH_EQ_ROWS_BY_OP as u64
 }
 
+/// Area of one instance of `m`, full or not.
+#[inline]
+fn instance_area(m: &ArithEqAirMeta) -> u64 {
+    m.num_rows as u64 * m.row_size as u64
+}
+
 /// Total area to prove `ops` operations in air `m`: `ceil(ops/cap) · num_rows · row_size`.
+///
+/// The definition of the cost model, kept for the tests to state expected areas with. The sweep in
+/// `plan_air_strategy` inlines it against hoisted `caps`/`instance_areas` instead of calling it, so
+/// it does not redo both divisions once per air per combination.
+#[cfg(test)]
 #[inline]
 fn area(m: &ArithEqAirMeta, ops: u64) -> u64 {
-    ops.div_ceil(cap(m)) * m.num_rows as u64 * m.row_size as u64
+    ops.div_ceil(cap(m)) * instance_area(m)
+}
+
+/// A leftover to place: fewer than `cap` operations of one op, and the airs that could take them.
+struct Tail {
+    op_idx: usize,
+    rows: u64,
+    /// Indices into the `metas` slice.
+    candidates: Vec<usize>,
 }
 
 /// Compute the per-air, per-op assignment for the given per-op totals, considering only
-/// `present_air_ids` (the airs in the pilout), minimizing total instance area. The returned plans put
-/// the universal (full) air last, so the filler assigns specialized ranks of each op first. Panics if
-/// an observed operation is covered by no present air.
+/// `present_air_ids` (the airs in the pilout), minimizing total instance area. Plans come back in
+/// `air_metas()` order — cheapest/most-specific first, universal last — so a split op's specialized
+/// collect windows are assigned before its universal ones. Panics if an observed operation is
+/// covered by no present air.
 pub fn plan_air_strategy(
     present_air_ids: &[usize],
     op_counts: &[u64; ARITH_EQ_OP_NUM],
 ) -> Vec<ArithEqAirPlan> {
     let metas: Vec<ArithEqAirMeta> =
         air_metas().into_iter().filter(|m| present_air_ids.contains(&m.air_id)).collect();
-    if metas.is_empty() {
-        return Vec::new();
-    }
 
-    // Universal air = one that covers every operation (the full `ArithEq`); pools leftovers.
-    let universal = metas.iter().find(|m| ArithEqOp::ALL.iter().all(|&op| m.covers(op))).copied();
-    let universal_id = universal.as_ref().map(|u| u.air_id);
+    // Rows every air receives no matter how the tails are placed, and which ops they came from.
+    let mut bulk_rows = vec![0u64; metas.len()];
+    let mut air_counts = vec![[0u64; ARITH_EQ_OP_NUM]; metas.len()];
+    let mut tails: Vec<Tail> = Vec::new();
 
-    // Present families: total count, full/remainder split, cheapest covering specialized air.
-    struct Family {
-        ops: Vec<usize>,
-        count: u64,
-        spec: Option<ArithEqAirMeta>,
-        full: u64,
-        rem: u64,
-    }
-    let mut families: Vec<Family> = Vec::new();
-    for fam in FAMILIES {
-        let ops: Vec<usize> =
-            fam.iter().map(|op| op.index()).filter(|&i| op_counts[i] > 0).collect();
-        if ops.is_empty() {
+    for (op_idx, &count) in op_counts.iter().enumerate() {
+        if count == 0 {
             continue;
         }
-        let count: u64 = ops.iter().map(|&i| op_counts[i]).sum();
-        let spec = metas
-            .iter()
-            .filter(|m| Some(m.air_id) != universal_id)
-            .filter(|m| ops.iter().all(|&i| m.covers(ArithEqOp::ALL[i])))
-            .min_by_key(|m| m.row_size)
-            .copied();
-        let (full, rem) = match &spec {
-            Some(s) => (count / cap(s), count % cap(s)),
-            None => (0, count), // no specialized air → everything pools into the universal air
-        };
-        families.push(Family { ops, count, spec, full, rem });
-    }
-    if families.is_empty() {
-        return Vec::new();
+        let op = ArithEqOp::ALL[op_idx];
+        let candidates: Vec<usize> = (0..metas.len()).filter(|&j| metas[j].covers(op)).collect();
+        assert!(!candidates.is_empty(), "plan_air_strategy: {op:?} is covered by no present air");
+
+        let bulk_air = *candidates.iter().min_by_key(|&&j| metas[j].row_size).unwrap();
+        let bulk = count / cap(&metas[bulk_air]) * cap(&metas[bulk_air]);
+        if bulk > 0 {
+            bulk_rows[bulk_air] += bulk;
+            air_counts[bulk_air][op_idx] += bulk;
+        }
+        if count > bulk {
+            tails.push(Tail { op_idx, rows: count - bulk, candidates });
+        }
     }
 
-    // Full instances always go specialized (fixed area). Only remainders are decided.
-    let full_area: u64 = families
+    let combinations = tails
         .iter()
-        .filter_map(|f| f.spec.as_ref().map(|s| f.full * s.num_rows as u64 * s.row_size as u64))
-        .sum();
-    let forced_pool: u64 = families.iter().filter(|f| f.spec.is_none()).map(|f| f.count).sum();
-
-    // Candidates for the pool-vs-keep decision: families with a specialized air and a remainder.
-    let candidates: Vec<usize> = (0..families.len())
-        .filter(|&i| families[i].spec.is_some() && families[i].rem > 0)
-        .collect();
-
-    let mut best_mask = 0u64;
-    let mut best_area = u64::MAX;
-    for mask in 0..(1u64 << candidates.len()) {
-        let mut spec_partial = 0u64;
-        let mut pool = forced_pool;
-        for (bit, &fi) in candidates.iter().enumerate() {
-            let s = families[fi].spec.as_ref().unwrap();
-            if mask & (1 << bit) != 0 {
-                pool += families[fi].rem; // pool this remainder
-            } else {
-                spec_partial += s.num_rows as u64 * s.row_size as u64; // one extra partial instance
-            }
-        }
-        let pool_area = if pool > 0 {
-            match &universal {
-                Some(u) => area(u, pool),
-                None => continue, // cannot pool without a universal air
-            }
-        } else {
-            0
-        };
-        let total = full_area + spec_partial + pool_area;
-        if total < best_area {
-            best_area = total;
-            best_mask = mask;
-        }
-    }
+        .try_fold(1u64, |acc, t| acc.checked_mul(t.candidates.len() as u64))
+        .unwrap_or(u64::MAX);
     assert!(
-        best_area != u64::MAX,
-        "plan_air_strategy: some operation is covered by no present air"
+        combinations <= MAX_TAIL_COMBINATIONS,
+        "plan_air_strategy: {combinations} tail placements exceed the {MAX_TAIL_COMBINATIONS} this \
+         exhaustive search is sized for; the air table needs a smarter search"
     );
 
-    // Materialize per-air, per-op counts. `pool_promoted[i]` = remainder of candidate i goes to univ.
-    let promoted: std::collections::HashSet<usize> = candidates
+    // Hoisted out of the sweep below: `area` would otherwise recompute both divisions once per air
+    // per combination.
+    let caps: Vec<u64> = metas.iter().map(cap).collect();
+    let instance_areas: Vec<u64> = metas.iter().map(instance_area).collect();
+
+    // Mixed-radix sweep over the tail placements: choice[i] indexes tails[i].candidates.
+    let mut choice = vec![0usize; tails.len()];
+    let mut best_choice = choice.clone();
+    let mut best_area = u64::MAX;
+    let mut rows = vec![0u64; metas.len()];
+    loop {
+        rows.copy_from_slice(&bulk_rows);
+        for (t, &c) in tails.iter().zip(choice.iter()) {
+            rows[t.candidates[c]] += t.rows;
+        }
+        let total: u64 = rows
+            .iter()
+            .enumerate()
+            .map(|(j, &r)| if r == 0 { 0 } else { r.div_ceil(caps[j]) * instance_areas[j] })
+            .sum();
+        if total < best_area {
+            best_area = total;
+            best_choice.copy_from_slice(&choice);
+        }
+
+        // Advance from the rightmost digit; a carry out of the leftmost means we are back to the
+        // all-zeros placement and every combination has been seen. With no tails at all this exits
+        // after the single evaluation above.
+        let mut carry = true;
+        for (pos, digit) in choice.iter_mut().enumerate().rev() {
+            *digit += 1;
+            if *digit < tails[pos].candidates.len() {
+                carry = false;
+                break;
+            }
+            *digit = 0;
+        }
+        if carry {
+            break;
+        }
+    }
+
+    for (t, &c) in tails.iter().zip(best_choice.iter()) {
+        air_counts[t.candidates[c]][t.op_idx] += t.rows;
+    }
+
+    let plans: Vec<ArithEqAirPlan> = metas
         .iter()
-        .enumerate()
-        .filter(|(bit, _)| best_mask & (1 << bit) != 0)
-        .map(|(_, &fi)| fi)
+        .zip(air_counts)
+        .filter_map(|(m, counts)| {
+            let total: u64 = counts.iter().sum();
+            (total > 0).then(|| ArithEqAirPlan {
+                air_id: m.air_id,
+                op_counts: counts,
+                instances: total.div_ceil(cap(m)),
+            })
+        })
         .collect();
 
-    let mut spec_counts: Vec<(usize, [u64; ARITH_EQ_OP_NUM])> = Vec::new(); // (air_id, counts)
-    let mut univ_counts = [0u64; ARITH_EQ_OP_NUM];
-
-    for (i, f) in families.iter().enumerate() {
-        match &f.spec {
-            Some(s) => {
-                // Ops kept in the specialized air: all of them unless this family's remainder is
-                // pooled, in which case only the `full · cap` that fill whole instances stay.
-                let spec_total = if promoted.contains(&i) { f.full * cap(s) } else { f.count };
-                let mut remaining = spec_total;
-                let entry = spec_counts.iter_mut().find(|(id, _)| *id == s.air_id);
-                let counts = match entry {
-                    Some((_, c)) => c,
-                    None => {
-                        spec_counts.push((s.air_id, [0u64; ARITH_EQ_OP_NUM]));
-                        &mut spec_counts.last_mut().unwrap().1
-                    }
-                };
-                for &op_idx in &f.ops {
-                    let to_spec = op_counts[op_idx].min(remaining);
-                    counts[op_idx] += to_spec;
-                    remaining -= to_spec;
-                    univ_counts[op_idx] += op_counts[op_idx] - to_spec;
-                }
-            }
-            None => {
-                for &op_idx in &f.ops {
-                    univ_counts[op_idx] += op_counts[op_idx];
-                }
+    // Every counted operation must be planned exactly once: an op silently missing from every plan
+    // would never be collected, and would only surface much later as an unbalanced bus.
+    #[cfg(debug_assertions)]
+    {
+        let mut summed = [0u64; ARITH_EQ_OP_NUM];
+        for plan in &plans {
+            for (s, c) in summed.iter_mut().zip(plan.op_counts.iter()) {
+                *s += *c;
             }
         }
+        assert_eq!(&summed, op_counts, "plan_air_strategy dropped or duplicated operations");
     }
 
-    // Emit specialized plans first, then the universal pool (so the filler assigns specialized ranks
-    // of each split op before the universal ranks).
-    let mut plans: Vec<ArithEqAirPlan> = Vec::new();
-    for (air_id, counts) in spec_counts {
-        let m = metas.iter().find(|m| m.air_id == air_id).unwrap();
-        let total: u64 = counts.iter().sum();
-        if total == 0 {
-            continue;
-        }
-        plans.push(ArithEqAirPlan { air_id, op_counts: counts, instances: total.div_ceil(cap(m)) });
-    }
-    let univ_total: u64 = univ_counts.iter().sum();
-    if univ_total > 0 {
-        let u = universal.as_ref().expect("universal air required to pool leftovers");
-        plans.push(ArithEqAirPlan {
-            air_id: u.air_id,
-            op_counts: univ_counts,
-            instances: univ_total.div_ceil(cap(u)),
-        });
-    }
     plans
 }
 
