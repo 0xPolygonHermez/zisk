@@ -11,7 +11,7 @@
 use super::*;
 use fields::Goldilocks;
 use std::collections::BTreeMap;
-use zisk_pil::{Arith256Trace, ArithSecp256K1Trace};
+use zisk_pil::{Arith256Trace, ArithEqTrace, ArithSecp256K1Trace};
 
 // NOTE: not named `Planner`, which would shadow the `zisk_common::Planner` trait `plan` comes from.
 type TestPlanner = ArithEqPlanner<Goldilocks>;
@@ -209,8 +209,26 @@ fn a_split_op_tiles_across_two_airs() {
     let plans = plan_of(per_chunk);
     let per_air = assert_tiles(&plans, per_chunk);
 
-    // Whichever way the strategy pools, secp256k1 keeps at least its two full instances.
-    assert!(per_air.get(&ArithSecp256K1Trace::<()>::AIR_ID).is_some_and(|&n| n >= 2));
+    // secp256k1 keeps its two full instances specialized.
+    assert_eq!(per_air.get(&ArithSecp256K1Trace::<()>::AIR_ID), Some(&2));
+
+    // And the split the test is named for: the 10-op tail is proved by the universal air, whose
+    // window must start exactly where the specialized ones stopped. Without this the test would
+    // still pass if the tail went back to ArithSecp256K1 — tiling holds either way.
+    let op = ArithEqOp::Secp256k1Add.index();
+    let specialized: u64 = plans
+        .iter()
+        .filter(|p| p.air_id == ArithSecp256K1Trace::<()>::AIR_ID)
+        .map(|p| checkpoint_of(p).get(ChunkId(0)).ops[op].collect_count as u64)
+        .sum();
+    assert_eq!(specialized, 2 * cap);
+
+    let pooled = plans
+        .iter()
+        .find(|p| p.air_id == ArithEqTrace::<()>::AIR_ID)
+        .expect("the tail must be pooled into the universal air");
+    let window = checkpoint_of(pooled).get(ChunkId(0)).ops[op];
+    assert_eq!((window.initial_skip as u64, window.collect_count as u64), (2 * cap, 10));
 }
 
 #[test]

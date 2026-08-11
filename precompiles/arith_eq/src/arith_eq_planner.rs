@@ -2,7 +2,7 @@
 //!
 //! The counter tallies each sub-operation separately (`[u64; ARITH_EQ_OP_NUM]`). This module turns
 //! those totals — together with the airs actually present in the pilout — into a per-air, per-op
-//! assignment that covers every observed operation at minimal total area.
+//! assignment that covers every observed operation, cheaply in total area.
 //!
 //! Area model: every instance is a full `num_rows` trace regardless of how full it is, so its area is
 //! `instances · num_rows · row_size`. A specialized air (fewer columns → smaller `row_size`) is the
@@ -21,10 +21,21 @@
 //!     one extra partial instance), another specialized air whose partial instance it can share, or
 //!     the universal air pooling every leftover.
 //!
-//! Only the tails are searched, exhaustively, so the result is optimal within that model. Because a
-//! tail can land elsewhere, a single operation may be **split** across two airs — the per-air
+//! Only the tails are searched, and each one is placed **whole**: the sweep is exhaustive over which
+//! air takes a tail, not over how a tail might be divided between several. Because a tail can land
+//! away from its bulk, a single operation may still be **split** across two airs — the per-air
 //! `op_counts` capture that split, and the planner's filler assigns non-overlapping per-op collect
 //! windows in the order the plans are returned.
+//!
+//! # Known gap
+//!
+//! Placing tails whole is *not* globally area-minimal. Dividing one tail to top up the spare
+//! capacity of two other airs can empty an air completely, which the sweep cannot see: with equal
+//! capacities `c` and counts `Arith256 = c/2`, `Arith256Mod = 3c/4`, `Secp256r1Add = 3c/4` it picks
+//! one instance each of `Arith256`, `Arith256X` and `ArithEq`, where splitting the `Arith256` tail
+//! into `c/4 + c/4` fills `Arith256X` and `ArithEq` exactly and drops the `Arith256` instance — 14.7%
+//! less area. `indivisible_tails_are_a_known_gap` pins this down. Searching divisible placements is
+//! bin packing with splitting, so it needs a different algorithm, not a wider sweep.
 
 use crate::{air_metas, ArithEqAirMeta, ArithEqOp, ARITH_EQ_OP_NUM, ARITH_EQ_ROWS_BY_OP};
 
@@ -81,7 +92,8 @@ struct Tail {
 }
 
 /// Compute the per-air, per-op assignment for the given per-op totals, considering only
-/// `present_air_ids` (the airs in the pilout), minimizing total instance area. Plans come back in
+/// `present_air_ids` (the airs in the pilout), at the least total instance area among the placements
+/// it searches — every tail placed whole, see the module's *Known gap*. Plans come back in
 /// `air_metas()` order — cheapest/most-specific first, universal last — so a split op's specialized
 /// collect windows are assigned before its universal ones. Panics if an observed operation is
 /// covered by no present air.

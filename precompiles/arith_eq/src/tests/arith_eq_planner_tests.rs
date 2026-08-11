@@ -172,6 +172,37 @@ fn absent_airs_are_never_planned() {
 }
 
 #[test]
+fn indivisible_tails_are_a_known_gap() {
+    // Documents the module's *Known gap*: tails are placed whole, so the sweep cannot divide one to
+    // top up two other airs at once, even when that empties an air. Update this test if divisible
+    // placements ever get searched — the assertion below should then become the split plan's area.
+    let c = cap(&meta_of(Arith256Trace::<()>::AIR_ID));
+    let totals = counts(&[
+        (ArithEqOp::Arith256, c / 2),
+        (ArithEqOp::Arith256Mod, 3 * c / 4),
+        (ArithEqOp::Secp256r1Add, 3 * c / 4),
+    ]);
+    let plan = plan_air_strategy(&all_air_ids(), &totals);
+    assert_conserves(&plan, &totals);
+
+    // What it picks: one instance each, the Arith256 one only half used.
+    assert_eq!(plan.len(), 3);
+    for p in &plan {
+        assert_eq!(p.instances, 1, "air {} ", p.air_id);
+    }
+
+    // What a divisible search would find: split the c/2 Arith256 tail into c/4 + c/4, filling
+    // Arith256X (3c/4 of mod) and ArithEq (3c/4 of secp256r1) to exactly one instance each, so no
+    // Arith256 instance is needed at all.
+    let split = area(&meta_of(Arith256XTrace::<()>::AIR_ID), c)
+        + area(&meta_of(ArithEqTrace::<()>::AIR_ID), c);
+    let chosen = plan_area(&plan);
+    assert!(split < chosen, "expected the split plan to be cheaper: {split} vs {chosen}");
+    // The whole gap is exactly the wasted Arith256 instance.
+    assert_eq!(chosen - split, area(&meta_of(Arith256Trace::<()>::AIR_ID), 1));
+}
+
+#[test]
 #[should_panic(expected = "covered by no present air")]
 fn an_op_no_present_air_covers_panics() {
     let totals = counts(&[(ArithEqOp::Secp256r1Add, 1)]);

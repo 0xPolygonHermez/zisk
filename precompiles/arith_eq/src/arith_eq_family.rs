@@ -58,10 +58,11 @@ impl ArithEqCheckPoint {
 ///
 /// A sorted `Vec` rather than a `HashMap<ChunkId, _>` because of how the two sides use it. The
 /// planner writes one entry per (instance, chunk) while filling an instance, always appending in
-/// chunk order and only ever touching the last entry — hashing a ~240-byte value on every write
-/// measured as ~80% of the planner's total time, buying nothing. Reads happen once per
-/// (instance, chunk), when its collector is built, where a binary search over a few thousand
-/// entries is free.
+/// chunk order and only ever touching the last one, so it paid a hash-table probe per write to find
+/// an entry it already knew, plus relocating the ~240-byte `ArithEqCheckPoint` on insert and again
+/// whenever the table grew. That measured as ~80% of the planner's total time. Reads happen once per
+/// (instance, chunk), when its collector is built, where the binary search that replaces the probe
+/// is free.
 #[derive(Debug, Default)]
 pub struct ArithEqCheckPoints(Vec<ArithEqCheckPoint>);
 
