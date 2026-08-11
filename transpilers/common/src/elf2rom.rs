@@ -70,6 +70,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("keccak", include_str!("../../../ziskasm/zisklib/keccak.zisk")),
         ("sha256", include_str!("../../../ziskasm/zisklib/sha256.zisk")),
         ("blake2b", include_str!("../../../ziskasm/zisklib/blake2b.zisk")),
+        ("zkvm_io", include_str!("../../../ziskasm/zisklib/zkvm_io.zisk")),
         // uint256 — one file per ziskos source file under `zisklib/uint256/`
         // (add/mul/div/modular/pow) plus a common file holding the shared
         // constants and scratch buffers.
@@ -115,8 +116,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("bls12_381/fp6", include_str!("../../../ziskasm/zisklib/bls12_381/fp6.zisk")),
         ("bls12_381/fp12", include_str!("../../../ziskasm/zisklib/bls12_381/fp12.zisk")),
         ("bls12_381/twist", include_str!("../../../ziskasm/zisklib/bls12_381/twist.zisk")),
-        ("bls12_381/cyclotomic", include_str!("../../../ziskasm/zisklib/bls12_381/cyclotomic.zisk")),
-        ("bls12_381/miller_loop", include_str!("../../../ziskasm/zisklib/bls12_381/miller_loop.zisk")),
+        (
+            "bls12_381/cyclotomic",
+            include_str!("../../../ziskasm/zisklib/bls12_381/cyclotomic.zisk"),
+        ),
+        (
+            "bls12_381/miller_loop",
+            include_str!("../../../ziskasm/zisklib/bls12_381/miller_loop.zisk"),
+        ),
         ("bls12_381/final_exp", include_str!("../../../ziskasm/zisklib/bls12_381/final_exp.zisk")),
         ("bls12_381/subgroup", include_str!("../../../ziskasm/zisklib/bls12_381/subgroup.zisk")),
         ("bls12_381/pairing", include_str!("../../../ziskasm/zisklib/bls12_381/pairing.zisk")),
@@ -155,6 +162,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_hash_to_curve_g2_bls12_381", "zisklib_hash_to_curve_g2_bls12_381"),
         ("ziskos_bls_verify_bls12_381", "zisklib_bls_verify_bls12_381"),
         ("ziskos_verify_kzg_proof_bls12_381", "zisklib_verify_kzg_proof_bls12_381"),
+        ("read_input", "zisklib_read_input"),
+        ("write_output", "zisklib_write_output"),
     ];
 
     let library =

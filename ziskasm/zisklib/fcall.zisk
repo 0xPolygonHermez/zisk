@@ -31,3 +31,5 @@ pub define FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS 14 ; hints (λ,μ) of the G2 ad
 pub define FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS 15 ; hints (λ,μ) of the G2 double line
 
 pub define FCALL_MSB_POS_256             17 ; hints most-significant set-bit position
+
+pub define FCALL_INPUT_READY             23 ; asserts standard input is available at a given address
