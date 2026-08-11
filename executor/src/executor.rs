@@ -22,19 +22,19 @@ use crate::{
 use fields::PrimeField64;
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use sm_main::MainSM;
+use sm_main::{MainPlanner, MainSM};
 use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
 use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
-    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId,
+    io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
     ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
 
-use crate::error::{ExecutorResult, RwLockExt};
+use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 
 /// `(chunk_id, metrics)` pair — the per-chunk device-metrics output
 /// produced by counter-phase processing.
@@ -55,6 +55,24 @@ pub struct PlanSummaryEntry {
 
 /// The maximum number of steps to execute in the emulator or assembly runner.
 pub(crate) const MAX_NUM_STEPS: u64 = 1 << 36;
+
+/// Appends to the progressive minimal-trace store every chunk it has not seen
+/// yet, up to and including `idx`. `traces` is the emulator's own buffer, so
+/// `traces[idx]` is its last element.
+///
+/// In-order delivery is an invariant of the ASM reader; a chunk that does not
+/// extend the store contiguously is rejected rather than silently skipped.
+fn publish_chunks(
+    store: &mut Vec<Arc<EmuTrace>>,
+    traces: &[Arc<EmuTrace>],
+    idx: usize,
+) -> ExecutorResult<()> {
+    if store.len() > idx {
+        return Err(ExecutorError::ChunkOutOfOrder { got: idx, expected: store.len() });
+    }
+    store.extend_from_slice(&traces[store.len()..=idx]);
+    Ok(())
+}
 
 /// The `ZiskExecutor` struct orchestrates the execution of the ZisK ROM program, managing state
 /// machines, planning, and witness computation.
@@ -255,8 +273,47 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
 
         // ────────────────────────────────────────────────────────────
-        // Phase 1.1: Emulate
+        // Phase 1.1: Emulate (+ incremental Main advancement)
         // ────────────────────────────────────────────────────────────
+        // ROM instance is assigned BEFORE the run so the global-id sequence
+        // (ROM, Main segments in order, secondary) is identical to the old
+        // batch path while Main segments are now assigned mid-emulation.
+        InstanceAssigner::assign_rom_instance(registry)?;
+
+        // Incremental Main-instance advancement. The ASM MT reader calls this on
+        // this thread, in chunk order: as soon as a chunk completes a Main
+        // instance — or ends the execution — that instance's chunks are published
+        // to `state.min_traces` and the instance is planned, assigned and marked
+        // witness-ready, so main witness computation (and its GPU streaming-slot
+        // commit) overlaps the rest of the emulation instead of waiting for the
+        // run to finish. Global-id order is unchanged: ROM (assigned above), then
+        // Main segments in order, then secondary.
+        //
+        // No-op in standalone mode and never called by the Rust emulator; both
+        // keep the post-run batch path below.
+        let num_within = MainPlanner::traces_per_segment(self.plan.chunk_size())?;
+        let on_chunk =
+            |idx: usize, traces: &[Arc<EmuTrace>], is_last: bool| -> ExecutorResult<()> {
+                let Some(witness) = self.witness.as_ref() else { return Ok(()) };
+
+                // This chunk neither completes a Main instance nor ends the execution.
+                let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last)
+                else {
+                    return Ok(());
+                };
+
+                {
+                    let mut guard = self.state.min_traces.write_or_poison("min_traces")?;
+                    publish_chunks(guard.get_or_insert_with(Vec::new), traces, idx)?;
+                }
+
+                let plan = MainPlanner::plan_segment(segment, is_last);
+                let assignments =
+                    InstanceAssigner::assign_main_instances(registry, global_ids, vec![plan])?;
+                witness.populate_main_instances(registry, &self.state, assignments)
+            };
+        let chunk_hook = &on_chunk;
+
         timer_start_info!(COMPUTE_MINIMAL_TRACE);
         let start_partial = Instant::now();
 
@@ -269,6 +326,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
             self.state.use_hints.load(std::sync::atomic::Ordering::SeqCst),
             &self.state.stats,
             &_exec_scope,
+            chunk_hook,
         )?;
 
         let execution_duration = start_partial.elapsed();
@@ -282,16 +340,32 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let crate::ExecutionOutput { min_traces, mut counters, pub_outs, mut backend, .. } = output;
         let num_chunks = min_traces.len();
 
-        InstanceAssigner::assign_rom_instance(registry)?;
-        let main_plans = self.plan.run_main(&min_traces, &self.state.stats, &_exec_scope)?;
-        *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
-
-        let main_assignments =
-            InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
-        let main_instances_count = main_assignments.len();
-        if let Some(witness) = self.witness.as_ref() {
-            witness.populate_main_instances(registry, &self.state, main_assignments)?;
+        // The hook published every chunk it saw, so on the ASM path the store is
+        // already complete and a read lock is enough (an exclusive lock here would
+        // stall main witnesses that are already computing). The Rust emulator
+        // never calls the hook, so its store is still empty and gets the whole
+        // vector at once.
+        let published =
+            self.state.min_traces.read_or_poison("min_traces")?.as_ref().map_or(0, Vec::len);
+        if published != num_chunks {
+            *self.state.min_traces.write_or_poison("min_traces")? = Some(min_traces);
         }
+
+        // ASM + witness: the hook already released every Main instance during the
+        // run (the runner only returns `Ok` after delivering the final chunk).
+        let main_instances_count = if is_asm_emulator && self.witness.is_some() {
+            num_chunks.div_ceil(num_within)
+        } else {
+            // Rust emulator / standalone: plan and release every segment now.
+            let main_plans = self.plan.run_main(num_chunks, &self.state.stats, &_exec_scope)?;
+            let main_assignments =
+                InstanceAssigner::assign_main_instances(registry, global_ids, main_plans)?;
+            let count = main_assignments.len();
+            if let Some(witness) = self.witness.as_ref() {
+                witness.populate_main_instances(registry, &self.state, main_assignments)?;
+            }
+            count
+        };
 
         // ────────────────────────────────────────────────────────────
         // Phase 1.3: Plan secondary, await async, configure + populate (witness only)
@@ -538,5 +612,131 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sm_main::MainPlanner;
+    use zisk_pil::MainTrace;
+
+    /// `n` distinct chunks — `steps` is used only as an identity marker here.
+    fn chunks(n: usize) -> Vec<Arc<EmuTrace>> {
+        (0..n).map(|i| Arc::new(EmuTrace { steps: i as u64 + 1, ..EmuTrace::default() })).collect()
+    }
+
+    #[test]
+    fn publish_chunks_fills_an_empty_store_up_to_idx() {
+        // First release of a 4-chunk segment: the store catches up in one call.
+        let traces = chunks(4);
+        let mut store = Vec::new();
+        publish_chunks(&mut store, &traces, 3).expect("contiguous");
+        assert_eq!(store.len(), 4);
+        assert!(
+            store.iter().zip(&traces).all(|(a, b)| Arc::ptr_eq(a, b)),
+            "chunks are published in stream order, not cloned or reordered"
+        );
+    }
+
+    #[test]
+    fn publish_chunks_appends_only_the_unseen_tail() {
+        // Segment 1 of a num_within = 2 run: chunks 0..=1 are already published.
+        let traces = chunks(4);
+        let mut store: Vec<Arc<EmuTrace>> = traces[..2].to_vec();
+        publish_chunks(&mut store, &traces, 3).expect("contiguous");
+        assert_eq!(store.len(), 4, "only chunks 2 and 3 were appended");
+        assert!(Arc::ptr_eq(&store[2], &traces[2]));
+        assert!(Arc::ptr_eq(&store[3], &traces[3]));
+    }
+
+    #[test]
+    fn publish_chunks_is_idempotent_per_chunk_index() {
+        // Re-delivering an already-published chunk must not duplicate it.
+        let traces = chunks(2);
+        let mut store = Vec::new();
+        publish_chunks(&mut store, &traces, 1).expect("contiguous");
+        let err = publish_chunks(&mut store, &traces, 1).expect_err("already published");
+        assert!(matches!(err, ExecutorError::ChunkOutOfOrder { got: 1, expected: 2 }));
+        assert_eq!(store.len(), 2, "store is left untouched on rejection");
+    }
+
+    #[test]
+    fn publish_chunks_rejects_a_gap() {
+        // A store at 0 asked to publish chunk 1 would skip chunk 0 — reject instead
+        // of leaving a hole the Main witness would read as the wrong chunk.
+        let traces = chunks(3);
+        let mut store: Vec<Arc<EmuTrace>> = traces[..2].to_vec();
+        let err = publish_chunks(&mut store, &traces, 0).expect_err("goes backwards");
+        assert!(matches!(err, ExecutorError::ChunkOutOfOrder { got: 0, expected: 2 }));
+    }
+
+    /// Replays the hook's decisions over a whole run: for each streamed chunk,
+    /// publish + release when `segment_completed_by` says so. Returns the
+    /// released `(segment, is_last_segment)` pairs and the final store length.
+    fn replay(num_chunks: usize, num_within: usize) -> (Vec<(usize, bool)>, usize) {
+        let traces = chunks(num_chunks);
+        let mut store = Vec::new();
+        let mut released = Vec::new();
+
+        for idx in 0..num_chunks {
+            let is_last = idx == num_chunks - 1;
+            if let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last) {
+                publish_chunks(&mut store, &traces, idx).expect("in-order stream");
+                released.push((segment, is_last));
+            }
+        }
+        (released, store.len())
+    }
+
+    #[test]
+    fn replay_releases_every_segment_exactly_once_and_publishes_every_chunk() {
+        let num_within = MainPlanner::traces_per_segment(CHUNK_SIZE).expect("valid chunk size");
+        assert_eq!(num_within, MainTrace::<()>::NUM_ROWS / CHUNK_SIZE as usize);
+
+        for num_chunks in 1..=(2 * num_within + 1) {
+            let (released, published) = replay(num_chunks, num_within);
+
+            let expected: Vec<usize> = (0..num_chunks.div_ceil(num_within)).collect();
+            assert_eq!(
+                released.iter().map(|(s, _)| *s).collect::<Vec<_>>(),
+                expected,
+                "segments released in order, once each ({num_chunks} chunks)"
+            );
+            assert!(
+                released.iter().rev().skip(1).all(|(_, is_last)| !is_last),
+                "only the final release is flagged as the last segment"
+            );
+            assert_eq!(
+                released.last().map(|(_, is_last)| *is_last),
+                Some(true),
+                "the final segment is always released, partial or not"
+            );
+            assert_eq!(
+                published, num_chunks,
+                "every chunk reaches the store before its segment is released"
+            );
+        }
+    }
+
+    #[test]
+    fn replay_publishes_a_segments_chunks_before_releasing_it() {
+        // The Main witness for segment `s` reads store[s * num_within ..], so the
+        // store must already cover that range at release time.
+        let num_within = 4;
+        let num_chunks = 10;
+        let traces = chunks(num_chunks);
+        let mut store = Vec::new();
+
+        for idx in 0..num_chunks {
+            let is_last = idx == num_chunks - 1;
+            if let Some(segment) = MainPlanner::segment_completed_by(idx, num_within, is_last) {
+                publish_chunks(&mut store, &traces, idx).expect("in-order stream");
+                let start = segment * num_within;
+                let end = if is_last { store.len() } else { start + num_within };
+                assert!(store.len() >= end, "segment {segment} released with a short store");
+                assert!(start < store.len(), "segment {segment} released empty");
+            }
+        }
     }
 }

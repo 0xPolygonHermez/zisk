@@ -372,6 +372,17 @@ impl AsmRunnerMO {
         // In the GPU case no-op since the GPU planner has no background threads
         mem_planner.set_completed();
 
+        // Quiesce the prover's streaming-commit slots before the final GPU
+        // planning phase: that phase is host-paced micro-ops whose latency
+        // amplifies ~40x under concurrent commit kernels, delaying the buffer
+        // release (and everything mem-plan dependent with it). Backend-
+        // dispatched in libstarks: no-op when slots are disabled or on the
+        // CPU backend.
+        #[cfg(gpu)]
+        if gpu_count_and_plan_opt.is_some() {
+            proofman_starks_lib_c::stream_commit_pause_c();
+        }
+
         // GPU path: evaluate metas
         #[cfg(gpu)]
         timer_start_info!(GPU_MOPS_TIME);
