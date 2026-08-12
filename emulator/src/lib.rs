@@ -23,6 +23,7 @@ mod emu_reg_trace;
 mod emu_segment;
 mod emulator;
 mod emulator_errors;
+pub mod report;
 pub mod stats;
 
 pub use disasm::*;

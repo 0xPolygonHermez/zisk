@@ -15,6 +15,10 @@ path = "src/lib.rs"
 name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
+[[bin]]
+name = "report"
+path = "src/report/main.rs"
+
 [dependencies]
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
