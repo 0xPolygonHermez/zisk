@@ -408,10 +408,10 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-        let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
 
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
+                let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
                 // Freshly proven vadcop_final proof — stamp the default
                 // vadcop_final verkey (no override).
                 let snark_proof = self
@@ -471,7 +471,7 @@ impl ProverBackend {
                     ),
                     body: ProofBody::Vadcop {
                         proof: p.proof,
-                        zisk_vk: vadcop_vk_u64,
+                        zisk_vk: self.get_vadcop_vk(minimal)?,
                         // A freshly proven leaf is a raw vadcop_final proof
                         // (Final, flag=1) or its compressed form (Minimal).
                         // Recurser (aggregated) proofs come from the fold path.
