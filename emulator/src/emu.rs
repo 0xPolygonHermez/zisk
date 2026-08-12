@@ -2622,12 +2622,11 @@ impl<'a> Emu<'a> {
     /// Run a slice of the program to generate full traces
     pub fn process_emu_traces<T, DB: DataBusTrait<u64, T>>(
         &mut self,
-        vec_traces: &[EmuTrace],
-        chunk_id: usize,
+        chunk: &EmuTrace,
         data_bus: &mut DB,
     ) {
         // Set initial state
-        let emu_trace_start = &vec_traces[chunk_id].start_state;
+        let emu_trace_start = &chunk.start_state;
         self.ctx.inst_ctx.pc = emu_trace_start.pc;
         self.ctx.inst_ctx.sp = emu_trace_start.sp;
         self.ctx.inst_ctx.step = emu_trace_start.step;
@@ -2638,11 +2637,7 @@ impl<'a> Emu<'a> {
         let mut current_step_idx = 0;
         let mut mem_reads_index: usize = 0;
         loop {
-            if !self.step_emu_traces(
-                &vec_traces[chunk_id].mem_reads,
-                &mut mem_reads_index,
-                data_bus,
-            ) {
+            if !self.step_emu_traces(&chunk.mem_reads, &mut mem_reads_index, data_bus) {
                 break;
             }
 
@@ -2651,7 +2646,7 @@ impl<'a> Emu<'a> {
             }
 
             current_step_idx += 1;
-            if current_step_idx == vec_traces[chunk_id].steps {
+            if current_step_idx == chunk.steps {
                 break;
             }
         }

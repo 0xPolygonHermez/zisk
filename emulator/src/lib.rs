@@ -24,6 +24,7 @@ mod emu_segment;
 mod emulator;
 mod emulator_errors;
 mod reg_step_check;
+pub mod report;
 pub mod stats;
 
 pub use disasm::*;

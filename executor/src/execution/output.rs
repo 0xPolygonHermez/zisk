@@ -18,7 +18,7 @@
 //! On the Rust path the calls yield `vec![]` / `None` instantly; on
 //! the ASM path they join the corresponding runner thread.
 
-use std::thread::JoinHandle;
+use std::{sync::Arc, thread::JoinHandle};
 
 use asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use zisk_common::{EmuTrace, Plan};
@@ -29,8 +29,9 @@ use crate::CountersChunkMetrics;
 
 /// Uniform return type for all `Emulator<F>` impls.
 pub struct ExecutionOutput {
-    /// Minimal traces produced by the emulator.
-    pub min_traces: Vec<EmuTrace>,
+    /// Minimal traces produced by the emulator (shared with the progressive
+    /// main-witness advancement store, hence `Arc` elements).
+    pub min_traces: Vec<Arc<EmuTrace>>,
     /// Device metrics for secondary devices (counter-phase output).
     pub counters: CountersChunkMetrics,
     /// Public outputs accumulated during execution.
