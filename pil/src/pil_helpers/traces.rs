@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "312218a150284d9475016f80e379d0df5ecf8c0187a66b4f0e5e3f7eda62fc4e";
+pub const PILOUT_HASH: &str = "a73632fd981734bd466c15847b2622ffe774a6e315432f02e886e346872e85be";
 
 pub const MERKLE_TREE_ARITY: u64 = 4;
 
@@ -411,7 +411,7 @@ trace_row!(KeccakfFixedRow<F> {
 pub type KeccakfFixed<F> = GenericTrace<KeccakfFixedRow<F>, 262144, 0, 23>;
 
 trace_row!(KeccakfTraceRow<F> {
- in_use:bit, in_use_clk_0:bit, state:[bit; 320], in_use_round_k:[bit; 5], chunk_acc:[ubit(22); 107], step_addr:ubit(40),
+ in_use:bit, in_use_clk_0:bit, state:[bit; 320], in_use_round:[bit; 5], chunk_acc:[ubit(22); 107], step_addr:ubit(40),
 });
 
 pub type KeccakfTrace<R> = GenericTrace<R, 262144, 0, 23>;

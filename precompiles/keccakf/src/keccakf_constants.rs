@@ -6,8 +6,10 @@ pub(crate) const WIDTH: usize = LANES * LANE_BITS;
 
 /// Number of state lanes held by each trace row.
 pub(crate) const LANES_PER_ROW: usize = 5;
-pub(crate) const ROWS_PER_STATE: usize = LANES / LANES_PER_ROW;
+pub(crate) const ROWS_PER_STATE: usize = LANES.div_ceil(LANES_PER_ROW);
+pub(crate) const LANES_LAST_ROW: usize = LANES - (ROWS_PER_STATE - 1) * LANES_PER_ROW;
 pub(crate) const BITS_PER_ROW: usize = LANES_PER_ROW * LANE_BITS;
+pub(crate) const BITS_LAST_ROW: usize = LANES_LAST_ROW * LANE_BITS;
 
 pub(crate) const ROUNDS: usize = 24;
 pub(crate) const CLOCKS: usize = (1 + ROUNDS) * ROWS_PER_STATE;

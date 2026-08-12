@@ -113,15 +113,26 @@ impl<F: PrimeField64> KeccakfSM<F> {
             let state_flat = keccakf_state_flatten(&state);
 
             // Compute accumulators (reusing accs buffer): the anchor row k of round r
-            // holds the accumulators of the output bits [k*BITS_PER_ROW, (k+1)*BITS_PER_ROW)
+            // holds the accumulators of the output bits of lanes
+            // [k*LANES_PER_ROW, min((k+1)*LANES_PER_ROW, LANES)). On a ragged last
+            // group-row the trailing chunk_acc columns are zero: the corresponding
+            // lookups still fire and are satisfied by the all-zero table row
             for k in 0..ROWS_PER_STATE {
+                let row_bits = if k == ROWS_PER_STATE - 1 { BITS_LAST_ROW } else { BITS_PER_ROW };
+                let row_chunks = row_bits.div_ceil(TABLE_MAX_CHUNKS);
+
                 for i in 0..CHUNKS_PER_ROW {
-                    let offset = k * BITS_PER_ROW + i * TABLE_MAX_CHUNKS;
-                    let num_bits = std::cmp::min(TABLE_MAX_CHUNKS, (k + 1) * BITS_PER_ROW - offset);
+                    if i >= row_chunks {
+                        accs[i] = 0;
+                        continue;
+                    }
+                    let bit_offset = i * TABLE_MAX_CHUNKS;
+                    let num_bits = std::cmp::min(TABLE_MAX_CHUNKS, row_bits - bit_offset);
 
                     let mut acc = 0u32;
                     for j in 0..num_bits {
-                        acc += (state_flat[offset + j] as u32) * POWS_BASE[j];
+                        acc +=
+                            (state_flat[k * BITS_PER_ROW + bit_offset + j] as u32) * POWS_BASE[j];
                     }
                     accs[i] = acc;
                 }
@@ -148,17 +159,21 @@ impl<F: PrimeField64> KeccakfSM<F> {
     }
 
     /// Writes the 1600 bits of a state-group into its `ROWS_PER_STATE` consecutive rows:
-    /// row k of the group holds the lanes [k*LANES_PER_ROW, (k+1)*LANES_PER_ROW).
+    /// row k of the group holds the lanes [k*LANES_PER_ROW, min((k+1)*LANES_PER_ROW, LANES)).
+    /// On a ragged last group-row the columns beyond the real lanes stay zero.
     #[inline(always)]
     fn set_state_group<R: KeccakfTraceRowOps<F>>(
         trace: &mut [R],
         group: usize,
         state_bits: &[bool; WIDTH],
     ) {
+        let mut row_bits = [false; BITS_PER_ROW];
         for k in 0..ROWS_PER_STATE {
-            let row_bits: &[bool; BITS_PER_ROW] =
-                state_bits[k * BITS_PER_ROW..(k + 1) * BITS_PER_ROW].try_into().unwrap();
-            trace[group * ROWS_PER_STATE + k].set_all_state(row_bits);
+            let start = k * BITS_PER_ROW;
+            let len = std::cmp::min(BITS_PER_ROW, WIDTH - start);
+            row_bits[..len].copy_from_slice(&state_bits[start..start + len]);
+            row_bits[len..].fill(false);
+            trace[group * ROWS_PER_STATE + k].set_all_state(&row_bits);
         }
     }
 

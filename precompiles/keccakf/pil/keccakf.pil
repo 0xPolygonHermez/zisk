@@ -84,12 +84,14 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     const int WIDTH = LANES * LANE_BITS;
     const int ROUNDS = 24;
 
-    if ((lanes_per_row < 1) || (LANES % lanes_per_row != 0)) {
-        error(`lanes_per_row must be a divisor of ${LANES}, but received lanes_per_row=${lanes_per_row}`);
+    if ((lanes_per_row < 1) || (lanes_per_row > LANES)) {
+        error(`lanes_per_row must be in [1, ${LANES}], but received lanes_per_row=${lanes_per_row}`);
     }
 
-    const int ROWS_PER_STATE = LANES / lanes_per_row;
+    const int ROWS_PER_STATE = (LANES + lanes_per_row - 1) / lanes_per_row;
+    const int LANES_LAST_ROW = LANES - (ROWS_PER_STATE - 1) * lanes_per_row;
     const int BITS_PER_ROW = lanes_per_row * LANE_BITS;
+    const int BITS_LAST_ROW = LANES_LAST_ROW * LANE_BITS;
     const int CLOCKS = (1 + ROUNDS) * ROWS_PER_STATE; // 1 state-group for the input state
 
     // Calculate usable capacity
@@ -155,7 +157,8 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     // in_use_round[k] is 1 exactly on rows that are group-row k of one of the
     // first ROUNDS state-groups of an active cycle.
     if (ROWS_PER_STATE == 1) {
-        // Every clock except the last one applies a round
+        // Every clock except the last one applies a round; no committed selector needed
+        const expr air.in_use_round[1];
         in_use_round[0] = round_f_active;
     } else {
         // Fixed mask: 1 at group-row 0 of the first ROUNDS state-groups of each cycle.
@@ -163,6 +166,8 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
         // stays 0 on the whole output state-group and on padding rows.
         col fixed ROUND_CLK_0 = [[[1, 0:(ROWS_PER_STATE-1)]:ROUNDS, 0:ROWS_PER_STATE]:NUM_OPS, 0...];
 
+        // Committed (instead of used as fixed·witness expressions) to keep the
+        // chunk binding constraints at degree 3
         col witness bits(1) air.in_use_round[ROWS_PER_STATE];
         for (int k = 0; k < ROWS_PER_STATE; k++) {
             in_use_round[k] <== (k)'ROUND_CLK_0 * in_use;
@@ -196,11 +201,16 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
         const expr keccakf[WIDTH] = keccakf_round(state_group);
 
         // Bind chunk_acc to the accumulated output bits of this group-row's lanes.
-        // The binding differs per group-row k, so it is gated by in_use_round[k]
-        for (int i = 0; i < CHUNKS_PER_ROW; i++) {
+        // The binding differs per group-row k, so it is gated by in_use_round[k].
+        // The last group-row may be ragged (fewer lanes): only its real output bits
+        // are bound; the remaining chunk_acc columns are left unbound there and are
+        // satisfied by the lookup with all-zero values
+        const int row_bits = (k == ROWS_PER_STATE - 1) ? BITS_LAST_ROW : BITS_PER_ROW;
+        const int row_chunks = (row_bits + KECCAKF_TABLE_MAX_CHUNKS - 1) / KECCAKF_TABLE_MAX_CHUNKS;
+        for (int i = 0; i < row_chunks; i++) {
             const int bit_offset = i * KECCAKF_TABLE_MAX_CHUNKS;
 
-            const int remaining = BITS_PER_ROW - bit_offset;
+            const int remaining = row_bits - bit_offset;
             const int num_bits = (remaining < KECCAKF_TABLE_MAX_CHUNKS) ? remaining : KECCAKF_TABLE_MAX_CHUNKS;
 
             expr acc_val = 0;
@@ -274,23 +284,36 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     const int U64_LIMBS = 64 / BITS_PER_LIMB;
     const int WORD_SIZE = 64 / 8; // bytes per 64-bit word
     const int BITS_PER_CLOCK = BITS_PER_LIMB * U64_LIMBS;
-    const int MEM_OPS = WIDTH / BITS_PER_CLOCK;
     const int MEM_OPS_IN_PARALLEL = lanes_per_row;
-    const int CLOCKS_WITH_MEM_OPS = MEM_OPS / MEM_OPS_IN_PARALLEL;
 
-    const expr mem_sel = clock_set(in_use, start: 0, end: CLOCKS_WITH_MEM_OPS) +
-                         clock_set(in_use, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS);
+    // Writes happen on the rows of the last (output) state-group
+    const int WRITE_START = CLOCKS - ROWS_PER_STATE;
+    const expr mem_is_write = clock_set(start: WRITE_START, end: CLOCKS);
 
-    const expr mem_is_write = clock_set(start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS);
+    // Parallel op i handles word k*lanes_per_row + i at group-row k, which only
+    // exists on the (ragged) last group-row when i < LANES_LAST_ROW. There are thus
+    // only two window shapes.
+    const int NUM_SHAPES = (LANES_LAST_ROW < lanes_per_row) ? 2 : 1;
+    const expr mem_sel[NUM_SHAPES];
+    const expr main_step[NUM_SHAPES];
+    for (int s = 0; s < NUM_SHAPES; s++) {
+        const int rows_with_op = ROWS_PER_STATE - s;
 
-    const expr main_step = clock_shift(step_addr, STEP_MAIN, start: 0, end: CLOCKS_WITH_MEM_OPS) +
-                           clock_shift(step_addr, STEP_MAIN, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS);
+        mem_sel[s] = clock_set(in_use, start: 0, end: rows_with_op) +
+                     clock_set(in_use, start: WRITE_START, end: WRITE_START + rows_with_op);
+
+        main_step[s] = clock_shift(step_addr, STEP_MAIN, start: 0, end: rows_with_op) +
+                       clock_shift(step_addr, STEP_MAIN, start: WRITE_START, end: WRITE_START + rows_with_op);
+    }
 
     for (int i = 0; i < MEM_OPS_IN_PARALLEL; i++) {
+        const int shape = (i < LANES_LAST_ROW) ? 0 : 1;
+        const int rows_with_op = ROWS_PER_STATE - shape;
+
         // Address: ADDR_STATE + WORD_SIZE*(k*lanes_per_row + i) at group-row k, i.e. the
         // word address advances by WORD_SIZE*lanes_per_row per clock within the window
-        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: CLOCKS_WITH_MEM_OPS, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
-                              clock_shift(step_addr, ADDR_STATE, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row);
+        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: rows_with_op, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
+                              clock_shift(step_addr, ADDR_STATE, start: WRITE_START, end: WRITE_START + rows_with_op, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row);
 
         // Pack state bits into two BITS_PER_CLOCK-bit limbs
         const int base = i * BITS_PER_CLOCK;
@@ -299,9 +322,9 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
         mem_value[1] = pack(state, offset: base + BITS_PER_LIMB, len: BITS_PER_LIMB);
 
         precompiled_mem_op(
-            sel: mem_sel,
+            sel: mem_sel[shape],
             is_write: mem_is_write,
-            main_step: main_step,
+            main_step: main_step[shape],
             addr: mem_addr,
             value: mem_value
         );
