@@ -1811,10 +1811,9 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_mem_stats(options.mem_stats);
         self.ctx.stats.set_mem_full_stats(options.mem_full_stats);
         // Byte-offset counters feed the on-screen table (--mem-full-stats) and the snapshot
-        // (--save-stats / --ref-stats), so collect them whenever any of those is requested.
-        self.ctx.stats.set_collect_offsets(
-            options.mem_full_stats || options.save_stats.is_some() || options.ref_stats.is_some(),
-        );
+        // (--save-stats / --ref-stats / --html-report), so collect them whenever any of those is
+        // requested.
+        self.ctx.stats.set_collect_offsets(options.mem_full_stats || options.snapshot_enabled());
         self.ctx.stats.set_log_costly_unaligned(options.log_costly_unaligned);
         self.ctx.stats.set_callstack_strict(options.callstack_mode == "strict");
         self.ctx.stats.set_opcode_breakdown(options.opcode_breakdown);
@@ -1927,8 +1926,7 @@ impl<'a> Emu<'a> {
             || options.legacy_stats
             || options.trace_steps
             || options.store_op_output.is_some()
-            || options.save_stats.is_some()
-            || options.ref_stats.is_some()
+            || options.snapshot_enabled()
             || options.trace_changes_enabled();
 
         // While not done
@@ -2007,11 +2005,7 @@ impl<'a> Emu<'a> {
         // Print stats report (only for real stats; a pure `--trace-steps` run
         // turns on do_stats just to emit the per-op trace, not the report).
         // `--save-stats` / `--ref-stats` also need this path to write / compare the snapshot.
-        if options.stats
-            || options.legacy_stats
-            || options.save_stats.is_some()
-            || options.ref_stats.is_some()
-        {
+        if options.stats || options.legacy_stats || options.snapshot_enabled() {
             self.ctx.stats.on_finish(&self.ctx.inst_ctx);
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");
@@ -2038,6 +2032,29 @@ impl<'a> Emu<'a> {
                 ) {
                     Ok(comparison) => println!("{comparison}"),
                     Err(e) => eprintln!("Failed to read reference stats snapshot {ref_path}: {e}"),
+                }
+            }
+
+            // Render this run as an HTML page, comparing it against the reference snapshot when
+            // one was given. The snapshot content goes straight to the renderer, so no CSV file
+            // is involved unless `--save-stats` asked for one.
+            if let Some(html_path) = &options.html_report {
+                let current = self.ctx.stats.stats_csv(options.csv_sep());
+                // With a reference, render the comparison; on its own, render just this run.
+                // `None` means the reference could not be read — the text comparison above has
+                // already reported why, so do not blame the write for a read that failed.
+                let html = match &options.ref_stats {
+                    Some(ref_path) => std::fs::read_to_string(ref_path).ok().map(|reference| {
+                        crate::report::render_compare(&reference, ref_path, &current, "current run")
+                    }),
+                    None => Some(crate::report::render_single(&current)),
+                };
+                match html {
+                    Some(html) => match std::fs::write(html_path, html) {
+                        Ok(()) => println!("HTML report written to: {html_path}"),
+                        Err(e) => eprintln!("Failed to write HTML report to {html_path}: {e}"),
+                    },
+                    None => eprintln!("HTML report skipped: reference snapshot unavailable"),
                 }
             }
 

@@ -1,3 +1,5 @@
+use crate::stats::detect_sep;
+
 #[derive(Debug, Default)]
 pub struct Report {
     pub steps: u64,
@@ -62,13 +64,14 @@ pub struct Offsets {
 
 pub fn parse(csv: &str) -> Report {
     let mut r = Report::default();
+    let sep = detect_sep(csv);
 
     for line in csv.lines() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let f: Vec<&str> = line.split(',').collect();
+        let f: Vec<&str> = line.split(sep).collect();
 
         match f[0] {
             "STEPS" => r.steps = num(f.get(1)),

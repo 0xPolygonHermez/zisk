@@ -139,6 +139,19 @@ pub struct EmuOptions {
     /// NEW - OLD). No ELF/input is needed.
     #[clap(long, num_args = 2, value_names = ["OLD", "NEW"])]
     pub diff_stats: Option<Vec<String>>,
+    /// Render the statistics as a standalone HTML page instead of a CSV snapshot: the snapshot
+    /// content is passed straight to the report renderer, no intermediate CSV file is written.
+    /// With a reference (`--ref-stats <FILE>`, or `--diff-stats <OLD> <NEW>`, which needs no run)
+    /// both snapshots are passed and the comparison report is rendered instead. Optionally takes
+    /// the output path; defaults to `report.html`. Collects the statistics on its own, so -X is
+    /// not required (add it to also get the text report on stdout).
+    #[clap(
+        long,
+        value_name = "HTML_FILE",
+        num_args = 0..=1,
+        default_missing_value = "report.html"
+    )]
+    pub html_report: Option<String>,
     /// Colourize the stats comparison (`--ref-stats` / `--diff-stats`): `auto` (colour only when
     /// stdout is a terminal), `always`, or `never`.
     #[clap(long, value_name = "WHEN", default_value = "auto")]
@@ -336,6 +349,7 @@ impl Default for EmuOptions {
             save_stats: None,
             ref_stats: None,
             diff_stats: None,
+            html_report: None,
             color: "auto".to_string(),
             diff_format: "color".to_string(),
             legacy_display: false,
@@ -459,6 +473,14 @@ impl EmuOptions {
             // A full stats snapshot / comparison needs the per-opcode + memory collection path.
             && self.save_stats.is_none()
             && self.ref_stats.is_none()
+            && self.html_report.is_none()
+    }
+
+    /// True if the run has to produce a statistics snapshot, either to a CSV file
+    /// (`--save-stats`), to compare against a reference (`--ref-stats`) or to render the HTML
+    /// report (`--html-report`). All three need the same collection path.
+    pub fn snapshot_enabled(&self) -> bool {
+        self.save_stats.is_some() || self.ref_stats.is_some() || self.html_report.is_some()
     }
 
     /// Register step-distance limit in steps, i.e. 2^`--reg-step-limit-bits` (clamped to a

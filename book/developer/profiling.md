@@ -24,29 +24,31 @@ This guide walks you through ZiskEmu's profiling capabilities, progressing from 
 
 9. **Comparing Runs**: Saving a statistics snapshot and diffing a later run against it to validate an optimization
 
-10. **SDK Report Mode**: Streamlined, compact output format ideal for CI/CD and quick checks, with selective section display options
+10. **HTML Report**: Rendering a run, or the comparison of two runs, as a standalone shareable page
 
-11. **Function Name Display Options**: Configure how long function names are displayed with compact and no-compact modes
+11. **SDK Report Mode**: Streamlined, compact output format ideal for CI/CD and quick checks, with selective section display options
 
-12. **Profile Tags**: Instrument your code to measure specific sections, with immediate or deferred reporting of steps and costs
+12. **Function Name Display Options**: Configure how long function names are displayed with compact and no-compact modes
 
-13. **Firefox Profiler Integration**: Export profiling data for advanced visualization and interactive analysis
+13. **Profile Tags**: Instrument your code to measure specific sections, with immediate or deferred reporting of steps and costs
 
-14. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
+14. **Firefox Profiler Integration**: Export profiling data for advanced visualization and interactive analysis
 
-15. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
+15. **Function-Level Profiling**: Identifying which functions consume the most resources with cumulative analysis
 
-16. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
+16. **Customizing ROI Display**: Controlling how many functions to show and filtering by patterns
 
-17. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
+17. **Detailed Caller Analysis**: In-depth breakdown showing which operations are expensive within each function and who calls them
 
-18. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
+18. **Tracking Function Calls**: Logging individual call parameters to analyze usage patterns and optimize for common cases
 
-19. **Instruction Tracing and Disassembly**: Step-by-step traces, change traces and an annotated disassembly with execution counts
+19. **PC Histogram Analysis**: Low-level view of the most frequently executed RISC-V instruction sequences
 
-20. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+20. **Instruction Tracing and Disassembly**: Step-by-step traces, change traces and an annotated disassembly with execution counts
 
-21. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
+21. **Additional Options**: Quick reference for other useful flags (steps, progress indicators, formatting)
+
+22. **Practical Example**: Real-world case study analyzing Ethereum opcode costs in a block validator
 
 ## Introduction
 
@@ -892,6 +894,9 @@ ziskemu --diff-stats before.csv after.csv
 The first file is the reference, so deltas are `after - before`. This is the form to use in CI,
 where the runs happen on different machines or at different times.
 
+Both comparison forms can also be rendered as a page instead of printed — see
+[HTML Report](#html-report).
+
 ### Comparison output format
 
 | Flag | Effect |
@@ -900,6 +905,53 @@ where the runs happen on different machines or at different times.
 | `--diff-format <color\|csv>` | `color` (default) is the human-readable view above; `csv` is a plain semicolon-separated view for scripting. |
 | `--legacy-display` | Equivalent to `--diff-format csv`. Also implied by `--sdk`. |
 | `--csv-separator <SEP>` | Field separator for `--save-stats` and the `csv` view (default `,`). |
+
+## HTML Report
+
+`--html-report` renders the statistics as a **standalone HTML page** instead of a CSV snapshot. The
+snapshot content is handed straight to the report renderer, so no intermediate CSV file is written
+unless you also ask for one with `--save-stats`.
+
+```bash
+# Single-run report, written to report.html
+ziskemu -e <elf> -i <input> -X --html-report
+
+# Choose the output path
+ziskemu -e <elf> -i <input> -X --html-report profile.html
+```
+
+The page contains the same data as the text report — cost distribution, base and precompiled
+opcodes, FROPS, and the memory breakdown — laid out as sortable tables and bars, which is easier to
+scan and to attach to a PR or a ticket than a wall of terminal output.
+
+### Comparison report
+
+Give it a reference and it renders the **comparison** of both snapshots instead of a single run.
+Two ways, matching the two text-mode forms:
+
+```bash
+# Run the program and compare it against a saved snapshot
+ziskemu -e <elf> -i <input> -X --ref-stats before.csv --html-report compare.html
+
+# Compare two saved snapshots, without running anything
+ziskemu --diff-stats before.csv after.csv --html-report compare.html
+```
+
+In both cases the first snapshot is the **baseline (A)** and the second is **B**, with the change
+shown as `B - A`: green for a lower cost, red for a higher one. With `--ref-stats` the current run
+is B, labelled *current run*; with `--diff-stats` each side is labelled with its snapshot path.
+
+**Note**: `--diff-stats` needs no ELF, input or emulation, which makes it the form to use in CI —
+save a snapshot per commit and render the page comparing the two.
+
+### Notes
+
+- `--html-report` implies collecting the full statistics, exactly like `--save-stats`, so it works
+  with or without `-X` (with `-X` you also get the text report on stdout).
+- Snapshots are read back with whatever separator they were saved with, so a reference saved using
+  `--csv-separator ';'` renders correctly.
+- The same renderer is available as a standalone binary that reads snapshots from disk:
+  `cargo run --bin report -- stats.csv [other.csv]`.
 
 ## SDK Report Mode
 

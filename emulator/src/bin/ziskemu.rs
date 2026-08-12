@@ -1,7 +1,7 @@
 use clap::Parser;
-use std::{fmt::Write, process};
+use std::{fmt::Write, fs, process};
 use zisk_common::EmuTrace;
-use ziskemu::{diff_stats_files, resolve_color, EmuOptions, Emulator, ZiskEmulator};
+use ziskemu::{diff_stats_files, report, resolve_color, EmuOptions, Emulator, ZiskEmulator};
 
 fn main() {
     // Create a emulator options instance based on arguments or default values
@@ -10,6 +10,23 @@ fn main() {
     // Compare two saved stats snapshots without running the emulator.
     if let Some(files) = &options.diff_stats {
         let (old, new) = (&files[0], &files[1]);
+        // `--html-report` renders the comparison as a page instead of printing it.
+        if let Some(html_path) = &options.html_report {
+            let written = fs::read_to_string(old)
+                .and_then(|old_csv| fs::read_to_string(new).map(|new_csv| (old_csv, new_csv)))
+                .and_then(|(old_csv, new_csv)| {
+                    let html = report::render_compare(&old_csv, old, &new_csv, new);
+                    fs::write(html_path, html)
+                });
+            match written {
+                Ok(()) => println!("HTML report written to: {html_path}"),
+                Err(e) => {
+                    eprintln!("Failed to render HTML report for '{old}' and '{new}': {e}");
+                    process::exit(1);
+                }
+            }
+            return;
+        }
         match diff_stats_files(
             old,
             new,

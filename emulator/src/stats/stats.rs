@@ -155,7 +155,7 @@ enum DupSeg {
 #[derive(Debug, Default)]
 struct DupStats {
     /// Occurrence count of each input-content fingerprint (the number of words is precompile-fixed).
-    states: HashMap<Box<[u64]>, u32>,
+    states: HashMap<Box<[u64]>, u64>,
     /// Per-call-path stats: the innermost `duplicates_depth` ROIs (leaf first, padded with
     /// `usize::MAX`) → (total calls on that path, of which duplicates). Lets the detail report
     /// attribute the redundant calls to their call paths.
@@ -552,7 +552,7 @@ impl Stats {
         self.handle_mem_status(status, false, address, width, 0);
     }
 
-    /// Called every time some data is writen to memory, if statistics are enabled
+    /// Called every time some data is written to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
         if self.collect_offsets && width == 1 {
             let offset = (address as usize) & 0x7;
@@ -1978,13 +1978,16 @@ impl Stats {
             .iter()
             .filter(|(_, s)| !s.states.is_empty())
             .map(|(&op, s)| {
-                let total: u64 = s.states.values().map(|&c| c as u64).sum();
+                let total: u64 = s.states.values().sum();
                 let unique = s.states.len() as u64;
                 let dup = total.saturating_sub(unique);
-                let max_dup = s.states.values().copied().max().unwrap_or(0) as u64;
+                let max_dup = s.states.values().copied().max().unwrap_or(0);
                 let (count, cost) = self.costs.get_opcode_count_and_cost(op).unwrap_or((0, 0));
-                let per_call = if count > 0 { cost / count as u64 } else { 0 };
-                DupRow { op, total, unique, dup, max_dup, dup_cost: dup * per_call }
+                // dup * cost / count, multiplying first so the average per-call cost is not
+                // truncated before scaling. In u128: the product overflows u64 on a long run.
+                let dup_cost =
+                    if count > 0 { (dup as u128 * cost as u128 / count as u128) as u64 } else { 0 };
+                DupRow { op, total, unique, dup, max_dup, dup_cost }
             })
             .collect();
         if rows.is_empty() {
@@ -3637,7 +3640,8 @@ struct Snap {
 
 /// Detects the field separator of a snapshot: the character right after the leading `STEPS` tag on
 /// the first `STEPS` line. Defaults to `,` (also handles files saved with `;` or any single char).
-fn detect_sep(text: &str) -> char {
+/// Shared with the HTML report parser, so both read snapshots the same way.
+pub(crate) fn detect_sep(text: &str) -> char {
     for line in text.lines() {
         if let Some(rest) = line.strip_prefix("STEPS") {
             if let Some(c) = rest.chars().next() {
@@ -3782,6 +3786,14 @@ fn row_line(color: bool, cells: &[(String, &str)]) -> String {
         .join(" ")
 }
 
+/// Printed width of a header row built from pre-padded cells joined by single spaces, i.e. the
+/// length its underline must have. Counts characters, not bytes: the headers contain `Δ`, which
+/// `{:>width$}` pads by character count while `str::len` would report its two UTF-8 bytes and make
+/// the rule too long.
+fn rule_len(cells: &[(String, &str)]) -> usize {
+    cells.iter().map(|(text, _)| text.chars().count()).sum::<usize>() + cells.len() - 1
+}
+
 /// Renders an opcode-style section (base opcodes or precompiles): current value + share%, then a
 /// coloured signed delta for count and for cost. Reference-only entries are appended as `(gone)`.
 fn render_op_section(
@@ -3804,7 +3816,7 @@ fn render_op_section(
     out.push('\n');
     out.push_str(&wrap(color, C_HEAD, title));
     out.push('\n');
-    let plain_len = header.iter().map(|(t, _)| t.len()).sum::<usize>() + header.len() - 1;
+    let plain_len = rule_len(&header);
     out.push_str(&row_line(color, &header));
     out.push('\n');
     out.push_str(&wrap(color, C_DIM, &"-".repeat(plain_len)));
@@ -3892,7 +3904,7 @@ pub fn diff_snapshots(
         (format!("{:>26}", "Δ (Δ%)"), C_DIM),
     ];
     out.push('\n');
-    let cd_len = cd_header.iter().map(|(t, _)| t.len()).sum::<usize>() + cd_header.len() - 1;
+    let cd_len = rule_len(&cd_header);
     out.push_str(&row_line(color, &cd_header));
     out.push('\n');
     out.push_str(&wrap(color, C_DIM, &"-".repeat(cd_len)));
@@ -3934,8 +3946,7 @@ pub fn diff_snapshots(
         (format!("{:>24}", "Δ (Δ%)"), C_DIM),
     ];
     out.push('\n');
-    let fr_len = fr_header.iter().map(|(t, _)| t.len()).sum::<usize>() + fr_header.len() - 1
-        + "ΔHIT".chars().count(); // ΔHIT header has a 2-byte char; pad-len uses bytes, keep rule long enough
+    let fr_len = rule_len(&fr_header);
     out.push_str(&row_line(color, &fr_header));
     out.push('\n');
     out.push_str(&wrap(color, C_DIM, &"-".repeat(fr_len.min(120))));
