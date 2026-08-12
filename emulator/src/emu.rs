@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::mem;
 
-use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions};
+use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions, RegStepCheck};
 use fields::PrimeField64;
 use mem_common::MemHelpers;
 use riscv::RiscVRegisters;
@@ -23,6 +23,23 @@ use zisk_core::{
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
+
+/// Feeds the fast register step-distance check (`--reg-step-check`) with the registers accessed by
+/// one instruction: the `a` and `b` operands when they are sourced from a register, and the store
+/// destination when it is a register. Which registers those are mirrors `source_a`, `source_b` and
+/// `store_c`. All of them are accounted at the same step, so their relative order is irrelevant.
+#[inline(always)]
+fn track_reg_step_check(check: &mut RegStepCheck, instruction: &ZiskInst, step: u64) {
+    if instruction.a_src == SRC_REG {
+        check.on_access(instruction.a_offset_imm0 as usize, step);
+    }
+    if instruction.b_src == SRC_REG {
+        check.on_access(instruction.b_offset_imm0 as usize, step);
+    }
+    if instruction.store == STORE_REG {
+        check.on_access(instruction.store_offset as usize, step);
+    }
+}
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -1528,7 +1545,11 @@ impl<'a> Emu<'a> {
     /// Run the whole program, fast
     #[inline(always)]
     pub fn run_fast(&mut self, options: &EmuOptions) {
-        if options.with_progress {
+        if self.ctx.reg_step_check.is_some() {
+            // `--reg-step-check` gets its own loop so that `step_fast`, the hot path, stays free of
+            // any check of its own.
+            self.run_fast_reg_step_check(options);
+        } else if options.with_progress {
             while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
                 self.step_fast_with_progress();
             }
@@ -1544,6 +1565,20 @@ impl<'a> Emu<'a> {
                 "Emu::run_fast() finished with error at step={} pc=0x{:x}",
                 self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
             );
+        }
+    }
+
+    /// Run the whole program fast while measuring the register step distances (`--reg-step-check`).
+    /// Same loop as `run_fast`, only adding the per-instruction register accounting, which is a
+    /// handful of comparisons per step.
+    fn run_fast_reg_step_check(&mut self, options: &EmuOptions) {
+        while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
+            let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+            let step = self.ctx.inst_ctx.step;
+            if let Some(check) = self.ctx.reg_step_check.as_mut() {
+                track_reg_step_check(check, instruction, step);
+            }
+            self.step_fast_inst(instruction);
         }
     }
 
@@ -1605,6 +1640,14 @@ impl<'a> Emu<'a> {
         //     );*/
         //     [0u64; 32]
         // };
+        self.step_fast_inst(instruction);
+    }
+
+    /// Body of `step_fast` for an already fetched instruction, so a caller that has to inspect the
+    /// instruction before executing it (`run_fast_reg_step_check`) does not look it up twice. Always
+    /// inlined, so `step_fast` keeps the exact same shape it had.
+    #[inline(always)]
+    fn step_fast_inst(&mut self, instruction: &ZiskInst) {
         self.source_a(instruction);
         self.source_b(instruction);
 
@@ -1767,9 +1810,52 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_sdk_top_functions(options.top_functions);
         self.ctx.stats.set_mem_stats(options.mem_stats);
         self.ctx.stats.set_mem_full_stats(options.mem_full_stats);
+        // Byte-offset counters feed the on-screen table (--mem-full-stats) and the snapshot
+        // (--save-stats / --ref-stats / --html-report), so collect them whenever any of those is
+        // requested.
+        self.ctx.stats.set_collect_offsets(options.mem_full_stats || options.snapshot_enabled());
+        self.ctx.stats.set_log_costly_unaligned(options.log_costly_unaligned);
+        self.ctx.stats.set_callstack_strict(options.callstack_mode == "strict");
+        self.ctx.stats.set_opcode_breakdown(options.opcode_breakdown);
+        self.ctx.stats.set_pattern_analysis(options.pattern_analysis);
+        self.ctx.stats.set_duplicates(options.duplicates);
+        self.ctx.stats.set_duplicates_depth(options.duplicates_depth);
+        self.ctx.stats.set_duplicates_detail(options.duplicates_detail);
+        if let Some(list) = &options.duplicates_ops {
+            // Parse the comma-separated opcode names, keeping only supported precompiles.
+            let supported: std::collections::HashSet<u8> =
+                crate::Stats::dup_supported_opcodes().into_iter().collect();
+            let mut set = std::collections::HashSet::new();
+            for name in list.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                match ZiskOp::try_from_name(name) {
+                    Ok(op) if supported.contains(&op.code()) => {
+                        set.insert(op.code());
+                    }
+                    Ok(op) => eprintln!(
+                        "--duplicates-ops: '{name}' (0x{:02x}) is not a duplicate-analyzed \
+                         precompile, ignoring",
+                        op.code()
+                    ),
+                    Err(_) => {
+                        eprintln!("--duplicates-ops: unknown opcode name '{name}', ignoring")
+                    }
+                }
+            }
+            self.ctx.stats.set_duplicates_ops(Some(set));
+        }
+        self.ctx.stats.set_reg_step_distance(options.reg_step_distance);
+        self.ctx.stats.set_reg_step_limit(options.reg_step_limit());
+        self.ctx.stats.set_reg_step_flush_bits(options.reg_step_flush_bits);
+        if options.reg_step_check {
+            self.ctx.reg_step_check = Some(Box::new(RegStepCheck::new(
+                options.reg_step_limit(),
+                options.reg_step_flush_bits,
+            )));
+        }
         self.ctx.stats.set_sdk_width(options.sdk_width);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
         self.ctx.stats.set_legacy_frops(options.legacy_frops);
+        self.ctx.stats.set_sort_by_units(options.sort_by_units);
         if let Some(profiler_output) = &options.profiler_output {
             self.ctx.stats.set_profiler_output(profiler_output.clone());
         }
@@ -1840,6 +1926,7 @@ impl<'a> Emu<'a> {
             || options.legacy_stats
             || options.trace_steps
             || options.store_op_output.is_some()
+            || options.snapshot_enabled()
             || options.trace_changes_enabled();
 
         // While not done
@@ -1917,12 +2004,58 @@ impl<'a> Emu<'a> {
 
         // Print stats report (only for real stats; a pure `--trace-steps` run
         // turns on do_stats just to emit the per-op trace, not the report).
-        if options.stats || options.legacy_stats {
+        // `--save-stats` / `--ref-stats` also need this path to write / compare the snapshot.
+        if options.stats || options.legacy_stats || options.snapshot_enabled() {
             self.ctx.stats.on_finish(&self.ctx.inst_ctx);
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
                 self.ctx.stats.flush_op_data_to_file(store_op_output_file).unwrap();
+            }
+
+            // Save an aggregate stats snapshot for later comparison.
+            if let Some(save_path) = &options.save_stats {
+                match std::fs::write(save_path, self.ctx.stats.stats_csv(options.csv_sep())) {
+                    Ok(()) => println!("Stats snapshot saved to: {save_path}"),
+                    Err(e) => eprintln!("Failed to save stats snapshot to {save_path}: {e}"),
+                }
+            }
+
+            // Compare this run against a previously saved reference snapshot.
+            if let Some(ref_path) = &options.ref_stats {
+                let color = crate::resolve_color(&options.color);
+                match self.ctx.stats.compare_stats(
+                    ref_path,
+                    options.diff_use_csv(),
+                    color,
+                    options.csv_sep(),
+                ) {
+                    Ok(comparison) => println!("{comparison}"),
+                    Err(e) => eprintln!("Failed to read reference stats snapshot {ref_path}: {e}"),
+                }
+            }
+
+            // Render this run as an HTML page, comparing it against the reference snapshot when
+            // one was given. The snapshot content goes straight to the renderer, so no CSV file
+            // is involved unless `--save-stats` asked for one.
+            if let Some(html_path) = &options.html_report {
+                let current = self.ctx.stats.stats_csv(options.csv_sep());
+                // With a reference, render the comparison; on its own, render just this run.
+                // `None` means the reference could not be read — the text comparison above has
+                // already reported why, so do not blame the write for a read that failed.
+                let html = match &options.ref_stats {
+                    Some(ref_path) => std::fs::read_to_string(ref_path).ok().map(|reference| {
+                        crate::report::render_compare(&reference, ref_path, &current, "current run")
+                    }),
+                    None => Some(crate::report::render_single(&current)),
+                };
+                match html {
+                    Some(html) => match std::fs::write(html_path, html) {
+                        Ok(()) => println!("HTML report written to: {html_path}"),
+                        Err(e) => eprintln!("Failed to write HTML report to {html_path}: {e}"),
+                    },
+                    None => eprintln!("HTML report skipped: reference snapshot unavailable"),
+                }
             }
 
             // Generate disassembly if requested
@@ -1950,6 +2083,11 @@ impl<'a> Emu<'a> {
                     println!("Disassembly written successfully");
                 }
             }
+        }
+
+        // Single-line verdict of the fast register step-distance check (`--reg-step-check`).
+        if let Some(check) = &self.ctx.reg_step_check {
+            println!("{}", check.report(self.ctx.inst_ctx.step));
         }
     }
 
@@ -2073,7 +2211,14 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         if self.ctx.do_stats {
-            self.ctx.stats.set_current_pc(pc);
+            self.ctx.stats.set_current_pc(pc, self.ctx.inst_ctx.step);
+        }
+
+        // `--reg-step-check` normally runs on the fast path (`run_fast_reg_step_check`); this keeps
+        // it working when another option forces the full emulation path, e.g. combined with -X.
+        let step = self.ctx.inst_ctx.step;
+        if let Some(check) = &mut self.ctx.reg_step_check {
+            track_reg_step_check(check, instruction, step);
         }
 
         if options.with_progress && self.ctx.inst_ctx.step & 0xF_FFFF == 0 {
