@@ -56,13 +56,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// A new `KeccakfSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = KeccakfTrace::<()>::NUM_ROWS % CLOCKS;
-        let num_available_keccakfs = if num_non_usable_rows == 0 {
-            KeccakfTrace::<()>::NUM_ROWS / CLOCKS
-        } else {
-            // Subtract 1 because we can't fit a complete cycle in the remaining rows
-            (KeccakfTrace::<()>::NUM_ROWS - num_non_usable_rows) / CLOCKS - 1
-        };
+        let num_available_keccakfs = KeccakfTrace::<()>::NUM_ROWS / CLOCKS;
 
         // Get the table ID
         let table_id = std
@@ -98,19 +92,19 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Convert input state to 5x5x64 representation
         let mut state = keccakf_state_from_linear(input);
 
-        // Row 0: fill the input state
+        // State-group 0: fill the input state
         let state_flat = keccakf_state_flatten(&state);
 
         // Allocate buffers once and reuse across all rounds - better performance
-        let mut accs = [0u32; NUM_CHUNKS];
-        let mut state_bits = [false; 1600]; // 5 * 5 * 64 = 1600 bits
+        let mut accs = [0u32; CHUNKS_PER_ROW];
+        let mut state_bits = [false; WIDTH]; // 5 * 5 * 64 = 1600 bits
 
         for (i, &val) in state_flat.iter().enumerate() {
             state_bits[i] = (val & 1) != 0;
         }
-        trace[0].set_all_state(&state_bits);
+        Self::set_state_group(trace, 0, &state_bits);
 
-        // Rows 1..CLOCKS: apply each round
+        // State-groups 1..=ROUNDS: apply each round
         for r in 0..ROUNDS {
             // Apply round function to the state
             keccak_f_round(&mut state, r);
@@ -118,18 +112,21 @@ impl<F: PrimeField64> KeccakfSM<F> {
             // Flatten unreduced state for accumulator computation
             let state_flat = keccakf_state_flatten(&state);
 
-            // Compute accumulators (reusing accs buffer)
-            for i in 0..NUM_CHUNKS {
-                let offset = i * TABLE_MAX_CHUNKS;
-                let num_bits = std::cmp::min(TABLE_MAX_CHUNKS, WIDTH - offset);
+            // Compute accumulators (reusing accs buffer): the anchor row k of round r
+            // holds the accumulators of the output bits [k*BITS_PER_ROW, (k+1)*BITS_PER_ROW)
+            for k in 0..ROWS_PER_STATE {
+                for i in 0..CHUNKS_PER_ROW {
+                    let offset = k * BITS_PER_ROW + i * TABLE_MAX_CHUNKS;
+                    let num_bits = std::cmp::min(TABLE_MAX_CHUNKS, (k + 1) * BITS_PER_ROW - offset);
 
-                let mut acc = 0u32;
-                for j in 0..num_bits {
-                    acc += (state_flat[offset + j] as u32) * POWS_BASE[j];
+                    let mut acc = 0u32;
+                    for j in 0..num_bits {
+                        acc += (state_flat[offset + j] as u32) * POWS_BASE[j];
+                    }
+                    accs[i] = acc;
                 }
-                accs[i] = acc;
+                trace[r * ROWS_PER_STATE + k].set_all_chunk_acc(&accs);
             }
-            trace[r].set_all_chunk_acc(&accs);
 
             // Reduce the state modulo 2 and collect all state bits (reusing state_bits buffer)
             for x in 0..5 {
@@ -145,8 +142,23 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 }
             }
 
-            // Fill the trace for the next round all at once
-            trace[r + 1].set_all_state(&state_bits);
+            // Fill the trace for the next state-group all at once
+            Self::set_state_group(trace, r + 1, &state_bits);
+        }
+    }
+
+    /// Writes the 1600 bits of a state-group into its `ROWS_PER_STATE` consecutive rows:
+    /// row k of the group holds the lanes [k*LANES_PER_ROW, (k+1)*LANES_PER_ROW).
+    #[inline(always)]
+    fn set_state_group<R: KeccakfTraceRowOps<F>>(
+        trace: &mut [R],
+        group: usize,
+        state_bits: &[bool; WIDTH],
+    ) {
+        for k in 0..ROWS_PER_STATE {
+            let row_bits: &[bool; BITS_PER_ROW] =
+                state_bits[k * BITS_PER_ROW..(k + 1) * BITS_PER_ROW].try_into().unwrap();
+            trace[group * ROWS_PER_STATE + k].set_all_state(row_bits);
         }
     }
 
@@ -212,9 +224,10 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let mut table = vec![0u32; TABLE_SIZE as usize];
         for keccak_idx in 0..num_inputs {
             let base_row = keccak_idx * CLOCKS;
-            // Each keccak has 24 rounds of accumulators (stored in rows 0..23 of each keccak block)
-            for round in 0..ROUNDS {
-                let chunk_accs = trace.buffer[base_row + round].get_all_chunk_acc();
+            // Each keccak has ROUNDS * ROWS_PER_STATE anchor rows of accumulators
+            // (all rows of each keccak block except the output state-group)
+            for anchor in 0..ROUNDS * ROWS_PER_STATE {
+                let chunk_accs = trace.buffer[base_row + anchor].get_all_chunk_acc();
                 for acc in chunk_accs.iter() {
                     let table_row = KeccakfTableSM::calculate_table_row(*acc);
                     table[table_row as usize] += 1;
