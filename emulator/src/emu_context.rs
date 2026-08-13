@@ -1,4 +1,4 @@
-use crate::{EmuOptions, Stats};
+use crate::{EmuOptions, RegStepCheck, Stats};
 use zisk_common::EmuTrace;
 use zisk_core::{InstContext, INPUT_ADDR, RAM_ADDR, RAM_SIZE, REGS_IN_MAIN_TOTAL_NUMBER};
 
@@ -21,6 +21,9 @@ pub struct EmuContext {
     /// defaults to 0 and `trace_to` to unbounded.
     pub trace_from: Option<u64>,
     pub trace_to: Option<u64>,
+    /// Fast register step-distance check (ziskemu's `--reg-step-check`), `None` when not requested.
+    /// Boxed to keep the context small, as this is a diagnostic-only mode.
+    pub reg_step_check: Option<Box<RegStepCheck>>,
 }
 
 /// RisK emulator context implementation
@@ -41,6 +44,7 @@ impl EmuContext {
             stats: Stats::default(),
             trace_from: None,
             trace_to: None,
+            reg_step_check: None,
         };
 
         // Check the input data size is inside the proper range

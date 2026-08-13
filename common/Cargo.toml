@@ -33,7 +33,11 @@ alloy-sol-types = { workspace = true }
 bincode = { workspace = true }
 paste = { workspace = true }
 crossbeam-queue = "0.3"
+tikv-jemallocator = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["jemalloc"]
+# Use jemalloc instead of the system allocator; see `src/allocator.rs`.
+jemalloc = ["dep:tikv-jemallocator"]
 stats = []
+

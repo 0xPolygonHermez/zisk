@@ -1,0 +1,23 @@
+[package]
+name = "zisk-precomp-evm"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+repository = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "jump-dest-bitmap-table-gen"
+path = "src/jump_dest_bitmap_table_gen.rs"
+
+[dependencies]
+proofman-fields = { workspace = true }
+proofman-common = { workspace = true }
+clap = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
+zisk-pil = { workspace = true }
+pil2-std-lib = { workspace = true }
+zisk-common = { workspace = true }
+zisk-core = { workspace = true }
+zisk-precomp-common = { workspace = true }

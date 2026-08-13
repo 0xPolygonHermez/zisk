@@ -20,10 +20,15 @@ pub const ROM_INIT_COST: u64 = ROM_READ_COST;
 pub const INPUT_READ_COST: u64 = 29;
 
 pub const ROM_COST: usize = 16 << 22;
-pub const TABLES_COST: usize = (74 + 35) << 21;
+pub const TABLES_COST: usize = (70 + 35) << 21;
 pub const BASE_COST: usize = ROM_COST + TABLES_COST;
 
 pub const MAIN_COST: u64 = 68;
+
+/// Reduced cost of an ADD that can be proven by BinaryAddHi (hi32(a)=hi32(c)=0, hi32(b) all-0 or
+/// all-1). Cheaper than the regular ADD (BINARY_ADD_COST = 25). Used for the add_hi breakdown; tune
+/// once BinaryAddHi's final cost is fixed.
+pub const BINARY_ADD_HI_COST: u64 = 15;
 
 pub fn get_ops_costs(ops: &[u64]) -> (u64, u64) {
     let mut ops_cost = 0;

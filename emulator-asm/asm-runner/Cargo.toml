@@ -19,9 +19,10 @@ path = "src/lib.rs"
 [dependencies]
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
-proofman-util = { workspace = true }
 zisk-sm-mem-planner = { workspace = true }
 zisk-sm-mem-common = { workspace = true }
+proofman-util = { workspace = true }
+proofman-starks-lib-c = { workspace = true }
 
 tracing = { workspace = true }
 rayon = { workspace = true }
@@ -36,7 +37,7 @@ named-sem = { workspace = true }
 [features]
 stats = []
 save_mem_plans = []
-cpu-only = ["zisk-sm-mem-planner/cpu-only"]
+cpu-only = ["zisk-sm-mem-planner/cpu-only", "proofman-starks-lib-c/cpu-only"]
 
 [lints.rust]
 # `gpu` is set by build.rs only when CUDA is detected; declare it so the

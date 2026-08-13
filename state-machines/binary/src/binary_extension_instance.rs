@@ -4,17 +4,19 @@
 //! It manages collected inputs and interacts with the `BinaryExtensionSM` to compute witnesses for
 //! execution plans.
 
-use crate::{BinaryExtensionCollector, BinaryExtensionSM};
+use crate::{BinaryExtensionCollector, BinaryExtensionSM, ChunkCollect, EXT_KINDS};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
 use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{
-    BusDevice, CheckPoint, ChunkId, CollectSkipper, Instance, InstanceCtx, InstanceType,
-    PayloadType,
+    BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked};
+use zisk_pil::{
+    BinaryExtensionFullTrace, BinaryExtensionFullTraceRow, BinaryExtensionFullTraceRowPacked,
+    BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked,
+};
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
 /// computations.
@@ -25,8 +27,9 @@ pub struct BinaryExtensionInstance<F: PrimeField64> {
     /// Binary Extension state machine.
     binary_extension_sm: Arc<BinaryExtensionSM<F>>,
 
-    /// Collect info for each chunk ID, containing the number of rows and a skipper for collection.
-    collect_info: HashMap<ChunkId, (u64, bool, CollectSkipper)>,
+    /// What this instance takes from each chunk: a `(count, skip)` per kind of operation, plus the
+    /// frequent operations it accounts for.
+    collect_info: HashMap<ChunkId, ChunkCollect<EXT_KINDS>>,
 
     /// Instance context.
     ictx: InstanceCtx,
@@ -51,9 +54,9 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryExtensionTrace::<()>::AIR_ID,
+        assert!(
+            ictx.plan.air_id == BinaryExtensionTrace::<()>::AIR_ID
+                || ictx.plan.air_id == BinaryExtensionFullTrace::<()>::AIR_ID,
             "BinaryExtensionInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -61,30 +64,22 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
         let meta = ictx.plan.meta.take().expect("Expected metadata in ictx.plan.meta");
 
         let collect_info = *meta
-            .downcast::<HashMap<ChunkId, (u64, bool, CollectSkipper)>>()
+            .downcast::<HashMap<ChunkId, ChunkCollect<EXT_KINDS>>>()
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_extension_sm, collect_info, ictx, std }
+    }
+
+    /// `true` when this instance proves the full air (and therefore owns the dirty shapes).
+    fn is_full(&self) -> bool {
+        self.ictx.plan.air_id == BinaryExtensionFullTrace::<()>::AIR_ID
     }
 
     pub fn build_binary_extension_collector(
         &self,
         chunk_id: ChunkId,
     ) -> BinaryExtensionCollector<F> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryExtensionTrace::<()>::AIR_ID,
-            "BinaryExtensionInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
-
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
-        BinaryExtensionCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            force_execute_to_end,
-            self.std.clone(),
-        )
+        BinaryExtensionCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
 
@@ -118,16 +113,36 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
-                self.binary_extension_sm
-                    .compute_witness::<BinaryExtensionTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
-                self.binary_extension_sm
-                    .compute_witness::<BinaryExtensionTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
+        // The two airs have different column sets, so the row type selects which one is filled.
+        match (self.is_full(), packed) {
+            (false, true) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionTrace<
+                    BinaryExtensionTraceRowPacked<F>,
+                >, BinaryExtensionTraceRowPacked<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
+            (false, false) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionTrace<
+                    BinaryExtensionTraceRow<F>,
+                >, BinaryExtensionTraceRow<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
+            (true, true) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionFullTrace<
+                    BinaryExtensionFullTraceRowPacked<F>,
+                >, BinaryExtensionFullTraceRowPacked<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
+            (true, false) => {
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionFullTrace<
+                    BinaryExtensionFullTraceRow<F>,
+                >, BinaryExtensionFullTraceRow<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
         }
     }
 
@@ -159,11 +174,8 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
     /// # Returns
     /// An `Option` containing the input collector for the instance.
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        let (num_ops, force_execute_to_end, collect_skipper) = self.collect_info[&chunk_id];
         Some(Box::new(BinaryExtensionCollector::new(
-            num_ops as usize,
-            collect_skipper,
-            force_execute_to_end,
+            self.collect_info[&chunk_id],
             self.std.clone(),
         )))
     }

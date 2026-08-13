@@ -41,7 +41,10 @@ pub struct ExecutionState<F: PrimeField64> {
     pub stdin: ArcSwap<ZiskStdin>,
 
     /// Planning information for main state machines (minimal traces from emulation).
-    pub min_traces: Arc<RwLock<Option<Vec<EmuTrace>>>>,
+    /// `Arc<EmuTrace>` elements so the store can be filled progressively while the
+    /// emulator streams chunks (main witness advancement) and readers can clone the
+    /// cheap Arc vector instead of holding the lock across a witness computation.
+    pub min_traces: Arc<RwLock<Option<Vec<Arc<EmuTrace>>>>>,
 
     /// Main + secondary instance maps populated by `PlanPhase`.
     pub instance_set: Arc<InstanceSet<F>>,

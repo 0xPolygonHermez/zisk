@@ -1,5 +1,5 @@
 [workspace.package]
-version = "1.2.0-alpha"
+version = "1.1.0-alpha"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 keywords = ["zisk", "zkvm", "zero-knowledge"]
@@ -9,11 +9,11 @@ documentation = "https://0xpolygonhermez.github.io/zisk-docs/"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_zisk_ethproofs_branch = "develop-0.11.1"
-gha_zisk_eth_client_branch = "develop-0.10.1"
+gha_zisk_ethproofs_branch = "feature/integrate-zisk-eth-client"
+gha_zisk_eth_client_branch = "develop-0.11.0"
 gha_zisk_template_branch = "pre-develop-1.1.0-alpha"
-gha_zisk_testvectors_branch = "zisk-1.0.0"
-gha_pil2_compiler_branch = "develop-0.12.0"
+gha_zisk_testvectors_branch = "develop-0.4.0"
+gha_pil2_compiler_branch = "develop-0.13.0"
 
 [workspace]
 members = [
@@ -50,6 +50,7 @@ members = [
   "precompiles/blake2",
   "precompiles/big_int",
   "precompiles/dma",
+  "precompiles/evm",
   "precompiles/poseidon",
   "lib-c",
   "lib-float",
@@ -84,61 +85,66 @@ opt-level = 3
 opt-level = 3
 
 [workspace.dependencies]
+# Replacement global allocator. glibc retains freed multi-MB collector
+# buffers in per-thread arenas that never shrink; jemalloc bounds the arena
+# count and purges dirty pages back to the OS on a decay timer.
+tikv-jemallocator = "0.6"
 # Internal crates
-zisk-common = { path = "common", version = "1.2.0-alpha" }
-zisk-stream = { path = "stream", version = "1.2.0-alpha" }
-zisk-core = { path = "core", version = "1.2.0-alpha" }
-ziskemu = { path = "emulator", version = "1.2.0-alpha" }
-zisk-asm-runner = { path = "emulator-asm/asm-runner", version = "1.2.0-alpha" }
-zisk-executor = { path = "executor", version = "1.2.0-alpha" }
-zisk-lib-c = { path = "lib-c", version = "1.2.0-alpha" }
-zisk-lib-float = { path = "lib-float", version = "1.2.0-alpha" }
-zisk-pil = { path = "pil", version = "1.2.0-alpha" }
-zisk-precomp-arith-eq = { path = "precompiles/arith_eq", version = "1.2.0-alpha" }
-zisk-precomp-arith-eq-384 = { path = "precompiles/arith_eq_384", version = "1.2.0-alpha" }
-zisk-precomp-common = { path = "precompiles/common", version = "1.2.0-alpha" }
-zisk-precomp-helpers = { path = "precompiles/helpers", version = "1.2.0-alpha" }
-zisk-precomp-keccakf = { path = "precompiles/keccakf", version = "1.2.0-alpha" }
-zisk-precomp-sha256f = { path = "precompiles/sha256f", version = "1.2.0-alpha" }
-zisk-precomp-blake2 = { path = "precompiles/blake2", version = "1.2.0-alpha" }
-zisk-precomp-poseidon = { path = "precompiles/poseidon", version = "1.2.0-alpha" }
-zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.2.0-alpha" }
-zisk-precomp-dma = { path = "precompiles/dma", version = "1.2.0-alpha" }
-zisk-riscv = { path = "transpilers/riscv", version = "1.2.0-alpha" }
-zisk-transpiler-common = { path = "transpilers/common", version = "1.2.0-alpha" }
-zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.2.0-alpha" }
-zisk-rom-setup = { path = "rom-setup", version = "1.2.0-alpha" }
-zisk-sm-arith = { path = "state-machines/arith", version = "1.2.0-alpha" }
-zisk-sm-binary = { path = "state-machines/binary", version = "1.2.0-alpha" }
-zisk-sm-main = { path = "state-machines/main", version = "1.2.0-alpha" }
-zisk-sm-mem = { path = "state-machines/mem", version = "1.2.0-alpha" }
-zisk-sm-frequent-ops = { path = "state-machines/frequent-ops", version = "1.2.0-alpha" }
-zisk-sm-mem-common = { path = "state-machines/mem-common", version = "1.2.0-alpha" }
-zisk-sm-mem-planner = { path = "state-machines/mem-cpp", version = "1.2.0-alpha" }
-zisk-sm-rom = { path = "state-machines/rom", version = "1.2.0-alpha" }
+zisk-common = { path = "common", version = "1.1.0-alpha" }
+zisk-stream = { path = "stream", version = "1.1.0-alpha" }
+zisk-core = { path = "core", version = "1.1.0-alpha" }
+ziskemu = { path = "emulator", version = "1.1.0-alpha" }
+zisk-asm-runner = { path = "emulator-asm/asm-runner", version = "1.1.0-alpha" }
+zisk-executor = { path = "executor", version = "1.1.0-alpha" }
+zisk-lib-c = { path = "lib-c", version = "1.1.0-alpha" }
+zisk-lib-float = { path = "lib-float", version = "1.1.0-alpha" }
+zisk-pil = { path = "pil", version = "1.1.0-alpha" }
+zisk-precomp-arith-eq = { path = "precompiles/arith_eq", version = "1.1.0-alpha" }
+zisk-precomp-arith-eq-384 = { path = "precompiles/arith_eq_384", version = "1.1.0-alpha" }
+zisk-precomp-common = { path = "precompiles/common", version = "1.1.0-alpha" }
+zisk-precomp-helpers = { path = "precompiles/helpers", version = "1.1.0-alpha" }
+zisk-precomp-keccakf = { path = "precompiles/keccakf", version = "1.1.0-alpha" }
+zisk-precomp-sha256f = { path = "precompiles/sha256f", version = "1.1.0-alpha" }
+zisk-precomp-blake2 = { path = "precompiles/blake2", version = "1.1.0-alpha" }
+zisk-precomp-poseidon = { path = "precompiles/poseidon", version = "1.1.0-alpha" }
+zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.1.0-alpha" }
+zisk-precomp-dma = { path = "precompiles/dma", version = "1.1.0-alpha" }
+zisk-precomp-evm = { path = "precompiles/evm", version = "1.1.0-alpha" }
+zisk-riscv = { path = "transpilers/riscv", version = "1.1.0-alpha" }
+zisk-transpiler-common = { path = "transpilers/common", version = "1.1.0-alpha" }
+zisk-transpiler-riscv = { path = "transpilers/riscv2zisk", version = "1.1.0-alpha" }
+zisk-rom-setup = { path = "rom-setup", version = "1.1.0-alpha" }
+zisk-sm-arith = { path = "state-machines/arith", version = "1.1.0-alpha" }
+zisk-sm-binary = { path = "state-machines/binary", version = "1.1.0-alpha" }
+zisk-sm-main = { path = "state-machines/main", version = "1.1.0-alpha" }
+zisk-sm-mem = { path = "state-machines/mem", version = "1.1.0-alpha" }
+zisk-sm-frequent-ops = { path = "state-machines/frequent-ops", version = "1.1.0-alpha" }
+zisk-sm-mem-common = { path = "state-machines/mem-common", version = "1.1.0-alpha" }
+zisk-sm-mem-planner = { path = "state-machines/mem-cpp", version = "1.1.0-alpha" }
+zisk-sm-rom = { path = "state-machines/rom", version = "1.1.0-alpha" }
 zisk-test-artifacts = { path = "test-artifacts", version = "1.0.0" }
-ziskclib = { path = "ziskclib", version = "1.2.0-alpha" }
-zisk-zkvm-interface = { path = "zkvm-interface", version = "1.2.0-alpha" }
-ziskos = { path = "ziskos/entrypoint", version = "1.2.0-alpha" }
-ziskos-hints = { path = "ziskos-hints", version = "1.2.0-alpha" }
-zisk-circuit = { path = "tools/circuit", version = "1.2.0-alpha" }
-zisk-sdk = { path = "sdk", version = "1.2.0-alpha" }
-zisk-prover-backend = { path = "prover-backend", version = "1.2.0-alpha" }
-zisk-program-macros = { path = "prover-backend/macros", version = "1.2.0-alpha" }
-zisk-build = { path = "ziskbuild", version = "1.2.0-alpha" }
-zisk-precomp-hints = { path = "precompiles/hints", version = "1.2.0-alpha" }
-zisk-verifier = { path = "verifier", version = "1.2.0-alpha" }
-zisk-definitions = { path = "definitions", version = "1.2.0-alpha" }
-zisk-recurser = { path = "recurser", version = "1.2.0-alpha" }
+ziskclib = { path = "ziskclib", version = "1.1.0-alpha" }
+zisk-zkvm-interface = { path = "zkvm-interface", version = "1.1.0-alpha" }
+ziskos = { path = "ziskos/entrypoint", version = "1.1.0-alpha" }
+ziskos-hints = { path = "ziskos-hints", version = "1.1.0-alpha" }
+zisk-circuit = { path = "tools/circuit", version = "1.1.0-alpha" }
+zisk-sdk = { path = "sdk", version = "1.1.0-alpha" }
+zisk-prover-backend = { path = "prover-backend", version = "1.1.0-alpha" }
+zisk-program-macros = { path = "prover-backend/macros", version = "1.1.0-alpha" }
+zisk-build = { path = "ziskbuild", version = "1.1.0-alpha" }
+zisk-precomp-hints = { path = "precompiles/hints", version = "1.1.0-alpha" }
+zisk-verifier = { path = "verifier", version = "1.1.0-alpha" }
+zisk-definitions = { path = "definitions", version = "1.1.0-alpha" }
+zisk-recurser = { path = "recurser", version = "1.1.0-alpha" }
 
 # Distributed crates
-zisk-cluster-common = { path = "distributed/crates/cluster-common", version = "1.2.0-alpha" }
-zisk-coordinator = { path = "distributed/crates/coordinator", version = "1.2.0-alpha" }
-zisk-cluster-api = { path = "distributed/crates/cluster-api", version = "1.2.0-alpha" }
-zisk-worker = { path = "distributed/crates/worker", version = "1.2.0-alpha" }
-zisk-coordinator-server = { path = "distributed/crates/coordinator-server", version = "1.2.0-alpha" }
-zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.2.0-alpha" }
-zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.2.0-alpha" }
+zisk-cluster-common = { path = "distributed/crates/cluster-common", version = "1.1.0-alpha" }
+zisk-coordinator = { path = "distributed/crates/coordinator", version = "1.1.0-alpha" }
+zisk-cluster-api = { path = "distributed/crates/cluster-api", version = "1.1.0-alpha" }
+zisk-worker = { path = "distributed/crates/worker", version = "1.1.0-alpha" }
+zisk-coordinator-server = { path = "distributed/crates/coordinator-server", version = "1.1.0-alpha" }
+zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = "1.1.0-alpha" }
+zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.1.0-alpha" }
 
 # Proofman git
 proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
@@ -152,6 +158,7 @@ proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git"
 pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
+proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "predev-1.0.0-beta-crates-io", version = "1.1.0-alpha" }
 
 # Proofman crates.io (enable once pil2-proofman is published; use instead of the path/git blocks)
 # proofman = { version = "1.1.0-alpha" }
@@ -165,6 +172,7 @@ pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", br
 # pil2-stark-setup = { version = "1.1.0-alpha" }
 # pil2-stark-recurser = { version = "1.1.0-alpha" }
 # pil2-pilout = { version = "1.1.0-alpha" }
+# proofman-starks-lib-c = { version = "1.1.0-alpha" }
 
 # Proofman Local development
 # proofman = { path = "../pil2-proofman/proofman", version = "1.1.0-alpha" }
@@ -178,6 +186,7 @@ pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", br
 # pil2-stark-setup = { path = "../pil2-proofman/setup/pil2-stark", version = "1.1.0-alpha" }
 # pil2-stark-recurser = { path = "../pil2-proofman/setup/stark-recurser", version = "1.1.0-alpha" }
 # pil2-pilout = { path = "../pil2-proofman/pilout", version = "1.1.0-alpha" }
+# proofman-starks-lib-c = { path = "../pil2-proofman/starks-lib-c", version = "1.1.0-alpha" }
 
 # External dependencies
 arc-swap = "1"

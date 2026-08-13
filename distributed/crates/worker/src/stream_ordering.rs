@@ -54,7 +54,7 @@ impl StreamOrderingActor {
         job_id: &JobId,
     ) -> Result<()> {
         // Min-heap ordered by sequence number (Reverse makes BinaryHeap a min-heap)
-        let mut heap: BinaryHeap<Reverse<(u32, Vec<u8>)>> = BinaryHeap::new();
+        let mut heap: BinaryHeap<Reverse<(u32, bytes::Bytes)>> = BinaryHeap::new();
         let mut next_seq: u32 = 1;
         let mut is_first = true;
 

@@ -57,16 +57,28 @@ impl Coordinator {
 
         // A successful SetupProgramAck proves the prover is healthy; any
         // lingering pending_recovery entry is stale (WRC will never arrive).
+        // A failure proves the opposite — no artifacts for this program — so the
+        // worker goes back to `Idle` (out of dispatch, still back-fillable) and
+        // keeps any pending_recovery entry.
         let worker_id = ack.worker_id.clone();
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
-            if self.pending_recovery.write().await.remove(&worker_id).is_some() {
+            if ack.success {
+                if self.pending_recovery.write().await.remove(&worker_id).is_some() {
+                    warn!(
+                        "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",
+                        worker_id
+                    );
+                }
+                let _ =
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+                info!("[Setup] Worker {} finished setup, now Ready", ack.worker_id);
+            } else {
+                self.workers_pool.release_settingup_to_idle(std::slice::from_ref(&worker_id)).await;
                 warn!(
-                    "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",
-                    worker_id
+                    "[Setup] Worker {} failed setup, parked Idle and withheld from job dispatch",
+                    ack.worker_id
                 );
             }
-            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
-            info!("[Setup] Worker {} finished setup, now Ready", ack.worker_id);
         }
 
         // Remove this worker from the pending set and accumulate its VK.
@@ -261,13 +273,20 @@ impl Coordinator {
             );
         }
 
-        // Same rule as setup-program ack: recovery handshake owns the flip
-        // back to Ready when a recovery is pending.
+        // Same rules as setup-program ack: recovery owns the flip back to Ready
+        // when one is pending, and a failed ack never promotes to Ready.
         let worker_id = ack.worker_id.clone();
-        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp)
-            && !self.pending_recovery.read().await.contains_key(&worker_id)
-        {
-            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
+            if ack.success && !self.pending_recovery.read().await.contains_key(&worker_id) {
+                let _ =
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+            } else if !ack.success {
+                self.workers_pool.release_settingup_to_idle(std::slice::from_ref(&worker_id)).await;
+                warn!(
+                    "[Recurser] Worker {} failed recurser setup, parked Idle and withheld from job dispatch",
+                    ack.worker_id
+                );
+            }
         }
 
         let outcome = {

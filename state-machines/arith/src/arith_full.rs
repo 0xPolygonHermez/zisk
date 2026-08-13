@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::{
     ArithOperation, ArithRangeTableInputs, ArithRangeTableSM, ArithTableInputs, ArithTableSM,
+    ARITH_RANGE_16_BITS,
 };
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
@@ -16,7 +17,7 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_common::{BusId, ExtOperationData, OperationBusData, OperationData};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
-use zisk_pil::{ArithTrace, ArithTraceRowOps};
+use zisk_pil::{ArithAirValues, ArithTrace, ArithTraceRowOps};
 use zisk_sm_binary::{GT_OP, LTU_OP, LT_ABS_NP_OP, LT_ABS_PN_OP};
 
 const CHUNK_SIZE: u64 = 0x10000;
@@ -126,29 +127,66 @@ impl<F: PrimeField64> ArithFullSM<F> {
         let padding_rows: usize = num_rows.saturating_sub(padding_offset);
 
         if padding_rows > 0 {
+            // `proves_operation` has no multiplicity selector, so every row of the trace proves an
+            // operation on the bus, padding included. arith.pil cancels those with
+            //   assumes_padding_operation(op: OP_MULU, a:[0,0], b:[0,0], c:[0,0], flag:0, padding_size:)
+            // so the padding row must be exactly that trivial operation: mulu(0, 0) = (0, 0).
+            //
+            // The ArithTable and ArithRangeTable lookups have no selector either, so the padding row
+            // also has to match a table entry. Derive it from a real ArithOperation rather than
+            // hand-writing the columns: an all-zero row only worked while the all-FULL range id
+            // happened to be 0, and hardcoded flags would have to be kept in sync with the table.
+            let padding_opcode = ZiskOp::Mulu.code();
+            let mut pad = ArithOperation::new();
+            pad.calculate(padding_opcode, 0, 0);
+
             let mut row = R::default();
-            let padding_opcode = ZiskOp::Muluh.code();
             row.set_op(padding_opcode);
+            row.set_main_mul(pad.main_mul);
+            row.set_result_is_zero(pad.result_is_zero);
+            row.set_range_ab(pad.range_ab);
+            row.set_range_cd(pad.range_cd);
+            // Every other column of this operation is zero, which is what R::default() already gives:
+            // a = b = c = d = 0, no sign flags, no division flags, and all carries zero.
+            // `padding_row_tests` checks that this list is still complete.
 
             arith_trace.buffer[padding_offset..num_rows]
                 .par_iter_mut()
                 .for_each(|elem| *elem = row);
 
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 10, 0, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 26, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 17, 0);
-            range_table_inputs.multi_use_chunk_range_check(padding_rows * 2, 9, 0);
+            // Range checks, mirroring what process_slice registers for a real row: the eight even
+            // chunks go through the generic 16-bit range, and each of the four slots of range_ab and
+            // range_cd is hit once.
+            range_table_inputs.multi_use_chunk_range_check(
+                padding_rows * 8,
+                ARITH_RANGE_16_BITS,
+                0,
+            );
+            for offset in 0..4 {
+                range_table_inputs.multi_use_chunk_range_check(
+                    padding_rows,
+                    pad.range_ab + offset,
+                    0,
+                );
+                range_table_inputs.multi_use_chunk_range_check(
+                    padding_rows,
+                    pad.range_cd + offset,
+                    0,
+                );
+            }
             range_table_inputs.multi_use_carry_range_check(padding_rows * 7, 0);
             table_inputs.multi_add_use(
                 padding_rows,
                 padding_opcode,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
+                pad.na,
+                pad.nb,
+                pad.np,
+                pad.nr,
+                pad.sext,
+                pad.div_by_zero,
+                pad.div_overflow,
+                pad.result_is_zero,
+                pad.remainder_is_zero,
             );
         }
 
@@ -162,7 +200,13 @@ impl<F: PrimeField64> ArithFullSM<F> {
             self.std.inc_virtual_row(self.range_table_id, row as u64, multiplicity);
         }
 
-        Ok(AirInstance::new_from_trace(FromTrace::new(&mut arith_trace)))
+        // arith.pil uses this to cancel exactly `padding_rows` trivial operations off the bus.
+        let mut air_values = ArithAirValues::<F>::new();
+        air_values.padding_size = F::from_usize(padding_rows);
+
+        Ok(AirInstance::new_from_trace(
+            FromTrace::new(&mut arith_trace).with_air_values(&mut air_values),
+        ))
     }
 
     /// Generates binary inputs for operations requiring additional validation (e.g., division).
@@ -231,24 +275,25 @@ impl<F: PrimeField64> ArithFullSM<F> {
         aop.calculate(opcode, a, b);
         let mut row = R::default();
         for i in [0, 2] {
-            range_table_inputs.use_chunk_range_check(0, aop.a[i] as u64);
-            range_table_inputs.use_chunk_range_check(0, aop.b[i] as u64);
-            range_table_inputs.use_chunk_range_check(0, aop.c[i] as u64);
-            range_table_inputs.use_chunk_range_check(0, aop.d[i] as u64);
+            range_table_inputs.use_chunk_range_check(ARITH_RANGE_16_BITS, aop.a[i] as u64);
+            range_table_inputs.use_chunk_range_check(ARITH_RANGE_16_BITS, aop.b[i] as u64);
+            range_table_inputs.use_chunk_range_check(ARITH_RANGE_16_BITS, aop.c[i] as u64);
+            range_table_inputs.use_chunk_range_check(ARITH_RANGE_16_BITS, aop.d[i] as u64);
         }
         row.set_all_a(&aop.a);
         row.set_all_b(&aop.b);
         row.set_all_c(&aop.c);
         row.set_all_d(&aop.d);
+        // the four slots of a rid are consecutive: x3, x1, y3, y1
         range_table_inputs.use_chunk_range_check(aop.range_ab, aop.a[3] as u64);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 26, aop.a[1] as u64);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 17, aop.b[3] as u64);
-        range_table_inputs.use_chunk_range_check(aop.range_ab + 9, aop.b[1] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_ab + 1, aop.a[1] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_ab + 2, aop.b[3] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_ab + 3, aop.b[1] as u64);
 
         range_table_inputs.use_chunk_range_check(aop.range_cd, aop.c[3] as u64);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 26, aop.c[1] as u64);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 17, aop.d[3] as u64);
-        range_table_inputs.use_chunk_range_check(aop.range_cd + 9, aop.d[1] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_cd + 1, aop.c[1] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_cd + 2, aop.d[3] as u64);
+        range_table_inputs.use_chunk_range_check(aop.range_cd + 3, aop.d[1] as u64);
 
         let mut carry_values = [0u64; 7];
         for (i, carry_value) in carry_values.iter_mut().enumerate() {
@@ -273,11 +318,12 @@ impl<F: PrimeField64> ArithFullSM<F> {
         row.set_main_mul(aop.main_mul);
         row.set_main_div(aop.main_div);
         row.set_sext(aop.sext);
-        row.set_multiplicity(true);
         row.set_range_ab(aop.range_ab);
         row.set_range_cd(aop.range_cd);
         row.set_div_by_zero(aop.div_by_zero);
-        row.set_div_overflow_mul_rz(aop.div_overflow_mul_rz);
+        row.set_div_overflow(aop.div_overflow);
+        row.set_result_is_zero(aop.result_is_zero);
+        row.set_remainder_is_zero(aop.remainder_is_zero);
 
         let inv_sum_all_bs = if aop.div && !aop.div_by_zero {
             F::from_u64(aop.b[0] as u64 + aop.b[1] as u64 + aop.b[2] as u64 + aop.b[3] as u64)
@@ -296,7 +342,9 @@ impl<F: PrimeField64> ArithFullSM<F> {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow_mul_rz,
+            aop.div_overflow,
+            aop.result_is_zero,
+            aop.remainder_is_zero,
         );
 
         row

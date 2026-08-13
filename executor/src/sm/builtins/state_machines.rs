@@ -8,6 +8,7 @@ use proofman_fields::PrimeField64;
 use std::borrow::Cow;
 use std::sync::Arc;
 use zisk_precomp_dma::DmaManager;
+use zisk_precomp_evm::JumpDestManager;
 use zisk_sm_arith::ArithSM;
 use zisk_sm_binary::BinarySM;
 use zisk_sm_mem::Mem;
@@ -15,14 +16,14 @@ use zisk_sm_rom::RomSM;
 
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
-    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
-    DMA_64_ALIGNED_AIR_IDS, DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS,
-    DMA_64_ALIGNED_MEM_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS,
-    DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS, DMA_PRE_POST_AIR_IDS,
-    DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS, DMA_UNALIGNED_AIR_IDS,
-    INPUT_DATA_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS,
-    MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
-    ZISK_AIRGROUP_ID,
+    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_AIR_IDS,
+    BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_FULL_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
+    DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
+    DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS, DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS,
+    DMA_PRE_POST_AIR_IDS, DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS,
+    DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
+    MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS,
+    ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 // Per-built-in AIR-id maps.
@@ -41,7 +42,9 @@ const MEM_AIR_IDS_MAP: &[(usize, usize)] = &[
 const BINARY_AIR_IDS_MAP: &[(usize, usize)] = &[
     (ZISK_AIRGROUP_ID, BINARY_AIR_IDS[0]),
     (ZISK_AIRGROUP_ID, BINARY_ADD_AIR_IDS[0]),
+    (ZISK_AIRGROUP_ID, BINARY_ADD_HI_AIR_IDS[0]),
     (ZISK_AIRGROUP_ID, BINARY_EXTENSION_AIR_IDS[0]),
+    (ZISK_AIRGROUP_ID, BINARY_EXTENSION_FULL_AIR_IDS[0]),
 ];
 
 const ARITH_AIR_IDS_MAP: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, ARITH_AIR_IDS[0])];
@@ -61,6 +64,8 @@ const DMA_AIR_IDS_MAP: &[(usize, usize)] = &[
     (ZISK_AIRGROUP_ID, DMA_64_ALIGNED_MEM_AIR_IDS[0]),
 ];
 
+const JUMP_DEST_AIR_IDS_MAP: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, JUMP_DEST_AIR_IDS[0])];
+
 /// Tuple of built-in SMs and their AIR-id coverage.
 pub type SMAirType = Cow<'static, [(usize, usize)]>;
 
@@ -70,9 +75,10 @@ pub const MEM_POSITION: usize = 1;
 pub const BINARY_POSITION: usize = 2;
 pub const ARITH_POSITION: usize = 3;
 pub const DMA_POSITION: usize = 4;
+pub const JUMP_DEST_POSITION: usize = 5;
 
 /// Number of built-in SMs registered before any precompile.
-pub const BUILTIN_COUNT: usize = 5;
+pub const BUILTIN_COUNT: usize = 6;
 
 /// Built-in state machines.
 pub enum BuiltinSMs<F: PrimeField64> {
@@ -86,6 +92,8 @@ pub enum BuiltinSMs<F: PrimeField64> {
     ArithSM(Arc<ArithSM<F>>),
     /// DMA-related state machines.
     DmaManager(Arc<DmaManager<F>>),
+    /// EVM `jump_dest` state machine.
+    JumpDestManager(Arc<JumpDestManager<F>>),
 }
 
 impl<F: PrimeField64> BuiltinSMs<F> {
@@ -96,7 +104,11 @@ impl<F: PrimeField64> BuiltinSMs<F> {
             (Cow::Borrowed(MEM_AIR_IDS_MAP), Self::MemSM(Mem::new(std.clone()))),
             (Cow::Borrowed(BINARY_AIR_IDS_MAP), Self::BinarySM(BinarySM::new(std.clone()))),
             (Cow::Borrowed(ARITH_AIR_IDS_MAP), Self::ArithSM(ArithSM::new(std.clone()))),
-            (Cow::Borrowed(DMA_AIR_IDS_MAP), Self::DmaManager(DmaManager::new(std))),
+            (Cow::Borrowed(DMA_AIR_IDS_MAP), Self::DmaManager(DmaManager::new(std.clone()))),
+            (
+                Cow::Borrowed(JUMP_DEST_AIR_IDS_MAP),
+                Self::JumpDestManager(JumpDestManager::new(std)),
+            ),
         ]
     }
 
@@ -110,6 +122,9 @@ impl<F: PrimeField64> BuiltinSMs<F> {
             BINARY_POSITION => <BinarySM<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
             ARITH_POSITION => <ArithSM<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
             DMA_POSITION => <DmaManager<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator),
+            JUMP_DEST_POSITION => {
+                <JumpDestManager<F> as ComponentPlanBuilder<F>>::planner(is_asm_emulator)
+            }
             _ => panic!("planner_for_position: invalid builtin position {position}"),
         }
     }
@@ -122,6 +137,7 @@ impl<F: PrimeField64> BuiltinSMs<F> {
             Self::BinarySM(sm) => (**sm).configure_instances(pctx, plans),
             Self::ArithSM(sm) => (**sm).configure_instances(pctx, plans),
             Self::DmaManager(sm) => (**sm).configure_instances(pctx, plans),
+            Self::JumpDestManager(sm) => (**sm).configure_instances(pctx, plans),
         }
     }
 
@@ -133,6 +149,7 @@ impl<F: PrimeField64> BuiltinSMs<F> {
             Self::BinarySM(sm) => (**sm).build_instance(ictx),
             Self::ArithSM(sm) => (**sm).build_instance(ictx),
             Self::DmaManager(sm) => (**sm).build_instance(ictx),
+            Self::JumpDestManager(sm) => (**sm).build_instance(ictx),
         }
     }
 }

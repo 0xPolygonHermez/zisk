@@ -1,14 +1,13 @@
 {
   "Keccakf": {
-    "powBits": 23,
-    "lastLevelVerification": 1,
+    "powBits": 19,
     "hasCompressor": true
   },
   "VirtualTableZisk0": {
     "powBits": 20
   },
   "VirtualTableZisk1": {
-    "powBits": 20
+    "powBits": 23
   },
   "Rom": {
     "powBits": 20

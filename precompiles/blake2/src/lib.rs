@@ -1,6 +1,7 @@
 mod blake2;
 mod blake2_constants;
 mod blake2_mem_inputs;
+mod blake2_table;
 
 pub use blake2::*;
 pub use blake2_constants::*;

@@ -31,12 +31,19 @@ pub const FCALL_UINT256_INV_ID: u16 = 20;
 pub const FCALL_UINT256_INV_MOD_ID: u16 = 21;
 pub const FCALL_BIGINT_DIV_ID: u16 = 22;
 pub const FCALL_INPUT_READY_ID: u16 = 23;
+pub const FCALL_SET_KECCAKF_CACHE_INDEX_ID: u16 = 24;
+pub const FCALL_GET_KECCAKF_CACHE_INDEX_ID: u16 = 25;
+
+/// Returned by [`fcall_get_keccakf_cache_index`] when the executor has not cached the state.
+/// Reserved: it cannot be used as a cache index.
+pub const KECCAKF_CACHE_INDEX_NOT_FOUND: u64 = u64::MAX;
 
 mod bigint_div;
 mod bin_decomp;
 mod bls12_381;
 mod bn254;
 mod input;
+mod keccakf_cache;
 mod msb_pos_256;
 mod msb_pos_384;
 mod secp256k1;
@@ -48,6 +55,7 @@ pub use bin_decomp::*;
 pub use bls12_381::*;
 pub use bn254::*;
 pub use input::*;
+pub use keccakf_cache::*;
 pub use msb_pos_256::*;
 pub use msb_pos_384::*;
 pub use secp256k1::*;

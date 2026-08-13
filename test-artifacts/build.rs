@@ -36,6 +36,7 @@ const PROGRAMS: &[&str] = &[
     "fib_mod",
     "hashes",
     "keccak",
+    "keccakf_cache",
     "liveness",
     "missing_entrypoint",
     "panic_modes",

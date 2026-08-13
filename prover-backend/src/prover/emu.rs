@@ -121,6 +121,10 @@ impl ProverEngine for EmuProver {
         self.core_prover.rank_info.world_rank
     }
 
+    fn n_processes(&self) -> i32 {
+        self.core_prover.rank_info.n_processes
+    }
+
     fn local_rank(&self) -> i32 {
         self.core_prover.rank_info.local_rank
     }

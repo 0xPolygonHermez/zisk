@@ -44,6 +44,7 @@ zisk-precomp-arith-eq = { workspace = true }
 zisk-precomp-arith-eq-384 = { workspace = true }
 zisk-precomp-big-int = { workspace = true }
 zisk-precomp-dma = { workspace = true }
+zisk-precomp-evm = { workspace = true }
 
 zisk-sm-arith = { workspace = true }
 zisk-sm-binary = { workspace = true }

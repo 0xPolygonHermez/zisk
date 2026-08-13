@@ -256,18 +256,17 @@ impl ZiskEmulator {
 
     /// EXPAND phase
     /// Third phase of the witness computation
-    /// I have a
+    /// Replays a single minimal-trace chunk, publishing its operations on the data bus.
     pub fn process_emu_traces<F: PrimeField, T, DB: DataBusTrait<u64, T>>(
         rom: &ZiskRom,
-        min_traces: &[EmuTrace],
-        chunk_id: usize,
+        chunk: &EmuTrace,
         data_bus: &mut DB,
     ) {
         // Create a emulator instance with this rom
         let mut emu = Emu::new_with_memory_data(rom, false);
 
         // Run the emulation
-        emu.process_emu_traces(min_traces, chunk_id, data_bus);
+        emu.process_emu_traces(chunk, data_bus);
     }
 
     /// Finds all files in a directory and returns a vector with their full paths

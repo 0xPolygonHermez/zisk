@@ -5,7 +5,7 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use crate::{BinaryBasicFrops, BinaryExtensionFrops};
+use crate::{add_shape, extension_requires_full, AddShape, BinaryBasicFrops, BinaryExtensionFrops};
 use zisk_common::{BusDevice, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -14,16 +14,29 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 ///
 /// It tracks specific operations and types and updates differents counters for each
 /// accepted operation whenever data is processed on the bus.
+///
+/// The buckets are **disjoint**: every binary / binary-extension operation on the bus lands in
+/// exactly one of them, so their sum is the total number of operations. Each bucket corresponds to
+/// the air (or set of airs) able to prove that operation, which is what lets the planner size the
+/// instances — see [`crate::add_shape`] and [`crate::extension_requires_full`] for the split.
 #[derive(Default)]
 pub struct BinaryCounter {
-    /// Counter for binary add operations (only add, no addw)
+    /// Counter for binary add operations needing the full 64-bit add (only add, no addw).
+    /// Proven by `BinaryAdd`, or by `Binary` when no dedicated add air is used.
     pub counter_add: Counter,
+
+    /// Counter for add operations whose result fits in the low limb ([`AddShape::Hi`] and
+    /// [`AddShape::HiNeg`]). `BinaryAddHi` packs these, ADDS_X_ROW per row, in any of its slots.
+    pub counter_add_hi: Counter,
 
     /// Counter for basic binary operations, but not considering add operations
     pub counter_basic_wo_add: Counter,
 
-    /// Counter for binary extension operations
+    /// Counter for binary extension operations the reduced `BinaryExtension` air can prove.
     pub counter_extension: Counter,
+
+    /// Counter for binary extension operations that need the `BinaryExtensionFull` air.
+    pub counter_extension_full: Counter,
 }
 
 impl BinaryCounter {
@@ -78,10 +91,16 @@ impl Metrics for BinaryCounter {
             // Always read the OP index (assume well-formed trace)
             let op = data[OP];
             if op == ADD_CODE {
+                // Bucket the addition by operand shape, which decides whether the packed
+                // BinaryAddHi air can prove it.
+                let counter = match add_shape(data[A], data[B]) {
+                    AddShape::Hi | AddShape::HiNeg => &mut self.counter_add_hi,
+                    AddShape::Full => &mut self.counter_add,
+                };
                 if BinaryBasicFrops::is_frequent_op(ADD_CODE as u8, data[A], data[B]) {
-                    self.counter_add.update_frops(1);
+                    counter.update_frops(1);
                 } else {
-                    self.counter_add.update(1);
+                    counter.update(1);
                 }
             } else if BinaryBasicFrops::is_frequent_op(op as u8, data[A], data[B]) {
                 self.counter_basic_wo_add.update_frops(1);
@@ -89,10 +108,16 @@ impl Metrics for BinaryCounter {
                 self.counter_basic_wo_add.update(1);
             }
         } else if op_type == BINARY_E {
-            if BinaryExtensionFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {
-                self.counter_extension.update_frops(1);
+            // Operations whose unused operand parts are dirty can only be proven by the full air.
+            let counter = if extension_requires_full(data[OP] as u8, data[A], data[B]) {
+                &mut self.counter_extension_full
             } else {
-                self.counter_extension.update(1);
+                &mut self.counter_extension
+            };
+            if BinaryExtensionFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {
+                counter.update_frops(1);
+            } else {
+                counter.update(1);
             }
         }
     }

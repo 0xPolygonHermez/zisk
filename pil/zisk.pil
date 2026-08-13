@@ -4,6 +4,9 @@ require "operations.pil"
 require "opids.pil"
 require "config.pil"
 
+require "evm/pil/jump_dest.pil"
+require "evm/pil/jump_dest_compressor_table.pil"
+require "evm/pil/jump_dest_bitmap_table.pil"
 require "dma/pil/dual_range.pil"
 require "mem/pil/mem.pil"
 require "mem/pil/mem_align.pil"
@@ -15,6 +18,7 @@ require "frequent-ops/pil/frequent_ops.pil"
 require "binary/pil/binary.pil"
 require "binary/pil/binary_extension.pil"
 require "binary/pil/binary_add.pil"
+require "binary/pil/binary_add_hi.pil"
 require "arith/pil/arith.pil"
 require "big_int/pil/big_int_add.pil"
 require "arith_eq/pil/arith_eq.pil"
@@ -42,6 +46,7 @@ proofval enable_dma_64_aligned_mem;
 proofval enable_dma_64_aligned_memcpy;
 proofval enable_dma_64_aligned_memset;
 proofval enable_dma_unaligned;
+proofval enable_jump_dest;
 
 // Binary constraints to continuations enable proofvals
 enable_input_data * (1 - enable_input_data) === 0;
@@ -52,6 +57,7 @@ enable_dma_64_aligned_mem * (1 - enable_dma_64_aligned_mem) === 0;
 enable_dma_64_aligned_memcpy * (1 - enable_dma_64_aligned_memcpy) === 0;
 enable_dma_64_aligned_memset * (1 - enable_dma_64_aligned_memset) === 0; 
 enable_dma_unaligned * (1 - enable_dma_unaligned) === 0;
+enable_jump_dest * (1 - enable_jump_dest) === 0;
 
 const int PUBLIC_INPUTS_64_BITS = 32;  // 32 x 64 bits = 2048 bits
 public inputs[PUBLIC_INPUTS_64_BITS * 2]; // 2 x 32-bits = 64 bits
@@ -65,6 +71,7 @@ airgroup Zisk {
     set_range_check_tables_virtual();
     set_max_bits_virtual_tables(21);
     set_num_virtual_tables(2);
+    set_group_virtual_tables([ARITH_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, BINARY_EXTENSION_FROPS_TABLE_ID]);
 
     // Main Program
     Main(N: 2**22);
@@ -90,8 +97,12 @@ airgroup Zisk {
 
     Binary(N: 2**22);
     BinaryAdd(N: 2**22);
+    BinaryAddHi(N: 2**22);
+
+    BinaryExtension(N: 2**22, full: 0);
+    BinaryExtension(N: 2**22, full: 1) alias BinaryExtensionFull;    
+
     virtual BinaryTable();
-    BinaryExtension(N: 2**22);
     virtual BinaryExtensionTable();
 
     virtual FrequentOps(table_id: BINARY_FROPS_TABLE_ID, 
@@ -111,7 +122,7 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
-    Keccakf(N: 2**17);
+    Keccakf(N: 2**18);
     virtual KeccakfTable(KECCAKF_TABLE_SIZE);
 
     Sha256f(N: 2**18);
@@ -119,6 +130,7 @@ airgroup Zisk {
     Poseidon(N: 2**17);
 
     Blake2br(N: 2**18);
+    virtual Blake2brTable(BLAKE2BR_TABLE_SIZE);
 
     Dma();
     Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;
@@ -139,6 +151,12 @@ airgroup Zisk {
     virtual DmaByteCmpTable();
     virtual DmaRom();
     virtual DmaPrePostTable();
+
+    // EVM
+    virtual JumpDestCompressorTable();
+    virtual JumpDestBitmapTable();
+    JumpDest(N: 2**21, enable_flag: enable_jump_dest);
+
     virtual DualRange(id: DUAL_RANGE_7_BITS_ID, min1: 0, max1: P2_7-1, min2: 0, max2: P2_7-1) alias DualRange7Bits;
     virtual DualRange(id: DUAL_RANGE_BYTE_ID, min1: 0, max1: P2_8-1, min2: 0, max2: P2_8-1) alias DualByte;
 

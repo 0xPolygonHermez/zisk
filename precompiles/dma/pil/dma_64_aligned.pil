@@ -145,7 +145,10 @@ airtemplate Dma64Aligned(int N = 2**21,                   // Rows of instance
     airval is_last_segment;            // 1 if this is the last segment, 0 otherwise.
     is_last_segment * (1 - is_last_segment) === 0;
 
-    // the inputcpy or memset doesn't has source, they don't use it
+    // If this is the last segment, it must end the sequence (or be padding that uses the sequence end).
+    is_last_segment * (1 - segment_last_seq_end) === 0;
+
+    // inputcpy and memset don't have a source; they don't use it.
 
     if (has_src) {
         col witness bits(ADDR_W_BITS) air.src64;

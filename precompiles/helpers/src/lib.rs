@@ -4,6 +4,7 @@ mod big_int;
 mod blake2;
 mod common;
 mod dma;
+mod jump_dest;
 mod keccak;
 
 pub use arith_eq::*;
@@ -12,6 +13,7 @@ pub use big_int::*;
 pub use blake2::{blake2b_compress, blake2b_round};
 pub use common::*;
 pub use dma::*;
+pub use jump_dest::*;
 pub use keccak::{
     keccak_f, keccak_f_expr, keccak_f_round, keccakf_bit_pos, keccakf_state_flatten,
     keccakf_state_from_linear,

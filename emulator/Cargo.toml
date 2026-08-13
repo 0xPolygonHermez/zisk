@@ -18,6 +18,10 @@ path = "src/lib.rs"
 name = "ziskemu"
 path = "src/bin/ziskemu.rs"
 
+[[bin]]
+name = "report"
+path = "src/report/main.rs"
+
 [dependencies]
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
@@ -50,6 +54,11 @@ vergen-git2 = { workspace = true }
 
 [dev-dependencies]
 criterion = { workspace = true, features = ["html_reports"] }
+# Integration tests (tests/) can only see dev-dependencies, so the crates the
+# ELF-payload assertions need are repeated here.
+zisk-common = { workspace = true }
+zisk-core = { workspace = true }
+zisk-transpiler-common = { workspace = true }
 
 [[bench]]
 name = "benchmark"

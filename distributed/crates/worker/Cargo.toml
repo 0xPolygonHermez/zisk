@@ -19,6 +19,7 @@ path = "src/cli/main.rs"
 vergen-git2 = { workspace = true }
 
 [dependencies]
+bytes = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-cluster-api = { workspace = true }
 zisk-coordinator = { workspace = true }

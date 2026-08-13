@@ -10,13 +10,15 @@
 use std::sync::Arc;
 
 use crate::{
-    BinaryAddInstance, BinaryAddSM, BinaryBasicInstance, BinaryBasicSM, BinaryCounter,
-    BinaryExtensionInstance, BinaryExtensionSM, BinaryPlanner,
+    BinaryAddHiInstance, BinaryAddHiSM, BinaryAddInstance, BinaryAddSM, BinaryBasicInstance,
+    BinaryBasicSM, BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryPlanner,
 };
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner};
-use zisk_pil::{BinaryAddTrace, BinaryExtensionTrace, BinaryTrace};
+use zisk_pil::{
+    BinaryAddHiTrace, BinaryAddTrace, BinaryExtensionFullTrace, BinaryExtensionTrace, BinaryTrace,
+};
 
 /// The `BinarySM` struct represents the Binary State Machine,
 /// managing basic, extension and specific add binary operations.
@@ -30,6 +32,9 @@ pub struct BinarySM<F: PrimeField64> {
 
     /// Binary Add state machine (optimal only for addition)
     binary_add_sm: Arc<BinaryAddSM<F>>,
+
+    /// Binary Add Hi state machine (packs the additions that fit in the low 32-bit limb)
+    binary_add_hi_sm: Arc<BinaryAddHiSM<F>>,
 
     std: Arc<Std<F>>,
 }
@@ -49,7 +54,15 @@ impl<F: PrimeField64> BinarySM<F> {
 
         let binary_add_sm = BinaryAddSM::new(std.clone());
 
-        Arc::new(Self { binary_basic_sm, binary_extension_sm, binary_add_sm, std })
+        let binary_add_hi_sm = BinaryAddHiSM::new(std.clone());
+
+        Arc::new(Self {
+            binary_basic_sm,
+            binary_extension_sm,
+            binary_add_sm,
+            binary_add_hi_sm,
+            std,
+        })
     }
 }
 
@@ -80,14 +93,22 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
                 ictx,
                 self.std.clone(),
             )),
-            BinaryExtensionTrace::<()>::AIR_ID => Box::new(BinaryExtensionInstance::new(
-                self.binary_extension_sm.clone(),
-                ictx,
-                self.std.clone(),
-            )),
+            // Both extension airs share one instance type; it picks the row layout by air_id.
+            BinaryExtensionTrace::<()>::AIR_ID | BinaryExtensionFullTrace::<()>::AIR_ID => {
+                Box::new(BinaryExtensionInstance::new(
+                    self.binary_extension_sm.clone(),
+                    ictx,
+                    self.std.clone(),
+                ))
+            }
             BinaryAddTrace::<()>::AIR_ID => {
                 Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx, self.std.clone()))
             }
+            BinaryAddHiTrace::<()>::AIR_ID => Box::new(BinaryAddHiInstance::new(
+                self.binary_add_hi_sm.clone(),
+                ictx,
+                self.std.clone(),
+            )),
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }

@@ -20,6 +20,7 @@ categories = { workspace = true }
 [dependencies]
 zisk-zkvm-interface = { workspace = true }
 zisk-lib-c = { workspace = true }
+zisk-definitions = { workspace = true }
 
 num-bigint = { workspace = true }
 num-integer = { workspace = true }

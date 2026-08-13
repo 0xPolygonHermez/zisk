@@ -79,15 +79,18 @@ impl ProgramSetupCmd {
         let mpi_ctx = Arc::new(MpiCtx::new());
         let mut pctx = ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx, gpu)?;
 
+        // Empty preloaded-const-tree and table-air lists: this command only builds the setup,
+        // it never proves, so neither GPU layout knob applies.
         let sctx = Arc::new(SetupCtx::<Goldilocks>::new(
             &pctx.global_info,
             &ProofType::Basic,
             false,
             &[],
+            &[],
             gpu,
         )?);
         let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
-        init_gpu_setup(sctx.max_n_bits_ext as u64, gpu)?;
+        init_gpu_setup(gpu)?;
 
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1, 1)?;
         let pctx = Arc::new(pctx);

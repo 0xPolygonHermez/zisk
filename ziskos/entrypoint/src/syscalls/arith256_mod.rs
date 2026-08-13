@@ -45,7 +45,7 @@ pub extern "C" fn syscall_arith256_mod(
     {
         zisk_precomp_helpers::arith256_mod(params.a, params.b, params.c, params.module, params.d);
         #[cfg(feature = "hints")]
-        {
+        if zisk_definitions::ARITH256MOD_RESULTS {
             hints.extend_from_slice(params.d);
         }
     }

@@ -3845,6 +3845,73 @@ mod tests {
         );
     }
 
+    /// A worker whose setup failed has no artifacts for the program, and the
+    /// dispatcher selects purely on `Ready` — so it must never land there.
+    #[tokio::test]
+    async fn test_failed_setup_ack_does_not_mark_worker_ready() {
+        use std::collections::HashSet;
+
+        let config = test_config_with(|_| {});
+        let coordinator = Coordinator::new(config);
+
+        let w0 = WorkerId::from("w0".to_string());
+        let w1 = WorkerId::from("w1".to_string());
+        let (s0, _m0) = MockMessageSender::new();
+        let (s1, _m1) = MockMessageSender::new();
+        coordinator
+            .workers_pool
+            .register_worker(w0.clone(), 1u32, Box::new(s0), WorkerState::SettingUp)
+            .await
+            .unwrap();
+        coordinator
+            .workers_pool
+            .register_worker(w1.clone(), 1u32, Box::new(s1), WorkerState::SettingUp)
+            .await
+            .unwrap();
+
+        let setup_job = JobId::new();
+        let pending: HashSet<WorkerId> = [w0.clone(), w1.clone()].into_iter().collect();
+        coordinator.setup_pending.write().await.insert(
+            setup_job.clone(),
+            SetupPendingState {
+                pending,
+                vks: Vec::new(),
+                hash_id: "h".into(),
+                program_name: "p".into(),
+                with_hints: false,
+                emulator_only: false,
+            },
+        );
+        coordinator.alloc_job_events(&setup_job).await;
+
+        let ack = |worker_id: WorkerId, success: bool| zisk_cluster_common::SetupProgramAckDto {
+            job_id: setup_job.as_string(),
+            worker_id,
+            hash_id: "h".into(),
+            success,
+            error_message: (!success).then(|| "'make' failed with exit code: Some(2)".to_string()),
+            vk: if success { vec![1, 2, 3] } else { Vec::new() },
+            hash_mode: if success { "Poseidon1".into() } else { String::new() },
+        };
+
+        // w1's build failed — it must be parked out of the dispatchable pool.
+        coordinator.handle_stream_setup_program_ack(ack(w1.clone(), false)).await.unwrap();
+        assert_eq!(
+            coordinator.workers_pool.worker_state(&w1).await,
+            Some(WorkerState::Idle),
+            "a worker that failed setup must be parked Idle, never Ready"
+        );
+
+        // w0 succeeded — it is the only worker eligible for jobs.
+        coordinator.handle_stream_setup_program_ack(ack(w0.clone(), true)).await.unwrap();
+        assert_eq!(coordinator.workers_pool.worker_state(&w0).await, Some(WorkerState::Ready));
+        assert_ne!(
+            coordinator.workers_pool.worker_state(&w1).await,
+            Some(WorkerState::Ready),
+            "finalizing the setup must not promote the failed worker to Ready"
+        );
+    }
+
     #[tokio::test]
     async fn test_disconnect_mid_recurser_setup_finalizes_pending() {
         use std::collections::HashSet;

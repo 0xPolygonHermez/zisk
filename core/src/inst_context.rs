@@ -4,6 +4,8 @@
 //! * The state includes: memory, registers (a, b, c, flag, sp), program counter (pc), step and a
 //!   flag to mark the end of the program execution.
 
+use ziskos::zisklib::keccakf_cache::KeccakfCache;
+
 use crate::{
     Mem, FCALL_PARAMS_MAX_SIZE, FCALL_RESULT_MAX_SIZE, REGS_IN_MAIN_TOTAL_NUMBER, ROM_ENTRY,
 };
@@ -117,6 +119,10 @@ pub struct InstContext {
     /// Fcall data
     pub fcall: FcallInstContext,
 
+    /// Keccak-f input state -> index cache, fed by the keccakf cache fcalls. Lives as long as
+    /// this context, i.e. as long as the execution it belongs to
+    pub keccakf_cache: KeccakfCache,
+
     /// DataExt 64 bytes size. With this information it is possible to specify which variable part of the minimal trace
     /// is associated with the current instruction. Used by DMA precompile.
     pub data_ext_len: usize,
@@ -149,6 +155,7 @@ impl InstContext {
             emulation_mode: EmulationMode::default(),
             precompiled: PrecompiledInstContext::default(),
             fcall: FcallInstContext::default(),
+            keccakf_cache: KeccakfCache::default(),
             data_ext_len: 0,
             extended_arg: 0,
             stats_hint: 0,
