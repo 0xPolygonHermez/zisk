@@ -8,8 +8,8 @@ use crate::{
 use zisk_common::{BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OPERATION_BUS_ID};
 use zisk_core::zisk_ops::ZiskOp;
 
-use proofman_fields::PrimeField64;
 use pil2_std_lib::Std;
+use proofman_fields::PrimeField64;
 use std::sync::Arc;
 
 /// The `BinaryAddHiCollector` struct represents an input collector for packed add operations.

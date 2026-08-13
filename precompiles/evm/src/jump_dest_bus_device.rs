@@ -15,8 +15,8 @@
 
 use std::fmt;
 
-use zisk_precomp_common::{MemBusHelpers, MemProcessor};
 use std::ops::Add;
+use zisk_precomp_common::{MemBusHelpers, MemProcessor};
 
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Metrics, A, B, OP, OPERATION_BUS_ID,

@@ -8,8 +8,8 @@
 use clap::{Arg, Command};
 use std::error::Error;
 
-use proofman_fields::{Field, Goldilocks, PrimeField64};
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
+use proofman_fields::{Field, Goldilocks, PrimeField64};
 
 use zisk_precomp_helpers::{build_jump_dest_bitmap_table, JUMP_DEST_BITMAP_TABLE_ROWS};
 

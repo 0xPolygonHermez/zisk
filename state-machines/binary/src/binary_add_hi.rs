@@ -6,9 +6,9 @@
 //! limb and each slot carries its own `sel_b_hi_is_ff` selector.
 
 use crate::ADDS_X_ROW;
-use proofman_fields::PrimeField64;
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::sync::Arc;
 use zisk_pil::{BinaryAddHiAirValues, BinaryAddHiTrace, BinaryAddHiTraceRowOps};

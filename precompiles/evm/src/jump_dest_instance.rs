@@ -28,13 +28,9 @@
 
 use std::sync::Arc;
 
-use proofman_fields::PrimeField64;
 use pil2_std_lib::Std;
-use zisk_precomp_helpers::{
-    expand_jump_dest_ops, jd_compressor_row, JumpDestBitmapTableIndex, JumpDestOp,
-    JUMP_DEST_BITMAP_TABLE_ROWS, JUMP_DEST_COMPRESSOR_TABLE_ROWS,
-};
 use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, SegmentId,
     StatsType,
@@ -42,6 +38,10 @@ use zisk_common::{
 use zisk_pil::{
     JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JumpDestTraceRowOps,
     JumpDestTraceRowPacked, JUMP_DEST_BITMAP_TABLE_ID, JUMP_DEST_COMPRESSOR_TABLE_ID,
+};
+use zisk_precomp_helpers::{
+    expand_jump_dest_ops, jd_compressor_row, JumpDestBitmapTableIndex, JumpDestOp,
+    JUMP_DEST_BITMAP_TABLE_ROWS, JUMP_DEST_COMPRESSOR_TABLE_ROWS,
 };
 
 use crate::{
