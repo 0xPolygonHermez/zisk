@@ -1014,3 +1014,56 @@ pub fn bls12_381_verify_kzg_proof(
     };
     r == 1
 }
+
+/// EIP-198 modular exponentiation `base^exp mod modulus` over little-endian u64
+/// limb arrays, redirected to `zisklib_modexp_u64_c`. Handles arbitrary-precision
+/// operands (radix-2^256 with hint-verified division). Writes the result limbs to
+/// `result` (little-endian) and returns the number of u64 limbs written.
+///
+/// # Safety
+/// `base`/`exp`/`modulus` point to their respective `*_len` readable u64s; `result`
+/// must be writable for at least `modulus_len.next_multiple_of(4)` u64s.
+#[allow(clippy::too_many_arguments)]
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn ziskos_modexp_u64_c(
+    base: *const u64,
+    base_len: usize,
+    exp: *const u64,
+    exp_len: usize,
+    modulus: *const u64,
+    modulus_len: usize,
+    result: *mut u64,
+) -> usize {
+    let (base, base_len, exp, exp_len, modulus, modulus_len, result) =
+        black_box((base, base_len, exp, exp_len, modulus, modulus_len, result));
+    black_box(
+        (0x0BAD_E198_u64 as usize)
+            ^ base as usize
+            ^ base_len
+            ^ exp as usize
+            ^ exp_len
+            ^ modulus as usize
+            ^ modulus_len
+            ^ result as usize,
+    )
+}
+
+/// Ergonomic API over [`ziskos_modexp_u64_c`]: computes `base^exp mod modulus`
+/// where all operands are little-endian u64 limb slices. Writes the result limbs
+/// to `result` and returns the number of limbs written (edge cases and single-U256
+/// moduli return 4; larger moduli return `ceil(modulus_len/4) * 4`).
+pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]) -> usize {
+    // SAFETY: all slices are valid for their lengths; `result` holds the output.
+    unsafe {
+        ziskos_modexp_u64_c(
+            base.as_ptr(),
+            base.len(),
+            exp.as_ptr(),
+            exp.len(),
+            modulus.as_ptr(),
+            modulus.len(),
+            result.as_mut_ptr(),
+        )
+    }
+}

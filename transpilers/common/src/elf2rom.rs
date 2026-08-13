@@ -132,6 +132,15 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("bls12_381/hash", include_str!("../../../ziskasm/zisklib/bls12_381/hash.zisk")),
         ("bls12_381/verify", include_str!("../../../ziskasm/zisklib/bls12_381/verify.zisk")),
         ("bls12_381/kzg", include_str!("../../../ziskasm/zisklib/bls12_381/kzg.zisk")),
+        // bigint / modexp (EIP-198) — one file per ziskos bigint/*.rs source file.
+        ("bigint/common", include_str!("../../../ziskasm/zisklib/bigint/common.zisk")),
+        ("bigint/add_short", include_str!("../../../ziskasm/zisklib/bigint/add_short.zisk")),
+        ("bigint/add_agtb", include_str!("../../../ziskasm/zisklib/bigint/add_agtb.zisk")),
+        ("bigint/mul_short", include_str!("../../../ziskasm/zisklib/bigint/mul_short.zisk")),
+        ("bigint/mul_long", include_str!("../../../ziskasm/zisklib/bigint/mul_long.zisk")),
+        ("bigint/rem_short", include_str!("../../../ziskasm/zisklib/bigint/rem_short.zisk")),
+        ("bigint/rem_long", include_str!("../../../ziskasm/zisklib/bigint/rem_long.zisk")),
+        ("bigint/modexp", include_str!("../../../ziskasm/zisklib/bigint/modexp.zisk")),
         ("bls12_381/fr", include_str!("../../../ziskasm/zisklib/bls12_381/fr.zisk")),
     ];
     // (guest stub symbol, library function symbol)
@@ -164,6 +173,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_verify_kzg_proof_bls12_381", "zisklib_verify_kzg_proof_bls12_381"),
         ("read_input", "zisklib_read_input"),
         ("write_output", "zisklib_write_output"),
+        ("modexp_u64_c", "zisklib_modexp_u64_c"),
+        ("ziskos_modexp_u64_c", "zisklib_modexp_u64_c"),
     ];
 
     let library =

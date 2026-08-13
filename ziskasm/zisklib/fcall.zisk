@@ -30,6 +30,8 @@ pub define FCALL_BLS12_381_FP2_SQRT            13 ; hints sqrt in Fp2 (is_qr + s
 pub define FCALL_BLS12_381_TWIST_ADD_LINE_COEFFS 14 ; hints (λ,μ) of the G2 add line
 pub define FCALL_BLS12_381_TWIST_DBL_LINE_COEFFS 15 ; hints (λ,μ) of the G2 double line
 
+pub define FCALL_BIN_DECOMP              16 ; hints the MSB-first bit decomposition of a bigint
 pub define FCALL_MSB_POS_256             17 ; hints most-significant set-bit position
+pub define FCALL_BIGINT_DIV             22 ; hints quotient + remainder of an arbitrary-precision division
 
 pub define FCALL_INPUT_READY             23 ; asserts standard input is available at a given address
