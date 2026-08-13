@@ -122,7 +122,7 @@ zisk-sm-frequent-ops = { path = "state-machines/frequent-ops", version = "1.1.0-
 zisk-sm-mem-common = { path = "state-machines/mem-common", version = "1.1.0-alpha" }
 zisk-sm-mem-planner = { path = "state-machines/mem-cpp", version = "1.1.0-alpha" }
 zisk-sm-rom = { path = "state-machines/rom", version = "1.1.0-alpha" }
-zisk-test-artifacts = { path = "test-artifacts", version = "1.0.0" }
+zisk-test-artifacts = { path = "test-artifacts" }
 ziskclib = { path = "ziskclib", version = "1.1.0-alpha" }
 zisk-zkvm-interface = { path = "zkvm-interface", version = "1.1.0-alpha" }
 ziskos = { path = "ziskos/entrypoint", version = "1.1.0-alpha" }

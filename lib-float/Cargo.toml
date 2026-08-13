@@ -9,7 +9,6 @@ homepage = { workspace = true }
 repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
-publish = false
 
 build = "build.rs"
 
