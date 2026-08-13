@@ -15,7 +15,7 @@
 
 #![cfg(target_os = "linux")]
 
-use test_artifacts::ELF_KECCAKF_CACHE;
+use zisk_test_artifacts::ELF_KECCAKF_CACHE;
 use zisk_sdk::{EmbeddedClientBuilder, ZiskStdin};
 
 #[test]
