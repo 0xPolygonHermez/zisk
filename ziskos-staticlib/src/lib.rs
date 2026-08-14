@@ -65,7 +65,7 @@ macro_rules! wrap_export {
 
 #[cfg(zisk_guest)]
 mod exports {
-    use zkvm_interface::{
+    use zisk_zkvm_interface::{
         zkvm_blake2f_message, zkvm_blake2f_offset, zkvm_blake2f_state, zkvm_bls12_381_fp,
         zkvm_bls12_381_fp2, zkvm_bls12_381_g1_msm_pair, zkvm_bls12_381_g1_point,
         zkvm_bls12_381_g2_msm_pair, zkvm_bls12_381_g2_point, zkvm_bls12_381_pairing_pair,

@@ -5,9 +5,9 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 
-use sm_arith::ArithFrops;
-use sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_sm_arith::ArithFrops;
+use zisk_sm_binary::{BinaryBasicFrops, BinaryExtensionFrops};
 
 use crate::ingest::RECORD_SIZE;
 use crate::ops::classify;

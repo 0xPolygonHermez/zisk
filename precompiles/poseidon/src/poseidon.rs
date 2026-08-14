@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use fields::{
+use proofman_fields::{
     add, matmul_external, pow7, pow7add, prodadd, Poseidon1Constants, Poseidon1_16,
     Poseidon2Constants, Poseidon2_16, PrimeField64,
 };
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::{OperationPoseidonData, OP};

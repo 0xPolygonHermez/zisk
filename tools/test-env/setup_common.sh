@@ -16,7 +16,9 @@
 #   compute_input_hash   print sha256 of the cache-key inputs to stdout
 #
 # Variables this reads (defaulted if unset):
-#   SKIP_COMPILE_PIL     0|1 — when 1, generate_fixed_data is a no-op
+#   SKIP_COMPILE_PIL         0|1 — when 1, generate_fixed_data is a no-op
+#   ZISK_PROOFMAN_CACHE_DIR  where crates.io-mode pil2-proofman checkouts are
+#                            fetched (default ~/.zisk/pil2-proofman)
 
 : "${SKIP_COMPILE_PIL:=0}"
 
@@ -44,24 +46,90 @@ read_zisk_pil2_compiler_override() {
   printf '%s#%s\n' "$PIL2_COMPILER_REPO" "$branch"
 }
 
+PIL2_PROOFMAN_REPO="https://github.com/0xPolygonHermez/pil2-proofman.git"
+# Registry-mode checkouts land here, keyed by commit so versions never clash.
+: "${ZISK_PROOFMAN_CACHE_DIR:=$HOME/.zisk/pil2-proofman}"
+
+# Whether $1 is a pil2-proofman checkout root: it must carry the two things the
+# setup needs beyond the Rust crates — the pil2-stark package.json (pil2-compiler
+# version) and the std PIL library (compile-pil's include path).
+is_proofman_checkout() {
+  [ -f "$1/setup/pil2-stark/package.json" ] && [ -d "$1/pil2-components/lib/std/pil" ]
+}
+
+# Fetch the checkout a crates.io dependency was published from and print its
+# root: the setup needs repo content no crate packages (the std PIL library, and
+# proofman-cli, whose crate is `publish = false`). The commit isn't guessed —
+# cargo records it in each crate's .cargo_vcs_info.json, so the checkout matches
+# the compiled code exactly.
+#
+# $1 = the crate's registry directory, $2 = repository URL from cargo metadata.
+fetch_proofman_checkout() {
+  local crate_dir="$1" repo="$2"
+  local vcs="$crate_dir/.cargo_vcs_info.json"
+  local sha dir tmp
+
+  if [ ! -f "$vcs" ]; then
+    echo "no .cargo_vcs_info.json in $crate_dir — that crate was published without git info, so the matching pil2-proofman commit is unknown" >&2
+    return 1
+  fi
+  sha="$(jq -r '.git.sha1 // empty' "$vcs")"
+  [ -n "$sha" ] || { echo "no git.sha1 in $vcs" >&2; return 1; }
+  case "$repo" in ""|null) repo="$PIL2_PROOFMAN_REPO" ;; esac
+
+  dir="$ZISK_PROOFMAN_CACHE_DIR/$sha"
+  # Written last, so an interrupted fetch is never reused. Lives under .git/ to
+  # stay out of the worktree, which compute_input_hash scans for dirty state.
+  if [ -f "$dir/.git/zisk_fetch_ok" ]; then
+    printf '%s\n' "$dir"
+    return 0
+  fi
+
+  echo "==> fetching pil2-proofman $sha (the commit the crates.io deps were published from)" >&2
+  mkdir -p "$ZISK_PROOFMAN_CACHE_DIR"
+  rm -rf "$dir"
+  tmp="$(mktemp -d "$ZISK_PROOFMAN_CACHE_DIR/.tmp.XXXXXX")"
+  (
+    set -e
+    git init -q "$tmp"
+    git -C "$tmp" remote add origin "$repo"
+    # GitHub serves reachable SHAs directly, so the common path stays shallow.
+    # Fall back to a full fetch on servers that refuse a by-SHA request.
+    git -C "$tmp" fetch -q --depth 1 origin "$sha" || git -C "$tmp" fetch -q origin
+    git -C "$tmp" checkout -q --detach "$sha"
+  ) >&2 || { rm -rf "$tmp"; echo "failed to fetch pil2-proofman $sha from $repo" >&2; return 1; }
+  touch "$tmp/.git/zisk_fetch_ok"
+
+  # Publish under the final name. A racing job's tree is identical, so keep it
+  # and drop ours (plain `mv` onto an existing dir would nest, hence the check).
+  if [ -d "$dir" ]; then rm -rf "$tmp"; else mv "$tmp" "$dir"; fi
+  printf '%s\n' "$dir"
+}
+
 # Resolve the pil2-proofman checkout — always whatever cargo actually compiled
 # into cargo-zisk, so this script can never drift from the build. `cargo metadata`
-# reports proofman's on-disk manifest_path regardless of how it's depended on:
-#   - git dep  => ~/.cargo/git/checkouts/pil2-proofman-<hash>/<short-sha>/proofman
-#   - path dep => the local checkout, e.g. ../pil2-proofman/proofman
-# That points at the `proofman` crate subdir; the checkout root (one level up)
-# is what holds package.json and pil2-components, so strip the crate segment.
+# reports proofman's manifest_path and source however it's depended on:
+#   - path/git dep => <checkout>/proofman/Cargo.toml, so the root is one level up
+#     (that's what holds package.json and pil2-components)
+#   - registry dep => that one crate and no checkout, so fetch its source commit
 resolve_proofman_dir() {
   cargo fetch >&2
-  local manifest root
-  manifest="$(cargo metadata --format-version 1 2>/dev/null \
-    | jq -r '.packages[] | select(.name=="proofman") | .manifest_path')"
+  local meta manifest source repo root
+  meta="$(cargo metadata --format-version 1 2>/dev/null)"
+  manifest="$(printf '%s' "$meta" | jq -r '.packages[] | select(.name=="proofman") | .manifest_path')"
   if [ -z "$manifest" ] || [ "$manifest" = "null" ]; then
     echo "cargo metadata did not report a 'proofman' package — is it in the dependency tree?" >&2
     return 1
   fi
-  root="$(cd "${manifest%/Cargo.toml}/.." && pwd)"
-  if [ -f "$root/package.json" ] && [ -d "$root/pil2-components/lib/std/pil" ]; then
+  source="$(printf '%s' "$meta" | jq -r '.packages[] | select(.name=="proofman") | .source')"
+  repo="$(printf '%s' "$meta" | jq -r '.packages[] | select(.name=="proofman") | .repository')"
+
+  case "$source" in
+    registry+*) root="$(fetch_proofman_checkout "${manifest%/Cargo.toml}" "$repo")" || return 1 ;;
+    *)          root="$(cd "${manifest%/Cargo.toml}/.." && pwd)" ;;
+  esac
+
+  if is_proofman_checkout "$root"; then
     printf '%s\n' "$root"
     return 0
   fi
@@ -89,10 +157,10 @@ generate_fixed_data() {
     return
   fi
   echo "==> generating fixed data"
-  cargo run --release --bin arith_frops_fixed_gen
-  cargo run --release --bin binary_basic_frops_fixed_gen
-  cargo run --release --bin binary_extension_frops_fixed_gen
-  cargo run --release --bin jump_dest_bitmap_table_gen
+  cargo run --release --bin zisk-arith-frops-fixed-gen
+  cargo run --release --bin zisk-binary-basic-frops-fixed-gen
+  cargo run --release --bin zisk-binary-extension-frops-fixed-gen
+  cargo run --release --bin jump-dest-bitmap-table-gen
 }
 
 compute_input_hash() (
@@ -126,9 +194,9 @@ compute_input_hash() (
   if [ -n "$pil2_compiler_override" ]; then
     pil2_compiler_version="$pil2_compiler_override"
   else
-    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
+    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/setup/pil2-stark/package.json" | head -n1)"
     [ -n "$pil2_compiler_version" ] || \
-      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/setup/pil2-stark/package.json" >&2; exit 1; }
   fi
 
   # pil2-stark-setup is a transitive dep, not a workspace member. Key it by the

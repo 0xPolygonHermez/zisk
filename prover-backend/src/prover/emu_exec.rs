@@ -7,14 +7,14 @@
 //! executions.
 
 use anyhow::{Context, Result};
-use executor::ZiskExecutor;
-use fields::Goldilocks;
 use proofman_common::VerboseMode;
-use riscv2zisk::Riscv2zisk;
+use proofman_fields::Goldilocks;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
 use zisk_core::ZiskRom;
+use zisk_executor::ZiskExecutor;
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;

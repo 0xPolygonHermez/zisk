@@ -5,9 +5,9 @@
 //! execution plans.
 
 use crate::{BinaryAddCollector, BinaryAddSM, ChunkCollect, ADD_KINDS};
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::{collections::HashMap, sync::Arc};
 use zisk_common::StatsType;
 use zisk_common::{

@@ -19,20 +19,21 @@ use crate::{
     ExecutionPhase, ExecutionState, InstanceAssigner, NoopProofRegistry, PlanPhase,
     ProofmanAdapter, StaticSMBundle, WitnessPhase,
 };
-use fields::PrimeField64;
 use proofman_common::{lease_pool, BufferPool, ProofCtx, ProofmanError, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use sm_main::{MainPlanner, MainSM};
+use proofman_witness::{WitnessComponent, WitnessManager};
+
 use std::{
     sync::{Arc, RwLock},
     time::Instant,
 };
-use witness::{WitnessComponent, WitnessManager};
 use zisk_common::{
     io::ZiskStdin, stats_begin, stats_end, AirInstanceCount, BusDeviceMetrics, ChunkId, EmuTrace,
     ExecutorStatsHandle, Plan, ZiskExecutorSummary, ZiskExecutorTime,
 };
 use zisk_core::{ZiskRom, CHUNK_SIZE};
+use zisk_sm_main::{MainPlanner, MainSM};
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 
@@ -111,7 +112,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         let rank_info = wcm.get_rank_info();
         proofman_common::initialize_logger(verbose_mode, Some(&rank_info));
 
-        let std = pil_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
+        let std = pil2_std_lib::Std::new(wcm.get_pctx(), wcm.get_sctx(), shared_tables)?;
         proofman::register_std(wcm, &std);
 
         let precompiles = crate::Precompiles::all(std.clone());
@@ -618,7 +619,6 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sm_main::MainPlanner;
     use zisk_pil::MainTrace;
 
     /// `n` distinct chunks — `steps` is used only as an identity marker here.

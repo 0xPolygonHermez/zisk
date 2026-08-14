@@ -28,13 +28,9 @@
 
 use std::sync::Arc;
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
-use precompiles_helpers::{
-    expand_jump_dest_ops, jd_compressor_row, JumpDestBitmapTableIndex, JumpDestOp,
-    JUMP_DEST_BITMAP_TABLE_ROWS, JUMP_DEST_COMPRESSOR_TABLE_ROWS,
-};
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, SegmentId,
     StatsType,
@@ -42,6 +38,10 @@ use zisk_common::{
 use zisk_pil::{
     JumpDestAirValues, JumpDestTrace, JumpDestTraceRow, JumpDestTraceRowOps,
     JumpDestTraceRowPacked, JUMP_DEST_BITMAP_TABLE_ID, JUMP_DEST_COMPRESSOR_TABLE_ID,
+};
+use zisk_precomp_helpers::{
+    expand_jump_dest_ops, jd_compressor_row, JumpDestBitmapTableIndex, JumpDestOp,
+    JUMP_DEST_BITMAP_TABLE_ROWS, JUMP_DEST_COMPRESSOR_TABLE_ROWS,
 };
 
 use crate::{
@@ -502,8 +502,8 @@ impl<F: PrimeField64> Instance<F> for JumpDestInstance<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
-    use precompiles_helpers::{bitmap_words, src_words};
+    use proofman_fields::Goldilocks;
+    use zisk_precomp_helpers::{bitmap_words, src_words};
 
     type F = Goldilocks;
 

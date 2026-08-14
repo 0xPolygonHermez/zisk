@@ -4,9 +4,9 @@ use std::{os::raw::c_void, sync::Arc};
 use crate::*;
 
 #[cfg(feature = "save_mem_plans")]
-use mem_common::save_plans;
-use mem_common::MEM_OFFSETS_PAGE_SIZE;
-use mem_common::{
+use zisk_sm_mem_common::save_plans;
+use zisk_sm_mem_common::MEM_OFFSETS_PAGE_SIZE;
+use zisk_sm_mem_common::{
     MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
 };
 

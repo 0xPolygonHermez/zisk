@@ -15,15 +15,15 @@ use crate::{
     AsmService, AsmServices, GpuBufferSource,
 };
 #[cfg(gpu)]
-use mem_planner_cpp::GpuCountAndPlan;
-use mem_planner_cpp::MemPlanner;
-#[cfg(gpu)]
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
+#[cfg(gpu)]
+use zisk_sm_mem_planner::GpuCountAndPlan;
+use zisk_sm_mem_planner::MemPlanner;
 
 use anyhow::{Context, Result};
 
 #[cfg(feature = "save_mem_plans")]
-use mem_common::save_plans;
+use zisk_sm_mem_common::save_plans;
 
 // ASYNC-DMA SAFETY INVARIANT: the GPU issues async H2D copies straight from this
 // shmem region, so the source must stay immutable until `run()` drains the streams.

@@ -11,10 +11,9 @@
 use std::any::Any;
 use std::sync::Arc;
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
-use precompiles_common::{MemProcessor, PrecompileMemInputs};
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, BusDeviceMode, BusId, CheckPoint, ChunkId, CollectCounter,
     ComponentBuilder, ComponentPlanBuilder, ExtOperationData, Instance, InstanceCtx, InstanceType,
@@ -23,6 +22,7 @@ use zisk_common::{
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ZISK_AIRGROUP_ID;
+use zisk_precomp_common::{MemProcessor, PrecompileMemInputs};
 
 use crate::{
     air_metas, arith_eq_air_ids, plan_air_strategy, Arith256Input, Arith256ModInput, ArithEqInput,

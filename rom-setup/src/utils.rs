@@ -1,13 +1,13 @@
 use anyhow::{Context, Result};
-use fields::{Goldilocks, PrimeField64};
 use proofman_common::{write_custom_commit_trace, ProofCtx, ProofmanError, ProofmanResult};
-use sm_rom::CustomRom;
+use proofman_fields::{Goldilocks, PrimeField64};
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use zisk_common::{ZiskPaths, PROGRAM_VK_LEN};
 use zisk_pil::{RomRomTrace, PILOUT_HASH};
+use zisk_sm_rom::CustomRom;
 
 pub use zisk_common::HashMode;
 

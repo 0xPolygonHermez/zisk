@@ -1,10 +1,13 @@
 [package]
-name = "riscv"
+name = "zisk-riscv"
+description = "RISC-V instruction structures and parser for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
@@ -12,11 +15,11 @@ zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-float = ["dep:lib-float", "lib-float/float"]
+float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
 zba = []
 zbc = []
 zbkc = []

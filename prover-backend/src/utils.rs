@@ -1,4 +1,4 @@
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -10,7 +10,7 @@ use proofman_common::{
     initialize_logger, json_to_debug_instances_map, DebugInfo, ProofCtx, ProofmanResult,
     VerboseMode,
 };
-use rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup, HashMode};
+use zisk_rom_setup::{get_elf_data_hash, get_rom_path, rom_merkle_setup, HashMode};
 
 fn hash_mode_from_pctx<F: PrimeField64>(pctx: &ProofCtx<F>) -> Result<HashMode> {
     HashMode::from_str(&pctx.global_info.hash).with_context(|| {

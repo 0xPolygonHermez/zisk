@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 zisk-sdk = { workspace = true }
-test-artifacts = { workspace = true, features = ["big_input"] }
+zisk-test-artifacts = { workspace = true, features = ["big_input"] }
 
 [build-dependencies]
 zisk-sdk = { workspace = true }

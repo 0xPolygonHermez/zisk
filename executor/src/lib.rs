@@ -16,10 +16,10 @@ mod state;
 mod witness;
 
 // External API
-pub use asm_runner::GpuBufferSource;
 pub use execution::asm::{AsmResources, AsmSharedResources, EmulatorAsm}; // (Linux x86_64) / stub elsewhere
 pub use executor::*; // ZiskExecutor
-pub use witness::AirClassifier; // AIR id → display name (used to label remote execution plans)
+pub use witness::AirClassifier;
+pub use zisk_asm_runner::GpuBufferSource; // AIR id → display name (used to label remote execution plans)
 
 pub(crate) use adapters::*;
 pub(crate) use bus::*;

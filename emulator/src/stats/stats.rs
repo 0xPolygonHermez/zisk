@@ -5,12 +5,7 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
-use fields::Goldilocks;
-use riscv::RiscVRegisters;
-use sm_arith::{ArithFrops, ArithLegacyFrops};
-use sm_binary::{
-    BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
-};
+use proofman_fields::Goldilocks;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs::File,
@@ -22,6 +17,11 @@ use zisk_core::{
     ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
 };
 use zisk_pil::RomRomTrace;
+use zisk_riscv::RiscVRegisters;
+use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
+use zisk_sm_binary::{
+    BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
+};
 
 use zisk_definitions::{
     PROFILE_END_COST_ID, PROFILE_END_STEPS_ID, PROFILE_REPORT_END_COST_ID,

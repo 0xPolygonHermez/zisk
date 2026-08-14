@@ -1,20 +1,21 @@
 [package]
-name = "mem-planner-cpp"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-keywords.workspace = true
-repository.workspace = true
-categories.workspace = true
-
+name = "zisk-sm-mem-planner"
+description = "C++-backed memory access planner for the ZisK zkVM"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
 build = "build.rs"
 
 [dependencies]
 zisk-common = { workspace = true }
-mem-common = { workspace = true }
+zisk-sm-mem-common = { workspace = true }
 zisk-pil = { workspace = true }
 
-proofman-common = { workspace = true }
 proofman-util = { workspace = true }
 tracing = { workspace = true }
 

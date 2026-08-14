@@ -1,4 +1,4 @@
-use precompiles_helpers::{
+use zisk_precomp_helpers::{
     bitmap_words, push_read_run, src_words, walk_jump_dest_bitmap, BYTES_PER_WORD,
 };
 

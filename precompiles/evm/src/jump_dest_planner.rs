@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use zisk_common::{
     plan, BusDeviceMetrics, ChunkId, CollectSkipper, InstCount, InstanceType, Metrics, Plan,
     Planner, SegmentId,

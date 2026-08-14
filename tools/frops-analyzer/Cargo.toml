@@ -1,10 +1,13 @@
 [package]
-name = "frops-analyzer"
+name = "zisk-frops-analyzer"
+description = "FROPS analyzer for ZisK state machines"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
@@ -13,8 +16,8 @@ path = "src/main.rs"
 
 [dependencies]
 zisk-core = { workspace = true }
-sm-arith = { workspace = true }
-sm-binary = { workspace = true }
+zisk-sm-arith = { workspace = true }
+zisk-sm-binary = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

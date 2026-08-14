@@ -3,7 +3,7 @@ ziskos::entrypoint!(main);
 
 use rand::Rng;
 
-use precompiles_helpers::blake2b_round;
+use zisk_precomp_helpers::blake2b_round;
 use ziskos::syscalls::{syscall_blake2b_round, SyscallBlake2bRoundParams};
 
 const ACTIVATE_CONSISTENCY_TEST: bool = false;

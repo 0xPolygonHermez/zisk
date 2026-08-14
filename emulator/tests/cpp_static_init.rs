@@ -13,8 +13,10 @@
 //! script live in `elf-regressions/cpp_static_init/` — after changing them, run
 //! `elf-regressions/cpp_static_init/build.sh` and update `EXPECTED` below.
 
-use transpilers_common::elf_extraction::{collect_elf_payload_from_bytes, validate_entry_point};
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_SIZE};
+use zisk_transpiler_common::elf_extraction::{
+    collect_elf_payload_from_bytes, validate_entry_point,
+};
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 const ELF_PATH: &str =

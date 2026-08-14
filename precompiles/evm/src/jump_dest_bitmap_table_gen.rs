@@ -8,10 +8,10 @@
 use clap::{Arg, Command};
 use std::error::Error;
 
-use fields::{Field, Goldilocks, PrimeField64};
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
+use proofman_fields::{Field, Goldilocks, PrimeField64};
 
-use precompiles_helpers::{build_jump_dest_bitmap_table, JUMP_DEST_BITMAP_TABLE_ROWS};
+use zisk_precomp_helpers::{build_jump_dest_bitmap_table, JUMP_DEST_BITMAP_TABLE_ROWS};
 
 type F = Goldilocks;
 
@@ -20,7 +20,7 @@ const AIR_NAME: &str = "JumpDestBitmapTable";
 const DEFAULT_FILE: &str = "precompiles/evm/src/jump_dest_bitmap_table_fixed.bin";
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let matches = Command::new("jump_dest_bitmap_table_gen")
+    let matches = Command::new("jump-dest-bitmap-table-gen")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
             Arg::new("output")

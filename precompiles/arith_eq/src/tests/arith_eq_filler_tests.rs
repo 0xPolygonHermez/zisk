@@ -9,7 +9,7 @@
 //! is what guarantees the plans actually collect them exactly once.
 
 use super::*;
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 use std::collections::BTreeMap;
 use zisk_pil::{Arith256Trace, ArithEqTrace, ArithSecp256K1Trace};
 

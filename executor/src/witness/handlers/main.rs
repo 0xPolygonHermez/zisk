@@ -1,7 +1,7 @@
 //! Handlers for computing witnesses for Main SM instances.
 
-use fields::PrimeField64;
 use proofman_common::BufferPool;
+use proofman_fields::PrimeField64;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ExecutionState, WitnessGenerator};

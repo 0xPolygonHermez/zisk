@@ -1,11 +1,11 @@
 use anyhow::Result;
-use executor::{AirClassifier, PlanSummaryEntry};
 use std::path::Path;
 use std::time::Duration;
 use zisk_common::{
     ProgramVK, PublicValues, StatsCostPerType, ZiskExecutorSummary, ZiskExecutorTime,
     ZiskVerifyBuilder, ZISK_PUBLICS,
 };
+use zisk_executor::{AirClassifier, PlanSummaryEntry};
 
 pub use zisk_common::Proof;
 

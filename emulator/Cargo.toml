@@ -1,10 +1,13 @@
 [package]
 name = "ziskemu"
+description = "RISC-V emulator that executes ZisK program ROMs and generates execution traces"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [lib]
@@ -23,17 +26,15 @@ path = "src/report/main.rs"
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-riscv = { workspace = true }
-riscv2zisk = { workspace = true }
-transpilers-common = { workspace = true }
-data-bus = { workspace = true }
+zisk-riscv = { workspace = true }
+zisk-transpiler-riscv = { workspace = true }
 rayon = { workspace = true }
-mem-common = { workspace = true }
-sm-arith = { workspace = true }
-sm-binary = { workspace = true }
+zisk-sm-mem-common = { workspace = true }
+zisk-sm-arith = { workspace = true }
+zisk-sm-binary = { workspace = true }
 zisk-definitions = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 clap = { workspace = true }
 sysinfo = { workspace = true }
 serde_json = { workspace = true }
@@ -42,7 +43,7 @@ object = "0.37.3"
 memmap2 = "0.9.8"
 num-format = "0.4"
 symbolic-demangle = { version = "12.16", features = ["rust", "cpp"] }
-regex = "1.11.1"
+regex = { workspace = true }
 
 # Not used directly; pins the transitive `time` to =0.3.47 (workspace dep) to
 # avoid the rcgen 0.14.x E0119 coherence bug triggered by time 0.3.48.
@@ -52,12 +53,12 @@ time = { workspace = true }
 vergen-git2 = { workspace = true }
 
 [dev-dependencies]
-criterion = { version = "0.5.1", features = ["html_reports"] }
+criterion = { workspace = true, features = ["html_reports"] }
 # Integration tests (tests/) can only see dev-dependencies, so the crates the
 # ELF-payload assertions need are repeated here.
 zisk-common = { workspace = true }
 zisk-core = { workspace = true }
-transpilers-common = { workspace = true }
+zisk-transpiler-common = { workspace = true }
 
 [[bench]]
 name = "benchmark"
