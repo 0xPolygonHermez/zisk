@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Shared helpers for setup_build.sh. Sourced, not executed.
+# Shared helpers for setup_build.sh and build_dylib.sh. Sourced, not executed.
 #
 # Caller responsibilities before sourcing:
 #   - set ROOT_DIR to the zisk repo root and cd there
