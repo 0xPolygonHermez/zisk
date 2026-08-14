@@ -155,7 +155,7 @@ jobs:
     needs: build-setup
     if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
     runs-on: macos-14
-    timeout-minutes: 180
+    timeout-minutes: 240
     defaults:
       run:
         shell: bash

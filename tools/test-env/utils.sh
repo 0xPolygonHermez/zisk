@@ -340,17 +340,19 @@ patch_cargo_dep() {
     local crate_re
     crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
 
-    # Only a git dependency is repointed. When the crate comes from crates.io
-    # (`= "1.2"` or `= { version = ... }`) that published version is what the test
-    # is meant to build against, so leave it alone. Matching the git line commented
-    # or not keeps a rerun (already patched) on the patching path.
-    if ! grep -qE "^#?[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}"; then
-        if grep -qE "^[[:space:]]*${crate_re}[[:space:]]*=" "${cargo_toml}"; then
-            info "'${crate}' is not a git dependency in ${cargo_toml}: leaving it unchanged"
-            return 0
-        fi
-        err "No '${crate}' dependency found in ${cargo_toml}"
+    # Only an active git dependency is repointed. Templates keep the alternatives
+    # (git / local path) commented out next to the live one, so the decision has to
+    # come from the uncommented line: a crates.io version is the published dep the
+    # test is meant to build against, and a path is already patched. Both no-ops.
+    local orig_line
+    orig_line=$(grep -m1 -E "^[[:space:]]*${crate_re}[[:space:]]*=" "${cargo_toml}" || true)
+    if [[ -z "${orig_line}" ]]; then
+        err "No active '${crate}' dependency found in ${cargo_toml}"
         return 1
+    fi
+    if ! printf '%s' "${orig_line}" | grep -qE "=[[:space:]]*[{][[:space:]]*git"; then
+        info "'${crate}' is not an active git dependency in ${cargo_toml} (${orig_line}): leaving it unchanged"
+        return 0
     fi
 
     if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
@@ -358,12 +360,10 @@ patch_cargo_dep() {
         return 1
     fi
 
-    # Carry over `default-features` / `features`; dropping them rebuilds the dep
-    # with default features only (e.g. `input` loses `cli`, so `Client` stops
-    # deriving clap's ValueEnum). Matches the git line commented or not, so a
-    # rerun rebuilds the same path line and stays idempotent.
-    local extra_opts="" orig_line opt frag
-    orig_line=$(grep -m1 -E "^#?[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}" || true)
+    # Carry over `default-features` / `features` from the git line; dropping them
+    # rebuilds the dep with default features only (e.g. `input` loses `cli`, so
+    # `Client` stops deriving clap's ValueEnum).
+    local extra_opts="" opt frag
     for opt in 'default-features[[:space:]]*=[[:space:]]*(true|false)' \
                'features[[:space:]]*=[[:space:]]*\[[^]]*\]'; do
         frag=$(printf '%s' "${orig_line}" | grep -oE "${opt}" | head -n1 || true)
@@ -375,7 +375,6 @@ patch_cargo_dep() {
     # Comment out the git dependency line and add a local path entry right below it, in a
     # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
     # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
-    # Idempotent: on reruns the git line is already commented, so it no longer matches.
     # Expand SED_PARAMS defensively: `${SED_PARAMS[@]+"${SED_PARAMS[@]}"}` yields
     # nothing (instead of erroring) when it is unset, so the function is safe under
     # `set -u`. The fallback below then fills in GNU/BSD defaults.
