@@ -7,9 +7,11 @@
 pub mod assembler;
 pub mod parser;
 pub mod utils;
+pub mod zisklib;
 
 pub use assembler::{
     assemble, assemble_files, assemble_files_with_defines, assemble_files_with_symbols,
     assemble_library, assemble_library_files, assemble_library_sources, ZiskLibrary,
 };
 pub use utils::collect_zisk_files;
+pub use zisklib::{assemble_zisk_library, ZISK_LIBRARY};
