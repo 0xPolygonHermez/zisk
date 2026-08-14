@@ -31,6 +31,10 @@ pub(crate) struct ZiskProofmanSetupStats {
     #[arg(short = 'm', long)]
     impols: bool,
 
+    /// Hash family (tree/transcript geometry), as in proofman-setup
+    #[arg(long, default_value = "Poseidon1", value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
+    hash: String,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -42,6 +46,7 @@ impl ZiskProofmanSetupStats {
 
         let opts = StatsOptions {
             airout_path: self.airout.clone(),
+            hash: self.hash.clone(),
             output_path: self.output.clone(),
             stark_structs_path: self.starkstructs.clone(),
             airgroups: self.airgroups.clone(),

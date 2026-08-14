@@ -93,7 +93,7 @@ impl ProgramSetupCmd {
             gpu,
         )?);
         let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
-        init_gpu_setup(gpu)?;
+        init_gpu_setup(&pctx.global_info.hash, gpu)?;
 
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1, 1)?;
         let pctx = Arc::new(pctx);
