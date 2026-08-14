@@ -4374,9 +4374,9 @@ dependencies = [
 
 [[package]]
 name = "proofman-starks-src"
-version = "1.1.0-alpha"
+version = "1.1.0-alpha.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5e9ece1a1280b06ee53e750538cb8f1de16d0c91099432b81a08163a1ec75cc"
+checksum = "6f652a3899833633da4829ee714b7d8ecdece399929bfd6673a471ecf0ce3227"
 
 [[package]]
 name = "proofman-util"
