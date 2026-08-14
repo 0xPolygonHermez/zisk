@@ -11,6 +11,12 @@
 #   VERSION         zisk version from Cargo.toml
 #   INCLUDE_PATHS   --include arg for compile-pil
 #
+# Variables this exports (read by the setup binaries, not by callers):
+#   CIRCOM_HELPERS_DIR, FINAL_SNARK_CIRCOM_HELPERS_DIR, CIRCUITS_GL_PATH,
+#   CIRCUITS_BN128_PATH, RECURSER_CIRCUITS_PATH,
+#   RECURSER_CIRCUITS_COMPRESSED_FINAL_PATH, RECURSER_PIL_PATH, STD_PIL_PATH,
+#   GOLDILOCKS_SRC_DIR — all under $PROOFMAN_DIR. See export_proofman_paths.
+#
 # Functions this defines:
 #   generate_fixed_data  cargo-run the fixed-column generators (honors SKIP_COMPILE_PIL)
 #   compute_input_hash   print sha256 of the cache-key inputs to stdout
@@ -139,6 +145,78 @@ resolve_proofman_dir() {
 
 PROOFMAN_DIR="$(resolve_proofman_dir)" || exit 1
 echo "proofman dir: $PROOFMAN_DIR" >&2
+
+# Point the setup binaries at the repo content they need (the circom binary, the
+# recurser circuits/PIL, the std PIL library, the goldilocks headers). Each has a
+# compile-time-baked default of <CARGO_MANIFEST_DIR>/../.., which is the proofman
+# repo root only while proofman is a git/path dep. For a crates.io dep it lands in
+# ~/.cargo/registry/src, where none of it exists — cargo cannot package files
+# outside a crate directory, and these all sit outside setup/pil2-stark. Exporting
+# them from the resolved checkout makes both dependency modes behave identically.
+#
+# Fatal, not best-effort: PROOFMAN_DIR already passed is_proofman_checkout, so a
+# missing path here means the checkout is broken and nothing downstream can work.
+# The binaries would still "resolve" it — resolve_path_env returns an env value
+# verbatim without an existence check, and resolve_circom_exec silently falls back
+# to a bare `circom` on PATH — turning this into an ENOENT tens of minutes deep
+# into the setup instead of here.
+export_proofman_paths() {
+  local cv="$PROOFMAN_DIR/setup/stark-recurser/stark2circom/circom_verifier"
+  local entry var path missing=0
+
+  # var:path-under-checkout. RECURSER_CIRCUITS_COMPRESSED_FINAL_PATH deliberately
+  # points at helper_circuits, NOT circuits.bn128: bn128 shadows
+  # circuits.gl/merkle.circom and drags in circomlib's comparators.circom, which
+  # isn't on the include path (see the comment in proofman's recursive_setup.rs).
+  local -a spec=(
+    "CIRCOM_HELPERS_DIR:$PROOFMAN_DIR/setup/circom"
+    "FINAL_SNARK_CIRCOM_HELPERS_DIR:$PROOFMAN_DIR/setup/final_snark_circom"
+    "CIRCUITS_GL_PATH:$cv/circuits.gl"
+    "CIRCUITS_BN128_PATH:$cv/circuits.bn128"
+    "RECURSER_CIRCUITS_PATH:$cv/helper_circuits"
+    "RECURSER_CIRCUITS_COMPRESSED_FINAL_PATH:$cv/helper_circuits"
+    "RECURSER_PIL_PATH:$PROOFMAN_DIR/setup/stark-recurser/plonk2pil/pil"
+    "STD_PIL_PATH:$PROOFMAN_DIR/pil2-components/lib/std/pil"
+    "GOLDILOCKS_SRC_DIR:$PROOFMAN_DIR/pil2-stark/src/goldilocks/src"
+  )
+
+  for entry in "${spec[@]}"; do
+    var="${entry%%:*}"
+    path="${entry#*:}"
+    # An already-set value wins, matching resolve_path_env's own precedence (it
+    # checks the env var before anything else), so a caller can still override.
+    if [ -n "${!var:-}" ]; then
+      echo "$var: ${!var} (from environment)" >&2
+      export "$var"
+      continue
+    fi
+    if [ ! -e "$path" ]; then
+      echo "error: $var would point at a missing path: $path" >&2
+      missing=1
+      continue
+    fi
+    export "$var=$path"
+  done
+
+  if [ "$missing" -eq 1 ]; then
+    echo "the pil2-proofman checkout at $PROOFMAN_DIR is missing setup assets — it is incomplete for a setup build" >&2
+    exit 1
+  fi
+
+  # Trace the circom binary the setup will actually exec, so a missing one is a
+  # startup error rather than a mid-setup ENOENT. Mirrors resolve_circom_exec's
+  # OS split (circom on Linux, circom_mac on Darwin); anything else there would
+  # false-alarm on macOS while the run is in fact fine.
+  local circom_bin=circom
+  [ "$(uname -s)" = "Darwin" ] && circom_bin=circom_mac
+  local circom_path="$CIRCOM_HELPERS_DIR/$circom_bin"
+  if [ ! -x "$circom_path" ]; then
+    echo "error: circom binary not found or not executable: $circom_path" >&2
+    exit 1
+  fi
+  echo "circom: $circom_path" >&2
+}
+export_proofman_paths
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
 INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
