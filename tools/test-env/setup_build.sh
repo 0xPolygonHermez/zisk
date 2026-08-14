@@ -48,7 +48,9 @@
 #
 # The pil2-proofman checkout is resolved from `cargo metadata` — whatever cargo
 # compiled into cargo-zisk-dev, be it the git dep's checkout under
-# ~/.cargo/git/checkouts/ or a local path dep. No env var, nothing to keep in sync.
+# ~/.cargo/git/checkouts/ or a local path dep. A crates.io dep has no checkout,
+# so its .cargo_vcs_info.json commit is fetched into $ZISK_PROOFMAN_CACHE_DIR
+# (default ~/.zisk/pil2-proofman/<sha>). No env var, nothing to keep in sync.
 
 set -euo pipefail
 
