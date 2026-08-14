@@ -322,7 +322,8 @@ ensure_submodules() {
 
 # patch_cargo_dep: Repoint a git dependency in a Cargo.toml to a local path.
 # Comments out the existing `<crate> = { git = ... }` line and inserts (idempotently)
-# a `<crate> = { path = "<local_path>" }` entry right after it.
+# a `<crate> = { path = "<local_path>" }` entry right after it. A crates.io
+# dependency is left untouched (no-op); a missing one is an error.
 # Relies on the SED_PARAMS global set up by the caller.
 # Usage: patch_cargo_dep <cargo_toml> <crate_name> <local_path>
 patch_cargo_dep() {
@@ -334,14 +335,28 @@ patch_cargo_dep() {
         err "Cargo.toml not found: ${cargo_toml}"
         return 1
     fi
-    if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
-        err "Local path for '${crate}' not found: ${dep_path}/Cargo.toml. Make sure the ZisK repo is available."
-        return 1
-    fi
 
     # Escape regex-special characters in the crate name for sed/grep patterns.
     local crate_re
     crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
+
+    # Only a git dependency is repointed. When the crate comes from crates.io
+    # (`= "1.2"` or `= { version = ... }`) that published version is what the test
+    # is meant to build against, so leave it alone. Matching the git line commented
+    # or not keeps a rerun (already patched) on the patching path.
+    if ! grep -qE "^#?[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}"; then
+        if grep -qE "^[[:space:]]*${crate_re}[[:space:]]*=" "${cargo_toml}"; then
+            info "'${crate}' is not a git dependency in ${cargo_toml}: leaving it unchanged"
+            return 0
+        fi
+        err "No '${crate}' dependency found in ${cargo_toml}"
+        return 1
+    fi
+
+    if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
+        err "Local path for '${crate}' not found: ${dep_path}/Cargo.toml. Make sure the ZisK repo is available."
+        return 1
+    fi
 
     # Carry over `default-features` / `features`; dropping them rebuilds the dep
     # with default features only (e.g. `input` loses `cli`, so `Client` stops
