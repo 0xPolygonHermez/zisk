@@ -228,15 +228,15 @@ jobs:
               ./build_zec_reth.sh
             '
 
-      # - name: Prove Ethereum block
-      #   run: |
-      #     .github/scripts/docker_exec.sh \
-      #       -u ziskuser \
-      #       -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
-      #       -- bash -lc '
-      #         cd /workspace/zisk/tools/test-env
-      #         ./test_eth_block.sh
-      #       '
+      - name: Prove Ethereum block
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_eth_block.sh
+            '
 
       - name: Ethproofs test (no hints)
         run: |
