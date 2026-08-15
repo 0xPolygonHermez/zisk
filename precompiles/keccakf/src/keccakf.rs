@@ -57,13 +57,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// A new `KeccakfSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = KeccakfTrace::<()>::NUM_ROWS % CLOCKS;
-        let num_available_keccakfs = if num_non_usable_rows == 0 {
-            KeccakfTrace::<()>::NUM_ROWS / CLOCKS
-        } else {
-            // Subtract 1 because we can't fit a complete cycle in the remaining rows
-            (KeccakfTrace::<()>::NUM_ROWS - num_non_usable_rows) / CLOCKS - 1
-        };
+        let num_available_keccakfs = KeccakfTrace::<()>::NUM_ROWS / CLOCKS;
 
         // Get the table ID
         let table_id = std
@@ -109,7 +103,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         // Convert input state to 5x5x64 representation
         let mut state = keccakf_state_from_linear(input);
 
-        // Row 0: fill the input state
+        // State-group 0: fill the input state
         let mut state_bits = [false; WIDTH];
         for x in 0..5 {
             for y in 0..5 {
@@ -118,24 +112,34 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 }
             }
         }
-        trace[0].set_all_state(&state_bits);
+        Self::set_state_group(trace, 0, &state_bits);
 
-        // Rows 1..CLOCKS: apply each round
+        // State-groups 1..=ROUNDS: apply each round
         let mut t = [0u8; 5];
+        let mut accs = [0u32; LANE_BITS];
         for r in 0..ROUNDS {
             // θ + ρπ: the state now holds the χ-row inputs B (values <= 11)
             keccak_f_theta_rho_pi(&mut state);
 
-            // One S-box lookup per χ-row (y, z); only y = 0 rows carry the ι bit
+            // One S-box lookup per χ-row (y, z); only y = 0 χ-rows carry the ι bit
             for y in 0..5 {
-                for z in 0..64 {
+                for z in 0..LANE_BITS {
                     for x in 0..5 {
                         t[x] = state[x][y][z];
                     }
                     let rc = y == 0 && KECCAK_F_RC_BITS[r][z];
                     let row = KeccakfTableSM::calculate_table_row(&t, rc);
                     table[row as usize] += 1;
+                    accs[z] = row;
                 }
+
+                // On narrow layouts, the packed S-box input of χ-row (y, z) is
+                // committed at its anchor row, the group-row holding lane 5y.
+                // NOTE: sbox_acc only exists for lanes_per_row < 25.
+                // if ROWS_PER_STATE > 1 {
+                //     let anchor = (5 * y) / LANES_PER_ROW;
+                //     trace[r * ROWS_PER_STATE + anchor].set_all_sbox_acc(&accs);
+                // }
             }
 
             // χ + ι, then reduce modulo 2 to get the true round output
@@ -149,8 +153,23 @@ impl<F: PrimeField64> KeccakfSM<F> {
                 }
             }
 
-            // Fill the trace for the next round all at once
-            trace[r + 1].set_all_state(&state_bits);
+            // Fill the trace for the next state-group all at once
+            Self::set_state_group(trace, r + 1, &state_bits);
+        }
+    }
+
+    /// Writes the 1600 bits of a state-group into its `ROWS_PER_STATE` consecutive
+    /// rows: group-row k holds the lanes [k*LANES_PER_ROW, (k+1)*LANES_PER_ROW).
+    #[inline(always)]
+    fn set_state_group<R: KeccakfTraceRowOps<F>>(
+        trace: &mut [R],
+        group: usize,
+        state_bits: &[bool; WIDTH],
+    ) {
+        for k in 0..ROWS_PER_STATE {
+            let row_bits: &[bool; BITS_PER_ROW] =
+                state_bits[k * BITS_PER_ROW..(k + 1) * BITS_PER_ROW].try_into().unwrap();
+            trace[group * ROWS_PER_STATE + k].set_all_state(row_bits);
         }
     }
 

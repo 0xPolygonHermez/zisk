@@ -8,7 +8,7 @@ require "keccakf_table.pil"
 
 // We use little-endian representation
 
-airtemplate Keccakf(const int N = 2**17) {
+airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     /*
         ═══════════════════════════════════════════════════════════════════════════
         KECCAKF SPECIFICATION
@@ -45,19 +45,35 @@ airtemplate Keccakf(const int N = 2**17) {
        EXECUTION TRACE LAYOUT
        ═══════════════════════════════════════════════════════════════════════════
 
-           ROW       state[1600]
-        |------|-----------------------|
-        |  0   |    initial_state      | <-- STATE IN
-        |------|-----------------------|
-        |  1   |  state_after_round1   |
-        |  2   |  state_after_round2   |
-        | ...  |          ...          |
-        |  23  |  state_after_round23  |
-        |  24  |  state_after_round24  | <-- STATE OUT
-        |------|-----------------------|
+        With lanes_per_row = 25:
 
-        Every row holds the true (post-ι) round state; there is no auxiliary
-        accumulator column.
+           ROW           state[1600]
+        |------|-----------------------------|
+        |  0   |  initial_state lanes 0..24  | <-- STATE IN
+        |------|-----------------------------|
+        |  1   |  round1_state  lanes 0..24  |
+        | ...  |              ...            |
+        |  24  |  round24_state lanes 0..24  | <-- STATE OUT
+        |------|-----------------------------|
+
+        With lanes_per_row = 5:
+
+           ROW           state[320]
+        |------|-----------------------------|
+        |  0   |  initial_state lanes  0..4  | <-- STATE IN
+        | ...  |             ...             |
+        |  4   |  initial_state lanes 20..24 | <-- STATE IN
+        |------|-----------------------------|
+        |  5   |  round1_state  lanes  0..4  |
+        | ...  |             ...             |
+        |  9   |  round1_state  lanes 20..24 |
+        |------|-----------------------------|
+        | ...  |             ...             |
+        |------|-----------------------------|
+        | 120  |  round24_state lanes  0..4  | <-- STATE OUT
+        | ...  |             ...             |
+        | 124  |  round24_state lanes 20..24 | <-- STATE OUT
+        |------|-----------------------------|
 
        ═══════════════════════════════════════════════════════════════════════════
        ROUND VERIFICATION: THE χ-ROW S-BOX
@@ -83,31 +99,26 @@ airtemplate Keccakf(const int N = 2**17) {
         clock-weighted expression wrc[z]; every other row passes 0.
     */
 
-    const int WIDTH = 1600;
+    const int LANES = 25;
+    const int LANE_BITS = 64;
+    const int WIDTH = LANES * LANE_BITS;
     const int ROUNDS = 24;
-    const int CLOCKS = 1 + ROUNDS; // 1 for input state
 
-    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
-    const int NUM_OPS;
-    if (NUM_NON_USABLE_ROWS == 0) {
-        // N is perfectly divisible by CLOCKS
-        if (N < CLOCKS) {
-            error(`N must be at least ${CLOCKS} to fit the Keccak-f[${WIDTH}] arithmetization, but received N=${N}`);
-        }
-
-        NUM_OPS = N / CLOCKS;
-    } else {
-        // N is not divisible by CLOCKS
-        if (N < 2*CLOCKS) {
-            error(`N must be at least ${2*CLOCKS} to fit the Keccak-f[${WIDTH}] arithmetization, but received N=${N}`);
-        }
-
-        // Subtract 1 because we can't fit a complete cycle in the remaining rows
-        NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
+    if ((lanes_per_row < 1) || (LANES % lanes_per_row != 0)) {
+        error(`lanes_per_row must be a divisor of ${LANES}, but received lanes_per_row=${lanes_per_row}`);
     }
 
-    const int NUM_KECCAKF = NUM_OPS;
-    println(`The total number of Keccak-f's with N = ${N} is ${NUM_KECCAKF}`);
+    const int ROWS_PER_STATE = LANES / lanes_per_row;
+    const int BITS_PER_ROW = lanes_per_row * LANE_BITS;
+    const int CLOCKS = (1 + ROUNDS) * ROWS_PER_STATE; // 1 state-group for the input state
+
+    // Calculate usable capacity
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS;
+    if (NUM_OPS < 1) {
+        error(`N must be at least ${CLOCKS} to fit the Keccak-f[${WIDTH}] arithmetization, but received N=${N}`);
+    }
+    println(`The total number of Keccak-f's with N = 2^${log2(N)} is ${NUM_OPS}`);
 
     // Round constants
     const int RC[ROUNDS] = [
@@ -122,7 +133,11 @@ airtemplate Keccakf(const int N = 2**17) {
     // ═══════════════════════════════════════════════════════════════════════════
 
     // Base clock: 1 at first cycle row, 0 elsewhere within each cycle
-    col fixed CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS, 0...];
+    if (NUM_NON_USABLE_ROWS == 0) {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS];
+    } else {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS, 0...];
+    }
 
     // Clock selectors for each row in the cycle
     const expr CLK[CLOCKS];
@@ -144,61 +159,150 @@ airtemplate Keccakf(const int N = 2**17) {
     // STATE COLUMNS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // The state is represented as a 1D array of WIDTH bits
-    col witness bits(1) state[WIDTH];
+    // Each row holds BITS_PER_ROW bits of the state
+    col witness bits(1) state[BITS_PER_ROW];
 
     // Bit constraint the state
-    for (int i = 0; i < WIDTH; i++) {
+    for (int i = 0; i < BITS_PER_ROW; i++) {
         state[i] * (1 - state[i]) === 0;
     }
 
-    // We apply the Keccak-f round function all clocks except the last one
-    const expr round_f_active = in_use - (CLOCKS - 1)'in_use_clk_0;
+    // Union round-function selector: 1 on every row of the first ROUNDS state-groups
+    // of an active cycle, i.e. everywhere except the output state-group rows
+    expr round_f_active = in_use;
+    for (int k = 0; k < ROWS_PER_STATE; k++) {
+        round_f_active -= (CLOCKS - ROWS_PER_STATE + k)'in_use_clk_0;
+    }
 
     // ═══════════════════════════════════════════════════════════════════════════
     // KECCAK-F ROUND CONSTRAINTS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // χ-inputs of the round: b = (π∘ρ∘θ)(state).
-    // θ returns integer sums (xor = add), so every b[i] is a degree-1 expression
-    // with value <= 11; ρ and π are pure rewiring.
-    const expr b[WIDTH] = pi(rho(theta(state)));
-
     // ARRAY_SIZE is a global std setting; the previous generation set 634 here and
     // later-required AIRs inherit it, so it is kept identical. Do not lower it.
     set_array_size(634);
 
-    // ι round-constant bit
-    expr wrc[64];
-    for (int z = 0; z < 64; z++) {
+    // ι round-constant bit of the round whose transition anchors at this row: the
+    // y = 0 χ-rows of round r anchor at group-row 0 of round r's state-group
+    expr wrc[LANE_BITS];
+    for (int z = 0; z < LANE_BITS; z++) {
         wrc[z] = 0;
         for (int i = 0; i < ROUNDS; i++) {
             if (((RC[i] >> z) & 1) == 1) {
-                wrc[z] += CLK[i];
+                wrc[z] += CLK[i * ROWS_PER_STATE];
             }
         }
     }
 
-    // One lookup per χ-row (y,z): the five θ-outputs go in (packed in base 12,
-    // together with the ι bit), the five next-row state bits come out.
-    for (int y = 0; y < 5; y++) {
-        for (int z = 0; z < 64; z++) {
-            expr in_pack = 0;
-            for (int x = 0; x < 5; x++) {
-                in_pack += (KECCAKF_SBOX_BASE ** x) * b[bit_pos(x, y, z)];
+    if (ROWS_PER_STATE == 1) {
+        // Full state per row: every χ-row anchors here, the packed θ-expressions
+        // feed the lookups directly and no accumulator is needed.
+
+        // χ-inputs of the round: b = (π∘ρ∘θ)(state).
+        // θ returns integer sums (xor = add), so every b[i] is a degree-1 expression
+        // with value <= 11; ρ and π are pure rewiring.
+        const expr b[WIDTH] = pi(rho(theta(state)));
+
+        // One lookup per χ-row (y,z): the five θ-outputs go in (packed in base 12,
+        // together with the ι bit), the five next-row state bits come out.
+        for (int y = 0; y < 5; y++) {
+            for (int z = 0; z < LANE_BITS; z++) {
+                expr in_pack = 0;
+                for (int x = 0; x < 5; x++) {
+                    in_pack += (KECCAKF_SBOX_BASE ** x) * b[bit_pos(x, y, z)];
+                }
+                if (y == 0) {
+                    // Lane (0,0) lives at x = 0 of the y = 0 χ-rows: ι applies here
+                    in_pack += KECCAKF_SBOX_SPAN * wrc[z];
+                }
+
+                const expr lookup_cols[1 + KECCAKF_SBOX_INPUTS];
+                lookup_cols[0] = in_pack;
+                for (int x = 0; x < 5; x++) {
+                    lookup_cols[1 + x] = state[bit_pos(x, y, z)]';
+                }
+
+                lookup_assumes(KECCAKF_TABLE_ID, lookup_cols, sel: round_f_active, sel_is_binary: 1);
             }
-            if (y == 0) {
-                // Lane (0,0) lives at x = 0 of the y = 0 rows: ι applies here
-                in_pack += KECCAKF_SBOX_SPAN * wrc[z];
+        }
+    } else {
+        // Narrow layout (lanes_per_row <= 5): each anchor row carries exactly one y.
+        // The packed θ-expression of χ-row (y,z) is bound to sbox_acc[z] at its
+        // anchor row, and a single anchor-invariant lookup family per z covers all
+        // group-rows.
+
+        // Fixed mask: 1 at group-row 0 of the first ROUNDS state-groups of each cycle.
+        // Group-row k is selected by shifting the mask by k rows: the shifted mask
+        // stays 0 on the whole output state-group and on padding rows.
+        col fixed ROUND_CLK_0 = [[[1, 0:(ROWS_PER_STATE-1)]:ROUNDS, 0:ROWS_PER_STATE]:NUM_OPS, 0...];
+
+        // Packed χ-row S-box input of the χ-row anchored at this row
+        col witness bits(19) sbox_acc[LANE_BITS];
+
+        expr acc_def[LANE_BITS];
+        for (int z = 0; z < LANE_BITS; z++) {
+            acc_def[z] = 0;
+        }
+        expr anchor_mask = 0;
+
+        for (int k = 0; k < ROWS_PER_STATE; k++) {
+            // Group-row k anchors χ-row y iff it holds lane 5y, i.e. 5y = k·lanes_per_row
+            if ((k * lanes_per_row) % 5 != 0) continue;
+            const int y = (k * lanes_per_row) / 5;
+
+            anchor_mask += (k)'ROUND_CLK_0;
+
+            // View of the full current state-group, as seen from group-row k:
+            // lane l lives at group-row l / lanes_per_row, i.e. (l / lanes_per_row - k)
+            // rows away from the anchor row
+            const expr state_group[WIDTH];
+            for (int lane = 0; lane < LANES; lane++) {
+                const int row_offset = lane / lanes_per_row - k;
+                const int first_col = (lane % lanes_per_row) * LANE_BITS;
+                for (int z = 0; z < LANE_BITS; z++) {
+                    state_group[lane * LANE_BITS + z] = state[first_col + z]'(row_offset);
+                }
             }
 
+            // χ-inputs of the round as seen from this anchor (degree 1, values <= 11)
+            const expr b[WIDTH] = pi(rho(theta(state_group)));
+
+            for (int z = 0; z < LANE_BITS; z++) {
+                expr in_pack = 0;
+                for (int x = 0; x < 5; x++) {
+                    in_pack += (KECCAKF_SBOX_BASE ** x) * b[bit_pos(x, y, z)];
+                }
+                if (y == 0) {
+                    // Lane (0,0) lives at x = 0 of the y = 0 χ-rows: ι applies here
+                    in_pack += KECCAKF_SBOX_SPAN * wrc[z];
+                }
+
+                acc_def[z] += (k)'ROUND_CLK_0 * in_pack;
+            }
+        }
+
+        // Bind the accumulator on anchor rows of active cycles; elsewhere both
+        // sides are 0 (the masks vanish on non-anchor rows, on the output
+        // state-group and on padding rows, and in_use vanishes on unused cycles)
+        for (int z = 0; z < LANE_BITS; z++) {
+            sbox_acc[z] - in_use * acc_def[z] === 0;
+        }
+
+        // Anchor-invariant lookups: χ-row (y,z), anchored at group-row k = 5y/lanes_per_row,
+        // outputs to lane 5y+x = k·lanes_per_row + x of the next state-group, i.e. row
+        // offset ROWS_PER_STATE + x/lanes_per_row and column (x % lanes_per_row)·64 + z,
+        // both independent of the anchor
+        const expr sbox_sel = in_use * anchor_mask;
+        for (int z = 0; z < LANE_BITS; z++) {
             const expr lookup_cols[1 + KECCAKF_SBOX_INPUTS];
-            lookup_cols[0] = in_pack;
+            lookup_cols[0] = sbox_acc[z];
             for (int x = 0; x < 5; x++) {
-                lookup_cols[1 + x] = state[bit_pos(x, y, z)]';
+                const int row_offset = ROWS_PER_STATE + x / lanes_per_row;
+                const int column = (x % lanes_per_row) * LANE_BITS + z;
+                lookup_cols[1 + x] = state[column]'(row_offset);
             }
 
-            lookup_assumes(KECCAKF_TABLE_ID, lookup_cols, sel: round_f_active, sel_is_binary: 1);
+            lookup_assumes(KECCAKF_TABLE_ID, lookup_cols, sel: sbox_sel, sel_is_binary: 1);
         }
     }
 
@@ -223,9 +327,9 @@ airtemplate Keccakf(const int N = 2**17) {
          49 | STEP_MAIN + 1 | W | ADDR_STATE + 192 |  output_state[24]
         ===============================================================================================================
 
-        Memory Access Schedule (50 total operations, 25 in parallel):
-            Slots 0:  Read input_state[0..24]     (25 ops)
-            Slots 1:  Write output_state[0..24]   (25 ops)
+        Memory Access Schedule (50 total operations, lanes_per_row in parallel):
+            First ROWS_PER_STATE clocks:  Read input_state[0..24]    (25 ops, lanes_per_row per clock)
+            Last ROWS_PER_STATE clocks:   Write output_state[0..24]  (25 ops, lanes_per_row per clock)
     */
 
     col witness bits(40) step_addr;
@@ -238,7 +342,7 @@ airtemplate Keccakf(const int N = 2**17) {
     const int WORD_SIZE = 64 / 8; // bytes per 64-bit word
     const int BITS_PER_CLOCK = BITS_PER_LIMB * U64_LIMBS;
     const int MEM_OPS = WIDTH / BITS_PER_CLOCK;
-    const int MEM_OPS_IN_PARALLEL = 25;
+    const int MEM_OPS_IN_PARALLEL = lanes_per_row;
     const int CLOCKS_WITH_MEM_OPS = MEM_OPS / MEM_OPS_IN_PARALLEL;
 
     const expr mem_sel = clock_set(in_use, start: 0, end: CLOCKS_WITH_MEM_OPS) +
@@ -250,9 +354,10 @@ airtemplate Keccakf(const int N = 2**17) {
                            clock_shift(step_addr, STEP_MAIN, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS);
 
     for (int i = 0; i < MEM_OPS_IN_PARALLEL; i++) {
-        // Address: ADDR_STATE + WORD_SIZE*i
-        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: CLOCKS_WITH_MEM_OPS, offset: WORD_SIZE*i) +
-                              clock_shift(step_addr, ADDR_STATE, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS, offset: WORD_SIZE*i);
+        // Address: ADDR_STATE + WORD_SIZE*(k*lanes_per_row + i) at group-row k, i.e. the
+        // word address advances by WORD_SIZE*lanes_per_row per clock within the window
+        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: CLOCKS_WITH_MEM_OPS, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row) +
+                              clock_shift(step_addr, ADDR_STATE, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS, offset: WORD_SIZE*i, delta: WORD_SIZE*lanes_per_row);
 
         // Pack state bits into two BITS_PER_CLOCK-bit limbs
         const int base = i * BITS_PER_CLOCK;
