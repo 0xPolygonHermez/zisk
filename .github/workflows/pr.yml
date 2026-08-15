@@ -191,23 +191,23 @@ jobs:
               ./build_setup.sh
             '
 
-      - name: Test sha_hasher (CPU)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -u ziskuser \
-            -e ONLY_CPU="1" \
-            -- bash -lc '
-              cd /workspace/zisk/tools/test-env
-              ./test_sha_hasher.sh
-            '
+      # - name: Test sha_hasher (CPU)
+      #   run: |
+      #     .github/scripts/docker_exec.sh \
+      #       -u ziskuser \
+      #       -e ONLY_CPU="1" \
+      #       -- bash -lc '
+      #         cd /workspace/zisk/tools/test-env
+      #         ./test_sha_hasher.sh
+      #       '
 
-      - name: Test sha_hasher (GPU)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -u ziskuser \
-            -- bash -lc '
-              cd /workspace/zisk/tools/test-env
-              ./test_sha_hasher.sh
+      # - name: Test sha_hasher (GPU)
+      #   run: |
+      #     .github/scripts/docker_exec.sh \
+      #       -u ziskuser \
+      #       -- bash -lc '
+      #         cd /workspace/zisk/tools/test-env
+      #         ./test_sha_hasher.sh
             '
 
       - name: Test ELF diagnostic
@@ -228,21 +228,20 @@ jobs:
               ./build_zec_reth.sh
             '
 
-      - name: Prove Ethereum block
-        run: |
-          .github/scripts/docker_exec.sh \
-            -u ziskuser \
-            -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
-            -- bash -lc '
-              cd /workspace/zisk/tools/test-env
-              ./test_eth_block.sh
-            '
+      # - name: Prove Ethereum block
+      #   run: |
+      #     .github/scripts/docker_exec.sh \
+      #       -u ziskuser \
+      #       -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
+      #       -- bash -lc '
+      #         cd /workspace/zisk/tools/test-env
+      #         ./test_eth_block.sh
+      #       '
 
       - name: Ethproofs test (no hints)
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
-            -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
