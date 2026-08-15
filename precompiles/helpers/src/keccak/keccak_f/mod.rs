@@ -2,8 +2,9 @@ mod constants;
 mod round;
 mod utils;
 
+pub use constants::RC_BITS as KECCAK_F_RC_BITS;
 use constants::*;
-pub use round::keccak_f_round;
+pub use round::{keccak_f_chi_iota, keccak_f_round, keccak_f_theta_rho_pi};
 pub use utils::*;
 
 /// State representation as 5x5x64 bits.
@@ -34,25 +35,7 @@ fn reduce_state_mod2(state: &mut KeccakState) {
 
 #[cfg(test)]
 mod tests {
-    use super::{keccak_f, utils::keccakf_state_from_linear, KeccakState};
-
-    /// Convert from 5x5x64 bit array to linear [u64; 25]
-    #[allow(clippy::needless_range_loop)]
-    pub fn keccakf_state_to_linear(state: &KeccakState) -> [u64; 25] {
-        let mut linear = [0u64; 25];
-        for x in 0..5 {
-            for y in 0..5 {
-                let mut word = 0u64;
-                for z in 0..64 {
-                    if state[x][y][z] == 1 {
-                        word |= 1u64 << z;
-                    }
-                }
-                linear[x + y * 5] = word;
-            }
-        }
-        linear
-    }
+    use super::{keccak_f, utils::keccakf_state_from_linear, utils::keccakf_state_to_linear};
 
     #[test]
     fn test_keccak_f_zero_state() {

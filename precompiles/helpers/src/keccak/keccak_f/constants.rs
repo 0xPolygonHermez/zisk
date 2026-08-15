@@ -26,7 +26,8 @@ pub(crate) const RC: [u64; 24] = [
     0x8000000080008008,
 ];
 
-pub(crate) const RC_BITS: [[bool; 64]; 24] = [
+/// Round-constant bits: `RC_BITS[round][z]` is bit z of the round's ι constant.
+pub const RC_BITS: [[bool; 64]; 24] = [
     bits_from_u64(RC[0]),
     bits_from_u64(RC[1]),
     bits_from_u64(RC[2]),

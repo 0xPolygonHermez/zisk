@@ -1,52 +1,58 @@
-require "std_constants.pil"
 require "std_lookup.pil"
 require "opids.pil"
 
-// The maximum value that any expression during keccakf computation can get
-// Operation summary:
-//  - The θ.1 step has 4 add, this gives a number in the range <= 5
+// χ-row S-box table for the Keccak-f[1600] precompile.
+//
+// One row per pair (rc, t) with t = (t_0,...,t_4), where t_x ∈ [0,11] are the five
+// θ-outputs feeding a χ-row and rc ∈ {0,1} is the ι round-constant bit of that row.
+// θ is 𝔽₂-linear, so the main AIR builds the t_x as plain integer sums of state bits
+// and only their parities carry the keccak bits. Value ranges of those sums:
+//  - The θ.1 step has 4 adds, this gives a number in the range <= 5
 //  - The θ.2 step has 1 add, this gives a number in the range <= 10
 //  - The θ.3 step has 1 add, this gives a number in the range <= 11
-//  - The χ.1 step has 1 add and 1 prod, this gives a number in the range <= 132
-//  - The χ.2 step has 1 add, this gives a number in the range <= 143
-//  - The ι step has 1 add, this gives a number in the range <= 144
-const int KECCAKF_TABLE_MAX_VALUE = 144;
+//
+// The table receives the five sums packed in base 12 together with rc,
+//      A = rc·12⁵ + Σ_x t_x·12ˣ,
+// decodes the five parities p_x = t_x mod 2, applies χ,
+//      out_x = p_x ⊕ (¬p_{x+1} ∧ p_{x+2}),
+// and XORs rc into out_0.
 
-const int KECCAKF_TABLE_BASE = KECCAKF_TABLE_MAX_VALUE + 1;
-function keccakf_chunk_size(): int {
-    int chunks = 1;
-    while (KECCAKF_TABLE_BASE ** (chunks + 1) < P2_23) {
-        chunks += 1;
-    }
-    return chunks;
-}
+const int KECCAKF_SBOX_BASE = 12;                     // θ-outputs live in [0,11]
+const int KECCAKF_SBOX_INPUTS = 5;                    // χ maps 5-bit rows to 5-bit rows
+const int KECCAKF_SBOX_SPAN = KECCAKF_SBOX_BASE ** KECCAKF_SBOX_INPUTS; // 248_832
+const int KECCAKF_TABLE_SIZE = 2 * KECCAKF_SBOX_SPAN; // 497_664, the ι bit doubles the rows
 
-const int KECCAKF_TABLE_MAX_CHUNKS = keccakf_chunk_size();
-const int KECCAKF_TABLE_SIZE = KECCAKF_TABLE_BASE ** KECCAKF_TABLE_MAX_CHUNKS;
-
-airtemplate KeccakfTable(const int N) {
+airtemplate KeccakfTable(const int N = 2**19) {
     // Ensure that the chosen size fits
     if (N < KECCAKF_TABLE_SIZE) {
         error(`N must be at least ${KECCAKF_TABLE_SIZE}, but N=${N} was provided`);
     }
     println(`The Keccak-f's Table size is ${KECCAKF_TABLE_SIZE}`);
 
-    int MAX = 0;
-    for (int i = 0; i < KECCAKF_TABLE_MAX_CHUNKS; i++) {
-        MAX += KECCAKF_TABLE_BASE**i * KECCAKF_TABLE_MAX_VALUE;
-    }
+    // Packed input, matching the expression built by the main AIR.
+    col fixed A = [0..(KECCAKF_TABLE_SIZE - 1)]...;
 
-    col fixed A = [0..MAX]...;
-
-    col fixed C[KECCAKF_TABLE_MAX_CHUNKS];
+    col fixed OUT[KECCAKF_SBOX_INPUTS];
     #pragma transpile
     for (int i = 0; i < N; i++) {
-        for (int j = 0; j < KECCAKF_TABLE_MAX_CHUNKS; j++) {
-            const int aj = (A[i] / (KECCAKF_TABLE_BASE**j)) % KECCAKF_TABLE_BASE;
-            C[j][i] = aj % 2;
-        }
+        const int tpack = A[i] % KECCAKF_SBOX_SPAN;
+        const int rc = A[i] / KECCAKF_SBOX_SPAN;
+
+        // Parities of the five θ-outputs
+        const int p0 = (tpack % KECCAKF_SBOX_BASE) % 2;
+        const int p1 = ((tpack / KECCAKF_SBOX_BASE) % KECCAKF_SBOX_BASE) % 2;
+        const int p2 = ((tpack / (KECCAKF_SBOX_BASE ** 2)) % KECCAKF_SBOX_BASE) % 2;
+        const int p3 = ((tpack / (KECCAKF_SBOX_BASE ** 3)) % KECCAKF_SBOX_BASE) % 2;
+        const int p4 = ((tpack / (KECCAKF_SBOX_BASE ** 4)) % KECCAKF_SBOX_BASE) % 2;
+
+        // χ on the parities, out_x = p_x ⊕ (¬p_{x+1} ∧ p_{x+2}), with ι on x = 0
+        OUT[0][i] = (p0 + (1 - p1) * p2 + rc) % 2;
+        OUT[1][i] = (p1 + (1 - p2) * p3) % 2;
+        OUT[2][i] = (p2 + (1 - p3) * p4) % 2;
+        OUT[3][i] = (p3 + (1 - p4) * p0) % 2;
+        OUT[4][i] = (p4 + (1 - p0) * p1) % 2;
     }
 
     col witness multiplicity;
-    lookup_proves(KECCAKF_TABLE_ID, [A, ...C], multiplicity);
+    lookup_proves(KECCAKF_TABLE_ID, [A, ...OUT], multiplicity);
 }

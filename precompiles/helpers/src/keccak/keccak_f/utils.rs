@@ -31,6 +31,24 @@ pub fn keccakf_state_flatten(state: &KeccakState) -> [u8; 1600] {
     linear_1d
 }
 
+/// Convert from 5x5x64 bit array to linear [u64; 25]
+#[allow(clippy::needless_range_loop)]
+pub fn keccakf_state_to_linear(state: &KeccakState) -> [u64; 25] {
+    let mut linear = [0u64; 25];
+    for x in 0..5 {
+        for y in 0..5 {
+            let mut word = 0u64;
+            for z in 0..64 {
+                if state[x][y][z] == 1 {
+                    word |= 1u64 << z;
+                }
+            }
+            linear[x + y * 5] = word;
+        }
+    }
+    linear
+}
+
 #[inline(always)]
 pub const fn keccakf_bit_pos(x: usize, y: usize, z: usize) -> usize {
     debug_assert!(x < 5 && y < 5 && z < 64);

@@ -10,10 +10,6 @@ repository = { workspace = true }
 documentation = { workspace = true }
 categories = { workspace = true }
 
-[[bin]]
-name = "zisk-keccakf-expr-generator"
-path = "src/keccakf_expr_generator.rs"
-
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
@@ -26,8 +22,6 @@ zisk-precomp-common = { workspace = true }
 zisk-precomp-helpers = { workspace = true }
 
 pil2-std-lib = { workspace = true }
-
-zisk-circuit = { workspace = true }
 
 proofman-fields = { workspace = true }
 tracing = { workspace = true }

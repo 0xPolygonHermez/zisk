@@ -7770,7 +7770,6 @@ dependencies = [
  "rayon",
  "tiny-keccak",
  "tracing",
- "zisk-circuit",
  "zisk-common",
  "zisk-core",
  "zisk-pil",

@@ -9,7 +9,8 @@ use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationKeccakData;
 use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
 use zisk_precomp_helpers::{
-    keccak_f_round, keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear,
+    keccak_f_chi_iota, keccak_f_theta_rho_pi, keccakf_bit_pos, keccakf_state_from_linear,
+    KECCAK_F_RC_BITS,
 };
 
 use super::{keccakf_constants::*, KeccakfTableSM};
@@ -50,7 +51,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// Creates a new Keccakf State Machine instance.
     ///
     /// # Arguments
-    /// * `keccakf_table_sm` - An `Arc`-wrapped reference to the Keccakf Table State Machine.
+    /// * `std` - An `Arc`-wrapped reference to the PIL2 standard library.
     ///
     /// # Returns
     /// A new `KeccakfSM` instance.
@@ -72,11 +73,20 @@ impl<F: PrimeField64> KeccakfSM<F> {
         Arc::new(Self { num_available_keccakfs, std, table_id })
     }
 
-    /// Processes a slice of operation data, updating the trace and multiplicities.
+    /// Processes one operation: fills its CLOCKS-row block of the trace and
+    /// accumulates the χ-row S-box lookups into the table histogram.
+    ///
+    /// The trace holds one bit per state cell, with each row storing the true
+    /// (post-ι) round state. Per round, the AIR looks up one χ-row S-box per
+    /// (y, z) pair, whose input packs the five θρπ-outputs (values <= 11) in
+    /// base 12 plus the ι bit; the table row indexes mirror that packing.
     ///
     /// # Arguments
-    /// * `trace` - A mutable reference to the Keccakf trace.
-    /// * `input` - The operation data to process.
+    /// * `trace` - The CLOCKS-row block of the trace assigned to this operation.
+    /// * `input` - The input state of the operation.
+    /// * `addr` - The main address of the operation.
+    /// * `step` - The main step of the operation.
+    /// * `table` - The multiplicity histogram of the Keccakf table.
     #[inline(always)]
     #[allow(clippy::needless_range_loop)]
     fn process_trace<R: KeccakfTraceRowOps<F>>(
@@ -85,6 +95,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         input: &[u64; 25],
         addr: u32,
         step: u64,
+        table: &mut [u32],
     ) {
         // Fill step and addr
         trace[0].set_step_addr(step);
@@ -99,48 +110,41 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let mut state = keccakf_state_from_linear(input);
 
         // Row 0: fill the input state
-        let state_flat = keccakf_state_flatten(&state);
-
-        // Allocate buffers once and reuse across all rounds - better performance
-        let mut accs = [0u32; NUM_CHUNKS];
-        let mut state_bits = [false; 1600]; // 5 * 5 * 64 = 1600 bits
-
-        for (i, &val) in state_flat.iter().enumerate() {
-            state_bits[i] = (val & 1) != 0;
+        let mut state_bits = [false; WIDTH];
+        for x in 0..5 {
+            for y in 0..5 {
+                for z in 0..64 {
+                    state_bits[keccakf_bit_pos(x, y, z)] = state[x][y][z] == 1;
+                }
+            }
         }
         trace[0].set_all_state(&state_bits);
 
         // Rows 1..CLOCKS: apply each round
+        let mut t = [0u8; 5];
         for r in 0..ROUNDS {
-            // Apply round function to the state
-            keccak_f_round(&mut state, r);
+            // θ + ρπ: the state now holds the χ-row inputs B (values <= 11)
+            keccak_f_theta_rho_pi(&mut state);
 
-            // Flatten unreduced state for accumulator computation
-            let state_flat = keccakf_state_flatten(&state);
-
-            // Compute accumulators (reusing accs buffer)
-            for i in 0..NUM_CHUNKS {
-                let offset = i * TABLE_MAX_CHUNKS;
-                let num_bits = std::cmp::min(TABLE_MAX_CHUNKS, WIDTH - offset);
-
-                let mut acc = 0u32;
-                for j in 0..num_bits {
-                    acc += (state_flat[offset + j] as u32) * POWS_BASE[j];
+            // One S-box lookup per χ-row (y, z); only y = 0 rows carry the ι bit
+            for y in 0..5 {
+                for z in 0..64 {
+                    for x in 0..5 {
+                        t[x] = state[x][y][z];
+                    }
+                    let rc = y == 0 && KECCAK_F_RC_BITS[r][z];
+                    let row = KeccakfTableSM::calculate_table_row(&t, rc);
+                    table[row as usize] += 1;
                 }
-                accs[i] = acc;
             }
-            trace[r].set_all_chunk_acc(&accs);
 
-            // Reduce the state modulo 2 and collect all state bits (reusing state_bits buffer)
+            // χ + ι, then reduce modulo 2 to get the true round output
+            keccak_f_chi_iota(&mut state, r);
             for x in 0..5 {
                 for y in 0..5 {
                     for z in 0..64 {
-                        // Reduce the state modulo 2
                         state[x][y][z] %= 2;
-
-                        // Collect the bit
-                        let bit_pos = keccakf_bit_pos(x, y, z);
-                        state_bits[bit_pos] = state[x][y][z] == 1;
+                        state_bits[keccakf_bit_pos(x, y, z)] = state[x][y][z] == 1;
                     }
                 }
             }
@@ -189,38 +193,45 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
         timer_start_trace!(KECCAKF_TRACE);
 
-        // 1] Fill the trace with the provided inputs
+        // Pair each input with its CLOCKS-row block of the trace
         let mut trace_rows = &mut trace.buffer[..];
-        let mut par_traces = Vec::new();
-        let mut inputs_indexes = Vec::new();
-        for (i, inputs) in inputs.iter().enumerate() {
-            for (j, _) in inputs.iter().enumerate() {
+        let mut par_traces = Vec::with_capacity(num_inputs);
+        let mut flat_inputs = Vec::with_capacity(num_inputs);
+        for inputs in inputs.iter() {
+            for input in inputs.iter() {
                 let (head, tail) = trace_rows.split_at_mut(CLOCKS);
                 par_traces.push(head);
-                inputs_indexes.push((i, j));
+                flat_inputs.push(input);
                 trace_rows = tail;
             }
         }
 
-        par_traces.par_iter_mut().enumerate().for_each(|(index, trace)| {
-            let input_index = inputs_indexes[index];
-            let input = &inputs[input_index.0][input_index.1];
-            self.process_trace::<R>(trace, &input.state, input.addr_main, input.step_main);
-        });
+        // Fill the trace and accumulate the table histogram in parallel
+        let table: Vec<u32> = par_traces
+            .into_par_iter()
+            .zip(flat_inputs.into_par_iter())
+            .fold(
+                || vec![0u32; TABLE_SIZE as usize],
+                |mut table, (trace, input)| {
+                    self.process_trace::<R>(
+                        trace,
+                        &input.state,
+                        input.addr_main,
+                        input.step_main,
+                        &mut table,
+                    );
+                    table
+                },
+            )
+            .reduce(
+                || vec![0u32; TABLE_SIZE as usize],
+                |mut acc, partial| {
+                    acc.iter_mut().zip(partial.iter()).for_each(|(a, p)| *a += p);
+                    acc
+                },
+            );
 
-        // 2] Update lookup table
-        let mut table = vec![0u32; TABLE_SIZE as usize];
-        for keccak_idx in 0..num_inputs {
-            let base_row = keccak_idx * CLOCKS;
-            // Each keccak has 24 rounds of accumulators (stored in rows 0..23 of each keccak block)
-            for round in 0..ROUNDS {
-                let chunk_accs = trace.buffer[base_row + round].get_all_chunk_acc();
-                for acc in chunk_accs.iter() {
-                    let table_row = KeccakfTableSM::calculate_table_row(*acc);
-                    table[table_row as usize] += 1;
-                }
-            }
-        }
+        // Update the lookup table multiplicities
         table.into_par_iter().enumerate().for_each(|(row, value)| {
             if value > 0 {
                 self.std.inc_virtual_row(self.table_id, row as u32, value);

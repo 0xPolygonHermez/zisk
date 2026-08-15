@@ -15,6 +15,7 @@ pub use common::*;
 pub use dma::*;
 pub use jump_dest::*;
 pub use keccak::{
-    keccak_f, keccak_f_expr, keccak_f_round, keccakf_bit_pos, keccakf_state_flatten,
-    keccakf_state_from_linear,
+    keccak_f, keccak_f_chi_iota, keccak_f_expr, keccak_f_round, keccak_f_theta_rho_pi,
+    keccakf_bit_pos, keccakf_state_flatten, keccakf_state_from_linear, keccakf_state_to_linear,
+    KECCAK_F_RC_BITS,
 };

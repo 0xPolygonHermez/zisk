@@ -13,11 +13,11 @@ airtemplate Keccakf(const int N = 2**17) {
         ═══════════════════════════════════════════════════════════════════════════
         KECCAKF SPECIFICATION
         ═══════════════════════════════════════════════════════════════════════════
-       
+
         KECCAKF(state: [u64; 25]) -> [u64; 25]
 
         The state is organized as an array of 5x5 lanes A, each of 64 bits.
-       
+
         There are 24 rounds.
 
         Each round consists of 5 steps:
@@ -45,7 +45,7 @@ airtemplate Keccakf(const int N = 2**17) {
        EXECUTION TRACE LAYOUT
        ═══════════════════════════════════════════════════════════════════════════
 
-           ROW       state[1600]    
+           ROW       state[1600]
         |------|-----------------------|
         |  0   |    initial_state      | <-- STATE IN
         |------|-----------------------|
@@ -55,7 +55,33 @@ airtemplate Keccakf(const int N = 2**17) {
         |  23  |  state_after_round23  |
         |  24  |  state_after_round24  | <-- STATE OUT
         |------|-----------------------|
-    */    
+
+        Every row holds the true (post-ι) round state; there is no auxiliary
+        accumulator column.
+
+       ═══════════════════════════════════════════════════════════════════════════
+       ROUND VERIFICATION: THE χ-ROW S-BOX
+       ═══════════════════════════════════════════════════════════════════════════
+
+        Everything in the round up to χ is 𝔽₂-linear, so it is expressed with plain
+        integer sums of the bits (values stay <= 11; only parities carry keccak semantics):
+
+            b[x,y,z] = (π∘ρ∘θ)(state)[x,y,z]        // degree-1 expression
+
+        χ is the only nonlinear step, and it acts independently on each row of five
+        bits (fixed y,z): A'[x] = B[x] ⊕ (¬B[x+1] ∧ B[x+2]). So the whole
+        nonlinear part of the round is delegated to one lookup per χ-row:
+
+            (rc·12⁵ + Σ_x 12ˣ·b[x,y,z],  state'[0,y,z], ..., state'[4,y,z])  ∈  KECCAKF_TABLE
+
+        where the input is a single degree-1 expression and the outputs are the
+        five next-row state bits, pinned entry-wise to the table's precomputed
+        χ (and ι) output.
+
+        ι is round-dependent, so the table takes the round-constant bit rc as part
+        of the input: the y = 0 rows (which contain lane (0,0)) pass the fixed
+        clock-weighted expression wrc[z]; every other row passes 0.
+    */
 
     const int WIDTH = 1600;
     const int ROUNDS = 24;
@@ -133,42 +159,47 @@ airtemplate Keccakf(const int N = 2**17) {
     // KECCAK-F ROUND CONSTRAINTS
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // Compute the expressions for the Keccak-f permutation
-    const expr keccakf[WIDTH] = keccakf_round(state);
+    // χ-inputs of the round: b = (π∘ρ∘θ)(state).
+    // θ returns integer sums (xor = add), so every b[i] is a degree-1 expression
+    // with value <= 11; ρ and π are pure rewiring.
+    const expr b[WIDTH] = pi(rho(theta(state)));
 
-    // We check the relationship between state' and keccakf(state) using lookup arguments
-    const int num_chunks = (WIDTH + KECCAKF_TABLE_MAX_CHUNKS - 1) / KECCAKF_TABLE_MAX_CHUNKS;
+    // ARRAY_SIZE is a global std setting; the previous generation set 634 here and
+    // later-required AIRs inherit it, so it is kept identical. Do not lower it.
+    set_array_size(634);
 
-    set_array_size(num_chunks+100);
-    col witness bits(22) chunk_acc[num_chunks];
-    for (int i = 0; i < num_chunks; i++) {
-        const int bit_offset = i * KECCAKF_TABLE_MAX_CHUNKS;
-
-        const int remaining = WIDTH - bit_offset;
-        const int num_bits = (remaining < KECCAKF_TABLE_MAX_CHUNKS) ? remaining : KECCAKF_TABLE_MAX_CHUNKS;
-        
-        expr acc_val = 0;
-        for (int j = 0; j < num_bits; j++) {
-            acc_val += keccakf[bit_offset + j] * (KECCAKF_TABLE_BASE ** j);
+    // ι round-constant bit
+    expr wrc[64];
+    for (int z = 0; z < 64; z++) {
+        wrc[z] = 0;
+        for (int i = 0; i < ROUNDS; i++) {
+            if (((RC[i] >> z) & 1) == 1) {
+                wrc[z] += CLK[i];
+            }
         }
-        round_f_active * (chunk_acc[i] - acc_val) === 0;
+    }
 
-        const expr lookup_cols[KECCAKF_TABLE_MAX_CHUNKS + 1];
+    // One lookup per χ-row (y,z): the five θ-outputs go in (packed in base 12,
+    // together with the ι bit), the five next-row state bits come out.
+    for (int y = 0; y < 5; y++) {
+        for (int z = 0; z < 64; z++) {
+            expr in_pack = 0;
+            for (int x = 0; x < 5; x++) {
+                in_pack += (KECCAKF_SBOX_BASE ** x) * b[bit_pos(x, y, z)];
+            }
+            if (y == 0) {
+                // Lane (0,0) lives at x = 0 of the y = 0 rows: ι applies here
+                in_pack += KECCAKF_SBOX_SPAN * wrc[z];
+            }
 
-        // Input
-        lookup_cols[0] = chunk_acc[i];
+            const expr lookup_cols[1 + KECCAKF_SBOX_INPUTS];
+            lookup_cols[0] = in_pack;
+            for (int x = 0; x < 5; x++) {
+                lookup_cols[1 + x] = state[bit_pos(x, y, z)]';
+            }
 
-        // Expected outputs
-        for (int j = 0; j < num_bits; j++) {
-            lookup_cols[j + 1] = state[bit_offset + j]';
+            lookup_assumes(KECCAKF_TABLE_ID, lookup_cols, sel: round_f_active, sel_is_binary: 1);
         }
-
-        // Pad with zeros if this is a partial chunk
-        for (int j = num_bits; j < KECCAKF_TABLE_MAX_CHUNKS; j++) {
-            lookup_cols[j + 1] = 0;
-        }
-
-        lookup_assumes(KECCAKF_TABLE_ID, lookup_cols, sel: round_f_active, sel_is_binary: 1);
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -178,18 +209,18 @@ airtemplate Keccakf(const int N = 2**17) {
     /*
         MEMORY ACCESS MAP
         ===============================================================================================================
-          0 | STEP_MAIN     | R | ADDR_STATE       |  input_state[0] 
-          1 | STEP_MAIN     | R | ADDR_STATE + 8   |  input_state[1]  
-          2 | STEP_MAIN     | R | ADDR_STATE + 16  |  input_state[2]      
-          3 | STEP_MAIN     | R | ADDR_STATE + 24  |  input_state[3] 
-          . |    ...        | . |    ...           |     ...   
+          0 | STEP_MAIN     | R | ADDR_STATE       |  input_state[0]
+          1 | STEP_MAIN     | R | ADDR_STATE + 8   |  input_state[1]
+          2 | STEP_MAIN     | R | ADDR_STATE + 16  |  input_state[2]
+          3 | STEP_MAIN     | R | ADDR_STATE + 24  |  input_state[3]
+          . |    ...        | . |    ...           |     ...
          24 | STEP_MAIN     | R | ADDR_STATE + 192 |  input_state[24]
-         25 | STEP_MAIN + 1 | W | ADDR_STATE       |  output_state[0]  
-         26 | STEP_MAIN + 1 | W | ADDR_STATE + 8   |  output_state[1]  
-         27 | STEP_MAIN + 1 | W | ADDR_STATE + 16  |  output_state[2]  
-         28 | STEP_MAIN + 1 | W | ADDR_STATE + 24  |  output_state[3]  
-          . |    ...        | . |    ...           |     ...    
-         49 | STEP_MAIN + 1 | W | ADDR_STATE + 192 |  output_state[24] 
+         25 | STEP_MAIN + 1 | W | ADDR_STATE       |  output_state[0]
+         26 | STEP_MAIN + 1 | W | ADDR_STATE + 8   |  output_state[1]
+         27 | STEP_MAIN + 1 | W | ADDR_STATE + 16  |  output_state[2]
+         28 | STEP_MAIN + 1 | W | ADDR_STATE + 24  |  output_state[3]
+          . |    ...        | . |    ...           |     ...
+         49 | STEP_MAIN + 1 | W | ADDR_STATE + 192 |  output_state[24]
         ===============================================================================================================
 
         Memory Access Schedule (50 total operations, 25 in parallel):
@@ -197,7 +228,7 @@ airtemplate Keccakf(const int N = 2**17) {
             Slots 1:  Write output_state[0..24]   (25 ops)
     */
 
-    col witness bits(40) step_addr; 
+    col witness bits(40) step_addr;
 
     const int STEP_MAIN = 0;
     const int ADDR_STATE = STEP_MAIN + 1;
@@ -210,17 +241,17 @@ airtemplate Keccakf(const int N = 2**17) {
     const int MEM_OPS_IN_PARALLEL = 25;
     const int CLOCKS_WITH_MEM_OPS = MEM_OPS / MEM_OPS_IN_PARALLEL;
 
-    const expr mem_sel = clock_set(in_use, start: 0, end: CLOCKS_WITH_MEM_OPS) + 
+    const expr mem_sel = clock_set(in_use, start: 0, end: CLOCKS_WITH_MEM_OPS) +
                          clock_set(in_use, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS);
 
     const expr mem_is_write = clock_set(start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS);
 
-    const expr main_step = clock_shift(step_addr, STEP_MAIN, start: 0, end: CLOCKS_WITH_MEM_OPS) + 
+    const expr main_step = clock_shift(step_addr, STEP_MAIN, start: 0, end: CLOCKS_WITH_MEM_OPS) +
                            clock_shift(step_addr, STEP_MAIN, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS);
 
     for (int i = 0; i < MEM_OPS_IN_PARALLEL; i++) {
         // Address: ADDR_STATE + WORD_SIZE*i
-        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: CLOCKS_WITH_MEM_OPS, offset: WORD_SIZE*i) + 
+        const expr mem_addr = clock_shift(step_addr, ADDR_STATE, start: 0, end: CLOCKS_WITH_MEM_OPS, offset: WORD_SIZE*i) +
                               clock_shift(step_addr, ADDR_STATE, start: CLOCKS - CLOCKS_WITH_MEM_OPS, end: CLOCKS, offset: WORD_SIZE*i);
 
         // Pack state bits into two BITS_PER_CLOCK-bit limbs
@@ -242,10 +273,6 @@ airtemplate Keccakf(const int N = 2**17) {
     // MAIN PROCESSOR INTEGRATION
     // ═══════════════════════════════════════════════════════════════════════════
     proves_operation(op: OP_KECCAKF, b: [step_addr'(ADDR_STATE), 0], main_step: step_addr'(STEP_MAIN), mul: in_use_clk_0);
-
-    function keccakf_round(const expr state[]): const expr[] {
-        return iota(chi(pi(rho(theta(state)))));
-    }
 
     function theta(const expr a[]): const expr[] {
         const int len = length(a);
@@ -306,8 +333,8 @@ airtemplate Keccakf(const int N = 2**17) {
         }
 
         // Let (x, y) = (1, 0)
-        // For t from 0 to 23:  
-        //      1. For all z such that 0 ≤ z < 64, let result[x, y, z] = a[x, y, z – (t + 1)(t + 2)/2]  
+        // For t from 0 to 23:
+        //      1. For all z such that 0 ≤ z < 64, let result[x, y, z] = a[x, y, z – (t + 1)(t + 2)/2]
         //      2. Let (x, y) = (y, 2x + 3y)
         int x = 1;
         int y = 0;
@@ -335,7 +362,7 @@ airtemplate Keccakf(const int N = 2**17) {
         assert(len == air.WIDTH);
         const expr result[len];
 
-        // For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64, let:  
+        // For all triples (x, y, z) such that 0 ≤ x,y < 5, and 0 ≤ z < 64, let:
         //      result[x, y, z] = a[x + 3y, x, z].
         for (int x = 0; x < 5; x++) {
             for (int y = 0; y < 5; y++) {
@@ -343,73 +370,8 @@ airtemplate Keccakf(const int N = 2**17) {
                     const int src_x = (x + 3 * y) % 5;
                     const int src_pos = bit_pos(src_x, x, z);
                     const int dst_pos = bit_pos(x, y, z);
-                    
+
                     result[dst_pos] = a[src_pos];
-                }
-            }
-        }
-
-        return result;
-    }
-
-    function chi(const expr a[]): const expr[] {
-        const int len = length(a);
-        assert(len == air.WIDTH);
-        const expr result[len];
-
-        // For all triples (x, y, z) such that 0 ≤ x,y < 5 and 0 ≤ z < 64 compute:
-        //      result[x, y, z] = xor(a[x, y, z], nand(a[x + 1, y, z], a[x + 2, y, z]))
-        for (int x = 0; x < 5; x++) {
-            const int x1 = (x + 1) % 5;
-            const int x2 = (x + 2) % 5;
-
-            for (int y = 0; y < 5; y++) {
-                for (int z = 0; z < 64; z++) {
-                    const int src_pos0 = bit_pos(x, y, z);
-                    const int src_pos1 = bit_pos(x1, y, z);
-                    const int src_pos2 = bit_pos(x2, y, z);
-                    const int dst_pos = src_pos0;
-
-                    result[dst_pos] = xor(a[src_pos0], nand(a[src_pos1], a[src_pos2]));
-                }
-            }
-        }
-
-        return result;
-    }
-
-    function iota(const expr a[], const int round_offset = 0): const expr {
-        const int len = length(a);
-        assert(len == air.WIDTH);
-        const expr result[len];
-
-        // Precompute weighted RC for each bit position
-        expr weighted_rc[64];
-        for (int z = 0; z < 64; z++) {
-            weighted_rc[z] = 0;
-            for (int i = 0; i < air.ROUNDS; i++) {
-                const int bit = (air.RC[i] >> z) & 1;
-                weighted_rc[z] += air.CLK[i] * bit;
-            }
-        }
-
-        // For all triples (x, y, z) such that 0 ≤ x,y < 5 and 0 ≤ z < 64 compute:
-        //      result[0, 0, z] = xor(a[0, 0, z], rc[z]), if (x, y) == (0, 0)
-        //      result[x, y, z] = a[x, y, z],             if (x, y) != (0, 0)
-
-        // For the (0, 0) lane, apply the round constant
-        for (int z = 0; z < 64; z++) {
-            const int pos = bit_pos(0, 0, z);
-            result[pos] = xor(a[pos], weighted_rc[z]);
-        }
-
-        // For the remaining positions, just copy the input
-        for (int x = 0; x < 5; x++) {
-            for (int y = 0; y < 5; y++) {
-                if (x == 0 && y == 0) continue;
-                for (int z = 0; z < 64; z++) {
-                    const int pos = bit_pos(x, y, z);
-                    result[pos] = a[pos];
                 }
             }
         }
@@ -432,10 +394,6 @@ airtemplate Keccakf(const int N = 2**17) {
 
     function xor5(const expr b1, const expr b2, const expr b3, const expr b4, const expr b5): const expr {
         return add([b1, b2, b3, b4, b5]);
-    }
-
-    function nand(const expr b1, const expr b2): const expr {
-        return (1 + b1) * b2;
     }
 
     function pack(const expr a[], const int offset = 0, const int len = 0): const expr {

@@ -10,7 +10,13 @@ use super::{KeccakState, PI, RC_BITS, RHO};
 //  - The χ.1 step has 1 add and 1 prod, this gives a number in the range <= 132
 //  - The χ.2 step has 1 add, this gives a number in the range <= 143
 //  - The ι step has 1 add, this gives a number in the range <= 144
-pub fn keccak_f_round(state: &mut KeccakState, round: usize) {
+
+/// θ, ρ and π steps of a Keccak-f round, computed with integer sums (xor = add).
+///
+/// Starting from a bit-valued state, it leaves the χ-row inputs B in place with
+/// values in [0, 11]; only their parities carry the keccak bits. This intermediate
+/// is what the Keccakf AIR packs (in base 12) into its χ-row S-box lookups.
+pub fn keccak_f_theta_rho_pi(state: &mut KeccakState) {
     let mut array = [[0u8; 64]; 5];
 
     // θ (Theta) step - Column parity computation and mixing
@@ -66,6 +72,13 @@ pub fn keccak_f_round(state: &mut KeccakState, round: usize) {
 
         last = tmp;
     }
+}
+
+/// χ and ι steps of a Keccak-f round, computed with integer sums and products.
+///
+/// Operates on the (possibly dirty) θρπ output; parities carry the keccak bits.
+pub fn keccak_f_chi_iota(state: &mut KeccakState, round: usize) {
+    let mut array = [[0u8; 64]; 5];
 
     // χ (Chi) step - Nonlinear transformation
     unroll! {
@@ -91,4 +104,10 @@ pub fn keccak_f_round(state: &mut KeccakState, round: usize) {
     for z in 0..64 {
         state[0][0][z] += RC_BITS[round][z] as u8;
     }
+}
+
+/// Full Keccak-f round: θ, ρ, π, χ, ι.
+pub fn keccak_f_round(state: &mut KeccakState, round: usize) {
+    keccak_f_theta_rho_pi(state);
+    keccak_f_chi_iota(state, round);
 }
