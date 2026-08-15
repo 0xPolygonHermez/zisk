@@ -41,6 +41,12 @@ main() {
 
     step "Patching Cargo.toml files to use local zisk repo..."
 
+    # `cargo-zisk build` takes no --locked, so the lock is pinned here instead, while
+    # the checkout is still pristine. This ELF and the native ethproofs build both
+    # deserialize the same pre-generated input files, so a third-party dependency
+    # drifting between them silently desyncs those formats.
+    verify_cargo_lock "${GUEST_DIR}" || return 1
+
     if [[ "${PLATFORM}" == "linux" ]]; then
         # GNU sed
         SED_PARAMS=( -i -E )
