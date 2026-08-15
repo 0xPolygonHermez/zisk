@@ -320,9 +320,49 @@ ensure_submodules() {
     ensure git -C "${repo_dir}" submodule update --init --recursive || return 1
 }
 
+# Set to 1 by patch_cargo_dep as soon as it rewrites a manifest. Repointing a
+# git dependency to a local path changes that package's source, which the
+# committed Cargo.lock cannot describe, so cargo *must* re-resolve and `--locked`
+# would abort the build. cargo_locked_flags reads this to decide whether the
+# lock can still be pinned.
+CARGO_DEPS_PATCHED=0
+
+# cargo_locked_flags: sets CARGO_LOCKED_FLAGS to `(--locked)` when no manifest
+# has been repointed, so a Cargo.lock that does not match its manifest fails the
+# build instead of being silently re-resolved (which is how a third-party
+# dependency can drift to a version the pre-generated input files were not
+# produced with). Clears it, with a warning, once patch_cargo_dep has run.
+# Usage: cargo_locked_flags; cargo build ${CARGO_LOCKED_FLAGS[@]+"${CARGO_LOCKED_FLAGS[@]}"}
+cargo_locked_flags() {
+    if [[ "${CARGO_DEPS_PATCHED:-0}" == "1" ]]; then
+        CARGO_LOCKED_FLAGS=()
+        warn "Not passing --locked: a dependency was repointed to a local path, so Cargo.lock has to be re-resolved"
+    else
+        CARGO_LOCKED_FLAGS=(--locked)
+    fi
+}
+
+# verify_cargo_lock: Fail if a repository's committed Cargo.lock does not match its
+# committed Cargo.toml. `cargo metadata --locked` resolves without building and
+# aborts when the lock would have to be updated, which is the same guarantee
+# `cargo build --locked` gives. Call it on the freshly cloned checkout, *before*
+# patch_cargo_dep runs: once a dependency is repointed to a local path the lock has
+# to be re-resolved by construction and the check no longer means anything.
+# Usage: verify_cargo_lock <manifest_dir>
+verify_cargo_lock() {
+    local manifest_dir="$1"
+
+    info "Verifying Cargo.lock is up to date in ${manifest_dir}..."
+    if ! (cd "${manifest_dir}" && cargo metadata --locked --format-version 1 > /dev/null); then
+        err "Cargo.lock in ${manifest_dir} is out of date with its Cargo.toml. Commit a regenerated lock instead of letting the build re-resolve it."
+        return 1
+    fi
+}
+
 # patch_cargo_dep: Repoint a git dependency in a Cargo.toml to a local path.
 # Comments out the existing `<crate> = { git = ... }` line and inserts (idempotently)
-# a `<crate> = { path = "<local_path>" }` entry right after it.
+# a `<crate> = { path = "<local_path>" }` entry right after it. A crates.io
+# dependency is left untouched (no-op); a missing one is an error.
 # Relies on the SED_PARAMS global set up by the caller.
 # Usage: patch_cargo_dep <cargo_toml> <crate_name> <local_path>
 patch_cargo_dep() {
@@ -334,21 +374,35 @@ patch_cargo_dep() {
         err "Cargo.toml not found: ${cargo_toml}"
         return 1
     fi
-    if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
-        err "Local path for '${crate}' not found: ${dep_path}/Cargo.toml. Make sure the ZisK repo is available."
-        return 1
-    fi
 
     # Escape regex-special characters in the crate name for sed/grep patterns.
     local crate_re
     crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
 
-    # Carry over `default-features` / `features`; dropping them rebuilds the dep
-    # with default features only (e.g. `input` loses `cli`, so `Client` stops
-    # deriving clap's ValueEnum). Matches the git line commented or not, so a
-    # rerun rebuilds the same path line and stays idempotent.
-    local extra_opts="" orig_line opt frag
-    orig_line=$(grep -m1 -E "^#?[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}" || true)
+    # Only an active git dependency is repointed. Templates keep the alternatives
+    # (git / local path) commented out next to the live one, so the decision has to
+    # come from the uncommented line: a crates.io version is the published dep the
+    # test is meant to build against, and a path is already patched. Both no-ops.
+    local orig_line
+    orig_line=$(grep -m1 -E "^[[:space:]]*${crate_re}[[:space:]]*=" "${cargo_toml}" || true)
+    if [[ -z "${orig_line}" ]]; then
+        err "No active '${crate}' dependency found in ${cargo_toml}"
+        return 1
+    fi
+    if ! printf '%s' "${orig_line}" | grep -qE "=[[:space:]]*[{][[:space:]]*git"; then
+        info "'${crate}' is not an active git dependency in ${cargo_toml} (${orig_line}): leaving it unchanged"
+        return 0
+    fi
+
+    if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
+        err "Local path for '${crate}' not found: ${dep_path}/Cargo.toml. Make sure the ZisK repo is available."
+        return 1
+    fi
+
+    # Carry over `default-features` / `features` from the git line; dropping them
+    # rebuilds the dep with default features only (e.g. `input` loses `cli`, so
+    # `Client` stops deriving clap's ValueEnum).
+    local extra_opts="" opt frag
     for opt in 'default-features[[:space:]]*=[[:space:]]*(true|false)' \
                'features[[:space:]]*=[[:space:]]*\[[^]]*\]'; do
         frag=$(printf '%s' "${orig_line}" | grep -oE "${opt}" | head -n1 || true)
@@ -360,7 +414,6 @@ patch_cargo_dep() {
     # Comment out the git dependency line and add a local path entry right below it, in a
     # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
     # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
-    # Idempotent: on reruns the git line is already commented, so it no longer matches.
     # Expand SED_PARAMS defensively: `${SED_PARAMS[@]+"${SED_PARAMS[@]}"}` yields
     # nothing (instead of erroring) when it is unset, so the function is safe under
     # `set -u`. The fallback below then fills in GNU/BSD defaults.
@@ -387,6 +440,8 @@ ${new_line}~" \
         err "Failed to add ${crate} path entry pointing to ${dep_path} in ${cargo_toml}"
         return 1
     fi
+
+    CARGO_DEPS_PATCHED=1
 }
 
 # format_duration_ms: format milliseconds to HH:MM:SS.mmm

@@ -44,7 +44,7 @@ jobs:
   build-setup:
     name: Build setup
     runs-on: gpu-hosted
-    timeout-minutes: 240
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -155,7 +155,7 @@ jobs:
     needs: build-setup
     if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
     runs-on: macos-14
-    timeout-minutes: 60
+    timeout-minutes: 240
     defaults:
       run:
         shell: bash
