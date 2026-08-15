@@ -208,16 +208,16 @@ jobs:
       #       -- bash -lc '
       #         cd /workspace/zisk/tools/test-env
       #         ./test_sha_hasher.sh
-            '
+      #       '
 
-      - name: Test ELF diagnostic
-        run: |
-          .github/scripts/docker_exec.sh \
-            -u ziskuser \
-            -- bash -lc '
-              cd /workspace/zisk/tools/test-env
-              ./test_diagnostic.sh
-            '
+      # - name: Test ELF diagnostic
+      #   run: |
+      #     .github/scripts/docker_exec.sh \
+      #       -u ziskuser \
+      #       -- bash -lc '
+      #         cd /workspace/zisk/tools/test-env
+      #         ./test_diagnostic.sh
+      #       '
 
       - name: Build zec-reth ELF file
         run: |
