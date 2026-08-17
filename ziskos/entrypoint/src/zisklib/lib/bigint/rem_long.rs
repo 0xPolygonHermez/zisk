@@ -63,6 +63,11 @@ pub fn rem_long_init(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(0 < limbs_quo && limbs_quo <= len_a * 4, "Quotient must fit in the allocated buffer");
+    assert!(limbs_quo % 4 == 0, "Quotient limbs must be a multiple of 4");
+    assert!(0 < limbs_rem && limbs_rem <= len_b * 4, "Remainder must fit in the allocated buffer");
+    assert!(limbs_rem % 4 == 0, "Remainder limbs must be a multiple of 4");
+
     let quo = U256::flat_to_slice(&quo_flat[..limbs_quo]);
     let rem = U256::flat_to_slice(&rem_flat[..limbs_rem]);
 
@@ -94,7 +99,7 @@ pub fn rem_long_init(
 /// The remainder: a mod b
 ///
 /// # Note
-/// Not optimal for `len(b) == 1`, use `rem_short` instead
+/// Not optimal for `len(b) == 1`, use `rem_short_init` instead
 pub fn rem_long(
     a: &[U256],
     b: &[U256],
@@ -135,6 +140,17 @@ pub fn rem_long(
         #[cfg(feature = "hints")]
         hints,
     );
+    assert!(
+        0 < limbs_quo && limbs_quo <= scratch.quo.len(),
+        "Quotient must fit in the allocated buffer"
+    );
+    assert!(limbs_quo % 4 == 0, "Quotient limbs must be a multiple of 4");
+    assert!(
+        0 < limbs_rem && limbs_rem <= scratch.rem.len(),
+        "Remainder must fit in the allocated buffer"
+    );
+    assert!(limbs_rem % 4 == 0, "Remainder limbs must be a multiple of 4");
+
     let quo = U256::flat_to_slice(&scratch.quo[..limbs_quo]);
     let rem = U256::flat_to_slice(&scratch.rem[..limbs_rem]);
 

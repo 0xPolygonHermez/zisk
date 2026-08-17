@@ -1,9 +1,15 @@
 [package]
 name = "ziskos-staticlib"
+description = "Static library (libziskos.a) exposing the ziskos guest runtime for linking from C"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+publish = false
 
 [lib]
 crate-type = ["staticlib"]
@@ -11,6 +17,12 @@ crate-type = ["staticlib"]
 [features]
 default = ["panic-handler"]
 panic-handler = []
+# Track and report the isolated allocator's peak usage: each wrapper folds the
+# heap usage into a running maximum, and `zkvm_deinit` prints it.
+alloc-stats = ["ziskos/alloc-stats"]
 
 [dependencies]
-ziskos = { path = "../ziskos/entrypoint" }
+ziskos = { workspace = true, features = ["staticlib"] }
+# Needed only to name the C-ABI types in the exported wrapper signatures
+# (see the `wrap_export!` macro in src/lib.rs).
+zisk-zkvm-interface = { workspace = true }

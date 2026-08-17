@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 
 use crate::{dma_trace, DmaUnalignedInput};
-use pil_std_lib::Std;
-use precompiles_helpers::DmaInfo;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
 use zisk_pil::{
     DmaUnalignedAirValues, DmaUnalignedTrace, DmaUnalignedTraceRowOps, DUAL_RANGE_BYTE_ID,
 };
+use zisk_precomp_helpers::DmaInfo;
 
 pub struct DmaUnalignedPrevSegment {
     pub seq_end: bool,

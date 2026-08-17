@@ -2,7 +2,7 @@
 //!
 //! This state machine is responsible for calculating basic binary table rows.
 
-use zisk_core::{P2_16, P2_17, P2_18, P2_19, P2_20, P2_8};
+use zisk_core::{zisk_ops::ZiskOp, P2_16, P2_17, P2_18, P2_19, P2_20, P2_8};
 
 use crate::binary_constants::*;
 
@@ -22,13 +22,17 @@ pub enum BinaryBasicTableOp {
     Eq = EQ_OP as u16,
     Add = ADD_OP as u16,
     Sub = SUB_OP as u16,
-    Leu = LEUW_OP as u16,
+    Leu = LEU_OP as u16,
     Le = LE_OP as u16,
     And = AND_OP as u16,
     Or = OR_OP as u16,
     Xor = XOR_OP as u16,
     Sext00 = 0x200,
     SextFF = 0x201,
+    Andn = ZiskOp::Andn.code() as u16,
+    Orn = ZiskOp::Orn.code() as u16,
+    Xnor = ZiskOp::Xnor.code() as u16,
+    Brev8 = ZiskOp::Brev8.code() as u16,
 }
 
 /// The `BinaryBasicTableSM` struct represents the Binary Basic Table State Machine.
@@ -100,6 +104,10 @@ impl BinaryBasicTableSM {
             BinaryBasicTableOp::Xor => P2_20 + P2_19 + 12 * P2_18 + 6 * P2_17,
             BinaryBasicTableOp::Sext00 => P2_20 + P2_19 + 12 * P2_18 + 7 * P2_17,
             BinaryBasicTableOp::SextFF => P2_20 + P2_19 + 12 * P2_18 + 8 * P2_17 + P2_16,
+            BinaryBasicTableOp::Andn => P2_20 + P2_19 + 12 * P2_18 + 9 * P2_17 + 2 * P2_16,
+            BinaryBasicTableOp::Orn => P2_20 + P2_19 + 12 * P2_18 + 10 * P2_17 + 2 * P2_16,
+            BinaryBasicTableOp::Xnor => P2_20 + P2_19 + 12 * P2_18 + 11 * P2_17 + 2 * P2_16,
+            BinaryBasicTableOp::Brev8 => P2_20 + P2_19 + 12 * P2_18 + 12 * P2_17 + 2 * P2_16,
         }
     }
 
@@ -123,7 +131,11 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Le
             | BinaryBasicTableOp::And
             | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor => P2_16,
+            | BinaryBasicTableOp::Xor
+            | BinaryBasicTableOp::Andn
+            | BinaryBasicTableOp::Orn
+            | BinaryBasicTableOp::Xnor
+            | BinaryBasicTableOp::Brev8 => P2_16,
 
             BinaryBasicTableOp::Sext00 | BinaryBasicTableOp::SextFF => 0,
         }
@@ -150,7 +162,13 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Sext00
             | BinaryBasicTableOp::SextFF => P2_16,
 
-            BinaryBasicTableOp::And | BinaryBasicTableOp::Or | BinaryBasicTableOp::Xor => 0,
+            BinaryBasicTableOp::And
+            | BinaryBasicTableOp::Or
+            | BinaryBasicTableOp::Xor
+            | BinaryBasicTableOp::Andn
+            | BinaryBasicTableOp::Orn
+            | BinaryBasicTableOp::Xnor
+            | BinaryBasicTableOp::Brev8 => 0,
         }
     }
 
@@ -176,7 +194,11 @@ impl BinaryBasicTableSM {
             | BinaryBasicTableOp::Le
             | BinaryBasicTableOp::And
             | BinaryBasicTableOp::Or
-            | BinaryBasicTableOp::Xor => 0,
+            | BinaryBasicTableOp::Xor
+            | BinaryBasicTableOp::Andn
+            | BinaryBasicTableOp::Orn
+            | BinaryBasicTableOp::Xnor
+            | BinaryBasicTableOp::Brev8 => 0,
         }
     }
 }

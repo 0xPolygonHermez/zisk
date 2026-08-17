@@ -9,7 +9,7 @@ cfg_if! {
         #[cfg(feature = "inputcpy")]
         use crate::ziskos_inputcpy;
     } else {
-        use lib_c::secp256k1_fn_inv_c;
+        use zisk_lib_c::secp256k1_fn_inv_c;
     }
 }
 

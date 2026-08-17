@@ -33,11 +33,9 @@ bool client = false;
 char shm_prefix[MAX_SHM_PREFIX_LENGTH] = {0};
 char sem_prefix[MAX_SHM_PREFIX_LENGTH] = {0};
 int map_locked_flag = MAP_LOCKED;
-uint64_t chunk_mask = 0x0;
 bool do_shutdown = false;
 uint64_t number_of_mt_requests = 1;
 uint16_t port = 0;
-uint64_t chunk_player_address = 0;
 bool wait_flag = true;
 bool stdio = false;
 int server_pid = 0;
@@ -47,7 +45,6 @@ char shmem_control_input_name[128] = {0};
 char shmem_control_output_name[128] = {0};
 char shmem_input_name[128] = {0};
 char shmem_output_name[128] = {0};
-char shmem_mt_name[128] = {0};
 char shmem_precompile_name[128] = {0};
 char shmem_rom_name[128] = {0};
 char shmem_ram_name[128] = {0};
@@ -85,9 +82,6 @@ int shmem_input_fd = -1;
 
 // Output trace shared memory
 int shmem_output_fd = -1;
-
-// Input MT trace shared memory
-int shmem_mt_fd = -1;
 
 // ROM shared memory
 int shmem_rom_fd = -1;
@@ -146,9 +140,6 @@ uint64_t realloc_counter = 0;
 uint64_t wait_prec_avail_counter = 0;
 uint64_t wait_input_avail_counter = 0;
 uint64_t print_pc_counter = 0;
-
-// Chunk player globals
-uint64_t chunk_player_mt_size = TRACE_INITIAL_SIZE;
 
 // Maximum number of steps to execute, used by the client to limit the execution steps of the
 // assembly code.

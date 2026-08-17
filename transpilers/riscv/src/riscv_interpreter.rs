@@ -1,0 +1,665 @@
+//! Parses a 32-bits and 16-bits RISC-V instruction
+
+use crate::{RiscvDecoder, RiscvInst, RiscvInstName, RiscvInstType};
+
+/// Convert 32-bits data chunk that contains a signed integer of a specified size in bits to a
+/// signed integer of 32 bits
+fn signext(v: u32, size: u32) -> i32 {
+    let sign_bit: u32 = 1u32 << (size - 1);
+    let max_value: u32 = 1u32 << size;
+    if (sign_bit & v) != 0 {
+        v as i32 - max_value as i32
+    } else {
+        v as i32
+    }
+}
+
+/// Interprets a buffer of 16-bits RISCV instructions, or 32-bits RISCV instructions taking 2 chunks
+/// of 16-bits, into a vector of decoded RISCV instructions split by field
+pub fn riscv_interpreter(rom_address: u64, code: &[u16]) -> Vec<RiscvInst> {
+    let mut insts = Vec::<RiscvInst>::new();
+    //let mut interleaved_insts = Vec::<RiscvInst>::new();
+
+    // code_len is the length of the input code buffer,
+    // which can contain both 16-bit and 32-bit instructions
+    let code_len = code.len();
+
+    // code_index is the index in the code buffer, from 0 to code_len - 1
+    let mut code_index: usize = 0;
+
+    // For every 16-bit instruction in the input code buffer
+    while code_index < code_len {
+        //println!("riscv_interpreter() code_index={}", code_index);
+
+        // Store the current code index
+        let instruction_code_index = code_index;
+
+        // Get the RISCV instruction
+        let inst = code[code_index];
+        code_index += 1;
+
+        // A 16-bit instruction with all bits zero is permanently reserved as an illegal instruction.
+        // 16 zero bits are used by some compilers (e.g. Go Lang compiler) to halt the system with
+        // an error.
+        if inst == 0 {
+            // println!("riscv_interpreter() found inst=0 at position s={} (index in u32 array)", s);
+            // This is a 16-bits invalid instruction, so we must HALT
+            insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
+            continue;
+        }
+
+        /***********/
+        /* 16 bits */
+        /***********/
+        // If this is a 16 bits instruction, then we can parse it directly
+        if (inst & 0x3) != 0x3 {
+            let i = riscv_get_instruction_16(inst, rom_address, instruction_code_index);
+            insts.push(i);
+        }
+        /***********/
+        /* 32 bits */
+        /***********/
+        // If this is a 32 bits instruction, then we need to read the next 16 bits
+        else {
+            // Build a 32-bit instruction from two consecutive 16-bit instructions
+            // Make sure the second part of the 32-bits instruction exists
+            if code_index >= code_len {
+                // TODO: Should we panic or return a halt_with_error 16 bits instruction?
+                panic!("riscv_interpreter() found incomplete 32-bits instruction at the end of the code buffer at index={code_index}");
+            }
+            // Read the next chunk of 16 bits, i.e. the second half of the 32-bits instruction
+            // It is also a potential 16 or 32 bits interleaved instruction, therefore its name
+            //let interleaved_code_index = code_index;
+            let interleaved_inst: u16 = code[code_index];
+            code_index += 1;
+
+            // Build the full 32-bits instruction
+            let inst: u32 = (inst as u32) | ((interleaved_inst as u32) << 16);
+
+            if inst == 0xFFFFFFFF {
+                // This is a 32-bits invalid instruction, so we must HALT
+                insts.push(RiscvInst::c_halt(0, rom_address + (instruction_code_index * 2) as u64));
+                continue;
+            }
+
+            // Parse the 32-bits instruction
+            let i = riscv_get_instruction_32(inst, rom_address, instruction_code_index);
+            insts.push(i);
+
+            /*****************************************/
+            /* Interleaved 16 or 32 bits instruction */
+            /*****************************************/
+
+            // There is a potential interleaved instruction starting at the middle of this 32-bits instruction
+            // If this is a 16 bits instruction, then we can parse it directly
+            // if (interleaved_inst & 0x3) != 0x3 {
+            //     let ii =
+            //         riscv_get_instruction_16(interleaved_inst, rom_address, interleaved_code_index);
+            //     interleaved_insts.push(ii);
+            // }
+            // If this is a 32 bits instruction, then we need to read the next 16 bits, without
+            // incrementing code_index
+            // else if code_index < code_len {
+            //     // Build a 32-bit instruction from two consecutive 16-bit instructions
+            //     let new_interleaved_inst: u16 = code[code_index];
+            //     let interleaved_inst_32: u32 =
+            //         (interleaved_inst as u32) | ((new_interleaved_inst as u32) << 16);
+            //     //code_index += 1;
+
+            //     // Parse the 32-bits instruction
+            //     let i = riscv_get_instruction_32(
+            //         interleaved_inst_32,
+            //         rom_address,
+            //         interleaved_code_index,
+            //     );
+            //     interleaved_insts.push(i);
+            // }
+        }
+    }
+    insts
+}
+
+fn riscv_get_instruction_32(inst: u32, root_address: u64, code_index: usize) -> RiscvInst {
+    // Get the instruction type, instruction name and level from the RiscvDecoder data
+    let (inst_type, inst_name, level) = RiscvDecoder::decode_32(inst);
+
+    // Calculate the ROM address of this instruction
+    let rom_address = root_address + (code_index * 2) as u64;
+
+    // Create a RISCV instruction instance with the known fields to be filled with data
+    // from the instruction based on its format type
+    let mut i = RiscvInst { rom_address, rvinst: inst, inst_type, inst_name, ..Default::default() };
+
+    // Decode the rest of instruction fields based on the instruction type
+
+    //
+    // I-type: rd = op(rs1, imm)
+    //
+    //  31 30 ... 21 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+    // |  imm[11:0]    |  rs1    | funct3 |   rd    |       opcode       |
+    //
+    if i.inst_type == RiscvInstType::I {
+        i.funct3 = (inst & 0x7000) >> 12;
+        i.rd = (inst & 0xF80) >> 7;
+        i.rs1 = (inst & 0xF8000) >> 15;
+        i.imm = signext((inst & 0xFFF00000) >> 20, 12);
+        if level == 2 {
+            i.funct6 = (inst & 0xFC000000) >> 26;
+            i.imm &= 0x3F;
+        }
+    }
+    //
+    // R-type: rd = op(rs1, rs2)
+    //
+    //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+    // |   funct7      |  rs2    |  rs1    | funct3 |   rd    |       opcode       |
+    //
+    else if i.inst_type == RiscvInstType::R {
+        i.funct3 = (inst & 0x7000) >> 12;
+        i.funct7 = (inst & 0xFE000000) >> 25;
+        i.rd = (inst & 0xF80) >> 7;
+        i.rs1 = (inst & 0xF8000) >> 15;
+        i.rs2 = (inst & 0x1F00000) >> 20;
+    }
+    //
+    // R4-type: rd = op(rs1, rs2, rs3)
+    //
+    //  31 ... 27  26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+    // |  rs3    |funct2| rs2    |  rs1    | funct3 |   rd    |       opcode       |
+    //
+    else if i.inst_type == RiscvInstType::R4 {
+        i.funct2 = (inst >> 25) & 0x3;
+        i.funct3 = (inst & 0x7000) >> 12;
+        i.rd = (inst & 0xF80) >> 7;
+        i.rs1 = (inst & 0xF8000) >> 15;
+        i.rs2 = (inst & 0x1F00000) >> 20;
+        i.rs3 = inst >> 27;
+    }
+    //
+    // S-type: op(rs1, rs2, imm) (store operation)
+    //
+    //  31 30 ... 26 25 24 ... 20 19 ... 15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+    // |  imm[11:5]    |  rs2    |   rs1   | funct3 |   imm[4:0]   |       opcode       |
+    //
+    else if i.inst_type == RiscvInstType::S {
+        i.funct3 = (inst & 0x7000) >> 12;
+        i.rs1 = (inst & 0xF8000) >> 15;
+        i.rs2 = (inst & 0x1F00000) >> 20;
+        let imm4_0 = (inst & 0xF80) >> 7;
+        let imm11_5 = (inst & 0xFE000000) >> 25;
+        i.imm = signext((imm11_5 << 5) | imm4_0, 12);
+    }
+    //
+    // B-type: op(rs1, rs2, imm) (branch operation)
+    //
+    //  31 30 29 28 27 26 25 24...20 19...15 14 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+    // |12|    imm[10:5]    |  rs2  | rs1   | funct3 |imm[4:1]   |11|       opcode       |
+    //
+    else if i.inst_type == RiscvInstType::B {
+        i.funct3 = (inst & 0x7000) >> 12;
+        i.rs1 = (inst & 0xF8000) >> 15;
+        i.rs2 = (inst & 0x1F00000) >> 20;
+        let imm4_1 = (inst & 0xF00) >> 8;
+        let imm10_5 = (inst & 0x7E000000) >> 25;
+        let imm11 = (inst & 0x080) >> 7;
+        let imm12 = (inst & 0x80000000) >> 31;
+        i.imm = signext((imm12 << 12) | (imm11 << 11) | (imm10_5 << 5) | (imm4_1 << 1), 13);
+    }
+    //
+    // U-type: op(rd, imm) (load upper immediate)
+    //
+    //  31 30 ... 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+    // |  imm[31:12]   |      rd      |        opcode      |
+    //
+    else if i.inst_type == RiscvInstType::U {
+        i.rd = (inst & 0xF80) >> 7;
+        i.imm = (((inst & 0xFFFFF000) >> 12) << 12) as i32;
+    }
+    //
+    // J-type: op(rd, imm) (jump and link)
+    //
+    //  31 30 29...22 21 20 19 18 ... 13 12 11 10 09 08 07 06 05 04 03 02 01 00
+    // |20|  imm[10:1]  |11|  imm[19:12]   |      rd      |       opcode       |
+    //
+    else if i.inst_type == RiscvInstType::J {
+        i.rd = (inst & 0xF80) >> 7;
+        let imm10_1 = (inst & 0x7FE00000) >> 21;
+        let imm11 = (inst & 0x100000) >> 20;
+        let imm19_12 = (inst & 0xFF000) >> 12;
+        let imm20 = (inst & 0x80000000) >> 31;
+        i.imm = signext((imm20 << 20) | (imm19_12 << 12) | (imm11 << 11) | (imm10_1 << 1), 21);
+    }
+    //
+    // A-type: op(rd, rs1, rs2, aq, rl) (atomic memory operation)
+    //
+    //  31 30 ... 27 26 25 24 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+    // |  funct5    |aq|rl|   rs2   |  rs1    | funct3 |   rd    |       opcode       |
+    //
+    else if i.inst_type == RiscvInstType::A {
+        i.funct3 = (inst & 0x7000) >> 12;
+        i.funct5 = (inst & 0xF8000000) >> 27;
+        i.rd = (inst & 0xF80) >> 7;
+        i.rs1 = (inst & 0xF8000) >> 15;
+        i.rs2 = (inst & 0x1F00000) >> 20;
+        i.aq = (inst & 0x4000000) >> 26;
+        i.rl = (inst & 0x2000000) >> 25;
+    }
+    //
+    // C-type: op(rd, rs1, csr) (system instruction)
+    //
+    else if i.inst_type == RiscvInstType::C {
+        i.funct3 = (inst & 0x7000) >> 12;
+        if i.funct3 == 0 {
+            if inst == 0x00000073 {
+                i.inst_name = RiscvInstName::Ecall;
+            } else if inst == 0x00100073 {
+                i.inst_name = RiscvInstName::Ebreak;
+            } else {
+                i.inst_name = RiscvInstName::Reserved;
+            }
+        } else {
+            // CSR instructions have the following format:
+            //
+            //  31 ... 20 19 ... 15 14 13 12 11 ... 07 06 05 04 03 02 01 00
+            // |   csr   |imme/rs1 | funct3 |   rd    |       opcode       |
+            //
+            i.rd = (inst & 0xF80) >> 7;
+            if (i.funct3 & 0x4) != 0 {
+                i.imme = (inst & 0xF8000) >> 15;
+            } else {
+                i.rs1 = (inst & 0xF8000) >> 15;
+            }
+            i.csr = (inst & 0xFFF00000) >> 20;
+        }
+    }
+    //
+    // F-type:
+    //
+    else if i.inst_type == RiscvInstType::F {
+        i.funct3 = (inst & 0x7000) >> 12;
+        if i.funct3 == 0 {
+            // Per the unprivileged spec, base impls shall ignore FENCE rs1/rd
+            // and treat reserved fm/pred/succ as a regular FENCE (fm=0000).
+            //
+            // Format Meaning
+            //
+            //  31 ... 28 27 .. 24 23 .. 20 19 .. 0
+            // |         |  pred  |  succ  |       |
+            //
+            i.pred = (inst & 0x0F000000) >> 24;
+            i.succ = (inst & 0x00F00000) >> 20;
+            i.inst_name = RiscvInstName::Fence;
+        } else if i.funct3 == 1 {
+            if (inst & 0xFFFF8F80) != 0 {
+                i.inst_name = RiscvInstName::Reserved;
+            } else {
+                i.inst_name = RiscvInstName::FenceI;
+            }
+        } else {
+            i.inst_name = RiscvInstName::Reserved;
+        }
+    } else if i.inst_type == RiscvInstType::Invalid {
+    } else {
+        panic!(
+            "Invalid i.inst_type={} at index={} addr=0x{:x}",
+            i.inst_type, code_index, rom_address
+        );
+    }
+    i
+}
+
+fn riscv_get_instruction_16(inst: u16, root_address: u64, code_index: usize) -> RiscvInst {
+    // This is a 16-bit instruction, so we need to decode it accordingly
+    let (inst_type, inst_name) = RiscvDecoder::decode_16(inst);
+
+    // Create a RISCV instruction instance to be filled with data from the instruction and from
+    // the RISCV decoder metadata
+    // Copy the original RISCV 32-bit instruction
+    // Copy the instruction type
+    let rom_address = root_address + (code_index * 2) as u64;
+    let mut i =
+        RiscvInst { rom_address, rvinst: inst as u32, inst_type, inst_name, ..Default::default() };
+
+    // Decode the rest of instruction fields based on the instruction type
+
+    if i.inst_type == RiscvInstType::Cr {
+        //
+        // Format Meaning              |15 14 13 12  |11 10 9 8 7 |6 5 4 3 2 |1 0|
+        // CR     Register             |funct4       |rd/rs1      |rs2       |op |
+        //
+        i.rs1 = ((inst >> 7) & 0x1F) as u32;
+        i.rs2 = ((inst >> 2) & 0x1F) as u32;
+        if inst_name == RiscvInstName::CJr {
+            i.rd = 0;
+            if i.rs1 == 0 {
+                //panic!("Invalid use of rs1==0 in c.jr at index={code_index} addr=0x{rom_address:x}");
+                i.inst_name = RiscvInstName::CReserved;
+            }
+            if i.rs2 != 0 {
+                //panic!("Invalid use of rs2!=0 in c.jr at index={code_index} addr=0x{rom_address:x}");
+                i.inst_name = RiscvInstName::CReserved;
+            }
+        } else if inst_name == RiscvInstName::CJalr {
+            i.rd = 1;
+        } else if inst_name == RiscvInstName::CMv {
+            i.rd = i.rs1;
+            i.rs1 = 0;
+            if i.rd == 0 {
+                // This is a hint and must not be executed
+                i.inst_name = RiscvInstName::CNop; // Change to c.nop
+            }
+        } else {
+            i.rd = i.rs1;
+        }
+    } else if i.inst_type == RiscvInstType::Ci {
+        //
+        // Format Meaning              |15 14 13 |12  |11 10 9 8 7 |6 5 4 3 2 |1 0|
+        // CI     Immediate            |funct3   |imm |rd/rs1      |imm       |op |
+        //
+        i.rd = ((inst >> 7) & 0x1F) as u32;
+        i.rs1 = i.rd;
+        if inst_name == RiscvInstName::CAddi16sp {
+            let imm9 = ((inst >> 12) & 0x1) as u32;
+            let imm4 = ((inst >> 6) & 0x1) as u32;
+            let imm6 = ((inst >> 5) & 0x1) as u32;
+            let imm8_7 = ((inst >> 3) & 0x3) as u32;
+            let imm5 = ((inst >> 2) & 0x1) as u32;
+            let imm = (imm9 << 9) | (imm8_7 << 7) | (imm6 << 6) | (imm5 << 5) | (imm4 << 4);
+            i.imm = signext(imm, 10);
+            if i.imm == 0 {
+                // This is reserved and must not be executed
+                i.inst_name = RiscvInstName::CReserved;
+            }
+        } else if (inst_name == RiscvInstName::CAddi) || (inst_name == RiscvInstName::CAddiw) {
+            let imm5 = ((inst >> 12) & 0x1) as u32;
+            let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+            let imm = (imm5 << 5) | imm4_0;
+            i.imm = signext(imm, 6);
+            if i.rd == 0 {
+                // This is a hint and must not be executed
+                i.inst_name = RiscvInstName::CNop; // Change to c.nop
+            }
+        } else if inst_name == RiscvInstName::CLi {
+            if i.rd == 0 {
+                // This is a hint and must not be executed
+                i.inst_name = RiscvInstName::CNop; // Change to c.nop
+            } else {
+                let imm5 = ((inst >> 12) & 0x1) as u32;
+                let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+                let imm = (imm5 << 5) | imm4_0;
+                i.imm = signext(imm, 6);
+                i.rs1 = 0;
+            }
+        } else if inst_name == RiscvInstName::CLui {
+            let imm17 = ((inst >> 12) & 0x1) as u32;
+            let imm16_12 = ((inst >> 2) & 0x1F) as u32;
+            i.imm = signext((imm17 << 17) | (imm16_12 << 12), 18);
+            if i.imm == 0 {
+                // This is reserved and must not be executed
+                i.inst_name = RiscvInstName::CReserved;
+            } else if i.rd == 2 {
+                // This is already filtered by the decoder, but we can add an extra check here
+                i.inst_name = RiscvInstName::CReserved;
+            } else if i.rd == 0 {
+                // This is a hint and must not be executed
+                i.inst_name = RiscvInstName::CNop; // Change to c.nop
+            }
+        } else if inst_name == RiscvInstName::CLdsp || inst_name == RiscvInstName::CFldsp {
+            let imm5 = ((inst >> 12) & 0x1) as u32;
+            let imm4_3 = ((inst >> 5) & 0x3) as u32;
+            let imm8_6 = ((inst >> 2) & 0x7) as u32;
+            i.imm = ((imm8_6 << 6) | (imm5 << 5) | (imm4_3 << 3)) as i32;
+            if i.rd == 0 {
+                i.inst_name = RiscvInstName::CReserved;
+            }
+            i.rs1 = 2; // x2 is always the base pointer for LDSP/FLDSP instructions
+        } else if inst_name == RiscvInstName::CLwsp {
+            let imm5 = ((inst >> 12) & 0x1) as u32;
+            let imm4_2 = ((inst >> 4) & 0x7) as u32;
+            let imm7_6 = ((inst >> 2) & 0x3) as u32;
+            i.imm = ((imm7_6 << 6) | (imm5 << 5) | (imm4_2 << 2)) as i32;
+            if i.rd == 0 {
+                i.inst_name = RiscvInstName::CReserved;
+            }
+            i.rs1 = 2; // x2 is always the base pointer for LWSP instructions
+        } else {
+            let imm5 = ((inst >> 12) & 0x1) as u32;
+            let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+            i.imm = ((imm5 << 5) | imm4_0) as i32;
+        }
+    } else if i.inst_type == RiscvInstType::Css {
+        //
+        // Format Meaning              |15 14 13 |12  11 10 9 8 7 |6 5 4 3 2 |1 0|
+        // CSS    Stack-relative Store |funct3   |imm             |rs2       |op |
+        //
+        // imm format depends on func3:
+        // 101 imm[5:3|8:6] rs2 10 C.FSDSP (RV32/64)
+        // 110 imm[5:2|7:6] rs2 10 C.SWSP
+        // 111 imm[5:3|8:6] rs2 10 C.SDSP (RV64/128)
+        //
+        match (inst >> 13) & 0x7 {
+            5 | 7 => {
+                // C.FSDSP
+                let imm5_3 = ((inst >> 10) & 0x7) as u32;
+                let imm8_6 = ((inst >> 7) & 0x7) as u32;
+                i.imm = ((imm8_6 << 6) | (imm5_3 << 3)) as i32;
+                i.rs1 = 2; // x2 is always the base pointer for CSS instructions
+            }
+            6 => {
+                // C.SWSP
+                let imm5_2 = ((inst >> 9) & 0xF) as u32;
+                let imm7_6 = ((inst >> 7) & 0x3) as u32;
+                i.imm = ((imm7_6 << 6) | (imm5_2 << 2)) as i32;
+                i.rs1 = 2; // x2 is always the base pointer for CSS instructions
+            }
+            _ => {
+                i.inst_name = RiscvInstName::CReserved;
+            }
+        }
+        i.rs2 = ((inst >> 2) & 0x1F) as u32;
+    } else if i.inst_type == RiscvInstType::Ciw {
+        //
+        // Format Meaning              |15 14 13 |12  11 10 9 8 7 6 5 |4 3 2 |1 0|
+        // CIW    Wide Immediate       |funct3   |imm                 |rd′   |op |
+        //
+        // Immediate is in format zimm[5:4|9:6|2|3]
+        //
+        let imm5_4 = ((inst >> 11) & 0x3) as u32;
+        let imm9_6 = ((inst >> 7) & 0xF) as u32;
+        let imm2 = ((inst >> 6) & 0x1) as u32;
+        let imm3 = ((inst >> 5) & 0x1) as u32;
+        i.imm = ((imm9_6 << 6) | (imm5_4 << 4) | (imm3 << 3) | (imm2 << 2)) as i32;
+        if i.imm == 0 {
+            // This is reserved and must not be executed
+            i.inst_name = RiscvInstName::CReserved;
+        }
+        i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+        i.rs1 = 2; // x2 is always the source register for CIW instructions
+    } else if i.inst_type == RiscvInstType::Cl {
+        //
+        // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 |4 3 2 |1 0|
+        // CL     Load                 |funct3   |imm       |rs1′  |imm |rd′   |op |
+        //
+        // Immediate is in format imm[5:3], imm[2|6] for c.lw and imm[5:3], imm[7:6] for c.ld/c.fld
+        //
+        if inst_name == RiscvInstName::CLw {
+            // Immediate is in format imm[5:3], imm[2|6]
+            let imm5_3 = ((inst >> 10) & 0x7) as u32;
+            let imm2 = ((inst >> 6) & 0x1) as u32;
+            let imm6 = ((inst >> 5) & 0x1) as u32;
+            i.imm = ((imm6 << 6) | (imm5_3 << 3) | (imm2 << 2)) as i32;
+        } else {
+            // c.ld or c.fld
+            // Immediate is in format imm[5:3], imm[7:6]
+            let imm5_3 = ((inst >> 10) & 0x7) as u32;
+            let imm7_6 = ((inst >> 5) & 0x3) as u32;
+            i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
+        }
+        i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+        i.rs1 = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+    } else if i.inst_type == RiscvInstType::Cs {
+        //
+        // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 |4 3 2 |1 0|
+        // CS     Store                |funct3   |imm       |rs1′  |imm |rs2′  |op |
+        //
+        // Immediate is in format imm[5:3], imm[2|6] for c.sw and imm[5:3], imm[7:6] for c.sd/c.fsd
+        //
+        if inst_name == RiscvInstName::CSw {
+            // Immediate is in format imm[5:3], imm[2|6]
+            let imm5_3 = ((inst >> 10) & 0x7) as u32;
+            let imm2 = ((inst >> 6) & 0x1) as u32;
+            let imm6 = ((inst >> 5) & 0x1) as u32;
+            i.imm = ((imm6 << 6) | (imm5_3 << 3) | (imm2 << 2)) as i32;
+        } else {
+            // c.sd or c.fsd
+            // Immediate is in format imm[5:3], imm[7:6]
+            let imm5_3 = ((inst >> 10) & 0x7) as u32;
+            let imm7_6 = ((inst >> 5) & 0x3) as u32;
+            i.imm = ((imm7_6 << 6) | (imm5_3 << 3)) as i32;
+        }
+        i.rs1 = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+        i.rs2 = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+    } else if i.inst_type == RiscvInstType::Ca {
+        //
+        // Format Meaning              |15 14 13 12  11 10 |9 8 7   |6 5 |4 3 2 |1 0|
+        // CA     Arithmetic           |funct6             |rd'/rs1'|fun2|rs2′  |op |
+        //
+        i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+        i.rs1 = i.rd;
+        i.rs2 = RiscvDecoder::convert_compressed_reg_index(((inst >> 2) & 0x7) as u32);
+    } else if i.inst_type == RiscvInstType::Cb {
+        //
+        // Format Meaning              |15 14 13 |12  11 10 |9 8 7 |6 5 4 3 2 |1 0|
+        // CB     Branch               |funct3   |offset    |rs1′  |offset    |op |
+        //
+        // Offset is in format offset[8|4:3] and offset[7:6|2:1|5]
+        //
+        if inst_name == RiscvInstName::CAndi {
+            let imm5 = ((inst >> 12) & 0x1) as u32;
+            let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+            i.imm = signext((imm5 << 5) | imm4_0, 6);
+            i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+            i.rs1 = i.rd;
+            if i.rd == 0 {
+                i.inst_name = RiscvInstName::CReserved;
+            }
+        } else if inst_name == RiscvInstName::CSrli || inst_name == RiscvInstName::CSrai {
+            let imm5 = ((inst >> 12) & 0x1) as u32;
+            let imm4_0 = ((inst >> 2) & 0x1F) as u32;
+            i.imm = ((imm5 << 5) | imm4_0) as i32;
+            i.rd = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+            i.rs1 = i.rd;
+            if i.rd == 0 {
+                // This is a hint and must not be executed
+                i.inst_name = RiscvInstName::CNop; // Change to c.nop
+            }
+        } else {
+            let offset8 = ((inst >> 12) & 0x1) as u32;
+            let offset4_3 = ((inst >> 10) & 0x3) as u32;
+            let offset7_6 = ((inst >> 5) & 0x3) as u32;
+            let offset2_1 = ((inst >> 3) & 0x3) as u32;
+            let offset5 = ((inst >> 2) & 0x1) as u32;
+            let offset = (offset8 << 8)
+                | (offset7_6 << 6)
+                | (offset5 << 5)
+                | (offset4_3 << 3)
+                | (offset2_1 << 1);
+            i.imm = signext(offset, 9);
+            i.rs1 = RiscvDecoder::convert_compressed_reg_index(((inst >> 7) & 0x7) as u32);
+        }
+    } else if i.inst_type == RiscvInstType::Cj {
+        //
+        // Format Meaning              |15 14 13 |12  11 10 9 8 7 6 5 4 3 2 |1 0|
+        // CJ     Jump                 |funct3   |jump target               |op |
+        //
+        // Offset format is offset[11|4|9:8|10|6|7|3:1|5]
+        //
+        let offset11 = ((inst >> 12) & 0x1) as u32;
+        let offset4 = ((inst >> 11) & 0x1) as u32;
+        let offset9_8 = ((inst >> 9) & 0x3) as u32;
+        let offset10 = ((inst >> 8) & 0x1) as u32;
+        let offset6 = ((inst >> 7) & 0x1) as u32;
+        let offset7 = ((inst >> 6) & 0x1) as u32;
+        let offset3_1 = ((inst >> 3) & 0x7) as u32;
+        let offset5 = ((inst >> 2) & 0x1) as u32;
+        let offset = (offset11 << 11)
+            | (offset10 << 10)
+            | (offset9_8 << 8)
+            | (offset7 << 7)
+            | (offset6 << 6)
+            | (offset5 << 5)
+            | (offset4 << 4)
+            | (offset3_1 << 1);
+        i.imm = signext(offset, 12);
+    } else if i.inst_type == RiscvInstType::Cinvalid {
+    } else {
+        panic!(
+            "Invalid i.inst_type={} at index={} addr=0x{:x}",
+            i.inst_type, code_index, rom_address
+        );
+    }
+    i
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Decode a single instruction and assert the interpreter classifies it as
+    /// one of the three "not a real instruction" names it uses for reserved /
+    /// illegal encodings:
+    /// * `Reserved`  — a reserved 32-bit encoding,
+    /// * `CReserved` — a reserved 16-bit (compressed) encoding,
+    /// * `CHalt`     — the all-zeros (16-bit) and all-ones (32-bit) sentinels,
+    ///   which are permanently-reserved illegal encodings the toolchain emits to
+    ///   halt (see `riscv_interpreter`).
+    ///
+    /// `chunks` is the little-endian 16-bit parcel stream: one parcel for a
+    /// 16-bit instruction, two `(low, high)` parcels for a 32-bit one.
+    fn assert_reserved(chunks: &[u16], what: &str) {
+        let insts = riscv_interpreter(0x8000_0000, chunks);
+        assert_eq!(insts.len(), 1, "{what}: expected one instruction from {chunks:04x?}");
+        let name = insts[0].inst_name;
+        assert!(
+            matches!(
+                name,
+                RiscvInstName::Reserved | RiscvInstName::CReserved | RiscvInstName::CHalt
+            ),
+            "{what} ({chunks:04x?}) decoded as {name:?}, expected Reserved / CReserved / CHalt",
+        );
+    }
+
+    #[test]
+    fn reserved_16bit_encodings_are_reserved() {
+        // The all-zero halfword is a permanently-reserved illegal instruction;
+        // the interpreter maps it to CHalt.
+        assert_reserved(&[0x0000], "all-zero halfword");
+        // Quadrant 0 (op=0b00), funct3=0b100: reserved compressed encoding.
+        assert_reserved(&[0x8000], "quadrant-0 funct3=0b100");
+        // C.ADDI4SPN with nzuimm=0 (CIW, rd'!=0): reserved.
+        assert_reserved(&[0x0004], "c.addi4spn nzuimm=0");
+        // C.ADDI16SP with nzimm=0: reserved.
+        assert_reserved(&[0x6101], "c.addi16sp nzimm=0");
+        // C.LUI with nzimm=0: reserved.
+        assert_reserved(&[0x6181], "c.lui nzimm=0");
+        // C.JR with rs1=x0: reserved.
+        assert_reserved(&[0x8002], "c.jr x0");
+        // C.LWSP with rd=x0: reserved.
+        assert_reserved(&[0x4002], "c.lwsp rd=x0");
+        // C.LDSP with rd=x0: reserved.
+        assert_reserved(&[0x6002], "c.ldsp rd=x0");
+    }
+
+    #[test]
+    fn reserved_32bit_encodings_are_reserved() {
+        // The all-ones word is a permanently-reserved illegal instruction;
+        // the interpreter maps it to CHalt.
+        assert_reserved(&[0xFFFF, 0xFFFF], "all-ones word");
+        // MISC-MEM (opcode 0b0001111) with funct3=0b010: reserved.
+        assert_reserved(&[0x200F, 0x0000], "misc-mem funct3=0b010");
+        // OP-IMM SLLI (opcode 0b0010011, funct3=0b001) with a reserved funct6.
+        assert_reserved(&[0x1013, 0x0400], "op-imm slli reserved funct6");
+        // SYSTEM (opcode 0b1110011) funct3=0 that is neither ECALL nor EBREAK.
+        assert_reserved(&[0x0073, 0x0020], "system funct3=0 non-ecall/ebreak");
+    }
+}

@@ -7,6 +7,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use async_stream::stream;
 use async_trait::async_trait;
+use bytes::Bytes;
 use chrono::Utc;
 use tokio::{sync::RwLock, time::timeout};
 use tokio_stream::StreamExt as _;
@@ -19,12 +20,12 @@ use zisk_coordinator::{
 };
 
 use super::{
-    BackendService, DomainAirInstanceCount, DomainAsmExecution, DomainExecutionStats,
-    DomainExecutorTime, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
-    DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure, DomainJobKind,
-    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
-    InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    BackendService, DomainAggregationProgramSpec, DomainAirInstanceCount, DomainAsmExecution,
+    DomainExecutionStats, DomainExecutorTime, DomainInputKind, DomainJobEvent,
+    DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress,
+    DomainJobEventQueued, DomainJobEventStarted, DomainJobEventWaitingForInput, DomainJobFailure,
+    DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof,
+    DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{internal, ApiError, ApiResult};
 use zisk_cluster_common::{
@@ -32,6 +33,7 @@ use zisk_cluster_common::{
     LaunchWrapRequestDto, ProofKind,
 };
 
+/// [`BackendService`] backed by an in-process `Coordinator`.
 pub struct CoordinatorBackend {
     coordinator: Arc<Coordinator>,
     /// job_id (UUID string) → hash_id: needed to populate `DomainProof.hash_id`.
@@ -40,6 +42,7 @@ pub struct CoordinatorBackend {
 }
 
 impl CoordinatorBackend {
+    /// Wrap an existing coordinator as a backend.
     pub fn new(coordinator: Arc<Coordinator>) -> Self {
         Self { coordinator, job_hash: Arc::new(RwLock::new(HashMap::new())) }
     }
@@ -105,6 +108,12 @@ fn coord_result_to_domain(result: CoordinatorJobResult, hash_id: &str) -> Domain
         CoordinatorJobResult::Wrap { proof_bytes } => {
             DomainJobKindResponse::Wrap(make_proof(hash_id.to_string(), proof_bytes))
         }
+        CoordinatorJobResult::SetupAggregationProgram { vk, hash_mode } => {
+            DomainJobKindResponse::SetupAggregationProgram { vk, hash_mode }
+        }
+        CoordinatorJobResult::AggregateProofs { proof_bytes } => {
+            DomainJobKindResponse::AggregateProofs(make_proof(hash_id.to_string(), proof_bytes))
+        }
     }
 }
 
@@ -115,7 +124,7 @@ fn coord_phase_to_domain(phase: &JobPhase) -> DomainJobPhase {
         | JobPhase::ContributionsHintsStream
         | JobPhase::Execution => DomainJobPhase::Contributions,
         JobPhase::Prove => DomainJobPhase::Prove,
-        JobPhase::Aggregate => DomainJobPhase::Aggregate,
+        JobPhase::Recurse => DomainJobPhase::Recurse,
     }
 }
 
@@ -163,17 +172,20 @@ fn coord_event_to_domain(
     }
 }
 
-fn domain_input_to_dto(input: &DomainInputKind) -> InputsModeDto {
+/// By value: the payload is tens of megabytes and the request is owned at both
+/// call sites.
+fn domain_input_to_dto(input: DomainInputKind) -> InputsModeDto {
     match input {
-        DomainInputKind::Inline(chunk) => InputsModeDto::InputsData(hex::encode(&chunk.data)),
-        DomainInputKind::StreamUri(uri) => InputsModeDto::InputsStream(uri.clone()),
+        DomainInputKind::Inline(chunk) => InputsModeDto::InputsData(Bytes::from(chunk.data)),
+        DomainInputKind::StreamUri(uri) => InputsModeDto::InputsStream(uri),
     }
 }
 
-fn domain_hints_to_dto(hints: &Option<DomainInputKind>) -> HintsModeDto {
+/// By value, as [`domain_input_to_dto`].
+fn domain_hints_to_dto(hints: Option<DomainInputKind>) -> HintsModeDto {
     match hints {
-        Some(DomainInputKind::Inline(chunk)) => HintsModeDto::HintsData(hex::encode(&chunk.data)),
-        Some(DomainInputKind::StreamUri(uri)) => HintsModeDto::HintsStream(uri.clone()),
+        Some(DomainInputKind::Inline(chunk)) => HintsModeDto::HintsData(Bytes::from(chunk.data)),
+        Some(DomainInputKind::StreamUri(uri)) => HintsModeDto::HintsStream(uri),
         None => HintsModeDto::HintsNone,
     }
 }
@@ -182,11 +194,14 @@ fn coord_err_to_api(e: zisk_coordinator::CoordinatorError) -> ApiError {
     use zisk_coordinator::CoordinatorError;
     match e {
         CoordinatorError::InsufficientCapacity => {
-            ApiError::ClusterUnavailable { reason: "no workers connected" }
+            ApiError::ClusterUnavailable { reason: "insufficient ready capacity for the request" }
         }
         CoordinatorError::WorkersSettingUp => {
             ApiError::ClusterUnavailable { reason: "workers are setting up; retry shortly" }
         }
+        CoordinatorError::WorkersBusy => ApiError::ClusterUnavailable {
+            reason: "workers are busy running another job; retry shortly",
+        },
         CoordinatorError::WorkersNotSetup => ApiError::ClusterUnavailable {
             reason: "workers connected but setup not done; call setup() first",
         },
@@ -248,12 +263,12 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
         JobState::Running(phase) => {
             let mut events = vec![queued, started];
             // Synthesize Progress events for phases already past.
-            // Progress(Prove) fires when Prove starts; Progress(Aggregate) when Aggregate starts.
+            // Progress(Prove) fires when Prove starts; Progress(Recurse) when Recurse starts.
             match phase {
                 JobPhase::Prove => events.push(progress(DomainJobPhase::Prove)),
-                JobPhase::Aggregate => {
+                JobPhase::Recurse => {
                     events.push(progress(DomainJobPhase::Prove));
-                    events.push(progress(DomainJobPhase::Aggregate));
+                    events.push(progress(DomainJobPhase::Recurse));
                 }
                 _ => {}
             }
@@ -270,12 +285,43 @@ fn catchup_events(state: &JobState, job_id: Uuid) -> Vec<DomainJobEvent> {
 #[async_trait]
 impl BackendService for CoordinatorBackend {
     async fn register_guest_program(&self, elf: Vec<u8>) -> ApiResult<String> {
-        self.coordinator
-            .register_guest_program(elf)
+        // blake3 hashing + the multi-MB ELF `fs::write` are blocking; run them off
+        // the async runtime so they don't stall a tonic worker thread.
+        let coordinator = Arc::clone(&self.coordinator);
+        tokio::task::spawn_blocking(move || coordinator.register_guest_program(elf))
+            .await
+            .map_err(|e| internal(format!("register_guest_program task panicked: {e}")))?
             .map_err(|e| internal(format!("register_guest_program: {e}")))
     }
 
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
+    async fn register_aggregation_program(
+        &self,
+        recurser_id: String,
+        spec: DomainAggregationProgramSpec,
+    ) -> ApiResult<String> {
+        // Trust the SDK-supplied `recurser_id`; misalignment surfaces at
+        // dispatch time as "recurser_id not found".
+        let cluster_spec = zisk_cluster_common::AggregationProgramSpecDto {
+            normalize: spec
+                .normalize
+                .map(|n| zisk_cluster_common::NormalizeCircuitDto { body: n.body }),
+            aggregate_publics_body: spec.aggregate_publics_body,
+            n_free: spec.n_free,
+            n_publics_agg: spec.n_publics_agg,
+            program_vks: spec.program_vks,
+        };
+        self.coordinator
+            .register_aggregation_program(recurser_id.clone(), cluster_spec)
+            .await
+            .map_err(coord_err_to_api)?;
+        Ok(recurser_id)
+    }
+
+    async fn submit_job_with_metadata(
+        &self,
+        kind: DomainJobKind,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
+    ) -> ApiResult<SubmitJobResult> {
         match kind {
             DomainJobKind::Setup(r) => {
                 let job_id_internal = self
@@ -294,7 +340,7 @@ impl BackendService for CoordinatorBackend {
                     DomainProofKind::Plonk => ProofKind::Plonk,
                     _ => ProofKind::VadcopFinal,
                 };
-                let hints_mode = domain_hints_to_dto(&r.hints);
+                let hints_mode = domain_hints_to_dto(r.hints);
                 let response = self
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
@@ -302,10 +348,10 @@ impl BackendService for CoordinatorBackend {
                         hash_id: hash_id.clone(),
                         compute_capacity: None,
                         minimal_compute_capacity: None,
-                        inputs_mode: domain_input_to_dto(&r.input),
+                        inputs_mode: domain_input_to_dto(r.input),
                         hints_mode,
                         simulated_node: None,
-                        metadata: Default::default(),
+                        metadata,
                         execution_only: false,
                         proof_type,
                     })
@@ -318,7 +364,7 @@ impl BackendService for CoordinatorBackend {
             }
             DomainJobKind::Execute(r) => {
                 let hash_id = r.hash_id.clone();
-                let hints_mode = domain_hints_to_dto(&r.hints);
+                let hints_mode = domain_hints_to_dto(r.hints);
                 let response = self
                     .coordinator
                     .launch_proof(LaunchProofRequestDto {
@@ -326,10 +372,10 @@ impl BackendService for CoordinatorBackend {
                         hash_id: hash_id.clone(),
                         compute_capacity: None,
                         minimal_compute_capacity: None,
-                        inputs_mode: domain_input_to_dto(&r.input),
+                        inputs_mode: domain_input_to_dto(r.input),
                         hints_mode,
                         simulated_node: None,
-                        metadata: Default::default(),
+                        metadata,
                         execution_only: true,
                         proof_type: ProofKind::VadcopFinal,
                     })
@@ -349,6 +395,33 @@ impl BackendService for CoordinatorBackend {
                 let response = self
                     .coordinator
                     .launch_wrap(LaunchWrapRequestDto { proof_data: r.proof.data, proof_dest })
+                    .await
+                    .map_err(coord_err_to_api)?;
+                let job_id = Uuid::parse_str(&response.job_id.as_string())
+                    .map_err(|e| internal(format!("invalid job_id: {e}")))?;
+                Ok(SubmitJobResult { job_id })
+            }
+            DomainJobKind::SetupAggregationProgram(r) => {
+                let job_id_internal = self
+                    .coordinator
+                    .setup_aggregation_program(&r.recurser_id)
+                    .await
+                    .map_err(coord_err_to_api)?;
+                let job_id = Uuid::parse_str(&job_id_internal.as_string())
+                    .map_err(|e| internal(format!("invalid job_id: {e}")))?;
+                Ok(SubmitJobResult { job_id })
+            }
+            DomainJobKind::AggregateProofs(r) => {
+                let response = self
+                    .coordinator
+                    .launch_aggregate_proofs(
+                        r.recurser_id,
+                        r.proof_a,
+                        r.proof_b,
+                        r.free_inputs_a,
+                        r.free_inputs_b,
+                        r.root_c_recurser_agg,
+                    )
                     .await
                     .map_err(coord_err_to_api)?;
                 let job_id = Uuid::parse_str(&response.job_id.as_string())
@@ -509,11 +582,13 @@ impl BackendService for CoordinatorBackend {
             while let Some(chunk_result) = chunks.next().await {
                 let chunk =
                     chunk_result.map_err(|e| internal(format!("input stream error: {e}")))?;
+                // Converted once so each worker's send is a refcount bump.
+                let payload = Bytes::from(chunk.data);
                 for worker_id in &workers {
                     let msg = zisk_cluster_common::CoordinatorMessageDto::InputStreamData(
                         InputStreamDataDto {
                             job_id: job_id_internal.clone(),
-                            payload: chunk.data.clone(),
+                            payload: payload.clone(),
                         },
                     );
                     self.coordinator.workers_pool().send_message(worker_id, msg).await.map_err(

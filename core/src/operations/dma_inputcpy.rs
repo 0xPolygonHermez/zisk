@@ -1,4 +1,4 @@
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 
 use crate::{
     zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_INPUTCPY_COST,
@@ -236,7 +236,7 @@ pub fn ops_dma_inputcpy(ctx: &InstContext, stats: &mut dyn OpStats) {
         // but if all bytes are equal count = count_eq, no need extra reads
         let first_loop_dst64 = (addr_a + pre_count) >> 3;
 
-        stats.mem_align_write(first_loop_dst64, loop_count as usize);
+        stats.mem_align_write(first_loop_dst64 * 8, loop_count as usize);
 
         stats.set_variable_cost(
             variable_cost

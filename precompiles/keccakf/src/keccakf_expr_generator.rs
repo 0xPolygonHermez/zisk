@@ -1,8 +1,8 @@
 use path_clean::PathClean;
 use std::path::Path;
 
-use circuit::ExpressionManagerConfig;
-use precompiles_helpers::keccak_f_expr;
+use zisk_circuit::ExpressionManagerConfig;
+use zisk_precomp_helpers::keccak_f_expr;
 
 const EXPR_VALUE_THRESHOLD: u32 = 1 << 22;
 const EXPR_DEGREE_THRESHOLD: usize = 3;

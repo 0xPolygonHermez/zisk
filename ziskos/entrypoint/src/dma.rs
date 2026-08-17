@@ -130,8 +130,8 @@ macro_rules! ziskos_memcmp {
         let v: i64;
         unsafe {
             core::arch::asm!(
-                "csrs {port}, {src}",
-                "addi {res}, {dst}, {size}",
+                "csrrs {res}, {port}, {src}",
+                "addi x0, {dst}, {size}",
                 port = const zisk_definitions::SYSCALL_DMA_MEMCMP_ID,
                 size = const $size,
                 dst = in(reg) $dst.as_ptr(),
@@ -146,8 +146,8 @@ macro_rules! ziskos_memcmp {
         let v: i64;
         unsafe {
             core::arch::asm!(
-                "csrs {port}, {src}",
-                "add {res}, {dst}, {size}",
+                "csrrs {res}, {port}, {src}",
+                "add x0, {dst}, {size}",
                 port = const zisk_definitions::SYSCALL_DMA_MEMCMP_ID,
                 size = in(reg) $size,
                 dst = in(reg) $dst.as_ptr(),

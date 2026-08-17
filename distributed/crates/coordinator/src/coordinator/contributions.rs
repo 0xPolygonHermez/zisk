@@ -4,6 +4,7 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator, PrecompileHintsRelay, WorkersPool,
 };
+use bytes::Bytes;
 use chrono::Utc;
 use colored::Colorize;
 use proofman::{ContributionsInfo, WitnessInfo};
@@ -41,15 +42,9 @@ impl Coordinator {
             InputsModeDto::InputsPath(ref inputs_path) => {
                 InputSourceDto::InputPath(inputs_path.clone())
             }
-            InputsModeDto::InputsData(ref inputs_hex) => {
-                let inputs = hex::decode(inputs_hex).map_err(|e| {
-                    CoordinatorError::Internal(format!(
-                        "Failed to decode inline input data for job {}: {}",
-                        job.job_id, e
-                    ))
-                })?;
+            InputsModeDto::InputsData(ref inputs) => {
                 info!("Job {} using inline input data ({} bytes)", job.job_id, inputs.len());
-                InputSourceDto::InputData(inputs)
+                InputSourceDto::InputData(inputs.clone())
             }
             InputsModeDto::InputsStream(_) => {
                 // Coordinator will relay streamed inputs to workers via InputStreamData.
@@ -62,15 +57,7 @@ impl Coordinator {
 
         let hints_source = match &job.hints_mode {
             HintsModeDto::HintsPath(ref hints_uri) => HintsSourceDto::HintsPath(hints_uri.clone()),
-            HintsModeDto::HintsData(ref hints_hex) => {
-                let hints = hex::decode(hints_hex).map_err(|e| {
-                    CoordinatorError::Internal(format!(
-                        "Failed to decode inline hints data for job {}: {}",
-                        job.job_id, e
-                    ))
-                })?;
-                HintsSourceDto::HintsData(hints)
-            }
+            HintsModeDto::HintsData(ref hints) => HintsSourceDto::HintsData(hints.clone()),
             HintsModeDto::HintsStream(hints_uri) => {
                 // Hints will be streamed separately
                 HintsSourceDto::HintsStream(hints_uri.clone())
@@ -85,17 +72,23 @@ impl Coordinator {
         let cloned_active_workers = active_workers.clone();
         let execution_only = job.execution_only;
         let job_hash_id = job.hash_id.clone();
+        // Borrowed here and cloned inside each future: `buffer_unordered` drains
+        // the whole iterator before polling any of it, so cloning at this level
+        // would run every copy before the first message is queued.
+        let input_source = &input_source;
+        let hints_source = &hints_source;
         let tasks = active_workers.into_iter().enumerate().map(|(rank_id, worker_id)| {
             let job_id = job.job_id.clone();
             let job_hash_id = job_hash_id.clone();
             let data_id = job.data_id.clone();
-            let input_source = input_source.clone();
-            let hints_source = hints_source.clone();
             let worker_allocation = job.partitions[rank_id].clone();
             let job_compute_capacity = job.compute_capacity;
+            let job_metadata = job.metadata.clone();
             let workers_pool = &self.workers_pool;
 
             async move {
+                let input_source = input_source.clone();
+                let hints_source = hints_source.clone();
                 let contribution_params = ContributionParamsDto {
                     hash_id: job_hash_id.clone(),
                     data_id,
@@ -117,6 +110,7 @@ impl Coordinator {
                     worker_id: worker_id.clone(),
                     job_id: job_id.clone(),
                     params,
+                    metadata: job_metadata,
                 };
                 let req = CoordinatorMessageDto::ExecuteTaskRequest(req);
 
@@ -177,6 +171,8 @@ impl Coordinator {
                 let pool = Arc::clone(&workers_pool);
 
                 Box::pin(async move {
+                    // Converted once so the per-worker clones are refcounts.
+                    let payload = Bytes::from(payload);
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
@@ -328,6 +324,7 @@ impl Coordinator {
 
     /// Core loop for the input relay: connects to the stream, reads chunks,
     /// and broadcasts each to all workers.
+    ///
     async fn run_input_relay(
         inputs_uri: &str,
         job_id: &JobId,
@@ -370,6 +367,8 @@ impl Coordinator {
         loop {
             match stream.next() {
                 Ok(Some(chunk)) => {
+                    // Converted once so the per-worker clones are refcounts.
+                    let chunk = Bytes::from(chunk);
                     let sends = workers.iter().map(|worker_id| {
                         let job_id = job_id.clone();
                         let worker_id = worker_id.clone();
@@ -426,6 +425,9 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Bind the payload to the phase mutated below (see `validate_response_phase`).
+        Self::validate_response_phase(&job, &execute_task_response)?;
+
         // Store Contributions response and extract instances
         let instances = self.store_contribution_response(&mut job, execute_task_response).await?;
         job.instances = Some(instances);
@@ -480,6 +482,9 @@ impl Coordinator {
             return Ok(());
         }
 
+        // Bind the payload to the phase mutated below (see `validate_response_phase`).
+        Self::validate_response_phase(&job, &execute_task_response)?;
+
         // Store Execution response and extract instances and executed_steps
         let (instances, executed_steps) =
             self.store_execution_response(&mut job, execute_task_response).await?;
@@ -490,6 +495,22 @@ impl Coordinator {
         if !self.check_execution_completion(&job, &worker_id) {
             return Ok(());
         }
+
+        // Execution-only jobs produce no proof, so the public outputs returned
+        // to the client rest entirely on worker honesty. Phase 1 already
+        // cross-checks `publics` across workers (`validate_and_extract_challenges`);
+        // this path had no equivalent and served `results.values().next()` —
+        // arbitrary `HashMap` order — letting a single disagreeing worker decide
+        // the API result. Require unanimity, and take the outputs from the same
+        // check that established it.
+        let public_outputs = match Self::validate_execution_publics(&job) {
+            Ok(publics) => publics.cloned().unwrap_or_default(),
+            Err(reason) => {
+                drop(job);
+                self.fail_job(&job_id, &reason).await?;
+                return Err(CoordinatorError::WorkerError(reason));
+            }
+        };
 
         // Print execution summary
         self.print_execution_summary(&job);
@@ -516,13 +537,7 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = if job.metadata.is_empty() {
-            String::new()
-        } else {
-            let pairs: Vec<String> =
-                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
-            format!(" {}", pairs.join(", "))
-        };
+        let metadata_str = Self::format_job_metadata(job.metadata.as_ref());
 
         info!(
             "{} {} {} {} Capacity: {}{}",
@@ -627,19 +642,6 @@ impl Coordinator {
         }
 
         let exec_stats = exec_stats_from_job(&job);
-
-        let public_outputs = job
-            .results
-            .get(&JobPhase::Execution)
-            .and_then(|m| m.values().next())
-            .and_then(|r| {
-                if let JobResultData::Execution(ref e) = r.data {
-                    Some(e.public_outputs.clone())
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
 
         // Pairs with launch_proof's record_job_started (execution-only path).
         crate::metrics::record_job_terminal(
@@ -1036,6 +1038,41 @@ impl Coordinator {
 
         // Ensure we have results from all assigned workers before proceeding.
         job.execution_mode.is_simulating() || execution_results_len >= job.workers.len()
+    }
+
+    /// Returns the public outputs every worker agreed on for an execution-only
+    /// job, or a description of the first disagreement.
+    ///
+    /// Which worker supplies the returned value is arbitrary (`HashMap` order)
+    /// and does not matter: it is only returned once all of them match. An empty
+    /// result set yields `None`.
+    ///
+    /// Simulation mode returns the single stored result without comparing:
+    /// `job.workers` there lists the same physical worker N times, so only one
+    /// entry ever exists and there is nothing to disagree with.
+    fn validate_execution_publics(job: &Job) -> Result<Option<&Vec<u8>>, String> {
+        let mut publics = job.results.get(&JobPhase::Execution).into_iter().flatten().filter_map(
+            |(worker_id, result)| match &result.data {
+                JobResultData::Execution(exec) => Some((worker_id, &exec.public_outputs)),
+                _ => None,
+            },
+        );
+
+        let Some((first_worker, first_publics)) = publics.next() else {
+            return Ok(None);
+        };
+
+        if job.execution_mode.is_simulating() {
+            return Ok(Some(first_publics));
+        }
+
+        match publics.find(|(_, other)| *other != first_publics) {
+            Some((worker_id, _)) => Err(format!(
+                "Execution public-output mismatch in job {}: worker {} disagrees with worker {}",
+                job.job_id, worker_id, first_worker
+            )),
+            None => Ok(Some(first_publics)),
+        }
     }
 
     /// Validates Phase 1 results and extracts challenge data with simulation mode handling.

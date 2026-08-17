@@ -2,11 +2,16 @@
 ziskos::entrypoint!(main);
 
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod riscv_b;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+#[cfg(feature = "c_extension")]
 mod riscv_c;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod riscv_fd;
 #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
 mod riscv_ima;
+#[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
+mod zisk_arith;
 
 mod fcalls;
 mod syscalls;
@@ -15,9 +20,12 @@ fn main() {
     // Base RISC-V extensions
     #[cfg(all(target_os = "zkvm", target_vendor = "zisk"))]
     {
+        #[cfg(feature = "c_extension")]
         riscv_c::diagnostic_riscv_c();
         riscv_fd::diagnostic_riscv_fd();
         riscv_ima::diagnostic_riscv_ima();
+        riscv_b::diagnostic_riscv_b();
+        zisk_arith::diagnostic_zisk_arith();
         //riscv_ima::diagnostic_riscv_ima_combinations(); // TODO
     }
 

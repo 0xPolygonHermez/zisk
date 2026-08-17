@@ -7,34 +7,38 @@
 
 [package]
 name = "ziskos-hints"
+description = "Guest runtime and entrypoint for programs targeting the ZisK zkVM with the hints feature enabled"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-zkvm-interface = { workspace = true }
-lib-c = { workspace = true }
+zisk-zkvm-interface = { workspace = true }
+zisk-lib-c = { workspace = true }
+zisk-definitions = { workspace = true }
 
 num-bigint = { workspace = true }
 num-integer = { workspace = true }
 num-traits = { workspace = true }
 
-precompiles-helpers = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
 
 rand = { workspace = true }
 
-lazy_static = "1.5.0"
-getrandom = { version = "0.2", features = ["custom"] }
-cfg-if = "1.0"
-tiny-keccak = { version = "2.0.0", features = ["keccak"] }
+lazy_static = { workspace = true }
+getrandom = { workspace = true, features = ["custom"] }
+cfg-if = { workspace = true }
+tiny-keccak = { workspace = true, features = ["keccak"] }
 serde = { workspace = true, features = ["derive"] }
 bincode = { workspace = true }
-paste = "1.0"
+paste = { workspace = true }
 sha2 = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 ripemd = { workspace = true }
 
 anyhow = { workspace = true }
@@ -46,6 +50,7 @@ hints = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(zisk_staticlib)',
   'cfg(zisk_hints)',
   'cfg(zisk_hints_metrics)',
   'cfg(zisk_hints_debug)',

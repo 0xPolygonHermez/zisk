@@ -1,54 +1,56 @@
 [package]
-name = "precomp-arith-eq"
+name = "zisk-precomp-arith-eq"
+description = "Arithmetic-equality precompile for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "arith_eq_generator"
+name = "zisk-arith-eq-generator"
 path = "src/arith_eq_generator.rs"
 
 [[bin]]
-name = "arith_eq_test_bigint"
-path = "src/arith_eq_test_bigint.rs"
+name = "zisk-arith-eq-test-bigint"
+path = "src/tests/arith_eq_test_bigint.rs"
 required-features = ["test_data"]
 
 [[bin]]
-name = "arith_eq_test_generator"
-path = "src/arith_eq_test_generator.rs"
+name = "zisk-arith-eq-test-generator"
+path = "src/tests/arith_eq_test_generator.rs"
 
 [[bin]]
-name = "arith_eq_test_c"
-path = "src/arith_eq_test_c.rs"
+name = "zisk-arith-eq-test-c"
+path = "src/tests/arith_eq_test_c.rs"
 required-features = ["test_data"]
 
 [[bin]]
-name = "arith_eq_test_secp256k1"
-path = "src/arith_eq_test_secp256k1.rs"
+name = "zisk-arith-eq-test-secp256k1"
+path = "src/tests/arith_eq_test_secp256k1.rs"
 required-features = ["test_data"]
 
 [[bin]]
-name = "arith_eq_test_secp256r1"
-path = "src/arith_eq_test_secp256r1.rs"
+name = "zisk-arith-eq-test-secp256r1"
+path = "src/tests/arith_eq_test_secp256r1.rs"
 required-features = ["test_data"]
 
 [dependencies]
 zisk-core = { workspace = true }
 zisk-pil = { workspace = true }
-precompiles-common = { workspace = true }
-precompiles-helpers = { workspace = true }
+zisk-precomp-common = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
 zisk-common = { workspace = true }
-ziskemu = { workspace = true }
-lib-c = { workspace = true }
+zisk-lib-c = { workspace = true }
 
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-pil-std-lib = { workspace = true }
+pil2-std-lib = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 ark-ff = { workspace = true }
@@ -59,13 +61,13 @@ ark-bn254 = { workspace = true }
 num-bigint = { workspace = true }
 num-traits = { workspace = true }
 
-regex = "1.11.1"
-rustfmt-wrapper = "0.2.1"
-lazy_static = "1.4"
-path-clean = "1.0"
+regex = { workspace = true }
+rustfmt-wrapper = { workspace = true }
+lazy_static = { workspace = true }
+path-clean = { workspace = true }
 
 [dev-dependencies]
-test-artifacts = { workspace = true }
+zisk-test-artifacts = { workspace = true }
 serial_test = { workspace = true }
 
 [features]

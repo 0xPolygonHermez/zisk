@@ -1,0 +1,12 @@
+[package]
+name = "recurser-hash-common"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# `fields` provides Goldilocks + `poseidon1_hash`, which routes to the
+# `syscall_poseidon1` precompile on the zkVM guest target and a native impl on
+# the host — so guest and host share one `hash12` (see lib.rs). Default features
+# only (no heavy C prover lib).
+proofman-fields = { workspace = true }

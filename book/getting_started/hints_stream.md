@@ -334,7 +334,11 @@ async fn main() -> Result<()> {
 }
 ```
 
-Switching transports is a one-line change at the call site — replace `ZiskStream::unix()` with `ZiskStream::grpc()` or `ZiskStream::quic("quic://0.0.0.0:0")`.
+Switching transports is a one-line change at the call site — replace `ZiskStream::unix()` with `ZiskStream::grpc()` or `ZiskStream::quic("quic://127.0.0.1:0")`.
+
+> **Network trust boundary.** The `quic://` transport encrypts the connection but does not authenticate either peer, consistent with the gRPC control plane between the coordinator and its workers. The hints producer is expected to run inside the cluster network, on a port that is not reachable from outside it — the same co-location assumption that `file://` and `unix://` stream URIs already require.
+>
+> Prefer binding loopback (`quic://127.0.0.1:0`). Binding a routable interface (for example `quic://0.0.0.0:0`) exposes the stream to anyone who can reach the port: the first peer to complete the handshake receives the buffered hints, and a reader will accept any certificate presented to it. If the producer and the coordinator are not co-located, restrict the port at the network layer.
 
 #### 3.2.2 Worker Hints non-Streaming Mode
 
@@ -455,7 +459,7 @@ fn main() {
 | Variable           | Description                                            | Default            |
 |--------------------|--------------------------------------------------------|--------------------|
 | `ZISK_HINTS_OUTPUT`| Path to the hints binary file written by `zkvm_init`.  | `./tmp/hints.bin`  |
-| `ZISK_INPUT_FILE`  | Path to the input file consumed by `read_slice`. | `build/input.bin`  |
+| `ZISK_INPUT_FILE`  | Path to the input file consumed by `read_input_slice`. | `build/input.bin`  |
 
 The `./tmp/` directory is created automatically if it does not exist.
 

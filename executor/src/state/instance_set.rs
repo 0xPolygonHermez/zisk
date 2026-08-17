@@ -1,16 +1,20 @@
 //! [`InstanceSet`] — populated main + secondary state-machine instance maps.
 
 use std::collections::HashMap;
-use std::sync::{PoisonError, RwLock};
+use std::sync::{Arc, PoisonError, RwLock};
 
-use fields::PrimeField64;
-use sm_main::MainInstance;
+use proofman_fields::PrimeField64;
 use zisk_common::Instance;
+use zisk_sm_main::MainInstance;
 
 /// Populated main + secondary instance maps, keyed by `global_id`.
 pub struct InstanceSet<F: PrimeField64> {
     /// Main state machine instances, indexed by their global ID.
-    pub main_instances: RwLock<HashMap<usize, MainInstance<F>>>,
+    // `Arc` values: the main witness handler clones the instance out and
+    // drops the guard before computing, so the incremental main advancement
+    // (which takes the write lock from the emulator's reader thread) is never
+    // blocked behind a witness computation.
+    pub main_instances: RwLock<HashMap<usize, Arc<MainInstance<F>>>>,
 
     /// Secondary state machine instances, indexed by their global ID.
     pub secn_instances: RwLock<HashMap<usize, Box<dyn Instance<F>>>>,
@@ -51,7 +55,7 @@ impl<F: PrimeField64> Default for InstanceSet<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
 
     type F = Goldilocks;
 

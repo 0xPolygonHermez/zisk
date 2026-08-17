@@ -1,0 +1,35 @@
+[package]
+name = "zisk-transpiler-riscv"
+description = "Transpiler from RISC-V to the ZisK instruction set"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[[bin]]
+name = "zisk-transpiler-riscv"
+path = "src/bin/riscv2zisk.rs"
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-transpiler-common = { workspace = true }
+
+[build-dependencies]
+zisk-lib-float = { workspace = true, optional = true }
+
+[features]
+default = []
+zba = ["zisk-transpiler-common/zba", "zisk-core/zba"]
+zbc = ["zisk-transpiler-common/zbc", "zisk-core/zbc"]
+zbkc = ["zisk-transpiler-common/zbkc", "zisk-core/zbkc"]
+zbkx = ["zisk-transpiler-common/zbkx", "zisk-core/zbkx"]
+zba_native = ["zisk-transpiler-common/zba_native", "zisk-core/zba_native"]
+zbc_native = ["zisk-transpiler-common/zbc_native", "zisk-core/zbc_native"]
+zbkc_native = ["zisk-transpiler-common/zbkc_native", "zisk-core/zbkc_native"]
+zbkx_native = ["zisk-transpiler-common/zbkx_native", "zisk-core/zbkx_native"]
+zicond_native = ["zisk-transpiler-common/zicond_native", "zisk-core/zicond_native"]
+float = ["zisk-transpiler-common/float"]

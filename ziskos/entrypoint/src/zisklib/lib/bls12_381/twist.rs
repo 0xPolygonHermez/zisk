@@ -198,7 +198,7 @@ pub fn is_on_curve_twist_bls12_381(
 /// Check if a point `p` is on the BLS12-381 twist subgroup
 ///
 /// # Soundness
-/// The point must be on-curve, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn is_on_subgroup_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -206,6 +206,7 @@ pub fn is_on_subgroup_twist_bls12_381(
     // p in subgroup iff:
     //          x·𝜓³(P) + P == 𝜓²(P)
     // where ψ := 𝜑⁻¹𝜋ₚ𝜑 is the untwist-Frobenius-twist endomorphism
+    // Notice that 𝜓²(P),𝜓³(P) = 𝒪 <==> P = 𝒪
 
     // Compute ψ²(P), ψ³(P)
     let utf1 = utf_endomorphism_twist_bls12_381(
@@ -225,7 +226,7 @@ pub fn is_on_subgroup_twist_bls12_381(
     );
 
     // Compute [x]ψ³(P) + P (since x is negative, we compute -[|x|]ψ³(P))
-    let xutf3: [u64; 24] = scalar_mul_by_abs_x_twist_bls12_381(
+    let xutf3: [u64; 24] = scalar_mul_by_abs_x_complete_twist_bls12_381(
         &utf3,
         #[cfg(feature = "hints")]
         hints,
@@ -235,20 +236,20 @@ pub fn is_on_subgroup_twist_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    lhs = add_twist_bls12_381(
+    lhs = add_complete_twist_bls12_381(
         &lhs,
         p,
         #[cfg(feature = "hints")]
         hints,
     );
 
-    eq(&lhs, &rhs) || eq(p, &G2_IDENTITY)
+    eq(&lhs, &rhs)
 }
 
 /// Compute the psi endomorphism on a point of the twist
 ///
 /// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 fn psi_twist_bls12_381(p: &[u64; 24], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -> [u64; 24] {
     let x: [u64; 12] = p[0..12].try_into().unwrap();
     let y: [u64; 12] = p[12..24].try_into().unwrap();
@@ -286,7 +287,7 @@ fn psi_twist_bls12_381(p: &[u64; 24], #[cfg(feature = "hints")] hints: &mut Vec<
 /// Compute the psi² endomorphism on a point of the twist
 ///
 /// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 fn psi2_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -316,9 +317,6 @@ fn psi2_twist_bls12_381(
 ///     𝜑 : E'(Fp2) -> E(Fp12) defined by 𝜑(x,y) = (x/ω²,y/ω³) is the untwist map
 ///     𝜋ₚ : E(Fp12) -> E(Fp12) defined by 𝜋ₚ(x,y) = (xᵖ,yᵖ) is the Frobenius map
 ///     𝜑⁻¹ : E(Fp12) -> E'(Fp2) defined by 𝜑⁻¹(x,y) = (x·ω²,y·ω³) is the twist map
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
 pub fn utf_endomorphism_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
@@ -391,12 +389,12 @@ pub fn utf_endomorphism_twist_bls12_381(
 /// Implements: h_eff * P where h_eff is the effective cofactor
 ///
 /// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 pub fn clear_cofactor_twist_bls12_381(
     p: &[u64; 24],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 24] {
-    let mut t1 = scalar_mul_by_abs_x_twist_bls12_381(
+    let mut t1 = scalar_mul_by_abs_x_complete_twist_bls12_381(
         p,
         #[cfg(feature = "hints")]
         hints,
@@ -411,7 +409,7 @@ pub fn clear_cofactor_twist_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    let mut t3 = dbl_twist_bls12_381(
+    let mut t3 = dbl_complete_twist_bls12_381(
         p,
         #[cfg(feature = "hints")]
         hints,
@@ -421,19 +419,19 @@ pub fn clear_cofactor_twist_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    t3 = sub_twist_bls12_381(
+    t3 = sub_complete_twist_bls12_381(
         &t3,
         &t2,
         #[cfg(feature = "hints")]
         hints,
     );
-    t2 = add_twist_bls12_381(
+    t2 = add_complete_twist_bls12_381(
         &t1,
         &t2,
         #[cfg(feature = "hints")]
         hints,
     );
-    t2 = scalar_mul_by_abs_x_twist_bls12_381(
+    t2 = scalar_mul_by_abs_x_complete_twist_bls12_381(
         &t2,
         #[cfg(feature = "hints")]
         hints,
@@ -443,21 +441,45 @@ pub fn clear_cofactor_twist_bls12_381(
         #[cfg(feature = "hints")]
         hints,
     );
-    t3 = add_twist_bls12_381(
+    t3 = add_complete_twist_bls12_381(
         &t3,
         &t2,
         #[cfg(feature = "hints")]
         hints,
     );
-    t3 = sub_twist_bls12_381(
+    t3 = sub_complete_twist_bls12_381(
         &t3,
         &t1,
         #[cfg(feature = "hints")]
         hints,
     );
-    sub_twist_bls12_381(
+    sub_complete_twist_bls12_381(
         &t3,
         p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
+}
+
+/// Addition of two points
+///
+/// # Soundness
+/// Both points must be on-curve, and have **canonical** coordinates (`x, y < p`).
+pub fn add_complete_twist_bls12_381(
+    p1: &[u64; 24],
+    p2: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    // Handle identity cases
+    if eq(p1, &G2_IDENTITY) {
+        return *p2;
+    } else if eq(p2, &G2_IDENTITY) {
+        return *p1;
+    }
+
+    add_twist_bls12_381(
+        p1,
+        p2,
         #[cfg(feature = "hints")]
         hints,
     )
@@ -672,6 +694,26 @@ pub fn neg_twist_bls12_381(
     result[0..12].copy_from_slice(&x);
     result[12..24].copy_from_slice(&y_neg);
     result
+}
+
+/// Doubling of a point
+///
+/// # Soundness
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
+pub fn dbl_complete_twist_bls12_381(
+    p: &[u64; 24],
+    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
+) -> [u64; 24] {
+    // Handle identity case
+    if eq(p, &G2_IDENTITY) {
+        return G2_IDENTITY;
+    }
+
+    dbl_twist_bls12_381(
+        p,
+        #[cfg(feature = "hints")]
+        hints,
+    )
 }
 
 /// Doubling of a non-zero point
@@ -932,26 +974,30 @@ pub fn scalar_mul_twist_bls12_381(
     q
 }
 
-/// Scalar multiplication of a non-zero point `p` by a binary scalar `k`
+/// Scalar multiplication of a point by x = 0xd201000000010000
 ///
 /// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates
-/// (`x, y < p`).
+/// The point must be on-curve and have **canonical** coordinates (`x, y < p`).
 /// The scalar is assumed to be in [0, r-1].
-pub fn scalar_mul_bin_twist_bls12_381(
+pub fn scalar_mul_by_abs_x_complete_twist_bls12_381(
     p: &[u64; 24],
-    k: &[u8],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> [u64; 24] {
+    // Handle identity case
+    if eq(p, &G2_IDENTITY) {
+        return G2_IDENTITY;
+    }
+
+    // Start at p
     let mut r = *p;
-    for &bit in k.iter().skip(1) {
-        r = dbl_twist_bls12_381(
+    for &bit in X_ABS_BIN_BE.iter().skip(1) {
+        r = dbl_complete_twist_bls12_381(
             &r,
             #[cfg(feature = "hints")]
             hints,
         );
         if bit == 1 {
-            r = add_twist_bls12_381(
+            r = add_complete_twist_bls12_381(
                 &r,
                 p,
                 #[cfg(feature = "hints")]
@@ -962,24 +1008,6 @@ pub fn scalar_mul_bin_twist_bls12_381(
     r
 }
 
-/// Scalar multiplication of a non-zero point by x
-///
-/// # Soundness
-/// The point must be on-curve, non-identity, and have **canonical** coordinates
-/// (`x, y < p`).
-/// The scalar is assumed to be in [0, r-1].
-pub fn scalar_mul_by_abs_x_twist_bls12_381(
-    p: &[u64; 24],
-    #[cfg(feature = "hints")] hints: &mut Vec<u64>,
-) -> [u64; 24] {
-    scalar_mul_bin_twist_bls12_381(
-        p,
-        &X_ABS_BIN_BE,
-        #[cfg(feature = "hints")]
-        hints,
-    )
-}
-
 /// Multi-Scalar Multiplication (MSM) for BLS12-381 G2 points
 /// It computes k1·P1 + k2·P2 + ... + kn·Pn
 // TODO: This is a naive implementation, one can improve it by using, e.g., a windowed strategies!
@@ -988,7 +1016,7 @@ pub fn msm_complete_safe_twist_bls12_381(
     scalars: &[[u64; 4]],
     #[cfg(feature = "hints")] hints: &mut Vec<u64>,
 ) -> Result<[u64; 24], u8> {
-    debug_assert_eq!(points.len(), scalars.len());
+    debug_assert_eq!(points.len(), scalars.len(), "Points and scalars must have the same length");
 
     let mut acc = G2_IDENTITY;
     let mut acc_is_inf = true;

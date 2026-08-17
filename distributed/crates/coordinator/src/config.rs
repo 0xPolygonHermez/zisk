@@ -4,29 +4,45 @@ use std::path::PathBuf;
 use zisk_cluster_common::Environment;
 use zisk_cluster_common::LoggingConfig;
 
+/// Result alias for config operations that fail with [`anyhow::Error`].
 pub type Result<T> = std::result::Result<T, anyhow::Error>;
 
+/// Top-level coordinator configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    /// Service identity (name, version, environment).
     pub service: ServiceConfig,
+    /// Worker-facing gRPC server settings.
     pub server: ServerConfig,
+    /// Logging configuration.
     pub logging: LoggingConfig,
+    /// Orchestration, timeout, and worker-management knobs.
     pub coordinator: CoordinatorConfig,
 }
 
+/// Worker-facing gRPC server settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
+    /// Bind host.
     pub host: String,
+    /// Bind port.
     pub port: u16,
+    /// Directory where generated proofs are written.
     pub proofs_dir: PathBuf,
-    pub save_proofs: bool,
+    /// If true, proofs are not persisted to disk.
+    pub no_save_proofs: bool,
+    /// Grace period, in seconds, for in-flight work on shutdown.
     pub shutdown_timeout_seconds: u64,
 }
 
+/// Service identity metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceConfig {
+    /// Human-readable service name.
     pub name: String,
+    /// Service version (defaults to the crate version).
     pub version: String,
+    /// Deployment environment.
     pub environment: Environment,
 }
 
@@ -102,6 +118,7 @@ pub struct CoordinatorConfig {
     pub default_compute_units: u32,
     /// Minimum compute units required to start any job. Jobs are rejected
     /// (`ResourceExhausted`) if available capacity falls below this floor.
+    /// `0` means "require all currently available capacity".
     pub min_compute_units: u32,
     /// Grace period in milliseconds before a disconnected worker's job is failed.
     /// If the worker reconnects within this window the disconnect is treated as a
@@ -116,11 +133,13 @@ impl Config {
     const DEFAULT_PORT: u16 = 50051;
     const DEFAULT_PROOFS_DIR: &'static str = "proofs";
 
+    /// Load the configuration from built-in defaults, an optional TOML file,
+    /// and the given argument overrides (creating `proofs_dir` if needed).
     pub fn load(
         config_file: Option<String>,
         port: Option<u16>,
         proofs_dir: Option<PathBuf>,
-        save_proofs: Option<bool>,
+        no_save_proofs: bool,
         webhook_url: Option<String>,
     ) -> Result<Self> {
         // Create proofs directory if it doesn't exist
@@ -139,7 +158,7 @@ impl Config {
             .set_default("server.host", Self::DEFAULT_BIND_HOST)?
             .set_default("server.port", Self::DEFAULT_PORT)?
             .set_default("server.proofs_dir", Self::DEFAULT_PROOFS_DIR)?
-            .set_default("server.save_proofs", false)?
+            .set_default("server.no_save_proofs", false)?
             .set_default("server.shutdown_timeout_seconds", 30)?
             .set_default("logging.level", "info")?
             .set_default("logging.format", "pretty")?
@@ -156,7 +175,7 @@ impl Config {
             .set_default("coordinator.stuck_recovery_threshold_seconds", 600)?
             .set_default("coordinator.job_ttl_seconds", 3600)?
             .set_default("coordinator.default_compute_units", 0)?
-            .set_default("coordinator.min_compute_units", 1)?
+            .set_default("coordinator.min_compute_units", 0)?
             .set_default("coordinator.reconnect_grace_period_ms", 500_u64)?;
 
         if let Some(path) = config_file {
@@ -177,10 +196,7 @@ impl Config {
                 .set_override("server.proofs_dir", proofs_dir.to_string_lossy().to_string())?;
         }
 
-        // Only override when set.
-        if let Some(save_proofs) = save_proofs {
-            builder = builder.set_override("server.save_proofs", save_proofs)?;
-        }
+        builder = builder.set_override("server.no_save_proofs", no_save_proofs)?;
 
         // Override webhook_url if provided via function argument
         if let Some(url) = webhook_url {
@@ -192,6 +208,7 @@ impl Config {
         Ok(config.try_deserialize()?)
     }
 
+    /// The default coordinator URL (`http://127.0.0.1:50051`).
     pub fn default_url() -> String {
         format!("http://{}:{}", Self::DEFAULT_HOST, Self::DEFAULT_PORT)
     }

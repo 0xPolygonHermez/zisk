@@ -11,6 +11,11 @@ pub struct StatsReport {
     pub label_width_stack: Vec<usize>,
     pub use_thousands_sep: bool,
     pub sdk_width: usize,
+    pub custom_total_count_factor: f64,
+    pub custom_total_cost_factor: f64,
+    title_len: usize,
+    hidden_no_cost: bool,
+    output_len_total_line: usize,
 }
 impl Default for StatsReport {
     fn default() -> Self {
@@ -30,6 +35,11 @@ impl StatsReport {
             label_width_stack: Vec::new(),
             use_thousands_sep: true,
             sdk_width: 120,
+            custom_total_count_factor: 0.0,
+            custom_total_cost_factor: 0.0,
+            title_len: 0,
+            hidden_no_cost: false,
+            output_len_total_line: 0,
         }
     }
 
@@ -58,7 +68,7 @@ impl StatsReport {
         }
     }
 
-    fn format_number(&self, num: u64) -> String {
+    pub fn format_number(&self, num: u64) -> String {
         if self.use_thousands_sep {
             num.to_formatted_string(&Locale::en)
         } else {
@@ -78,6 +88,32 @@ impl StatsReport {
             label_width = self.label_width
         );
     }
+
+    /// Appends a line with `label` followed by each value in `values`, formatted with
+    /// `format_number` and right-aligned to `col_width` (the same width for every column),
+    /// separated by single spaces.
+    pub fn add_values(&mut self, label: &str, values: &[u64], col_width: usize) {
+        let mut line =
+            format!("{}{:<label_width$}", self.identation, label, label_width = self.label_width);
+        for &value in values {
+            line += &format!(" {:>col_width$}", self.format_number(value));
+        }
+        line.push('\n');
+        self.output += &line;
+    }
+    /// Appends a line with `label` followed by each pre-formatted cell in `cells`, right-aligned to
+    /// `col_width` (the same width for every column). Unlike `add_values`, cells are arbitrary
+    /// strings, so a row can mix numbers and text (e.g. a header row ending in "total").
+    pub fn add_str_cells(&mut self, label: &str, cells: &[String], col_width: usize) {
+        let mut line =
+            format!("{}{:<label_width$}", self.identation, label, label_width = self.label_width);
+        for cell in cells {
+            line += &format!(" {cell:>col_width$}");
+        }
+        line.push('\n');
+        self.output += &line;
+    }
+
     pub fn title(&mut self, label: &str) {
         self.output += &format!("\n{}{label}\n{}\n", self.identation, "-".repeat(label.len()));
     }
@@ -85,10 +121,24 @@ impl StatsReport {
     fn line_from_title(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(title.len()),
+            "-".repeat(title.len()),
             identation = self.identation,
         );
+        self.title_len = title.len();
     }
+    pub fn add_total_line(&mut self) {
+        if self.output.len() > self.output_len_total_line {
+            self.output += &format!(
+                "{identation}{label:<label_width$} {}\n",
+                "-".repeat(self.title_len - self.label_width - 1),
+                label_width = self.label_width,
+                label = "",
+                identation = self.identation,
+            );
+            self.output_len_total_line = self.output.len();
+        }
+    }
+
     pub fn title_cost(&mut self, label: &str, cost_label: &str) {
         self.line_from_title(&format!(
             "{:<label_width$} {:>15}",
@@ -115,6 +165,16 @@ impl StatsReport {
         );
     }
 
+    pub fn add_perc_total_line(&mut self) {
+        self.output += &format!(
+            "{}{:<label_width$} {}\n",
+            self.identation,
+            "",
+            "-".repeat(23),
+            label_width = self.label_width,
+        );
+    }
+
     pub fn add_cost_perc(&mut self, label: &str, cost: u64) {
         self.output += &format!(
             "{}{label:<label_width$} {:>15} {:6.2}%\n",
@@ -132,7 +192,7 @@ impl StatsReport {
     pub fn title_top_perc(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(std::cmp::min(title.len(), 22)),
+            "-".repeat(std::cmp::min(title.len(), 22)),
             identation = self.identation,
         );
     }
@@ -140,7 +200,7 @@ impl StatsReport {
     pub fn title_auto_width(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(title.len()),
+            "-".repeat(title.len()),
             identation = self.identation,
         );
     }
@@ -148,7 +208,7 @@ impl StatsReport {
     pub fn title_fixed_width(&mut self, title: &str, width: usize) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(width),
+            "-".repeat(width),
             identation = self.identation,
         );
     }
@@ -195,6 +255,96 @@ impl StatsReport {
         self.add_top_calls_perc(label, cost, calls, self.cost_divisor)
     }
 
+    /// Formats a cost value: in millions with two decimals when `millions` is set
+    /// (readable for the large memory-cost totals), otherwise as a plain integer.
+    fn fmt_cost(&self, value: u64, millions: bool) -> String {
+        if millions {
+            // Two decimals of millions, with the thousands separator on the integer
+            // part (honoring `use_thousands_sep`).
+            let hundredths = (value + 5_000) / 10_000; // round(value / 1e6 * 100)
+            format!("{}.{:02}", self.format_number(hundredths / 100), hundredths % 100)
+        } else {
+            self.format_number(value)
+        }
+    }
+
+    /// Row for the "top functions by memory cost" ranking: total memory cost, its
+    /// share of the global memory cost, calls, and cost per call. Cost columns are
+    /// shown in millions when `millions` is set.
+    pub fn add_top_mem_cost_calls(
+        &mut self,
+        label: &str,
+        cost: u64,
+        divisor: f64,
+        calls: usize,
+        millions: bool,
+    ) {
+        let per_call = if calls > 0 { cost / calls as u64 } else { 0 };
+        let w = if millions { 12 } else { 15 };
+        self.output += &format!(
+            "{}{:>w$} {:6.2}% {:>10} {:>w$} {label}\n",
+            self.identation,
+            self.fmt_cost(cost, millions),
+            cost as f64 / divisor,
+            self.format_number(calls as u64),
+            self.fmt_cost(per_call, millions),
+            w = w,
+        );
+    }
+
+    /// Row for the "unaligned cost per step vs global average" ranking: how many
+    /// times the function's unaligned-cost-per-step exceeds the global average, its
+    /// total unaligned cost, that cost as a share of the global unaligned cost, the
+    /// unaligned accesses performed per call, and calls. The unaligned *cost* is
+    /// shown in millions when `millions` is set (the accesses/call count is not).
+    pub fn add_top_mem_ratio(
+        &mut self,
+        label: &str,
+        ratio: f64,
+        unaligned: u64,
+        unaligned_perc: f64,
+        unaligned_per_call: u64,
+        calls: usize,
+        millions: bool,
+    ) {
+        let w = if millions { 12 } else { 15 };
+        self.output += &format!(
+            "{}{:>6.2} {:>w$} {:6.2}% {:>12} {:>10} {label}\n",
+            self.identation,
+            ratio,
+            self.fmt_cost(unaligned, millions),
+            unaligned_perc,
+            self.format_number(unaligned_per_call),
+            self.format_number(calls as u64),
+            w = w,
+        );
+    }
+
+    /// Row for the "unaligned vs aligned" memory ranking: unaligned cost, aligned
+    /// cost, the share of this function's memory cost that is unaligned, and calls.
+    /// The cost columns are shown in millions when `millions` is set.
+    pub fn add_top_mem_align_calls(
+        &mut self,
+        label: &str,
+        unaligned: u64,
+        aligned: u64,
+        calls: usize,
+        millions: bool,
+    ) {
+        let total = unaligned + aligned;
+        let unaligned_perc = if total > 0 { unaligned as f64 * 100.0 / total as f64 } else { 0.0 };
+        let w = if millions { 12 } else { 15 };
+        self.output += &format!(
+            "{}{:>w$} {:>w$} {:6.2}% {:>10} {label}\n",
+            self.identation,
+            self.fmt_cost(unaligned, millions),
+            self.fmt_cost(aligned, millions),
+            unaligned_perc,
+            self.format_number(calls as u64),
+            w = w,
+        );
+    }
+
     pub fn add_top_step_calls_perc(&mut self, label: &str, steps: u64, calls: usize) {
         self.add_top_calls_perc(label, steps, calls, self.step_divisor)
     }
@@ -229,7 +379,7 @@ impl StatsReport {
     pub fn title_top_count_perc(&mut self, title: &str) {
         self.output += &format!(
             "\n{identation}{title}\n{identation}{}\n",
-            &"-".repeat(std::cmp::min(title.len(), 38)),
+            "-".repeat(std::cmp::min(title.len(), 38)),
             identation = self.identation,
         );
     }
@@ -280,6 +430,37 @@ impl StatsReport {
             "{label:<label_width$} {count_label:>15}       % {cost_label:>15}       %{comment}",
             label_width = self.label_width,
         ));
+    }
+
+    pub fn set_custom_totals(&mut self, total_count: u64, total_cost: u64) {
+        self.custom_total_count_factor = total_count as f64 / 100.0;
+        self.custom_total_cost_factor = total_cost as f64 / 100.0;
+    }
+    pub fn set_hidden_no_cost(&mut self, hidden: bool) -> bool {
+        let previous = self.hidden_no_cost;
+        self.hidden_no_cost = hidden;
+        previous
+    }
+    pub fn add_count_cost_perc2_custom(
+        &mut self,
+        label: &str,
+        count: u64,
+        cost: u64,
+        comment: &str,
+    ) {
+        if self.hidden_no_cost && cost == 0 {
+            return;
+        }
+        self.output += &format!(
+            "{}{:<label_width$} {:>15} {:6.2}% {:>15} {:6.2}%{comment}\n",
+            self.identation,
+            label,
+            self.format_number(count),
+            count as f64 / self.custom_total_count_factor,
+            self.format_number(cost),
+            cost as f64 / self.custom_total_cost_factor,
+            label_width = self.label_width,
+        );
     }
 
     pub fn add_count_cost_perc2(&mut self, label: &str, count: u64, cost: u64, comment: &str) {
@@ -379,6 +560,9 @@ impl StatsReport {
     }
     pub fn add_separator_from(&mut self, from: usize) {
         let width = 48 - from;
+        self.output += &format!("{}{: <from$}{:-<width$}\n", self.identation, "", "");
+    }
+    pub fn add_separator_from_width(&mut self, from: usize, width: usize) {
         self.output += &format!("{}{: <from$}{:-<width$}\n", self.identation, "", "");
     }
 

@@ -4,7 +4,10 @@
 use zisk_core::ops_core::*;
 use zisk_core::zisk_ops::*;
 
-use crate::{arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers};
+use crate::{
+    arith_table_data, ArithOperation, ArithRangeTableHelpers, ArithTableHelpers,
+    ARITH_RANGE_16_BITS,
+};
 
 const MIN_N_64: u64 = 0x8000_0000_0000_0000;
 const MIN_N_32: u64 = 0x0000_0000_8000_0000;
@@ -239,20 +242,20 @@ impl ArithOperationTest {
         }
 
         ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab, aop.a[3] as u64);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 26, aop.a[1] as u64);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 17, aop.b[3] as u64);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 9, aop.b[1] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 1, aop.a[1] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 2, aop.b[3] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_ab + 3, aop.b[1] as u64);
 
         ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd, aop.c[3] as u64);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 26, aop.c[1] as u64);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 17, aop.d[3] as u64);
-        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 9, aop.d[1] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 1, aop.c[1] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 2, aop.d[3] as u64);
+        ArithRangeTableHelpers::get_row_chunk_range_check(aop.range_cd + 3, aop.d[1] as u64);
 
         for i in [0, 2] {
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.a[i] as u64);
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.b[i] as u64);
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.c[i] as u64);
-            ArithRangeTableHelpers::get_row_chunk_range_check(0, aop.d[i] as u64);
+            ArithRangeTableHelpers::get_row_chunk_range_check(ARITH_RANGE_16_BITS, aop.a[i] as u64);
+            ArithRangeTableHelpers::get_row_chunk_range_check(ARITH_RANGE_16_BITS, aop.b[i] as u64);
+            ArithRangeTableHelpers::get_row_chunk_range_check(ARITH_RANGE_16_BITS, aop.c[i] as u64);
+            ArithRangeTableHelpers::get_row_chunk_range_check(ARITH_RANGE_16_BITS, aop.d[i] as u64);
         }
 
         #[cfg(debug_assertions)]
@@ -264,7 +267,9 @@ impl ArithOperationTest {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow_mul_rz,
+            aop.div_overflow,
+            aop.result_is_zero,
+            aop.remainder_is_zero,
             aop.m32,
             aop.div,
             aop.main_mul,
@@ -282,7 +287,9 @@ impl ArithOperationTest {
             aop.nr,
             aop.sext,
             aop.div_by_zero,
-            aop.div_overflow_mul_rz,
+            aop.div_overflow,
+            aop.result_is_zero,
+            aop.remainder_is_zero,
         );
         self.table_rows[row_1] += 1;
     }

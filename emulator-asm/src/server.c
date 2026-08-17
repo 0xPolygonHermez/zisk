@@ -23,6 +23,7 @@
 #include "emu.hpp"
 #include "c_provided.hpp"
 #include "log.hpp"
+#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
 
 /****************************/
 /* EMULATION FAULT RECOVERY */
@@ -132,7 +133,6 @@ void server_setup (void)
     /*******/
     /* ROM */
     /*******/
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -308,7 +308,6 @@ void server_setup (void)
     /* INPUT */
     /*********/
 
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -728,7 +727,6 @@ void server_setup (void)
     /* RAM */
     /*******/
 
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
         // Get the start time
         if (verbose) gettimeofday(&start_time, NULL);
@@ -830,54 +828,9 @@ void server_setup (void)
     // Output trace
     if ((gen_method == MinimalTrace) ||
         (gen_method == RomHistogram) ||
-        (gen_method == MainTrace) ||
-        (gen_method == Zip) ||
-        (gen_method == MemOp) ||
-        (gen_method == ChunkPlayerMTCollectMem) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
+        (gen_method == MemOp))
     {
         trace_map_initialize();
-    }
-
-    /***********************/
-    /* INPUT MINIMAL TRACE */
-    /***********************/
-
-    // Input MT trace
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        // Get the start time
-        if (verbose) gettimeofday(&start_time, NULL);
-
-        // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
-        if (shmem_mt_fd < 0)
-        {
-            asm_printf("ERROR: Failed calling mt shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
-            exit(-1);
-        }
-
-        // Map it to the trace address
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
-        if (pTrace == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
-            exit(-1);
-        }
-
-        // Report duration
-        if (verbose)
-        {
-            gettimeofday(&stop_time, NULL);
-            duration = TimeDiff(start_time, stop_time);
-            asm_printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
-        }
     }
 
     /******************/
@@ -994,8 +947,10 @@ void server_reset_fast (void)
 
 void server_reset_slow (void)
 {
+    // Release the Keccak-f cache built during the emulation that just finished
+    keccakf_cache_free();
+
     // Reset RAM and ROM data for next emulation
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
 #ifdef DEBUG
         gettimeofday(&start_time, NULL);
@@ -1025,10 +980,7 @@ void server_reset_slow (void)
 void server_reset_trace (void)
 {
     // Reset trace header and trace_used_size for next emulation
-    if ( (gen_method != ChunkPlayerMTCollectMem) &&
-         (gen_method != ChunkPlayerMemReadsCollectMain) &&
-         (gen_method != Fast) &&
-         (gen_method != RomHistogram) )
+    if ( (gen_method != Fast) && (gen_method != RomHistogram) )
     {
         // Reset trace: init output header data
         pOutputTrace[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -1061,6 +1013,9 @@ void server_run (void)
     {
         memset((void *)trace_address, 0, trace_size);
     }
+
+    // Start this emulation with an empty Keccak-f cache: it only lives for one execution
+    keccakf_cache_reset();
 
 #ifdef ASM_CALL_METRICS
     reset_asm_call_metrics();
@@ -1218,11 +1173,7 @@ void server_run (void)
     // Complete output header data
     if ((gen_method == MinimalTrace) ||
         (gen_method == RomHistogram) ||
-        (gen_method == Zip) ||
-        (gen_method == MainTrace) ||
-        (gen_method == MemOp) ||
-        (gen_method == MemReads) ||
-        (gen_method == ChunkPlayerMemReadsCollectMain))
+        (gen_method == MemOp))
     {
         uint64_t * pOutput = (uint64_t *)trace_address;
         pOutput[0] = 0x000100; // Version, e.g. v1.0.0 [8]
@@ -1247,8 +1198,19 @@ void server_run (void)
     }
     else if (emulation_aborted && call_chunk_done)
     {
+        // Do NOT post `_chunk_done()` on the abort path. The chunk_done semaphore
+        // is persistent and epoch-less: if the consumer already exited (its own
+        // timeout) before this post lands, the post survives in the semaphore and
+        // the NEXT job's consumer wakes on it, reading a shifted/stale chunk
+        // stream -> wrong minimal trace -> wrong proof (VerifyEvaluations/
+        // VerifyGlobalConstraints, cross-job, non-reproducible). Regression
+        // introduced in 0.18 ("ASM fixes to support signals"); 0.17 had the child
+        // die on a fault (no persistent contamination). The abort is still
+        // reported to the client via the stdio response result (MEM_ERROR -> 1),
+        // and the consumer fails cleanly on its wait timeout — the 0.17 semantics
+        // without killing the long-running service. write_abort_chunk() is kept
+        // (harmless shmem terminal marker) but the leaking post is removed.
         write_abort_chunk();
-        _chunk_done();
     }
 
 
@@ -1269,17 +1231,13 @@ void server_run (void)
 #endif
 
     // Log trace
-    if (((gen_method == MinimalTrace) || (gen_method == Zip)) && trace)
+    if ((gen_method == MinimalTrace) && trace)
     {
         log_minimal_trace();
     }
     if ((gen_method == RomHistogram) && trace)
     {
         log_histogram();
-    }
-    if ((gen_method == MainTrace) && trace)
-    {
-        log_main_trace();
     }
     if ((gen_method == MemOp) && trace)
     {
@@ -1288,18 +1246,6 @@ void server_run (void)
     if ((gen_method == MemOp) && save_to_file)
     {
         save_mem_op_to_files();
-    }
-    if ((gen_method == ChunkPlayerMTCollectMem) && trace)
-    {
-        log_mem_trace();
-    }
-    if ((gen_method == MemReads) && trace)
-    {
-        log_minimal_trace();
-    }
-    if ((gen_method == ChunkPlayerMemReadsCollectMain) && trace)
-    {
-        log_chunk_player_main_trace();
     }
 }
 
@@ -1350,7 +1296,7 @@ void server_cleanup (void)
         }
     }
 
-    if (precompile_results_enabled && (gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
+    if (precompile_results_enabled)
     {
         // Cleanup PRECOMPILE
         result = munmap((void *)shmem_precompile_address, MAX_PRECOMPILE_SIZE);

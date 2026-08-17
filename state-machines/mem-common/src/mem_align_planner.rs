@@ -9,7 +9,7 @@ use std::{
 
 use crate::{MemAlignCheckPoint, MemAlignCounters};
 use crate::{MemAlignInstanceCounter, MemCounters};
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 use zisk_common::{ChunkId, Plan};
 use zisk_pil::{
     MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,

@@ -3,7 +3,8 @@ extern crate criterion;
 use criterion::Criterion;
 //use std::{fs::File /* , time::Duration */};
 use zisk_common::EmuTrace;
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use zisk_transpiler_riscv::Riscv2zisk;
 use ziskemu::{EmuOptions, Emulator, ZiskEmulator};
 
 // Thanks to the example provided by @jebbow in his article
@@ -99,7 +100,7 @@ fn bench_riscv2zisk(c: &mut Criterion) {
     });
 
     /*if let Ok(report) = guard.report().build() {
-        let file = File::create("riscv2zisk.svg").unwrap();
+        let file = File::create("zisk_transpiler_riscv.svg").unwrap();
         report.flamegraph(file).unwrap();
     };*/
 }

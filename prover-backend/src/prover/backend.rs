@@ -4,28 +4,33 @@ use crate::{
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use anyhow::Result;
-use asm_runner::HintsShmem;
 use colored::Colorize;
-use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
-use fields::Goldilocks;
-use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
     SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
+use proofman_fields::Goldilocks;
 use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
 use zisk_common::ZiskExecutorTime;
 use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
-    HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind, PublicValues,
+    program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
+    PublicValues, VadcopKind, PROGRAM_VK_LEN,
+};
+use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
+use zisk_precomp_hints::HintsProcessor;
+use zisk_recurser::prove::{
+    prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
+    RegisteredRecurser,
 };
 
 pub(crate) struct ProverBackend {
@@ -34,6 +39,10 @@ pub(crate) struct ProverBackend {
     executor: Arc<ZiskExecutor<Goldilocks>>,
     proving_key_path: PathBuf,
     proving_key_snark_path: Option<PathBuf>,
+    /// Recurser setups registered with `proofman`, keyed by `recurser_id`.
+    /// A recurser must be registered (via [`register_recurser`]) before it can
+    /// prove — the same register-then-prove lifecycle as a regular program.
+    registered_recursers: std::sync::Mutex<HashMap<String, RegisteredRecurser>>,
 }
 
 impl ProverBackend {
@@ -44,7 +53,14 @@ impl ProverBackend {
         proving_key_path: PathBuf,
         proving_key_snark_path: Option<PathBuf>,
     ) -> Self {
-        Self { proofman, snark_wrapper, executor, proving_key_path, proving_key_snark_path }
+        Self {
+            proofman,
+            snark_wrapper,
+            executor,
+            proving_key_path,
+            proving_key_snark_path,
+            registered_recursers: std::sync::Mutex::new(HashMap::new()),
+        }
     }
 
     fn asm_emulator(&self) -> Option<&EmulatorAsm> {
@@ -179,6 +195,29 @@ impl ProverBackend {
         rom_bin_path: &std::path::Path,
         with_hints: bool,
     ) -> Result<()> {
+        // Indexed Main: build + register this program's instruction table (before `set_rom`
+        // moves the Arc). Same gate the executor uses to pick the compact row.
+        if self.executor.is_packed() {
+            let table = ziskemu::Emu::build_main_instr_table::<Goldilocks>(&zisk_rom);
+            let words_per_entry =
+                zisk_pil::MainTraceRowInstrTable::<Goldilocks>::PACKED_WORDS as u64;
+            let num_entries = zisk_rom.sorted_pc_list.len() as u64;
+            tracing::info!(
+                "Main indexed packing: compact rows + {} instruction table ({:.1} MB)",
+                num_entries,
+                (table.len() * std::mem::size_of::<u64>()) as f64 / 1e6,
+            );
+            self.proofman
+                .register_instruction_table(
+                    zisk_pil::MAIN_AIRGROUP_ID,
+                    zisk_pil::MAIN_AIR_ID,
+                    &table,
+                    num_entries,
+                    words_per_entry,
+                )
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        }
+
         self.executor.set_rom(zisk_rom, with_hints)?;
 
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
@@ -373,11 +412,13 @@ impl ProverBackend {
 
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
+                // Freshly proven vadcop_final proof — stamp the default
+                // vadcop_final verkey (no override).
                 let snark_proof = self
                     .snark_wrapper
                     .as_ref()
                     .unwrap()
-                    .generate_final_snark_proof(&vadcop_proof)?;
+                    .generate_final_snark_proof(&vadcop_proof, None)?;
 
                 let publics = PublicValues::new_from_u64(&vadcop_proof.public_values);
                 let program_vk = ProgramVK::new_from_publics_with_mode(
@@ -403,11 +444,13 @@ impl ProverBackend {
                             body: ProofBody::Plonk {
                                 proof_bytes: snark_proof.proof_bytes,
                                 plonk_vk: Box::new(PlonkVkBlob {
-                                    vadcop_vk: vadcop_vk_u64,
+                                    vadcop_vk: vadcop_vk_u64.clone(),
                                     plonk_vkey,
                                 }),
+                                publics,
+                                publics_full: vadcop_proof.public_values.clone(),
+                                rootc: vadcop_vk_u64,
                             },
-                            publics,
                             program_vk,
                         },
                     ))
@@ -422,36 +465,35 @@ impl ProverBackend {
                 execution_result,
                 start.elapsed(),
                 Proof {
-                    body: ProofBody::Vadcop {
-                        proof: p.proof,
-                        zisk_vk: vadcop_vk_u64,
-                        minimal,
-                        hash: self.hash()?,
-                    },
-                    publics: PublicValues::new_from_u64(&p.public_values),
                     program_vk: ProgramVK::new_from_publics_with_mode(
                         &p.public_values,
                         self.hash_mode()?,
                     ),
+                    body: ProofBody::Vadcop {
+                        proof: p.proof,
+                        zisk_vk: vadcop_vk_u64,
+                        // A freshly proven leaf is a raw vadcop_final proof
+                        // (Final, flag=1) or its compressed form (Minimal).
+                        // Recurser (aggregated) proofs come from the fold path.
+                        kind: if minimal { VadcopKind::Minimal } else { VadcopKind::Final },
+                        hash: self.hash()?,
+                        // Store the canonical flag-free view; proofman's raw
+                        // publics carry the is_vadcop_final_proof flag at index 0
+                        // for non-minimal proofs (captured in `kind` above).
+                        publics_full: program_publics(&p.public_values).to_vec(),
+                    },
                 },
             )),
             (_, None) => Ok(ProveOutput::new_null(execution_result, start.elapsed())),
         }
     }
 
-    pub(crate) fn minimal(
-        &self,
-        proof: &[u64],
-        publics: &PublicValues,
-        program_vk: &ProgramVK,
-    ) -> Result<ProveOutput> {
+    pub(crate) fn minimal(&self, proof: &[u64], publics_full: &[u64]) -> Result<ProveOutput> {
         let start = std::time::Instant::now();
 
         let hash = self.hash()?;
-        let mut pubs_u64 = program_vk.vk.clone();
-        pubs_u64.extend(publics.public_u64());
         let vadcop_final_proof =
-            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, hash.clone());
+            VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, hash.clone());
 
         let minimal_proof = self
             .proofman
@@ -461,28 +503,23 @@ impl ProverBackend {
         let time = start.elapsed();
 
         let proof = Proof {
-            body: ProofBody::Vadcop {
-                proof: minimal_proof.proof.clone(),
-                zisk_vk: self.get_vadcop_vk(true)?,
-                minimal: true,
-                hash,
-            },
-            publics: PublicValues::new_from_u64(&minimal_proof.public_values),
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &minimal_proof.public_values,
                 self.hash_mode()?,
             ),
+            body: ProofBody::Vadcop {
+                proof: minimal_proof.proof.clone(),
+                zisk_vk: self.get_vadcop_vk(true)?,
+                kind: VadcopKind::Minimal,
+                hash,
+                publics_full: minimal_proof.public_values,
+            },
         };
 
         Ok(ProveOutput::new(ZiskExecutorSummary::default(), time, proof))
     }
 
-    pub(crate) fn plonk(
-        &self,
-        proof: &[u64],
-        publics: &PublicValues,
-        program_vk: &ProgramVK,
-    ) -> Result<ProveOutput> {
+    pub(crate) fn plonk(&self, proof: &[u64], publics_full: &[u64]) -> Result<ProveOutput> {
         if self.snark_wrapper.is_none() {
             return Err(anyhow::anyhow!(
                 "Snark wrapper is not initialized. Cannot generate snark proof."
@@ -491,13 +528,17 @@ impl ProverBackend {
 
         let start = std::time::Instant::now();
 
-        let mut pubs_u64 = program_vk.vk.clone();
-        pubs_u64.extend(publics.public_u64());
         let vadcop_final_proof =
-            VadcopFinalProof::new(proof.to_vec(), pubs_u64, false, self.hash()?);
+            VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, self.hash()?);
 
-        let snark_proof =
-            self.snark_wrapper.as_ref().unwrap().generate_final_snark_proof(&vadcop_final_proof)?;
+        // Read the program VK from the flag-free view (a full vadcop_final
+        // publics vector carries the `is_vadcop_final_proof` flag at index 0).
+        let proof_verkey = &program_publics(publics_full)[..PROGRAM_VK_LEN];
+        let snark_proof = self
+            .snark_wrapper
+            .as_ref()
+            .unwrap()
+            .generate_final_snark_proof(&vadcop_final_proof, Some(proof_verkey))?;
 
         let time = start.elapsed();
 
@@ -519,8 +560,15 @@ impl ProverBackend {
                     vadcop_vk: self.get_vadcop_vk(false)?,
                     plonk_vkey,
                 }),
+                publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
+                // Store the canonical flag-free view (the input vadcop_final
+                // publics carry the is_vadcop_final_proof flag at index 0).
+                publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
+                // This wrap path stamps the proof's own program VK as rootC, read
+                // from the same flag-free view.
+                rootc: program_publics(&vadcop_final_proof.public_values)[..PROGRAM_VK_LEN]
+                    .to_vec(),
             },
-            publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
                 self.hash_mode()?,
@@ -556,16 +604,13 @@ impl ProverBackend {
         Ok((witness_info, execution_result.executor_time))
     }
 
-    pub(crate) fn register_aggregated_proofs(
-        &self,
-        agg_proofs: Vec<AggProofsRegister>,
-    ) -> Result<()> {
+    pub(crate) fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
         self.proofman
             .register_aggregated_proofs(agg_proofs)
             .map_err(|e| anyhow::anyhow!("Error registering aggregate proof: {}", e))
     }
 
-    pub(crate) fn aggregate_proofs(
+    pub(crate) fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
@@ -578,6 +623,51 @@ impl ProverBackend {
             .map_err(|e| anyhow::anyhow!("Error aggregating proofs: {}", e))?;
 
         Ok(result.map(|agg| ZiskAggPhaseResult { agg_proofs: agg }))
+    }
+
+    /// Register a recurser setup with proofman so it can later prove. The same
+    /// lifecycle as registering a program: do this once, then prove many times.
+    /// Idempotent — re-registering an already-registered `recurser_id` is cheap.
+    pub(crate) fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        if self.registered_recursers.lock().unwrap().contains_key(recurser_id) {
+            return Ok(());
+        }
+        let registered = register_recurser_setup(&self.proofman, output_dir, recurser_id)
+            .map_err(|e| anyhow::anyhow!("recurser registration failed: {e:#}"))?;
+        self.registered_recursers.lock().unwrap().insert(recurser_id.to_string(), registered);
+        Ok(())
+    }
+
+    /// Fold two proofs through a previously-registered recurser. Errors if the
+    /// recurser was not registered first via [`register_recurser`].
+    pub(crate) fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_a: &[u64],
+        free_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        let registered =
+            self.registered_recursers.lock().unwrap().get(recurser_id).cloned().ok_or_else(
+                || {
+                    anyhow::anyhow!(
+                        "recurser '{recurser_id}' is not registered; call register_recurser first"
+                    )
+                },
+            )?;
+
+        let opts = ProveRecurserAggregatorOptions {
+            registered: &registered,
+            proof_a,
+            proof_b,
+            free_a,
+            free_b,
+            root_c_recurser_agg,
+        };
+        prove_recurser_aggregator(&self.proofman, &opts)
+            .map_err(|e| anyhow::anyhow!("recurser proof generation failed: {e:#}"))
     }
 
     pub(crate) fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {

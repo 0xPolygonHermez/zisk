@@ -19,7 +19,7 @@ const CANCELLED: &str = "Cancelled";
 
 const PROGRESS_CONTRIBUTIONS: u8 = 25;
 const PROGRESS_PROVE: u8 = 75;
-const PROGRESS_AGGREGATE: u8 = 90;
+const PROGRESS_RECURSE: u8 = 90;
 
 pub(crate) type Subscriber = (JobEvent, Arc<dyn Fn(JobEvent) + Send + Sync>);
 pub(crate) type PreProcessHook = Box<dyn FnOnce(&TerminalStatus) -> Result<()> + Send>;
@@ -103,6 +103,7 @@ pub(crate) trait FromWaitResult: Sized + Send + 'static {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self>;
 }
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum JobHandleInner<T> {
     Embedded(tokio::task::JoinHandle<Result<T>>),
     Remote { remote_job: Job, _watch_handle: WatchHandle },
@@ -320,7 +321,7 @@ fn map_domain_event(subs: &SubscriberList, event: &DomainJobEvent) -> bool {
             let pct = match p.phase {
                 DomainJobPhase::Contributions => PROGRESS_CONTRIBUTIONS,
                 DomainJobPhase::Prove => PROGRESS_PROVE,
-                DomainJobPhase::Aggregate => PROGRESS_AGGREGATE,
+                DomainJobPhase::Recurse => PROGRESS_RECURSE,
             };
             fire_event(subs, JobEvent::Progress(pct));
             false
@@ -379,9 +380,10 @@ fn domain_stats_to_executor_time(stats: &DomainExecutionStats) -> zisk_common::Z
 impl FromWaitResult for SetupResult {
     fn from_terminal(status: TerminalStatus, job_id: JobId) -> Result<Self> {
         match status {
-            TerminalStatus::Completed(DomainJobKindResponse::Setup { .. }) => {
-                Ok(SetupResult { job_id: Some(job_id) })
-            }
+            TerminalStatus::Completed(DomainJobKindResponse::Setup { .. })
+            | TerminalStatus::Completed(DomainJobKindResponse::SetupAggregationProgram {
+                ..
+            }) => Ok(SetupResult { job_id: Some(job_id) }),
             TerminalStatus::Completed(other) => {
                 Err(SdkError::UnexpectedResponse(format!("expected setup, got {:?}", other)))
             }
@@ -409,13 +411,14 @@ impl FromWaitResult for crate::prove::ProveResult {
                 );
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
-            TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof)) => {
+            TerminalStatus::Completed(DomainJobKindResponse::Wrap(proof))
+            | TerminalStatus::Completed(DomainJobKindResponse::AggregateProofs(proof)) => {
                 let proof_with_pv: zisk_common::Proof =
                     bincode::serde::decode_from_slice(&proof.data, bincode::config::standard())
                         .map(|(v, _)| v)
                         .map_err(|e| {
                             SdkError::Serialization(format!(
-                                "failed to deserialize wrapped proof: {e}"
+                                "failed to deserialize remote proof: {e}"
                             ))
                         })?;
                 let output = zisk_prover_backend::ProveOutput::from_remote(
@@ -426,9 +429,9 @@ impl FromWaitResult for crate::prove::ProveResult {
                 );
                 Ok(crate::prove::ProveResult::new(output, Some(job_id)))
             }
-            TerminalStatus::Completed(other) => {
-                Err(SdkError::UnexpectedResponse(format!("expected prove/wrap, got {:?}", other)))
-            }
+            TerminalStatus::Completed(other) => Err(SdkError::UnexpectedResponse(format!(
+                "unexpected job kind response for prove/wrap/aggregate: {other:?}"
+            ))),
             TerminalStatus::Failed(f) => Err(SdkError::JobFailed(format_failure(&f))),
             TerminalStatus::Cancelled => Err(SdkError::Cancelled),
         }

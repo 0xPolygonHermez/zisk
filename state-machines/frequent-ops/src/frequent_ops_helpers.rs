@@ -2,8 +2,8 @@
 use clap::{Arg, Command};
 use std::error::Error;
 
-use fields::{Field, Goldilocks, PrimeField64};
 use proofman_common::{write_fixed_cols_bin, FixedColsInfo};
+use proofman_fields::{Field, Goldilocks, PrimeField64};
 use zisk_core::zisk_ops::ZiskOp;
 
 type F = Goldilocks;
@@ -107,7 +107,7 @@ impl FrequentOpsHelpers {
     pub fn print_table_offsets(&self) {
         let (start, offsets) = self.generate_table_offsets();
         println!("const OP_TABLE_OFFSETS_START: usize = {start};");
-        println!("const OP_TABLE_OFFSETS: [usize; {}] = {:?};", offsets.len(), &offsets);
+        println!("const OP_TABLE_OFFSETS: [usize; {}] = {:?};", offsets.len(), offsets);
     }
 
     /// Generates opcode offset information for efficient table lookups.

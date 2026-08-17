@@ -316,3 +316,231 @@ pub fn opc_maxu_w(ctx: &mut InstContext) {
 pub fn opc_max_w(ctx: &mut InstContext) {
     (ctx.c, ctx.flag) = op_max_w(ctx.a, ctx.b);
 }
+
+/// InstContext-based wrapper over op_rev8()
+#[inline(always)]
+pub fn opc_rev8(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rev8(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_brev8()
+#[inline(always)]
+pub fn opc_brev8(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_brev8(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_andn()
+#[inline(always)]
+pub fn opc_andn(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_andn(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_orn()
+#[inline(always)]
+pub fn opc_orn(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_orn(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_xnor()
+#[inline(always)]
+pub fn opc_xnor(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_xnor(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_pack()
+#[inline(always)]
+pub fn opc_pack(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_pack(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_pack_h()
+#[inline(always)]
+pub fn opc_pack_h(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_pack_h(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_pack_w()
+#[inline(always)]
+pub fn opc_pack_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_pack_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_rol()
+#[inline(always)]
+pub fn opc_rol(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rol(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_rol_w()
+#[inline(always)]
+pub fn opc_rol_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_rol_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ror()
+#[inline(always)]
+pub fn opc_ror(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ror(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ror_w()
+#[inline(always)]
+pub fn opc_ror_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ror_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clz()
+#[inline(always)]
+pub fn opc_clz(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clz(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clz_w()
+#[inline(always)]
+pub fn opc_clz_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clz_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ctz()
+#[inline(always)]
+pub fn opc_ctz(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ctz(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_ctz_w()
+#[inline(always)]
+pub fn opc_ctz_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_ctz_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_cpop()
+#[inline(always)]
+pub fn opc_cpop(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_cpop(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_cpop_w()
+#[inline(always)]
+pub fn opc_cpop_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_cpop_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_orc_b()
+#[inline(always)]
+pub fn opc_orc_b(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_orc_b(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_bclr()
+#[inline(always)]
+pub fn opc_bclr(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_bclr(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_bext()
+#[inline(always)]
+pub fn opc_bext(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_bext(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_binv()
+#[inline(always)]
+pub fn opc_binv(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_binv(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_bset()
+#[inline(always)]
+pub fn opc_bset(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_bset(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_add_u_w()
+#[inline(always)]
+pub fn opc_add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh1add()
+#[inline(always)]
+pub fn opc_sh1add(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh1add(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh1add_u_w()
+#[inline(always)]
+pub fn opc_sh1add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh1add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh2add()
+#[inline(always)]
+pub fn opc_sh2add(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh2add(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh2add_u_w()
+#[inline(always)]
+pub fn opc_sh2add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh2add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh3add()
+#[inline(always)]
+pub fn opc_sh3add(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh3add(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sh3add_u_w()
+#[inline(always)]
+pub fn opc_sh3add_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sh3add_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_sll_u_w()
+#[inline(always)]
+pub fn opc_sll_u_w(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_sll_u_w(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clmul()
+#[inline(always)]
+pub fn opc_clmul(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clmul(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clmul_h()
+#[inline(always)]
+pub fn opc_clmul_h(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clmul_h(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_clmul_r()
+#[inline(always)]
+pub fn opc_clmul_r(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_clmul_r(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_xperm4()
+#[inline(always)]
+pub fn opc_xperm4(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_xperm4(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_xperm8()
+#[inline(always)]
+pub fn opc_xperm8(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_xperm8(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_czero_eqz()
+#[inline(always)]
+pub fn opc_czero_eqz(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_czero_eqz(ctx.a, ctx.b);
+}
+
+/// InstContext-based wrapper over op_czero_nez()
+#[inline(always)]
+pub fn opc_czero_nez(ctx: &mut InstContext) {
+    (ctx.c, ctx.flag) = op_czero_nez(ctx.a, ctx.b);
+}

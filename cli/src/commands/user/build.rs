@@ -52,13 +52,13 @@ impl BuildCmd {
         let mut command = Command::new("cargo");
         command.args(self.cargo_args(toolchain_name));
 
-        // Set RUSTFLAGS for target-cpu=zisk, preserving existing flags
-        if let Ok(flags) = std::env::var("RUSTFLAGS") {
-            let trimmed = flags.trim();
-            if !trimmed.is_empty() {
-                command.env("RUSTFLAGS", trimmed);
-            }
-        }
+        // Guest rustflags + linker script; keep the temp file alive until cargo
+        // finishes. Env rustflags are inherited: in a direct CLI invocation
+        // they are user-exported and cargo would apply them to the guest.
+        let target_features =
+            zisk_build::target_features_from_features(self.features.as_deref(), self.all_features);
+        let _linker_script =
+            zisk_build::apply_guest_rustflags(&mut command, None, true, &target_features)?;
 
         // Set up the command to inherit the parent's stdout and stderr
         command.stdout(Stdio::inherit());

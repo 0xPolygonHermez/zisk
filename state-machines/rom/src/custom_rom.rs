@@ -3,10 +3,11 @@
 //! [`CustomRom`] builds the `RomRomTrace<F>` commit that holds the program code as field
 //! elements. Pure transformation: ELF bytes → `ZiskRom` → trace rows.
 
-use fields::PrimeField64;
-use mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
-use zisk_core::{zisk_ops::ZiskOp, Riscv2zisk, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
+use proofman_fields::PrimeField64;
+use zisk_core::{zisk_ops::ZiskOp, ZiskRom, ROM_ADDR, ROM_ADDR_MAX, SRC_IMM};
 use zisk_pil::{RomRomTrace, RomRomTraceRow, RomTrace};
+use zisk_sm_mem_common::{MEMORY_ROM_INIT_OP, MEMORY_STORE_OP};
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::error::{RomError, RomResult};
 
@@ -54,7 +55,7 @@ impl CustomRom {
             .map_err(|e| RomError::TraceConstruction(e.to_string()))?;
 
         // For every instruction in the rom, fill its corresponding ROM trace
-        for (_pc, zib) in rom.insts.iter() {
+        for zib in rom.insts.values() {
             // Get the ZisK instruction
             let inst = &zib.i;
 
@@ -161,7 +162,7 @@ impl CustomRom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use zisk_core::ZiskInstBuilder;
 
     type F = Goldilocks;

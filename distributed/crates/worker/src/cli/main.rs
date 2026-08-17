@@ -76,6 +76,10 @@ struct Cli {
     #[clap(short = 't', long)]
     pub max_streams: Option<usize>,
 
+    /// Maximum number of per-GPU recursive (aggregation) streams
+    #[clap(long)]
+    pub max_recursive_streams: Option<usize>,
+
     #[clap(short = 'n', long)]
     pub number_threads_witness: Option<usize>,
 
@@ -88,6 +92,11 @@ struct Cli {
     #[cfg(not(feature = "cpu-only"))]
     #[clap(short = 'g', long, default_value_t = false)]
     pub gpu: bool,
+
+    /// Run mops planner on CPU even when --gpu is set (fallback for GPU-planner issues)
+    #[cfg(not(feature = "cpu-only"))]
+    #[clap(long, default_value_t = false)]
+    pub cpu_mops: bool,
 
     #[clap(short = 'p', long, default_value_t = false)]
     pub plonk: bool,
@@ -115,6 +124,11 @@ async fn main() -> Result<()> {
     #[cfg(feature = "cpu-only")]
     let gpu = false;
 
+    #[cfg(not(feature = "cpu-only"))]
+    let cpu_mops = cli.cpu_mops;
+    #[cfg(feature = "cpu-only")]
+    let cpu_mops = false;
+
     let prover_config_dto = ProverServiceConfigDto {
         asm: cli.asm.clone(),
         emulator: cli.emulator,
@@ -125,11 +139,13 @@ async fn main() -> Result<()> {
         verbose: cli.verbose,
         debug: cli.debug.clone(),
         max_streams: cli.max_streams,
+        max_recursive_streams: cli.max_recursive_streams,
         number_threads_witness: cli.number_threads_witness,
         max_witness_stored: cli.max_witness_stored,
         minimal_memory: cli.minimal_memory,
         preload_plonk: cli.preload_plonk,
         gpu,
+        cpu_mops,
         plonk: cli.plonk,
     };
 

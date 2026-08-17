@@ -7,13 +7,14 @@
 //! executions.
 
 use anyhow::{Context, Result};
-use executor::ZiskExecutor;
-use fields::Goldilocks;
 use proofman_common::VerboseMode;
+use proofman_fields::Goldilocks;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use zisk_executor::ZiskExecutor;
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
@@ -36,6 +37,8 @@ impl EmuExecClient {
         Ok(Self { executor, program: Mutex::new(None) })
     }
 
+    /// Parse the program's ELF into a `ZiskRom` and cache it, so the cost is
+    /// paid once and amortized across repeated [`execute`](Self::execute) calls.
     pub fn setup(&self, program: &GuestProgram) -> Result<()> {
         tracing::info!("Setting up EmuExecClient for ELF '{}'", program.name());
         tracing::debug!("Parsing ELF into ZiskRom");
@@ -48,6 +51,8 @@ impl EmuExecClient {
         Ok(())
     }
 
+    /// Run the program set up by [`setup`](Self::setup) once with the given
+    /// stdin. Returns an error if `setup` has not been called.
     pub fn execute(&self, stdin: ZiskStdin) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program) before execute(stdin)")?;

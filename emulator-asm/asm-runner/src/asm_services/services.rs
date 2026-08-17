@@ -102,6 +102,10 @@ impl AsmService {
         command.arg("--shm_prefix").arg(shm_prefix);
         command.arg("--sem_prefix").arg(sem_prefix);
 
+        if options.unlock_mapped_memory {
+            command.arg("-u");
+        }
+
         if options.verbose {
             command.arg("-v");
         }
@@ -125,7 +129,7 @@ impl fmt::Display for AsmService {
 
 /// Handle to the ASM microservices for one `(pid, local_rank)`.
 ///
-/// `Clone` shares a single [`AsmServicesInner`] via `Arc`: the runner threads
+/// `Clone` shares a single `AsmServicesInner` via `Arc`: the runner threads
 /// (MO/MT/RH) each hold a clone for the duration of a run. Teardown lives in
 /// `Drop for AsmServicesInner`, so it fires exactly once when the last clone is
 /// dropped — race-free, because that's driven by `Arc`'s atomic refcount rather

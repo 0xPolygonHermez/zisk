@@ -1,10 +1,13 @@
 [package]
 name = "zisk-common"
+description = "Common utilities and shared types for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
@@ -16,19 +19,25 @@ zisk-stream = { workspace = true, features = ["quic"] }
 proofman-common = { workspace = true }
 proofman-verifier = { workspace = true, features = ["parallel"] }
 proofman = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 clap = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 sha2 = { workspace = true }
+num-bigint = { workspace = true }
 dirs = "6"
-alloy-sol-types = { version = "1.5.7" }
+alloy-sol-types = { workspace = true }
 
 bincode = { workspace = true }
 paste = { workspace = true }
+crossbeam-queue = "0.3"
+tikv-jemallocator = { workspace = true, optional = true }
 
 [features]
-default = []
+default = ["jemalloc"]
+# Use jemalloc instead of the system allocator; see `src/allocator.rs`.
+jemalloc = ["dep:tikv-jemallocator"]
 stats = []
+

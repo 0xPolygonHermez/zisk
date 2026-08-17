@@ -2,7 +2,6 @@ use crate::{
     job_events::{CoordinatorJobEvent, CoordinatorJobResult},
     Coordinator, CoordinatorError, CoordinatorResult,
 };
-use std::collections::BTreeMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use zisk_cluster_common::{
@@ -26,7 +25,7 @@ impl Coordinator {
         // prevents two concurrent launch_wrap calls from double-booking.
         let job_id = JobId::new();
         let worker_id =
-            self.workers_pool.try_reserve_single_ready_for(&job_id, JobPhase::Aggregate).await?;
+            self.workers_pool.try_reserve_single_ready_for(&job_id, JobPhase::Recurse).await?;
 
         let mut job = Job::new(
             job_id.clone(),
@@ -39,11 +38,11 @@ impl Coordinator {
             vec![worker_id.clone()],
             vec![],
             JobExecutionMode::Standard,
-            BTreeMap::new(),
+            None,
             false,
             ProofKind::VadcopFinal,
         );
-        job.change_state(JobState::Running(JobPhase::Aggregate)); // reuse Aggregate phase as wrap phase
+        job.change_state(JobState::Running(JobPhase::Recurse)); // reuse Aggregate phase as wrap phase
 
         let job_arc = Arc::new(RwLock::new(job));
         self.jobs.write().await.insert(job_id.clone(), job_arc);
@@ -60,6 +59,7 @@ impl Coordinator {
                 proof_data: request.proof_data,
                 proof_dest: request.proof_dest,
             }),
+            metadata: None,
         };
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);
         if let Err(e) = self.workers_pool.send_message(&worker_id, message).await {
@@ -90,6 +90,15 @@ impl Coordinator {
 
         if job.state().is_resolved() {
             return Ok(());
+        }
+
+        // Bind the payload to the phase mutated below (see
+        // `validate_response_phase`) — ahead of the `Ready` flip, which is itself
+        // a mutation: a rejected payload must not un-mark a computing worker.
+        // Only for a success response; a failure carries no `result_data` to
+        // bind and is owned by the branch below.
+        if execute_task_response.success {
+            Self::validate_response_phase(&job, &execute_task_response)?;
         }
 
         self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await?;
@@ -126,7 +135,7 @@ impl Coordinator {
         crate::metrics::record_job_terminal(
             crate::metrics::OUTCOME_SUCCESS,
             &job.workers,
-            job.phase_start_time(&JobPhase::Aggregate),
+            job.phase_start_time(&JobPhase::Recurse),
         );
 
         tracing::info!("[Wrap] Job {} completed successfully", job_id);

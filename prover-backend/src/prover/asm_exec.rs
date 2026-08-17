@@ -7,14 +7,15 @@
 //! subprocess spawn) is amortized across many executions.
 
 use anyhow::{Context, Result};
-use executor::{AsmResources, ZiskExecutor};
-use fields::Goldilocks;
 use proofman_common::VerboseMode;
+use proofman_fields::Goldilocks;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use zisk_common::io::{StreamSource, ZiskStdin};
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use zisk_executor::{AsmResources, ZiskExecutor};
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::execute_client::ExecuteClient;
 use crate::guest::GuestProgram;
@@ -25,6 +26,7 @@ struct AsmSetupState {
     with_hints: bool,
 }
 
+/// Execute-only client backed by the ASM emulator.
 pub struct AsmExecClient {
     executor: Arc<ZiskExecutor<Goldilocks>>,
     asm_cache_dir: PathBuf,
@@ -34,12 +36,20 @@ pub struct AsmExecClient {
 }
 
 impl AsmExecClient {
+    /// Construct an execute-only client. Loads no proving keys. `asm_cache_dir`
+    /// selects where generated ASM binaries are cached (a default is used when
+    /// `None`); `gpu` enables the GPU-backed ASM services.
     pub fn new(verbose: VerboseMode, asm_cache_dir: Option<PathBuf>, gpu: bool) -> Result<Self> {
-        let asm_cache_dir = rom_setup::get_output_path(&asm_cache_dir)?;
+        let asm_cache_dir = zisk_rom_setup::get_output_path(&asm_cache_dir)?;
         let executor = ZiskExecutor::<Goldilocks>::new_standalone(verbose, true)?;
         Ok(Self { executor, asm_cache_dir, verbose, gpu, program: Mutex::new(None) })
     }
 
+    /// Prepare the program for execution: generate (or reuse cached) ASM
+    /// binaries, spawn the ASM services, and parse the ELF into a `ZiskRom`.
+    /// This per-program work is amortized across repeated
+    /// [`execute`](Self::execute) calls. `with_hints` enables the precompile
+    /// hints stream.
     pub fn setup(&self, program: &GuestProgram, with_hints: bool) -> Result<()> {
         tracing::info!(
             "Setting up AsmExecClient for ELF '{}' (with_hints={})",
@@ -71,6 +81,10 @@ impl AsmExecClient {
         Ok(())
     }
 
+    /// Run the program set up by [`setup`](Self::setup) once with the given
+    /// stdin. `hints` installs a precompile hints stream (only effective when
+    /// the client was set up with `with_hints = true`). Returns an error if
+    /// `setup` has not been called.
     pub fn execute(&self, stdin: ZiskStdin, hints: Option<StreamSource>) -> Result<ExecuteOutput> {
         let guard = self.program.lock().expect("program mutex");
         let setup = guard.as_ref().context("call setup(program, with_hints) before execute")?;
@@ -92,9 +106,9 @@ impl AsmExecClient {
     }
 
     /// Resolves cached `<base>-mt.bin` path. Generates all 3 ASM binaries
-    /// via `rom_setup::generate_assembly` if any are missing.
+    /// via `zisk_rom_setup::generate_assembly` if any are missing.
     fn ensure_asm_binaries(&self, program: &GuestProgram, with_hints: bool) -> Result<PathBuf> {
-        let [mt, rh, mo] = rom_setup::get_assembly_file_paths_from_id(
+        let [mt, rh, mo] = zisk_rom_setup::get_assembly_file_paths_from_id(
             program.hash(),
             &self.asm_cache_dir,
             with_hints,
@@ -116,8 +130,13 @@ impl AsmExecClient {
             with_hints
         );
         let gen_verbose = matches!(self.verbose, VerboseMode::Debug | VerboseMode::Trace);
-        rom_setup::generate_assembly(program.elf(), &self.asm_cache_dir, with_hints, gen_verbose)
-            .context("rom_setup::generate_assembly failed")?;
+        zisk_rom_setup::generate_assembly(
+            program.elf(),
+            &self.asm_cache_dir,
+            with_hints,
+            gen_verbose,
+        )
+        .context("zisk_rom_setup::generate_assembly failed")?;
         tracing::info!("ASM binaries generated for ELF '{}'", program.name());
         Ok(mt)
     }

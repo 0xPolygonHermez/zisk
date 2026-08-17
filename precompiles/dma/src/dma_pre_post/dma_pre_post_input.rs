@@ -1,5 +1,5 @@
-use precompiles_helpers::DmaInfo;
 use zisk_common::{A, B, DMA_ENCODED, OP, STEP};
+use zisk_precomp_helpers::DmaInfo;
 
 #[derive(Debug)]
 pub struct DmaPrePostInput {

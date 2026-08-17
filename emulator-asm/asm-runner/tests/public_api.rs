@@ -8,7 +8,7 @@
 use std::path::Path;
 use std::process::Command;
 
-use asm_runner::{AsmRHData, AsmRunnerOptions, AsmRunnerTraceLevel, AsmService, AsmServices};
+use zisk_asm_runner::{AsmRHData, AsmRunnerOptions, AsmRunnerTraceLevel, AsmService, AsmServices};
 
 /// Collect the args `apply_to_command` adds, as owned strings.
 fn applied_args(opts: &AsmRunnerOptions, service: AsmService) -> Vec<String> {

@@ -1,21 +1,28 @@
 [package]
 name = "zisk-build"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-keywords.workspace = true
-repository.workspace = true
-categories.workspace = true
+description = "Build tooling for compiling guest programs to RISC-V ELF for the ZisK zkVM"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 clap = { workspace = true }
 cargo_metadata = "0.23.0"
+cargo-config2 = "0.1"
 anyhow = { workspace = true }
-rom-setup = { workspace = true }
+zisk-rom-setup = { workspace = true }
 blake3 = { workspace = true }
+tempfile = "3"
+serde = { workspace = true }
+toml = { workspace = true }
 
 [build-dependencies]
-vergen-git2.workspace = true
+vergen-git2 = { workspace = true }
 
 [features]
 cpu-only = []

@@ -1,0 +1,35 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "opids.pil"
+
+const int BLAKE2BR_TABLE_SIZE = P2_16;
+
+airtemplate Blake2brTable(const int N) {
+    if (N < BLAKE2BR_TABLE_SIZE) {
+        error(`N must be at least ${BLAKE2BR_TABLE_SIZE}, but N=${N} was provided`);
+    }
+
+    // Inputs A (8 bits)
+    col fixed A = [0..MASK_8]...;
+
+    // Input B (8 bits)
+    col fixed B = [0:P2_8..MASK_8:P2_8]...;
+
+    // Output C (8 bits)
+    col fixed C;
+
+    #pragma transpile
+    for (int i = 0; i < N; i++) {
+        const int [a, b] = [A[i], B[i]];
+
+        // XOR
+        C[i] = a ^ b;
+    }
+
+    col witness multiplicity;
+    lookup_proves(BLAKE2BR_TABLE_ID, [A, B, C], multiplicity);
+}
+
+function blake2br_table_check(const expr a, const expr b, const expr c) {
+    lookup_assumes(BLAKE2BR_TABLE_ID, [a, b, c]);
+}

@@ -48,7 +48,7 @@ macro_rules! register_precompiles {
         /// Tagged union of every precompile state machine registered via
         /// [`register_precompiles!`](crate::register_precompiles). One variant
         /// per declaration.
-        pub enum Precompiles<F: ::fields::PrimeField64> {
+        pub enum Precompiles<F: ::proofman_fields::PrimeField64> {
             $(
                 #[doc = concat!(
                     "`", stringify!($variant),
@@ -58,7 +58,7 @@ macro_rules! register_precompiles {
             )*
         }
 
-        impl<F: ::fields::PrimeField64> Precompiles<F> {
+        impl<F: ::proofman_fields::PrimeField64> Precompiles<F> {
             /// Static planner dispatch by AIR id — no instance needed.
             /// Used by the plan path without constructing the precompile.
             pub fn planner_for_air_id(
@@ -67,7 +67,7 @@ macro_rules! register_precompiles {
             ) -> ::std::boxed::Box<dyn ::zisk_common::Planner> {
                 match air_id {
                     $(
-                        id if id == $air[0] => <$mgr as
+                        id if $air.contains(&id) => <$mgr as
                             ::zisk_common::ComponentPlanBuilder<F>>::planner(is_asm_emulator),
                     )*
                     _ => panic!("planner_for_air_id: unknown precompile air_id {air_id}"),
@@ -103,11 +103,11 @@ macro_rules! register_precompiles {
             /// variant. Macro-generated from the registration list; mirrors
             /// `BuiltinSMs::all` on the built-in side.
             pub(crate) fn all(
-                std: ::std::sync::Arc<::pil_std_lib::Std<F>>,
-            ) -> ::std::vec::Vec<(::std::primitive::usize, Self)> {
+                std: ::std::sync::Arc<::pil2_std_lib::Std<F>>,
+            ) -> ::std::vec::Vec<(&'static [::std::primitive::usize], Self)> {
                 ::std::vec![
                     $(
-                        ($air[0], Self::$variant(<$mgr>::new(std.clone()))),
+                        ($air, Self::$variant(<$mgr>::new(std.clone()))),
                     )*
                 ]
             }
@@ -140,7 +140,7 @@ macro_rules! register_precompiles {
             /// Counter-phase slots for every precompile registered via
             /// `register_precompiles!`. Each field stores
             /// `(bundle_position, counter_input_gen)`.
-            pub struct PrecompileCounters<F: ::fields::PrimeField64> {
+            pub struct PrecompileCounters<F: ::proofman_fields::PrimeField64> {
                 $(
                     #[doc = concat!(
                         "Counter for the `", stringify!($variant),
@@ -154,7 +154,7 @@ macro_rules! register_precompiles {
                 )*
             }
 
-            impl<F: ::fields::PrimeField64> PrecompileCounters<F> {
+            impl<F: ::proofman_fields::PrimeField64> PrecompileCounters<F> {
                 /// Build each precompile's counter via static dispatch.
                 /// Bundle position is `BUILTIN_COUNT + slot`.
                 pub fn build(is_asm_emulator: ::std::primitive::bool) -> Self {
@@ -183,13 +183,13 @@ macro_rules! register_precompiles {
                     op_type: ::std::primitive::u32,
                     bus_id: &::zisk_common::BusId,
                     data: &[::zisk_common::PayloadType],
-                    mem_counter: ::std::option::Option<&mut ::mem_common::MemCounters>,
+                    mem_counter: ::std::option::Option<&mut ::zisk_sm_mem_common::MemCounters>,
                 ) -> ::std::primitive::bool {
                     $(
                         const [<__ $variant:upper _OP>]: ::std::primitive::u32 = $op;
                     )*
                     let mut mem_processor =
-                        ::precompiles_common::MemCounterProcessor::new(mem_counter);
+                        ::zisk_precomp_common::MemCounterProcessor::new(mem_counter);
                     match op_type {
                         $(
                             [<__ $variant:upper _OP>] => self.[<$variant:snake>].1.process_data(
@@ -233,7 +233,7 @@ macro_rules! register_precompiles {
             /// `try_push_collector` during per-chunk setup, plus a
             /// `CounterInputGen` used by the bus to emit derived
             /// mem-ops on each operation message.
-            pub struct PrecompileCollectors<F: ::fields::PrimeField64> {
+            pub struct PrecompileCollectors<F: ::proofman_fields::PrimeField64> {
                 $(
                     #[doc = concat!(
                         "Per-chunk collectors for the `", stringify!($variant),
@@ -253,7 +253,7 @@ macro_rules! register_precompiles {
                 )*
             }
 
-            impl<F: ::fields::PrimeField64> PrecompileCollectors<F> {
+            impl<F: ::proofman_fields::PrimeField64> PrecompileCollectors<F> {
                 pub fn new() -> Self {
                     Self {
                         $(
@@ -286,7 +286,7 @@ macro_rules! register_precompiles {
                     global_idx: ::std::primitive::usize,
                 ) -> $crate::error::ExecutorResult<::std::primitive::bool> {
                     $(
-                        if air_id == $air[0] {
+                        if $air.contains(&air_id) {
                             let inst = secn_instance
                                 .as_any()
                                 .downcast_ref::<[<$variant Instance>]<F>>()
@@ -331,11 +331,11 @@ macro_rules! register_precompiles {
                     data: &[::zisk_common::PayloadType],
                     mem_collector: &mut ::std::vec::Vec<(
                         ::std::primitive::usize,
-                        ::sm_mem::MemModuleCollector,
+                        ::zisk_sm_mem::MemModuleCollector,
                     )>,
                     mem_align_collector: &mut ::std::vec::Vec<(
                         ::std::primitive::usize,
-                        ::sm_mem::MemAlignCollector,
+                        ::zisk_sm_mem::MemAlignCollector,
                     )>,
                 ) -> ::std::primitive::bool {
                     $(
@@ -350,7 +350,7 @@ macro_rules! register_precompiles {
                                 self.[<$variant:snake _inputs_generator>].process_data(
                                     bus_id,
                                     data,
-                                    &mut ::precompiles_common::MemCollectorProcessor::new(
+                                    &mut ::zisk_precomp_common::MemCollectorProcessor::new(
                                         mem_collector,
                                         mem_align_collector,
                                     ),

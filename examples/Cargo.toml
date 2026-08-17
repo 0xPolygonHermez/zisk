@@ -16,6 +16,8 @@ members = [
   "primes/guest",
   "collatz/host",
   "collatz/guest",
+  "recurser/l2/host",
+  "recurser/hash/host",
   "utils"
 ]
 
@@ -27,5 +29,8 @@ opt-level = 3
 [workspace.dependencies]
 ziskos = { path = "../ziskos/entrypoint" }
 zisk-sdk = { path = "../sdk" }
-test-artifacts = { path = "../test-artifacts" }
+zisk-test-artifacts = { path = "../test-artifacts", default-features = false }
 examples-utils = { path = "utils"}
+
+proofman-util = "1.1.0-alpha"
+proofman-fields = "1.1.0-alpha"

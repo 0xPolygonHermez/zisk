@@ -111,6 +111,10 @@ pub(crate) struct ProveCmd {
     #[arg(short = 't', long, hide = true)]
     max_streams: Option<usize>,
 
+    /// Maximum number of per-GPU recursive (aggregation) streams for proving
+    #[arg(short = 'r', long, hide = true)]
+    max_recursive_streams: Option<usize>,
+
     /// Number of threads per worker pool used during witness computation
     #[arg(long, hide = true)]
     number_threads_witness: Option<usize>,
@@ -187,6 +191,9 @@ impl ProveCmd {
         if let Some(max) = self.max_streams {
             prover_options = prover_options.max_streams(max);
         }
+        if let Some(max) = self.max_recursive_streams {
+            prover_options = prover_options.max_recursive_streams(max);
+        }
 
         // ASM-specific options (only used if not emulator)
         let mut asm_options = AsmOptions::default();
@@ -226,26 +233,39 @@ impl ProveCmd {
             !self.asm
         };
 
+        if let Some(msg) =
+            super::hints_backend_error(hints_stream.is_some(), emulator, cfg!(target_os = "macos"))
+        {
+            anyhow::bail!(msg);
+        }
+
         let (result, executor_time) = if emulator {
             self.run_emu(stdin, prover_options)?
         } else {
             self.run_asm(stdin, hints_stream, prover_options)?
         };
 
-        if !result.get_proof().is_empty() {
-            info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
+        info!("{}", "--- PROVE SUMMARY ------------------------".bright_green().bold());
 
+        // A final proof exists only on the rank that aggregates, and only when aggregation runs at
+        // all. The timings are recorded either way, so they are reported either way — with
+        // `--no-aggregation` this block used to be skipped entirely and print no total, which is
+        // exactly when you most want one.
+        if !result.get_proof().is_empty() {
             let output_file: PathBuf = resolve_output_path(self.output.clone(), None::<&str>);
             result.save_proof(&output_file)?;
-            info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
-
-            print_execution_summary(
-                &executor_time,
-                result.get_proving_time(),
-                result.get_execution_steps(),
-                "Proofman",
-            );
+        } else {
+            info!("No final proof to write for this run");
         }
+
+        info!("Proof Time: {:.3} seconds", result.get_proving_time() as f64 / 1000.0);
+
+        print_execution_summary(
+            &executor_time,
+            result.get_proving_time(),
+            result.get_execution_steps(),
+            "Proofman",
+        );
 
         Ok(())
     }

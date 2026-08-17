@@ -2,8 +2,7 @@ use sha_hasher_host::ELF_SHA_HASHER;
 use std::error::Error;
 use zisk_sdk::{Proof, ProofKind, ProverClient, ZiskStdin};
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client (SNARK mode)...");
 
     // Create an input stream and write '1000' to it.
@@ -20,11 +19,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let client = builder.build()?;
 
     println!("Setting up program and generating verification key...");
-    client.setup(&ELF_SHA_HASHER).run()?.await?;
+    client.setup(&ELF_SHA_HASHER).run_sync()?;
     println!("Setup completed successfully");
 
     println!("Generating PLONK proof (this may take a while)...");
-    let snark_proof = client.prove(&ELF_SHA_HASHER, stdin).wrap(ProofKind::Plonk).run()?.await?;
+    let snark_proof = client.prove(&ELF_SHA_HASHER, stdin).wrap(ProofKind::Plonk).run_sync()?;
     println!("PLONK proof generated successfully in {} ms", snark_proof.get_proving_time());
     println!("Execution steps: {}", snark_proof.get_execution_steps());
 

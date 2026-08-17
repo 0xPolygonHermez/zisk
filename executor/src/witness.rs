@@ -19,13 +19,13 @@ use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use asm_runner::AsmRunnerRH;
-use fields::PrimeField64;
 use proofman_common::{BufferPool, ProofCtx, SetupCtx};
-use sm_main::MainInstance;
+use proofman_fields::PrimeField64;
+use zisk_asm_runner::AsmRunnerRH;
 use zisk_common::{CheckPoint, InstanceCtx, InstanceType, Plan, StatsScope};
 use zisk_core::ZiskRom;
 use zisk_pil::RomTrace;
+use zisk_sm_main::MainInstance;
 
 use crate::error::{ExecutorError, ExecutorResult, MutexExt, RwLockExt};
 use crate::ports::{Dctx, GlobalId, ProofRegistry};
@@ -124,6 +124,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
         self.witness_generator.set_packed(packed);
     }
 
+    pub fn is_packed(&self) -> bool {
+        self.witness_generator.is_packed()
+    }
+
     pub fn reset(&self) -> ExecutorResult<()> {
         *self.trace_buffer_rom.lock_or_poison("trace_buffer_rom")? =
             vec![F::ZERO; RomTrace::<F>::NUM_ROWS];
@@ -142,7 +146,10 @@ impl<F: PrimeField64> WitnessPhase<F> {
             state.instance_set.main_instances.write_or_poison("main_instances")?;
         for (global_id, plan) in assignments {
             main_instances.entry(global_id).or_insert_with(|| {
-                MainInstance::new(InstanceCtx::new(global_id, plan), self.sm_bundle.get_std())
+                std::sync::Arc::new(MainInstance::new(
+                    InstanceCtx::new(global_id, plan),
+                    self.sm_bundle.get_std(),
+                ))
             });
 
             let gid = GlobalId(global_id);

@@ -30,6 +30,9 @@ extern "C" {
 #define FCALL_UINT256_INV_ID 20
 #define FCALL_UINT256_INV_MOD_ID 21
 #define FCALL_BIGINT_DIV_ID 22
+// 23 = FCALL_INPUT_READY_ID, resolved at transpilation time, never reaches Fcall()
+#define FCALL_SET_KECCAKF_CACHE_INDEX_ID 24
+#define FCALL_GET_KECCAKF_CACHE_INDEX_ID 25
 
 #define FCALL_PARAMS_MAX_SIZE 386
 #define FCALL_RESULT_MAX_SIZE 8193
@@ -119,6 +122,12 @@ int Secp256k1GlvDecomposeCtx (
     struct FcallContext * ctx  // fcall context
 );
 int Secp256r1FnInvCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int KeccakfCacheSetIndexCtx (
+    struct FcallContext * ctx  // fcall context
+);
+int KeccakfCacheGetIndexCtx (
     struct FcallContext * ctx  // fcall context
 );
 

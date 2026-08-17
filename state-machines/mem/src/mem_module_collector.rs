@@ -1,6 +1,8 @@
 use crate::{MemInput, MemPreviousSegment};
-use mem_common::{MemHelpers, MemModuleCheckPoint, MEMORY_INIT_STEP, MEM_BYTES, MEM_BYTES_BITS};
 use zisk_common::{BusDevice, BusId, MemBusData, SegmentId, MEM_BUS_ID};
+use zisk_sm_mem_common::{
+    MemHelpers, MemModuleCheckPoint, MEMORY_INIT_STEP, MEM_BYTES, MEM_BYTES_BITS,
+};
 
 #[cfg(feature = "save_addr_action")]
 use std::io::Write;
@@ -105,7 +107,7 @@ impl MemModuleCollector {
     fn discard_align_addr(&mut self, addr_w: u32) -> bool {
         // Check if the address is out of the range of the current checkpoint, or
         // out of memory area.
-        addr_w < self.aligned_min_addr || addr_w > self.filter_max_addr
+        addr_w < self.aligned_min_addr || addr_w > self.aligned_max_addr
     }
 
     #[inline(always)]

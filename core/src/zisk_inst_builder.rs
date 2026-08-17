@@ -22,13 +22,37 @@ impl ZiskInstBuilder {
     /// Constructor setting the initial pc address
     #[inline(always)]
     pub fn new(paddr: u64) -> ZiskInstBuilder {
+        assert!(
+            paddr & 0x1 == 0,
+            "ZiskInstBuilder::new() used on internal instruction 0x{paddr:x}"
+        );
         let mut zib = ZiskInstBuilder::default();
         zib.i.paddr = paddr;
+        zib
+    }
+    /// Constructor setting the initial pc address
+    #[inline(always)]
+    pub fn new_internal(paddr: u64, external_ref_addr: u64) -> ZiskInstBuilder {
+        let mut zib = ZiskInstBuilder::default();
+        assert!(
+            paddr & 0x1 == 1,
+            "ZiskInstBuilder::new_internal() used on non-internal instruction 0x{paddr:x}"
+        );
+        assert!(
+            external_ref_addr & 0x1 == 0,
+            "ZiskInstBuilder::new_internal() external_ref_addr is internal address 0x{external_ref_addr:x}"
+        );
+        zib.i.paddr = paddr;
+        zib.i.external_ref_addr = Some(external_ref_addr);
         zib
     }
     /// Constructor setting the initial pc address and original RISC-V instruction
     #[inline(always)]
     pub fn new_from_riscv(paddr: u64, riscv_inst: String) -> ZiskInstBuilder {
+        assert!(
+            paddr & 0x1 == 0,
+            "ZiskInstBuilder::new_from_riscv() used on internal instruction 0x{paddr:x}",
+        );
         let mut zib = ZiskInstBuilder::default();
         zib.i.paddr = paddr;
         zib.i.riscv_inst = Some(riscv_inst);
@@ -263,5 +287,15 @@ impl ZiskInstBuilder {
         rom.insts.insert(paddr, zib);
 
         //print!("ZiskInstBuilder::build() i=[ {} ]\n", self.i.to_string());
+    }
+    pub fn set_meta_rs1(&mut self, rs1: u8) {
+        self.i.meta_rs1 = Some(rs1);
+    }
+    pub fn set_meta_rd(&mut self, rd: u8) {
+        self.i.meta_rd = Some(rd);
+    }
+    pub fn set_meta_rs1_rd(&mut self, rs1: u8, rd: u8) {
+        self.i.meta_rs1 = Some(rs1);
+        self.i.meta_rd = Some(rd);
     }
 }

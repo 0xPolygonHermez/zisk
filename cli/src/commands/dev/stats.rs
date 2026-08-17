@@ -41,6 +41,16 @@ pub(crate) struct StatsCmd {
     #[arg(short = 'u', long, requires = "asm")]
     unlock_mapped_memory: bool,
 
+    /// Use GPU acceleration. Without it the memory-ops count-and-plan runs on the CPU, so the reported timings are not the ones the proving pipeline sees
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(short = 'g', long)]
+    gpu: bool,
+
+    /// Run mops planner on CPU even when --gpu is set (fallback for GPU-planner issues)
+    #[cfg(not(feature = "cpu-only"))]
+    #[arg(long)]
+    pub cpu_mops: bool,
+
     /// Maximum memory (bytes) for witness storage during proving
     #[arg(short = 'x', long)]
     max_witness_stored: Option<usize>,
@@ -150,13 +160,7 @@ impl StatsCmd {
         );
 
         if let Some(stats) = &stats {
-            Self::print_stats(
-                &stats
-                    .get_inner()
-                    .lock()
-                    .map_err(|e| anyhow::anyhow!("Mutex stats lock poisoned: {e}"))?
-                    .witness_stats,
-            );
+            Self::print_stats(&stats.witness_stats());
             stats.print_stats();
         }
 
@@ -171,6 +175,14 @@ impl StatsCmd {
 
         if !self.no_packed {
             prover_options = prover_options.packed();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
@@ -209,6 +221,14 @@ impl StatsCmd {
 
         if !self.no_packed {
             prover_options = prover_options.packed();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.gpu {
+            prover_options = prover_options.gpu();
+        }
+        #[cfg(not(feature = "cpu-only"))]
+        if self.cpu_mops {
+            prover_options = prover_options.cpu_mops();
         }
         if let Some(ref path) = self.proving_key {
             prover_options = prover_options.proving_key(path.clone());
@@ -364,47 +384,16 @@ impl StatsCmd {
         );
     }
 
-    fn air_name(_airgroup_id: usize, air_id: usize) -> String {
-        match air_id {
-            val if val == DMA_AIR_IDS[0] => "DMA".to_string(),
-            val if val == DMA_MEM_CPY_AIR_IDS[0] => "DMA_MEM_CPY".to_string(),
-            val if val == DMA_INPUT_CPY_AIR_IDS[0] => "DMA_INPUT_CPY".to_string(),
-            val if val == DMA_64_ALIGNED_AIR_IDS[0] => "DMA_64_ALIGNED".to_string(),
-            val if val == DMA_64_ALIGNED_INPUT_CPY_AIR_IDS[0] => {
-                "DMA_64_ALIGNED_INPUT_CPY".to_string()
-            }
-            val if val == DMA_64_ALIGNED_MEM_SET_AIR_IDS[0] => "DMA_64_ALIGNED_MEM_SET".to_string(),
-            val if val == DMA_64_ALIGNED_MEM_AIR_IDS[0] => "DMA_64_ALIGNED_MEM".to_string(),
-            val if val == DMA_64_ALIGNED_MEM_CPY_AIR_IDS[0] => "DMA_64_ALIGNED_MEM_CPY".to_string(),
-            val if val == DMA_UNALIGNED_AIR_IDS[0] => "DMA_UNALIGNED".to_string(),
-            val if val == DMA_PRE_POST_AIR_IDS[0] => "DMA_PRE_POST".to_string(),
-            val if val == DMA_PRE_POST_MEM_CPY_AIR_IDS[0] => "DMA_PRE_POST_MEM_CPY".to_string(),
-            val if val == DMA_PRE_POST_INPUT_CPY_AIR_IDS[0] => "DMA_PRE_POST_INPUT_CPY".to_string(),
-            val if val == MAIN_AIR_IDS[0] => "MAIN".to_string(),
-            val if val == ROM_AIR_IDS[0] => "ROM".to_string(),
-            val if val == MEM_AIR_IDS[0] => "MEM".to_string(),
-            val if val == ROM_DATA_AIR_IDS[0] => "ROM_DATA".to_string(),
-            val if val == INPUT_DATA_AIR_IDS[0] => "INPUT_DATA".to_string(),
-            val if val == MEM_ALIGN_AIR_IDS[0] => "MEM_ALIGN".to_string(),
-            val if val == MEM_ALIGN_BYTE_AIR_IDS[0] => "MEM_ALIGN_BYTE".to_string(),
-            val if val == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => "MEM_ALIGN_READ_BYTE".to_string(),
-            val if val == MEM_ALIGN_WRITE_BYTE_AIR_IDS[0] => "MEM_ALIGN_WRITE_BYTE".to_string(),
-            // val if val == MEM_ALIGN_ROM_AIR_IDS[0] => "MEM_ALIGN_ROM".to_string(),
-            val if val == ARITH_AIR_IDS[0] => "ARITH".to_string(),
-            // val if val == ARITH_TABLE_AIR_IDS[0] => "ARITH_TABLE".to_string(),
-            // val if val == ARITH_RANGE_TABLE_AIR_IDS[0] => "ARITH_RANGE_TABLE".to_string(),
-            val if val == ARITH_EQ_AIR_IDS[0] => "ARITH_EQ".to_string(),
-            // val if val == ARITH_EQ_LT_TABLE_AIR_IDS[0] => "ARITH_EQ_LT_TABLE".to_string(),
-            val if val == BINARY_AIR_IDS[0] => "BINARY".to_string(),
-            val if val == BINARY_ADD_AIR_IDS[0] => "BINARY_ADD".to_string(),
-            // val if val == BINARY_TABLE_AIR_IDS[0] => "BINARY_TABLE".to_string(),
-            val if val == BINARY_EXTENSION_AIR_IDS[0] => "BINARY_EXTENSION".to_string(),
-            // val if val == BINARY_EXTENSION_TABLE_AIR_IDS[0] => "BINARY_EXTENSION_TABLE".to_string(),
-            val if val == KECCAKF_AIR_IDS[0] => "KECCAKF".to_string(),
-            // val if val == KECCAKF_TABLE_AIR_IDS[0] => "KECCAKF_TABLE".to_string(),
-            val if val == SHA_256_F_AIR_IDS[0] => "SHA_256_F".to_string(),
-            // val if val == SPECIFIED_RANGES_AIR_IDS[0] => "SPECIFIED_RANGES".to_string(),
-            _ => format!("Unknown air_id: {air_id}"),
-        }
+    /// Display name for an `(airgroup_id, air_id)` pair.
+    ///
+    /// Backed by the PILOUT-generated [`AIR_NAMES`] table rather than a hand-written match, so an
+    /// AIR added to the PIL shows up here without a code change. The match this replaced had
+    /// silently drifted: BinaryAddHi, BinaryExtensionFull, ArithSecp256K1, ArithEq384 and JumpDest
+    /// all printed as "Unknown air_id".
+    fn air_name(airgroup_id: usize, air_id: usize) -> String {
+        AIR_NAMES
+            .iter()
+            .find(|&&(g, a, _)| g == airgroup_id && a == air_id)
+            .map_or_else(|| format!("Unknown air_id: {air_id}"), |&(_, _, name)| name.to_string())
     }
 }

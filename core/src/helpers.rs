@@ -3,7 +3,7 @@ use sha2::compress256;
 #[allow(deprecated)]
 use sha2::digest::generic_array::{typenum::U64, GenericArray};
 
-use precompiles_helpers::blake2b_round;
+use zisk_precomp_helpers::blake2b_round;
 
 #[allow(deprecated)]
 pub fn sha256f(state: &mut [u64; 4], input: &[u64; 8]) {

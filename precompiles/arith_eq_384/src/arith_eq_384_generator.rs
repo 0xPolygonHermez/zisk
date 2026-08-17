@@ -1,10 +1,12 @@
 use path_clean::PathClean;
 use std::path::Path;
 
-use precomp_arith_eq::generator::{Equation, EquationConfig};
+use zisk_precomp_arith_eq::generator::{Equation, EquationConfig};
 
 mod arith_eq_384_constants;
-use arith_eq_384_constants::{ARITH_EQ_384_CHUNKS, ARITH_EQ_384_CHUNK_BITS};
+use arith_eq_384_constants::{
+    ARITH_EQ_384_CHUNKS, ARITH_EQ_384_CHUNK_BITS, ARITH_EQ_384_ROWS_BY_OP,
+};
 
 // cargo run --release --bin arith_eq_384_generator
 
@@ -18,12 +20,14 @@ fn main() {
         chunks: ARITH_EQ_384_CHUNKS,
         chunk_bits: ARITH_EQ_384_CHUNK_BITS,
         terms_by_clock: 2,
+        clocks: ARITH_EQ_384_ROWS_BY_OP,
         ..Default::default()
     };
 
     // ARITH_384_MOD
 
-    let mut eq = Equation::new(&config);
+    let arith_384_mod_config = EquationConfig { force_extra_clocks_zero: true, ..config };
+    let mut eq = Equation::new(&arith_384_mod_config);
     eq.parse(
         "x1*y1+x2-x3-q0*y2-q1*y2*p2_384",
         &[("p2_384", "0x1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")],

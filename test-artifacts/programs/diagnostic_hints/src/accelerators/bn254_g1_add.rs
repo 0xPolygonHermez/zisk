@@ -1,4 +1,4 @@
-use zkvm_interface::{zkvm_bn254_g1_add, zkvm_bn254_g1_point, zkvm_status_ZKVM_EOK as ZKVM_EOK};
+use zisk_zkvm_interface::{zkvm_bn254_g1_add, zkvm_bn254_g1_point, zkvm_status_ZKVM_EOK as ZKVM_EOK};
 
 pub fn diagnostic_zkvm_bn254_g1_add() {
     // EIP-196 encodes the point at infinity as (x, y) = (0, 0). ∞ + ∞ = ∞.

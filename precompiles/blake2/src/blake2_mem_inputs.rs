@@ -1,5 +1,5 @@
-use fields::PrimeField64;
-use precompiles_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
+use proofman_fields::PrimeField64;
+use zisk_precomp_common::{MemBusHelpers, MemProcessor, PrecompileMemInputs};
 
 use zisk_common::OPERATION_PRECOMPILED_BUS_DATA_SIZE;
 use zisk_core::blake2br;

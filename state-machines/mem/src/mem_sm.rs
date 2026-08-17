@@ -13,11 +13,11 @@ use std::{
 use crate::mem_module::save_offsets_to_file;
 
 use crate::{MemInput, MemModule};
-use fields::PrimeField64;
-use mem_common::{MemHelpers, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_fields::PrimeField64;
 use zisk_core::{RAM_ADDR, RAM_SIZE};
+use zisk_sm_mem_common::{MemHelpers, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
 
 const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
 const OFFSET_USE_FLAG: u32 = 0x4000_0000;
@@ -60,7 +60,7 @@ impl<F: PrimeField64> MemSM<F> {
         for i in 0..num_rows {
             let addr = trace[i].get_addr() as u64 * 8;
             let step = trace[i].get_step();
-            let main_step = MemHelpers::mem_step_to_main_step(step);
+            let main_step = if step == 0 { 0 } else { MemHelpers::mem_step_to_main_step(step) };
             let op = if trace[i].get_wr() { 'W' } else { 'R' };
             let values = [trace[i].get_value(0) as u64, trace[i].get_value(1) as u64];
             let value = values[0] | (values[1] << 32);
@@ -603,6 +603,7 @@ impl<F: PrimeField64> MemSM<F> {
         let mut step = 0;
         let mem_op_count = mem_ops.len();
         let mut last_row_idx = 0;
+        let previous_segment_addr = previous_segment.addr - (segment_id == 0) as u32;
 
         // The address with offset 0 is the halo address, but point of view of continuations halo doesn't
         // implies a addr_changes, for this reason init current_offsets[0] with OFFSET_USE_FLAG
@@ -651,7 +652,7 @@ impl<F: PrimeField64> MemSM<F> {
                     // offsets array before the SoA refactor).
                     let previous_addr_w = seg
                         .previous_change_addr_w(addr_index as u32)
-                        .unwrap_or(previous_segment.addr as u64);
+                        .unwrap_or(previous_segment_addr as u64);
 
                     debug_assert!(
                         previous_addr_w < mem_op.addr as u64,
@@ -685,7 +686,7 @@ impl<F: PrimeField64> MemSM<F> {
                         panic!("MemSM: Warning: step {step} is not greater than previous_step {previous_step} \
                                 for write operation at index {index} and irow {irow} with addr 0x{:X} \
                                 (addr_index: {addr_index} previous_segment.addr: 0x{:X} offset_base_addr_w: 0x{:X})",
-                            mem_op.addr * 8, previous_segment.addr * 8, offset_base_addr_w * 8);
+                            mem_op.addr * 8, previous_segment_addr * 8, offset_base_addr_w * 8);
                     }
                     step - previous_step - 1
                 };
@@ -705,7 +706,7 @@ impl<F: PrimeField64> MemSM<F> {
 
                 let previous_addr: u64 = seg
                     .previous_change_addr_w(addr_index as u32)
-                    .unwrap_or(previous_segment.addr as u64);
+                    .unwrap_or(previous_segment_addr as u64);
                 debug_assert!(
                     previous_addr < mem_op.addr as u64,
                     "MemSM: Warning: address goes back \

@@ -16,40 +16,67 @@ use crate::backend::DomainProofKind;
 
 /// Stable numeric error codes (matches `book/developer/coordinator_api.md`).
 pub mod codes {
+    /// The requested job does not exist.
     pub const JOB_NOT_FOUND: u32 = 1001;
+    /// The requested program is not registered.
     pub const PROGRAM_NOT_FOUND: u32 = 1002;
+    /// The program is registered but its setup is not complete.
     pub const PROGRAM_NOT_SETUP: u32 = 1003;
+    /// The operation is invalid for the job's current state.
     pub const INVALID_JOB_STATE: u32 = 1004;
+    /// The requested proof-kind conversion is not allowed.
     pub const INVALID_PROOF_CONVERSION: u32 = 1005;
+    /// No cluster is available to service the request.
     pub const CLUSTER_UNAVAILABLE: u32 = 2001;
+    /// An unexpected internal error.
     pub const INTERNAL: u32 = 3001;
 }
 
+/// An API-level error, each variant carrying a stable [`code`](ApiError::code).
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
+    /// The requested job does not exist.
     #[error("Job not found: {0}")]
     JobNotFound(Uuid),
 
+    /// The requested program is not registered.
     #[error("Program not found: {0}")]
     ProgramNotFound(String),
 
+    /// The program is registered but setup has not completed.
     #[error("Program exists but setup is not complete: {0}")]
     ProgramNotSetup(String),
 
+    /// The operation is invalid for the job's current state.
     #[error("Invalid job state: {reason}")]
-    InvalidJobState { reason: String },
+    InvalidJobState {
+        /// Why the state is invalid for the operation.
+        reason: String,
+    },
 
+    /// The requested proof-kind conversion is not allowed.
     #[error("Invalid proof conversion: {from:?} → {to:?}")]
-    InvalidProofConversion { from: DomainProofKind, to: DomainProofKind },
+    InvalidProofConversion {
+        /// Source proof kind.
+        from: DomainProofKind,
+        /// Target proof kind.
+        to: DomainProofKind,
+    },
 
+    /// No cluster is available to service the request.
     #[error("Cluster unavailable: {reason}")]
-    ClusterUnavailable { reason: &'static str },
+    ClusterUnavailable {
+        /// Why the cluster is unavailable.
+        reason: &'static str,
+    },
 
+    /// An unexpected internal error (detail is logged, not returned to clients).
     #[error("Internal error")]
     Internal(String),
 }
 
 impl ApiError {
+    /// The stable numeric error code for this error (see [`codes`]).
     pub fn code(&self) -> u32 {
         match self {
             Self::JobNotFound(_) => codes::JOB_NOT_FOUND,
@@ -62,6 +89,7 @@ impl ApiError {
         }
     }
 
+    /// The stable string name for this error (e.g. `"JOB_NOT_FOUND"`).
     pub fn name(&self) -> &'static str {
         match self {
             Self::JobNotFound(_) => "JOB_NOT_FOUND",
@@ -108,6 +136,7 @@ impl From<ApiError> for Status {
     }
 }
 
+/// Result alias for API operations that fail with [`ApiError`].
 pub type ApiResult<T> = Result<T, ApiError>;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
