@@ -7746,7 +7746,6 @@ dependencies = [
 name = "zisk-precomp-keccakf"
 version = "1.2.0-alpha"
 dependencies = [
- "path-clean",
  "pil2-std-lib",
  "proofman-common",
  "proofman-fields",
@@ -7754,7 +7753,6 @@ dependencies = [
  "rayon",
  "tiny-keccak",
  "tracing",
- "zisk-circuit",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
