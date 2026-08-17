@@ -196,23 +196,34 @@ airtemplate Keccakf(const int N = 2**17, const int lanes_per_row = 25) {
     // Committed sliced column parities of θ
     col witness bits(4) c[C_PER_ROW];
 
-    // Booleanity on the boundary groups
-    const expr BOUNDARY_CLK = clock_set(start: GROUP_IN_A, end: GROUP_ROUND_0) +
-                              clock_set(start: GROUP_OUT_A, end: CLOCKS);
+    // Boundary constraints: booleanity of the four boundary groups plus the
+    // slice/unslice glue, folded into ONE family. A merged family is sound iff
+    // its terms have pairwise-disjoint anchor rows, so the booleanity of the
+    // groups occupied by the glue anchors is checked THROUGH shifts from the
+    // neighboring round groups (rotations the design already opens):
+    //
+    //   anchor group   term                          checks
+    //   IN_A           state·(1−state)               booleanity of A input bits
+    //   IN_B           slice-in                      round-0 = A + 8·B
+    //   ROUND_0        (RPS)'state·(1−(RPS)'state)   booleanity of B input bits
+    //   ROUND_LAST     state'(RPS)·(1−state'(RPS))   booleanity of A output bits
+    //   OUT_A          unslice                       round-24 = A_out + 8·B_out
+    //   OUT_B          state·(1−state)               booleanity of B output bits
+    //
+    const expr IN_A_CLK = clock_set(start: GROUP_IN_A, end: GROUP_IN_B);
+    const expr IN_B_CLK = clock_set(start: GROUP_IN_B, end: GROUP_ROUND_0);
+    const expr ROUND_0_CLK = clock_set(start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE);
+    const expr ROUND_LAST_CLK = clock_set(start: GROUP_ROUND_LAST, end: GROUP_OUT_A);
+    const expr OUT_A_CLK = clock_set(start: GROUP_OUT_A, end: GROUP_OUT_B);
+    const expr OUT_B_CLK = clock_set(start: GROUP_OUT_B, end: CLOCKS);
     for (int i = 0; i < BITS_PER_ROW; i++) {
-        BOUNDARY_CLK * state[i] * (1 - state[i]) === 0;
-    }
-
-    // Slice in: round-0 group = A input bits + 8·B input bits
-    const expr SLICE_CLK = clock_set(start: GROUP_ROUND_0, end: GROUP_ROUND_0 + ROWS_PER_STATE);
-    for (int i = 0; i < BITS_PER_ROW; i++) {
-        SLICE_CLK * (state[i] - (GROUP_ROUND_0 - GROUP_IN_A)'state[i] - KECCAKF_SLOT * (GROUP_ROUND_0 - GROUP_IN_B)'state[i]) === 0;
-    }
-
-    // Unslice out: round-24 group = A output bits + 8·B output bits
-    const expr UNSLICE_CLK = clock_set(start: GROUP_ROUND_LAST, end: GROUP_ROUND_LAST + ROWS_PER_STATE);
-    for (int i = 0; i < BITS_PER_ROW; i++) {
-        UNSLICE_CLK * (state[i] - state[i]'(GROUP_OUT_A - GROUP_ROUND_LAST) - KECCAKF_SLOT * state[i]'(GROUP_OUT_B - GROUP_ROUND_LAST)) === 0;
+        (IN_A_CLK + OUT_B_CLK) * state[i] * (1 - state[i]) +
+        ROUND_0_CLK * (ROWS_PER_STATE)'state[i] * (1 - (ROWS_PER_STATE)'state[i]) +
+        ROUND_LAST_CLK * state[i]'(ROWS_PER_STATE) * (1 - state[i]'(ROWS_PER_STATE)) +
+        // Slice in: round-0 group = A input bits + 8·B input bits
+        IN_B_CLK * (state[i]'(ROWS_PER_STATE) - (ROWS_PER_STATE)'state[i] - KECCAKF_SLOT * state[i]) +
+        // Unslice out: round-24 group = A output bits + 8·B output bits
+        OUT_A_CLK * ((ROWS_PER_STATE)'state[i] - state[i] - KECCAKF_SLOT * state[i]'(ROWS_PER_STATE)) === 0;
     }
 
     // Round transitions fire on the rows of the groups holding rounds 0..23
