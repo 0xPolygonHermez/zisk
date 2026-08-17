@@ -22,7 +22,7 @@ impl Coordinator {
     /// # Parameters
     ///
     /// * `execute_task_response` - Response containing final proof or failure details
-    pub(super) async fn handle_aggregation_completion(
+    pub(super) async fn handle_recurser_completion(
         &self,
         execute_task_response: ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
@@ -51,6 +51,11 @@ impl Coordinator {
             return Err(CoordinatorError::Internal(reason));
         }
 
+        // Bind the payload to the phase mutated below (see
+        // `validate_response_phase`). After the failure branch: a failed
+        // response carries no `result_data` to bind.
+        Self::validate_response_phase(&job, &execute_task_response)?;
+
         // Extract the proof data
         let proof_data = match execute_task_response.result_data {
             Some(ExecuteTaskResponseResultDataDto::FinalProof(final_proof)) => final_proof,
@@ -61,15 +66,65 @@ impl Coordinator {
             }
         };
 
-        // Empty proof_data means this was an intermediate aggregation step.
+        // Workers are untrusted, so bind the response to the dispatched task
+        // before acting on it. Every check below must run before the
+        // intermediate-step branch: without the identity check any assigned
+        // worker can complete the job outright (non-empty proof) or
+        // desynchronise the aggregation queue (empty proof, which pops the next
+        // queued task); without the in-flight check the designated recurser can
+        // replay a result for a task that is no longer outstanding.
+        //
+        // A `None` here is also the panic that `agg_worker_id.unwrap()` used to
+        // take: `agg_worker_id` is set in `resolve_recurser_assignment` during
+        // Phase 2, so a `FinalProof` arriving before that — from a malicious or
+        // merely out-of-order worker — found it unset.
+        let Some(agg_worker_id) = job.agg_worker_id.clone() else {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {} sent a FinalProof for job {} before a recurser was assigned",
+                execute_task_response.worker_id, job_id
+            )));
+        };
+        if execute_task_response.worker_id != agg_worker_id {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Worker {} sent a FinalProof for job {} but the assigned recurser is {}",
+                execute_task_response.worker_id, job_id, agg_worker_id
+            )));
+        }
+        let Some(inflight_all_done) = job.agg_task_inflight.as_ref().map(|task| task.all_done)
+        else {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Recurser {} sent a FinalProof for job {} with no aggregation task in flight",
+                agg_worker_id, job_id
+            )));
+        };
+
+        // The response shape must match the task that was dispatched: an
+        // intermediate step acks with empty proof bytes, the final task returns
+        // the proof. Both mismatches are acted on destructively if let through —
+        // a proof for an intermediate task completes the job from a partial
+        // aggregation, and an empty ack for the final task is taken as an
+        // intermediate step below, clearing the in-flight slot and popping the
+        // queue so nothing outstanding remains to complete the job.
+        let is_intermediate_ack = proof_data.proof_data.is_empty();
+        if is_intermediate_ack && inflight_all_done {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Recurser {agg_worker_id} sent an empty ack for job {job_id} while the in-flight \
+                 aggregation task is the final one"
+            )));
+        }
+        if !is_intermediate_ack && !inflight_all_done {
+            return Err(CoordinatorError::InvalidRequest(format!(
+                "Recurser {agg_worker_id} sent a final proof for job {job_id} while the in-flight \
+                 aggregation task is an intermediate step"
+            )));
+        }
+
         // Clear the in-flight slot and dispatch the next queued task, if any.
-        if proof_data.proof_data.is_empty() {
+        if is_intermediate_ack {
             drop(job);
             self.dispatch_next_agg_task(job_id).await?;
             return Ok(());
         }
-
-        let agg_worker_id = job.agg_worker_id.as_ref().unwrap().clone();
 
         self.workers_pool.mark_worker_with_state(&agg_worker_id, WorkerState::Ready).await?;
 
@@ -102,7 +157,7 @@ impl Coordinator {
             error!("Missing start time for Phase2 in job {}", job.job_id);
             end_time
         });
-        let phase3_time = job.phase_start_time(&JobPhase::Aggregate).unwrap_or_else(|| {
+        let phase3_time = job.phase_start_time(&JobPhase::Recurse).unwrap_or_else(|| {
             error!("Missing start time for Phase3 in job {}", job.job_id);
             end_time
         });
@@ -133,13 +188,7 @@ impl Coordinator {
             "Instances: N/A".to_string().red().bold()
         };
 
-        let metadata_str = if job.metadata.is_empty() {
-            String::new()
-        } else {
-            let pairs: Vec<String> =
-                job.metadata.iter().map(|(k, v)| format!("{}: {}", k, v)).collect();
-            format!(" {}", pairs.join(", "))
-        };
+        let metadata_str = Self::format_job_metadata(job.metadata.as_ref());
 
         info!(
             "{} {} ({:.3}s+{:.3}s+{:.3}s) {} {} Capacity: {}{}",
@@ -412,7 +461,7 @@ impl Coordinator {
 
     /// Re-sends the in-flight aggregation task to a reconnecting aggregator.
     /// No-op if the worker is not the aggregator for this job, or if no task is in-flight.
-    pub(super) async fn replay_inflight_agg_task_if_aggregator(
+    pub(super) async fn replay_inflight_agg_task_if_recurser(
         &self,
         worker_id: &WorkerId,
         job_id: &JobId,
@@ -432,14 +481,8 @@ impl Coordinator {
 
         if let Some(task) = inflight {
             info!("Replaying in-flight agg task to reconnected aggregator {worker_id}");
-            self.send_aggregation_task(
-                job_id,
-                worker_id,
-                task.proofs,
-                task.all_done,
-                task.proof_type,
-            )
-            .await?;
+            self.send_recurser_task(job_id, worker_id, task.proofs, task.all_done, task.proof_type)
+                .await?;
         }
 
         Ok(())
@@ -466,14 +509,8 @@ impl Coordinator {
             (task, agg_worker_id)
         };
 
-        self.send_aggregation_task(
-            job_id,
-            &agg_worker_id,
-            task.proofs,
-            task.all_done,
-            task.proof_type,
-        )
-        .await
+        self.send_recurser_task(job_id, &agg_worker_id, task.proofs, task.all_done, task.proof_type)
+            .await
     }
 
     /// Sends an aggregation task to the designated aggregator worker.
@@ -484,7 +521,7 @@ impl Coordinator {
     /// * `agg_worker_id` - Worker ID assigned as the aggregator
     /// * `proofs` - List of proofs to aggregate
     /// * `all_done` - Indicates if this is the final aggregation step
-    pub(super) async fn send_aggregation_task(
+    pub(super) async fn send_recurser_task(
         &self,
         job_id: &JobId,
         agg_worker_id: &WorkerId,
@@ -510,6 +547,7 @@ impl Coordinator {
                 final_proof: all_done,
                 proof_type,
             }),
+            metadata: None,
         };
 
         let message = CoordinatorMessageDto::ExecuteTaskRequest(req);

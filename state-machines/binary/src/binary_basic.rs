@@ -5,9 +5,9 @@
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
@@ -708,15 +708,22 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 for i in 0..8 {
                     // Calculate carry
                     let previous_cin = cin;
-                    cout = 0;
-                    if a_bytes[i] <= b_bytes[i] {
+
+                    if a_bytes[i] < b_bytes[i] {
+                        cout = 0;
+                    } else if a_bytes[i] == b_bytes[i] {
+                        cout = cin;
+                    } else {
                         cout = 1;
                     }
-                    if (binary_basic_table_op == BinaryBasicTableOp::Le)
-                        && (plast[i] == 1)
-                        && (a_bytes[i] & SIGN_BYTE) != (b_bytes[i] & SIGN_BYTE)
-                    {
-                        cout = c;
+                    if plast[i] == 1 {
+                        cout = 1 - cout;
+
+                        if (binary_basic_table_op == BinaryBasicTableOp::Le)
+                            && (a_bytes[i] & SIGN_BYTE) != (b_bytes[i] & SIGN_BYTE)
+                        {
+                            cout = if a_bytes[i] & SIGN_BYTE != 0 { 1 } else { 0 };
+                        }
                     }
                     cin = cout;
                     carry[i] = cin as u8;
@@ -826,6 +833,37 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let flags = 0;
 
                     // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_bytes[i] as u64,
+                        b_bytes[i] as u64,
+                        0,
+                        plast[i],
+                        flags,
+                    );
+                    self.std.inc_virtual_row_one(self.table_id, row);
+                }
+            }
+            ANDN_OP | ORN_OP | XNOR_OP | BREV8_OP => {
+                // Bitwise ops with no carry, one table row per byte (like AND/OR/XOR).
+                // ANDN/ORN/XNOR use both operands; BREV8 is unary (operand in b, output
+                // depends only on b), which the table encodes independently of a.
+                row.set_use_first_byte(false);
+                row.set_result_is_a(false);
+                row.set_c_is_signed(false);
+
+                binary_basic_table_op = match opcode {
+                    ANDN_OP => BinaryBasicTableOp::Andn,
+                    ORN_OP => BinaryBasicTableOp::Orn,
+                    XNOR_OP => BinaryBasicTableOp::Xnor,
+                    _ => BinaryBasicTableOp::Brev8,
+                };
+
+                // No carry
+                row.set_all_carry(&[0u8; 8]);
+
+                for i in 0..8 {
+                    let flags = 0;
                     let row = BinaryBasicTableSM::calculate_table_row(
                         binary_basic_table_op,
                         a_bytes[i] as u64,

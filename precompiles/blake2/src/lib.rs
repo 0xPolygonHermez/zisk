@@ -1,6 +1,7 @@
 mod blake2;
 mod blake2_constants;
 mod blake2_mem_inputs;
+mod blake2_table;
 
 pub use blake2::*;
 pub use blake2_constants::*;
@@ -20,8 +21,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod blake2_tests {
-    use test_artifacts::ELF_BLAKE2;
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::ELF_BLAKE2;
 
     /// Number of `syscall_blake2b_round` invocations the guest will perform.
     const NUM_BLAKE2B_ROUNDS: u64 = 10;

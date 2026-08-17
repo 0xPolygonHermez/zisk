@@ -48,6 +48,7 @@
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)/4`
 //!     * If the address is not aligned, then get it from the vector `rom_float_na_instructions`,
 //!       using as index `(pc-FLOAT_LIB_ROM_ADDR)`
+use crate::FLOAT_LIB_ROM_ADDR_MAX;
 use crate::{ZiskInst, ZiskInstBuilder, FLOAT_LIB_ROM_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY};
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -330,6 +331,24 @@ impl ZiskRom {
         Ok(())
     }
 
+    pub fn get_instruction_count(&self) -> usize {
+        self.insts.len()
+    }
+
+    pub fn get_rom_init_64bit_words(&self) -> usize {
+        let mut count = 0;
+        for section in &self.ro_data_64 {
+            count += section.data.len();
+        }
+        count
+    }
+    pub fn get_ram_init_64bit_words(&self) -> usize {
+        let mut count = 0;
+        for section in &self.rw_data_64 {
+            count += section.data.len();
+        }
+        count
+    }
     /// Gets the ROM instruction corresponding to the provided pc address.
     /// Depending on the range and alignment of the address, the function searches for it in the
     /// corresponding vector.
@@ -365,8 +384,7 @@ impl ZiskRom {
                 let rom_index = ((pc - ROM_ADDR) >> 2) as usize;
                 if rom_index >= self.rom_program_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc=0x{0:X} ({0}) is out of range rom_program_instructions (rom_index:{1:} >= {2:})",
-                        pc,
+                        "ZiskRom::get_instruction() pc=0x{pc:x} ({pc}) is out of range rom_program_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_program_instructions.len()
                     );
@@ -377,8 +395,7 @@ impl ZiskRom {
                 let rom_index = (pc - ROM_ADDR) as usize;
                 if rom_index >= self.rom_program_na_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc={} is out of range rom_program_na_instructions (rom_index:{} >= {})",
-                        pc,
+                        "ZiskRom::get_instruction() pc={pc:x} is out of range rom_program_na_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_program_na_instructions.len()
                     );
@@ -393,8 +410,7 @@ impl ZiskRom {
                 let rom_index = ((pc - FLOAT_LIB_ROM_ADDR) >> 2) as usize;
                 if rom_index >= self.rom_float_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc=0x{0:X} ({0}) is out of range rom_float_instructions (rom_index:{1:} >= {2:})",
-                        pc,
+                        "ZiskRom::get_instruction() pc=0x{pc:x} ({pc}) is out of range rom_float_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_float_instructions.len()
                     );
@@ -405,8 +421,7 @@ impl ZiskRom {
                 let rom_index = (pc - FLOAT_LIB_ROM_ADDR) as usize;
                 if rom_index >= self.rom_float_na_instructions.len() {
                     panic!(
-                        "ZiskRom::get_instruction() pc={} is out of range rom_float_na_instructions (rom_index:{} >= {})",
-                        pc,
+                        "ZiskRom::get_instruction() pc=0x{pc:x} is out of range rom_float_na_instructions (rom_index:{} >= {})",
                         rom_index,
                         self.rom_float_na_instructions.len()
                     );
@@ -414,10 +429,31 @@ impl ZiskRom {
                 &self.rom_float_na_instructions[rom_index]
             }
         } else {
-            panic!("ZiskRom::get_instruction() pc={pc} is out of range");
+            panic!("ZiskRom::get_instruction() pc=0x{pc:x} is out of range");
         }
     }
 
+    pub fn get_internal_instruction(&self, pc: u64) -> Option<&ZiskInst> {
+        if pc & 0x01 == 0 {
+            None
+        } else if (ROM_ADDR..FLOAT_LIB_ROM_ADDR).contains(&pc) {
+            let rom_index = (pc - ROM_ADDR) as usize;
+            if rom_index >= self.rom_program_na_instructions.len() {
+                None
+            } else {
+                Some(&self.rom_program_na_instructions[rom_index])
+            }
+        } else if (FLOAT_LIB_ROM_ADDR..=FLOAT_LIB_ROM_ADDR_MAX).contains(&pc) {
+            let rom_index = (pc - FLOAT_LIB_ROM_ADDR) as usize;
+            if rom_index >= self.rom_float_na_instructions.len() {
+                None
+            } else {
+                Some(&self.rom_float_na_instructions[rom_index])
+            }
+        } else {
+            None
+        }
+    }
     /// Gets the ROM instruction corresponding to the provided pc address, as a mutable reference.
     /// Depending on the range and alignment of the address, the function searches for it in the
     /// corresponding vector.
@@ -559,9 +595,22 @@ mod tests {
     use super::*;
     use crate::{ZiskInstBuilder, ZiskRom, ROM_ADDR};
 
-    // Helper to create a test instruction with a given opcode
+    // Helper to create a test (non-internal) instruction with a given opcode. `addr` must be an
+    // even, non-internal address.
     fn create_test_inst_builder(addr: u64, op: u8) -> ZiskInstBuilder {
         let mut builder = ZiskInstBuilder::new(addr);
+        builder.i.op = op;
+        builder
+    }
+
+    // Helper to create a test internal instruction (odd `addr`) with a given opcode, referencing the
+    // non-internal instruction `external_ref_addr` it was expanded from.
+    fn create_test_internal_inst_builder(
+        addr: u64,
+        external_ref_addr: u64,
+        op: u8,
+    ) -> ZiskInstBuilder {
+        let mut builder = ZiskInstBuilder::new_internal(addr, external_ref_addr);
         builder.i.op = op;
         builder
     }
@@ -642,9 +691,12 @@ mod tests {
         let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add non-aligned instructions (not on 4-byte boundary)
-        rom.insts.insert(ROM_ADDR + 1, create_test_inst_builder(ROM_ADDR + 1, 20));
-        rom.insts.insert(ROM_ADDR + 5, create_test_inst_builder(ROM_ADDR + 5, 21));
-        rom.insts.insert(ROM_ADDR + 7, create_test_inst_builder(ROM_ADDR + 7, 22));
+        rom.insts
+            .insert(ROM_ADDR + 1, create_test_internal_inst_builder(ROM_ADDR + 1, ROM_ADDR, 20));
+        rom.insts
+            .insert(ROM_ADDR + 5, create_test_internal_inst_builder(ROM_ADDR + 5, ROM_ADDR, 21));
+        rom.insts
+            .insert(ROM_ADDR + 7, create_test_internal_inst_builder(ROM_ADDR + 7, ROM_ADDR, 22));
 
         assert!(rom.optimize_instruction_lookup().is_ok());
 
@@ -669,7 +721,8 @@ mod tests {
         // Mix of all three types
         rom.insts.insert(ROM_ENTRY + 4, create_test_inst_builder(ROM_ENTRY + 4, 1));
         rom.insts.insert(ROM_ADDR, create_test_inst_builder(ROM_ADDR, 2));
-        rom.insts.insert(ROM_ADDR + 3, create_test_inst_builder(ROM_ADDR + 3, 3));
+        rom.insts
+            .insert(ROM_ADDR + 3, create_test_internal_inst_builder(ROM_ADDR + 3, ROM_ADDR, 3));
 
         assert!(rom.optimize_instruction_lookup().is_ok());
 
@@ -760,7 +813,10 @@ mod tests {
         let mut rom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
 
         // Add instruction above ROM_ADDR_MAX.
-        rom.insts.insert(ROM_ADDR_MAX + 4, create_test_inst_builder(ROM_ADDR_MAX + 4, 1));
+        rom.insts.insert(
+            ROM_ADDR_MAX + 4,
+            create_test_internal_inst_builder(ROM_ADDR_MAX + 4, ROM_ADDR, 1),
+        );
         assert!(rom.optimize_instruction_lookup().is_err());
     }
 

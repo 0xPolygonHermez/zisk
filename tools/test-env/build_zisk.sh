@@ -8,7 +8,7 @@ main() {
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=8
+    total_steps=7
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         TARGET="x86_64-unknown-linux-gnu"
@@ -19,9 +19,9 @@ main() {
         return 1
     fi
 
-    step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ZISK_BRANCH DISABLE_CLONE_REPO ONLY_CPU || return 1
 
     # pil2-proofman is consumed as the git dependency pinned in the ZisK
     # Cargo.toml / Cargo.lock — it is never cloned or path-patched here.
@@ -56,7 +56,6 @@ main() {
 
     step  "Building ZisK tools..."
     ensure cargo clean || return 1
-    ensure cargo update || return 1
 
     # We build features in that way to be ready to support more feature in the future
     FEATURES=()
@@ -70,7 +69,14 @@ main() {
         BUILD_FEATURES="--features $(IFS=,; echo "${FEATURES[*]}")"
     fi
 
-    ensure cargo build --release --target ${TARGET} ${BUILD_FEATURES}
+    # Build the CUDA kernels for the current GPU's major compute capability,
+    # unless this is a CPU-only build.
+    CUDA_ENV=()
+    if [[ "${ONLY_CPU}" != "1" ]]; then
+        CUDA_ENV=(env CUDA_ARCHS="major")
+    fi
+
+    ensure "${CUDA_ENV[@]}" cargo build --release --target ${TARGET} ${BUILD_FEATURES}
 
     step "Copying binaries to ${ZISK_BIN_DIR}..."
     mkdir -p "${ZISK_BIN_DIR}"
@@ -88,7 +94,7 @@ main() {
     ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/cargo-zisk-dev "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/ziskemu "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/zisk-transpiler-riscv "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/zisk-worker "${ZISK_BIN_DIR}" || return 1
 

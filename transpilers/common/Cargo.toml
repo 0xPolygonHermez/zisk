@@ -1,0 +1,33 @@
+[package]
+name = "zisk-transpiler-common"
+description = "Shared ELF-to-ROM transpilation utilities for the ZisK zkVM"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+
+[dependencies]
+zisk-core = { workspace = true }
+zisk-riscv = { workspace = true }
+
+elf = "0.7.4"
+
+[build-dependencies]
+zisk-lib-float = { workspace = true, optional = true }
+
+[features]
+default = []
+float = ["dep:zisk-lib-float", "zisk-lib-float/float", "zisk-riscv/float", "zisk-core/float"]
+zba = ["zisk-riscv/zba", "zisk-core/zba"]
+zbc = ["zisk-riscv/zbc", "zisk-core/zbc"]
+zbkc = ["zisk-riscv/zbkc", "zisk-core/zbkc"]
+zbkx = ["zisk-riscv/zbkx", "zisk-core/zbkx"]
+zba_native = ["zisk-riscv/zba_native", "zisk-core/zba_native"]
+zbc_native = ["zisk-riscv/zbc_native", "zisk-core/zbc_native"]
+zbkc_native = ["zisk-riscv/zbkc_native", "zisk-core/zbkc_native"]
+zbkx_native = ["zisk-riscv/zbkx_native", "zisk-core/zbkx_native"]
+zicond_native = ["zisk-riscv/zicond_native", "zisk-core/zicond_native"]

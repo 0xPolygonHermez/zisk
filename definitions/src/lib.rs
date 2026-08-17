@@ -11,3 +11,6 @@ pub use labels::*;
 
 pub mod hints;
 pub use hints::*;
+
+mod precompile_results;
+pub use precompile_results::*;

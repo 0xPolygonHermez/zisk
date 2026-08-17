@@ -9,46 +9,70 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use zisk_cluster_common::{Environment, LoggingConfig};
 
+/// Top-level coordinator-server configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
+    /// Service identity (name, version, environment).
     pub service: ServiceConfig,
+    /// gRPC API server settings.
     pub server: ServerConfig,
+    /// Prometheus metrics endpoint settings.
     pub metrics: MetricsConfig,
+    /// Logging configuration.
     pub logging: LoggingConfig,
+    /// Which backend implementation to run.
     pub backend: BackendConfig,
+    /// Settings for the embedded coordinator core.
     pub coordinator: CoordinatorConfig,
 }
 
+/// Service identity metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServiceConfig {
+    /// Human-readable service name.
     pub name: String,
+    /// Service version (defaults to the crate version).
     pub version: String,
+    /// Deployment environment (development, production, …).
     pub environment: Environment,
 }
 
+/// gRPC API server settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServerConfig {
+    /// Bind host for the API server.
     pub host: String,
+    /// Bind port for the API server.
     pub port: u16,
+    /// Grace period, in seconds, to wait for in-flight work on shutdown.
     pub shutdown_timeout_seconds: u64,
 }
 
+/// Prometheus metrics endpoint settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsConfig {
+    /// Whether the metrics endpoint is served.
     pub enabled: bool,
+    /// Bind host for the metrics endpoint.
     pub host: String,
+    /// Bind port for the metrics endpoint.
     pub port: u16,
 }
 
+/// Selects which backend the server runs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackendConfig {
+    /// The backend mode.
     pub mode: BackendMode,
 }
 
+/// Backend implementation to run behind the API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum BackendMode {
+    /// In-memory mock backend (no coordinator); for testing.
     Mock,
+    /// In-process coordinator core.
     Coordinator,
 }
 
@@ -59,13 +83,12 @@ pub struct CoordinatorConfig {
     pub config_file: Option<String>,
     /// Port on which the embedded coordinator listens for worker connections.
     pub port: u16,
-    /// When `Some(true)`, completed proofs are persisted to disk by the
-    /// coordinator. `None` leaves the embedded coordinator's own default in
-    /// place (no save).
-    pub save_proofs: Option<bool>,
 }
 
 impl Config {
+    /// Load the configuration, applying (in increasing priority) built-in
+    /// defaults, well-known and explicit TOML files, then the given CLI/env
+    /// overrides.
     pub fn load(
         config_file: Option<String>,
         api_port: Option<u16>,
@@ -124,10 +147,12 @@ impl Config {
         Ok(builder.build()?.try_deserialize()?)
     }
 
+    /// The `host:port` address the gRPC API server binds to.
     pub fn grpc_addr(&self) -> String {
         format!("{}:{}", self.server.host, self.server.port)
     }
 
+    /// The `host:port` address the metrics endpoint binds to.
     pub fn metrics_addr(&self) -> String {
         format!("{}:{}", self.metrics.host, self.metrics.port)
     }

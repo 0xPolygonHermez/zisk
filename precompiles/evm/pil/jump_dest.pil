@@ -1,0 +1,567 @@
+// The JumpDest state-machine is to compute the bitmap of valid jump destinations in a given
+// EVM bytecode. The bitmap is a 64-bit value where each bit corresponds to a byte in the bytecode,
+// and a bit is set to 1 if the corresponding byte is a valid jump destination (i.e., it is the
+// target of a JUMP or JUMPI instruction).
+//
+// PRECONDITIONS
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// The guest is responsible for these. None of them is a soundness matter: breaking one leaves the
+// program unprovable, not wrongly proven, because no witness satisfies this AIR for such a call.
+//
+//   * a (bitmap) and b (bytecode) are 8-byte aligned. Enforced by construction: every address the
+//     machine emits is dst64 * 8 or src64 * 8, so an unaligned operand has no src64/dst64 to match
+//     it on the operation bus. The guest checks alignment and falls back to software otherwise.
+//
+//   * count > 0. An empty call occupies no block, so nothing would emit proves_operation for it and
+//     the operation bus would not balance. The guest must skip the call instead.
+//
+//   * The bitmap buffer holds ceil(count / 64) words. The machine always writes whole words, so the
+//     last one is written in full even when the bytecode ends part way into it.
+//
+// JumpDest — data flow
+// ====================
+//
+// One op consumes one aligned 64-bit source word (8 bytecode bytes) and produces one
+// bitmap byte. Eight ops make a block: 64 bytecode bytes in, one aligned 64-bit bitmap
+// word out, written by a single mstore. A sequence is one operation: as many blocks as
+// ceil(count / 64), and it may straddle a segment boundary.
+//
+//
+// (1) ONE OP: SOURCE WORD -> 4 COMPRESSORS -> BITMAP BYTE
+// -------------------------------------------------------
+//
+//         precompiled_mem_load(sel: sel_mem_load, addr: src64 * 8 + 8 * i)
+//                                       │
+//                                       │  64-bit source word = 8 bytecode bytes
+//                                       ▼
+//    ┌─────────────┬─────────────┬─────────────┬─────────────┐
+//    │   data[3]   │   data[2]   │   data[1]   │   data[0]   │  bits(16) each
+//    │  bytes 7,6  │  bytes 5,4  │  bytes 3,2  │  bytes 1,0  │
+//    └──────┬──────┴──────┬──────┴──────┬──────┴──────┬──────┘
+//           │             │             │             │
+//           ▼             ▼             ▼             ▼
+//      ┌─────────┐   ┌─────────┐   ┌─────────┐   ┌─────────┐    JUMP_DEST_COMPRESSOR
+//      │ COMP 3  │   │ COMP 2  │   │ COMP 1  │   │ COMP 0  │    _TABLE_ID
+//      └────┬────┘   └────┬────┘   └────┬────┘   └────┬────┘    one independent lookup
+//           │             │             │             │         per chunk, [data, cdata]:
+//       cdata[3]      cdata[2]      cdata[1]      cdata[0]      2 bytes -> 1 byte
+//           │             │             │             │
+//           └─────────────┴──────┬──────┴─────────────┘
+//                                │
+//                             cdata4                            bits(32)
+//                                │
+//                                ▼
+//      state in ──▶ ┌───────────────────┐ ──▶ state out         pending PUSH bytes,
+//     sel_mem_load  │  JUMP_DEST_BITMAP │                       0..32, or 33 = finished
+//              ──▶  │      _TABLE_ID    │ ──▶ bytes_used        0..8, what count consumes
+//                   │                   │
+//                   │  sel: sel         │ ──▶ bitmap_byte       bits(8)
+//                   └───────────────────┘
+//
+//    The three inputs travel packed in one value, so the table needs one fixed column
+//    for them instead of three:
+//
+//        state_cdata4_mem_load = state[i] + JD_CDATA4_SHIFT * cdata4
+//                                         + JD_MEM_LOAD_SHIFT * sel_mem_load
+//
+//    sel_mem_load is a function of the state alone — it is 1 exactly when state < 8 —
+//    so the table verifies the pairing instead of leaving it free here. A state of 8 or
+//    more means the whole word is PUSH immediate data: no jumpdest can live in it, the
+//    word is not read from memory, and the op yields bitmap_byte = 0 and state out =
+//    state in - 8. Note the lookup still happens: every op goes through the table,
+//    loaded or not. Letting the skipped ones bypass it would leave sel_mem_load
+//    unconstrained.
+//
+//
+// (2) CHAINING THE BITMAP MACHINES: state[i + 1] IS op i's state out
+// -------------------------------------------------------------------
+//
+//    There are op_x_row + 1 state columns per row. state[0] is the state entering the
+//    row and state[i + 1] is what op i emits, so op i reads state[i] and writes
+//    state[i + 1]. Across rows the chain continues through state[0]:
+//
+//        op i        ->  state in = state[i]
+//        next row    ->  state[0] = 'state[op_x_row]
+//
+//    The chain does NOT restart at a block boundary — a PUSH can straddle one. Only a
+//    new sequence resets it, which seq_start * state[0] === 0 enforces.
+//
+//    Shown for op_x_row = 2 (ROWS_X_BLOCK = 4, 8 ops per block). Each box row is one
+//    AIR row: the machines of a clock sit side by side, the state flows left to right
+//    inside the row and wraps down into the next one.
+//
+//                 state[0] = 0   (new sequence)
+//                 │
+//                 ▼
+//           ┌───────────┐             ┌───────────┐
+//  clk 0    │  BITMAP   ├──state[1]──▶│  BITMAP   ├──▶ state[2] ─┐
+//           │   w = 0   │             │   w = 1   │              │
+//           └───────────┘             └───────────┘              │
+//                 ┌──────────────────────────────────────────────┘
+//                 │ state[0] = 'state[2]
+//                 ▼
+//           ┌───────────┐             ┌───────────┐
+//  clk 1    │  BITMAP   ├──state[1]──▶│  BITMAP   ├──▶ state[2] ─┐
+//           │   w = 2   │             │   w = 3   │              │
+//           └───────────┘             └───────────┘              │
+//                 ┌──────────────────────────────────────────────┘
+//                 │ state[0] = 'state[2]
+//                 ▼
+//                ...          clk 2:  w = 4, w = 5
+//                 │
+//                 ▼
+//           ┌───────────┐             ┌───────────┐
+//  clk 3    │  BITMAP   ├──state[1]──▶│  BITMAP   ├──▶ state[2] ─┐
+//           │   w = 6   │             │   w = 7   │              │
+//           └───────────┘             └───────────┘              │
+//                 ┌──────────────────────────────────────────────┘
+//                 │ state[0] = 'state[2]    the block ends here — the mstore writes
+//                 ▼                         the bitmap word — but the chain carries on
+//           ┌───────────┐
+//  clk 0    │  BITMAP   ├── ...      next block, same chain
+//           └───────────┘
+//
+//    Every machine emits its bitmap byte at the same time; the eight of a block are
+//    what the next section assembles.
+//
+//
+// (3) ONE BLOCK: 8 BITMAP BYTES -> ONE 64-BIT BITMAP WORD
+// --------------------------------------------------------
+//
+//    A block spans ROWS_X_BLOCK = 8 / op_x_row rows. Op index within the block is
+//    w = clock * op_x_row + i, so op i of a row loads src64 * 8 + 8 * i, op w handles
+//    source word src64 + w and lands on bitmap byte w.
+//
+//      w=0     w=1     w=2     w=3     w=4     w=5     w=6     w=7
+//       │       │       │       │       │       │       │       │
+//       ▼       ▼       ▼       ▼       ▼       ▼       ▼       ▼
+//    ┌───────┬───────┬───────┬───────┬───────┬───────┬───────┬───────┐
+//    │ bmb 7 │ bmb 6 │ bmb 5 │ bmb 4 │ bmb 3 │ bmb 2 │ bmb 1 │ bmb 0 │
+//    │ 63..56│ 55..48│ 47..40│ 39..32│ 31..24│ 23..16│ 15.. 8│  7.. 0│
+//    └───────┴───────┴───────┴───────┴───────┴───────┴───────┴───────┘
+//    └───────────────── bitmap[1] ──┴───────────────── bitmap[0] ────┘
+//                       (high 32)                      (low 32)
+//
+//    Bit b of bmb w is bytecode offset 8*w + b of the block, i.e. bit (64*g + 8*w + b)
+//    of the whole bitmap. Little-endian: op 0 of the block is the LOW byte.
+//
+//
+// (4) THE BITMAP WORD -> ONE HALF OF THE SHARED MSTORE SLOT
+// ----------------------------------------------------------
+//
+//    One precompiled_mem_op slot serves two different accesses: the count read that
+//    opens a sequence, and the bitmap write that closes each of its blocks. They can
+//    share the slot because seq_start lands on the first clock of a block and the write
+//    on the last, so with ROWS_X_BLOCK > 1 the two never collide.
+//
+//                     ┌──────────────────────────────────────────┐
+//       seq_start ──▶ │ read   addr:  EXTRA_PARAMS_ADDR          │
+//      (once per      │        value: [count, 0]                 │
+//       sequence)     ├──────────────────────────────────────────┤
+//      LAST_CLOCK ──▶ │ write  addr:  'dst64 * 8                 │ ◀── bitmap[0]
+//      (once per      │        value: [bitmap[0], bitmap[1]]     │ ◀── bitmap[1]
+//       block)        └──────────────────────────────────────────┘
+//
+//     precompiled_mem_op(
+//         is_write: LAST_CLOCK * sel,
+//         sel:      seq_start + LAST_CLOCK * sel,
+//         addr:     seq_start * EXTRA_PARAMS_ADDR + LAST_CLOCK * 'dst64 * 8,
+//         value:    [seq_start * count + LAST_CLOCK * bitmap[0],
+//                                        LAST_CLOCK * bitmap[1]]);
+//
+//    The write takes 'dst64, not dst64: the column steps to the next block ON the last
+//    clock, so by that row it already points past the word being written.
+//
+//    Every bitmap word is written, zeros included, so dst64 advances by one per block
+//    and the write is unconditional on the block — unlike the loads, which only happen
+//    for the ops the walk actually visits.
+//
+
+airtemplate JumpDest(int N = 2**21,                         // Rows of instance
+                           const int op_x_row = 2,          // Number of operations by row
+                           const expr enable_flag = 1) {    // Expression to active the beggining of
+
+    assert(op_x_row == 1 || op_x_row == 2 || op_x_row == 4);
+
+    const int ROWS_X_BLOCK = 8 / op_x_row;  // Number of clocks per block of operations
+    col fixed CLOCK = [1, 0:(ROWS_X_BLOCK - 1)]...;
+    const expr FIRST_CLOCK = CLOCK;
+    const expr LAST_CLOCK = (ROWS_X_BLOCK - 1)'CLOCK;
+
+    // get reference to L1 fixed column and create LAST from L1.
+
+    const expr L1 = get_L1();
+    const expr LAST = L1';
+
+    // WITNESS
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // sel                          1 → the block is active. Latched for the whole block
+    //                                  @[sel_latch], can only go off right after a sequence closed
+    //                                  @[sel_fall] and never comes back @[sel_prefix]. While off
+    //                                  the row touches no bus @[sel_binary]
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // seq_end                      1 → last row of a sequence, only on LAST_CLOCK, and only on a
+    //                                  row in use. Past it the continuation values are zeroed
+    //                                  @[seq_end_binary]
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // src64              ADDR_W_BITS → word address of the bytecode, one 64-bit word per op
+    //                                  continuations (increment + op_x_row) @[src64_cont]
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // dst64              ADDR_W_BITS → word address of the bitmap, one 64-bit word per block
+    //                                  continuations (increment + op_x_row) @[dst64_cont]
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // count                       32 → bytecode bytes still to consume, before this row runs.
+    //                                  continuations (decrement - 'total_bytes_used) @[count]
+    //                                  On the first row of a sequence it is the byte count read
+    //                                  from EXTRA_PARAMS_ADDR; on the seq_end row it is exactly
+    //                                  what that row consumes.
+    //                                  no inverse, only the pass through zero is checked; the
+    //                                  segment proves it never went negative @[count_zero_check]
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // main_step       MAIN_STEP_BITS → timestamp of the operation. continuations (latch)
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // data[4][op_x_row]           16 → the source word of each op, in four 16-bit chunks.
+    //                                  Read from memory only when sel_mem_load is set
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // cdata[4][op_x_row]           8 → the compression of each chunk: one of the readings the
+    //                                  compressor table admits for those two bytes
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // sel_mem_load[op_x_row]       1 → the op loads its source word. 0 when a PUSH covers the
+    //                                  whole word, and then no byte of it is ever examined
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // bitmap_byte[op_x_row]        8 → the op’s byte of the bitmap, one bit per bytecode byte
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // state[op_x_row+1]            6 → PUSH bytes still pending when the op ends, ranged [0..33]
+    //                                  by the bitmap table. 0..32 is the pending count itself,
+    //                                  and 33 means the bytecode is finished: past its end
+    //                                  nothing is read, so a PUSH truncated there need not
+    //                                  carry what it was still owed.
+    //                                  Chains op to op, across blocks too
+    //                                  state[0] = state_in[0]
+    //                                  state[1] = state_out[0] = state_in[1]
+    //                                   :
+    //                                  state[op_x_row] = state_out[op_x_row-1]      
+    // ┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈
+    // bytes_used[op_x_row]         4 → bytes of the word inside the bytecode, ranged [0..8] by
+    //                                  the bitmap table. This is what count consumes
+    // ─────────────────────────────────────────────────────────────────────────────────────────────
+    // seq_start                    1 → first row of an active sequence: the seq_end carried from
+    //                                  the previous row, L1 aware, gated by sel. Drives the
+    //                                  EXTRA_PARAMS read and the multiplicity of proves_operation
+    // cdata4[op_x_row]            32   intermediate: the four cdata concatenated, the key the
+    //                                  bitmap table is looked up by
+    // bitmap[2]                   32   intermediate: the block’s 64-bit bitmap word, in two limbs,
+    //                                  gathered from the bitmap_byte of its eight ops
+    // total_bytes_used             8   intermediate: sum of bytes_used over the row
+
+    airval segment_id;                 // Id of current segment
+    airval segment_previous_seq_end;   // Last value of @[seq_end] in previous segment.
+    segment_previous_seq_end * (1 - segment_previous_seq_end) === 0;
+
+    airval segment_previous_dst64;       // Last value of @[dst64] in previous segment.
+    airval segment_previous_src64;       // Last value of @[src64] in previous segment.
+    airval segment_previous_main_step;   // Last value of @[main_step] in previous segment.
+    airval segment_previous_count;       // Last value of @[count] in previous segment.
+    airval segment_previous_state;       // Last value of @[state] in previous segment.
+
+    airval segment_last_seq_end;         // Last value of @[seq_end] in current segment.
+    segment_last_seq_end * (1 - segment_last_seq_end) === 0;
+
+    airval segment_last_dst64;           // Last value of @[dst64] in current segment.
+    airval segment_last_src64;           // Last value of @[src64] in current segment.
+    airval segment_last_main_step;       // Last value of @[main_step] in current segment.
+    airval segment_last_count;           // Last value of @[count] in current segment.
+    airval segment_last_state;           // Last value of @[state] in current segment.
+
+    airval is_last_segment;              // 1 if this is the last segment, 0 otherwise.
+    is_last_segment * (1 - is_last_segment) === 0;
+
+    // This witness is used to mark the last row of an operation.
+    col witness bits(1) seq_end;
+    seq_end * (1 - seq_end) === 0;     // binary constraint @[seq_end_binary]
+    seq_end * (1 - LAST_CLOCK) === 0;  // seq_end can only be active on the last clock of a block of operations.
+
+    // sel marks the block as active. It is latched for the whole block, and while it is off nothing
+    // reaches the bus: the lookups below are gated by it, and so is seq_start, which drives both the
+    // EXTRA_PARAMS read and the multiplicity of proves_operation.
+    col witness bits(1) sel;
+    sel * (1 - sel) === 0;                                       // @[sel_binary]
+    seq_end * (1 - sel) === 0;                                   // seq_end only on an active block
+    (1 - FIRST_CLOCK) * (sel - 'sel) === 0;                      // latched inside the block @[sel_latch]
+
+    // sel is a non-empty prefix of the instance: it starts on, can only go off right after a
+    // sequence closed, and never comes back.
+    //
+    // The first row must be active. The transitions below are NOT gated by sel, so an all-idle
+    // instance would still run them, and with its lookups gone bytes_used would be free up to the
+    // bits(4) bound — it would forward an arbitrarily decremented count to the next segment and
+    // truncate a sequence in it. @[sel_l1]
+    //
+    // Without @[sel_fall] a block could drop out mid sequence, and with its lookups gone bytes_used,
+    // state and bitmap_byte would be free. Without @[sel_prefix] a sequence could start on an idle
+    // predecessor, leaving seq_start at 0: no EXTRA_PARAMS read and no proves_operation, yet the
+    // mstore of every block still firing.
+    //
+    // seq_end is contained in sel, so ('sel - 'seq_end) is binary and both stay at degree 2.
+    L1 * (1 - sel) === 0;                                        // @[sel_l1]
+    (1 - L1) * (1 - sel) * ('sel - 'seq_end) === 0;              // @[sel_fall]
+    (1 - L1) * sel * (1 - 'sel) === 0;                           // @[sel_prefix]
+
+    // First row of an active sequence: the seq_end carried from the previous row (from the previous
+    // segment on L1), gated by sel so an idle block starts nothing. Note this is not simply the
+    // previous seq_end — the first idle row after one has it set and this cleared.
+    col witness bits(1) seq_start;
+    seq_start <== (L1 * (segment_previous_seq_end - 'seq_end) + 'seq_end) * sel;
+
+    col witness bits(16) data[4][op_x_row];  // 4 x 16 bits = 64 bits, each bit is a jumpdest valid
+    col witness bits(8) cdata[4][op_x_row];
+
+    // How cdata is computed/verified by compressor table, it's secure to combine them in a single value
+    // to save fixed columns. Considering the state there are less than 64K combinations.
+    const expr cdata4[op_x_row];
+    col witness bits(1) sel_mem_load[op_x_row];
+
+    for (int i = 0; i < op_x_row; ++i) {
+        cdata4[i] = cdata[0][i] + P2_8 * cdata[1][i] + P2_16 * cdata[2][i] + P2_24 * cdata[3][i];
+        sel_mem_load[i] * (1 - sel_mem_load[i]) === 0;
+        (1 - sel) * sel_mem_load[i] === 0;
+    }
+
+    // bitmap output
+    col witness bits(8) bitmap_byte[op_x_row];
+    // pending push (data) bytes, this value is ranged by table [0..33]. 0..32 is the pending
+    // count; 33 marks the bytecode as finished, and once it is set every later op of the block
+    // keeps it and consumes bytes_used = 0.
+    // To avoid increase degree of lookup, add state[0] as state in of block.
+    col witness bits(6) state[op_x_row + 1];
+    // for each bitmap table, define how many bytes are processed, this value is ranged by table [0..8]
+    col witness bits(4) bytes_used[op_x_row];
+
+    expr _total_bytes_used = 0;
+    for (int i = 0; i < op_x_row; ++i) {
+        _total_bytes_used += bytes_used[i];
+    }
+    const expr total_bytes_used = _total_bytes_used;
+
+    col witness bits(ADDR_W_BITS) src64; 
+    col witness bits(ADDR_W_BITS) dst64;
+    col witness bits(MAIN_STEP_BITS) main_step;     // @[main_step] timestamp of operation
+    col witness bits(32) count;                     // @[count] number of bytes
+
+    const expr bitmap[2];
+    switch (op_x_row) {
+        case 1 : {
+            bitmap[0] = 7'bitmap_byte[0] + P2_8 * 6'bitmap_byte[0] + P2_16 * 5'bitmap_byte[0] + P2_24 * 4'bitmap_byte[0];
+            bitmap[1] = 3'bitmap_byte[0] + P2_8 * 2'bitmap_byte[0] + P2_16 * 1'bitmap_byte[0] + P2_24 * 0'bitmap_byte[0];
+        }
+        case 2: {
+            bitmap[0] = 3'bitmap_byte[0] + P2_8 * 3'bitmap_byte[1] + P2_16 * 2'bitmap_byte[0] + P2_24 * 2'bitmap_byte[1];
+            bitmap[1] =  'bitmap_byte[0] + P2_8 *  'bitmap_byte[1] + P2_16 *   bitmap_byte[0] + P2_24 *   bitmap_byte[1];
+        }
+        case 4: {
+            bitmap[0] = 'bitmap_byte[0] + P2_8 * 'bitmap_byte[1] + P2_16 * 'bitmap_byte[2] + P2_24 * 'bitmap_byte[3];
+            bitmap[1] =  bitmap_byte[0] + P2_8 *  bitmap_byte[1] + P2_16 *  bitmap_byte[2] + P2_24 *  bitmap_byte[3];
+        }
+    }
+
+    // state contains push_bytes + flag to indicate count < 8, to detect in next bitmaps, if not 
+    // you cant set in same row bytes_used[0]=4, bytes_used[1]=3 ... byte_done < 8 then this flag on 
+    // state out is 1, and only bytes_used was accepted.
+    
+    for (int i = 0; i < op_x_row; ++i) {
+        precompiled_mem_load(
+            sel: sel_mem_load[i],
+            main_step:,
+            addr: src64 * 8 + 8 * i,
+            value: [data[0][i] + P2_16 * data[1][i], data[2][i] + P2_16 * data[3][i]]
+        );
+
+        // Lookups of compressor
+        for (int j = 0; j < 4; ++j) {
+            lookup_assumes(JUMP_DEST_COMPRESSOR_TABLE_ID,
+                           [data[j][i], cdata[j][i]], sel:, sel_is_binary: 1);
+        }
+        
+        // Lookup of bitmap. The whole input side travels packed in a single value
+        // — state_in, cdata4 and sel_mem_load — so the table holds one fixed column
+        // for it instead of three, and the pairing of sel_mem_load with the state
+        // is verified there instead of being left free here. Each field is sized by
+        // the declared bits(n) of its column, so nothing can alias. The expression
+        // is witness columns by constants, so it stays degree 1.
+        expr state_cdata4_mem_load = state[i]
+                                   + JD_CDATA4_SHIFT * cdata4[i]
+                                   + JD_MEM_LOAD_SHIFT * sel_mem_load[i];
+        expr state_out = state[i+1];
+        lookup_assumes(JUMP_DEST_BITMAP_TABLE_ID,
+                    [state_cdata4_mem_load, bytes_used[i], bitmap_byte[i], state_out], sel:, sel_is_binary: 1);
+
+    }
+    // FIRST_CLOCK after previous seq_end MLOAD(EXTRA_PARAMS_ADDR)
+    precompiled_mem_load(
+        sel: seq_start,
+        main_step:,
+        addr: EXTRA_PARAMS_ADDR,
+        value: [count, 0]
+    );
+    // LAST_CLOCK MSTORE(bitmap)
+    precompiled_mem_store(
+        sel: LAST_CLOCK * sel,
+        main_step:,
+        addr: 'dst64 * 8,
+        value: bitmap
+    );
+
+    LAST * (seq_end - segment_last_seq_end) === 0;
+    LAST * (1 - seq_end) * (src64 - segment_last_src64) === 0;  // continuation: last row @[src64_cont]
+    LAST * (1 - seq_end) * (dst64 - segment_last_dst64) === 0;  // continuation: last row @[dst64_cont]
+    LAST * (1 - seq_end) * (main_step - segment_last_main_step) === 0;
+    LAST * (1 - seq_end) * (count - segment_last_count) === 0;
+    LAST * (1 - seq_end) * (state[op_x_row] - segment_last_state) === 0;
+
+    // when segment_last_seq_end = 1, means that the next segment starts with new input, no need to 
+    // compare with previous, to simplify WC of continuations, zeros are sent to bus
+    // these constraints aren't strictly necessary, because these values are used only when seq_end = 0
+
+    segment_last_src64 * segment_last_seq_end === 0;      // continuation: reset by seq end @[src64_cont]
+    segment_last_dst64 * segment_last_seq_end === 0;      // continuation: reset by seq end @[dst64_cont]
+    segment_last_count * segment_last_seq_end === 0; 
+    segment_last_main_step * segment_last_seq_end === 0;
+    segment_last_state * segment_last_seq_end === 0;
+
+    // when segment_previous_seq_end = 1, means that this segment starts with new input, no need to 
+    // compare with previous, to simplify WC of continuations, zeros are sent to bus
+    // these constraints aren't strictly necessary, because these values are used only when seq_end = 0
+
+    segment_previous_src64 * segment_previous_seq_end === 0;
+    segment_previous_dst64 * segment_previous_seq_end === 0;        
+    segment_previous_count * segment_previous_seq_end === 0;
+    segment_previous_main_step * segment_previous_seq_end === 0;
+    segment_previous_state * segment_previous_seq_end === 0;
+
+    // Continuations
+
+    // segment_id, seq_end, src64, dst64, count, main_step, state
+
+    direct_global_update_proves(JUMP_DEST_CONT_ID, 
+                                [0, 
+                                 0, 
+                                 1,  // initial seq_end
+                                 0,  // initial src64
+                                 0,  // initial dst64
+                                 0,  // initial count
+                                 0,  // initial main_step
+                                 0], // initial state
+                                 sel: enable_flag);
+                                                    
+
+    direct_update_assumes(JUMP_DEST_CONT_ID, 
+                                [segment_id, 
+                                 0,
+                                 segment_previous_seq_end, 
+                                 segment_previous_src64, 
+                                 segment_previous_dst64, 
+                                 segment_previous_count, 
+                                 segment_previous_main_step,
+                                 segment_previous_state]);
+
+    direct_update_proves(JUMP_DEST_CONT_ID, [
+                                 segment_id + 1, 
+                                 is_last_segment,
+                                 segment_last_seq_end, 
+                                 segment_last_src64, 
+                                 segment_last_dst64, 
+                                 segment_last_count, 
+                                 segment_last_main_step,
+                                 segment_last_state]
+                                 , sel: 1 - is_last_segment);
+
+    const expr continue_seq_on_l1 = L1 * (1 - segment_previous_seq_end);
+    const expr continue_seq_on_no_l1 = (1 - L1) * (1 - 'seq_end);
+
+    // TRANSITIONS:
+    //
+    // If not finish sequence in previous row, means current it's a continuation of previous sequence
+    // count match with previous value plus ops_selected. The constraints are splitted in two parts
+    // to reduce the constraint degree
+    //
+    // count is what remains *before* the row runs, so it is measured against the bytes the
+    // *previous* row consumed. On L1 that row belongs to the previous segment, and 'total_bytes_used
+    // would wrap around to the last row of this one, so it is replaced by a constant: a block that
+    // does not close the sequence is always full, which is what the LAST_CLOCK constraint below
+    // enforces.
+
+    continue_seq_on_l1 * (count - (segment_previous_count - 8 * op_x_row)) === 0;
+    continue_seq_on_no_l1 * (count - ('count - 'total_bytes_used)) === 0;
+
+    // A block only stops short when the bytecode ends inside it, and then the sequence ends with it:
+    // bytes_used < 8 means state out = 33 and every later op of the block consumes 0. So a block
+    // that carries on consumed 8 bytes per op, which is what makes the substitution above sound.
+    // seq_end is contained in sel, so (sel - seq_end) is binary and this stays at degree 2.
+    LAST_CLOCK * (sel - seq_end) * (total_bytes_used - 8 * op_x_row) === 0;
+
+    // at end of sequence the number the count must be zero.
+    seq_end * (count - total_bytes_used) === 0;
+
+    // If previous row was a seq_end, start with new dst/src addresses, else increment by ops_selected
+    assert(ROWS_X_BLOCK > 1);
+
+    // dst64 holds the block's bitmap word and steps by one ON the last clock, so LAST_CLOCK being
+    // binary folds both cases into a single difference. The gate drops two kinds of row: an idle one,
+    // which owns no block, and the first row of a sequence, whose bitmap has nothing to do with the
+    // previous operation's — there proves_operation pins it from main's operand instead. Without the
+    // second exclusion every operation would have to start its bitmap exactly where the previous one
+    // ended. seq_start is contained in sel, so (sel - seq_start) is binary and this stays at degree 3.
+    
+    (sel - seq_start) * (1 - L1) * (dst64 - LAST_CLOCK - 'dst64) === 0;  // continuation: !L1 @[dst64_cont]
+    (1 - seq_start) * L1 * (dst64 - segment_previous_dst64) === 0;       // continuation: L1 @[dst64_cont]
+
+    continue_seq_on_l1 * (src64 - (segment_previous_src64 + op_x_row)) === 0;
+    continue_seq_on_no_l1 * (src64 - ('src64 + op_x_row)) === 0;
+
+    // compare the first row state with the last row 
+    continue_seq_on_l1 * (state[0] - segment_previous_state) === 0;
+    continue_seq_on_no_l1 * (state[0] - 'state[op_x_row]) === 0;
+    seq_start * state[0] === 0;
+
+    // latch main_step
+    continue_seq_on_l1 * (main_step - segment_previous_main_step) === 0;
+    continue_seq_on_no_l1 * (main_step - 'main_step) === 0;
+
+
+    // SECURITY: control count no negative @[count_zero_check]
+    //
+    // if the seq_end it isn't active when count = 0, in each rows continues decreasing 8 * op_x_row,
+    // means in 2^22 rows * 2^3 * 2^2 = 2^27. It's secure, because if any row lies, at end of
+    // instance this range check fails.
+    //
+    // That count really keeps decreasing rests on the LAST_CLOCK constraint above. Without it a
+    // sequence could run past the end of its bytecode: once state reaches 33 every bytes_used is 0,
+    // count would stop moving and never go negative, and each extra block would keep writing its
+    // bitmap word further into memory. With it, such a block has total_bytes_used = 0 and no seq_end,
+    // which is exactly what that constraint forbids; the other way out, claiming 8 bytes for words
+    // past the end, drives count negative and lands here.
+
+    airval last_count_chunk[2];
+    range_check(expression: last_count_chunk[0], min: 0, max: 2**16-1);
+    range_check(expression: last_count_chunk[1], min: 0, max: 2**16-1);
+    last_count_chunk[0] + last_count_chunk[1] * P2_16 === segment_last_count;
+
+    // The chain has to end with every sequence closed. On the last segment nothing is sent to the
+    // continuation bus, so an instance that simply runs out of rows mid sequence would leave the
+    // bitmap half written with nothing to notice. The three legal endings all have count at zero:
+    // LAST is the seq_end row (segment_last_count is zeroed by the constraint above), LAST belongs
+    // to an inactive block (count reached zero at the seq_end and stays), or there is no last
+    // segment to check.
+    // An open sequence cannot fake it: count is chained from the EXTRA_PARAMS read, and the block
+    // where it would reach zero is already forced to close.
+    is_last_segment * segment_last_count === 0;
+
+    proves_operation(op: OP_JUMP_DEST,
+                     a: [dst64 * 8, 0],
+                     b: [src64 * 8, 0],
+                     c: [0, 0],
+                     flag: 0,
+                     main_step:,
+                     extended_arg: 0,
+                     mul: seq_start);
+}       

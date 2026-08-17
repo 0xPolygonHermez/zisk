@@ -1,5 +1,5 @@
 use crate::{
-    worker::{ComputationResult, LoopEvent, LoopEventSender},
+    worker::{CancelledWork, ComputationResult, LoopEvent, LoopEventSender},
     ProverConfig, Worker,
 };
 use anyhow::{anyhow, Context, Result};
@@ -7,6 +7,7 @@ use proofman::{AggProofs, ContributionsInfo, WitnessInfo};
 use std::path::Path;
 use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Request;
@@ -15,7 +16,7 @@ use zisk_cluster_api::contribution_params::InputSource;
 use zisk_cluster_api::execute_task_response::ResultData;
 use zisk_cluster_api::*;
 use zisk_cluster_common::{
-    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, ProofKind,
+    AggProofData, AggregationParams, DataCtx, HintsSourceDto, InputSourceDto, JobPhase, ProofKind,
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
@@ -50,22 +51,29 @@ impl<T: ZiskBackend + 'static> RecoveryActions for ZiskProver<T> {
 // queued behind the cancelled task.
 //
 pub(crate) fn run_recovery<R: RecoveryActions + ?Sized>(prover: &R) -> Result<()> {
-    // ASM cleanup runs inside `executor::execute`'s Err arm; the wake-up
-    // signal is sent from `worker::cancel_current_computation`. All this
-    // task has to do is notify peers, drain any zombie proofman thread, and
-    // barrier with the cluster before advertising `Ready`.
+    // ASM cleanup runs inside `executor::execute`'s Err arm; the wake-up signal
+    // is sent from `worker::cancel_current_computation`. A caller that clobbered a
+    // live compute task should await its handle (so the ASM child has finished +
+    // reset) before invoking this; callers with nothing in flight can call it
+    // directly. All this task does is notify peers, drain any zombie proofman
+    // thread, and barrier with the cluster before advertising `Ready`.
     prover.notify_cluster_cancellation();
     prover.wait_until_proofman_ready();
     prover.cluster_barrier();
     Ok(())
 }
 
+/// A worker process, specialized by MPI role: rank 0 talks to the coordinator
+/// over gRPC, secondary ranks only service MPI broadcasts.
 pub enum WorkerNode<T: ZiskBackend + 'static> {
+    /// Rank-0 node with a gRPC connection to the coordinator.
     WorkerGrpc(WorkerNodeGrpc<T>),
+    /// Secondary-rank node driven purely by MPI broadcasts.
     WorkerMpi(WorkerNodeMpi<T>),
 }
 
 impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    /// This node's global MPI rank.
     pub fn world_rank(&self) -> i32 {
         match self {
             WorkerNode::WorkerGrpc(worker) => worker.world_rank(),
@@ -75,6 +83,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
 }
 
 impl<T: ZiskBackend + 'static> WorkerNode<T> {
+    /// Build an emulator-backed node, choosing the gRPC or MPI variant by rank.
     pub async fn new_emu(
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
@@ -88,6 +97,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         }
     }
 
+    /// Build an ASM-backed node, choosing the gRPC or MPI variant by rank.
     pub async fn new_asm(
         worker_config: WorkerServiceConfig,
         prover_config: ProverConfig,
@@ -101,6 +111,7 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
         }
     }
 
+    /// Run the node to completion (dispatches to the gRPC or MPI variant).
     pub async fn run(&mut self) -> Result<()> {
         match self {
             WorkerNode::WorkerGrpc(worker) => worker.run().await,
@@ -109,15 +120,19 @@ impl<T: ZiskBackend + 'static> WorkerNode<T> {
     }
 }
 
+/// Secondary-rank worker node: has no coordinator connection and only services
+/// MPI broadcasts from rank 0.
 pub struct WorkerNodeMpi<T: ZiskBackend + 'static> {
     worker: Worker<T>,
 }
 
 impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
+    /// Wrap a worker as a secondary-rank MPI node.
     pub async fn new(worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker })
     }
 
+    /// This node's global MPI rank.
     pub fn world_rank(&self) -> i32 {
         self.worker.world_rank()
     }
@@ -132,20 +147,25 @@ impl<T: ZiskBackend + 'static> WorkerNodeMpi<T> {
     }
 }
 
+/// Rank-0 worker node: maintains the gRPC connection to the coordinator and
+/// drives the full job lifecycle (registration, heartbeats, task dispatch).
 pub struct WorkerNodeGrpc<T: ZiskBackend + 'static> {
     worker_config: WorkerServiceConfig,
     worker: Worker<T>,
 }
 
 impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
+    /// Wrap a worker as the rank-0 gRPC node with the given config.
     pub async fn new(worker_config: WorkerServiceConfig, worker: Worker<T>) -> Result<Self> {
         Ok(Self { worker_config, worker })
     }
 
+    /// This node's global MPI rank.
     pub fn world_rank(&self) -> i32 {
         self.worker.world_rank()
     }
 
+    /// Connect to the coordinator and run the worker event loop until shutdown.
     pub async fn run(&mut self) -> Result<()> {
         assert!(self.worker.local_rank() == 0, "WorkerNodeGrpc should only be run by rank 0");
 
@@ -246,7 +266,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                             // Happy path: task completed and sent its result.
                             // Drop the handle — no need to await it, the task already finished.
                             drop(computation_handle.take());
-                            if let Err(e) = self.handle_computation_result(result, &message_sender, loop_tx).await {
+                            if let Err(e) = self.handle_computation_result(*result, &message_sender, loop_tx).await {
                                 error!("Error handling computation result: {}", e);
                                 self.report_computation_error(&message_sender, &e.to_string()).await;
                                 break;
@@ -320,7 +340,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Ok(()) => {
                             match loop_rx.try_recv() {
                                 Ok(LoopEvent::Computation(result)) => {
-                                    if let Err(e) = self.handle_computation_result(result, &message_sender, loop_tx).await {
+                                    if let Err(e) = self.handle_computation_result(*result, &message_sender, loop_tx).await {
                                         error!("Error handling computation result: {}", e);
                                         self.report_computation_error(&message_sender, &e.to_string()).await;
                                         break;
@@ -371,6 +391,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Process a finished computation result: report it to the coordinator and
+    /// advance or finalize the job.
     pub async fn handle_computation_result(
         &mut self,
         result: ComputationResult,
@@ -411,7 +433,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 proof_type,
                 instances,
             } => {
-                self.send_aggregation(
+                self.send_recurser(
                     job_id,
                     success,
                     result,
@@ -421,6 +443,62 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     instances,
                 )
                 .await
+            }
+            ComputationResult::RecurserAck { job_id, ack } => {
+                // Ack already built by the blocking handler; just forward it.
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("[Recurser] Failed to send recurser ack for job {job_id}: {e}");
+                }
+                self.worker.set_current_job(None);
+                self.worker.set_state(WorkerState::Ready);
+                Ok(())
+            }
+            ComputationResult::SetupProgramComplete {
+                job_id,
+                worker_id,
+                hash_id,
+                with_hints,
+                emulator_only,
+                result,
+            } => {
+                // Finish the off-loop setup: register the program (the `&mut self`
+                // map inserts that couldn't run on the blocking thread) and forward
+                // the ack. Does not touch worker state/current_job, matching the
+                // original inline SetupProgram behavior.
+                let ack = match result {
+                    Ok((program_vk, program)) => {
+                        self.worker.register_setup(
+                            &hash_id,
+                            with_hints,
+                            emulator_only,
+                            program,
+                            program_vk.clone(),
+                        );
+                        info!("[Setup] job_id {} Completed setup for hash_id {}", job_id, hash_id);
+                        Self::build_setup_program_ack(
+                            job_id.as_string(),
+                            worker_id,
+                            hash_id,
+                            Ok(&program_vk),
+                        )
+                    }
+                    Err(e) => {
+                        error!(
+                            "[Setup] job_id {} Failed setup for hash_id {}: {}",
+                            job_id, hash_id, e
+                        );
+                        Self::build_setup_program_ack(
+                            job_id.as_string(),
+                            worker_id,
+                            hash_id,
+                            Err(e.to_string()),
+                        )
+                    }
+                };
+                if let Err(e) = message_sender.send(ack) {
+                    warn!("Failed to send SetupProgramAck: {}", e);
+                }
+                Ok(())
             }
         }
     }
@@ -564,7 +642,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(message)?;
 
         if worker_in_recovery {
-            self.spawn_post_failure_recovery(loop_tx.clone());
+            // Compute task already awaited at the top of this handler; nothing
+            // left to drain, so pass no handle.
+            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
             // Drop `current_job` so a coordinator-originated `JobCancelled`
             // for the same job_id does not race a still-running
             // `spawn_post_failure_recovery` and emit a premature
@@ -683,7 +763,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(message)?;
 
         if worker_in_recovery {
-            self.spawn_post_failure_recovery(loop_tx.clone());
+            // Compute task already awaited at the top of this handler.
+            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -751,7 +832,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         message_sender.send(message)?;
 
         if worker_in_recovery {
-            self.spawn_post_failure_recovery(loop_tx.clone());
+            // Compute task already awaited at the top of this handler.
+            self.spawn_post_failure_recovery(loop_tx.clone(), CancelledWork::default());
             // See `send_partial_contribution`.
             self.worker.set_current_job(None);
         }
@@ -760,7 +842,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn send_aggregation(
+    async fn send_recurser(
         &mut self,
         job_id: JobId,
         success: bool,
@@ -906,11 +988,22 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     /// On `RECOVERY_TIMEOUT` we log loudly and drop the completion: the worker
     /// stays wedged `SettingUp` (still heartbeating, so the stale-disconnected
     /// sweep won't reap it), so operator action is required.
-    fn spawn_post_failure_recovery(&self, loop_tx: LoopEventSender) {
+    fn spawn_post_failure_recovery(&self, loop_tx: LoopEventSender, cancelled: CancelledWork) {
         let prover = self.worker.prover_arc();
         let worker_id = self.worker_config.worker.worker_id.as_string();
         tokio::spawn(async move {
             warn!("[Recovery] {worker_id}: running cluster cancellation handshake");
+
+            // Await the in-flight compute task before the barrier: its ASM MO
+            // run is a synchronous round-trip, so when it returns the child has
+            // reset and stopped touching the shmem the next job reuses. Bounded
+            // so a stuck task can't wedge recovery.
+            let recovery_context = format!("[Recovery] {worker_id}");
+            Self::drain_cancelled_computation(cancelled.compute, &recovery_context).await;
+            // Drain the ordering-thread shutdown on the same path, so a live
+            // computation's cancel never leaves the stream half un-joined.
+            Self::drain_cancelled_computation(cancelled.stream, &recovery_context).await;
+
             let join = tokio::time::timeout(
                 Self::RECOVERY_TIMEOUT,
                 tokio::task::spawn_blocking(move || run_recovery(&*prover)),
@@ -938,8 +1031,89 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         });
     }
 
+    /// Drain a stream-ordering shutdown task off the event loop (no-op if `None`).
+    /// Used on cancel paths with no live compute task (so no full recovery
+    /// handshake), where a stream thread may still be shutting down and must be
+    /// joined before the next job's reset.
+    fn spawn_stream_drain(&self, stream: Option<JoinHandle<()>>) {
+        if stream.is_none() {
+            return;
+        }
+        let context =
+            format!("[cancel-stream] {}", self.worker_config.worker.worker_id.as_string());
+        tokio::spawn(async move {
+            Self::drain_cancelled_computation(stream, &context).await;
+        });
+    }
+
+    /// Drain a cancelled job's in-flight work off the event loop. If a compute
+    /// task was live, run the full recovery handshake (drains compute + stream,
+    /// cluster barrier, emits `WorkerRecoveryComplete`) and return `true`.
+    /// Otherwise just drain any stream-ordering shutdown and return `false` — the
+    /// caller decides whether a completion signal still needs emitting.
+    fn drive_cancellation(&self, loop_tx: &LoopEventSender, cancelled: CancelledWork) -> bool {
+        if cancelled.compute.is_some() {
+            self.spawn_post_failure_recovery(loop_tx.clone(), cancelled);
+            true
+        } else {
+            self.spawn_stream_drain(cancelled.stream);
+            false
+        }
+    }
+
+    /// Builds a `SetupProgramAck`: `Ok(vk)` → success with the encoded VK,
+    /// `Err(msg)` → failure with the error message. Shared by the setup fast
+    /// path, the off-loop completion, and the reconnection setup path.
+    fn build_setup_program_ack(
+        job_id: String,
+        worker_id: String,
+        hash_id: String,
+        result: std::result::Result<&ProgramVK, String>,
+    ) -> WorkerMessage {
+        let (success, error_message, vk, hash_mode) = match result {
+            Ok(program_vk) => (
+                true,
+                String::new(),
+                program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
+                program_vk.hash_mode.as_str().to_string(),
+            ),
+            Err(error_message) => (false, error_message, Vec::new(), String::new()),
+        };
+        WorkerMessage {
+            payload: Some(worker_message::Payload::SetupProgramAck(SetupProgramAck {
+                job_id,
+                worker_id,
+                hash_id,
+                success,
+                error_message,
+                vk,
+                hash_mode,
+            })),
+        }
+    }
+
+    /// Await a compute handle (bounded) so the ASM child finishes resetting
+    /// before we reuse its shmem. No-op when nothing was running. `context`
+    /// prefixes the log lines so callers can be told apart.
+    async fn drain_cancelled_computation(handle: Option<JoinHandle<()>>, context: &str) {
+        let Some(handle) = handle else { return };
+        match tokio::time::timeout(Self::COMPUTE_DRAIN_TIMEOUT, handle).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => warn!("{context}: in-flight compute task join error: {e}"),
+            Err(_) => warn!(
+                "{context}: in-flight compute task did not drain within {:?}; proceeding — \
+                 the ASM child may still be resetting",
+                Self::COMPUTE_DRAIN_TIMEOUT
+            ),
+        }
+    }
+
     /// Healthy reset is sub-second; this only fires when the prover is stuck.
     const RECOVERY_TIMEOUT: Duration = Duration::from_secs(300);
+
+    /// Bound on awaiting the in-flight compute task; above the ASM child's ≤5 s
+    /// reset-flag observation window. Past this we proceed rather than wedge.
+    const COMPUTE_DRAIN_TIMEOUT: Duration = Duration::from_secs(10);
 
     async fn send_heartbeat_ack(
         &self,
@@ -971,19 +1145,15 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 if response.accepted {
                     info!("Registration accepted: {}", response.message);
 
-                    // `clear_current_job` detaches any in-flight `spawn_blocking`;
-                    // if we then accept a new dispatch, `prepare_for_new_job`'s
-                    // `prover.reset()` would race the still-unwinding task.
-                    // Schedule the recovery driver whenever we clobbered a live
-                    // computation: it joins the prover (`wait_until_proofman_ready`)
-                    // then emits `WorkerRecoveryComplete`, parking us `SettingUp`
-                    // on the coordinator side until the drain finishes.
-                    let mut needs_recovery_drain = false;
+                    // If we clobbered a live computation, hand its work to the
+                    // recovery driver so it awaits the drain before the barrier
+                    // (else a new dispatch's `prover.reset()` races the unwinding
+                    // task), then emits `WorkerRecoveryComplete`.
+                    let mut cancelled_work = CancelledWork::default();
                     match response.directive.map(|d| ReconnectionAction::try_from(d.action)) {
                         Some(Ok(ReconnectionAction::CancelStaleJob)) => {
                             info!("Coordinator directed cancellation of stale job");
-                            needs_recovery_drain = self.worker.has_current_computation();
-                            self.worker.clear_current_job();
+                            cancelled_work = self.worker.clear_current_job();
                         }
                         Some(Ok(ReconnectionAction::KeepComputing)) => {
                             info!("Coordinator confirmed active job; keep computing");
@@ -991,21 +1161,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         Some(Ok(ReconnectionAction::Idle)) | None => {
                             if self.worker.current_job().is_some() {
                                 warn!("No cancel directive but worker has stale job; clearing");
-                                needs_recovery_drain = self.worker.has_current_computation();
-                                self.worker.clear_current_job();
+                                cancelled_work = self.worker.clear_current_job();
                             }
                         }
                         Some(Err(_)) => {
                             warn!(
                                 "Unknown reconciliation action; clearing stale state defensively"
                             );
-                            needs_recovery_drain = self.worker.has_current_computation();
-                            self.worker.clear_current_job();
+                            cancelled_work = self.worker.clear_current_job();
                         }
                     }
-                    if needs_recovery_drain {
-                        self.spawn_post_failure_recovery(loop_tx.clone());
-                    }
+                    // Drain the clobbered job's work off the loop (full recovery
+                    // handshake if a compute task was live, else just the stream
+                    // shutdown). Reconnect never emits WorkerRecoveryComplete
+                    // itself, so the return is ignored.
+                    self.drive_cancellation(loop_tx, cancelled_work);
 
                     // If the coordinator attached setup info, run setup now — before entering
                     // the main event loop so no compute task can be processed without a guest program.
@@ -1014,36 +1184,25 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                         let job_id = setup.job_id.clone();
                         let hash_id = setup.hash_id.clone();
 
-                        let (success, error_message, vk, hash_mode) = match self
-                            .handle_setup_program(setup)
-                        {
-                            Ok(program_vk) => (
-                                true,
-                                String::new(),
-                                program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
-                                program_vk.hash_mode.as_str().to_string(),
+                        let ack = match self.handle_setup_program(setup) {
+                            Ok(program_vk) => Self::build_setup_program_ack(
+                                job_id,
+                                worker_id,
+                                hash_id,
+                                Ok(&program_vk),
                             ),
                             Err(e) => {
                                 error!(
-                                        "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
-                                        job_id, hash_id, e
-                                    );
-                                (false, e.to_string(), Vec::new(), String::new())
-                            }
-                        };
-
-                        let ack = WorkerMessage {
-                            payload: Some(worker_message::Payload::SetupProgramAck(
-                                SetupProgramAck {
-                                    vk,
+                                    "[Setup] job_id {} Failed setup during reconnection for hash_id {}: {}",
+                                    job_id, hash_id, e
+                                );
+                                Self::build_setup_program_ack(
                                     job_id,
                                     worker_id,
                                     hash_id,
-                                    success,
-                                    error_message,
-                                    hash_mode,
-                                },
-                            )),
+                                    Err(e.to_string()),
+                                )
+                            }
                         };
                         if let Err(e) = message_sender.send(ack) {
                             warn!("Failed to send SetupProgramAck after reconnection: {}", e);
@@ -1107,27 +1266,22 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 info!("Job {} cancelled: {}", cancelled.job_id, cancelled.reason);
 
                 // Two outcomes once we've matched the cancelled job to ours:
-                //  - had_computation=true  → spawn ASM soft-reset so the
-                //    wedged spawn_blocking task (likely stuck in MPI/ASM sync
-                //    with peer ranks) actually unwinds.
-                //  - had_computation=false → no task to soft-reset, but the
-                //    coordinator parked us SettingUp and is waiting for a
-                //    `WorkerRecoveryComplete`.
-                let mut spawn_recovery = false;
-                let mut emit_recovery_complete_directly = false;
+                //  - a live computation → the recovery driver does the ASM
+                //    soft-reset handshake and emits `WorkerRecoveryComplete` itself.
+                //  - no live computation → nothing to soft-reset, but the
+                //    coordinator parked us SettingUp awaiting `WorkerRecoveryComplete`,
+                //    so we emit it directly below.
+                // A returned compute handle is the authoritative "had a live
+                // computation" signal — no separate state query needed.
+                let mut matched = false;
+                let mut cancelled_work = CancelledWork::default();
                 if let Some(ref job) = self.worker.current_job() {
                     let cancelled_job_id = JobId::from(cancelled.job_id.clone());
 
                     if job.lock().await.job_id == cancelled_job_id {
-                        let had_computation = self.worker.has_current_computation();
-                        self.worker.clear_current_job();
+                        cancelled_work = self.worker.clear_current_job();
                         self.worker.set_state(WorkerState::Ready);
-
-                        if had_computation {
-                            spawn_recovery = true;
-                        } else {
-                            emit_recovery_complete_directly = true;
-                        }
+                        matched = true;
                     }
                 }
 
@@ -1141,9 +1295,12 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                     warn!("Failed to send JobCancelledAck: {}", e);
                 }
 
-                if spawn_recovery {
-                    self.spawn_post_failure_recovery(loop_tx.clone());
-                } else if emit_recovery_complete_directly {
+                // Drain the clobbered work off-loop; the recovery driver emits
+                // WorkerRecoveryComplete when a compute task was live. Otherwise,
+                // if we matched the job, emit it directly (coordinator parked us
+                // SettingUp awaiting it).
+                let recovery_spawned = self.drive_cancellation(loop_tx, cancelled_work);
+                if !recovery_spawned && matched {
                     let rc = WorkerRecoveryComplete {
                         worker_id: self.worker_config.worker.worker_id.as_string(),
                     };
@@ -1158,39 +1315,66 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             }
             coordinator_message::Payload::SetupProgram(setup) => {
                 let worker_id = self.worker_config.worker.worker_id.as_string();
-                let job_id = setup.job_id.clone();
+                let job_id = JobId::from(setup.job_id.clone());
                 let hash_id = setup.hash_id.clone();
+                let with_hints = setup.with_hints;
+                let emulator_only = setup.emulator_only;
 
-                let (success, error_message, vk, hash_mode) = match self.handle_setup_program(setup)
+                // Fast path: content-addressed program already set up — ack now.
+                if let Some(program_vk) =
+                    self.worker.program_vk(&hash_id, with_hints, emulator_only)
                 {
-                    Ok(program_vk) => (
-                        true,
-                        String::new(),
-                        program_vk.vk.iter().flat_map(|w| w.to_le_bytes()).collect(),
-                        program_vk.hash_mode.as_str().to_string(),
-                    ),
-                    Err(e) => {
-                        error!(
-                            "[Setup] job_id {} Failed setup for hash_id {}: {}",
-                            job_id, hash_id, e
-                        );
-                        (false, e.to_string(), Vec::new(), String::new())
-                    }
-                };
-
-                let ack = WorkerMessage {
-                    payload: Some(worker_message::Payload::SetupProgramAck(SetupProgramAck {
-                        job_id,
+                    let ack = Self::build_setup_program_ack(
+                        job_id.as_string(),
                         worker_id,
                         hash_id,
-                        success,
-                        error_message,
-                        vk,
-                        hash_mode,
-                    })),
-                };
-                if let Err(e) = message_sender.send(ack) {
-                    warn!("Failed to send SetupProgramAck: {}", e);
+                        Ok(&program_vk),
+                    );
+                    if let Err(e) = message_sender.send(ack) {
+                        warn!("Failed to send SetupProgramAck: {}", e);
+                    }
+                } else {
+                    // Run the (potentially long) ELF write + `setup_internal` off the
+                    // message loop so heartbeats keep flowing. The `&mut self` map
+                    // inserts and the ack are finished by `handle_computation_result`
+                    // when the `SetupProgramComplete` result arrives.
+                    let prover = self.worker.prover_arc();
+                    let tx = loop_tx.clone();
+                    let handle = tokio::task::spawn_blocking(move || {
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let guest_program = Self::stage_guest_program(
+                                &setup.hash_id,
+                                setup.program_name,
+                                setup.elf_bytes,
+                            )?;
+                            let vk = Worker::<T>::setup_compute(
+                                prover.as_ref(),
+                                &setup.hash_id,
+                                setup.with_hints,
+                                setup.emulator_only,
+                                &guest_program,
+                            )?;
+                            Ok::<_, anyhow::Error>((vk, guest_program))
+                        }))
+                        .unwrap_or_else(|_| Err(anyhow!("setup panicked")));
+
+                        if tx
+                            .send_computation(ComputationResult::SetupProgramComplete {
+                                job_id,
+                                worker_id,
+                                hash_id,
+                                with_hints,
+                                emulator_only,
+                                result,
+                            })
+                            .is_err()
+                        {
+                            warn!(
+                                "[Setup] Failed to deliver setup result: event loop channel closed"
+                            );
+                        }
+                    });
+                    self.worker.set_current_computation(handle);
                 }
             }
             coordinator_message::Payload::Shutdown(shutdown) => {
@@ -1201,6 +1385,109 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 tokio::time::sleep(Duration::from_secs(shutdown.grace_period_seconds as u64)).await;
                 return Err(anyhow!("Coordinator requested shutdown: {}", shutdown.reason));
             }
+            coordinator_message::Payload::SetupAggregationProgram(setup) => {
+                // Run the (potentially minutes-long) setup off the message loop
+                // so heartbeats keep flowing; the result is delivered back as a
+                // `RecurserAck` LoopEvent and forwarded by `handle_computation_result`.
+                let worker_id = self.worker_config.worker.worker_id.as_string();
+                let job_id_str = setup.job_id.clone();
+                let recurser_id = setup.recurser_id.clone();
+                let job_id = JobId::from(job_id_str.clone());
+                let tx = loop_tx.clone();
+
+                self.worker.set_state(WorkerState::SettingUp);
+                let prover = self.worker.prover_arc();
+
+                let handle = tokio::task::spawn_blocking(move || {
+                    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        Self::handle_setup_aggregation_program(&prover, setup)
+                    }));
+                    let (success, error_message, vk, hash_mode) = match outcome {
+                        Ok(Ok((vk, hash_mode))) => (true, String::new(), vk, hash_mode),
+                        Ok(Err(e)) => {
+                            error!(
+                                "[Recurser] job_id {} Failed recurser setup for recurser_id {}: {}",
+                                job_id_str, recurser_id, e
+                            );
+                            (false, e.to_string(), Vec::new(), String::new())
+                        }
+                        Err(_) => {
+                            error!("[Recurser] job_id {job_id_str} recurser setup panicked");
+                            (
+                                false,
+                                "recurser setup panicked".to_string(),
+                                Vec::new(),
+                                String::new(),
+                            )
+                        }
+                    };
+                    let ack = WorkerMessage {
+                        payload: Some(worker_message::Payload::SetupAggregationProgramAck(
+                            SetupAggregationProgramAck {
+                                job_id: job_id_str.clone(),
+                                worker_id,
+                                recurser_id,
+                                success,
+                                error_message,
+                                vk,
+                                hash_mode,
+                            },
+                        )),
+                    };
+                    if tx.send_computation(ComputationResult::RecurserAck { job_id, ack }).is_err()
+                    {
+                        warn!("[Recurser] Failed to deliver setup ack: event loop channel closed");
+                    }
+                });
+                self.worker.set_current_computation(handle);
+            }
+            coordinator_message::Payload::RunAggregateProofs(req) => {
+                // Off the message loop, same as setup above.
+                let worker_id = self.worker_config.worker.worker_id.as_string();
+                let job_id_str = req.job_id.clone();
+                let recurser_id = req.recurser_id.clone();
+                let job_id = JobId::from(job_id_str.clone());
+                let prover = self.worker.prover_arc();
+                let tx = loop_tx.clone();
+
+                self.worker.set_state(WorkerState::Computing((job_id.clone(), JobPhase::Recurse)));
+
+                let handle = tokio::task::spawn_blocking(move || {
+                    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        Self::handle_run_aggregate_proofs(&prover, req)
+                    }));
+                    let (success, error_message, proof) = match outcome {
+                        Ok(Ok(proof_bytes)) => (true, String::new(), proof_bytes),
+                        Ok(Err(e)) => {
+                            error!(
+                                "[Recurser] job_id {} Failed recurser prove for recurser_id {}: {}",
+                                job_id_str, recurser_id, e
+                            );
+                            (false, e.to_string(), Vec::new())
+                        }
+                        Err(_) => {
+                            error!("[Recurser] job_id {job_id_str} recurser prove panicked");
+                            (false, "recurser prove panicked".to_string(), Vec::new())
+                        }
+                    };
+                    let ack = WorkerMessage {
+                        payload: Some(worker_message::Payload::RunAggregateProofsAck(
+                            RunAggregateProofsAck {
+                                job_id: job_id_str.clone(),
+                                worker_id,
+                                success,
+                                error_message,
+                                proof,
+                            },
+                        )),
+                    };
+                    if tx.send_computation(ComputationResult::RecurserAck { job_id, ack }).is_err()
+                    {
+                        warn!("[Recurser] Failed to deliver prove ack: event loop channel closed");
+                    }
+                });
+                self.worker.set_current_computation(handle);
+            }
         }
 
         Ok(())
@@ -1210,29 +1497,34 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ///
     /// Writes the ELF to a content-addressed cache path, reloads the `GuestProgram`, and runs
     /// setup (generates ROM binary files on disk).
-    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
-        use std::sync::Arc;
-
-        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
-
-        let elf_path = ZiskPaths::global().elf_cache(&setup.hash_id);
-
-        // The cache path is content-addressed (blake3 of ELF bytes), so if the file already
-        // exists it is identical to what we received — skip write and re-setup.
+    /// Writes the ELF to the content-addressed cache (idempotent) and loads the
+    /// `GuestProgram`, moving the bytes in (no clone). Shared by the off-loop
+    /// setup path and the reconnection path so the cache-write contract — which
+    /// must stay byte-identical for the content-addressed skip check — lives once.
+    fn stage_guest_program(
+        hash_id: &str,
+        program_name: String,
+        elf_bytes: Vec<u8>,
+    ) -> Result<std::sync::Arc<GuestProgram>> {
+        let elf_path = ZiskPaths::global().elf_cache(hash_id);
         if !elf_path.exists() {
             if let Some(parent) = elf_path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::write(&elf_path, &setup.elf_bytes)?;
+            std::fs::write(&elf_path, &elf_bytes)?;
         }
+        Ok(std::sync::Arc::new(GuestProgram::from_bytes(program_name, elf_bytes)))
+    }
+
+    fn handle_setup_program(&mut self, setup: SetupProgram) -> Result<ProgramVK> {
+        info!("[Setup] job_id {} Received setup for hash_id {}", setup.job_id, setup.hash_id);
 
         let guest_program =
-            Arc::new(GuestProgram::from_bytes(setup.program_name, setup.elf_bytes.clone()));
+            Self::stage_guest_program(&setup.hash_id, setup.program_name, setup.elf_bytes)?;
 
         // Broadcast ELF to secondary MPI ranks and run setup on all ranks.
         let vk = self.worker.run_setup(
             &setup.hash_id,
-            &setup.elf_bytes,
             setup.with_hints,
             setup.emulator_only,
             guest_program,
@@ -1242,6 +1534,239 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(vk)
     }
 
+    /// Handles a `SetupAggregationProgram` message from the coordinator.
+    ///
+    /// Runs the recurser setup in a scoped 64 MB-stack rayon pool
+    /// (proofman setup overflows the default ~2 MB worker stack). Idempotent:
+    /// returns the existing verkey if setup has already run for this `recurser_id`.
+    fn handle_setup_aggregation_program(
+        prover: &ZiskProver<T>,
+        setup: SetupAggregationProgram,
+    ) -> Result<(Vec<u8>, String)> {
+        use zisk_recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
+
+        info!(
+            "[Recurser] job_id {} Received SetupAggregationProgram for recurser_id {}",
+            setup.job_id, setup.recurser_id
+        );
+
+        let spec = setup.spec.ok_or_else(|| anyhow!("SetupAggregationProgram.spec must be set"))?;
+
+        let setup_dir = ZiskPaths::global()
+            .home
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?
+            .to_string();
+        let output_dir = ZiskPaths::global()
+            .home
+            .join("recurser")
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk/recurser path is not valid UTF-8"))?
+            .to_string();
+
+        let normalize = spec
+            .normalize
+            .as_ref()
+            .map(|n| zisk_recurser::NormalizeCircuit { body: n.body.clone() });
+        // Proto `ProgramVk { limbs }` → 4-limb array. Pad/truncate defensively;
+        // a wrong length changes the derived id and is caught by the check below.
+        let program_vks: Vec<[String; 4]> = spec
+            .program_vks
+            .iter()
+            .map(|vk| {
+                let mut limbs = vk.limbs.clone();
+                limbs.resize(4, String::from("0"));
+                [limbs[0].clone(), limbs[1].clone(), limbs[2].clone(), limbs[3].clone()]
+            })
+            .collect();
+        // The artifact dir is keyed by the *claimed* id; recompute the id from
+        // the spec so a mismatched claim can't be served another definition's
+        // completed setup (or silently register under the wrong name).
+        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_dir)
+            .map_err(|e| anyhow!("failed to read local vadcop_final verkey: {e:#}"))?;
+        let expected_inputs = zisk_recurser::RecurserManifestInputs::new(
+            zisk_vk,
+            program_vks.clone(),
+            normalize.as_ref(),
+            &spec.aggregate_publics_body,
+            spec.n_free as usize,
+            spec.n_publics_agg as usize,
+        );
+        let expected_id = expected_inputs.compute_id();
+        if expected_id != setup.recurser_id {
+            return Err(anyhow!(
+                "recurser_id mismatch: request claims '{}' but the spec derives '{}' on this \
+                 worker; this usually means the client and worker proving keys differ \
+                 (vadcop_final verkey mismatch) or the spec was altered in transit",
+                setup.recurser_id,
+                expected_id,
+            ));
+        }
+
+        let artifacts =
+            zisk_recurser::artifacts::RecurserArtifacts::new(&output_dir, &setup.recurser_id);
+
+        if !artifacts.is_active() {
+            let opts = SetupRecurserAggregatorOptions {
+                setup_dir,
+                output_dir: output_dir.clone(),
+                templates: zisk_recurser::CircomTemplates {
+                    normalize,
+                    aggregate_publics: spec.aggregate_publics_body.clone(),
+                    n_free: spec.n_free as usize,
+                    n_publics_agg: spec.n_publics_agg as usize,
+                    program_vks,
+                },
+            };
+
+            let pool = rayon::ThreadPoolBuilder::new()
+                .stack_size(64 * 1024 * 1024)
+                .build()
+                .map_err(|e| anyhow!("failed to build 64 MB-stack rayon pool: {e}"))?;
+            pool.install(|| run_setup_recurser_aggregator(&opts))
+                .map_err(|e| anyhow!("recurser setup failed: {e}"))?;
+        } else {
+            info!(
+                "[Recurser] setup already complete for recurser_id {}; skipping setup",
+                setup.recurser_id
+            );
+        }
+
+        // Register the setup with this worker's proofman so subsequent
+        // `RunAggregateProofs` jobs routed here can prove. Covers both the
+        // fresh-setup and cache-hit branches above.
+        prover
+            .register_recurser(&output_dir, &setup.recurser_id)
+            .map_err(|e| anyhow!("recurser registration failed: {e}"))?;
+
+        let vk = std::fs::read(artifacts.verkey_bin_path()).map_err(|e| {
+            anyhow!(
+                "failed to read recurser verkey at {}: {}",
+                artifacts.verkey_bin_path().display(),
+                e
+            )
+        })?;
+
+        // The hash family is a property of the proving key the recurser was set
+        // up against; read it from the same globalInfo.json the setup used so it
+        // travels with the verkey for verify-time matching. Reading from disk
+        // (not the setup return) also covers the cache-hit branch above.
+        let setup_dir = ZiskPaths::global()
+            .home
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?;
+        let hash_mode = zisk_recurser::setup::read_proving_key_hash(setup_dir)
+            .map_err(|e| anyhow!("failed to read recurser hash family: {e}"))?;
+
+        info!(
+            "[Recurser] job_id {} Completed recurser setup for recurser_id {}",
+            setup.job_id, setup.recurser_id
+        );
+        Ok((vk, hash_mode))
+    }
+
+    /// Handles a `RunAggregateProofs` message from the coordinator.
+    ///
+    /// Folds two `VadcopFinalProof`s into one and returns the bincode-serialized
+    /// SDK `Proof`. No 64 MB rayon pool — the prove path is FFI.
+    fn handle_run_aggregate_proofs(
+        prover: &ZiskProver<T>,
+        req: RunAggregateProofs,
+    ) -> Result<Vec<u8>> {
+        use proofman_verifier::VadcopFinalProof;
+
+        info!(
+            "[Recurser] job_id {} Received RunAggregateProofs for recurser_id {}",
+            req.job_id, req.recurser_id
+        );
+
+        let (proof_a, _): (VadcopFinalProof, _) =
+            bincode::serde::decode_from_slice(&req.proof_a, bincode::config::standard())
+                .map_err(|e| anyhow!("failed to deserialize proof_a: {e}"))?;
+        let (proof_b, _): (VadcopFinalProof, _) =
+            bincode::serde::decode_from_slice(&req.proof_b, bincode::config::standard())
+                .map_err(|e| anyhow!("failed to deserialize proof_b: {e}"))?;
+
+        let root_c_override = match req.root_c_recurser_agg.len() {
+            0 => None,
+            4 => Some([
+                req.root_c_recurser_agg[0],
+                req.root_c_recurser_agg[1],
+                req.root_c_recurser_agg[2],
+                req.root_c_recurser_agg[3],
+            ]),
+            n => return Err(anyhow!("root_c_recurser_agg must have 0 or 4 limbs; got {}", n)),
+        };
+
+        let output_dir = ZiskPaths::global()
+            .home
+            .join("recurser")
+            .to_str()
+            .ok_or_else(|| anyhow!("~/.zisk/recurser path is not valid UTF-8"))?
+            .to_string();
+
+        // Ensure this worker's proofman has the recurser registered. Normally a
+        // prior `SetupAggregationProgram` job already did this (the coordinator
+        // rehydrates setups to every worker), but registering here is idempotent
+        // and guards against a prove landing before/without setup on this worker.
+        prover.register_recurser(&output_dir, &req.recurser_id).map_err(|e| {
+            anyhow!(
+                "recurser registration failed (was this recurser set up on this worker? \
+                 a setup rehydration may have been missed): {e:#}"
+            )
+        })?;
+
+        // The wire carries a single flat free-value buffer per side, which now maps
+        // 1:1 onto the unified `n_free` width that prove_recurser expects.
+        //
+        // Reuse the worker's already-initialized proofman rather than building a
+        // fresh one per fold: `ProofMan::new` initializes the process-global MPI
+        // context, which can only happen once per process.
+        let vfp = prover
+            .prove_recurser(
+                &req.recurser_id,
+                &proof_a,
+                &proof_b,
+                &req.free_inputs_a,
+                &req.free_inputs_b,
+                root_c_override,
+            )
+            .map_err(|e| anyhow!("recurser prove failed: {e}"))?;
+
+        // Stamp the output Proof with the recurser's own verkey as zisk_vk.
+        let artifacts =
+            zisk_recurser::artifacts::RecurserArtifacts::new(&output_dir, &req.recurser_id);
+        let vk_bytes = std::fs::read(artifacts.verkey_bin_path())
+            .map_err(|e| anyhow!("failed to read recurser verkey: {e}"))?;
+        if vk_bytes.len() != 32 {
+            return Err(anyhow!("recurser verkey must be 32 bytes, got {}", vk_bytes.len()));
+        }
+        let mut zisk_vk = Vec::with_capacity(4);
+        for i in 0..4 {
+            let chunk: [u8; 8] = vk_bytes[i * 8..(i + 1) * 8].try_into().unwrap();
+            zisk_vk.push(u64::from_le_bytes(chunk));
+        }
+
+        // The proof's hash family travels on the VadcopFinalProof (stamped by
+        // proofman from the recurser's proving key); carry it onto the Proof.
+        let proof = Proof::new_from_vadcop_proof(
+            &vfp.proof_with_publics(),
+            vfp.compressed,
+            zisk_vk,
+            vfp.hash.clone(),
+        )?;
+        let bytes = bincode::serde::encode_to_vec(&proof, bincode::config::standard())
+            .map_err(|e| anyhow!("failed to serialize recurser proof: {e}"))?;
+
+        info!(
+            "[Recurser] job_id {} Completed recurser prove for recurser_id {}",
+            req.job_id, req.recurser_id
+        );
+        Ok(bytes)
+    }
+
+    /// Handle a coordinator contribution request: set up the job and spawn the
+    /// contribution computation.
     pub async fn partial_contribution(
         &mut self,
         request: ExecuteTaskRequest,
@@ -1250,8 +1775,21 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let task_received_time = chrono::Utc::now();
         info!("Starting Partial Contribution for {}", request.job_id);
 
-        // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        // Defensive: the coordinator won't dispatch here until we emit
+        // `WorkerRecoveryComplete` (which already drained any prior task), so
+        // this is normally a no-op. If a stale computation is somehow still
+        // live, drain it before `prepare_for_new_job`'s `prover.reset()` reuses
+        // the ASM shmem the child may still be writing.
+        let cancelled = self.worker.cancel_current_computation();
+        Self::drain_cancelled_computation(cancelled.compute, "partial_contribution").await;
+        // Also wait for the previous stream-ordering thread to stop before
+        // `prepare_for_new_job` resets the shared HintsProcessor, so it can't
+        // still be inside `process_hints` on the new stream.
+        Self::drain_cancelled_computation(cancelled.stream, "partial_contribution stream").await;
+
+        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
+        let metadata = (!request.metadata.is_empty())
+            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
 
         // Extract the PartialContribution params
         let Some(execute_task_request::Params::ContributionParams(params)) = request.params else {
@@ -1300,6 +1838,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
+            metadata,
         );
 
         // Start computation in background task
@@ -1310,6 +1849,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Handle a coordinator execute-only request: set up the job and spawn the
+    /// execution.
     pub async fn execute_only(
         &mut self,
         request: ExecuteTaskRequest,
@@ -1318,8 +1859,17 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         let task_received_time = chrono::Utc::now();
         info!("Starting Execution-only for {}", request.job_id);
 
-        // Cancel any existing computation
-        self.worker.cancel_current_computation();
+        // Defensive drain before `prepare_for_new_job`'s `prover.reset()` reuses
+        // the ASM shmem — normally a no-op (see `partial_contribution`).
+        let cancelled = self.worker.cancel_current_computation();
+        Self::drain_cancelled_computation(cancelled.compute, "execute_only").await;
+        // See `partial_contribution`: also drain the previous stream-ordering
+        // thread before the reset in `prepare_for_new_job`.
+        Self::drain_cancelled_computation(cancelled.stream, "execute_only stream").await;
+
+        // Proto `map<string, string>` (a HashMap); an empty map means "no metadata".
+        let metadata = (!request.metadata.is_empty())
+            .then(|| request.metadata.into_iter().collect::<std::collections::BTreeMap<_, _>>());
 
         // Extract the ExecutionParams (reuses ContributionParams structure)
         let Some(execute_task_request::Params::ExecutionParams(params)) = request.params else {
@@ -1368,6 +1918,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             params.worker_allocation,
             params.job_compute_units,
             Some(task_received_time),
+            metadata,
         );
 
         // Start execution-only computation in background task
@@ -1459,6 +2010,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
     }
 
+    /// Handle a coordinator prove request: spawn the prove computation from the
+    /// supplied challenges.
     pub async fn prove(
         &mut self,
         request: ExecuteTaskRequest,
@@ -1478,6 +2031,19 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
                 job_id_str,
                 request.job_id
             ));
+        }
+
+        // Idempotency guard: a duplicate Prove for a job whose computation is
+        // still running must NOT spawn a second concurrent prove_phase (it would
+        // rewrite the global challenge and race the first phase over the same
+        // GPU streams -> internally inconsistent proofs). Log loudly: if this
+        // ever fires, the coordinator double-dispatched a phase task.
+        if self.worker.has_live_computation() {
+            error!(
+                "[DUPLICATE-DISPATCH] Prove for {} received while a computation is still running — ignoring",
+                job_id
+            );
+            return Ok(());
         }
 
         info!("Starting Prove for {}", job_id);
@@ -1504,6 +2070,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         Ok(())
     }
 
+    /// Handle a coordinator aggregate request: spawn the join/aggregate of the
+    /// supplied worker proofs.
     pub async fn aggregate(
         &mut self,
         request: ExecuteTaskRequest,
@@ -1511,6 +2079,20 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
     ) -> Result<()> {
         if self.worker.current_job().is_none() {
             return Err(anyhow!("Aggregate received without current job context"));
+        }
+
+        // Idempotency guard (symmetric with `prove`): a duplicate/replayed
+        // Aggregate while the previous aggregation computation is still running
+        // must NOT spawn a second concurrent proofman task over the same GPU
+        // streams (set_current_computation overwrites the handle and a dropped
+        // JoinHandle DETACHES the running task). If this fires, the coordinator
+        // double-dispatched (agg_task_inflight race or reconnect replay).
+        if self.worker.has_live_computation() {
+            error!(
+                "[DUPLICATE-DISPATCH] Aggregate for {} received while a computation is still running — ignoring",
+                request.job_id
+            );
+            return Ok(());
         }
 
         let job = self.worker.current_job().clone().unwrap().clone();
@@ -1546,7 +2128,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             final_proof: agg_params.final_proof,
             proof_type: ProofKind::from(agg_params.proof_type),
         };
-        self.worker.set_current_computation(self.worker.handle_aggregate(
+        self.worker.set_current_computation(self.worker.handle_aggregate_proofs(
             job,
             agg_params,
             loop_tx.clone(),
@@ -1599,20 +2181,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
+        if !input_data.payload.is_empty() && input_data.payload.len() % 8 != 0 {
+            return Err(anyhow!(
+                "InputStreamData payload length {} is not a multiple of 8 bytes",
+                input_data.payload.len()
+            ));
+        }
+
         // gRPC `InputStreamData` only reaches rank 0. Mirror it to peer ranks
         // via MPI so their ASM children get the same bytes — without this
         // they wait on `chunk_done` until the semaphore times out (~10 s) and
-        // every streamed-input job fails on every rank ≠ 0.
+        // every streamed-input job fails on every rank ≠ 0. Skipped when this
+        // is the only rank: the conversion and borsh pass below copy the chunk
+        // twice for nobody.
         // Wire format matches what `process_hints` broadcasts for hint-driven
         // inputs (see `precompiles/hints/src/hints_processor.rs`): tag byte
         // followed by a borsh-encoded `StreamMessage { data: Vec<u64> }`.
-        if !input_data.payload.is_empty() {
-            if input_data.payload.len() % 8 != 0 {
-                return Err(anyhow!(
-                    "InputStreamData payload length {} is not a multiple of 8 bytes",
-                    input_data.payload.len()
-                ));
-            }
+        if self.worker.n_processes() > 1 && !input_data.payload.is_empty() {
             let data_u64: Vec<u64> = input_data
                 .payload
                 .chunks_exact(8)

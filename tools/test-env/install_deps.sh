@@ -70,7 +70,10 @@ install_dependencies_linux() {
     step "Installing Rust..."
     # Create the profile file if it doesn't exist
     touch $PROFILE
-    ensure curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y || return 1
+
+    ensure curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs -o /tmp/rustup-init.sh || return 1
+    ensure sh /tmp/rustup-init.sh -y || return 1
+    rm -f /tmp/rustup-init.sh
     export PATH="${HOME}/.cargo/bin:$PATH"
     source "${HOME}/.cargo/env"
 

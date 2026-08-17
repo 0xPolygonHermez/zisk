@@ -15,8 +15,8 @@
 
 use std::path::PathBuf;
 
-use test_artifacts::ELF_DIAGNOSTIC_HINTS;
 use zisk_sdk::{EmbeddedClientBuilder, ZiskHints, ZiskStdin};
+use zisk_test_artifacts::ELF_DIAGNOSTIC_HINTS;
 
 /// Default hints binary, written by a native run of the `diagnostic_hints` guest.
 const DEFAULT_HINTS: &str = concat!(

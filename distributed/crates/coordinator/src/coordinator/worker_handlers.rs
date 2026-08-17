@@ -4,12 +4,15 @@ use crate::{
     Coordinator,
 };
 use chrono::Utc;
-use std::sync::atomic::Ordering;
-use tracing::{error, info, warn};
+use std::sync::{atomic::Ordering, Arc};
+use tokio::sync::RwLock;
+use tracing::{debug, error, info, warn};
+use zisk_cluster_common::JobState;
 use zisk_cluster_common::{
     CoordinatorMessageDto, ExecuteTaskResponseDto, ExecuteTaskResponseResultDataDto,
-    HeartbeatAckDto, JobId, ReconnectionDirectiveDto, SetupProgramAckDto, SetupProgramDto,
-    WorkerErrorDto, WorkerId, WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
+    HeartbeatAckDto, Job, JobId, JobPhase, ReconnectionDirectiveDto, RunAggregateProofsAckDto,
+    SetupAggregationProgramAckDto, SetupProgramAckDto, SetupProgramDto, WorkerErrorDto, WorkerId,
+    WorkerReconnectRequestDto, WorkerRegisterRequestDto, WorkerState,
 };
 use zisk_common::SetupKey;
 
@@ -54,16 +57,28 @@ impl Coordinator {
 
         // A successful SetupProgramAck proves the prover is healthy; any
         // lingering pending_recovery entry is stale (WRC will never arrive).
+        // A failure proves the opposite — no artifacts for this program — so the
+        // worker goes back to `Idle` (out of dispatch, still back-fillable) and
+        // keeps any pending_recovery entry.
         let worker_id = ack.worker_id.clone();
         if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
-            if self.pending_recovery.write().await.remove(&worker_id).is_some() {
+            if ack.success {
+                if self.pending_recovery.write().await.remove(&worker_id).is_some() {
+                    warn!(
+                        "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",
+                        worker_id
+                    );
+                }
+                let _ =
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+                info!("[Setup] Worker {} finished setup, now Ready", ack.worker_id);
+            } else {
+                self.workers_pool.release_settingup_to_idle(std::slice::from_ref(&worker_id)).await;
                 warn!(
-                    "[Recovery] Dropped stale pending_recovery for {} on SetupProgramAck",
-                    worker_id
+                    "[Setup] Worker {} failed setup, parked Idle and withheld from job dispatch",
+                    ack.worker_id
                 );
             }
-            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
-            info!("[Setup] Worker {} finished setup, now Ready", ack.worker_id);
         }
 
         // Remove this worker from the pending set and accumulate its VK.
@@ -79,12 +94,11 @@ impl Coordinator {
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);
-                    let hash_id = state.hash_id.clone();
+                    let key =
+                        SetupKey::new(state.hash_id.clone(), state.with_hints, state.emulator_only);
                     let program_name = state.program_name.clone();
-                    let with_hints = state.with_hints;
-                    let emulator_only = state.emulator_only;
                     pending.remove(&job_id);
-                    Some((vks, hash_id, program_name, with_hints, emulator_only))
+                    Some((vks, key, program_name))
                 } else {
                     None
                 }
@@ -94,9 +108,8 @@ impl Coordinator {
             }
         };
 
-        if let Some((vks, hash_id, program_name, with_hints, emulator_only)) = outcome {
-            self.finalize_setup(&job_id, vks, hash_id, program_name, with_hints, emulator_only)
-                .await;
+        if let Some((vks, key, program_name)) = outcome {
+            self.finalize_setup(&job_id, vks, key, program_name, /* backfill */ true).await;
             info!("[Setup] All workers acknowledged setup for job_id {}", ack.job_id);
         }
 
@@ -108,25 +121,33 @@ impl Coordinator {
     /// arrived). Shared by `handle_stream_setup_program_ack` (normal path)
     /// and `prune_setup_pending_for_lost_worker` (worker disappeared mid-
     /// setup).
+    ///
+    /// `backfill` is `true` only on the clean ack path, where a successful
+    /// finalize also reserves still-`Idle` workers for this program. A finalize
+    /// forced by a worker disconnect passes `false` — cleanup must not fan out a
+    /// fresh broadcast while the fleet is shedding workers.
     async fn finalize_setup(
         &self,
         job_id: &JobId,
         vks: Vec<(WorkerId, Vec<u8>, String)>,
-        hash_id: String,
+        key: SetupKey,
         program_name: String,
-        with_hints: bool,
-        emulator_only: bool,
+        backfill: bool,
     ) {
         let event = match validate_setup_vks(job_id.as_str(), vks) {
             Ok((vk, hash_mode)) => {
                 self.active_setups.write().await.insert(
-                    SetupKey::new(hash_id, with_hints, emulator_only),
+                    key.clone(),
                     crate::coordinator::ActiveSetup {
-                        program_name,
+                        program_name: program_name.clone(),
                         vk: vk.clone(),
                         hash_mode: hash_mode.clone(),
                     },
                 );
+                // Catch workers that registered Idle during this setup's window.
+                if backfill {
+                    self.backfill_setup_to_idle(&key, &program_name).await;
+                }
                 CoordinatorJobEvent::Completed(CoordinatorJobResult::Setup { vk, hash_mode })
             }
             Err(e) => {
@@ -157,14 +178,9 @@ impl Coordinator {
                 }
                 if state.pending.is_empty() {
                     let vks = std::mem::take(&mut state.vks);
-                    completions.push((
-                        job_id.clone(),
-                        vks,
-                        state.hash_id.clone(),
-                        state.program_name.clone(),
-                        state.with_hints,
-                        state.emulator_only,
-                    ));
+                    let key =
+                        SetupKey::new(state.hash_id.clone(), state.with_hints, state.emulator_only);
+                    completions.push((job_id.clone(), vks, key, state.program_name.clone()));
                     false
                 } else {
                     true
@@ -173,14 +189,206 @@ impl Coordinator {
             completions
         };
 
-        for (job_id, vks, hash_id, program_name, with_hints, emulator_only) in completions {
+        for (job_id, vks, key, program_name) in completions {
             info!(
                 "[Setup] Worker {} lost; finalizing in-flight setup {} with collected acks",
                 worker_id, job_id
             );
-            self.finalize_setup(&job_id, vks, hash_id, program_name, with_hints, emulator_only)
-                .await;
+            // Worker lost: cleanup only, no back-fill (see `finalize_setup`).
+            self.finalize_setup(&job_id, vks, key, program_name, /* backfill */ false).await;
         }
+    }
+
+    async fn finalize_recurser_setup(
+        &self,
+        job_id: &JobId,
+        vks: Vec<(WorkerId, Vec<u8>, String)>,
+        recurser_id: String,
+    ) {
+        let event = match validate_setup_vks(job_id.as_str(), vks) {
+            Ok((vk, hash_mode)) => {
+                self.active_recurser_setups.write().await.insert(recurser_id);
+                CoordinatorJobEvent::Completed(
+                    crate::job_events::CoordinatorJobResult::SetupAggregationProgram {
+                        vk,
+                        hash_mode,
+                    },
+                )
+            }
+            Err(e) => {
+                error!("[Recurser] VK mismatch for job_id {}: {}", job_id, e);
+                CoordinatorJobEvent::Failed(e)
+            }
+        };
+        self.fire_job_event(job_id, event).await;
+    }
+
+    async fn prune_recurser_setup_pending_for_lost_worker(&self, worker_id: &WorkerId) {
+        let completions = {
+            let mut pending = self.recurser_setup_pending.write().await;
+            let mut completions = Vec::new();
+            pending.retain(|job_id, state| {
+                if !state.pending.remove(worker_id) {
+                    return true;
+                }
+                if state.pending.is_empty() {
+                    let vks = std::mem::take(&mut state.vks);
+                    completions.push((job_id.clone(), vks, state.recurser_id.clone()));
+                    false
+                } else {
+                    true
+                }
+            });
+            completions
+        };
+
+        for (job_id, vks, recurser_id) in completions {
+            info!(
+                "[Recurser] Worker {} lost; finalizing in-flight recurser setup {} with collected acks",
+                worker_id, job_id
+            );
+            self.finalize_recurser_setup(&job_id, vks, recurser_id).await;
+        }
+    }
+
+    /// Recurser-setup ack counterpart of [`Self::handle_stream_setup_program_ack`].
+    pub(crate) async fn handle_stream_setup_aggregation_program_ack(
+        &self,
+        ack: SetupAggregationProgramAckDto,
+    ) -> CoordinatorResult<()> {
+        let job_id = JobId::from(ack.job_id.clone());
+
+        if ack.success {
+            info!(
+                "[Recurser] Worker {} completed recurser setup for job_id {} recurser_id {}",
+                ack.worker_id, ack.job_id, ack.recurser_id
+            );
+        } else {
+            error!(
+                "[Recurser] Worker {} failed recurser setup for job_id {} recurser_id {}: {}",
+                ack.worker_id,
+                ack.job_id,
+                ack.recurser_id,
+                ack.error_message.as_deref().unwrap_or("unknown error")
+            );
+        }
+
+        // Same rules as setup-program ack: recovery owns the flip back to Ready
+        // when one is pending, and a failed ack never promotes to Ready.
+        let worker_id = ack.worker_id.clone();
+        if self.workers_pool.worker_state(&worker_id).await == Some(WorkerState::SettingUp) {
+            if ack.success && !self.pending_recovery.read().await.contains_key(&worker_id) {
+                let _ =
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+            } else if !ack.success {
+                self.workers_pool.release_settingup_to_idle(std::slice::from_ref(&worker_id)).await;
+                warn!(
+                    "[Recurser] Worker {} failed recurser setup, parked Idle and withheld from job dispatch",
+                    ack.worker_id
+                );
+            }
+        }
+
+        let outcome = {
+            let mut pending = self.recurser_setup_pending.write().await;
+            if let Some(state) = pending.get_mut(&job_id) {
+                state.pending.remove(&ack.worker_id);
+                if ack.success {
+                    state.vks.push((ack.worker_id.clone(), ack.vk, ack.hash_mode));
+                }
+                if state.pending.is_empty() {
+                    let vks = std::mem::take(&mut state.vks);
+                    let recurser_id = state.recurser_id.clone();
+                    pending.remove(&job_id);
+                    Some((vks, recurser_id))
+                } else {
+                    None
+                }
+            } else {
+                // Unknown / already-completed job — drop silently.
+                return Ok(());
+            }
+        };
+
+        if let Some((vks, recurser_id)) = outcome {
+            self.finalize_recurser_setup(&job_id, vks, recurser_id.clone()).await;
+            info!(
+                "[Recurser] All workers acknowledged recurser setup for job_id {} (recurser_id {})",
+                ack.job_id, recurser_id
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Recurser-prove ack counterpart of [`crate::coordinator::wrap::handle_wrap_completion`].
+    pub(crate) async fn handle_stream_run_aggregate_proofs_ack(
+        &self,
+        ack: RunAggregateProofsAckDto,
+    ) -> CoordinatorResult<()> {
+        let job_id = JobId::from(ack.job_id.clone());
+        let worker_id = ack.worker_id.clone();
+
+        let job_entry = {
+            let jobs_map = self.jobs.read().await;
+            jobs_map.get(&job_id).cloned()
+        };
+        let Some(job_entry) = job_entry else {
+            warn!(
+                "[Recurser] Received RunAggregateProofsAck for unknown job {} from worker {}",
+                ack.job_id, worker_id
+            );
+            // Park Ready so the worker doesn't stay Computing forever.
+            let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+            return Ok(());
+        };
+
+        // Drop late acks for already-resolved jobs (mirrors execute-task path).
+        {
+            let job = job_entry.read().await;
+            if job.state().is_resolved() {
+                info!(
+                    "[Recurser] Ignoring late RunAggregateProofsAck from worker {} for resolved job {}",
+                    worker_id, ack.job_id
+                );
+                drop(job);
+                let _ =
+                    self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+                return Ok(());
+            }
+        }
+
+        let _ = self.workers_pool.mark_worker_with_state(&worker_id, WorkerState::Ready).await;
+
+        if !ack.success {
+            let reason = ack.error_message.unwrap_or_else(|| "(no detail)".to_string());
+            {
+                let mut job = job_entry.write().await;
+                job.change_state(JobState::Failed);
+            }
+            self.fire_job_event(
+                &job_id,
+                CoordinatorJobEvent::Failed(format!(
+                    "Recurser prove failed on worker {worker_id}: {reason}"
+                )),
+            )
+            .await;
+            return Ok(());
+        }
+
+        {
+            let mut job = job_entry.write().await;
+            job.change_state(JobState::Completed);
+        }
+        self.fire_job_event(
+            &job_id,
+            CoordinatorJobEvent::Completed(
+                crate::job_events::CoordinatorJobResult::AggregateProofs { proof_bytes: ack.proof },
+            ),
+        )
+        .await;
+        info!("[Recurser] Job {} completed successfully on worker {}", job_id, worker_id);
+        Ok(())
     }
 
     pub(crate) async fn handle_stream_recovery_complete(
@@ -196,7 +404,7 @@ impl Coordinator {
         if should_flip {
             let _ = self.workers_pool.mark_worker_with_state(worker_id, WorkerState::Ready).await;
             if was_pending {
-                info!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
+                debug!("[Recovery] Worker {} finished recovery, now Ready", worker_id);
             } else {
                 info!(
                     "[Recovery] Worker {} RecoveryComplete with no pending-recovery record but parked SettingUp; flipping Ready (cross-stream race)",
@@ -209,7 +417,7 @@ impl Coordinator {
                 worker_id, state
             );
         } else {
-            warn!(
+            debug!(
                 "[Recovery] Worker {} sent RecoveryComplete with no pending-recovery record (state={:?}); ignoring",
                 worker_id, state
             );
@@ -293,6 +501,17 @@ impl Coordinator {
                     let msg = CoordinatorMessageDto::SetupProgram(setup);
                     if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
                         warn!("[Setup] Failed to send additional setup to {}: {}", worker_id, e);
+                    }
+                }
+                // Rehydrate recurser setups so this worker can serve recurser-prove jobs.
+                for agg in self.read_all_recurser_setup_dtos().await {
+                    let recurser_id = agg.recurser_id.clone();
+                    let msg = CoordinatorMessageDto::SetupAggregationProgram(agg);
+                    if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+                        warn!(
+                            "[Recurser] Failed to resend recurser setup '{}' to {}: {}",
+                            recurser_id, worker_id, e
+                        );
                     }
                 }
                 (true, "Registration successful".to_string(), first_setup)
@@ -383,7 +602,7 @@ impl Coordinator {
                     // send buffer, so the worker never received it.
                     if let Some(job_id) = last_known_job_id.as_ref() {
                         if let Err(e) =
-                            self.replay_inflight_agg_task_if_aggregator(&worker_id, job_id).await
+                            self.replay_inflight_agg_task_if_recurser(&worker_id, job_id).await
                         {
                             warn!(
                                 "Failed to replay in-flight agg task for {worker_id} on reconnect: {e}"
@@ -402,6 +621,17 @@ impl Coordinator {
                 warn!(
                     "[Setup] Failed to send additional setup on reconnect to {}: {}",
                     worker_id, e
+                );
+            }
+        }
+        // Rehydrate recurser setups (symmetric with the registration path).
+        for agg in self.read_all_recurser_setup_dtos().await {
+            let recurser_id = agg.recurser_id.clone();
+            let msg = CoordinatorMessageDto::SetupAggregationProgram(agg);
+            if let Err(e) = self.workers_pool.send_message(&worker_id, msg).await {
+                warn!(
+                    "[Recurser] Failed to resend recurser setup '{}' on reconnect to {}: {}",
+                    recurser_id, worker_id, e
                 );
             }
         }
@@ -481,6 +711,7 @@ impl Coordinator {
         // will never ACK this job_id (a re-registered process gets a
         // fresh setup id from active_setups).
         self.prune_setup_pending_for_lost_worker(worker_id).await;
+        self.prune_recurser_setup_pending_for_lost_worker(worker_id).await;
         self.workers_pool.unregister_worker(worker_id).await
     }
 
@@ -497,6 +728,7 @@ impl Coordinator {
             // active_setups). Without this prune the in-flight setup
             // hangs forever — there is no setup-phase monitor timeout.
             self.prune_setup_pending_for_lost_worker(worker_id).await;
+            self.prune_recurser_setup_pending_for_lost_worker(worker_id).await;
         }
         Ok(())
     }
@@ -541,6 +773,7 @@ impl Coordinator {
             .await?;
         if disconnected {
             self.prune_setup_pending_for_lost_worker(worker_id).await;
+            self.prune_recurser_setup_pending_for_lost_worker(worker_id).await;
         }
         Ok(())
     }
@@ -602,7 +835,7 @@ impl Coordinator {
         job_id: &JobId,
     ) -> CoordinatorResult<()> {
         self.workers_pool.update_last_heartbeat(worker_id).await?;
-        info!("Worker {} acknowledged cancellation of job {}", worker_id, job_id);
+        debug!("Worker {} acknowledged cancellation of job {}", worker_id, job_id);
         Ok(())
     }
 
@@ -615,8 +848,10 @@ impl Coordinator {
         &self,
         message: ExecuteTaskResponseDto,
     ) -> CoordinatorResult<()> {
-        // Validate and update heartbeat
-        self.validate_and_update_heartbeat(&message).await?;
+        // Validate and update heartbeat. Hands back the job it resolved to
+        // prove existence and assignment, so the checks below reuse that handle
+        // instead of looking the job up again.
+        let job_entry = self.validate_and_update_heartbeat(&message).await?;
 
         // Late arrival for a resolved job (e.g. `spawn_blocking` finished
         // after `JobCancelled`). The worker is — or shortly will be — parked
@@ -627,11 +862,7 @@ impl Coordinator {
         // defensive-guard against stomping a `Computing(other_live_job, _)`
         // state (which should be unreachable under the parking discipline
         // but is cheap insurance).
-        let job_entry = {
-            let jobs_map = self.jobs.read().await;
-            jobs_map.get(&message.job_id).cloned()
-        };
-        if let Some(job_entry) = job_entry {
+        {
             let job = job_entry.read().await;
             if job.state().is_resolved() {
                 drop(job);
@@ -666,7 +897,7 @@ impl Coordinator {
                         .or_insert_with(Utc::now);
                 }
 
-                info!(
+                debug!(
                     "Late ExecuteTaskResponse from worker {} for resolved job {} \
                      (worker_in_recovery={}, state={:?}); awaiting WorkerRecoveryComplete",
                     message.worker_id, message.job_id, message.worker_in_recovery, current
@@ -680,12 +911,12 @@ impl Coordinator {
             return self.handle_task_failure(message).await;
         }
 
-        let Some(result_data) = message.result_data.as_ref() else {
-            return Err(CoordinatorError::InvalidRequest(format!(
-                "Worker {} reported success for job {} without result_data",
-                message.worker_id, message.job_id
-            )));
-        };
+        let result_data = Self::require_result_data(&message)?;
+
+        // No payload/phase binding here: this function holds no job lock at
+        // dispatch, so a phase read could go stale before the handler mutates.
+        // Each handler calls `validate_response_phase` under the write lock it
+        // acts with.
         match result_data {
             ExecuteTaskResponseResultDataDto::Execution(_) => {
                 self.handle_execution_completion(message).await
@@ -697,7 +928,7 @@ impl Coordinator {
                 self.handle_proofs_completion(message).await
             }
             ExecuteTaskResponseResultDataDto::FinalProof(_) => {
-                self.handle_aggregation_completion(message).await
+                self.handle_recurser_completion(message).await
             }
             ExecuteTaskResponseResultDataDto::WrapResult(_) => {
                 self.handle_wrap_completion(message).await
@@ -707,13 +938,16 @@ impl Coordinator {
 
     /// Validates incoming task response and updates worker heartbeat.
     ///
+    /// Returns the job the response is for, so callers can go straight to it
+    /// rather than repeating the lookup this already did.
+    ///
     /// # Parameters
     ///
     /// * `message` - The task response message from a worker
     async fn validate_and_update_heartbeat(
         &self,
         message: &ExecuteTaskResponseDto,
-    ) -> CoordinatorResult<()> {
+    ) -> CoordinatorResult<Arc<RwLock<Job>>> {
         self.workers_pool.update_last_heartbeat(&message.worker_id).await?;
 
         // Job must exist AND the worker must be assigned to it. Prevents a
@@ -739,6 +973,107 @@ impl Coordinator {
                 message.worker_id, message.job_id
             )));
         }
+        Ok(job_arc)
+    }
+
+    /// Binds a task response to the phase of the job as observed under the
+    /// caller's lock.
+    ///
+    /// Handlers call this immediately after taking their job write lock and
+    /// checking `is_resolved`, so the phase they validate against is the phase
+    /// they then mutate. Validating before dispatch instead would read the phase
+    /// through a lock already released — responses from other workers run
+    /// concurrently and can advance the job in between.
+    pub(super) fn validate_response_phase(
+        job: &Job,
+        message: &ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<()> {
+        Self::require_result_data(message).and_then(|result_data| {
+            Self::validate_payload_phase(
+                job.state(),
+                job.execution_only,
+                result_data,
+                &message.job_id,
+                &message.worker_id,
+            )
+        })
+    }
+
+    /// The `result_data` of a success response, or the error for its absence.
+    fn require_result_data(
+        message: &ExecuteTaskResponseDto,
+    ) -> CoordinatorResult<&ExecuteTaskResponseResultDataDto> {
+        message.result_data.as_ref().ok_or_else(|| {
+            CoordinatorError::InvalidRequest(format!(
+                "Worker {} reported success for job {} without result_data",
+                message.worker_id, message.job_id
+            ))
+        })
+    }
+
+    /// Rejects a task response whose payload variant does not belong to the
+    /// job's current phase.
+    ///
+    /// `validate_and_update_heartbeat` only proves the sender is assigned to the
+    /// job; the response is then routed on the payload variant alone. Since
+    /// workers are untrusted, that lets any assigned worker act out of turn —
+    /// most damagingly by completing a job with a `FinalProof` while it is still
+    /// gathering contributions.
+    ///
+    /// Two deliberate asymmetries in the mapping:
+    ///
+    /// * `Proofs` is accepted in `Recurse` as well as `Prove`.
+    ///   `resolve_recurser_assignment` flips the job to `Recurse` as soon as the
+    ///   *first* worker finishes Phase 2, so the remaining workers legitimately
+    ///   report in while the job is already recursing.
+    /// * Execution-only jobs run in `Running(Contributions)` — `JobPhase::Execution`
+    ///   exists only as a `phase_timings` key and is never a job state — so the
+    ///   two Phase-1 variants are told apart by `execution_only`, not by phase.
+    pub(super) fn validate_payload_phase(
+        state: &JobState,
+        execution_only: bool,
+        result_data: &ExecuteTaskResponseResultDataDto,
+        job_id: &JobId,
+        worker_id: &WorkerId,
+    ) -> CoordinatorResult<()> {
+        use ExecuteTaskResponseResultDataDto as Payload;
+
+        let JobState::Running(phase) = state else {
+            let msg = format!(
+                "Worker {worker_id} sent a task response for job {job_id} in state {state}; \
+                 expected a running job"
+            );
+            warn!("{msg}");
+            return Err(CoordinatorError::InvalidRequest(msg));
+        };
+
+        let (variant, accepted, expected) = match result_data {
+            Payload::Execution(_) => (
+                "Execution",
+                execution_only && *phase == JobPhase::Contributions,
+                "Contributions on an execution-only job",
+            ),
+            Payload::Challenges(_) => (
+                "Challenges",
+                !execution_only && *phase == JobPhase::Contributions,
+                "Contributions",
+            ),
+            Payload::Proofs(_) => {
+                ("Proofs", matches!(phase, JobPhase::Prove | JobPhase::Recurse), "Prove or Recurse")
+            }
+            Payload::FinalProof(_) => ("FinalProof", *phase == JobPhase::Recurse, "Recurse"),
+            Payload::WrapResult(_) => ("WrapResult", *phase == JobPhase::Recurse, "Recurse"),
+        };
+
+        if !accepted {
+            let msg = format!(
+                "Worker {worker_id} sent {variant} for job {job_id} in phase {phase:?} \
+                 (execution_only={execution_only}); expected {expected}"
+            );
+            warn!("{msg}");
+            return Err(CoordinatorError::InvalidRequest(msg));
+        }
+
         Ok(())
     }
 

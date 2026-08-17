@@ -12,26 +12,21 @@ on:
         required: false
         type: string
         default: ""
-      include_snark:
-        description: "Include SNARK artifacts"
-        required: false
-        type: boolean
-        default: true
-      skip_macos:
-        description: "Skip macOS dylib"
-        required: false
-        type: boolean
-        default: false
       force_upload:
         description: "Force setup upload"
         required: false
         type: boolean
         default: false
-      ptau_url:
-        description: "Powers-of-tau URL for SNARK setup"
+      include_dylib:
+        description: "Include macOS dylib files"
         required: false
-        type: string
-        default: "https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau"
+        type: boolean
+        default: false
+      include_snark:
+        description: "Include SNARK artifacts"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: upload-setup-${{ github.ref }}
@@ -43,22 +38,20 @@ permissions:
 
 env:
   BUCKET: gs://zisk-setup
+  TEST_CONTAINER: zisk-gha-upload-setup
 
 jobs:
-  upload-setup:
-    name: Upload setup artifacts to bucket
+  build-setup:
+    name: Build setup
     runs-on: gpu-hosted
-    timeout-minutes: 240
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
-    env:
-      TEST_CONTAINER: zisk-gha-upload-build
     outputs:
-      is_new: ${{ steps.hash.outputs.is_new }}
-      local_hash: ${{ steps.hash.outputs.local_hash }}
       version: ${{ steps.resolve.outputs.version }}
-      stage: ${{ steps.stage.outputs.stage }}
+      include_dylib: ${{ steps.resolve.outputs.include_dylib }}
+      include_snark: ${{ steps.resolve.outputs.include_snark }}
     steps:
       - name: Fix workspace permissions
         run: |
@@ -68,18 +61,23 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          # Workload Identity Federation (keyless). Or swap to:
-          #   credentials_json: ${{ secrets.GCP_SA_KEY }}
-          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Prepare cache-setup directory
+        run: |
+          # USE_CACHE_SETUP writes the artifact cache to /home/ziskuser/output
+          # (bind-mounted from /home/gha/cache-setup); ziskuser (UID 1000) owns it.
+          sudo mkdir -p /home/gha/cache-setup
+          sudo chown -R 1000:1000 /home/gha/cache-setup
+          sudo chmod -R u+rwX /home/gha/cache-setup
 
-      - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+      - name: Give workspace ownership to container user
+        run: |
+          # The container runs as ziskuser (UID 1000) and writes the build output
+          # into the bind-mounted workspace. No GCP auth here: this job uploads
+          # nothing to the bucket (the bucket upload happens in upload-setup).
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
 
-      - name: Resolve version
+      - name: Resolve setup version
         id: resolve
         run: |
           VERSION="${{ inputs.version }}"
@@ -99,83 +97,179 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved setup version: $VERSION"
 
-      - name: Start build setup container
-        run: |
-          docker rm -f "${TEST_CONTAINER}" || true
-          docker run -d \
-            --name "${TEST_CONTAINER}" \
-            --privileged \
-            --gpus all \
-            --shm-size=48g \
-            -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \
-            -v /home/gha/cache-setup:/cache:rw \
-            -v /home/gha/ptau:/ptau:rw \
-            -e ZISK_GHA=1 \
-            -e ZISK_REPO_DIR=/workspace/zisk \
-            -e TERM=xterm \
-            ziskvm/zisk-runner-gpu:latest \
-            sleep infinity
-          sleep 3
-          docker ps --format '{{.Names}}' | grep -q "^${TEST_CONTAINER}$" || { docker logs "${TEST_CONTAINER}" || true; exit 1; }
+          # macOS dylibs: always on a push to develop; honor the input on workflow_dispatch.
+          INCLUDE_DYLIB="${{ ((github.event_name == 'push' && github.ref_name == 'develop') || inputs.include_dylib) && '1' || '0' }}"
+          echo "include_dylib=$INCLUDE_DYLIB" >> "$GITHUB_OUTPUT"
+          echo "include_dylib: $INCLUDE_DYLIB"
+
+          # SNARK setup: always on a push to develop; honor the input otherwise.
+          INCLUDE_SNARK="${{ ((github.event_name == 'push' && github.ref_name == 'develop') || inputs.include_snark) && '1' || '0' }}"
+          echo "include_snark=$INCLUDE_SNARK" >> "$GITHUB_OUTPUT"
+          echo "include_snark: $INCLUDE_SNARK"
+
+      - name: Start upload setup container
+        run: .github/scripts/start_test_container.sh
 
       - name: Build ZisK
         run: |
-          .github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
-            cd /workspace/zisk/tools/test-env && ./build_zisk.sh
-          '
-
-      - name: Check setup hash
-        id: hash
-        run: |
-          # Compute the hash in-container (needs PROOFMAN_DIR + frops), then run
-          # the gate on the host where gcloud is authenticated.
-          # --print-hash emits ONLY the 64-hex hash on stdout (preamble + frops
-          # go to stderr). tail -n1 is a belt-and-suspenders guard.
-          LOCAL_HASH="$(.github/scripts/docker_exec.sh -u ziskuser -- bash -lc '
-            cd /workspace/zisk && ./tools/setup/setup_build.sh --print-hash 2>/dev/null
-          ' | tail -n 1 | tr -d '[:space:]')"
-          [ -n "$LOCAL_HASH" ] || { echo "failed to compute local hash"; exit 1; }
-          echo "local_hash=$LOCAL_HASH" >> "$GITHUB_OUTPUT"
-
-          FORCE_FLAG=""
-          [ "${{ inputs.force_upload }}" = "true" ] && FORCE_FLAG="--force"
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          RESULT="$(LOCAL_HASH="$LOCAL_HASH" ./fetch_setup.sh --check input \
-            --version "${{ steps.resolve.outputs.version }}" $FORCE_FLAG)"
-          cd "$GITHUB_WORKSPACE"
-          echo "Gate: $RESULT (hash $LOCAL_HASH)"
-          if [ "$RESULT" = "new" ]; then
-            echo "is_new=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_new=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Setup unchanged (matches $BUCKET/zisk-provingkey-${{ steps.resolve.outputs.version }}.hash) — nothing to publish."
-          fi
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zisk.sh
+            '
 
       - name: Build setup
-        if: needs.hash.outputs.is_new == 'true'
+        env:
+          # include_snark (resolved) -> INCLUDE_SNARK (also build the snark setup).
+          INCLUDE_SNARK: ${{ steps.resolve.outputs.include_snark }}
+          # include_dylib (resolved) -> DYLIB_INPUT_FILES (stage the macOS dylib inputs).
+          DYLIB_INPUT_FILES: ${{ steps.resolve.outputs.include_dylib }}
+          # Cache the (~18 GB) powers-of-tau in the persistent, writable output mount
+          PTAU_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e USE_CACHE_SETUP="1" \
+            -e INCLUDE_SNARK="$INCLUDE_SNARK" \
+            -e PTAU_PATH="$PTAU_PATH" \
+            -e DYLIB_INPUT_FILES="$DYLIB_INPUT_FILES" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./build_setup.sh
             '
 
-      - name: Package and upload setup
-        if: needs.hash.outputs.is_new == 'true'
+      - name: Upload dylib input files artifact
+        if: ${{ steps.resolve.outputs.include_dylib == '1' }}
+        uses: actions/upload-artifact@v4
+        with:
+          # build/dylib_input is produced by build_setup.sh (DYLIB_INPUT_FILES=1):
+          # it contains the input files needed to compile the macOS dylib files.
+          name: dylib-input-${{ steps.resolve.outputs.version }}
+          path: build/dylib_input/
+          if-no-files-found: error
+          retention-days: 1
+
+  macos-dylibs:
+    name: Build macOS dylibs
+    needs: build-setup
+    if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
+    runs-on: macos-14
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash
+    env:
+      ZISK_GHA: "1"
+      ZISK_REPO_DIR: ${{ github.workspace }}
+      TERM: xterm
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
         run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./install_deps.sh
+
+      - name: Build ZisK
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_zisk.sh
+
+      - name: Download dylib input files artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dylib-input-${{ needs.build-setup.outputs.version }}
+          path: build
+
+      - name: Build dylib files
+        run: |
+          cd "$GITHUB_WORKSPACE/tools/test-env"
+          ./build_dylib.sh
+
+      - name: Upload dylib files artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dylibs-${{ needs.build-setup.outputs.version }}
+          path: build/dylib
+          if-no-files-found: error
+          retention-days: 1
+
+  upload-setup:
+    name: Upload setup artifacts to bucket
+    runs-on: gpu-hosted
+    timeout-minutes: 60
+    needs: [build-setup, macos-dylibs]
+    # Run only if build-setup succeeded and macos-dylibs succeeded or was skipped
+    # (it's skipped when include_dylib is false). always() is needed so a skipped
+    # macos-dylibs doesn't skip this job too.
+    if: ${{ always() && needs.build-setup.result == 'success' && (needs.macos-dylibs.result == 'success' || needs.macos-dylibs.result == 'skipped') }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Fix workspace permissions
+        run: |
+          # Reclaim the workspace (left owned by ziskuser/1000 by build-setup) so
+          # the runner user can write the downloaded artifact and the GCP creds.
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Download dylib artifact
+        if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: dylibs-${{ needs.build-setup.outputs.version }}
+          path: build/dylib
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          # Workload Identity Federation (keyless). Writes a credentials file into
+          # GITHUB_WORKSPACE and exports GOOGLE_GHA_CREDS_PATH; gcloud runs inside
+          # the build-setup container (still up — it has no stop step).
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Give workspace ownership to container user
+        run: |
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+
+          # Translate the host credentials-file path to its path inside the
+          # container (GITHUB_WORKSPACE is bind-mounted at /workspace/zisk) and
+          # expose it to the gcloud-using container step below.
+          rel="${GOOGLE_GHA_CREDS_PATH#"$GITHUB_WORKSPACE"/}"
+          [ "$rel" != "$GOOGLE_GHA_CREDS_PATH" ] || {
+            echo "credentials file '$GOOGLE_GHA_CREDS_PATH' is not under GITHUB_WORKSPACE" >&2; exit 1; }
+          echo "CONTAINER_GCP_CREDS=/workspace/zisk/$rel" >> "$GITHUB_ENV"
+
+      - name: Upload setup
+        env:
+          # force_upload input -> FORCE_UPLOAD (upload even if the bucket .hash matches).
+          FORCE_UPLOAD: ${{ inputs.force_upload && '1' || '0' }}
+          # include_dylib (resolved) -> merge the macOS dylibs into provingKey on upload.
+          INCLUDE_DYLIB: ${{ needs.build-setup.outputs.include_dylib }}
+        run: |
+          # Only merge the macOS dylibs when include_dylib is set. SETUP_DYLIB_DIR is
+          # the container path (the workspace is bind-mounted at /workspace/zisk).
+          DYLIB_ARGS=()
+          if [ "$INCLUDE_DYLIB" = "1" ]; then
+            DYLIB_ARGS=(-e SETUP_ADD_DYLIBS="1" -e SETUP_DYLIB_DIR="/workspace/zisk/build/dylib")
+          fi
           .github/scripts/docker_exec.sh \
             -u ziskuser \
-            -e USE_CACHE_SETUP="1" \
-            -e PACKAGE_SETUP_VERSION="${{ steps.resolve.outputs.version }}" \
-            -e PACKAGE_SETUP_UPLOAD=1 \
+            -e SETUP_VERSION="${{ needs.build-setup.outputs.version }}" \
+            -e FORCE_UPLOAD="$FORCE_UPLOAD" \
+            "${DYLIB_ARGS[@]}" \
+            -e CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE="$CONTAINER_GCP_CREDS" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
-              ./package_setup.sh
+              ./upload_setup.sh
             '
 
-      - name: Stop build setup container
+      - name: Stop upload setup container
         if: always()
         run: |
           docker rm -f "${TEST_CONTAINER}" || true

@@ -1,4 +1,4 @@
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 use rayon::prelude::*;
 #[cfg(feature = "save_mem_counters")]
 use std::collections::HashMap;
@@ -12,16 +12,16 @@ use zisk_pil::{
 };
 
 #[cfg(any(feature = "save_mem_plans", feature = "save_mem_bus_data"))]
-use mem_common::save_plans;
+use zisk_sm_mem_common::save_plans;
 
 use crate::{
     MemModulePlanner, MemModulePlannerConfig, INPUT_DATA_W_ADDR_INIT, ROM_DATA_W_ADDR_INIT,
 };
 
-use mem_common::{MemAlignPlanner, MemCounters, RAM_W_ADDR_INIT};
+use zisk_sm_mem_common::{MemAlignPlanner, MemCounters, RAM_W_ADDR_INIT};
 
 #[cfg(feature = "save_mem_counters")]
-use mem_common::MemAlignCounters;
+use zisk_sm_mem_common::MemAlignCounters;
 
 #[cfg(feature = "save_mem_counters")]
 #[derive(Clone)]

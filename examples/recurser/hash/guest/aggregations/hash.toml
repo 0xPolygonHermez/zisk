@@ -1,0 +1,5 @@
+programs = ["recurser_hash_guest"]
+aggregate-publics = "circuits/aggregate.circom"
+normalize-publics = "circuits/normalize.circom"
+n-publics-agg = 4
+free-inputs = 12

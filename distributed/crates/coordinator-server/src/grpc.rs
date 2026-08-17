@@ -1,6 +1,6 @@
 //! gRPC transport adapter.
 //!
-//! [`GrpcAdapter`] implements the tonic-generated [`ZiskCoordinatorApi`] trait.
+//! [`GrpcAdapter`] implements the tonic-generated `ZiskCoordinatorApi` trait.
 //! Its only responsibilities are proto ↔ domain conversion, input validation
 //! at the wire boundary, and call-level observability. All business logic lives
 //! in [`crate::handler::CoordinatorHandler`].
@@ -18,21 +18,62 @@ use uuid::Uuid;
 use crate::backend::BackendService;
 use crate::errors::ApiError;
 use crate::handler::CoordinatorHandler;
+use crate::proto::zisk_coordinator_api_ext_server::ZiskCoordinatorApiExt;
 use crate::proto::zisk_coordinator_api_server::ZiskCoordinatorApi;
 use crate::proto::*;
-use zisk_coordinator_api::dto::RegisterGuestProgramRequestDto;
+use zisk_coordinator_api::dto::{
+    RegisterAggregationProgramRequestDto, RegisterGuestProgramRequestDto,
+};
 
 const WAIT_TIMEOUT_DEFAULT_SECS: u32 = 5;
 const WAIT_TIMEOUT_MIN_SECS: u32 = 1;
 const WAIT_TIMEOUT_MAX_SECS: u32 = 3600;
 
+// Bounds on caller-supplied job metadata. Messages may be up to
+// `MAX_MESSAGE_SIZE` (128 MB), so metadata is capped here to keep a client from
+// pushing large blobs into backend storage and per-worker clones. These are
+// generous for label-style metadata and can be raised if a use case needs it.
+const METADATA_MAX_ENTRIES: usize = 32;
+const METADATA_MAX_KEY_BYTES: usize = 128;
+const METADATA_MAX_VALUE_BYTES: usize = 1024;
+
+/// Reject oversized caller-supplied metadata early with `InvalidArgument`,
+/// before it reaches backend storage or worker dispatch.
+fn validate_metadata(metadata: &std::collections::HashMap<String, String>) -> Result<(), Status> {
+    if metadata.len() > METADATA_MAX_ENTRIES {
+        return Err(Status::invalid_argument(format!(
+            "metadata has too many entries ({} > {METADATA_MAX_ENTRIES})",
+            metadata.len()
+        )));
+    }
+    for (k, v) in metadata {
+        if k.len() > METADATA_MAX_KEY_BYTES {
+            return Err(Status::invalid_argument(format!(
+                "metadata key too long ({} > {METADATA_MAX_KEY_BYTES} bytes)",
+                k.len()
+            )));
+        }
+        if v.len() > METADATA_MAX_VALUE_BYTES {
+            return Err(Status::invalid_argument(format!(
+                "metadata value for key {k:?} too long ({} > {METADATA_MAX_VALUE_BYTES} bytes)",
+                v.len()
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Server-streaming type for the `WatchJob` RPC.
 pub type WatchJobStream = Pin<Box<dyn Stream<Item = Result<JobEvent, Status>> + Send + 'static>>;
 
+/// gRPC adapter: implements the `ZiskCoordinatorApi` service by converting
+/// proto messages to/from domain types and delegating to a [`CoordinatorHandler`].
 pub struct GrpcAdapter<B: BackendService> {
     handler: CoordinatorHandler<B>,
 }
 
 impl<B: BackendService> GrpcAdapter<B> {
+    /// Wrap a handler in the gRPC adapter.
     pub fn new(handler: CoordinatorHandler<B>) -> Self {
         Self { handler }
     }
@@ -101,6 +142,26 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
         };
 
         Self::log_call("RegisterGuestProgram", start, result.as_ref().map(|_| ()));
+        result
+    }
+
+    #[instrument(level = "debug", skip(self, request))]
+    async fn register_aggregation_program(
+        &self,
+        request: Request<RegisterAggregationProgramRequest>,
+    ) -> Result<Response<RegisterAggregationProgramResponse>, Status> {
+        let start = Instant::now();
+        let req: RegisterAggregationProgramRequestDto =
+            request.into_inner().try_into().map_err(|e: String| Status::invalid_argument(e))?;
+
+        let result = self
+            .handler
+            .register_aggregation_program(req)
+            .await
+            .map(|dto| Response::new(dto.into()))
+            .map_err(Status::from);
+
+        Self::log_call("RegisterAggregationProgram", start, result.as_ref().map(|_| ()));
         result
     }
 
@@ -283,6 +344,40 @@ impl<B: BackendService> ZiskCoordinatorApi for GrpcAdapter<B> {
             .map_err(Status::from);
 
         Self::log_call("CancelJob", start, result.as_ref().map(|_| ()));
+        result
+    }
+}
+
+#[tonic::async_trait]
+impl<B: BackendService> ZiskCoordinatorApiExt for GrpcAdapter<B> {
+    #[instrument(level = "debug", skip(self, request))]
+    async fn job_request_ext(
+        &self,
+        request: Request<JobRequestExtMessage>,
+    ) -> Result<Response<JobResponse>, Status> {
+        let start = Instant::now();
+        let msg = request.into_inner();
+        // Proto `map<string, string>` (a HashMap on the wire) into the domain's
+        // ordered map. An empty map means "no metadata" → route through the base path.
+        validate_metadata(&msg.metadata)?;
+        let metadata: std::collections::BTreeMap<String, String> =
+            msg.metadata.into_iter().collect();
+        let kind = msg
+            .job_kind
+            .ok_or_else(|| Status::invalid_argument("job_kind must be set"))?
+            .try_into()
+            .map_err(|e: String| Status::invalid_argument(e))?;
+
+        let submitted = if metadata.is_empty() {
+            self.handler.submit_job(kind).await
+        } else {
+            self.handler.submit_job_ext(kind, metadata).await
+        };
+        let result = submitted
+            .map(|r| Response::new(JobResponse { job_id: r.job_id.to_string() }))
+            .map_err(Status::from);
+
+        Self::log_call("JobRequestExt", start, result.as_ref().map(|_| ()));
         result
     }
 }

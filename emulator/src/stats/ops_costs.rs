@@ -5,13 +5,13 @@ use std::{
 
 use zisk_core::zisk_ops::ZiskOp;
 
-struct OpIndirectTable {
-    base_count: usize,
+pub(super) struct OpIndirectTable {
+    pub(super) base_count: usize,
     precompiled_count: usize,
-    table: [Option<(usize, u64)>; 256],
+    pub(super) table: [Option<(usize, u64)>; 256],
 }
 
-static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
+pub(super) static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
     let mut table: [Option<(usize, u64)>; 256] = [None; 256];
     let mut base_count = 0;
     let mut precompiled_count = 0;
@@ -33,7 +33,6 @@ static TABLE: LazyLock<OpIndirectTable> = LazyLock::new(|| {
     }
     OpIndirectTable { base_count, precompiled_count, table }
 });
-
 #[derive(Debug, Clone)]
 pub struct OpsCosts {
     // for count and cost for operation or group of operation only store the count, the cost is calculated multiplying
@@ -66,18 +65,63 @@ impl OpsCosts {
             precompiled_count: 0,
         }
     }
+
+    pub fn get_op_index(op_code: u8) -> Option<usize> {
+        TABLE.table[op_code as usize].map(|(index, _)| index)
+    }
+    pub fn get_base_op_index(op_code: u8) -> Option<usize> {
+        if let Some((index, _)) = TABLE.table[op_code as usize] {
+            if index >= TABLE.base_count {
+                None
+            } else {
+                Some(index)
+            }
+        } else {
+            None
+        }
+    }
+    pub fn get_precompiled_op_index(op_code: u8) -> Option<usize> {
+        if let Some((index, _)) = TABLE.table[op_code as usize] {
+            if index < TABLE.base_count {
+                None
+            } else {
+                Some(index)
+            }
+        } else {
+            None
+        }
+    }
+
     pub fn add_fixed_cost_op(&mut self, op_code: u8) {
-        if let Some((index, fixed_cost)) = TABLE.table[op_code as usize] {
-            if fixed_cost > 0 {
-                if !self.is_compact() {
-                    self.count_and_cost[index].0 += 1;
-                    self.count_and_cost[index].1 += fixed_cost;
-                }
+        match TABLE.table[op_code as usize] {
+            Some((_, fixed_cost)) => self.add_cost_op(op_code, fixed_cost),
+            None => panic!("Invalid op code: {}", op_code),
+        }
+    }
+
+    /// Accounts one execution of `op_code` charging an explicit `cost` instead of the opcode's
+    /// tabulated fixed cost. Used for cheaper opcode variants (e.g. an add_hi ADD charged at
+    /// `BINARY_ADD_HI_COST`), so the per-opcode and aggregate costs reflect the reduced cost.
+    pub fn add_cost_op(&mut self, op_code: u8, cost: u64) {
+        if let Some((index, _)) = TABLE.table[op_code as usize] {
+            // Some opcodes have a cost of 0 but must still be counted, so that the aggregate counts
+            // (total_count()) stay consistent with the per-opcode count_and_cost table below and
+            // they remain visible in the report: PubOut and the free-input calls (fcall*).
+            let counted = cost > 0
+                || op_code == ZiskOp::PubOut.code()
+                || op_code == ZiskOp::Fcall.code()
+                || op_code == ZiskOp::FcallGet.code()
+                || op_code == ZiskOp::FcallParam.code();
+            if counted && !self.is_compact() {
+                self.count_and_cost[index].0 += 1;
+                self.count_and_cost[index].1 += cost;
+            }
+            if counted {
                 if index >= TABLE.base_count {
-                    self.precompiled_cost += fixed_cost;
+                    self.precompiled_cost += cost;
                     self.precompiled_count += 1;
                 } else {
-                    self.base_cost += fixed_cost;
+                    self.base_cost += cost;
                     self.base_count += 1;
                 }
             }
@@ -169,7 +213,7 @@ impl OpsCosts {
     ///
     /// # Returns
     /// A vector of opcodes (u8) sorted by cost in descending order, limited to k elements
-    pub fn top_cost_opcodes(&self, k: usize) -> Vec<u8> {
+    pub fn top_cost_opcodes(&self, k: usize, base: bool, precompiled: bool) -> Vec<u8> {
         if self.is_compact() || k == 0 {
             return Vec::new();
         }
@@ -184,6 +228,9 @@ impl OpsCosts {
             if let Some((index, _)) = TABLE.table[op_code as usize] {
                 if self.is_frops() && index >= TABLE.base_count {
                     continue; // Skip non-frops if this is a frops cost
+                }
+                if !precompiled && index >= TABLE.base_count || !base && index < TABLE.base_count {
+                    continue;
                 }
                 let cost = self.count_and_cost[index].1;
                 if cost > 0 {
@@ -208,7 +255,7 @@ impl OpsCosts {
     ///
     /// # Returns
     /// A vector of opcodes (u8) sorted by count in descending order, limited to k elements
-    pub fn top_count_opcodes(&self, k: usize) -> Vec<u8> {
+    pub fn top_count_opcodes(&self, k: usize, base: bool, precompiled: bool) -> Vec<u8> {
         if self.is_compact() || k == 0 {
             return Vec::new();
         }
@@ -223,6 +270,9 @@ impl OpsCosts {
             if let Some((index, _)) = TABLE.table[op_code as usize] {
                 if self.is_frops() && index >= TABLE.base_count {
                     continue; // Skip non-frops if this is a frops cost
+                }
+                if !precompiled && index >= TABLE.base_count || !base && index < TABLE.base_count {
+                    continue;
                 }
                 let count = self.count_and_cost[index].0;
                 if count > 0 {

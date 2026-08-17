@@ -27,8 +27,8 @@ panic = "abort"
 [workspace.dependencies]
 ziskos = { path = "../../ziskos/entrypoint" }
 zisk-sdk = { path = "../../sdk" }
-zkvm-interface = { path = "../../zkvm-interface" }
-precompiles-helpers = { path = "../../precompiles/helpers" }
+zisk-zkvm-interface = { path = "../../zkvm-interface" }
+zisk-precomp-helpers = { path = "../../precompiles/helpers" }
 
 rand = "0.8.1"
 ruint = { version = "1", default-features = false }

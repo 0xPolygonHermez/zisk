@@ -1,7 +1,7 @@
 //! ROM pre-calculate hook on the **Rust** backend.
 
-use fields::PrimeField64;
-use sm_rom::RomInstance;
+use proofman_fields::PrimeField64;
+use zisk_sm_rom::RomInstance;
 
 use super::{SecnInstanceMap, SecnInstanceMapRef};
 use crate::error::{ExecutorError, ExecutorResult};
@@ -38,10 +38,10 @@ pub(crate) fn pre_calculate<'a, F: PrimeField64>(
 mod tests {
     use super::*;
     use crate::ports::fakes::FakeProofRegistry;
-    use asm_runner::{AsmRHData, AsmRunnerRH};
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use std::collections::HashMap;
     use std::sync::{atomic::AtomicU64, Arc};
+    use zisk_asm_runner::{AsmRHData, AsmRunnerRH};
     use zisk_common::{CheckPoint, Instance, InstanceCtx, InstanceType, Plan};
     use zisk_core::ZiskRom;
 

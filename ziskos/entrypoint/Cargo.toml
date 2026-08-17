@@ -1,22 +1,25 @@
 [package]
 name = "ziskos"
+description = "Guest runtime and entrypoint for programs targeting the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [lib]
 crate-type = ["rlib"]
 
 [dependencies]
-zkvm-interface = { workspace = true }
+zisk-zkvm-interface = { workspace = true }
 
-getrandom = { version = "0.2", features = ["custom"] }
-cfg-if = "1.0"
+getrandom = { workspace = true, features = ["custom"] }
+cfg-if = { workspace = true }
 ripemd = { version = "0.1.3", default-features = false }
-zisk-definitions = { path = "../../definitions" }
+zisk-definitions = { workspace = true }
 critical-section = { version = "1.2.0", optional = true }
 embedded-alloc = { version = "0.6.0", optional = true }
 talc = { version = "4.4.3", default-features = false, features = [
@@ -33,15 +36,14 @@ bincode = { version = "2", default-features = false, features = [
   "serde",
 ] }
 
-
 [target.'cfg(not(any(all(target_os = "zkvm", target_vendor = "zisk"), all(target_arch = "riscv64", target_os = "none"))))'.dependencies]
-lib-c = { workspace = true }
+zisk-lib-c = { workspace = true }
 num-bigint = { workspace = true }
 num-integer = { workspace = true }
 num-traits = { workspace = true }
-precompiles-helpers = { workspace = true }
-lazy_static = "1.5.0"
-libc = "0.2"
+zisk-precomp-helpers = { workspace = true }
+lazy_static = { workspace = true }
+libc = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 aurora-engine-modexp = { version = "1.2", default-features = false }
@@ -51,24 +53,21 @@ bincode = { workspace = true }
 ark-bn254 = { workspace = true }
 ark-ff = { workspace = true }
 sha2 = { workspace = true }
-tiny-keccak = { version = "2.0.0", features = ["keccak"] }
-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", tag = "v1.0.0-alpha", features = [
-  "verify",
-] }
+tiny-keccak = { workspace = true, features = ["keccak"] }
+proofman-fields = { workspace = true, features = ["verify"] }
 blst = "0.3.16"
 secp256k1 = { version = "0.31", features = ["recovery"] }
 
 [target.'cfg(all(not(any(all(target_os = "zkvm", target_vendor = "zisk"), all(target_arch = "riscv64", target_os = "none"))), any(zisk_hints, zisk_hints_debug)))'.dependencies]
 bytes = { version = "1.11.0", optional = true }
 once_cell = { version = "1.21.3", optional = true }
-paste = { version = "1.0", optional = true }
-zisk-stream = { path = "../../stream", optional = true }
+paste = { workspace = true, optional = true }
+zisk-stream = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 
 [target.'cfg(all(not(any(all(target_os = "zkvm", target_vendor = "zisk"), all(target_arch = "riscv64", target_os = "none"))), zisk_hints_metrics))'.dependencies]
 ctor = { version = "0.2", optional = true }
-
 
 [features]
 default = ["user-hints", "inputcpy"]
@@ -82,6 +81,28 @@ user-hints = [
   "dep:tokio",
 ]
 inputcpy = []
+# Enabled by `ziskos-staticlib` (libziskos.a). Signals that ziskos is being
+# compiled into a static archive linked against a host application (C or Rust).
+# Surfaced as the `zisk_staticlib` cfg by build.rs.
+#
+# It carries NO allocator dependency, so the default self-contained bump
+# allocator is used (`alloc/bump.rs`): its `#[global_allocator]` shim
+# (`__rust_alloc` & friends) routes to `inline_bump_alloc_aligned`, keeping the
+# set of allocator symbols closed and known so the staticlib post-build step can
+# localize them (STB_LOCAL) and isolate ziskos's heap from the host allocator.
+#
+# The `zisk_staticlib` cfg additionally switches the bump heap region (see
+# `alloc/alloc.rs`) from the linker-provided `_heap_*` symbols — which the
+# host's linker script may not define — to a static buffer compiled into the
+# archive, so ziskos owns a private heap fully isolated from the host's memory.
+staticlib = []
+# Track the peak bytes used by the staticlib's isolated bump allocator. Enabled
+# from `ziskos-staticlib` via its own `alloc-stats` feature. The `wrap_export!`
+# wrappers call `update_max_used_sys_alloc` after each call, and `zkvm_deinit`
+# prints the peak. Only meaningful together with `staticlib`, so it enables it
+# (the stats code is gated on the `zisk_staticlib` cfg and would be a silent
+# no-op otherwise).
+alloc-stats = ["staticlib"]
 zisk-custom-alloc = []
 zisk-embedded-alloc = ["zisk-embedded-dlmalloc-alloc"]
 zisk-embedded-dlmalloc-alloc = [
@@ -101,6 +122,7 @@ serial_test = { workspace = true }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(zisk_staticlib)',
   'cfg(zisk_hints)',
   'cfg(zisk_hints_metrics)',
   'cfg(zisk_hints_debug)',

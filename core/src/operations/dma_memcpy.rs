@@ -1,4 +1,4 @@
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 
 use crate::{
     zisk_ops::OpStats, EmulationMode, InstContext, DMA_64_ALIGNED_MEMCPY_COST,
@@ -171,8 +171,8 @@ fn ops_dma_memcpys(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
 
         // same alignment
         if addr_a & 0x07 == addr_b & 0x07 {
-            stats.mem_align_read(first_loop_src64, loop_count);
-            stats.mem_align_write(first_loop_dst64, loop_count);
+            stats.mem_align_read(first_loop_src64 * 8, loop_count);
+            stats.mem_align_write(first_loop_dst64 * 8, loop_count);
             // add information about other machines to demostrate operation
             stats.set_variable_cost(
                 variable_cost
@@ -180,8 +180,8 @@ fn ops_dma_memcpys(ctx: &InstContext, stats: &mut dyn OpStats, extended: bool) {
                         * DMA_64_ALIGNED_MEMCPY_COST,
             );
         } else {
-            stats.mem_align_read(first_loop_src64, loop_count + 1);
-            stats.mem_align_write(first_loop_dst64, loop_count);
+            stats.mem_align_read(first_loop_src64 * 8, loop_count + 1);
+            stats.mem_align_write(first_loop_dst64 * 8, loop_count);
             // add information about other machines to demostrate operation
             stats.set_variable_cost(
                 variable_cost + (loop_count as u64 + 1) * DMA_UNALIGNED_MEMCPY_COST,

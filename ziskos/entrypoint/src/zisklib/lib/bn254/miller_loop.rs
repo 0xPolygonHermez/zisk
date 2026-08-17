@@ -68,13 +68,16 @@ pub fn miller_loop_bn254(
         );
 
         // Check that the line is correct
-        assert!(is_tangent_twist_bn254(
-            &r,
-            &lambda,
-            &mu,
-            #[cfg(feature = "hints")]
-            hints,
-        ));
+        assert!(
+            is_tangent_twist_bn254(
+                &r,
+                &lambda,
+                &mu,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            "Line is not tangent to the curve at r"
+        );
 
         // Compute f = f² · line_{twist(r),twist(r)}(p)
         f = square_fp12_bn254(
@@ -126,14 +129,17 @@ pub fn miller_loop_bn254(
             );
 
             // Check that the line is correct
-            assert!(is_line_twist_bn254(
-                &r,
-                q_prime,
-                &lambda,
-                &mu,
-                #[cfg(feature = "hints")]
-                hints,
-            ));
+            assert!(
+                is_line_twist_bn254(
+                    &r,
+                    q_prime,
+                    &lambda,
+                    &mu,
+                    #[cfg(feature = "hints")]
+                    hints,
+                ),
+                "Line does not pass through r and q'"
+            );
 
             // Compute f = f · line_{twist(r),twist(q')}
             let l = line_eval_twist_bn254(
@@ -179,14 +185,17 @@ pub fn miller_loop_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    assert!(is_line_twist_bn254(
-        &r,
-        &q_frob,
-        &lambda,
-        &mu,
-        #[cfg(feature = "hints")]
-        hints,
-    ));
+    assert!(
+        is_line_twist_bn254(
+            &r,
+            &q_frob,
+            &lambda,
+            &mu,
+            #[cfg(feature = "hints")]
+            hints,
+        ),
+        "Line does not pass through r and utf(q)"
+    );
 
     let l = line_eval_twist_bn254(
         &lambda,
@@ -231,14 +240,17 @@ pub fn miller_loop_bn254(
         #[cfg(feature = "hints")]
         hints,
     );
-    assert!(is_line_twist_bn254(
-        &r,
-        &q_frob2,
-        &lambda,
-        &mu,
-        #[cfg(feature = "hints")]
-        hints
-    ));
+    assert!(
+        is_line_twist_bn254(
+            &r,
+            &q_frob2,
+            &lambda,
+            &mu,
+            #[cfg(feature = "hints")]
+            hints
+        ),
+        "Line does not pass through r and -utf(utf(q))"
+    );
 
     let l = line_eval_twist_bn254(
         &lambda,
@@ -319,13 +331,16 @@ pub fn miller_loop_batch_bn254(
             );
 
             // Check that the line is correct
-            assert!(is_tangent_twist_bn254(
-                r,
-                &lambda,
-                &mu,
-                #[cfg(feature = "hints")]
-                hints,
-            ));
+            assert!(
+                is_tangent_twist_bn254(
+                    r,
+                    &lambda,
+                    &mu,
+                    #[cfg(feature = "hints")]
+                    hints,
+                ),
+                "Line is not tangent to the curve at r"
+            );
 
             let xp_prime = &xp_primes[i];
             let yp_prime = &yp_primes[i];
@@ -374,14 +389,17 @@ pub fn miller_loop_batch_bn254(
                 );
 
                 // Check that the line is correct
-                assert!(is_line_twist_bn254(
-                    r,
-                    q_prime,
-                    &lambda,
-                    &mu,
-                    #[cfg(feature = "hints")]
-                    hints,
-                ));
+                assert!(
+                    is_line_twist_bn254(
+                        r,
+                        q_prime,
+                        &lambda,
+                        &mu,
+                        #[cfg(feature = "hints")]
+                        hints,
+                    ),
+                    "Line does not pass through r and q'"
+                );
 
                 // Compute f = f · line_{twist(r),twist(q')}
                 let l = line_eval_twist_bn254(
@@ -433,14 +451,17 @@ pub fn miller_loop_batch_bn254(
             #[cfg(feature = "hints")]
             hints,
         );
-        assert!(is_line_twist_bn254(
-            r,
-            &q_frob,
-            &lambda,
-            &mu,
-            #[cfg(feature = "hints")]
-            hints,
-        ));
+        assert!(
+            is_line_twist_bn254(
+                r,
+                &q_frob,
+                &lambda,
+                &mu,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            "Line does not pass through r and utf(q)"
+        );
 
         let l = line_eval_twist_bn254(
             &lambda,
@@ -484,14 +505,17 @@ pub fn miller_loop_batch_bn254(
             #[cfg(feature = "hints")]
             hints,
         );
-        assert!(is_line_twist_bn254(
-            r,
-            &q_frob2,
-            &lambda,
-            &mu,
-            #[cfg(feature = "hints")]
-            hints,
-        ));
+        assert!(
+            is_line_twist_bn254(
+                r,
+                &q_frob2,
+                &lambda,
+                &mu,
+                #[cfg(feature = "hints")]
+                hints,
+            ),
+            "Line does not pass through r and -utf(utf(q))"
+        );
 
         let l = line_eval_twist_bn254(
             &lambda,

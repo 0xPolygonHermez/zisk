@@ -29,20 +29,24 @@
 //! `|`
 //! `| Initial value of the float library stack pointer.`
 //! `|`
-//! `|--------------- SYS_ADDR (= RAM_ADDR = REG_FIRST)   (0xa0000000)`
+//! `|--------------- RAM_ADDR                            (0xa0000000)`
+//! `|`
+//! `|--------------- RAM_ADDR + STACK_SIZE - 16          (0xa03ffff0)`
+//! `|`
+//! `|--------------- SYS_ADDR (= RAM_ADDR + STACK_SIZE)  (0xa0400000)`
 //! `|`
 //! `| Contains system address.`
 //! `| The first 256 bytes contain 32 8-byte registers`
-//! `| The address UART_ADDR is used as a stdout at addr = 0xa0000200`
-//! `| The first float register is at         FREG_FIRST = 0xa0001000`
-//! `| The first CSR register is at             CSR_ADDR = 0xa0008000`
+//! `| The address UART_ADDR is used as a stdout at addr = 0xa0400200`
+//! `| The first float register is at         FREG_FIRST = 0xa0401000`
+//! `| The first CSR register is at             CSR_ADDR = 0xa0408000`
 //! `|`
-//! `|--------------- OUTPUT_ADDR                         (0xa0010000)`
+//! `|--------------- OUTPUT_ADDR                         (0xa0410000)`
 //! `|`
 //! `| Contains output data, which is written during`
 //! `| program execution and read during memory finalization`
 //! `|`
-//! `|--------------- AVAILABLE_MEM_ADDR                  (0xa0030000)`
+//! `|--------------- general-purpose RAM                 (0xa0430000)`
 //! `|`
 //! `| Contains program memory, available for normal R/W`
 //! `| used during program execution.`
@@ -82,7 +86,7 @@
 //! * After the data has been written by the setup process, this data can only be read by the
 //!   program execution, i.e. it becomes a read-only (RO) memory region.
 //!
-//! ## SYS_ADDR / OUTPUT_ADDR / AVAILABLE_MEM_ADDR
+//! ## SYS_ADDR / OUTPUT_ADDR / general-purpose RAM
 //! * This memory section can be written and read by the program execution many times, i.e. it is a
 //!   read-write (RW) memory region.
 //! * The first RW memory region going from `SYS_ADDR` to `OUTPUT_ADDR` is reserved for the system
@@ -91,12 +95,12 @@
 //!   bytes in total.  These registers are the equivalent to the RISC-V registers.
 //! * Any data of exactly 1-byte length written to UART_ADDR will be sent to the standard output of
 //!   the system.
-//! * The second RW memory region going from `OUTPUT_ADDR` to `AVAILABLE_MEM_ADDR` is reserved to
-//!   copy the output data during the program execution.
-//! * The third RW memory region going from `AVAILABLE_MEM_ADDR` onwards can be used during the
-//!   program execution as general purpose memory.
+//! * The second RW memory region going from `OUTPUT_ADDR` onwards, up to where the general-purpose
+//!   RAM starts, is reserved to copy the output data during the program execution.
+//! * The third RW memory region, the general-purpose RAM that follows the output region, can be
+//!   used during the program execution as general purpose memory.
 
-use crate::{elf_extraction::DataSection, M16, M3, M32, M8, REG_FIRST, REG_LAST};
+use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
@@ -109,18 +113,18 @@ pub const FREE_INPUT_ADDR: u64 = INPUT_ADDR;
 pub const RAM_ADDR: u64 = 0xa0000000;
 /// Size of the global RW memory
 pub const RAM_SIZE: u64 = 0x20000000; // 512M
+/// Program stack addr
+pub const STACK_ADDR: u64 = RAM_ADDR;
+/// Program stack size
+pub const STACK_SIZE: u64 = 0x400000; // 4MB
 /// First system RW memory address
-pub const SYS_ADDR: u64 = RAM_ADDR;
+pub const SYS_ADDR: u64 = RAM_ADDR + STACK_SIZE;
 /// Size of the system RW memory
 pub const SYS_SIZE: u64 = 0x10000;
 /// First output RW memory address
 pub const OUTPUT_ADDR: u64 = SYS_ADDR + SYS_SIZE;
 /// Size of the output RW memory
-pub const OUTPUT_MAX_SIZE: u64 = 0x10000; // 64K
-/// First general purpose RW memory address
-pub const AVAILABLE_MEM_ADDR: u64 = SYS_ADDR + 0x30000;
-/// Size of the general purpose RW memory address
-pub const AVAILABLE_MEM_SIZE: u64 = RAM_SIZE - OUTPUT_MAX_SIZE - SYS_SIZE;
+pub const OUTPUT_MAX_SIZE: u64 = 0x20000; // 128K
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Size of the BIOS instruction area
@@ -135,12 +139,20 @@ pub const ROM_ADDR: u64 = 0x80000000;
 pub const ROM_SIZE: u64 = 0x08000000; // 128M
 /// Maximum program ROM instruction address
 pub const ROM_ADDR_MAX: u64 = ROM_ADDR + ROM_SIZE - 1;
+/// Size of float library ROM
+pub const FLOAT_LIB_ROM_SIZE: u64 = 0x100000; // 1M
 /// First float library ROM instruction address
-pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + ROM_SIZE - 0x100000; // 1M before ROM_ADDR_MAX = 0x87F00000
+pub const FLOAT_LIB_ROM_ADDR: u64 = ROM_ADDR + ROM_SIZE - FLOAT_LIB_ROM_SIZE;
+/// Maximum float library ROM instruction address
+pub const FLOAT_LIB_ROM_ADDR_MAX: u64 = FLOAT_LIB_ROM_ADDR + FLOAT_LIB_ROM_SIZE - 1;
+/// Size of float library RAM
+pub const FLOAT_LIB_RAM_SIZE: u64 = 0x10000; // 64K
 /// First float library RAM address
-pub const FLOAT_LIB_RAM_ADDR: u64 = 0xc0000000 - 0x10000; // 0xbfff0000
+pub const FLOAT_LIB_RAM_ADDR: u64 = RAM_ADDR + RAM_SIZE - FLOAT_LIB_RAM_SIZE;
+/// Maximum float library RAM address
+pub const FLOAT_LIB_RAM_ADDR_MAX: u64 = FLOAT_LIB_RAM_ADDR + FLOAT_LIB_RAM_SIZE - 1;
 /// Float library stack pointer address
-pub const FLOAT_LIB_SP: u64 = 0xc0000000 - 16; // 0xbffffff0
+pub const FLOAT_LIB_SP: u64 = RAM_ADDR + RAM_SIZE - 16;
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output
@@ -159,6 +171,13 @@ pub const FCSR: u64 = CSR_ADDR + 0x003 * 8;
 pub const ARCH_ID_CSR: u64 = 0xF12;
 /// Architecture ID Control and Status Register address
 pub const ARCH_ID_CSR_ADDR: u64 = CSR_ADDR + (ARCH_ID_CSR * 8);
+
+/// Raw bytes of `data` that will live at `addr` once the ROM has booted.
+#[derive(Debug, Clone)]
+pub struct DataSection {
+    pub addr: u64,
+    pub data: Vec<u8>,
+}
 
 /// Memory section data, including a buffer (a vector of bytes) and start and end program
 /// memory addresses.

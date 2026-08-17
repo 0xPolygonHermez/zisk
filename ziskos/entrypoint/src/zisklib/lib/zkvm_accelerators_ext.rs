@@ -9,7 +9,7 @@
 //! `fcall` operations as hints so the host hint processor can reproduce the witness.
 #![allow(clippy::missing_safety_doc)]
 
-use zkvm_interface::{
+use zisk_zkvm_interface::{
     zkvm_status, zkvm_status_ZKVM_EFAIL as ZKVM_EFAIL, zkvm_status_ZKVM_EOK as ZKVM_EOK,
 };
 

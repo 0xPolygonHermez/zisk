@@ -27,10 +27,11 @@ use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 use super::{
-    BackendService, DomainExecutionStats, DomainInputKind, DomainJobEvent, DomainJobEventCancelled,
-    DomainJobEventCompleted, DomainJobEventFailed, DomainJobEventProgress, DomainJobEventQueued,
-    DomainJobEventStarted, DomainJobKind, DomainJobKindResponse, DomainJobPhase, DomainJobStatus,
-    DomainProof, DomainProofKind, InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
+    BackendService, DomainAggregationProgramSpec, DomainExecutionStats, DomainInputKind,
+    DomainJobEvent, DomainJobEventCancelled, DomainJobEventCompleted, DomainJobEventFailed,
+    DomainJobEventProgress, DomainJobEventQueued, DomainJobEventStarted, DomainJobKind,
+    DomainJobKindResponse, DomainJobPhase, DomainJobStatus, DomainProof, DomainProofKind,
+    InputChunkStream, JobEventStream, SubmitJobResult, WaitResult,
 };
 use crate::errors::{ApiError, ApiResult};
 use zisk_common::{HashMode, SetupKey};
@@ -57,6 +58,9 @@ struct MockState {
     received_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
     /// Chunks received via `push_job_hints_input`, keyed by job_id. For test assertions.
     received_hints_chunks: HashMap<Uuid, Vec<Vec<u8>>>,
+    /// Metadata recorded at job submission (base or extended), keyed by job_id.
+    /// For test assertions.
+    submit_metadata: HashMap<Uuid, std::collections::BTreeMap<String, String>>,
 }
 
 impl MockState {
@@ -68,6 +72,7 @@ impl MockState {
             event_txs: HashMap::new(),
             received_chunks: HashMap::new(),
             received_hints_chunks: HashMap::new(),
+            submit_metadata: HashMap::new(),
         }
     }
 }
@@ -77,6 +82,7 @@ const JOB_TTL: Duration = Duration::from_secs(5 * 60);
 
 // ── MockBackend ───────────────────────────────────────────────────────────────
 
+/// In-memory [`BackendService`] for testing — no coordinator required.
 #[derive(Clone)]
 pub struct MockBackend {
     state: Arc<Mutex<MockState>>,
@@ -84,6 +90,7 @@ pub struct MockBackend {
 }
 
 impl MockBackend {
+    /// Create a mock backend with empty state.
     pub fn new(cancel: CancellationToken) -> Self {
         Self { state: Arc::new(Mutex::new(MockState::new())), cancel }
     }
@@ -91,6 +98,15 @@ impl MockBackend {
     /// Return all hints chunks received for `job_id` via `push_job_hints_input`.
     pub async fn received_hints_chunks(&self, job_id: Uuid) -> Vec<Vec<u8>> {
         self.state.lock().await.received_hints_chunks.get(&job_id).cloned().unwrap_or_default()
+    }
+
+    /// Return the metadata recorded at submission for `job_id` (empty for a
+    /// base job, the supplied map for an extended one). For test assertions.
+    pub async fn submit_metadata(
+        &self,
+        job_id: Uuid,
+    ) -> std::collections::BTreeMap<String, String> {
+        self.state.lock().await.submit_metadata.get(&job_id).cloned().unwrap_or_default()
     }
 
     // ── internal helpers ─────────────────────────────────────────────────────
@@ -336,7 +352,19 @@ impl BackendService for MockBackend {
         Ok(hash_id)
     }
 
-    async fn submit_job(&self, kind: DomainJobKind) -> ApiResult<SubmitJobResult> {
+    async fn register_aggregation_program(
+        &self,
+        recurser_id: String,
+        _spec: DomainAggregationProgramSpec,
+    ) -> ApiResult<String> {
+        Ok(recurser_id) // echoes id back without storing
+    }
+
+    async fn submit_job_with_metadata(
+        &self,
+        kind: DomainJobKind,
+        metadata: Option<std::collections::BTreeMap<String, String>>,
+    ) -> ApiResult<SubmitJobResult> {
         // Validate program exists for kinds that reference a hash_id
         {
             let s = self.state.lock().await;
@@ -373,6 +401,7 @@ impl BackendService for MockBackend {
             let mut s = self.state.lock().await;
             s.jobs.insert(job_id, record);
             s.event_txs.insert(job_id, event_tx);
+            s.submit_metadata.insert(job_id, metadata.unwrap_or_default());
         }
 
         Self::spawn_job_task(Arc::clone(&self.state), self.cancel.clone(), job_id, kind);
@@ -591,6 +620,23 @@ fn synthesize_result(kind: &DomainJobKind) -> DomainJobKindResponse {
             proof.proof_kind = req.proof_dest.clone();
             DomainJobKindResponse::Wrap(proof)
         }
+        DomainJobKind::SetupAggregationProgram(_) => {
+            DomainJobKindResponse::SetupAggregationProgram {
+                vk: vec![0u8; 32],
+                // Clients parse hash_mode into HashMode; an empty string fails.
+                hash_mode: HashMode::default().as_str().to_string(),
+            }
+        }
+        DomainJobKind::AggregateProofs(_) => DomainJobKindResponse::AggregateProofs(DomainProof {
+            proof_id: Uuid::new_v4(),
+            hash_id: String::new(),
+            verification_key: vec![0u8; 32],
+            proof_kind: DomainProofKind::Stark,
+            data: vec![],
+            public_inputs: vec![],
+            started_at: Some(Utc::now()),
+            completed_at: Some(Utc::now()),
+        }),
     }
 }
 
@@ -666,7 +712,9 @@ impl JobKindExt for DomainJobKind {
             DomainJobKind::Setup(r) => Some(&r.hash_id),
             DomainJobKind::Prove(r) => Some(&r.hash_id),
             DomainJobKind::Execute(r) => Some(&r.hash_id),
-            DomainJobKind::Wrap(_) => None,
+            DomainJobKind::Wrap(_)
+            | DomainJobKind::SetupAggregationProgram(_)
+            | DomainJobKind::AggregateProofs(_) => None,
         }
     }
 

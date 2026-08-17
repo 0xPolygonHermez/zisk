@@ -5,6 +5,15 @@ use zisk_prover_backend::setup_logger;
 
 const DEFAULT_HASH: &str = "Poseidon1";
 
+/// Parse a job-count flag, rejecting 0 (a 0-sized rayon/nvcc pool is invalid).
+fn parse_jobs(s: &str) -> std::result::Result<usize, String> {
+    let n: usize = s.parse().map_err(|_| format!("`{s}` is not a valid number"))?;
+    if n == 0 {
+        return Err("must be at least 1".to_string());
+    }
+    Ok(n)
+}
+
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Run non-recursive (and optionally recursive) setup for all AIRs.
@@ -32,12 +41,12 @@ pub(crate) struct ZiskProofmanSetupSetup {
     /// Max concurrent recursive1 air pipelines (default 1 = serial).
     /// Each slot runs one circom compile + pil2com. Size by available RAM:
     /// set to floor(available_GB / per_air_peak_GB).
-    #[arg(long, default_value_t = 1, env = "RECURSIVE_JOBS")]
+    #[arg(long, default_value_t = 1, env = "RECURSIVE_JOBS", value_parser = parse_jobs)]
     recursive_jobs: usize,
 
     /// Max concurrent AIRs during non-recursive setup (default 1 = serial).
     /// Each slot runs pil_info + file I/O. Size by available RAM.
-    #[arg(long, default_value_t = 1, env = "SETUP_JOBS")]
+    #[arg(long, default_value_t = 1, env = "SETUP_JOBS", value_parser = parse_jobs)]
     setup_jobs: usize,
 
     /// Output file for per-AIR stats (same format as `stats` subcommand).
@@ -48,6 +57,27 @@ pub(crate) struct ZiskProofmanSetupSetup {
     /// Hash function to use: Poseidon1 or Poseidon2
     #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2"])]
     pub hash: String,
+
+    /// Generate + compile per-AIR Q-expression CUDA kernels (.exps.so) at the end
+    /// of setup. No-op if nvcc is not on PATH.
+    #[arg(long, default_value_t = false)]
+    gen_exps: bool,
+
+    /// CUDA arch spec for --gen-exps: auto | major | "89,120" | sm_120.
+    #[arg(long, default_value = "auto")]
+    exps_arch: String,
+
+    /// Skip an AIR whose Q has more than N ops (stays on the interpreter).
+    #[arg(long, default_value_t = 40000)]
+    exps_cap: usize,
+
+    /// Fixed ops/chunk for every AIR; omit to auto-tune the largest no-spill size.
+    #[arg(long)]
+    exps_chunk: Option<usize>,
+
+    /// pil2-stark source root for the nvcc includes (default: resolved automatically).
+    #[arg(long)]
+    exps_stark_src: Option<String>,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -68,6 +98,11 @@ impl ZiskProofmanSetupSetup {
             recursive_jobs: self.recursive_jobs,
             setup_jobs: self.setup_jobs,
             stats_output_path: self.output.clone(),
+            gen_exps: self.gen_exps,
+            exps_arch: self.exps_arch.clone(),
+            exps_cap: self.exps_cap,
+            exps_chunk: self.exps_chunk,
+            exps_stark_src: self.exps_stark_src.clone(),
         };
 
         let result = run_setup(&opts);

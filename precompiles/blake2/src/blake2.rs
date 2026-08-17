@@ -1,16 +1,37 @@
 use core::panic;
 use std::sync::Arc;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationBlake2Data;
 use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
 
-use super::blake2_constants::{CLOCKS, CLOCKS_PER_G, R1_G, R2_G, R3_G, R4_G, SIGMA};
+use super::blake2_constants::{BLAKE2BR_TABLE_SIZE, CLOCKS, R1_G, R2_G, R3_G, R4_G, SIGMA};
+use super::blake2_table::Blake2brTableSM;
+
+/// State indices (a, b, c, d) mixed by the G function at each clock:
+/// clocks 0-3 perform the column mixing, clocks 4-7 the diagonal mixing.
+const G_INDICES: [(usize, usize, usize, usize); CLOCKS] = [
+    (0, 4, 8, 12),
+    (1, 5, 9, 13),
+    (2, 6, 10, 14),
+    (3, 7, 11, 15),
+    (0, 5, 10, 15),
+    (1, 6, 11, 12),
+    (2, 7, 8, 13),
+    (3, 4, 9, 14),
+];
+
+/// Number of 16-bit range-checked limbs per row: x[4], y[4], va[4], vc[4].
+const RANGE_CHECKED_LIMBS_PER_ROW: usize = 16;
+
+/// Number of unconditional XOR table lookups per row:
+/// vd', vb', vd'' and vb_pp_xor, 8 bytes each.
+const XOR_CHECKS_PER_ROW: usize = 32;
 
 /// Per-operation input record assembled from the bus payload.
 #[derive(Debug)]
@@ -46,9 +67,9 @@ pub struct Blake2SM<F: PrimeField64> {
     /// Number of available blake2s in the trace.
     pub num_available_blake2s: usize,
 
-    num_non_usable_rows: usize,
-
     range_id: usize,
+
+    table_id: usize,
 }
 
 impl<F: PrimeField64> Blake2SM<F> {
@@ -64,221 +85,139 @@ impl<F: PrimeField64> Blake2SM<F> {
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
-        Arc::new(Self { std, num_available_blake2s, num_non_usable_rows, range_id })
+        let table_id = std
+            .get_virtual_table_id(Blake2brTableSM::TABLE_ID)
+            .expect("Failed to get Blake2br table ID");
+
+        Arc::new(Self { std, num_available_blake2s, range_id, table_id })
     }
 
-    /// Processes a slice of operation data, updating the trace and multiplicities.
+    /// Processes one operation, filling its CLOCKS-row chunk of the trace and
+    /// updating the range-check and XOR-table multiplicities.
     ///
     /// # Arguments
-    /// * `trace` - A mutable reference to the Blake2 trace.
-    /// * `num_circuits` - The number of circuits to process.
     /// * `input` - The operation data to process.
-    /// * `multiplicity` - A mutable slice to update with multiplicities for the operation.
+    /// * `trace` - The CLOCKS-row chunk of the trace assigned to this operation.
+    /// * `range_checks` - Multiplicities of the 16-bit range checks.
+    /// * `xor_checks` - Multiplicities of the Blake2br XOR table rows.
     #[inline(always)]
     pub fn process_input<R: Blake2brTraceRowOps<F>>(
         &self,
         input: &Blake2Input,
         trace: &mut [R],
-    ) -> [u32; 65536] {
-        let mut range_checks = [0u32; 65536]; // 2^16 range checks for the 16-bit limbs
-
-        let step_main = input.step_main;
-        let addr_main = input.addr_main;
-        let state_addr = input.state_addr;
-        let input_addr = input.input_addr;
-        let index = input.index as u8;
-        let state = &input.state;
-        let input = &input.input;
+        range_checks: &mut [u32],
+        xor_checks: &mut [u32],
+    ) {
+        let idx_usize = input.index as usize;
+        let s = &SIGMA[idx_usize];
 
         // Fill the step_addr
-        trace[0].set_step_addr(step_main); // STEP_MAIN
-        trace[1].set_step_addr(addr_main as u64); // ADDR_OP
-        trace[2].set_step_addr(state_addr as u64); // ADDR_STATE
-        trace[3].set_step_addr(input_addr as u64); // ADDR_INPUT
-        trace[4].set_step_addr(state_addr as u64); // ADDR_IND_0
-        trace[5].set_step_addr(input_addr as u64); // ADDR_IND_1
+        trace[0].set_step_addr(input.step_main); // STEP_MAIN
+        trace[1].set_step_addr(input.addr_main as u64); // ADDR_OP
+        trace[2].set_step_addr(input.state_addr as u64); // ADDR_STATE
+        trace[3].set_step_addr(input.input_addr as u64); // ADDR_INPUT
+        trace[4].set_step_addr(input.state_addr as u64); // ADDR_IND_0
+        trace[5].set_step_addr(input.input_addr as u64); // ADDR_IND_1
 
-        // Set latched columns
-        let idx_usize = index as usize;
-        for row in trace.iter_mut().take(CLOCKS) {
-            // Activate the in_use selector
+        // Running state: each row's G function reads and writes 4 words of it
+        let mut v = input.state;
+
+        for (k, row) in trace.iter_mut().enumerate().take(CLOCKS) {
             row.set_in_use(true);
-
-            // Set idx_sel
             row.set_round_idx_sel(idx_usize, true);
-        }
 
-        // Set m columns
-        let mut m_idx = 0;
-        for (i, &inp) in input.iter().enumerate() {
-            let low_inp = [inp as u16, (inp >> 16) as u16];
-            let high_inp = [(inp >> 32) as u16, (inp >> 48) as u16];
-            trace[m_idx].set_all_m_limbs(&[low_inp, high_inp]);
-            range_checks[low_inp[0] as usize] += 1;
-            range_checks[low_inp[1] as usize] += 1;
-            range_checks[high_inp[0] as usize] += 1;
-            range_checks[high_inp[1] as usize] += 1;
-
-            m_idx += 1;
-            if (i + 1) % (CLOCKS_PER_G - 1) == 0 {
-                m_idx += 1;
+            // Memory-ordered message words bound by the x/y memory ports at this clock
+            let x_limbs = u64_to_limbs16(input.input[2 * k]);
+            let y_limbs = u64_to_limbs16(input.input[2 * k + 1]);
+            row.set_all_x(&x_limbs);
+            row.set_all_y(&y_limbs);
+            for limb in x_limbs {
+                range_checks[limb as usize] += 1;
             }
-        }
-
-        // Set ms columns
-        let s = &SIGMA[idx_usize];
-        let mut ms: [u64; 16] = [0u64; 16];
-        m_idx = 0;
-        for i in 0..input.len() {
-            let inp = input[s[i]];
-            ms[i] = inp;
-
-            trace[m_idx].set_all_ms(&[inp as u32, (inp >> 32) as u32]);
-            m_idx += 1;
-            if (i + 1) % (CLOCKS_PER_G - 1) == 0 {
-                m_idx += 1;
+            for limb in y_limbs {
+                range_checks[limb as usize] += 1;
             }
-        }
 
-        // Column mixing
-        let (state0, state4, state8, state12) = compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            0,
-            &[state[0], state[4], state[8], state[12]],
-            &[ms[0], ms[1]],
-        );
-        let (state1, state5, state9, state13) = compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            1,
-            &[state[1], state[5], state[9], state[13]],
-            &[ms[2], ms[3]],
-        );
-        let (state2, state6, state10, state14) = compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            2,
-            &[state[2], state[6], state[10], state[14]],
-            &[ms[4], ms[5]],
-        );
-        let (state3, state7, state11, state15) = compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            3,
-            &[state[3], state[7], state[11], state[15]],
-            &[ms[6], ms[7]],
-        );
+            // Permuted message words consumed by this row's G function
+            let xs = input.input[s[2 * k]];
+            let ys = input.input[s[2 * k + 1]];
+            row.set_all_xs(&[xs as u32, (xs >> 32) as u32]);
+            row.set_all_ys(&[ys as u32, (ys >> 32) as u32]);
 
-        // Diagonal mixing
-        compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            4,
-            &[state0, state5, state10, state15],
-            &[ms[8], ms[9]],
-        );
-        compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            5,
-            &[state1, state6, state11, state12],
-            &[ms[10], ms[11]],
-        );
-        compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            6,
-            &[state2, state7, state8, state13],
-            &[ms[12], ms[13]],
-        );
-        compute_g_and_set_vs::<R, F>(
-            trace,
-            &mut range_checks,
-            7,
-            &[state3, state4, state9, state14],
-            &[ms[14], ms[15]],
-        );
+            // Compute the G function
+            let (ia, ib, ic, id) = G_INDICES[k];
+            let (va, vb, vc, vd) = (v[ia], v[ib], v[ic], v[id]);
 
-        return range_checks;
+            let va_p = va.wrapping_add(vb).wrapping_add(xs);
+            let vd_p = (vd ^ va_p).rotate_right(R1_G);
+            let vc_p = vc.wrapping_add(vd_p);
+            let vb_p = (vb ^ vc_p).rotate_right(R2_G);
+            let va_pp = va_p.wrapping_add(vb_p).wrapping_add(ys);
+            let vd_pp = (vd_p ^ va_pp).rotate_right(R3_G);
+            let vc_pp = vc_p.wrapping_add(vd_pp);
+            let z = vb_p ^ vc_pp;
+            let vb_pp = z.rotate_right(R4_G);
 
-        fn compute_g_and_set_vs<R: Blake2brTraceRowOps<F>, F: PrimeField64>(
-            trace: &mut [R],
-            range_checks: &mut [u32; 65536],
-            i: usize,
-            v: &[u64; 4],
-            m: &[u64; 2],
-        ) -> (u64, u64, u64, u64) {
-            // Compute the g function
-            let (va, vb, vc, vd) = (v[0], v[1], v[2], v[3]);
-            let (va_i, vb_i, vc_i, vd_i) = compute_half_g(va, vb, vc, vd, m[0], R1_G, R2_G);
-            let (va_o, vb_o, vc_o, vd_o) = compute_half_g(va_i, vb_i, vc_i, vd_i, m[1], R3_G, R4_G);
+            // Inputs: va/vc as 16-bit limbs (range checked), vb/vd as bytes
+            let va_limbs = u64_to_limbs16(va);
+            let vc_limbs = u64_to_limbs16(vc);
+            row.set_all_va(&va_limbs);
+            row.set_all_vc(&vc_limbs);
+            for limb in va_limbs {
+                range_checks[limb as usize] += 1;
+            }
+            for limb in vc_limbs {
+                range_checks[limb as usize] += 1;
+            }
 
-            // Set va, vb, vc, vd columns
-            set_vs::<R, F>(&mut trace[3 * i], range_checks, va, vb, vc, vd);
-            set_vs::<R, F>(&mut trace[3 * i + 1], range_checks, va_i, vb_i, vc_i, vd_i);
-            set_vs::<R, F>(&mut trace[3 * i + 2], range_checks, va_o, vb_o, vc_o, vd_o);
+            let vb_bytes = vb.to_le_bytes();
+            let vd_bytes = vd.to_le_bytes();
+            row.set_all_vb(&vb_bytes);
+            row.set_all_vd(&vd_bytes);
 
-            (va_o, vb_o, vc_o, vd_o)
-        }
+            // Intermediate and output values as bytes
+            let va_p_bytes = va_p.to_le_bytes();
+            let vd_p_bytes = vd_p.to_le_bytes();
+            let vc_p_bytes = vc_p.to_le_bytes();
+            let vb_p_bytes = vb_p.to_le_bytes();
+            let va_pp_bytes = va_pp.to_le_bytes();
+            let vd_pp_bytes = vd_pp.to_le_bytes();
+            let vc_pp_bytes = vc_pp.to_le_bytes();
+            let z_bytes = z.to_le_bytes();
+            row.set_all_va_prime(&va_p_bytes);
+            row.set_all_vd_prime(&vd_p_bytes);
+            row.set_all_vc_prime(&vc_p_bytes);
+            row.set_all_vb_prime(&vb_p_bytes);
+            row.set_all_va_prime_prime(&va_pp_bytes);
+            row.set_all_vd_prime_prime(&vd_pp_bytes);
+            row.set_all_vc_prime_prime(&vc_pp_bytes);
+            row.set_all_vb_pp_xor(&z_bytes);
 
-        fn compute_half_g(
-            va: u64,
-            vb: u64,
-            vc: u64,
-            vd: u64,
-            m: u64,
-            r1: u32,
-            r2: u32,
-        ) -> (u64, u64, u64, u64) {
-            let va = va.wrapping_add(vb).wrapping_add(m);
-            let vd = (vd ^ va).rotate_right(r1);
-            let vc = vc.wrapping_add(vd);
-            let vb = (vb ^ vc).rotate_right(r2);
-            (va, vb, vc, vd)
-        }
+            // Top bits of z's low and high 32-bit limbs (rotl-by-1 carries)
+            row.set_all_vb_pp_t(&[(z >> 31) & 1 == 1, (z >> 63) & 1 == 1]);
 
-        fn set_vs<R: Blake2brTraceRowOps<F>, F: PrimeField64>(
-            row: &mut R,
-            range_checks: &mut [u32; 65536],
-            va: u64,
-            vb: u64,
-            vc: u64,
-            vd: u64,
-        ) {
-            let low_va = [va as u16, (va >> 16) as u16];
-            let high_va = [(va >> 32) as u16, (va >> 48) as u16];
-            row.set_all_va_limbs(&[low_va, high_va]);
-            range_checks[low_va[0] as usize] += 1;
-            range_checks[low_va[1] as usize] += 1;
-            range_checks[high_va[0] as usize] += 1;
-            range_checks[high_va[1] as usize] += 1;
-
-            let low_vb = u32_to_le_bits(vb as u32);
-            let high_vb = u32_to_le_bits((vb >> 32) as u32);
-            row.set_all_vb(&[low_vb, high_vb]);
-
-            let low_vc = [vc as u16, (vc >> 16) as u16];
-            let high_vc = [(vc >> 32) as u16, (vc >> 48) as u16];
-            row.set_all_vc_limbs(&[low_vc, high_vc]);
-            range_checks[low_vc[0] as usize] += 1;
-            range_checks[low_vc[1] as usize] += 1;
-            range_checks[high_vc[0] as usize] += 1;
-            range_checks[high_vc[1] as usize] += 1;
-
-            let low_vd = u32_to_le_bits(vd as u32);
-            let high_vd = u32_to_le_bits((vd >> 32) as u32);
-            row.set_all_vd(&[low_vd, high_vd]);
-        }
-
-        fn u32_to_le_bits(x: u32) -> [bool; 32] {
-            let mut bits = [false; 32];
-            for (i, bit) in bits.iter_mut().enumerate() {
-                if ((x >> i) & 1) != 0 {
-                    *bit = true;
+            // XOR table lookups: (vd, va'), (vb, vc'), (vd', va'') and (vb', vc''), per byte
+            for i in 0..8 {
+                let rows = [
+                    Blake2brTableSM::calculate_table_row(vd_bytes[i], va_p_bytes[i]),
+                    Blake2brTableSM::calculate_table_row(vb_bytes[i], vc_p_bytes[i]),
+                    Blake2brTableSM::calculate_table_row(vd_p_bytes[i], va_pp_bytes[i]),
+                    Blake2brTableSM::calculate_table_row(vb_p_bytes[i], vc_pp_bytes[i]),
+                ];
+                for table_row in rows {
+                    xor_checks[table_row as usize] += 1;
                 }
             }
-            bits
+
+            // Write the outputs back for the following rows
+            v[ia] = va_pp;
+            v[ib] = vb_pp;
+            v[ic] = vc_pp;
+            v[id] = vd_pp;
+        }
+
+        fn u64_to_limbs16(value: u64) -> [u16; 4] {
+            [value as u16, (value >> 16) as u16, (value >> 32) as u16, (value >> 48) as u16]
         }
     }
 
@@ -302,29 +241,24 @@ impl<F: PrimeField64> Blake2SM<F> {
 
         // Check that we can fit all the blake2s in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
-        let all_ops_used = num_inputs == num_available_blake2s;
-        let num_rows_filled = num_inputs * CLOCKS;
-        let num_rows_needed = if num_inputs < num_available_blake2s {
-            num_inputs * CLOCKS
-        } else if all_ops_used {
-            num_rows
-        } else {
+        if num_inputs > num_available_blake2s {
             panic!(
                 "Exceeded available Blake2s inputs: requested {}, but only {} are available.",
-                num_inputs, self.num_available_blake2s
+                num_inputs, num_available_blake2s
             );
-        };
+        }
+        let num_rows_filled = num_inputs * CLOCKS;
 
         tracing::debug!(
             "··· Creating Blake2 instance [{} / {} rows filled {:.2}%]",
-            num_rows_needed,
+            num_rows_filled,
             num_rows,
-            num_rows_needed as f64 / num_rows as f64 * 100.0
+            num_rows_filled as f64 / num_rows as f64 * 100.0
         );
 
         timer_start_trace!(BLAKE2_TRACE);
 
-        // Split trace into chunks for parallel processing
+        // Split trace into per-operation chunks for parallel processing
         let mut trace_rows = trace.buffer.as_mut_slice();
         let mut par_traces = Vec::new();
         let mut inputs_indexes = Vec::new();
@@ -337,49 +271,54 @@ impl<F: PrimeField64> Blake2SM<F> {
             }
         }
 
-        // Fill the trace and collect range checks
-        let range_checks_vec: Vec<[u32; 65536]> = par_traces
+        // Fill the trace, collecting the range-check and XOR-table multiplicities
+        let (mut range_checks, xor_checks) = par_traces
             .into_par_iter()
             .enumerate()
-            .map(|(index, trace)| {
-                let input_index = inputs_indexes[index];
-                let input = &inputs[input_index.0][input_index.1];
-                self.process_input::<R>(input, trace)
-            })
-            .collect();
+            .fold(
+                || (vec![0u32; 1 << 16], vec![0u32; BLAKE2BR_TABLE_SIZE]),
+                |(mut range_checks, mut xor_checks), (index, trace)| {
+                    let input_index = inputs_indexes[index];
+                    let input = &inputs[input_index.0][input_index.1];
+                    self.process_input::<R>(input, trace, &mut range_checks, &mut xor_checks);
+                    (range_checks, xor_checks)
+                },
+            )
+            .reduce(
+                || (vec![0u32; 1 << 16], vec![0u32; BLAKE2BR_TABLE_SIZE]),
+                |(mut range_acc, mut xor_acc), (range, xor)| {
+                    for (acc, val) in range_acc.iter_mut().zip(range) {
+                        *acc += val;
+                    }
+                    for (acc, val) in xor_acc.iter_mut().zip(xor) {
+                        *acc += val;
+                    }
+                    (range_acc, xor_acc)
+                },
+            );
 
-        // Aggregate all range checks
-        let mut range_checks = vec![0; 65536];
-        for rc in range_checks_vec {
-            for i in 0..65536 {
-                range_checks[i] += rc[i];
-            }
-        }
+        // Padding rows are all-zero: in_use is off, so the only bus contributions
+        // are the unconditional range checks and XOR table lookups over zeros
+        trace.buffer[num_rows_filled..num_rows]
+            .par_iter_mut()
+            .for_each(|slot| *slot = R::default());
+
+        let num_padding_rows = (num_rows - num_rows_filled) as u32;
+        range_checks[0] += RANGE_CHECKED_LIMBS_PER_ROW as u32 * num_padding_rows;
 
         timer_stop_and_log_trace!(BLAKE2_TRACE);
 
-        let mut padding_row = R::default();
-        // In the no-op rows, the `idx` should be the same as the previous one until the end
-        // to make the constraint `(1 - CLK_0) * (idx - 'idx) === 0;` be satisfied
-        // As a consequence, one should also set idx_sel
-        if all_ops_used {
-            let prev_idx = trace.buffer[num_rows_filled - 1].get_round_idx();
-            padding_row.set_round_idx_sel(prev_idx as usize, true);
-        }
-
-        trace.buffer[num_rows_filled..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
-
-        // Perform the zero range checks
-        let mut count_zeros = ((num_available_blake2s - num_inputs
-            + (self.num_non_usable_rows != 0) as usize)
-            * CLOCKS
-            + self.num_non_usable_rows)
-            * 12; // 12 range checked columns, 8 from va and vc, and 4 from m16
-        count_zeros += 8 * num_inputs * 4; // m16 columns have one padding row per g function
-                                           // and there are 8 g functions per blake2
-        range_checks[0] += count_zeros as u32;
-
         self.std.range_check_ranged(self.range_id, None, &range_checks);
+
+        let zero_row = Blake2brTableSM::calculate_table_row(0, 0) as usize;
+        xor_checks.into_par_iter().enumerate().for_each(|(row, mut value)| {
+            if row == zero_row {
+                value += XOR_CHECKS_PER_ROW as u32 * num_padding_rows;
+            }
+            if value > 0 {
+                self.std.inc_virtual_row(self.table_id, row as u32, value);
+            }
+        });
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
     }

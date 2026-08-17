@@ -10,6 +10,10 @@ main() {
 
     current_dir=$(pwd)
 
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ZISK_TEMPLATE_BRANCH DISABLE_PROVE ONLY_CPU PROVE_FLAGS || return 1
+
     current_step=1
     if [[ "${DISABLE_PROVE}" == "1" ]]; then
         total_steps=8
@@ -24,10 +28,6 @@ main() {
         is_proving_key_installed || return 1
     fi
 
-    step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
-
     cd "${WORKSPACE_DIR}"
 
     step "Deleting shared memory..."
@@ -38,6 +38,13 @@ main() {
     rm -rf "$PROJECT_NAME"
     ensure cargo-zisk new "$PROJECT_NAME" || return 1
     cd "$PROJECT_NAME"
+
+    # Resolve the absolute path to the ZisK repo (handles ZISK_REPO_DIR overrides used by GHA),
+    # then repoint each git dependency to its local crate so the build uses this repo.
+    ZISK_REPO_DIR="$(get_zisk_repo_dir)"
+
+    patch_cargo_dep "./Cargo.toml" "zisk-sdk"       "${ZISK_REPO_DIR}/sdk"               || return 1
+    patch_cargo_dep "./Cargo.toml" "ziskos"         "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
     step "Building program..."
     ensure cargo build --bin host --release || return 1

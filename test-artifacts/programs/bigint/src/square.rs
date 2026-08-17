@@ -1,19 +1,21 @@
-use ziskos::zisklib::{square_long, square_short, U256};
+use ziskos::zisklib::{square_long, U256};
 
 use super::constants::*;
 
 pub fn square_tests() {
     // [5]
-    let a = U256::from_u64(5);
-    let (res, len_res) = square_short(&a);
+    let a = [U256::from_u64(5)];
+    let mut res = [U256::ZERO; 2];
+    let len_res = square_long(&a, &mut res);
     assert_eq!(len_res, 1);
     assert_eq!(&res[..len_res], [U256::from_u64(25)]);
 
-    // [MAX]
-    let a = U256::MAX;
-    let (res, len_res) = square_short(&a);
+    // [MAX] (covers the 512-bit overflow case)
+    let a = [U256::MAX];
+    let mut res = [U256::ZERO; 2];
+    let len_res = square_long(&a, &mut res);
     assert_eq!(len_res, 2);
-    assert_eq!(res, [U256::ONE, U256_MAX_MINUS_ONE]);
+    assert_eq!(&res[..len_res], [U256::ONE, U256_MAX_MINUS_ONE]);
 
     // [MAX, MAX]
     let a = [U256::MAX, U256::MAX];

@@ -13,6 +13,7 @@
 #include "../../lib-c/c/src/ec/ec.hpp"
 #include "../../lib-c/c/src/secp256r1/secp256r1.hpp"
 #include "../../lib-c/c/src/fcall/fcall.hpp"
+#include "../../lib-c/c/src/keccakf_cache/keccakf_cache.hpp"
 #include "../../lib-c/c/src/arith256/arith256.hpp"
 #include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
@@ -538,6 +539,10 @@ extern int _opcode_keccak(uint64_t address)
 #endif
 #endif
 
+    // Cache the input state if fcall_set_keccakf_cache_index() asked for it, before the
+    // permutation overwrites it
+    keccakf_cache_on_keccakf((const uint64_t *)address);
+
 #ifdef ASM_PRECOMPILE_CACHE
     if (precompile_cache_storing)
     {
@@ -777,7 +782,7 @@ extern int _opcode_arith256(uint64_t * address)
         int result = Arith256 (a, b, c, dl, dh);
         if (result != 0)
         {
-            asm_printf("_opcode_arith256_add() failed callilng Arith256() result=%d;", result);
+            asm_printf("_opcode_arith256_add() failed calling Arith256() result=%d;", result);
             exit(-1);
         }
 
@@ -810,6 +815,10 @@ extern int _opcode_arith256(uint64_t * address)
     return 0;
 }
 
+// Fast assembly implementation of (a*b + c) mod module (emulator-asm/src/arith_eq/arith256_mod.asm).
+// Takes the same 5-pointer struct as this opcode; used in the compute (no-hints) path below.
+extern int arith256_mod(uint64_t * address);
+
 extern int _opcode_arith256_mod(uint64_t * address)
 {
 #ifdef ASM_CALL_METRICS
@@ -826,9 +835,9 @@ extern int _opcode_arith256_mod(uint64_t * address)
     if (emu_verbose)
     {
 #ifdef ASM_CALL_METRICS
-        asm_printf("opcode_arith256_mod() calling Arith256Mod() counter=%lu address=%p\n", asm_call_metrics.arith256_mod_counter, address);
+        asm_printf("opcode_arith256_mod() calling arith256_mod() counter=%lu address=%p\n", asm_call_metrics.arith256_mod_counter, address);
 #else
-        asm_printf("opcode_arith256_mod() calling Arith256Mod() address=%p\n", address);
+        asm_printf("opcode_arith256_mod() calling arith256_mod() address=%p\n", address);
 #endif
         asm_printf("a = %lx:%lx:%lx:%lx\n", a[3], a[2], a[1], a[0]);
         asm_printf("b = %lx:%lx:%lx:%lx\n", b[3], b[2], b[1], b[0]);
@@ -841,11 +850,11 @@ extern int _opcode_arith256_mod(uint64_t * address)
     if (precompile_cache_storing)
     {
 #endif
-        // Call arithmetic 256 module operation
-        int result = Arith256Mod (a, b, c, module, d);
+        // Compute (no-hints path): fast assembly implementation instead of the Rust Arith256Mod.
+        int result = arith256_mod (address);
         if (result != 0)
         {
-            asm_printf("_opcode_arith256_mod() failed callilng Arith256Mod() result=%d;", result);
+            asm_printf("_opcode_arith256_mod() failed calling arith256_mod() result=%d;", result);
             exit(-1);
         }
 
@@ -861,7 +870,7 @@ extern int _opcode_arith256_mod(uint64_t * address)
 #endif
 
 #ifdef DEBUG
-    if (emu_verbose) asm_printf("opcode_arith256_mod() called Arith256Mod()\n");
+    if (emu_verbose) asm_printf("opcode_arith256_mod() called arith256_mod()\n");
     if (emu_verbose)
     {
         asm_printf("d = %lx:%lx:%lx:%lx\n", d[3], d[2], d[1], d[0]);
@@ -910,7 +919,7 @@ extern int _opcode_arith384_mod(uint64_t * address)
         int result = Arith384Mod (a, b, c, module, d);
         if (result != 0)
         {
-            asm_printf("_opcode_arith384_mod() failed callilng Arith384Mod() result=%d;", result);
+            asm_printf("_opcode_arith384_mod() failed calling Arith384Mod() result=%d;", result);
             exit(-1);
         }
 
@@ -976,7 +985,7 @@ extern int _opcode_secp256k1_add(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_secp256k1_add() failed callilng AddPointEcP() result=%d;", result);
+            asm_printf("_opcode_secp256k1_add() failed calling AddPointEcP() result=%d;", result);
             exit(-1);
         }
 
@@ -1039,7 +1048,7 @@ extern int _opcode_secp256k1_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_secp256k1_dbl() failed callilng AddPointEcP() result=%d;", result);
+            asm_printf("_opcode_secp256k1_dbl() failed calling AddPointEcP() result=%d;", result);
             exit(-1);
         }
 
@@ -1106,7 +1115,7 @@ extern int _opcode_secp256r1_add(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_secp256r1_add() failed callilng AddPointEcP() result=%d;", result);
+            asm_printf("_opcode_secp256r1_add() failed calling AddPointEcP() result=%d;", result);
             exit(-1);
         }
 
@@ -1168,7 +1177,7 @@ extern int _opcode_secp256r1_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_secp256r1_dbl() failed callilng secp256r1_add_point_ecp() result=%d;", result);
+            asm_printf("_opcode_secp256r1_dbl() failed calling secp256r1_add_point_ecp() result=%d;", result);
             exit(-1);
         }
 
@@ -1256,7 +1265,7 @@ extern int _opcode_fcall(struct FcallContext * ctx)
         iresult = Fcall(ctx);
         if (iresult < 0)
         {
-            asm_printf("_opcode_fcall() failed callilng Fcall() result=%d\n", iresult);
+            asm_printf("_opcode_fcall() failed calling Fcall() result=%d\n", iresult);
             exit(-1);
         }
 
@@ -1333,7 +1342,7 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bn254_curve_add() failed callilng BN254CurveAddP() result=%d;", result);
+            asm_printf("_opcode_bn254_curve_add() failed calling BN254CurveAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1394,7 +1403,7 @@ extern int _opcode_bn254_curve_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bn254_curve_dbl() failed callilng BN254CurveDblP() result=%d;", result);
+            asm_printf("_opcode_bn254_curve_dbl() failed calling BN254CurveDblP() result=%d;", result);
             exit(-1);
         }
 
@@ -1459,7 +1468,7 @@ extern int _opcode_bn254_complex_add(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bn254_complex_add() failed callilng BN254ComplexAddP() result=%d;", result);
+            asm_printf("_opcode_bn254_complex_add() failed calling BN254ComplexAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1524,7 +1533,7 @@ extern int _opcode_bn254_complex_sub(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bn254_complex_sub() failed callilng BN254ComplexSubP() result=%d;", result);
+            asm_printf("_opcode_bn254_complex_sub() failed calling BN254ComplexSubP() result=%d;", result);
             exit(-1);
         }
 
@@ -1589,7 +1598,7 @@ extern int _opcode_bn254_complex_mul(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bn254_complex_mul() failed callilng BN254ComplexMulP() result=%d;", result);
+            asm_printf("_opcode_bn254_complex_mul() failed calling BN254ComplexMulP() result=%d;", result);
             exit(-1);
         }
 
@@ -1658,7 +1667,7 @@ extern int _opcode_bls12_381_curve_add(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bls12_381_curve_add() failed callilng BLS12_381CurveAddP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_curve_add() failed calling BLS12_381CurveAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1719,7 +1728,7 @@ extern int _opcode_bls12_381_curve_dbl(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bls12_381_curve_dbl() failed callilng BLS12_381CurveDblP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_curve_dbl() failed calling BLS12_381CurveDblP() result=%d;", result);
             exit(-1);
         }
 
@@ -1784,7 +1793,7 @@ extern int _opcode_bls12_381_complex_add(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bls12_381_complex_add() failed callilng BLS12_381ComplexAddP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_complex_add() failed calling BLS12_381ComplexAddP() result=%d;", result);
             exit(-1);
         }
 
@@ -1849,7 +1858,7 @@ extern int _opcode_bls12_381_complex_sub(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bls12_381_complex_sub() failed callilng BLS12_381ComplexSubP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_complex_sub() failed calling BLS12_381ComplexSubP() result=%d;", result);
             exit(-1);
         }
 
@@ -1914,7 +1923,7 @@ extern int _opcode_bls12_381_complex_mul(uint64_t * address)
         );
         if (result != 0)
         {
-            asm_printf("_opcode_bls12_381_complex_mul() failed callilng BLS12_381ComplexMulP() result=%d;", result);
+            asm_printf("_opcode_bls12_381_complex_mul() failed calling BLS12_381ComplexMulP() result=%d;", result);
             exit(-1);
         }
 
@@ -1981,7 +1990,7 @@ extern uint64_t _opcode_add256(uint64_t * address)
         int icout = Add256 (a, b, cin, c);
         if (icout < 0)
         {
-            asm_printf("_opcode_add256() failed callilng Add256() cout=%d;", icout);
+            asm_printf("_opcode_add256() failed calling Add256() cout=%d;", icout);
             exit(-1);
         }
         cout = (uint64_t)icout;

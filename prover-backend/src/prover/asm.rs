@@ -6,33 +6,38 @@ use crate::{
     BackendProverOpts, ExecuteOutput, GuestProgram, ProveOutput, VerifyConstraintsOutput,
     ZiskAggPhaseResult, ZiskPhaseResult,
 };
-use asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
-use executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
-use precompiles_hints::HintsProcessor;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{
     initialize_logger, ProofCtx, ProofOptions, ProofmanOptions, RankInfo, RowInfo, VerboseMode,
 };
+use proofman_fields::Goldilocks;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use rom_setup::{generate_assembly, get_output_path};
+use proofman_verifier::VadcopFinalProof;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     {Arc, RwLock},
 };
+use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use zisk_cluster_common::LoggingConfig;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
-    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, PublicValues, SetupKey,
-    StatsCostPerType, ZiskExecutorTime, ZiskPaths,
+    AirInstanceCount, ExecutorStatsHandle, ProgramVK, ProofKind, SetupKey, StatsCostPerType,
+    ZiskExecutorTime, ZiskPaths,
 };
-use zisk_core::{Riscv2zisk, ZiskRom};
+use zisk_core::ZiskRom;
+use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
+use zisk_precomp_hints::HintsProcessor;
+use zisk_rom_setup::{generate_assembly, get_output_path};
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use anyhow::Result;
 
+/// Backend marker for the native assembly runner. Selects [`AsmProver`] as the
+/// proving engine.
 pub struct Asm;
 
 impl ZiskBackend for Asm {
@@ -60,11 +65,14 @@ impl<'a> AsmSetupBuilder<'a> {
         self
     }
 
+    /// Set up for emulation only: skip the proving-side setup so the program
+    /// can be executed but not proven. Prove/verify/stats are then rejected.
     pub fn emulator_only(mut self) -> Self {
         self.emulator_only = true;
         self
     }
 
+    /// Execute the setup and return the program's proving/verification key.
     pub fn run(self) -> Result<ProgramVK> {
         self.prover.setup_internal(self.elf, self.with_hints, self.emulator_only)
     }
@@ -77,6 +85,9 @@ struct ProgramEntry {
     resources: Option<Arc<AsmResources>>,
 }
 
+/// Proving engine for the ASM backend. Wraps an [`AsmCoreProver`], caches each
+/// program's parsed `ZiskRom` and ASM resources, and tracks the setup mode of
+/// the currently registered program.
 pub struct AsmProver {
     core_prover: AsmCoreProver,
     program_cache: RwLock<HashMap<SetupKey, ProgramEntry>>,
@@ -88,6 +99,10 @@ pub struct AsmProver {
 }
 
 impl AsmProver {
+    /// Build an ASM prover: clean up stale shared memory, then initialize the
+    /// underlying [`AsmCoreProver`] with the given proving keys and ASM options
+    /// (`unlock_mapped_memory`, `asm_out_file`, `no_auto_setup`, `cpu_mops`,
+    /// distributed mode, and optional SNARK wrapper).
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         snark_wrapper: bool,
@@ -145,7 +160,7 @@ impl AsmProver {
         program_vk: &ProgramVK,
         asm_mt_path: PathBuf,
         with_hints: bool,
-        pctx: &Arc<ProofCtx<fields::Goldilocks>>,
+        pctx: &Arc<ProofCtx<Goldilocks>>,
     ) -> std::result::Result<(), anyhow::Error> {
         let world_rank = self.core_prover.rank_info.world_rank;
         let local_rank = self.core_prover.rank_info.local_rank;
@@ -208,8 +223,9 @@ impl AsmProver {
         let gpu_buffer_source = if self.core_prover.asm_info.cpu_mops {
             GpuBufferSource::Cpu
         } else {
-            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_gpu_buffer();
-            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize }
+            let (gpu_buf_ptr, gpu_buf_size) = pctx.get_first_gpu_buffer();
+            let gpu_id = pctx.first_gpu_id();
+            GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
 
         let shared = Arc::new(AsmSharedResources::new(
@@ -400,6 +416,10 @@ impl ProverEngine for AsmProver {
         self.core_prover.rank_info.world_rank
     }
 
+    fn n_processes(&self) -> i32 {
+        self.core_prover.rank_info.n_processes
+    }
+
     fn local_rank(&self) -> i32 {
         self.core_prover.rank_info.local_rank
     }
@@ -557,13 +577,12 @@ impl ProverEngine for AsmProver {
     fn wrap_proof(
         &self,
         proof: &[u64],
-        publics: &PublicValues,
-        vk: &ProgramVK,
+        publics_full: &[u64],
         proof_kind: ProofKind,
     ) -> Result<ProveOutput> {
         match proof_kind {
-            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics, vk),
-            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics, vk),
+            ProofKind::VadcopFinalMinimal => self.core_prover.backend.minimal(proof, publics_full),
+            ProofKind::Plonk => self.core_prover.backend.plonk(proof, publics_full),
             _ => Err(anyhow::anyhow!("Unsupported proof mode for wrap: {:?}", proof_kind)),
         }
     }
@@ -586,18 +605,18 @@ impl ProverEngine for AsmProver {
         self.core_prover.backend.set_partition(total_compute_units, allocation, rank_id)
     }
 
-    fn register_aggregated_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
-        self.core_prover.backend.register_aggregated_proofs(agg_proofs)
+    fn register_worker_proofs(&self, agg_proofs: Vec<AggProofsRegister>) -> Result<()> {
+        self.core_prover.backend.register_worker_proofs(agg_proofs)
     }
 
-    fn aggregate_proofs(
+    fn join_worker_proofs(
         &self,
         agg_proofs: Vec<AggProofs>,
         last_proof: bool,
         final_proof: bool,
         options: &ProofOptions,
     ) -> Result<Option<ZiskAggPhaseResult>> {
-        self.core_prover.backend.aggregate_proofs(agg_proofs, last_proof, final_proof, options)
+        self.core_prover.backend.join_worker_proofs(agg_proofs, last_proof, final_proof, options)
     }
 
     fn mpi_broadcast(&self, data: &mut Vec<u8>) -> Result<()> {
@@ -614,6 +633,29 @@ impl ProverEngine for AsmProver {
 
     fn get_vadcop_vk(&self, minimal: bool) -> Result<Vec<u64>> {
         self.core_prover.backend.get_vadcop_vk(minimal)
+    }
+
+    fn register_recurser(&self, output_dir: &str, recurser_id: &str) -> Result<()> {
+        self.core_prover.backend.register_recurser(output_dir, recurser_id)
+    }
+
+    fn prove_recurser(
+        &self,
+        recurser_id: &str,
+        proof_a: &VadcopFinalProof,
+        proof_b: &VadcopFinalProof,
+        free_a: &[u64],
+        free_b: &[u64],
+        root_c_recurser_agg: Option<[u64; 4]>,
+    ) -> Result<VadcopFinalProof> {
+        self.core_prover.backend.prove_recurser(
+            recurser_id,
+            proof_a,
+            proof_b,
+            free_a,
+            free_b,
+            root_c_recurser_agg,
+        )
     }
 
     fn hash(&self) -> Result<String> {
@@ -668,16 +710,26 @@ impl ProverEngine for AsmProver {
     }
 }
 
+/// ASM-backend configuration and runtime counters carried by the core prover.
 pub struct AsmInfo {
+    /// Whether proving is distributed across multiple processes.
     pub is_distributed: bool,
+    /// Unlock mapped memory (avoids paging of the ASM shared-memory regions).
     pub unlock_mapped_memory: bool,
+    /// Write the ASM emulator's output to a file instead of shared memory.
     pub asm_out_file: bool,
+    /// Verbosity for ASM binary generation and services.
     pub verbose: VerboseMode,
+    /// Skip automatic ROM setup when the artifacts are expected to pre-exist.
     pub no_auto_setup: bool,
+    /// Number of program setups performed (diagnostic counter).
     pub n_setups: AtomicU64,
+    /// Force the CPU minimal-ops path instead of the GPU path.
     pub cpu_mops: bool,
 }
 
+/// Low-level ASM prover holding the initialized `ProofMan` backend, this
+/// process's [`RankInfo`], and the [`AsmInfo`] configuration.
 pub struct AsmCoreProver {
     backend: ProverBackend,
     rank_info: RankInfo,
@@ -685,6 +737,9 @@ pub struct AsmCoreProver {
 }
 
 impl AsmCoreProver {
+    /// Initialize `ProofMan` from `proving_key`, capture the distributed rank
+    /// info, and record the ASM options into [`AsmInfo`]. Optionally builds the
+    /// SNARK wrapper from `proving_key_snark` when `use_snark_wrapper` is set.
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         use_snark_wrapper: bool,

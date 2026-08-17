@@ -84,7 +84,8 @@ pub enum ZiskOperationType {
     ArithEq,
     ArithEq384,
     BigInt, // Note: Add new core operations here
-    Dma,    // Note: To add extra params to precompiles calls
+    Evm,
+    Dma, // Note: To add extra params to precompiles calls
     // ZisK Free Input Operations
     FcallParam,
     Fcall,
@@ -104,6 +105,7 @@ pub const PUB_OUT_OP_TYPE_ID: u32 = ZiskOperationType::PubOut as u32;
 pub const ARITH_EQ_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq as u32;
 pub const ARITH_EQ_384_OP_TYPE_ID: u32 = ZiskOperationType::ArithEq384 as u32;
 pub const BIG_INT_OP_TYPE_ID: u32 = ZiskOperationType::BigInt as u32;
+pub const EVM_OP_TYPE_ID: u32 = ZiskOperationType::Evm as u32;
 pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
@@ -151,6 +153,9 @@ pub struct ZiskInst {
     pub riscv_inst: Option<String>,
     pub index: u64, // internal field used for tracking the instruction creation order in the ROM
     pub next_internal_inst: Option<u64>, // connection to next internal odd instruction, if any
+    pub external_ref_addr: Option<u64>, // external address of the instruction, if any
+    pub meta_rs1: Option<u8>, // meta information used for callstack.
+    pub meta_rd: Option<u8>, // meta information used for callstack.
 }
 
 /// Default constructor
@@ -191,6 +196,9 @@ impl Default for ZiskInst {
             riscv_inst: None,
             index: 0,
             next_internal_inst: None,
+            external_ref_addr: None,
+            meta_rs1: None,
+            meta_rd: None,
         }
     }
 }
@@ -271,6 +279,13 @@ impl ZiskInst {
         if let Some(next_internal_inst) = self.next_internal_inst {
             s += &format!(" next_internal_inst=0x{:x}", next_internal_inst);
         }
+        if let Some(meta_reg) = self.meta_rs1 {
+            s += &format!(" meta_rs1=0x{:x}", meta_reg);
+        }
+        if let Some(meta_reg) = self.meta_rd {
+            s += &format!(" meta_rd=0x{:x}", meta_reg);
+        }
+        s.remove(0); // remove first space
         s
     }
 

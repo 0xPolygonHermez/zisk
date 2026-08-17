@@ -71,9 +71,20 @@ info "Running worker install.sh (--no-mpi --no-enable -y)"
 # ── 2. bundle layout ──────────────────────────────────────────────────────────
 info "Bundle layout under $BUNDLE"
 [[ -d "$BUNDLE/bin" ]] && ok "$BUNDLE/bin exists" || fail "$BUNDLE/bin missing"
-for f in cargo-zisk ziskemu riscv2zisk zisk-worker zisk-coordinator ziskup libziskclib.a; do
+for f in cargo-zisk ziskemu zisk-worker zisk-coordinator ziskup libziskclib.a; do
     [[ -f "$BUNDLE/bin/$f" ]] && ok "bundle has $f" || fail "missing $BUNDLE/bin/$f"
 done
+# The RISC-V transpiler binary was renamed riscv2zisk -> zisk-transpiler-riscv, but this
+# bundle is whatever `ziskup --system` downloaded, i.e. the latest *published* release,
+# which still predates the rename. Accept either name for this release cycle and drop the
+# legacy branch once a release ships zisk-transpiler-riscv.
+if [[ -f "$BUNDLE/bin/zisk-transpiler-riscv" ]]; then
+    ok "bundle has zisk-transpiler-riscv"
+elif [[ -f "$BUNDLE/bin/riscv2zisk" ]]; then
+    ok "bundle has riscv2zisk (pre-rename release)"
+else
+    fail "missing $BUNDLE/bin/zisk-transpiler-riscv (or legacy riscv2zisk)"
+fi
 # Linux x86_64 ships emulator-asm + lib-c sources for runtime ASM build.
 if [[ "$ARCH" == "amd64" ]]; then
     [[ -d "$BUNDLE/zisk/emulator-asm" ]] && ok "bundle has zisk/emulator-asm" \
@@ -158,7 +169,8 @@ grep -q '^# zisk-worker:CONFIG_FILE=/etc/zisk/worker.toml$' "$UNIT" \
 info "ziskup bundle metadata at $BUNDLE/.zisk-bundle"
 BUNDLE_META="$BUNDLE/.zisk-bundle"
 [[ -f "$BUNDLE_META" ]] && ok "$BUNDLE_META exists" || { fail "$BUNDLE_META missing"; exit 1; }
-grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+$' "$BUNDLE_META" \
+# ziskup stamps the resolved release tag, which may carry a prerelease suffix (e.g. 1.0.0-alpha).
+grep -qE '^version=[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$' "$BUNDLE_META" \
     && ok "bundle metadata has version field" \
     || fail "bundle metadata missing/invalid version"
 grep -qE '^manifest=.*\bbin\b' "$BUNDLE_META" \

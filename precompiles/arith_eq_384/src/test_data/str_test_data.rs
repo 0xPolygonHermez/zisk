@@ -13,7 +13,7 @@ pub fn str_test_data<const N_IN: usize, const N_OUT: usize>(
             } else {
                 BigUint::from_str_radix(x, 10)
             }
-            .unwrap_or_else(|_| panic!("Failed to parse #{} {} string : '{}'", index, title, &x))
+            .unwrap_or_else(|_| panic!("Failed to parse #{} {} string : '{}'", index, title, x))
             .to_u64_digits();
             _data.resize(6, 0);
             _data

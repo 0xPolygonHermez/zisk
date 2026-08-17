@@ -24,7 +24,7 @@ static mut OUTPUT_PENDING_LEN: usize = 0;
 /// This function is idempotent and does not advance ZisK's streaming input
 /// cursor. Mixing it with streaming reads may expose the first input record more
 /// than once.
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_read_input")]
 pub unsafe extern "C" fn read_input(buf_ptr: *mut *const u8, buf_size: *mut usize) {
     #[cfg(zisk_guest)]
@@ -85,7 +85,7 @@ fn zkvm_standard_input() -> (*const u8, usize) {
 /// # Safety
 ///
 /// If `size > 0`, `output` must point to at least `size` readable bytes.
-#[cfg_attr(not(feature = "hints"), no_mangle)]
+#[cfg_attr(all(not(feature = "hints"), not(zisk_staticlib)), no_mangle)]
 #[cfg_attr(feature = "hints", export_name = "hints_write_output")]
 pub unsafe extern "C" fn write_output(output: *const u8, size: usize) {
     if size == 0 {
@@ -161,7 +161,7 @@ pub(crate) fn reset_output() {
 #[allow(dead_code)]
 mod _interface_type_checks {
     use super::*;
-    use zkvm_interface as bindings;
+    use zisk_zkvm_interface as bindings;
 
     fn _check() {
         let _ = [bindings::read_input, super::read_input];

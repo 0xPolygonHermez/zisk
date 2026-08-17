@@ -30,9 +30,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use test_artifacts::{ELF_LIVENESS, ELF_PANIC_MODES};
 use tokio::sync::Notify;
 use zisk_sdk::{ExecutorKind, JobEvent, ProverClient, RemoteClient, ZiskStdin, ZiskStream};
+use zisk_test_artifacts::{ELF_LIVENESS, ELF_PANIC_MODES};
 
 /// SDK progress percent emitted when the worker enters the prove phase.
 /// Mirrors `PROGRESS_PROVE` in `sdk/src/job_handle.rs` — the SDK doesn't

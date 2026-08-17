@@ -71,7 +71,15 @@ tolower() {
 }
 
 # load_env: Load environment variables from .env file, without overwriting existing ones
+#
+# Arguments:
+#   $1…$n (optional) — Names of the variables to process. When provided, only
+#       those variables are loaded from .env; any other keys are skipped. When
+#       omitted, every variable in .env is processed.
 load_env() {
+    # Optional allow-list of variable names to process
+    local -a __wanted_vars=("$@")
+
     # Check if .env file exists
     if [[ ! -f ".env" ]]; then
         info "Skipping loading .env file as it does not exist"
@@ -90,21 +98,36 @@ load_env() {
             continue
         fi
 
+        # If an allow-list was provided, skip variables not in it (except control vars)
+        if (( ${#__wanted_vars[@]} > 0 )) && [[ "$key" != "DISABLE_ENV_CONFIRM" ]]; then
+            local __is_wanted=0
+            local __w
+            for __w in "${__wanted_vars[@]}"; do
+                if [[ "$__w" == "$key" ]]; then
+                    __is_wanted=1
+                    break
+                fi
+            done
+            if (( __is_wanted == 0 )); then
+                continue
+            fi
+        fi
+
         # Precedence (highest first): already-set env var, then .env, then Cargo.toml.
         if [[ -n "${!key}" ]]; then
             # Already defined in the shell/CI environment: keep current value.
-            [[ "${!key}" != "0" ]] && __env_print_lines+=(" - [shell] ${key} = ${!key}")
+            __env_print_lines+=(" - [shell] ${key} = ${!key}")
         elif [[ -n "$value" ]] && ! is_gha; then
             # Value from .env (skipped under ZISK_GHA, where the environment and
             # Cargo.toml drive configuration).
             export "$key=$value"
-            [[ "$value" != "0" ]] && __env_print_lines+=(" -  [.env] ${key} = ${value}")
+            __env_print_lines+=(" -  [.env] ${key} = ${value}")
         else
             # Fall back to Cargo.toml.
             key_value=$(get_var_from_cargo_toml "$key") || return 1
             if [[ -n "$key_value" ]]; then
                 export "$key=$key_value"
-                [[ "$key_value" != "0" ]] && __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
+                __env_print_lines+=(" - [Cargo] ${key} = ${key_value}")
             fi
         fi
     done < .env
@@ -283,6 +306,144 @@ get_zisk_repo_dir() {
     fi
 }
 
+# ensure_submodules: Check out a repo's git submodules (idempotent, no-op without
+# .gitmodules). Required when a submodule is wired as a Cargo `path` dependency —
+# e.g. zisk-eth-client's third_party/ziskethone — since cargo resolves paths before
+# any build runs and fails outright when the files are missing.
+# Usage: ensure_submodules <repo_dir>
+ensure_submodules() {
+    local repo_dir="$1"
+
+    if [[ ! -f "${repo_dir}/.gitmodules" ]]; then
+        return 0
+    fi
+    ensure git -C "${repo_dir}" submodule update --init --recursive || return 1
+}
+
+# Set to 1 by patch_cargo_dep as soon as it rewrites a manifest. Repointing a
+# git dependency to a local path changes that package's source, which the
+# committed Cargo.lock cannot describe, so cargo *must* re-resolve and `--locked`
+# would abort the build. cargo_locked_flags reads this to decide whether the
+# lock can still be pinned.
+CARGO_DEPS_PATCHED=0
+
+# cargo_locked_flags: sets CARGO_LOCKED_FLAGS to `(--locked)` when no manifest
+# has been repointed, so a Cargo.lock that does not match its manifest fails the
+# build instead of being silently re-resolved (which is how a third-party
+# dependency can drift to a version the pre-generated input files were not
+# produced with). Clears it, with a warning, once patch_cargo_dep has run.
+# Usage: cargo_locked_flags; cargo build ${CARGO_LOCKED_FLAGS[@]+"${CARGO_LOCKED_FLAGS[@]}"}
+cargo_locked_flags() {
+    if [[ "${CARGO_DEPS_PATCHED:-0}" == "1" ]]; then
+        CARGO_LOCKED_FLAGS=()
+        warn "Not passing --locked: a dependency was repointed to a local path, so Cargo.lock has to be re-resolved"
+    else
+        CARGO_LOCKED_FLAGS=(--locked)
+    fi
+}
+
+# verify_cargo_lock: Fail if a repository's committed Cargo.lock does not match its
+# committed Cargo.toml. `cargo metadata --locked` resolves without building and
+# aborts when the lock would have to be updated, which is the same guarantee
+# `cargo build --locked` gives. Call it on the freshly cloned checkout, *before*
+# patch_cargo_dep runs: once a dependency is repointed to a local path the lock has
+# to be re-resolved by construction and the check no longer means anything.
+# Usage: verify_cargo_lock <manifest_dir>
+verify_cargo_lock() {
+    local manifest_dir="$1"
+
+    info "Verifying Cargo.lock is up to date in ${manifest_dir}..."
+    if ! (cd "${manifest_dir}" && cargo metadata --locked --format-version 1 > /dev/null); then
+        err "Cargo.lock in ${manifest_dir} is out of date with its Cargo.toml. Commit a regenerated lock instead of letting the build re-resolve it."
+        return 1
+    fi
+}
+
+# patch_cargo_dep: Repoint a git dependency in a Cargo.toml to a local path.
+# Comments out the existing `<crate> = { git = ... }` line and inserts (idempotently)
+# a `<crate> = { path = "<local_path>" }` entry right after it. A crates.io
+# dependency is left untouched (no-op); a missing one is an error.
+# Relies on the SED_PARAMS global set up by the caller.
+# Usage: patch_cargo_dep <cargo_toml> <crate_name> <local_path>
+patch_cargo_dep() {
+    local cargo_toml="$1"
+    local crate="$2"
+    local dep_path="$3"
+
+    if [[ ! -f "${cargo_toml}" ]]; then
+        err "Cargo.toml not found: ${cargo_toml}"
+        return 1
+    fi
+
+    # Escape regex-special characters in the crate name for sed/grep patterns.
+    local crate_re
+    crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
+
+    # Only an active git dependency is repointed. Templates keep the alternatives
+    # (git / local path) commented out next to the live one, so the decision has to
+    # come from the uncommented line: a crates.io version is the published dep the
+    # test is meant to build against, and a path is already patched. Both no-ops.
+    local orig_line
+    orig_line=$(grep -m1 -E "^[[:space:]]*${crate_re}[[:space:]]*=" "${cargo_toml}" || true)
+    if [[ -z "${orig_line}" ]]; then
+        err "No active '${crate}' dependency found in ${cargo_toml}"
+        return 1
+    fi
+    if ! printf '%s' "${orig_line}" | grep -qE "=[[:space:]]*[{][[:space:]]*git"; then
+        info "'${crate}' is not an active git dependency in ${cargo_toml} (${orig_line}): leaving it unchanged"
+        return 0
+    fi
+
+    if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
+        err "Local path for '${crate}' not found: ${dep_path}/Cargo.toml. Make sure the ZisK repo is available."
+        return 1
+    fi
+
+    # Carry over `default-features` / `features` from the git line; dropping them
+    # rebuilds the dep with default features only (e.g. `input` loses `cli`, so
+    # `Client` stops deriving clap's ValueEnum).
+    local extra_opts="" opt frag
+    for opt in 'default-features[[:space:]]*=[[:space:]]*(true|false)' \
+               'features[[:space:]]*=[[:space:]]*\[[^]]*\]'; do
+        frag=$(printf '%s' "${orig_line}" | grep -oE "${opt}" | head -n1 || true)
+        [[ -n "${frag}" ]] && extra_opts+=", ${frag}"
+    done
+
+    local new_line="${crate} = { path = \"${dep_path}\"${extra_opts} }"
+
+    # Comment out the git dependency line and add a local path entry right below it, in a
+    # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
+    # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
+    # Expand SED_PARAMS defensively: `${SED_PARAMS[@]+"${SED_PARAMS[@]}"}` yields
+    # nothing (instead of erroring) when it is unset, so the function is safe under
+    # `set -u`. The fallback below then fills in GNU/BSD defaults.
+    local sed_params=(${SED_PARAMS[@]+"${SED_PARAMS[@]}"})
+    if [[ ${#sed_params[@]} -eq 0 ]]; then
+        if [[ "$(uname -s)" == "Darwin" ]]; then
+            sed_params=(-i "" -E)
+        else
+            sed_params=(-i -E)
+        fi
+    fi
+
+    ensure sed "${sed_params[@]}" \
+        "s~^${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git.*~# &\\
+${new_line}~" \
+        "${cargo_toml}" || return 1
+
+    # Verify the patch was applied correctly.
+    if ! grep -qE "^#[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}"; then
+        err "Failed to comment '${crate} = { git = ... }' line in ${cargo_toml}"
+        return 1
+    fi
+    if ! grep -qF "${new_line}" "${cargo_toml}"; then
+        err "Failed to add ${crate} path entry pointing to ${dep_path} in ${cargo_toml}"
+        return 1
+    fi
+
+    CARGO_DEPS_PATCHED=1
+}
+
 # format_duration_ms: format milliseconds to HH:MM:SS.mmm
 format_duration_ms() {
     local ms=$1
@@ -355,7 +516,7 @@ source "$HOME/.cargo/env"
 # Define directories
 ZISK_DIR="$HOME/.zisk"
 ZISK_BIN_DIR="$ZISK_DIR/bin"
-WORKSPACE_DIR="${HOME}/workspace"
+WORKSPACE_DIR="${WORKSPACE_DIR:-${HOME}/workspace}"
 OUTPUT_DIR="${HOME}/output"
 
 # Ensure directories exists

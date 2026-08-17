@@ -39,7 +39,7 @@ pub extern "C" fn syscall_bls12_381_curve_dbl(
     {
         let _p1 = [p.x, p.y].concat().try_into().unwrap();
         let mut p2: [u64; 12] = [0; 12];
-        precompiles_helpers::bls12_381_curve_dbl(&_p1, &mut p2);
+        zisk_precomp_helpers::bls12_381_curve_dbl(&_p1, &mut p2);
         p.x.copy_from_slice(&p2[0..6]);
         p.y.copy_from_slice(&p2[6..12]);
         #[cfg(feature = "hints")]

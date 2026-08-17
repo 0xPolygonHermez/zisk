@@ -210,8 +210,8 @@ pub fn glv_scalar_mul_secp256k1(
     }
 
     // Soundness: the reconstructed half-scalars must match the GLV-decomposed ones.
-    assert!(eq(&k1_rec, &k1));
-    assert!(eq(&k2_rec, &k2));
+    assert!(eq(&k1_rec, &k1), "Reconstructed k1 does not match input k1");
+    assert!(eq(&k2_rec, &k2), "Reconstructed k2 does not match input k2");
 
     if res_is_infinity {
         None
@@ -645,10 +645,10 @@ pub fn glv_double_scalar_mul_with_g_secp256k1(
     }
 
     // Soundness: the reconstructed scalars must match the GLV-decomposed ones.
-    assert!(eq(&a1_rec, &a1));
-    assert!(eq(&a2_rec, &a2));
-    assert!(eq(&b1_rec, &b1));
-    assert!(eq(&b2_rec, &b2));
+    assert!(eq(&a1_rec, &a1), "Reconstructed a1 does not match input a1");
+    assert!(eq(&a2_rec, &a2), "Reconstructed a2 does not match input a2");
+    assert!(eq(&b1_rec, &b1), "Reconstructed b1 does not match input b1");
+    assert!(eq(&b2_rec, &b2), "Reconstructed b2 does not match input b2");
 
     if res_is_infinity {
         None
@@ -674,7 +674,7 @@ pub(crate) fn glv_msm_secp256k1(
     // method running over only the bottom 128 bits.
 
     let n = scalars.len();
-    assert_eq!(n, points.len());
+    assert_eq!(n, points.len(), "scalars and points must have the same length");
     if n == 0 {
         return None;
     }

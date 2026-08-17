@@ -17,7 +17,7 @@
 #define LOCKED_INPUT_SIZE (uint64_t)0x08000000 // 128MB, the part of the input that is mapped with MAP_LOCKED to ensure it is always resident in RAM
 #define RAM_ADDR          (uint64_t)0xA0000000
 #define RAM_SIZE          (uint64_t)0x20000000 // 512MB
-#define SYS_ADDR          (RAM_ADDR)
+#define SYS_ADDR          (uint64_t)0xA0400000
 #define SYS_SIZE          (uint64_t)0x10000
 #define OUTPUT_ADDR       (SYS_ADDR + SYS_SIZE)
 
@@ -68,16 +68,8 @@
 #define TYPE_RH_RESPONSE 6
 #define TYPE_MO_REQUEST 7 // Memory opcode
 #define TYPE_MO_RESPONSE 8
-#define TYPE_MA_REQUEST 9 // Main packed trace
-#define TYPE_MA_RESPONSE 10
-#define TYPE_CM_REQUEST 11 // Collect memory trace
-#define TYPE_CM_RESPONSE 12
 #define TYPE_FA_REQUEST 13 // Fast mode, do not generate any trace
 #define TYPE_FA_RESPONSE 14
-#define TYPE_MR_REQUEST 15 // Mem reads
-#define TYPE_MR_RESPONSE 16
-#define TYPE_CA_REQUEST 17 // Collect main trace
-#define TYPE_CA_RESPONSE 18
 #define TYPE_SD_REQUEST 1000000 // Shutdown
 #define TYPE_SD_RESPONSE 1000001
 

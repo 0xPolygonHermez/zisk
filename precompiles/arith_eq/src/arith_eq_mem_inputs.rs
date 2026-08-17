@@ -1,7 +1,7 @@
-use fields::PrimeField64;
-use precompiles_common::{MemProcessor, PrecompileMemInputs};
+use proofman_fields::PrimeField64;
 use zisk_common::OP;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_precomp_common::{MemProcessor, PrecompileMemInputs};
 
 use crate::mem_inputs::{
     generate_arith256_mem_inputs, generate_arith256_mod_mem_inputs,

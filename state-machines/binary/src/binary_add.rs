@@ -2,9 +2,9 @@
 //!
 //! This state machine processes binary-related operations.
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::sync::Arc;
 use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRowOps};

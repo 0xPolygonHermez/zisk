@@ -198,9 +198,9 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
 
 2. Generate fixed data:
     ```bash
-    cargo run --release --bin arith_frops_fixed_gen
-    cargo run --release --bin binary_basic_frops_fixed_gen
-    cargo run --release --bin binary_extension_frops_fixed_gen
+    cargo run --release --bin zisk-arith-frops-fixed-gen
+    cargo run --release --bin zisk-binary-basic-frops-fixed-gen
+    cargo run --release --bin zisk-binary-extension-frops-fixed-gen
     ```
 
 3. Compile ZisK PIL:

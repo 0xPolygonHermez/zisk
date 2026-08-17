@@ -189,7 +189,7 @@ pub fn inv_fp_secp256k1(x: &[u64; 4], #[cfg(feature = "hints")] hints: &mut Vec<
     );
 
     // Check the inverse is canonical
-    assert!(lt(&inv, &P));
+    assert!(lt(&inv, &P), "Inverse is not canonical");
 
     // x·y + 0
     let mut params = SyscallArith256ModParams {

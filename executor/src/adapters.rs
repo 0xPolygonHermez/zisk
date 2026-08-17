@@ -5,8 +5,8 @@
 //! `SetupCtx<F>`. If a second adapter (e.g. a remote-proof backend) appears, split this file
 //! into a directory module.
 
-use fields::PrimeField64;
 use proofman_common::{ProofCtx, Setup, SetupCtx};
+use proofman_fields::PrimeField64;
 use zisk_common::{StatsCostPerType, StatsType};
 use zisk_pil::{
     ZiskPublicValues, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,

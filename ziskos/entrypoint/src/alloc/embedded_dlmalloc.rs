@@ -78,8 +78,8 @@ unsafe impl core::alloc::GlobalAlloc for Allocator {
 
 pub fn init() {
     unsafe {
-        let heap_start = &_kernel_heap_bottom as *const u8 as usize;
-        let heap_end = &_kernel_heap_top as *const u8 as usize;
+        let heap_start = &_heap_bottom as *const u8 as usize;
+        let heap_end = &_heap_top as *const u8 as usize;
         BUMP_PTR = heap_start;
         BUMP_END = heap_end;
     }

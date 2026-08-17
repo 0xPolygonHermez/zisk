@@ -18,7 +18,7 @@ zisk_precompile! {
     op_type = ArithEq384,
     trace = ArithEq384Trace,
     num_available = {
-        ::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP - 1
+        ::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP
     },
     ops = [
         (OperationArith384ModData         => Arith384Mod,         Arith384ModInput),
@@ -33,11 +33,11 @@ zisk_precompile! {
 #[cfg(test)]
 mod arith_eq_384_tests {
     use serial_test::serial;
-    use test_artifacts::{
+    use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::{
         ELF_ARITH384_MOD, ELF_BLS12_381_ADD, ELF_BLS12_381_COMPLEX_ADD, ELF_BLS12_381_COMPLEX_MUL,
         ELF_BLS12_381_COMPLEX_SUB, ELF_BLS12_381_DBL,
     };
-    use zisk_common::io::ZiskStdin;
 
     // Tests share a global lock (#[serial]) because each `run_emulation`
     // allocates several GB; running them in parallel exceeds RAM.

@@ -1,16 +1,22 @@
 [package]
 name = "zisk-coordinator-server"
 description = "ZisK coordinator server — public API + embedded coordinator"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
+publish = false
 
 [[bin]]
 name = "zisk-coordinator"
 path = "src/cli/main.rs"
 
 [dependencies]
+bytes = { workspace = true }
 zisk-coordinator-api = { workspace = true }
 zisk-cluster-common = { workspace = true }
 zisk-cluster-api = { workspace = true }
@@ -27,7 +33,7 @@ tokio-stream = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 async-trait = "0.1"
-async-stream = "0.3"
+async-stream = { workspace = true }
 
 # Types / serialization
 serde = { workspace = true }
@@ -48,12 +54,12 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 
 # Metrics
-metrics = "0.24"
+metrics = { workspace = true }
 metrics-exporter-prometheus = "0.18"
 
 # Graceful shutdown
-signal-hook = "0.4"
-signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
+signal-hook = { workspace = true }
+signal-hook-tokio = { workspace = true, features = ["futures-v0_3"] }
 
 [build-dependencies]
 

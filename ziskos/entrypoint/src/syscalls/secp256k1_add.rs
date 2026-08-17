@@ -51,7 +51,7 @@ pub extern "C" fn syscall_secp256k1_add(
         let p1 = [params.p1.x, params.p1.y].concat().try_into().unwrap();
         let p2 = [params.p2.x, params.p2.y].concat().try_into().unwrap();
         let mut p3: [u64; 8] = [0; 8];
-        precompiles_helpers::secp256k1_add(&p1, &p2, &mut p3);
+        zisk_precomp_helpers::secp256k1_add(&p1, &p2, &mut p3);
         params.p1.x.copy_from_slice(&p3[0..4]);
         params.p1.y.copy_from_slice(&p3[4..8]);
         #[cfg(feature = "hints")]

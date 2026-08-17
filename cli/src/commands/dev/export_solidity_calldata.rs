@@ -4,7 +4,7 @@ use anyhow::{anyhow, Context, Result};
 use serde::Serialize;
 use tracing::info;
 use zisk_build::ZISK_VERSION_MESSAGE;
-use zisk_common::{Proof, ProofBody, ZISK_PUBLICS};
+use zisk_common::{Proof, ProofBody};
 use zisk_prover_backend::setup_logger;
 
 use crate::ux::{print_banner, print_banner_command};
@@ -49,9 +49,9 @@ impl ExportSolidityCalldataCmd {
             anyhow!("Failed to load Proof from file {}: {}", self.proof.display(), e)
         })?;
 
-        let (proof_bytes, vadcop_vk) = match &proof.body {
-            ProofBody::Plonk { proof_bytes, plonk_vk } => {
-                (proof_bytes.as_slice(), plonk_vk.vadcop_vk.as_slice())
+        let (proof_bytes, rootc, publics_full) = match &proof.body {
+            ProofBody::Plonk { proof_bytes, publics_full, rootc, .. } => {
+                (proof_bytes.as_slice(), rootc.as_slice(), publics_full.as_slice())
             }
             _ => {
                 return Err(anyhow!(
@@ -67,40 +67,23 @@ impl ExportSolidityCalldataCmd {
             ));
         }
 
-        if vadcop_vk.len() != 4 {
-            return Err(anyhow!(
-                "vadcop_vk has unexpected length {} (expected 4 u64s)",
-                vadcop_vk.len()
-            ));
+        if rootc.len() != 4 {
+            return Err(anyhow!("rootc has unexpected length {} (expected 4 u64s)", rootc.len()));
         }
 
-        // Canonical Solidity layout: [programVK (32) || publicValues (ZISK_PUBLICS*4) || rootCVadcopFinal (32)].
-        // This is the exact byte string the on-chain verifier hashes — anchor everything off it.
-        let canonical = proof.publics.bytes_solidity(&proof.program_vk, vadcop_vk);
-        let publics_data_len = ZISK_PUBLICS * 4;
-        let expected_len = 32 + publics_data_len + 32;
-        if canonical.len() != expected_len {
-            return Err(anyhow!(
-                "bytes_solidity returned {} bytes, expected {}",
-                canonical.len(),
-                expected_len
-            ));
-        }
-
-        let program_vk_bytes: [u8; 32] = canonical[..32].try_into().unwrap();
-        let publics_bytes = &canonical[32..32 + publics_data_len];
-        let root_c_bytes: [u8; 32] = canonical[32 + publics_data_len..].try_into().unwrap();
-
-        // Sanity check: the prefix/suffix should be the BE-byte encoding of the program_vk and
-        // vadcop_vk u64 chunks. Recompute them independently and bail on any drift —
-        // catches a divergence in `bytes_solidity` before the Hardhat test reverts.
-        let independent_prefix = u64_chunks_to_be(&proof.program_vk.vk);
-        let independent_suffix = u64_chunks_to_be(vadcop_vk);
-        if independent_prefix != program_vk_bytes || independent_suffix != root_c_bytes {
-            return Err(anyhow!(
-                "internal: bytes_solidity prefix/suffix diverge from independent BE encoding"
-            ));
-        }
+        // The on-chain verifier hashes sha256(programVK ‖ publicValues ‖ rootCVadcopFinal),
+        // which must reproduce the circuit's getSha256Inputs preimage:
+        //   - programVK  = rom_root  = program VK, 4×u64 big-endian (32 bytes)
+        //   - publicValues = inputs  = the ZISK_PUBLICS user publics, each u64 byte-swizzled
+        //                              (ZISK_PUBLICS*8 bytes) — NOT the u32 `PublicValues` view
+        //   - rootCVadcopFinal       = the STAMPED verkey (`rootc`): vadcop_final for a plain
+        //                              proof, the recurser's own verkey for an aggregated one;
+        //                              4×u64 big-endian (32 bytes)
+        // The publicValues encoding comes straight from `snark_inputs_bytes` so it stays in
+        // lockstep with `snark_publics_hash` (the off-chain/snarkjs path).
+        let program_vk_bytes = u64_chunks_to_be(&proof.program_vk.vk);
+        let publics_bytes = zisk_common::snark_inputs_bytes(publics_full);
+        let root_c_bytes = u64_chunks_to_be(rootc);
 
         let fixture = SolidityFixture {
             program_vk: format!("0x{}", hex::encode(program_vk_bytes)),

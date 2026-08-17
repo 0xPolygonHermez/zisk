@@ -2,62 +2,17 @@
 
 source "./utils.sh"
 
-# patch_cargo_dep: Repoint a git dependency in a Cargo.toml to a local path.
-# Comments out the existing `<crate> = { git = ... }` line and inserts (idempotently)
-# a `<crate> = { path = "<local_path>" }` entry right after it.
-# Relies on the SED_PARAMS global set up in main().
-# Usage: patch_cargo_dep <cargo_toml> <crate_name> <local_path>
-patch_cargo_dep() {
-    local cargo_toml="$1"
-    local crate="$2"
-    local dep_path="$3"
-
-    if [[ ! -f "${cargo_toml}" ]]; then
-        err "Cargo.toml not found: ${cargo_toml}"
-        return 1
-    fi
-    if [[ ! -f "${dep_path}/Cargo.toml" ]]; then
-        err "Local path for '${crate}' not found: ${dep_path}/Cargo.toml. Make sure the ZisK repo is available."
-        return 1
-    fi
-
-    # Escape regex-special characters in the crate name for sed/grep patterns.
-    local crate_re
-    crate_re=$(printf '%s' "${crate}" | sed 's/[.[\*^$+?{}|()\/]/\\&/g')
-
-    local new_line="${crate} = { path = \"${dep_path}\" }"
-
-    # Comment out the git dependency line and add a local path entry right below it, in a
-    # single substitution. The `# &` keeps the original line as a comment; the `\<newline>`
-    # form (a backslash followed by a real newline) is portable across GNU and BSD/macOS sed.
-    # Idempotent: on reruns the git line is already commented, so it no longer matches.
-    ensure sed "${SED_PARAMS[@]}" \
-        "s~^${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git.*~# &\\
-${new_line}~" \
-        "${cargo_toml}" || return 1
-
-    # Verify the patch was applied correctly.
-    if ! grep -qE "^#[[:space:]]*${crate_re}[[:space:]]*=[[:space:]]*[{][[:space:]]*git" "${cargo_toml}"; then
-        err "Failed to comment '${crate} = { git = ... }' line in ${cargo_toml}"
-        return 1
-    fi
-    if ! grep -qF "${new_line}" "${cargo_toml}"; then
-        err "Failed to add ${crate} path entry pointing to ${dep_path} in ${cargo_toml}"
-        return 1
-    fi
-}
-
 main() {
     info "▶️  Running $(basename "$0") script..."
 
     current_dir=$(pwd)
 
     current_step=1
-    total_steps=5
+    total_steps=3
 
-    step "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    info "Loading environment variables..."
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env ZISK_REPO_DIR ZISK_ETH_CLIENT_BRANCH DISABLE_CLONE_REPO || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
 
@@ -76,12 +31,21 @@ main() {
         fi
     fi
 
+    # Also covers DISABLE_CLONE_REPO=1, where the checkout is reused as-is.
+    ensure_submodules "zisk-eth-client" || return 1
+
     GUEST_DIR="zisk-eth-client/bin/guests/stateless-validator-reth"
     ELF_FILE="${GUEST_DIR}/target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth"
     GUEST_CARGO_TOML="${GUEST_DIR}/Cargo.toml"
     CLIENT_CARGO_TOML="zisk-eth-client/Cargo.toml"
 
     step "Patching Cargo.toml files to use local zisk repo..."
+
+    # `cargo-zisk build` takes no --locked, so the lock is pinned here instead, while
+    # the checkout is still pristine. This ELF and the native ethproofs build both
+    # deserialize the same pre-generated input files, so a third-party dependency
+    # drifting between them silently desyncs those formats.
+    verify_cargo_lock "${GUEST_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         # GNU sed
@@ -98,10 +62,11 @@ main() {
     # Guest Cargo.toml: only depends on ziskos.
     patch_cargo_dep "${GUEST_CARGO_TOML}" "ziskos" "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
-    # Client Cargo.toml: depends on zisk-sdk, zkvm-interface and ziskos.
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"       "${ZISK_REPO_DIR}/sdk"               || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"         "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
+    # Client Cargo.toml: depends on zisk-sdk, zisk-zkvm-interface and ziskos.
+    # (zisk-zkvm-interface was renamed from zkvm-interface; the on-disk dir is still zkvm-interface.)
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"            "${ZISK_REPO_DIR}/sdk"               || return 1
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"              "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
     step "Building zec-reth ELF..."
     ensure cd "${GUEST_DIR}" || return 1

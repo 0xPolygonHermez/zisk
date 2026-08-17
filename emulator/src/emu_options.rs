@@ -50,6 +50,23 @@ pub struct EmuOptions {
     /// Sets the log step mode
     #[clap(short, long, value_name = "LOG_STEP", default_value = "false")]
     pub log_step: bool,
+    /// Trace every executed instruction (step, pc, opcode, a/b/c, flag, decoded
+    /// instruction) to stdout. Unlike `--log-step` this works in release builds.
+    /// Forces full (non-fast) emulation; redirect stdout to a file for big traces.
+    #[clap(long, value_name = "TRACE_STEPS", default_value = "false")]
+    pub trace_steps: bool,
+    /// First step of the change-trace window. Within the window (see `--trace-to`)
+    /// each executed instruction is printed followed by every register and stack
+    /// write it caused, as `prev (0xhex) => post (0xhex)`. Register writes show the
+    /// register name; stack writes are RAM writes in the range [RAM_ADDR, SYS_ADDR)
+    /// and also show the absolute address and its offset relative to sp (x2). Forces
+    /// full, non-fast emulation. Defaults to 0 when only `--trace-to` is given.
+    #[clap(long, value_name = "TRACE_FROM_STEP")]
+    pub trace_from: Option<u64>,
+    /// Last step (inclusive) of the change-trace window (see `--trace-from`).
+    /// Defaults to unbounded (until the end) when only `--trace-from` is given.
+    #[clap(long, value_name = "TRACE_TO_STEP")]
+    pub trace_to: Option<u64>,
     /// Log the output to console. This option is set by default to true as a requirement to pass
     /// the riscof GHA tests.  Enabled with `-c`.
     #[clap(short = 'c', long, value_name = "LOG_OUTPUT", default_value = "false")]
@@ -83,6 +100,14 @@ pub struct EmuOptions {
     /// Requires option: --sdk
     #[clap(long, value_name = "TOP_FUNCTIONS", default_value = "false")]
     pub top_functions: bool,
+    /// Show the "MEM COST BY TYPE" section in the stats report.
+    /// Requires option: -X
+    #[clap(long, value_name = "MEM_STATS", default_value = "false")]
+    pub mem_stats: bool,
+    /// Show the "DETAILED MEM COST" section in the stats report.
+    /// Requires option: -X
+    #[clap(long, value_name = "MEM_FULL_STATS", default_value = "false")]
+    pub mem_full_stats: bool,
     /// Generates statistics about opcodes and memory usage.  Enabled with `-X`.
     #[clap(short = 'X', long, value_name = "STATS", default_value = "false")]
     pub stats: bool,
@@ -92,6 +117,116 @@ pub struct EmuOptions {
     /// Optional file path to store operation data for analysis
     #[clap(short, long, value_name = "STORE_OP_OUTPUT")]
     pub store_op_output: Option<String>,
+    /// Use the legacy FROPS tables (snapshot before the FROPS overhaul) when computing FROPS
+    /// coverage statistics, so a new FROPS version can be compared against the previous one.
+    #[clap(long, value_name = "LEGACY_FROPS", default_value = "false")]
+    pub legacy_frops: bool,
+    /// Sort the opcode / precompiled / FROPS statistics sections by operation count (units)
+    /// instead of by cost. Requires option: -X
+    #[clap(long, value_name = "SORT_BY_UNITS", default_value = "false")]
+    pub sort_by_units: bool,
+    /// Save an aggregate statistics snapshot (semicolon-separated, no per-function detail) to this
+    /// file, so a later run can compare against it with `--ref-stats`. Requires option: -X
+    #[clap(long, value_name = "SAVE_STATS")]
+    pub save_stats: Option<String>,
+    /// Load an aggregate statistics snapshot saved with `--save-stats` and print a comparison
+    /// (reference vs current) of the cost distribution, base opcodes, precompiles and FROPS.
+    /// Requires option: -X
+    #[clap(long, value_name = "REF_STATS")]
+    pub ref_stats: Option<String>,
+    /// Compare two statistics snapshots saved with `--save-stats` and print the comparison, without
+    /// running the emulator. Takes two files: `<OLD> <NEW>` (OLD is the reference; deltas are
+    /// NEW - OLD). No ELF/input is needed.
+    #[clap(long, num_args = 2, value_names = ["OLD", "NEW"])]
+    pub diff_stats: Option<Vec<String>>,
+    /// Render the statistics as a standalone HTML page instead of a CSV snapshot: the snapshot
+    /// content is passed straight to the report renderer, no intermediate CSV file is written.
+    /// With a reference (`--ref-stats <FILE>`, or `--diff-stats <OLD> <NEW>`, which needs no run)
+    /// both snapshots are passed and the comparison report is rendered instead. Optionally takes
+    /// the output path; defaults to `report.html`. Collects the statistics on its own, so -X is
+    /// not required (add it to also get the text report on stdout).
+    #[clap(
+        long,
+        value_name = "HTML_FILE",
+        num_args = 0..=1,
+        default_missing_value = "report.html"
+    )]
+    pub html_report: Option<String>,
+    /// Colourize the stats comparison (`--ref-stats` / `--diff-stats`): `auto` (colour only when
+    /// stdout is a terminal), `always`, or `never`.
+    #[clap(long, value_name = "WHEN", default_value = "auto")]
+    pub color: String,
+    /// Format of the stats comparison output: `color` (human-readable, colour-coded — the default)
+    /// or `csv` (the previous plain, semicolon-separated view, for scripting).
+    #[clap(long, value_name = "FORMAT", default_value = "color")]
+    pub diff_format: String,
+    /// Render the stats comparison in the previous plain view (equivalent to `--diff-format csv`).
+    /// Also implied by `--sdk`.
+    #[clap(long, value_name = "LEGACY_DISPLAY", default_value = "false")]
+    pub legacy_display: bool,
+    /// Field separator for the CSV stats output (`--save-stats` and the `csv` comparison view).
+    /// A single character; defaults to a comma.
+    #[clap(long, value_name = "SEP", default_value = ",")]
+    pub csv_separator: String,
+    /// Log every costly unaligned memory access (double 4B/8B word-crossing) with its execution
+    /// context (pc, function, address, offset, value). Off by default. Requires option: -X
+    #[clap(long, value_name = "LOG_COSTLY_UNALIGNED", default_value = "false")]
+    pub log_costly_unaligned: bool,
+    /// Call-stack tracking mode for the per-function report (`-S -X`): `auto` (default) resyncs the
+    /// call stack when a mismatch is detected — needed for GCC/C++ tail-recursion such as
+    /// std::sort's __introsort_loop; `strict` keeps the original behaviour (disable on mismatch).
+    #[clap(long, value_name = "MODE", default_value = "auto")]
+    pub callstack_mode: String,
+    /// Show a per-opcode breakdown of cheaper-to-prove variants under each opcode in the report,
+    /// e.g. `add` split into `add_hi0` / `add_hif` (BinaryAddHi shapes). Requires option: -X
+    #[clap(long, value_name = "OPCODE_BREAKDOWN", default_value = "false")]
+    pub opcode_breakdown: bool,
+    /// Show an operand pattern-analysis section: per base opcode, the operand categories that cover
+    /// a significant share of its operations (more than 10% of the opcode's operations and at least
+    /// 4,000 in absolute terms). Requires option: -X
+    #[clap(long, value_name = "PATTERN_ANALYSIS", default_value = "false")]
+    pub pattern_analysis: bool,
+    /// Analyze duplicate precompile calls: report, per precompile, how many calls repeat the same
+    /// input content (same input → same output) and the cost spent on those repeats (the potential
+    /// deduplication saving). Covers every precompile except DMA. Requires option: -X
+    #[clap(long, value_name = "DUPLICATES", default_value = "false")]
+    pub duplicates: bool,
+    /// Restrict the duplicate analysis (`--duplicates`) to these precompiles, comma-separated by
+    /// opcode name (e.g. `keccak,sha256,arith256`). If omitted, all supported precompiles are
+    /// analyzed. Requires option: --duplicates
+    #[clap(long, value_name = "OPCODES")]
+    pub duplicates_ops: Option<String>,
+    /// Number of innermost call-stack functions (leaf + callers) to record per precompile call for
+    /// the duplicate detail report (`--duplicates-detail`). Requires option: --duplicates
+    #[clap(long, value_name = "DEPTH", default_value = "4")]
+    pub duplicates_depth: usize,
+    /// Show the per-precompile call-path detail (level 2) of the duplicate report: where the
+    /// duplicates come from, most costly first. Requires options: -S --duplicates
+    #[clap(long, value_name = "DUPLICATES_DETAIL", default_value = "false")]
+    pub duplicates_detail: bool,
+    /// Analyze the step distance between consecutive accesses of each register: report per register
+    /// the accesses, the maximum distance and its ratio to the limit, the same maximum assuming a
+    /// periodic flush (`--reg-step-flush-bits`), and how many gaps reach 80% / 100% / 200% of the
+    /// limit (`--reg-step-limit-bits`). Requires option: -X
+    #[clap(long, value_name = "REG_STEP_DISTANCE", default_value = "false")]
+    pub reg_step_distance: bool,
+    /// Distance limit, in bits, for the register step-distance thresholds: the limit is 2^bits
+    /// steps. Default 22, i.e. 4194304 steps.
+    #[clap(long, value_name = "BITS", default_value = "22")]
+    pub reg_step_limit_bits: u32,
+    /// Flush period, in bits, for the `--reg-step-distance` analysis: every 2^bits steps every
+    /// register is assumed to be forcibly accessed (a flush). These forced accesses are not counted
+    /// in the ACCESSES column, they only feed the MAX FDIST / FRATIO columns. Default 22.
+    #[clap(long, value_name = "BITS", default_value = "22")]
+    pub reg_step_flush_bits: u32,
+    /// Fast one-line check of the register step distances, so a whole program can be simulated
+    /// quickly just to see this. Splits the execution in instances of 2^bits steps
+    /// (`--reg-step-flush-bits`), each one starting with a flush that accesses every register, and
+    /// reports how many instances hold at least one distance above the limit
+    /// (`--reg-step-limit-bits`).
+    /// Unlike `--reg-step-distance` it does not need -X and runs on the fast emulation path.
+    #[clap(long, value_name = "REG_STEP_CHECK", default_value = "false")]
+    pub reg_step_check: bool,
     /// Load function names and symbols from the ELF file.
     #[clap(short = 'S', long, value_name = "READ_SYMBOLS", default_value = "false")]
     pub read_symbols: bool,
@@ -156,7 +291,12 @@ pub struct EmuOptions {
     pub with_progress: bool,
     /// Output file path for the profiler data (default: profile.json.gz).
     /// Requires options: -S -X
-    #[clap(long, value_name = "PROFILER_OUTPUT")]
+    #[clap(
+        long,
+        value_name = "PROFILER_OUTPUT",
+        num_args = 0..=1,
+        default_missing_value = "profile.json.gz"
+    )]
     pub profiler_output: Option<String>,
     /// Shorten long ROI function names in statistics reports.
     /// Optionally specify maximum length (default: 160 characters).
@@ -193,6 +333,9 @@ impl Default for EmuOptions {
             trace: None,
             verbose: false,
             log_step: false,
+            trace_steps: false,
+            trace_from: None,
+            trace_to: None,
             log_output: false,
             log_output_riscof: false,
             chunk_size: None,
@@ -201,6 +344,28 @@ impl Default for EmuOptions {
             stats: false,
             generate_minimal_traces: false,
             store_op_output: None,
+            legacy_frops: false,
+            sort_by_units: false,
+            save_stats: None,
+            ref_stats: None,
+            diff_stats: None,
+            html_report: None,
+            color: "auto".to_string(),
+            diff_format: "color".to_string(),
+            legacy_display: false,
+            csv_separator: ",".to_string(),
+            log_costly_unaligned: false,
+            callstack_mode: "auto".to_string(),
+            opcode_breakdown: false,
+            pattern_analysis: false,
+            duplicates: false,
+            duplicates_ops: None,
+            duplicates_depth: 4,
+            duplicates_detail: false,
+            reg_step_distance: false,
+            reg_step_limit_bits: 22,
+            reg_step_flush_bits: 22,
+            reg_step_check: false,
             read_symbols: false,
             roi_callers: 10,
             top_roi: 25,
@@ -210,6 +375,8 @@ impl Default for EmuOptions {
             opcodes: false,
             profile_tags: false,
             top_functions: false,
+            mem_stats: false,
+            mem_full_stats: false,
             coverage: false,
             top_histogram: 0,
             main_name: "main".to_string(),
@@ -253,6 +420,9 @@ impl fmt::Display for EmuOptions {
         writeln!(f, "SDK: {:?}", self.sdk)?;
         writeln!(f, "TRACERV: {:?}", self.tracerv)?;
         writeln!(f, "LOG_STEP: {:?}", self.log_step)?;
+        writeln!(f, "TRACE_STEPS: {:?}", self.trace_steps)?;
+        writeln!(f, "TRACE_FROM: {:?}", self.trace_from)?;
+        writeln!(f, "TRACE_TO: {:?}", self.trace_to)?;
         writeln!(f, "MINIMAL_TRACES: {:?}", self.generate_minimal_traces)?;
         writeln!(f, "READ_SYMBOLS: {:?}", self.read_symbols)?;
         writeln!(f, "TOP_ROI: {:?}", self.top_roi)?;
@@ -274,18 +444,62 @@ impl fmt::Display for EmuOptions {
 }
 
 impl EmuOptions {
+    /// Whether the stats comparison should use the previous plain semicolon-separated view instead
+    /// of the colour-coded one: explicit `--diff-format csv`, `--legacy-display`, or SDK mode.
+    pub fn diff_use_csv(&self) -> bool {
+        self.diff_format == "csv" || self.legacy_display || self.sdk
+    }
+
+    /// The CSV field separator as a single character (first char of `--csv-separator`, `,` if empty).
+    pub fn csv_sep(&self) -> char {
+        self.csv_separator.chars().next().unwrap_or(',')
+    }
+
     /// Returns true if the configuration allows to emulate in fast mode, maximizing the performance
     pub fn is_fast(&self) -> bool {
         self.chunk_size.is_none()
             && (self.print_step.is_none() || (self.print_step.unwrap() == 0))
             && self.trace.is_none()
             && !self.log_step
+            && !self.trace_steps
+            && self.trace_from.is_none()
+            && self.trace_to.is_none()
             && !self.verbose
             && !self.tracerv
             && !self.stats
             && !self.generate_minimal_traces
             && !self.log_output
             && !self.log_output_riscof
+            // A full stats snapshot / comparison needs the per-opcode + memory collection path.
+            && self.save_stats.is_none()
+            && self.ref_stats.is_none()
+            && self.html_report.is_none()
+    }
+
+    /// True if the run has to produce a statistics snapshot, either to a CSV file
+    /// (`--save-stats`), to compare against a reference (`--ref-stats`) or to render the HTML
+    /// report (`--html-report`). All three need the same collection path.
+    pub fn snapshot_enabled(&self) -> bool {
+        self.save_stats.is_some() || self.ref_stats.is_some() || self.html_report.is_some()
+    }
+
+    /// Register step-distance limit in steps, i.e. 2^`--reg-step-limit-bits` (clamped to a
+    /// representable limit).
+    pub fn reg_step_limit(&self) -> u64 {
+        1u64 << self.reg_step_limit_bits.min(63)
+    }
+
+    /// True if a change-trace window was requested (via `--trace-from`/`--trace-to`).
+    pub fn trace_changes_enabled(&self) -> bool {
+        self.trace_from.is_some() || self.trace_to.is_some()
+    }
+
+    /// True if the given step falls inside the requested change-trace window.
+    /// `--trace-from` defaults to 0 and `--trace-to` to unbounded.
+    pub fn trace_changes_at(&self, step: u64) -> bool {
+        self.trace_changes_enabled()
+            && step >= self.trace_from.unwrap_or(0)
+            && self.trace_to.map_or(true, |to| step <= to)
     }
 
     pub fn apply_profiling(&mut self, mode: ProfilingMode) {
@@ -304,6 +518,7 @@ impl EmuOptions {
             ProfilingMode::Complete => {
                 self.sdk = true;
                 self.stats = true;
+                self.read_symbols = true;
                 self.profiler_output = Some("profile.json.gz".to_string());
             }
         }

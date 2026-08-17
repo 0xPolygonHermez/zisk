@@ -3,13 +3,13 @@ use std::sync::Arc;
 #[cfg(feature = "debug_mem_align")]
 use std::sync::Mutex;
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
+use proofman_fields::PrimeField64;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use rayon::prelude::*;
-use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps};
+use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps, DUAL_RANGE_BYTE_ID};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -46,8 +46,8 @@ pub struct MemAlignSM<F: PrimeField64> {
     /// The table ID for the Mem Align ROM State Machine
     table_id: usize,
 
-    /// The range ID for the byte range check
-    range_id: usize,
+    /// The virtual table ID for the dual-byte range check
+    table_dual_byte_id: usize,
 }
 
 macro_rules! debug_info {
@@ -64,15 +64,15 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Get the table ID
         let table_id =
             std.get_virtual_table_id(MemAlignRomSM::TABLE_ID).expect("Failed to get table ID");
-        let range_id =
-            std.get_range_id(0, CHUNK_BITS_MASK as i64, None).expect("Failed to get range ID");
+        let table_dual_byte_id =
+            std.get_virtual_table_id(DUAL_RANGE_BYTE_ID).expect("Failed to get dual byte table ID");
 
         Arc::new(Self {
             std: std.clone(),
             #[cfg(feature = "debug_mem_align")]
             num_computed_rows: Mutex::new(0),
             table_id,
-            range_id,
+            table_dual_byte_id,
         })
     }
 
@@ -144,7 +144,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_offset(offset as u8);
                 value_row.set_width(width as u8);
                 value_row.set_pc(next_pc as u8);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
+                value_row.set_sel_w_lt8(width < 8);
+                value_row.set_sel_w_lt4(width < 4);
+                value_row.set_sel_w_lt2(width < 2);
 
                 // Compute reg and sel arrays for read_row
                 let mut read_reg_values = [0u8; CHUNK_NUM];
@@ -288,7 +291,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_width(width as u8);
                 value_row.set_wr(true);
                 value_row.set_pc(next_pc as u8 + 1);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
 
                 // Compute arrays for read_row
                 let mut read_reg_values = [0u8; CHUNK_NUM];
@@ -442,7 +445,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_offset(offset as u8);
                 value_row.set_width(width as u8);
                 value_row.set_pc(next_pc as u8);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
+                value_row.set_sel_w_lt8(width < 8);
+                value_row.set_sel_w_lt4(width < 4);
+                value_row.set_sel_w_lt2(width < 2);
 
                 let mut second_read_row: R = Default::default();
                 second_read_row.set_step(step);
@@ -652,7 +658,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
                 value_row.set_width(width as u8);
                 value_row.set_wr(true);
                 value_row.set_pc(next_pc as u8 + 1);
-                value_row.set_sel_prove(true);
+                value_row.set_is_non_aligned_op(true);
 
                 let mut second_write_row: R = Default::default();
                 second_write_row.set_step(step + 1);
@@ -842,7 +848,7 @@ impl<F: PrimeField64> MemAlignSM<F> {
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = MemAlignTrace::<R>::new_from_vec(trace_buffer)?;
-        let mut reg_range_check = vec![0u32; 1 << CHUNK_BITS];
+        let mut dual_mults = vec![0u64; 1 << (2 * CHUNK_BITS)];
 
         let num_rows = trace.num_rows();
 
@@ -886,8 +892,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Iterate over all traces to set range checks
         trace.buffer[0..total_index].iter_mut().for_each(|row| {
             let reg_values = row.get_all_reg();
-            for i in 0..CHUNK_NUM {
-                reg_range_check[reg_values[i] as usize] += 1;
+            // Range-check registers in dual-byte pairs: (reg[0],reg[1]), (reg[2],reg[3]), ...
+            for i in (0..CHUNK_NUM).step_by(2) {
+                let idx = ((reg_values[i] as usize) << CHUNK_BITS) | reg_values[i + 1] as usize;
+                dual_mults[idx] += 1;
             }
         });
 
@@ -901,14 +909,10 @@ impl<F: PrimeField64> MemAlignSM<F> {
         // Compute the program multiplicity
         self.std.inc_virtual_row(self.table_id, MemAlignRomSM::PADDING_ROW, padding_size as u64);
 
-        reg_range_check[0] += CHUNK_NUM as u32 * padding_size as u32;
-        self.update_std_range_check(reg_range_check);
+        // Padding rows have all registers zero -> (CHUNK_NUM / 2) dual (0, 0) pairs each.
+        dual_mults[0] += (CHUNK_NUM / 2) as u64 * padding_size as u64;
+        self.std.inc_virtual_rows_ranged(self.table_dual_byte_id, None, &dual_mults);
 
         Ok(AirInstance::new_from_trace(FromTrace::new(&mut trace)))
-    }
-
-    fn update_std_range_check(&self, reg_range_check: Vec<u32>) {
-        // Perform the range checks
-        self.std.range_check_ranged(self.range_id, None, &reg_range_check);
     }
 }

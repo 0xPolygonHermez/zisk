@@ -24,8 +24,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod keccakf_tests {
-    use test_artifacts::ELF_KECCAK;
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::{ELF_KECCAK, ELF_KECCAKF_CACHE};
 
     /// Number of `syscall_keccak_f` invocations the guest will perform.
     const NUM_KECCAKFS: u64 = 10;
@@ -36,5 +36,15 @@ mod keccakf_tests {
         stdin.write(&NUM_KECCAKFS);
 
         ELF_KECCAK.run_emulation(stdin, None).expect("keccak guest emulation failed");
+    }
+
+    /// Drives the `fcall_set_keccakf_cache_index` / `fcall_get_keccakf_cache_index` pair from a
+    /// guest: the guest asserts every hit, miss and registration lifetime itself, so a failure
+    /// surfaces as a failed emulation.
+    #[test]
+    fn keccakf_cache_tests() {
+        ELF_KECCAKF_CACHE
+            .run_emulation(ZiskStdin::new(), None)
+            .expect("keccakf cache guest emulation failed");
     }
 }

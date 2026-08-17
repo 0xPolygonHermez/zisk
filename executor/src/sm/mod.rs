@@ -18,13 +18,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::error::{ExecutorError, ExecutorResult};
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use zisk_common::{Instance, InstanceCtx, Plan};
 use zisk_pil::ZISK_AIRGROUP_ID;
 
-use asm_runner::AsmRunnerRH;
+use zisk_asm_runner::AsmRunnerRH;
 
 use zisk_core::ZiskRom;
 
@@ -62,13 +62,17 @@ pub struct StaticSMBundle<F: PrimeField64> {
 impl<F: PrimeField64> StaticSMBundle<F> {
     /// Construct the bundle with the built-in SMs (Rom, Mem, Binary,
     /// Arith, Dma) created internally + the caller-supplied precompiles.
-    pub fn new(std: Arc<Std<F>>, precompiles: Vec<(usize, Precompiles<F>)>) -> Self {
+    pub fn new(std: Arc<Std<F>>, precompiles: Vec<(&'static [usize], Precompiles<F>)>) -> Self {
         let sm: Vec<SMType<F>> = BuiltinSMs::all(std.clone())
             .into_iter()
             .map(|(ids, b)| (ids, StateMachines::Builtin(b)))
-            .chain(precompiles.into_iter().map(|(air_id, p)| {
+            .chain(precompiles.into_iter().map(|(air_ids, p)| {
+                // A precompile may own several airs (e.g. the ArithEq family); key it by all of them
+                // so `build_instance` finds it for any of its air ids.
                 (
-                    std::borrow::Cow::Owned(vec![(ZISK_AIRGROUP_ID, air_id)]),
+                    std::borrow::Cow::Owned(
+                        air_ids.iter().map(|&id| (ZISK_AIRGROUP_ID, id)).collect(),
+                    ),
                     StateMachines::Precompile(p),
                 )
             }))
@@ -142,11 +146,11 @@ pub fn plan_sec<F: PrimeField64>(
     let mut plans = BTreeMap::new();
 
     // ROM has no bus-side counter — plan from chunk count directly.
-    let rom_plan = sm_rom::RomPlanner::plan_for_chunks(num_chunks)
+    let rom_plan = zisk_sm_rom::RomPlanner::plan_for_chunks(num_chunks)
         .expect("num_chunks > 0 is upheld by the caller (min_traces.len())");
     plans.insert(ROM_POSITION, rom_plan);
 
-    for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION] {
+    for pos in [MEM_POSITION, BINARY_POSITION, ARITH_POSITION, DMA_POSITION, JUMP_DEST_POSITION] {
         if let Some(counters) = vec_counters.remove(&pos) {
             let planner = BuiltinSMs::<F>::planner_for_position(pos, is_asm_emulator);
             plans.insert(pos, planner.plan(counters));

@@ -299,43 +299,6 @@ void client_setup (void)
 
     int result;
 
-    /***********************/
-    /* INPUT MINIMAL TRACE */
-    /***********************/
-
-    // Input MT trace
-    if ((gen_method == ChunkPlayerMTCollectMem) || (gen_method == ChunkPlayerMemReadsCollectMain))
-    {
-        // Create the output shared memory
-        shmem_mt_fd = shm_open(shmem_mt_name, O_RDONLY, 0666);
-        if (shmem_mt_fd < 0)
-        {
-            asm_printf("ERROR: Failed calling trace shm_open(%s) errno=%d=%s\n", shmem_mt_name, errno, strerror(errno));
-            exit(-1);
-        }
-
-        // Map it to the trace address
-#ifdef DEBUG
-        gettimeofday(&start_time, NULL);
-#endif
-        void * pTrace = mmap((void *)TRACE_ADDR, chunk_player_mt_size, PROT_READ, MAP_SHARED | MAP_FIXED | map_locked_flag, shmem_mt_fd, 0);
-#ifdef DEBUG
-        gettimeofday(&stop_time, NULL);
-        duration = TimeDiff(start_time, stop_time);
-#endif
-        if (pTrace == MAP_FAILED)
-        {
-            asm_printf("ERROR: Failed calling mmap(MT) errno=%d=%s\n", errno, strerror(errno));
-            exit(-1);
-        }
-        if ((uint64_t)pTrace != TRACE_ADDR)
-        {
-            asm_printf("ERROR: Called mmap(MT) but returned address = %p != 0x%lx\n", pTrace, TRACE_ADDR);
-            exit(-1);
-        }
-        if (verbose) asm_printf("mmap(MT) returned %p in %lu us\n", pTrace, duration);
-    }
-
     /**********************/
     /* PRECOMPILE_RESULTS */
     /**********************/
@@ -799,7 +762,6 @@ void client_run (void)
     /************************/
     /* Read input file data */
     /************************/
-    if ((gen_method != ChunkPlayerMTCollectMem) && (gen_method != ChunkPlayerMemReadsCollectMain))
     {
 
 #ifdef DEBUG
@@ -904,6 +866,7 @@ void client_run (void)
     /*****************/
     /* Minimal trace */
     /*****************/
+    uint64_t total_duration = 0;
     for (uint64_t i=0; i<number_of_mt_requests; i++)
     {
         switch (gen_method)
@@ -943,7 +906,8 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (MT)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (MT)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -985,7 +949,8 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (RH)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (RH)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
@@ -1027,136 +992,11 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (MO)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (MO)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
-                
-                break;
-            }
-            case MainTrace:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_MA_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = 0;
-                request[4] = 0;
-
-                // Send data to server
-                client_io_send(request);
-
-                // Read server response
-                client_io_recv(response);
-                
-                if (response[0] != TYPE_MA_RESPONSE)
-                {
-                    asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    asm_printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (MA)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-                
-                break;
-            }
-            case ChunkPlayerMTCollectMem:
-            {
-                if (chunk_player_address != 0)
-                {
-                    gettimeofday(&start_time, NULL);
-
-                    // Prepare message to send
-                    request[0] = TYPE_CM_REQUEST;
-                    request[1] = MAX_STEPS;
-                    request[2] = 1ULL << 18; // chunk_len
-                    request[3] = chunk_player_address;
-                    request[4] = 0;
-
-                    // Send data to server
-                    client_io_send(request);
-
-                    // Read server response
-                    client_io_recv(response);
-                    
-                    if (response[0] != TYPE_CM_RESPONSE)
-                    {
-                        asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                        exit(-1);
-                    }
-                    if (response[1] != 0)
-                    {
-                        asm_printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                        exit(-1);
-                    }
-                    
-                    gettimeofday(&stop_time, NULL);
-                    duration = TimeDiff(start_time, stop_time);
-                    asm_printf("client (CM)[%lu]: done in %lu us\n", i, duration);
-                }
-                else
-                {
-                    uint64_t number_of_chunks = pInputTrace[4];
-                    asm_printf("client (CM)[%lu]: sending requests for %lu chunks\n", i, number_of_chunks);
-
-                    for (uint64_t c = 0; c < number_of_chunks; c++)
-                    {
-                        if (c == 0)
-                        {
-                            chunk_player_address = 0xc0000028;
-                        }
-                        else
-                        {
-                            uint64_t * chunk = (uint64_t *)chunk_player_address;
-                            uint64_t mem_reads_size = chunk[40];
-                            chunk_player_address += (41 + mem_reads_size) * 8;
-                        }
-
-                        asm_printf("client (CM)[%lu][%lu]: @=0x%lx sending request...", i, c, chunk_player_address);
-
-                        gettimeofday(&start_time, NULL);
-    
-                        // Prepare message to send
-                        request[0] = TYPE_CM_REQUEST;
-                        request[1] = MAX_STEPS;
-                        request[2] = 1ULL << 18; // chunk_len
-                        request[3] = chunk_player_address;
-                        request[4] = 0;
-    
-                        // Send data to server
-                        client_io_send(request);
-    
-                        // Read server response
-                        client_io_recv(response);
-                        
-                        if (response[0] != TYPE_CM_RESPONSE)
-                        {
-                            asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                            exit(-1);
-                        }
-                        if (response[1] != 0)
-                        {
-                            asm_printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                            exit(-1);
-                        }
-                        
-                        gettimeofday(&stop_time, NULL);
-                        duration = TimeDiff(start_time, stop_time);
-                        asm_printf("done in %lu us\n", duration);
-                    }
-
-                } 
                 
                 break;
             }
@@ -1190,136 +1030,11 @@ void client_run (void)
                 
                 gettimeofday(&stop_time, NULL);
                 duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (FA)[%lu]: done in %lu us\n", i, duration);
+                total_duration += duration;
+                asm_printf("client (FA)[%lu]: done in %lu us (total: %lu us)\n", i, duration, total_duration);
 
                 // Pretend to spend some time processing the incoming data
                 usleep((1000000));
-                
-                break;
-            }
-            case MemReads:
-            {
-                gettimeofday(&start_time, NULL);
-
-                // Prepare message to send
-                request[0] = TYPE_MR_REQUEST;
-                request[1] = MAX_STEPS;
-                request[2] = 1ULL << 18; // chunk_len
-                request[3] = 0;
-                request[4] = 0;
-
-                // Send data to server
-                client_io_send(request);
-
-                // Read server response
-                client_io_recv(response);
-                
-                if (response[0] != TYPE_MR_RESPONSE)
-                {
-                    asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                    exit(-1);
-                }
-                if (response[1] != 0)
-                {
-                    asm_printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                    exit(-1);
-                }
-                
-                gettimeofday(&stop_time, NULL);
-                duration = TimeDiff(start_time, stop_time);
-                asm_printf("client (MR)[%lu]: done in %lu us\n", i, duration);
-
-                // Pretend to spend some time processing the incoming data
-                usleep((1000000));
-
-                break;
-            }
-            case ChunkPlayerMemReadsCollectMain:
-            {
-                if (chunk_player_address != 0)
-                {
-                    gettimeofday(&start_time, NULL);
-
-                    // Prepare message to send
-                    request[0] = TYPE_CA_REQUEST;
-                    request[1] = MAX_STEPS;
-                    request[2] = 1ULL << 18; // chunk_len
-                    request[3] = chunk_player_address;
-                    request[4] = 0;
-
-                    // Send data to server
-                    client_io_send(request);
-
-                    // Read server response
-                    client_io_recv(response);
-                    
-                    if (response[0] != TYPE_CA_RESPONSE)
-                    {
-                        asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                        exit(-1);
-                    }
-                    if (response[1] != 0)
-                    {
-                        asm_printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                        exit(-1);
-                    }
-                    
-                    gettimeofday(&stop_time, NULL);
-                    duration = TimeDiff(start_time, stop_time);
-                    asm_printf("client (CA)[%lu]: done in %lu us\n", i, duration);
-                }
-                else
-                {
-                    uint64_t number_of_chunks = pInputTrace[4];
-                    asm_printf("client (CA)[%lu]: sending requests for %lu chunks\n", i, number_of_chunks);
-
-                    for (uint64_t c = 0; c < number_of_chunks; c++)
-                    {
-                        if (c == 0)
-                        {
-                            chunk_player_address = 0xc0000028;
-                        }
-                        else
-                        {
-                            uint64_t * chunk = (uint64_t *)chunk_player_address;
-                            uint64_t mem_reads_size = chunk[40];
-                            chunk_player_address += (41 + mem_reads_size) * 8;
-                        }
-
-                        asm_printf("client (CA)[%lu][%lu]: @=0x%lx sending request...", i, c, chunk_player_address);
-
-                        gettimeofday(&start_time, NULL);
-    
-                        // Prepare message to send
-                        request[0] = TYPE_CA_REQUEST;
-                        request[1] = MAX_STEPS;
-                        request[2] = 1ULL << 18; // chunk_len
-                        request[3] = chunk_player_address;
-                        request[4] = 0;
-    
-                        // Send data to server
-                        client_io_send(request);
-    
-                        // Read server response
-                        client_io_recv(response);
-                        
-                        if (response[0] != TYPE_CA_RESPONSE)
-                        {
-                            asm_printf("ERROR: recv() returned unexpected type=%lu\n", response[0]);
-                            exit(-1);
-                        }
-                        if (response[1] != 0)
-                        {
-                            asm_printf("ERROR: recv() returned unexpected result=%lu\n", response[1]);
-                            exit(-1);
-                        }
-                        
-                        gettimeofday(&stop_time, NULL);
-                        duration = TimeDiff(start_time, stop_time);
-                        asm_printf("done in %lu us\n", duration);
-                    }
-
-                } 
                 
                 break;
             }

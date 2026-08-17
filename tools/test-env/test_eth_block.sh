@@ -6,8 +6,8 @@ main() {
     info "▶️  Running $(basename "$0") script..."
 
     info "Loading environment variables..."
-    # Load environment variables from .env file
-    load_env || return 1
+    # Load environment variables from .env file (only the ones used by this script)
+    load_env BLOCK_INPUTS_SINGLE BLOCK_INPUTS_MPI DISABLE_PROVE ONLY_CPU MPI_PROCESSES MPI_THREADS PROVE_FLAGS || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
 

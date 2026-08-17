@@ -1,10 +1,13 @@
 [package]
 name = "zisk-sdk"
+description = "High-level client SDK for proving and verifying programs on the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
@@ -26,10 +29,19 @@ zisk-coordinator-api = { workspace = true }
 zisk-coordinator-client = { workspace = true }
 
 # For utils.rs
-rom-setup = { workspace = true }
+zisk-rom-setup = { workspace = true }
+
+# Recurser-aggregator support
+zisk-recurser = { workspace = true }
+proofman = { workspace = true }
+proofman-verifier = { workspace = true }
+rayon = { workspace = true }
+serde_json = { workspace = true }
+proofman-fields = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
-test-artifacts = { workspace = true }
+zisk-test-artifacts = { workspace = true }
 
 [features]
 default = []
