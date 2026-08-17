@@ -2,6 +2,8 @@
 
 use crate::syscalls::syscall_keccak_f;
 
+use super::is_aligned_8;
+
 #[cfg(zisk_hints_debug)]
 use core::ffi::c_char;
 
@@ -44,18 +46,33 @@ pub fn keccak256(input: &[u8], #[cfg(feature = "hints")] hints: &mut Vec<u64>) -
 
     // Absorb phase: process complete rate-sized blocks
     let mut offset = 0;
-    while offset + KECCAK256_RATE <= input_len {
-        // XOR block into state
-        xor_block_into_state(&mut state, &input[offset..offset + KECCAK256_RATE]);
-        // Apply Keccak-f permutation
-        unsafe {
-            syscall_keccak_f(
-                &mut state,
-                #[cfg(feature = "hints")]
-                hints,
-            );
+    // The 136-byte rate preserves 8-byte alignment between complete blocks.
+    if is_aligned_8(input.as_ptr()) {
+        // Fast path: input is aligned, use word loads directly
+        while offset + KECCAK256_RATE <= input_len {
+            xor_aligned_block_into_state(&mut state, &input[offset..offset + KECCAK256_RATE]);
+            unsafe {
+                syscall_keccak_f(
+                    &mut state,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
+            }
+            offset += KECCAK256_RATE;
         }
-        offset += KECCAK256_RATE;
+    } else {
+        // Slow path: reconstruct words from bytes
+        while offset + KECCAK256_RATE <= input_len {
+            xor_block_into_state(&mut state, &input[offset..offset + KECCAK256_RATE]);
+            unsafe {
+                syscall_keccak_f(
+                    &mut state,
+                    #[cfg(feature = "hints")]
+                    hints,
+                );
+            }
+            offset += KECCAK256_RATE;
+        }
     }
 
     // Handle final block with padding
@@ -100,6 +117,20 @@ fn xor_block_into_state(state: &mut [u64; 25], block: &[u8]) {
     for i in 0..KECCAK256_RATE / 8 {
         let word = u64::from_le_bytes(block[i * 8..(i + 1) * 8].try_into().unwrap());
         state[i] ^= word;
+    }
+}
+
+/// XOR an 8-byte aligned rate-sized block into the state.
+#[inline]
+fn xor_aligned_block_into_state(state: &mut [u64; 25], block: &[u8]) {
+    debug_assert_eq!(block.len(), KECCAK256_RATE);
+    debug_assert!(is_aligned_8(block.as_ptr()));
+
+    // SAFETY: the caller provides exactly 136 initialized bytes and verifies
+    // 8-byte alignment. Every bit pattern is valid for u64.
+    let words = unsafe { &*(block.as_ptr() as *const [u64; KECCAK256_RATE / 8]) };
+    for i in 0..KECCAK256_RATE / 8 {
+        state[i] ^= u64::from_le(words[i]);
     }
 }
 
