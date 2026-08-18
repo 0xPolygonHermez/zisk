@@ -54,6 +54,11 @@ main() {
     # submodule; cargo cannot resolve the workspace without it.
     ensure_submodules "${ZISK_ETH_CLIENT_REPO_DIR}" || return 1
 
+    # Checked while the checkout is still pristine: `input` is always repointed just
+    # below, so from that point on the lock has to be re-resolved and --locked is off
+    # the table.
+    verify_cargo_lock "${CLIENT_DIR}" || return 1
+
     # Client Cargo.toml: depends on zisk-sdk.
     patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"    "${ZISK_REPO_DIR}/sdk"               || return 1
 
@@ -61,10 +66,15 @@ main() {
 
     step "Building ethproofs-client..."
     ensure cd "${CLIENT_DIR}" || return 1
+    # Pin the committed Cargo.lock when the manifest was left untouched above, so a
+    # stale lock fails loudly instead of being re-resolved: this build and the guest
+    # ELF both deserialize the same pre-generated input files, and a third-party
+    # dependency drifting between them desyncs those formats.
+    cargo_locked_flags
     if [[ "${ENABLE_HINTS:-}" == "1" ]]; then
-        ensure env RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release || return 1
+        ensure env RUSTFLAGS='--cfg zisk_hints --cfg zisk_hints_metrics --cfg zisk_hints_single_thread' cargo build --release ${CARGO_LOCKED_FLAGS[@]+"${CARGO_LOCKED_FLAGS[@]}"} || return 1
     else
-        ensure cargo build --release || return 1
+        ensure cargo build --release ${CARGO_LOCKED_FLAGS[@]+"${CARGO_LOCKED_FLAGS[@]}"} || return 1
     fi
     cd "${WORKSPACE_DIR}" || return 1
 

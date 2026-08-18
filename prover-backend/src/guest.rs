@@ -1,11 +1,11 @@
 use anyhow::Result;
-use riscv2zisk::Riscv2zisk;
-use rom_setup::{rom_merkle_setup_verkey, HashMode};
 use std::borrow::Cow;
 use std::fs;
 use std::path::Path;
 use zisk_common::io::ZiskStdin;
 use zisk_common::ProgramVK;
+use zisk_rom_setup::{rom_merkle_setup_verkey, HashMode};
+use zisk_transpiler_riscv::Riscv2zisk;
 use ziskemu::ZiskEmulator;
 pub use ziskemu::{EmuOptions, ProfilingMode};
 
@@ -163,9 +163,9 @@ impl GuestProgram {
     ///
     /// Pass `Some(ProfilingMode)` to enable profiling output, or `None` for a plain run.
     pub fn run_emulation(&self, stdin: ZiskStdin, profiling: Option<ProfilingMode>) -> Result<()> {
-        let riscv2zisk = Riscv2zisk::new(self.elf());
+        let zisk_transpiler_riscv = Riscv2zisk::new(self.elf());
 
-        let zisk_rom = riscv2zisk
+        let zisk_rom = zisk_transpiler_riscv
             .run()
             .map_err(|e| anyhow::anyhow!("Failed to convert ELF to ZISK ROM: {e:?}"))?;
 

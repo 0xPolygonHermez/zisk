@@ -4,7 +4,7 @@
 //! impls, and the `col_source` descriptor. The column list/order mirrors `MainTraceRow`;
 //! any structural drift (added/renamed/retyped column) is a compile error.
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use proofman_macros::indexed_trace_row;
 
 use crate::{MainTrace, MainTraceRow, MainTraceRowOps, MainTraceRowPacked};

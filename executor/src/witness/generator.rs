@@ -2,13 +2,13 @@
 //!
 //! This module handles the computation of witnesses for main and secondary state machine instances.
 
-use fields::PrimeField64;
 use proofman_common::{ProofCtx, SetupCtx};
-use sm_main::{MainInstance, MainPlanner, MainSmError};
+use proofman_fields::PrimeField64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
 use zisk_pil::{MainTraceRow, MainTraceRowPackedIndexed};
+use zisk_sm_main::{MainInstance, MainPlanner, MainSmError};
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::state::ExecutionState;

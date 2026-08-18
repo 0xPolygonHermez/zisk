@@ -94,7 +94,7 @@ main() {
     ensure cp target/${TARGET}/release/cargo-zisk "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/cargo-zisk-dev "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/ziskemu "${ZISK_BIN_DIR}" || return 1
-    ensure cp target/${TARGET}/release/riscv2zisk "${ZISK_BIN_DIR}" || return 1
+    ensure cp target/${TARGET}/release/zisk-transpiler-riscv "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/zisk-coordinator "${ZISK_BIN_DIR}" || return 1
     ensure cp target/${TARGET}/release/zisk-worker "${ZISK_BIN_DIR}" || return 1
 

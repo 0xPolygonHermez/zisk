@@ -1,4 +1,4 @@
-use zkvm_interface::{zkvm_keccak256, zkvm_keccak256_hash, zkvm_status_ZKVM_EOK as ZKVM_EOK};
+use zisk_zkvm_interface::{zkvm_keccak256, zkvm_keccak256_hash, zkvm_status_ZKVM_EOK as ZKVM_EOK};
 
 pub fn diagnostic_zkvm_keccak256() {
     // Test #0: empty input

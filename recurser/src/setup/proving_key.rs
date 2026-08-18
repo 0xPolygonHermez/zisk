@@ -4,16 +4,16 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
 
+use pil2_pilout::pilout_proxy::PilOutProxy;
+use pil2_stark_recurser::plonk2pil::r1cs_types::PlonkOptions;
+use pil2_stark_recurser::plonk2pil::{self, PlonkResult};
+use pil2_stark_recurser::stark2circom::stark_inputs::{
+    assign_stark_inputs, define_stark_inputs, EnableInput, StarkInputOptions,
+};
+use pil2_stark_recurser::stark2circom::{gen_stark_verifier, StarkVerifierOptions};
 use pil2_stark_setup::io::fixed_cols;
 use pil2_stark_setup::output::witness_gen::WitnessTracker;
 use pil2_stark_setup::proving_key::{bctree, recursive::compile_pil};
-use pilout::pilout_proxy::PilOutProxy;
-use stark_recurser::plonk2pil::r1cs_types::PlonkOptions;
-use stark_recurser::plonk2pil::{self, PlonkResult};
-use stark_recurser::stark2circom::stark_inputs::{
-    assign_stark_inputs, define_stark_inputs, EnableInput, StarkInputOptions,
-};
-use stark_recurser::stark2circom::{gen_stark_verifier, StarkVerifierOptions};
 
 use crate::artifacts::RecurserArtifacts;
 use crate::templates::StarkInputBlocks;

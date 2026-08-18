@@ -48,7 +48,9 @@
 #
 # The pil2-proofman checkout is resolved from `cargo metadata` — whatever cargo
 # compiled into cargo-zisk-dev, be it the git dep's checkout under
-# ~/.cargo/git/checkouts/ or a local path dep. No env var, nothing to keep in sync.
+# ~/.cargo/git/checkouts/ or a local path dep. A crates.io dep has no checkout,
+# so its .cargo_vcs_info.json commit is fetched into $ZISK_PROOFMAN_CACHE_DIR
+# (default ~/.zisk/pil2-proofman/<sha>). No env var, nothing to keep in sync.
 
 set -euo pipefail
 
@@ -294,6 +296,12 @@ run_pil_helpers() {
 # <build-dir>/provingKey/. No-op (exit 0) when nvcc is absent. Called from the
 # build path so the kernels land in provingKey/ *before* it is copied into the
 # cache — a subsequent cache hit then reuses them instead of regenerating.
+#
+# --stark-src is the one setup asset with no env-var escape hatch: gen-exps needs
+# the pil2-stark C++ headers to compile the kernels and defaults them to
+# <CARGO_MANIFEST_DIR>/../../pil2-stark, which only exists when proofman is a
+# git/path dep. Unlike the paths export_proofman_paths handles, this one has to be
+# passed as a flag, so keep it in step with $PROOFMAN_DIR here.
 run_gen_exps() {
   if ! command -v nvcc >/dev/null 2>&1; then
     echo "==> gen-exps (SKIPPED — nvcc not on PATH)" >&2
@@ -303,6 +311,7 @@ run_gen_exps() {
   cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
     --proving-key "$BUILD_DIR/provingKey" \
     --arch "$EXPS_ARCH" \
+    --stark-src "$PROOFMAN_DIR/pil2-stark" \
     ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
 }
 
@@ -376,9 +385,11 @@ case "$MODE" in
       exit 0
     fi
     echo "==> proofman-setup gen-exps (arch: $EXPS_ARCH)"
+    # Keep --stark-src in step with run_gen_exps (see the comment there).
     cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
       --proving-key "$BUILD_DIR/provingKey" \
       --arch "$EXPS_ARCH" \
+      --stark-src "$PROOFMAN_DIR/pil2-stark" \
       ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "done. .exps.so kernels regenerated under $BUILD_DIR/provingKey/"
     echo "to repackage the updated provingKey/: (cd tools/test-env && ./upload_setup.sh)"

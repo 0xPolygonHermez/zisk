@@ -15,8 +15,8 @@
 
 use std::fmt;
 
-use precompiles_common::{MemBusHelpers, MemProcessor};
 use std::ops::Add;
+use zisk_precomp_common::{MemBusHelpers, MemProcessor};
 
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Metrics, A, B, OP, OPERATION_BUS_ID,
@@ -24,7 +24,7 @@ use zisk_common::{
 };
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType, EXTRA_PARAMS_ADDR};
 
-use precompiles_helpers::{bitmap_words, src_words, walk_jump_dest_bitmap, BYTES_PER_WORD};
+use zisk_precomp_helpers::{bitmap_words, src_words, walk_jump_dest_bitmap, BYTES_PER_WORD};
 
 /// Operations per row in the `JumpDest` AIR — mirrors `op_x_row` in
 /// `pil/jump_dest.pil`.

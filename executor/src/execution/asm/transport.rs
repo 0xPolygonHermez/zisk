@@ -23,9 +23,9 @@
 
 use std::sync::{Arc, RwLock};
 
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
+use zisk_asm_runner::HintsShmem;
 use zisk_common::io::StreamSource;
+use zisk_precomp_hints::HintsProcessor;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::AsmResources;

@@ -35,7 +35,7 @@ use crate::{
     add_family, distribute, ext_family, AirSlot, BinaryCounter, ChunkCollect, ADD_KINDS, EXT_KINDS,
     KIND_ADD_FULL, KIND_ADD_HI, KIND_BASIC, KIND_EXT_CLEAN, KIND_EXT_DIRTY,
 };
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use std::any::Any;
 use zisk_common::{BusDeviceMetrics, CheckPoint, ChunkId, InstanceType, Metrics, Plan, Planner};
 
@@ -363,7 +363,7 @@ mod tests {
         BinaryExtensionTraceRow, BinaryTrace, BinaryTraceRow,
     };
 
-    type TestPlanner = BinaryPlanner<fields::Goldilocks>;
+    type TestPlanner = BinaryPlanner<proofman_fields::Goldilocks>;
 
     fn cap_basic() -> u64 {
         BinaryTrace::<()>::NUM_ROWS as u64
@@ -377,7 +377,7 @@ mod tests {
     /// setup counts those columns plus the stage and auxiliary ones.
     #[test]
     fn weights_cover_the_committed_columns() {
-        type F = fields::Goldilocks;
+        type F = proofman_fields::Goldilocks;
         for (name, weight, row_size) in [
             ("Binary", columns::BINARY, BinaryTrace::<BinaryTraceRow<F>>::ROW_SIZE),
             ("BinaryAdd", columns::BINARY_ADD, BinaryAddTrace::<BinaryAddTraceRow<F>>::ROW_SIZE),

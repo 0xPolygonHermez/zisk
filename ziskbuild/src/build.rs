@@ -3,12 +3,14 @@ use crate::{
     ZISK_TARGET,
 };
 use cargo_metadata::camino::Utf8PathBuf;
-use rom_setup::{assembly_files_exist, gen_assembly, get_assembly_file_paths, get_output_path};
 use std::{
     io::{BufRead, BufReader},
     path::PathBuf,
     process::{exit, Command, Stdio},
     thread,
+};
+use zisk_rom_setup::{
+    assembly_files_exist, gen_assembly, get_assembly_file_paths, get_output_path,
 };
 
 use anyhow::{Context, Result};

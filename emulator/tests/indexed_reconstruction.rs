@@ -10,10 +10,10 @@
 //! values, index selection, runtime/table partition) from the GPU. Combined with the
 //! macro round-trip tests and the CUDA unpack golden test, it closes the correctness loop.
 
-use fields::Goldilocks;
-use riscv2zisk::Riscv2zisk;
+use proofman_fields::Goldilocks;
 use zisk_core::InstContext;
 use zisk_pil::{MainTraceRowInstrTable, MainTraceRowPacked, MainTraceRowPackedIndexed};
+use zisk_transpiler_riscv::Riscv2zisk;
 use ziskemu::{Emu, EmuRegTrace};
 
 #[test]

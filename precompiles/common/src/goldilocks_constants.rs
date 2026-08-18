@@ -1,4 +1,4 @@
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 
 /*
     # List of generators of groups of size power of 2

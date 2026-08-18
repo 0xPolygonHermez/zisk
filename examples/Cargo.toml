@@ -29,5 +29,8 @@ opt-level = 3
 [workspace.dependencies]
 ziskos = { path = "../ziskos/entrypoint" }
 zisk-sdk = { path = "../sdk" }
-test-artifacts = { path = "../test-artifacts", default-features = false }
+zisk-test-artifacts = { path = "../test-artifacts", default-features = false }
 examples-utils = { path = "utils"}
+
+proofman-util = "1.1.0-alpha"
+proofman-fields = "1.1.0-alpha"

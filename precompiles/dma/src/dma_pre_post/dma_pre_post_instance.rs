@@ -7,8 +7,8 @@
 #[cfg(feature = "save_dma_inputs")]
 use crate::DmaPrePostInput;
 use crate::{DmaCheckPoint, DmaPrePostCollector, DmaPrePostModule};
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::sync::Arc;
 
 use zisk_common::{

@@ -2,22 +2,7 @@
 
 use crate::error::{ExecutorError, ExecutorResult};
 
-use fields::PrimeField64;
-use precomp_dma::{
-    Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
-    DmaPrePostCollector, DmaPrePostInstance, DmaUnalignedCollector, DmaUnalignedInstance,
-};
-use precomp_evm::{JumpDestCollector, JumpDestCounterInputGen, JumpDestInstance};
-use sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollector};
-use sm_binary::{
-    BinaryAddCollector, BinaryAddHiCollector, BinaryAddHiInstance, BinaryAddInstance,
-    BinaryBasicCollector, BinaryBasicInstance, BinaryExtensionCollector, BinaryExtensionInstance,
-};
-use sm_mem::{
-    MemAlignByteInstance, MemAlignCollector, MemAlignInstance, MemAlignReadByteInstance,
-    MemAlignWriteByteInstance, MemModuleCollector, MemModuleInstance,
-};
-use sm_rom::{RomCollector, RomInstance};
+use proofman_fields::PrimeField64;
 use zisk_common::BusDeviceMode;
 use zisk_common::{ChunkId, Instance};
 use zisk_pil::{
@@ -30,6 +15,21 @@ use zisk_pil::{
     MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS,
     ROM_DATA_AIR_IDS,
 };
+use zisk_precomp_dma::{
+    Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
+    DmaPrePostCollector, DmaPrePostInstance, DmaUnalignedCollector, DmaUnalignedInstance,
+};
+use zisk_precomp_evm::{JumpDestCollector, JumpDestCounterInputGen, JumpDestInstance};
+use zisk_sm_arith::{ArithCounterInputGen, ArithFullInstance, ArithInstanceCollector};
+use zisk_sm_binary::{
+    BinaryAddCollector, BinaryAddHiCollector, BinaryAddHiInstance, BinaryAddInstance,
+    BinaryBasicCollector, BinaryBasicInstance, BinaryExtensionCollector, BinaryExtensionInstance,
+};
+use zisk_sm_mem::{
+    MemAlignByteInstance, MemAlignCollector, MemAlignInstance, MemAlignReadByteInstance,
+    MemAlignWriteByteInstance, MemModuleCollector, MemModuleInstance,
+};
+use zisk_sm_rom::{RomCollector, RomInstance};
 
 /// Collector for the built-in SMs.
 pub struct BuiltinCollectors<F: PrimeField64> {

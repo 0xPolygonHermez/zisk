@@ -3,7 +3,7 @@
 //! module of `dma_strategy` and keeps `super::` access to privates.
 
 use super::*;
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 
 type Strategy = DmaStrategy<Goldilocks>;
 

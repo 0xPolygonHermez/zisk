@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 zisk-sdk = { workspace = true }
-test-artifacts = { workspace = true, features = ["fib_mod"] }
+zisk-test-artifacts = { workspace = true, features = ["fib_mod"] }
 
 [features]
 default = []

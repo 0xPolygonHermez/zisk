@@ -81,7 +81,7 @@ const int JD_MEM_LOAD_SHIFT = 2**38;   // cdata4 takes bits 6..37 (P2_38 is not 
 // time. The generator is precompiles/evm/src/jump_dest_bitmap_table_gen.rs,
 // which tools/test-env/setup_common.sh runs before compile-pil, or by hand:
 //
-//     cargo run --release --bin jump_dest_bitmap_table_gen
+//     cargo run --release --bin jump-dest-bitmap-table-gen
 //
 // It asserts the very row count declared above, so the two cannot drift apart
 // silently. N is left at 0 and taken from the binary.

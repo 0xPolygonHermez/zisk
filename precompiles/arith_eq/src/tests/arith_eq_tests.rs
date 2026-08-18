@@ -2,12 +2,12 @@
 //! Declared from `lib.rs` via `#[cfg(test)] #[path = "tests/arith_eq_tests.rs"] mod arith_eq_tests;`.
 
 use serial_test::serial;
-use test_artifacts::{
+use zisk_common::io::ZiskStdin;
+use zisk_test_artifacts::{
     ELF_ARITH256, ELF_ARITH256_MOD, ELF_BN254_ADD, ELF_BN254_COMPLEX_ADD, ELF_BN254_COMPLEX_MUL,
     ELF_BN254_COMPLEX_SUB, ELF_BN254_DBL, ELF_SECP256K1_ADD, ELF_SECP256K1_DBL, ELF_SECP256R1_ADD,
     ELF_SECP256R1_DBL,
 };
-use zisk_common::io::ZiskStdin;
 
 // Tests share a global lock (#[serial]) because each `run_emulation`
 // allocates several GB; running them in parallel exceeds RAM.

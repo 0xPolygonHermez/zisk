@@ -20,19 +20,19 @@ use zisk_pil::{
 };
 
 use anyhow::{anyhow, Result};
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
+use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
     StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
+use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 

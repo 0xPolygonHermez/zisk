@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use crate::{MemCountersCursor, MemPlanCalculator};
-use mem_common::{MemCounters, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 use std::cmp::min;
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
+use zisk_sm_mem_common::{MemCounters, MemModuleCheckPoint, MemModuleSegmentCheckPoint};
 pub struct MemModulePlanner {
     config: MemModulePlannerConfig,
     rows_available: u32,

@@ -1,5 +1,5 @@
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
+use proofman_fields::PrimeField64;
 
 #[derive(Debug, Clone, Copy)]
 pub enum MemOp {

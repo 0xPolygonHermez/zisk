@@ -11,8 +11,6 @@ pub struct StatsReport {
     pub label_width_stack: Vec<usize>,
     pub use_thousands_sep: bool,
     pub sdk_width: usize,
-    /// Width of each extra category column added by `add_count_cost_perc2_extended` (same for all).
-    pub category_width: usize,
     pub custom_total_count_factor: f64,
     pub custom_total_cost_factor: f64,
     title_len: usize,
@@ -37,7 +35,6 @@ impl StatsReport {
             label_width_stack: Vec::new(),
             use_thousands_sep: true,
             sdk_width: 120,
-            category_width: 12,
             custom_total_count_factor: 0.0,
             custom_total_cost_factor: 0.0,
             title_len: 0,
@@ -57,9 +54,6 @@ impl StatsReport {
     }
     pub fn set_label_width(&mut self, width: usize) {
         self.label_width = width;
-    }
-    pub fn set_category_width(&mut self, width: usize) {
-        self.category_width = width;
     }
     pub fn set_and_push_label_width(&mut self, width: usize) {
         self.push_label_width();
@@ -480,35 +474,6 @@ impl StatsReport {
             cost as f64 / self.cost_divisor,
             label_width = self.label_width,
         );
-    }
-
-    /// Same as [`Self::add_count_cost_perc2`] but appends one extra column per `categories` value,
-    /// each formatted with `format_number` and right-aligned to `category_width` (the same width for
-    /// all category columns), before the trailing `comment`.
-    pub fn add_count_cost_perc2_extended(
-        &mut self,
-        label: &str,
-        count: u64,
-        cost: u64,
-        comment: &str,
-        categories: &[u64],
-    ) {
-        let mut line = format!(
-            "{}{:<label_width$} {:>15} {:6.2}% {:>15} {:6.2}%",
-            self.identation,
-            label,
-            self.format_number(count),
-            count as f64 / self.step_divisor,
-            self.format_number(cost),
-            cost as f64 / self.cost_divisor,
-            label_width = self.label_width,
-        );
-        for &value in categories {
-            line += &format!(" {:>width$}", self.format_number(value), width = self.category_width);
-        }
-        line += comment;
-        line.push('\n');
-        self.output += &line;
     }
 
     pub fn title_count_perc_cost_perc(

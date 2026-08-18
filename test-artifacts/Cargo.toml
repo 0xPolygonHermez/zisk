@@ -1,5 +1,5 @@
 [package]
-name = "test-artifacts"
+name = "zisk-test-artifacts"
 description = "Compiled Zisk guest ELFs used as fixtures by other crates' tests and benchmarks."
 readme = "README.md"
 version = "1.0.0"

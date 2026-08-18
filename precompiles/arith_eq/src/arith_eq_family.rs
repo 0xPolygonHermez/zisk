@@ -9,13 +9,11 @@
 //! `ArithEqCollector`) match what `executor`'s `register_precompiles!` expects.
 
 use std::any::Any;
-use std::collections::HashMap;
 use std::sync::Arc;
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
-use precompiles_common::{MemProcessor, PrecompileMemInputs};
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use zisk_common::{
     BusDevice, BusDeviceMetrics, BusDeviceMode, BusId, CheckPoint, ChunkId, CollectCounter,
     ComponentBuilder, ComponentPlanBuilder, ExtOperationData, Instance, InstanceCtx, InstanceType,
@@ -24,6 +22,7 @@ use zisk_common::{
 };
 use zisk_core::ZiskOperationType;
 use zisk_pil::ZISK_AIRGROUP_ID;
+use zisk_precomp_common::{MemProcessor, PrecompileMemInputs};
 
 use crate::{
     air_metas, arith_eq_air_ids, plan_air_strategy, Arith256Input, Arith256ModInput, ArithEqInput,
@@ -52,6 +51,52 @@ impl ArithEqCheckPoint {
 
     pub fn count(&self) -> u32 {
         self.ops.iter().map(|c| c.count()).sum()
+    }
+}
+
+/// Every per-chunk collection window of one `ArithEq` instance, sorted by `chunk_id`.
+///
+/// A sorted `Vec` rather than a `HashMap<ChunkId, _>` because of how the two sides use it. The
+/// planner writes one entry per (instance, chunk) while filling an instance, always appending in
+/// chunk order and only ever touching the last one, so it paid a hash-table probe per write to find
+/// an entry it already knew, plus relocating the ~240-byte `ArithEqCheckPoint` on insert and again
+/// whenever the table grew. That measured as ~80% of the planner's total time. Reads happen once per
+/// (instance, chunk), when its collector is built, where the binary search that replaces the probe
+/// is free.
+#[derive(Debug, Default)]
+pub struct ArithEqCheckPoints(Vec<ArithEqCheckPoint>);
+
+impl ArithEqCheckPoints {
+    /// Sorts `windows` by chunk and wraps them, establishing the invariant [`Self::get`] needs.
+    fn new(mut windows: Vec<ArithEqCheckPoint>) -> Self {
+        windows.sort_unstable_by_key(|cp| cp.chunk_id);
+        Self(windows)
+    }
+
+    /// The window for `chunk_id`. Panics when absent, like the map indexing it replaces: the
+    /// executor only ever asks for the chunks the plan's `CheckPoint` listed.
+    pub fn get(&self, chunk_id: ChunkId) -> &ArithEqCheckPoint {
+        let idx = self
+            .0
+            .binary_search_by_key(&chunk_id, |cp| cp.chunk_id)
+            .unwrap_or_else(|_| panic!("ArithEqCheckPoints: no window for {chunk_id:?}"));
+        &self.0[idx]
+    }
+
+    pub fn chunk_ids(&self) -> Vec<ChunkId> {
+        self.0.iter().map(|cp| cp.chunk_id).collect()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, ArithEqCheckPoint> {
+        self.0.iter()
     }
 }
 
@@ -243,7 +288,7 @@ impl BusDevice<PayloadType> for ArithEqCollector {
 // ============================================================================
 
 /// Turns per-chunk per-op counters into per-air instance plans (one `Plan` per instance, carrying a
-/// `HashMap<ChunkId, ArithEqCheckPoint>` as metadata).
+/// [`ArithEqCheckPoints`] as metadata).
 pub struct ArithEqPlanner<F: PrimeField64> {
     _phantom: std::marker::PhantomData<F>,
 }
@@ -301,13 +346,24 @@ impl<F: PrimeField64> Planner for ArithEqPlanner<F> {
             debug_assert!(cap > 0);
 
             let mut air_budget = air_plan.op_counts;
+            // Only the ops this air actually proves — typically 1 to 3 of the 11. The chunk loop
+            // below runs once per chunk for every air, so walking all 11 slots each time is what
+            // dominates the filler on a long run.
+            let active_ops: Vec<usize> =
+                (0..ARITH_EQ_OP_NUM).filter(|&idx| air_budget[idx] > 0).collect();
+            // Operations still owed to this air, so the chunk loop can stop as soon as they are all
+            // placed instead of walking the remaining chunks with nothing left to do.
+            let mut remaining: u64 = air_budget.iter().sum();
+
             let mut cur_fill = 0u64;
-            let mut cur_cps: HashMap<ChunkId, ArithEqCheckPoint> = HashMap::new();
-            let mut cur_chunks: Vec<ChunkId> = Vec::new();
+            let mut cur_cps: Vec<ArithEqCheckPoint> = Vec::new();
             let mut segment = 0usize;
 
             for (chunk_idx, (chunk_id, counts)) in per_chunk.iter().enumerate() {
-                for idx in 0..ARITH_EQ_OP_NUM {
+                if remaining == 0 {
+                    break;
+                }
+                for &idx in &active_ops {
                     if air_budget[idx] == 0 {
                         continue;
                     }
@@ -316,30 +372,42 @@ impl<F: PrimeField64> Planner for ArithEqPlanner<F> {
                     let mut take_total = air_budget[idx].min(available);
                     while take_total > 0 {
                         if cur_fill == cap {
-                            Self::close_instance(
-                                &mut plans,
-                                air_id,
-                                &mut segment,
-                                &mut cur_cps,
-                                &mut cur_chunks,
-                            );
+                            Self::close_instance(&mut plans, air_id, &mut segment, &mut cur_cps);
                             cur_fill = 0;
                         }
                         let take = take_total.min(cap - cur_fill);
-                        if !cur_cps.contains_key(chunk_id) {
-                            cur_chunks.push(*chunk_id);
-                            cur_cps.insert(*chunk_id, ArithEqCheckPoint::new(air_id, *chunk_id));
+                        // All the ops of one chunk are handled together, so the window being written
+                        // is always the last one appended — a fresh instance starts with none.
+                        if cur_cps.last().map(|cp| cp.chunk_id) != Some(*chunk_id) {
+                            cur_cps.push(ArithEqCheckPoint::new(air_id, *chunk_id));
                         }
-                        cur_cps.get_mut(chunk_id).unwrap().ops[idx] =
+                        let cp = cur_cps.last_mut().unwrap();
+                        cp.ops[idx] =
                             CollectCounter::new(offset[chunk_idx][idx] as u32, take as u32);
                         offset[chunk_idx][idx] += take;
                         cur_fill += take;
                         air_budget[idx] -= take;
                         take_total -= take;
+                        remaining -= take;
                     }
                 }
             }
-            Self::close_instance(&mut plans, air_id, &mut segment, &mut cur_cps, &mut cur_chunks);
+            Self::close_instance(&mut plans, air_id, &mut segment, &mut cur_cps);
+
+            // The strategy promised these operations to this air and the chunks do contain them, so
+            // the budget must be spent. A leftover means the plan and the counters disagree, and
+            // those operations would end up collected by nobody.
+            debug_assert!(
+                air_budget.iter().all(|&b| b == 0),
+                "air {air_id}: {air_budget:?} operations left unplanned"
+            );
+            // Ties the two places that size this air: the strategy's `ceil(total / cap)` and the
+            // instances the filler actually cut.
+            debug_assert_eq!(
+                segment as u64, air_plan.instances,
+                "air {air_id}: filled {segment} instances, strategy sized {}",
+                air_plan.instances
+            );
         }
         plans
     }
@@ -350,20 +418,19 @@ impl<F: PrimeField64> ArithEqPlanner<F> {
         plans: &mut Vec<Plan>,
         air_id: usize,
         segment: &mut usize,
-        cur_cps: &mut HashMap<ChunkId, ArithEqCheckPoint>,
-        cur_chunks: &mut Vec<ChunkId>,
+        cur_cps: &mut Vec<ArithEqCheckPoint>,
     ) {
         if cur_cps.is_empty() {
             return;
         }
-        let checkpoints = std::mem::take(cur_cps);
-        let chunks = std::mem::take(cur_chunks);
+        // `new` sorts by chunk, which is also the order the `CheckPoint` list must agree with.
+        let checkpoints = ArithEqCheckPoints::new(std::mem::take(cur_cps));
         let plan = Plan::new(
             ZISK_AIRGROUP_ID,
             air_id,
             Some(SegmentId(*segment)),
             InstanceType::Instance,
-            CheckPoint::Multiple(chunks),
+            CheckPoint::Multiple(checkpoints.chunk_ids()),
             Some(Box::new(checkpoints)),
         );
         *segment += 1;
@@ -377,7 +444,7 @@ impl<F: PrimeField64> ArithEqPlanner<F> {
 
 pub struct ArithEqInstance<F: PrimeField64> {
     ictx: InstanceCtx,
-    checkpoint: HashMap<ChunkId, ArithEqCheckPoint>,
+    checkpoint: ArithEqCheckPoints,
     arith_eq_sm: Arc<ArithEqSM<F>>,
 }
 
@@ -385,13 +452,13 @@ impl<F: PrimeField64> ArithEqInstance<F> {
     pub fn new(arith_eq_sm: Arc<ArithEqSM<F>>, mut ictx: InstanceCtx) -> Self {
         let meta = ictx.plan.meta.take().expect("ArithEqInstance: expected metadata in plan.meta");
         let checkpoint = *meta
-            .downcast::<HashMap<ChunkId, ArithEqCheckPoint>>()
+            .downcast::<ArithEqCheckPoints>()
             .expect("ArithEqInstance: failed to downcast plan.meta");
         Self { ictx, checkpoint, arith_eq_sm }
     }
 
     pub fn build_arith_eq_collector(&self, chunk_id: ChunkId) -> ArithEqCollector {
-        ArithEqCollector::new(&self.checkpoint[&chunk_id])
+        ArithEqCollector::new(self.checkpoint.get(chunk_id))
     }
 }
 
@@ -431,7 +498,7 @@ impl<F: PrimeField64> Instance<F> for ArithEqInstance<F> {
     }
 
     fn build_inputs_collector(&self, chunk_id: ChunkId) -> Option<Box<dyn BusDevice<PayloadType>>> {
-        Some(Box::new(ArithEqCollector::new(&self.checkpoint[&chunk_id])))
+        Some(Box::new(ArithEqCollector::new(self.checkpoint.get(chunk_id))))
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -471,3 +538,7 @@ impl<F: PrimeField64> ComponentBuilder<F> for ArithEqManager<F> {
         Box::new(ArithEqInstance::new(self.arith_eq_sm.clone(), ictx))
     }
 }
+
+#[cfg(test)]
+#[path = "tests/arith_eq_filler_tests.rs"]
+mod tests;

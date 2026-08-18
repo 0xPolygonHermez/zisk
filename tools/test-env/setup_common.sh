@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Shared helpers for setup_build.sh. Sourced, not executed.
+# Shared helpers for setup_build.sh and build_dylib.sh. Sourced, not executed.
 #
 # Caller responsibilities before sourcing:
 #   - set ROOT_DIR to the zisk repo root and cd there
@@ -11,12 +11,20 @@
 #   VERSION         zisk version from Cargo.toml
 #   INCLUDE_PATHS   --include arg for compile-pil
 #
+# Variables this exports (read by the setup binaries, not by callers):
+#   CIRCOM_HELPERS_DIR, FINAL_SNARK_CIRCOM_HELPERS_DIR, CIRCUITS_GL_PATH,
+#   CIRCUITS_BN128_PATH, RECURSER_CIRCUITS_PATH,
+#   RECURSER_CIRCUITS_COMPRESSED_FINAL_PATH, RECURSER_PIL_PATH, STD_PIL_PATH,
+#   GOLDILOCKS_SRC_DIR — all under $PROOFMAN_DIR. See export_proofman_paths.
+#
 # Functions this defines:
 #   generate_fixed_data  cargo-run the fixed-column generators (honors SKIP_COMPILE_PIL)
 #   compute_input_hash   print sha256 of the cache-key inputs to stdout
 #
 # Variables this reads (defaulted if unset):
-#   SKIP_COMPILE_PIL     0|1 — when 1, generate_fixed_data is a no-op
+#   SKIP_COMPILE_PIL         0|1 — when 1, generate_fixed_data is a no-op
+#   ZISK_PROOFMAN_CACHE_DIR  where crates.io-mode pil2-proofman checkouts are
+#                            fetched (default ~/.zisk/pil2-proofman)
 
 : "${SKIP_COMPILE_PIL:=0}"
 
@@ -44,24 +52,90 @@ read_zisk_pil2_compiler_override() {
   printf '%s#%s\n' "$PIL2_COMPILER_REPO" "$branch"
 }
 
+PIL2_PROOFMAN_REPO="https://github.com/0xPolygonHermez/pil2-proofman.git"
+# Registry-mode checkouts land here, keyed by commit so versions never clash.
+: "${ZISK_PROOFMAN_CACHE_DIR:=$HOME/.zisk/pil2-proofman}"
+
+# Whether $1 is a pil2-proofman checkout root: it must carry the two things the
+# setup needs beyond the Rust crates — the pil2-stark package.json (pil2-compiler
+# version) and the std PIL library (compile-pil's include path).
+is_proofman_checkout() {
+  [ -f "$1/setup/pil2-stark/package.json" ] && [ -d "$1/pil2-components/lib/std/pil" ]
+}
+
+# Fetch the checkout a crates.io dependency was published from and print its
+# root: the setup needs repo content no crate packages (the std PIL library, and
+# proofman-cli, whose crate is `publish = false`). The commit isn't guessed —
+# cargo records it in each crate's .cargo_vcs_info.json, so the checkout matches
+# the compiled code exactly.
+#
+# $1 = the crate's registry directory, $2 = repository URL from cargo metadata.
+fetch_proofman_checkout() {
+  local crate_dir="$1" repo="$2"
+  local vcs="$crate_dir/.cargo_vcs_info.json"
+  local sha dir tmp
+
+  if [ ! -f "$vcs" ]; then
+    echo "no .cargo_vcs_info.json in $crate_dir — that crate was published without git info, so the matching pil2-proofman commit is unknown" >&2
+    return 1
+  fi
+  sha="$(jq -r '.git.sha1 // empty' "$vcs")"
+  [ -n "$sha" ] || { echo "no git.sha1 in $vcs" >&2; return 1; }
+  case "$repo" in ""|null) repo="$PIL2_PROOFMAN_REPO" ;; esac
+
+  dir="$ZISK_PROOFMAN_CACHE_DIR/$sha"
+  # Written last, so an interrupted fetch is never reused. Lives under .git/ to
+  # stay out of the worktree, which compute_input_hash scans for dirty state.
+  if [ -f "$dir/.git/zisk_fetch_ok" ]; then
+    printf '%s\n' "$dir"
+    return 0
+  fi
+
+  echo "==> fetching pil2-proofman $sha (the commit the crates.io deps were published from)" >&2
+  mkdir -p "$ZISK_PROOFMAN_CACHE_DIR"
+  rm -rf "$dir"
+  tmp="$(mktemp -d "$ZISK_PROOFMAN_CACHE_DIR/.tmp.XXXXXX")"
+  (
+    set -e
+    git init -q "$tmp"
+    git -C "$tmp" remote add origin "$repo"
+    # GitHub serves reachable SHAs directly, so the common path stays shallow.
+    # Fall back to a full fetch on servers that refuse a by-SHA request.
+    git -C "$tmp" fetch -q --depth 1 origin "$sha" || git -C "$tmp" fetch -q origin
+    git -C "$tmp" checkout -q --detach "$sha"
+  ) >&2 || { rm -rf "$tmp"; echo "failed to fetch pil2-proofman $sha from $repo" >&2; return 1; }
+  touch "$tmp/.git/zisk_fetch_ok"
+
+  # Publish under the final name. A racing job's tree is identical, so keep it
+  # and drop ours (plain `mv` onto an existing dir would nest, hence the check).
+  if [ -d "$dir" ]; then rm -rf "$tmp"; else mv "$tmp" "$dir"; fi
+  printf '%s\n' "$dir"
+}
+
 # Resolve the pil2-proofman checkout — always whatever cargo actually compiled
 # into cargo-zisk, so this script can never drift from the build. `cargo metadata`
-# reports proofman's on-disk manifest_path regardless of how it's depended on:
-#   - git dep  => ~/.cargo/git/checkouts/pil2-proofman-<hash>/<short-sha>/proofman
-#   - path dep => the local checkout, e.g. ../pil2-proofman/proofman
-# That points at the `proofman` crate subdir; the checkout root (one level up)
-# is what holds package.json and pil2-components, so strip the crate segment.
+# reports proofman's manifest_path and source however it's depended on:
+#   - path/git dep => <checkout>/proofman/Cargo.toml, so the root is one level up
+#     (that's what holds package.json and pil2-components)
+#   - registry dep => that one crate and no checkout, so fetch its source commit
 resolve_proofman_dir() {
   cargo fetch >&2
-  local manifest root
-  manifest="$(cargo metadata --format-version 1 2>/dev/null \
-    | jq -r '.packages[] | select(.name=="proofman") | .manifest_path')"
+  local meta manifest source repo root
+  meta="$(cargo metadata --format-version 1 2>/dev/null)"
+  manifest="$(printf '%s' "$meta" | jq -r '.packages[] | select(.name=="proofman") | .manifest_path')"
   if [ -z "$manifest" ] || [ "$manifest" = "null" ]; then
     echo "cargo metadata did not report a 'proofman' package — is it in the dependency tree?" >&2
     return 1
   fi
-  root="$(cd "${manifest%/Cargo.toml}/.." && pwd)"
-  if [ -f "$root/package.json" ] && [ -d "$root/pil2-components/lib/std/pil" ]; then
+  source="$(printf '%s' "$meta" | jq -r '.packages[] | select(.name=="proofman") | .source')"
+  repo="$(printf '%s' "$meta" | jq -r '.packages[] | select(.name=="proofman") | .repository')"
+
+  case "$source" in
+    registry+*) root="$(fetch_proofman_checkout "${manifest%/Cargo.toml}" "$repo")" || return 1 ;;
+    *)          root="$(cd "${manifest%/Cargo.toml}/.." && pwd)" ;;
+  esac
+
+  if is_proofman_checkout "$root"; then
     printf '%s\n' "$root"
     return 0
   fi
@@ -71,6 +145,78 @@ resolve_proofman_dir() {
 
 PROOFMAN_DIR="$(resolve_proofman_dir)" || exit 1
 echo "proofman dir: $PROOFMAN_DIR" >&2
+
+# Point the setup binaries at the repo content they need (the circom binary, the
+# recurser circuits/PIL, the std PIL library, the goldilocks headers). Each has a
+# compile-time-baked default of <CARGO_MANIFEST_DIR>/../.., which is the proofman
+# repo root only while proofman is a git/path dep. For a crates.io dep it lands in
+# ~/.cargo/registry/src, where none of it exists — cargo cannot package files
+# outside a crate directory, and these all sit outside setup/pil2-stark. Exporting
+# them from the resolved checkout makes both dependency modes behave identically.
+#
+# Fatal, not best-effort: PROOFMAN_DIR already passed is_proofman_checkout, so a
+# missing path here means the checkout is broken and nothing downstream can work.
+# The binaries would still "resolve" it — resolve_path_env returns an env value
+# verbatim without an existence check, and resolve_circom_exec silently falls back
+# to a bare `circom` on PATH — turning this into an ENOENT tens of minutes deep
+# into the setup instead of here.
+export_proofman_paths() {
+  local cv="$PROOFMAN_DIR/setup/stark-recurser/stark2circom/circom_verifier"
+  local entry var path missing=0
+
+  # var:path-under-checkout. RECURSER_CIRCUITS_COMPRESSED_FINAL_PATH deliberately
+  # points at helper_circuits, NOT circuits.bn128: bn128 shadows
+  # circuits.gl/merkle.circom and drags in circomlib's comparators.circom, which
+  # isn't on the include path (see the comment in proofman's recursive_setup.rs).
+  local -a spec=(
+    "CIRCOM_HELPERS_DIR:$PROOFMAN_DIR/setup/circom"
+    "FINAL_SNARK_CIRCOM_HELPERS_DIR:$PROOFMAN_DIR/setup/final_snark_circom"
+    "CIRCUITS_GL_PATH:$cv/circuits.gl"
+    "CIRCUITS_BN128_PATH:$cv/circuits.bn128"
+    "RECURSER_CIRCUITS_PATH:$cv/helper_circuits"
+    "RECURSER_CIRCUITS_COMPRESSED_FINAL_PATH:$cv/helper_circuits"
+    "RECURSER_PIL_PATH:$PROOFMAN_DIR/setup/stark-recurser/plonk2pil/pil"
+    "STD_PIL_PATH:$PROOFMAN_DIR/pil2-components/lib/std/pil"
+    "GOLDILOCKS_SRC_DIR:$PROOFMAN_DIR/pil2-stark/src/goldilocks/src"
+  )
+
+  for entry in "${spec[@]}"; do
+    var="${entry%%:*}"
+    path="${entry#*:}"
+    # An already-set value wins, matching resolve_path_env's own precedence (it
+    # checks the env var before anything else), so a caller can still override.
+    if [ -n "${!var:-}" ]; then
+      echo "$var: ${!var} (from environment)" >&2
+      export "$var"
+      continue
+    fi
+    if [ ! -e "$path" ]; then
+      echo "error: $var would point at a missing path: $path" >&2
+      missing=1
+      continue
+    fi
+    export "$var=$path"
+  done
+
+  if [ "$missing" -eq 1 ]; then
+    echo "the pil2-proofman checkout at $PROOFMAN_DIR is missing setup assets — it is incomplete for a setup build" >&2
+    exit 1
+  fi
+
+  # Trace the circom binary the setup will actually exec, so a missing one is a
+  # startup error rather than a mid-setup ENOENT. Mirrors resolve_circom_exec's
+  # OS split (circom on Linux, circom_mac on Darwin); anything else there would
+  # false-alarm on macOS while the run is in fact fine.
+  local circom_bin=circom
+  [ "$(uname -s)" = "Darwin" ] && circom_bin=circom_mac
+  local circom_path="$CIRCOM_HELPERS_DIR/$circom_bin"
+  if [ ! -x "$circom_path" ]; then
+    echo "error: circom binary not found or not executable: $circom_path" >&2
+    exit 1
+  fi
+  echo "circom: $circom_path" >&2
+}
+export_proofman_paths
 
 VERSION="$(awk -F'"' '/^version[[:space:]]*=/ { print $2; exit }' "$ROOT_DIR/Cargo.toml")"
 INCLUDE_PATHS="pil,${PROOFMAN_DIR}/pil2-components/lib/std/pil,state-machines,precompiles"
@@ -89,10 +235,10 @@ generate_fixed_data() {
     return
   fi
   echo "==> generating fixed data"
-  cargo run --release --bin arith_frops_fixed_gen
-  cargo run --release --bin binary_basic_frops_fixed_gen
-  cargo run --release --bin binary_extension_frops_fixed_gen
-  cargo run --release --bin jump_dest_bitmap_table_gen
+  cargo run --release --bin zisk-arith-frops-fixed-gen
+  cargo run --release --bin zisk-binary-basic-frops-fixed-gen
+  cargo run --release --bin zisk-binary-extension-frops-fixed-gen
+  cargo run --release --bin jump-dest-bitmap-table-gen
 }
 
 compute_input_hash() (
@@ -126,9 +272,9 @@ compute_input_hash() (
   if [ -n "$pil2_compiler_override" ]; then
     pil2_compiler_version="$pil2_compiler_override"
   else
-    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/package.json" | head -n1)"
+    pil2_compiler_version="$(sed -nE 's/.*"pil2-compiler"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$PROOFMAN_DIR/setup/pil2-stark/package.json" | head -n1)"
     [ -n "$pil2_compiler_version" ] || \
-      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/package.json" >&2; exit 1; }
+      { echo "could not read \"pil2-compiler\" from $PROOFMAN_DIR/setup/pil2-stark/package.json" >&2; exit 1; }
   fi
 
   # pil2-stark-setup is a transitive dep, not a workspace member. Key it by the

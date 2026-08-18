@@ -1,12 +1,12 @@
 use anyhow::Context;
 use anyhow::Result;
-use riscv2zisk::Riscv2zisk;
 use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
 use zisk_common::ZiskPaths;
 use zisk_core::{is_elf_file, AsmGenerationMethod};
+use zisk_transpiler_riscv::Riscv2zisk;
 
 use crate::get_elf_data_hash;
 use crate::get_elf_data_hash_from_path;
@@ -130,7 +130,7 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
             // require its libziskc.a artifact — when targeting Linux.
             let mut args = vec!["build", "--release", "-p", "ziskclib"];
             if cfg!(target_os = "linux") {
-                args.extend(["-p", "lib-c"]);
+                args.extend(["-p", "zisk-lib-c"]);
             }
             let output = Command::new("cargo")
                 .args(&args)

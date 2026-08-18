@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::path::PathBuf;
-use test_artifacts::ELF_BIG_INPUT;
 use zisk_sdk::{ProverClient, ZiskStdin};
+use zisk_test_artifacts::ELF_BIG_INPUT;
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...");

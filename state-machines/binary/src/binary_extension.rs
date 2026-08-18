@@ -11,9 +11,9 @@ use crate::{
     BinaryInput,
 };
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{

@@ -13,8 +13,8 @@ use crate::{
     BinaryAddHiInstance, BinaryAddHiSM, BinaryAddInstance, BinaryAddSM, BinaryBasicInstance,
     BinaryBasicSM, BinaryCounter, BinaryExtensionInstance, BinaryExtensionSM, BinaryPlanner,
 };
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
+use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner};
 use zisk_pil::{
     BinaryAddHiTrace, BinaryAddTrace, BinaryExtensionFullTrace, BinaryExtensionTrace, BinaryTrace,

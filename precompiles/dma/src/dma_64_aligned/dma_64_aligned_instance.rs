@@ -13,8 +13,8 @@ use crate::{
     DMA_64_ALIGNED_MEMCPY_OPS_BY_ROW, DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
     DMA_64_ALIGNED_MEM_OPS_BY_ROW, DMA_64_ALIGNED_OPS_BY_ROW,
 };
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::ChunkId;
 use zisk_common::StatsType;

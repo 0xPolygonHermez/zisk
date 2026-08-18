@@ -12,20 +12,6 @@
 //! Adding a precompile: ONE line in `register_precompiles!`, plus the
 //! matching per-crate import.
 
-use precomp_arith_eq::{
-    ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager,
-    ARITH_EQ_CONFIG_AIR_IDS,
-};
-use precomp_arith_eq_384::{
-    ArithEq384Collector, ArithEq384CounterInputGen, ArithEq384Instance, ArithEq384Manager,
-};
-use precomp_big_int::{Add256Collector, Add256CounterInputGen, Add256Instance, Add256Manager};
-use precomp_blake2::{Blake2Collector, Blake2CounterInputGen, Blake2Instance, Blake2Manager};
-use precomp_keccakf::{KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager};
-use precomp_poseidon::{
-    PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance, PoseidonManager,
-};
-use precomp_sha256f::{Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager};
 use zisk_common::ComponentBuilder;
 use zisk_core::{
     ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2_OP_TYPE_ID,
@@ -34,6 +20,24 @@ use zisk_core::{
 use zisk_pil::{
     ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, BLAKE_2_BR_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS,
     SHA_256_F_AIR_IDS,
+};
+use zisk_precomp_arith_eq::{
+    ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager,
+    ARITH_EQ_CONFIG_AIR_IDS,
+};
+use zisk_precomp_arith_eq_384::{
+    ArithEq384Collector, ArithEq384CounterInputGen, ArithEq384Instance, ArithEq384Manager,
+};
+use zisk_precomp_big_int::{Add256Collector, Add256CounterInputGen, Add256Instance, Add256Manager};
+use zisk_precomp_blake2::{Blake2Collector, Blake2CounterInputGen, Blake2Instance, Blake2Manager};
+use zisk_precomp_keccakf::{
+    KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager,
+};
+use zisk_precomp_poseidon::{
+    PoseidonCollector, PoseidonCounterInputGen, PoseidonInstance, PoseidonManager,
+};
+use zisk_precomp_sha256f::{
+    Sha256fCollector, Sha256fCounterInputGen, Sha256fInstance, Sha256fManager,
 };
 
 crate::register_precompiles! {

@@ -1,5 +1,4 @@
 use crate::{MemInput, MemPreviousSegment};
-use mem_common::MemModuleSegmentCheckPoint;
 use proofman_common::{AirInstance, ProofmanResult};
 #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
 use std::{
@@ -7,6 +6,7 @@ use std::{
     io::{BufWriter, Write},
 };
 use zisk_common::SegmentId;
+use zisk_sm_mem_common::MemModuleSegmentCheckPoint;
 
 impl MemInput {
     pub fn new(addr: u32, is_write: bool, step: u64, value: u64) -> Self {

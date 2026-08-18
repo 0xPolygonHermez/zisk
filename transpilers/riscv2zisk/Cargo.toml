@@ -1,33 +1,35 @@
 [package]
-name = "riscv2zisk"
+name = "zisk-transpiler-riscv"
+description = "Transpiler from RISC-V to the ZisK instruction set"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [[bin]]
-name = "riscv2zisk"
+name = "zisk-transpiler-riscv"
 path = "src/bin/riscv2zisk.rs"
 
 [dependencies]
-zisk-definitions = { workspace = true }
 zisk-core = { workspace = true }
-transpilers-common = { workspace = true }
+zisk-transpiler-common = { workspace = true }
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
-zba = ["transpilers-common/zba", "zisk-core/zba"]
-zbc = ["transpilers-common/zbc", "zisk-core/zbc"]
-zbkc = ["transpilers-common/zbkc", "zisk-core/zbkc"]
-zbkx = ["transpilers-common/zbkx", "zisk-core/zbkx"]
-zba_native = ["transpilers-common/zba_native", "zisk-core/zba_native"]
-zbc_native = ["transpilers-common/zbc_native", "zisk-core/zbc_native"]
-zbkc_native = ["transpilers-common/zbkc_native", "zisk-core/zbkc_native"]
-zbkx_native = ["transpilers-common/zbkx_native", "zisk-core/zbkx_native"]
-zicond_native = ["transpilers-common/zicond_native", "zisk-core/zicond_native"]
-float = ["transpilers-common/float"]
+zba = ["zisk-transpiler-common/zba", "zisk-core/zba"]
+zbc = ["zisk-transpiler-common/zbc", "zisk-core/zbc"]
+zbkc = ["zisk-transpiler-common/zbkc", "zisk-core/zbkc"]
+zbkx = ["zisk-transpiler-common/zbkx", "zisk-core/zbkx"]
+zba_native = ["zisk-transpiler-common/zba_native", "zisk-core/zba_native"]
+zbc_native = ["zisk-transpiler-common/zbc_native", "zisk-core/zbc_native"]
+zbkc_native = ["zisk-transpiler-common/zbkc_native", "zisk-core/zbkc_native"]
+zbkx_native = ["zisk-transpiler-common/zbkx_native", "zisk-core/zbkx_native"]
+zicond_native = ["zisk-transpiler-common/zicond_native", "zisk-core/zicond_native"]
+float = ["zisk-transpiler-common/float"]

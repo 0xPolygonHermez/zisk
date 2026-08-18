@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use fields::Goldilocks;
 use proofman_common::PackedInfo;
+use proofman_fields::Goldilocks;
 
 use crate::main_indexed::{
     MainTraceRowInstrTable, MainTraceRowPackedIndexed, MAIN_AIRGROUP_ID, MAIN_AIR_ID,
