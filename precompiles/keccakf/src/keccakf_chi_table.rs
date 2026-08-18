@@ -40,9 +40,13 @@ impl KeccakfChiTableSM {
     /// table's A column stores at `calculate_table_row`'s index, and the value
     /// committed in `sbox_acc` on narrow layouts.
     ///
+    /// Only the narrow (lanes_per_row < 25) layouts commit this value; the wide
+    /// layout packs the θ-outputs into the lookup expression directly.
+    ///
     /// # Returns
     /// rc·28⁵ + Σ_x (tA_x + 8·tB_x)·28ˣ.
     #[inline(always)]
+    #[allow(dead_code)]
     pub fn calculate_table_input(ta: &[u8; 5], tb: &[u8; 5], rc: bool) -> u32 {
         let mut value: u32 = 0;
         let mut x = 5;

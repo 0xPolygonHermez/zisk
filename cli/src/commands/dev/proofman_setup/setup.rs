@@ -55,7 +55,8 @@ pub(crate) struct ZiskProofmanSetupSetup {
     output: Option<String>,
 
     /// Hash function to use: Poseidon1 or Poseidon2
-    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2"])]
+    /// Hash function to use: Poseidon1, Poseidon2 or blake3
+    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
     pub hash: String,
 
     /// Generate + compile per-AIR Q-expression CUDA kernels (.exps.so) at the end
@@ -68,7 +69,7 @@ pub(crate) struct ZiskProofmanSetupSetup {
     exps_arch: String,
 
     /// Skip an AIR whose Q has more than N ops (stays on the interpreter).
-    #[arg(long, default_value_t = 40000)]
+    #[arg(long, default_value_t = 60000)]
     exps_cap: usize,
 
     /// Fixed ops/chunk for every AIR; omit to auto-tune the largest no-spill size.

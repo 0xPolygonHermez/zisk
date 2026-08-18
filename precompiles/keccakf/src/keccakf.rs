@@ -153,7 +153,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let mut cells = [0u8; WIDTH];
         let mut ta = [0u8; 5];
         let mut tb = [0u8; 5];
-        let mut chi_accs = [0u32; LANE_BITS];
+        // let mut chi_accs = [0u32; LANE_BITS];
         for r in 0..=ROUNDS {
             // Sliced state-group of round r
             let group = GROUP_ROUND_0 + r * ROWS_PER_STATE;
@@ -221,14 +221,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
                     // The committed accumulator holds the packed lookup INPUT
                     // (base 28), NOT the compact table-row index (base 16)
-                    chi_accs[z] = KeccakfChiTableSM::calculate_table_input(&ta, &tb, rc);
+                    // chi_accs[z] = KeccakfChiTableSM::calculate_table_input(&ta, &tb, rc);
                 }
 
                 // On narrow layouts the packed χ-inputs of χ-row group y are
                 // committed at its anchor row, the group-row holding lane 5y.
                 // NOTE: chi_acc only exists for lanes_per_row < 25; comment out
                 //       when instantiating the wide layout.
-                trace[group + (5 * y) / LANES_PER_ROW].set_all_chi_acc(&chi_accs);
+                // trace[group + (5 * y) / LANES_PER_ROW].set_all_chi_acc(&chi_accs);
             }
 
             // Advance both instances one round
@@ -326,25 +326,30 @@ impl<F: PrimeField64> KeccakfSM<F> {
             trace_rows = tail;
         }
 
-        // Fill the trace and accumulate the table histograms in parallel
-        let (chi_hist, xor5_hist): (Vec<u32>, Vec<u32>) = par_traces
-            .into_par_iter()
-            .zip(slot_inputs.into_par_iter())
-            .fold(
-                || (vec![0u32; CHI_TABLE_SIZE as usize], vec![0u32; XOR5_TABLE_SIZE as usize]),
-                |(mut chi, mut xor5), (trace, (input_a, input_b))| {
-                    self.process_slot::<R>(trace, input_a, input_b, &mut chi, &mut xor5);
-                    (chi, xor5)
-                },
-            )
-            .reduce(
-                || (vec![0u32; CHI_TABLE_SIZE as usize], vec![0u32; XOR5_TABLE_SIZE as usize]),
-                |(mut chi_a, mut xor5_a), (chi_b, xor5_b)| {
-                    chi_a.iter_mut().zip(chi_b.iter()).for_each(|(a, b)| *a += b);
-                    xor5_a.iter_mut().zip(xor5_b.iter()).for_each(|(a, b)| *a += b);
-                    (chi_a, xor5_a)
-                },
-            );
+        // One histogram pair per worker thread. Do NOT use `fold`/`reduce` here:
+        // rayon allocates an accumulator per split leaf, and at CHI_TABLE_SIZE =
+        // 2^21 each leaf costs an 8 MiB zeroed Vec plus an 8 MiB merge — measured
+        // 4.2 s versus 150 ms for this version.
+        let mut slots: Vec<_> = par_traces.into_iter().zip(slot_inputs).collect();
+        let chunk_size = num_slots_needed.div_ceil(rayon::current_num_threads()).max(1);
+
+        let new_hists =
+            || (vec![0u32; CHI_TABLE_SIZE as usize], vec![0u32; XOR5_TABLE_SIZE as usize]);
+        let (chi_hist, xor5_hist): (Vec<u32>, Vec<u32>) = slots
+            .par_chunks_mut(chunk_size)
+            .map(|chunk| {
+                let (mut chi, mut xor5) = new_hists();
+                for (trace, (input_a, input_b)) in chunk.iter_mut() {
+                    self.process_slot::<R>(trace, input_a, *input_b, &mut chi, &mut xor5);
+                }
+                (chi, xor5)
+            })
+            .reduce_with(|(mut chi_a, mut xor5_a), (chi_b, xor5_b)| {
+                chi_a.iter_mut().zip(chi_b.iter()).for_each(|(a, b)| *a += b);
+                xor5_a.iter_mut().zip(xor5_b.iter()).for_each(|(a, b)| *a += b);
+                (chi_a, xor5_a)
+            })
+            .unwrap_or_else(new_hists);
 
         // Update the lookup table multiplicities
         chi_hist.into_par_iter().enumerate().for_each(|(row, value)| {
