@@ -408,7 +408,6 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
                 let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;

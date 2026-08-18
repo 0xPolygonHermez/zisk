@@ -15,7 +15,7 @@ pub enum HashMode {
     Poseidon1,
     /// Poseidon2 hashing.
     Poseidon2,
-    /// Blake hashing 
+    /// Blake hashing
     Blake3,
 }
 

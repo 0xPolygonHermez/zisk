@@ -1256,7 +1256,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1756,7 +1756,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1881,7 +1881,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3230,7 +3230,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3596,8 +3596,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fa5dfc3cbe4673b8d85156e7f04a3fba9df9cd2dc1556c2b01f1db8cd40f326"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3608,8 +3607,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7043b7668ef89b09176d7204f1a5f5778bd6db78e0e12b12bd44c6c6f8457da7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -3625,8 +3623,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d02d960521b5c1826a4f47ff340c1679c16c3d2332fc29381a8cbbc1049e9b1"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "anyhow",
  "clap",
@@ -3653,8 +3650,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a23fd44cb042e372163e1b3a381e0f1e0acb4aa501b21db20a97de0c50b402c0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "colored",
  "proofman-common",
@@ -3840,8 +3836,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cab85a1104fd239afd530cc77de5d3c015af404eee7eacc575c7672ab646d2c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "bincode",
  "blake3",
@@ -3873,8 +3868,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b61276fcba26ad5bf5f58d389cf84f086a4b7c58b235bbff18bcfe90d90737b4"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "borsh",
  "colored",
@@ -3903,8 +3897,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3432a192e4dc4bfe59212a3eb0b86c1a049502bc24f8e9d8fc3ab9c2ae6ba5c5"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "proofman-fields",
 ]
@@ -3912,8 +3905,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd7266c367ddea81f3e72060a477d6ebaa888d7fb01a50c5e73f38983fe05333"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "anyhow",
  "rayon",
@@ -3926,8 +3918,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ea663e7b8fbeaba6a3d0e6046fd7d85250186cdc2fac56ce102bfe8bfcfdf0d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -3939,8 +3930,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65c6deef99f421d48677668c4cecdded8c93496969adb6d98f0e0e2a32031ca0"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -3952,8 +3942,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e255105a885b6ac3000610133321ece2c1414359319b76eb2ad144ee8ee43360"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3963,8 +3952,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eebeb94ceceb5009296fa5603ea710861ca262af8dcdcd43c243707aec9d6726"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src",
@@ -3973,14 +3961,12 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.1.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f652a3899833633da4829ee714b7d8ecdece399929bfd6673a471ecf0ce3227"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 
 [[package]]
 name = "proofman-util"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b92b63b2d9350e38618b1117867a3a2630cae57798baddd63ffde89e280c34d"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -3989,8 +3975,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e578aca4212b4e4d083d62c54c74cbf2aa01926e15a76d6b0c9c70a4b98e2719"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4003,8 +3988,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72c38e73f49163bb83d89a343b08a73de35b94756d4f31add7c2d924042c6c73"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fblake3_basics#4dcc6e4bf5c2ee28f8e8e7feb8233547b138c807"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -4226,7 +4210,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4720,7 +4704,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4779,7 +4763,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5388,7 +5372,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6199,7 +6183,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
