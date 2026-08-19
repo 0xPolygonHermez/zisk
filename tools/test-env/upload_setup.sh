@@ -56,6 +56,13 @@ copy_dylibs() {
     ' sh "$SRC_DIR" "$DEST_DIR" {} +
 }
 
+# copy_dylibs mkdir -p's its destination, so without this a lost build/<tree>
+# silently becomes a new one holding just the dylibs — packed and uploaded as-is.
+require_tree() {
+    local dir="$1"
+    [[ -d "${dir}" ]] || { err "${dir} not found — refusing to merge macOS dylibs into a missing tree"; return 1; }
+}
+
 write_md5() {
     local file="$1"
     if command -v md5sum >/dev/null 2>&1; then
@@ -75,6 +82,12 @@ pack_dir() {
     if [[ ! -d "${src}" ]]; then
         warn "skipping ${tarball} — ${src}/ not found in $(pwd)"
         return 0
+    fi
+    # Dylibs-only means the Linux setup went missing (see require_tree); uploading
+    # that would replace a complete tarball in the bucket.
+    if ! find "${src}" -type f ! -name '*.dylib' -print -quit | grep -q .; then
+        err "${src}/ contains only *.dylib files — refusing to pack ${tarball}"
+        return 1
     fi
     ensure tar -czvf "${tarball}" "$@" "${src}/" || return 1
     write_md5 "${tarball}" > "${tarball}.md5" || { err "md5 failed for ${tarball}"; return 1; }
@@ -140,13 +153,16 @@ main() {
         [[ -d "${SETUP_DYLIB_DIR}" ]] || { err "SETUP_DYLIB_DIR=${SETUP_DYLIB_DIR} not found"; return 1; }
         if [[ -d "${SETUP_DYLIB_DIR}/provingKey" ]]; then
           step "Adding macos libraries from ${SETUP_DYLIB_DIR}/provingKey to build/provingKey..."
+          require_tree build/provingKey || return 1
           copy_dylibs "${SETUP_DYLIB_DIR}/provingKey" build/provingKey
           if [[ -d "${SETUP_DYLIB_DIR}/provingKeySnark" ]]; then
             step "Adding macos snark libraries from ${SETUP_DYLIB_DIR}/provingKeySnark to build/provingKeySnark..."
+            require_tree build/provingKeySnark || return 1
             copy_dylibs "${SETUP_DYLIB_DIR}/provingKeySnark" build/provingKeySnark
           fi
         else
           step "Adding macos libraries from ${SETUP_DYLIB_DIR} to build/provingKey..."
+          require_tree build/provingKey || return 1
           copy_dylibs "${SETUP_DYLIB_DIR}" build/provingKey
         fi
       else
@@ -158,6 +174,7 @@ main() {
           -C "${OUTPUT_DIR}/macos" || return 1
 
         step "Adding macos libraries to build/provingKey..."
+        require_tree build/provingKey || return 1
         copy_dylibs "${OUTPUT_DIR}/macos/provingKey" build/provingKey
       fi
     fi
