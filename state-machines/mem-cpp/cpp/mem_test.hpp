@@ -108,7 +108,7 @@ public:
     }
     void execute(void) {
         printf("Starting...\n");
-        auto cp = create_mem_count_and_plan();
+        auto cp = create_mem_count_and_plan(1u << 21, 1u << 21, 1u << 22);
         printf("Executing...\n");
         execute_mem_count_and_plan(cp);
         uint64_t init = get_usec();

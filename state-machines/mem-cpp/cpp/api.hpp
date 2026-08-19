@@ -18,7 +18,7 @@ extern "C"
     typedef struct MemAlignChunkCounters MemAlignChunkCounters;
 
     // C-compatible API (opaque to Rust)
-    MemCountAndPlan *create_mem_count_and_plan(void);
+    MemCountAndPlan *create_mem_count_and_plan(uint32_t rom_rows, uint32_t input_rows, uint32_t ram_rows);
     void destroy_mem_count_and_plan(MemCountAndPlan *mcp);
     void execute_mem_count_and_plan(MemCountAndPlan *mcp);
     void save_chunk_data(uint32_t chunk_id, MemCountersBusData *chunk_data, uint32_t chunk_size);
