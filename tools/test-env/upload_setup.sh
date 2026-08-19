@@ -83,10 +83,10 @@ pack_dir() {
         warn "skipping ${tarball} — ${src}/ not found in $(pwd)"
         return 0
     fi
-    # Dylibs-only means the Linux setup went missing (see require_tree); uploading
-    # that would replace a complete tarball in the bucket.
+    # Empty, or nothing but dylibs, means the Linux setup went missing (see
+    # require_tree); packing it would replace a complete tarball in the bucket.
     if ! find "${src}" -type f ! -name '*.dylib' -print -quit | grep -q .; then
-        err "${src}/ contains only *.dylib files — refusing to pack ${tarball}"
+        err "${src}/ has no non-dylib files — refusing to pack ${tarball}"
         return 1
     fi
     ensure tar -czvf "${tarball}" "$@" "${src}/" || return 1
