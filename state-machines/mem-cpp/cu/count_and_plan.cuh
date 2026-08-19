@@ -245,7 +245,7 @@ private:
 
     // ─── add_chunk concurrency (ZISK_MOPS_POOL) ───────────────────────
     int                     gpu_device_           = 0;     // captured in setup()
-    uint32_t                instance_size_[3]     = {0, 0, 0};  // rows per instance {ROM, INPUT, RAM}, captured in setup()
+    uint32_t                instance_rows_[3]     = {0, 0, 0};  // rows per instance {ROM, INPUT, RAM}, captured in setup()
     bool                    pool_enabled_         = false; // ZISK_MOPS_POOL
 
     struct ChunkJob { const MemOp* memops; uint32_t n; uint32_t c; };
