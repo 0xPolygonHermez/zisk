@@ -11,7 +11,10 @@ use zisk_sm_mem_common::{
 };
 
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
-use zisk_pil::{INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{
+    InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
+    ZISK_AIRGROUP_ID,
+};
 
 pub struct MemPlanner {
     inner: *mut bindings::MemCountAndPlan,
@@ -48,9 +51,16 @@ impl Default for MemPlanner {
 /// Many methods interact with raw pointers and FFI bindings to C++ code. It is assumed that the underlying
 /// memory is valid for the duration of the `MemPlanner` instance, and that the C++ side upholds its invariants.
 impl MemPlanner {
-    /// Creates and prepares the planner
+    /// Creates and prepares the planner. Rows per instance come from the
+    /// PIL trace sizes so the C++ side never hardcodes them.
     pub fn new() -> Self {
-        let ptr = unsafe { bindings::create_mem_count_and_plan() };
+        let ptr = unsafe {
+            bindings::create_mem_count_and_plan(
+                RomDataTrace::<()>::NUM_ROWS as u32,
+                InputDataTrace::<()>::NUM_ROWS as u32,
+                MemTrace::<()>::NUM_ROWS as u32,
+            )
+        };
         assert!(!ptr.is_null(), "Failed to create MemCountAndPlan");
         Self { inner: ptr }
     }
