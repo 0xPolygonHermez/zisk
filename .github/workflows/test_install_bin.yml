@@ -136,12 +136,24 @@ jobs:
             '
 
       - name: Clone ZisK repository
+        # On a manual run, clone the branch/tag the workflow was launched from, so
+        # the test exercises the code under development. A release run clones the
+        # default branch, which is what the published binaries are built from.
+        env:
+          ZISK_CLONE_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || '' }}
         run: |
           .github/scripts/docker_exec.sh \
+            -e ZISK_CLONE_REF="${ZISK_CLONE_REF}" \
             -- bash -c '
               set -eo pipefail
               cd "$HOME"
-              git clone https://github.com/0xPolygonHermez/zisk.git
+              if [ -n "$ZISK_CLONE_REF" ]; then
+                echo "Cloning ZisK repository at ref ${ZISK_CLONE_REF}..."
+                git clone --branch "$ZISK_CLONE_REF" https://github.com/0xPolygonHermez/zisk.git
+              else
+                echo "Cloning ZisK repository default branch..."
+                git clone https://github.com/0xPolygonHermez/zisk.git
+              fi
             '
 
       - name: Run quickstart test
