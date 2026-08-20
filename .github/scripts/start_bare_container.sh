@@ -26,6 +26,13 @@ IMAGE="${IMAGE:-ubuntu:22.04}"
 # every step without /etc/profile resetting PATH on login shells.
 CONTAINER_PATH="/root/.cargo/bin:/root/.zisk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+# GPU access is requested unless WITH_GPU is set to 0: the CPU-only runners have
+# no NVIDIA container runtime, and 'docker run --gpus all' fails outright there.
+GPU_ARGS=()
+if [[ "${WITH_GPU:-1}" == "1" ]]; then
+    GPU_ARGS+=(--gpus all)
+fi
+
 # Forward the build tuning variables set at job level, when present.
 ENV_ARGS=()
 for var in CARGO_BUILD_JOBS CARGO_INCREMENTAL; do
@@ -42,7 +49,7 @@ docker run -d \
     --name "${TEST_CONTAINER}" \
     --pull=always \
     --privileged \
-    --gpus all \
+    "${GPU_ARGS[@]}" \
     --shm-size=48g \
     -e PATH="${CONTAINER_PATH}" \
     -e SHELL=/bin/bash \

@@ -36,142 +36,21 @@ jobs:
             exit 0
           fi
 
-  install-from-binaries:
-    name: Install ZisK from binaries
+  # The CPU variant runs first on the rocket runner, which has no GPU; the GPU
+  # variant then runs the same test on the zisk-gpu runner group. Both share the
+  # steps through the install_from_binaries reusable workflow.
+  install-from-binaries-cpu:
+    name: Install ZisK from binaries (CPU)
     needs: check-latest-release
-    runs-on:
-      group: zisk-gpu
-    timeout-minutes: 60
-    # NOTE: We intentionally use 'docker exec' in individual steps rather than
-    # defining a job-level container, the same approach as the test-x86_64 job
-    # in pr.yml: the zisk-gpu runners need a privileged container with GPU
-    # access, which GitHub Actions job-level containers do not provide.
-    # The image is a plain Ubuntu because installing the ZisK dependencies and
-    # the ziskup bundle is what this job tests.
-    defaults:
-      run:
-        shell: bash
-    env:
-      TEST_CONTAINER: zisk-gha-install-bin
-      CARGO_BUILD_JOBS: 1
-      CARGO_INCREMENTAL: 0
+    uses: ./.github/workflows/install_from_binaries.yml
+    with:
+      runner: '"rocket"'
+      variant: cpu
 
-    steps:
-      - name: Fix workspace permissions
-        run: |
-          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
-          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
-
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Start bare container
-        run: .github/scripts/start_bare_container.sh
-
-      - name: Check resources
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              echo "CPUs: $(nproc)"
-              free -h
-              nvidia-smi || true
-            '
-
-      - name: Install tools
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              apt-get update
-              apt-get install -y curl git
-            '
-
-      - name: Install rust toolchain
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs \
-                | sh -s -- -y --profile default --default-toolchain stable
-              rustc --version
-            '
-
-      - name: Install ZisK dependencies
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              apt-get install -y \
-                xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev \
-                nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
-                libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev \
-                openmpi-bin openmpi-common libclang-dev clang gcc-riscv64-unknown-elf
-            '
-
-      - name: Install and run ziskup
-        run: |
-          .github/scripts/docker_exec.sh \
-            -e GH_RUNNER=1 \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME"
-              curl -s -o install.sh https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh
-              chmod +x install.sh
-              ./install.sh
-            '
-
-      - name: Set stable as default Rust toolchain
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c 'rustup default stable'
-
-      - name: Install PLONK setup
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              if ! ziskup setup_snark; then
-                echo "❌ Install PLONK setup failed"
-                exit 1
-              fi
-            '
-
-      - name: Clone ZisK repository
-        # On a manual run, clone the branch/tag the workflow was launched from, so
-        # the test exercises the code under development. A release run clones the
-        # default branch, which is what the published binaries are built from.
-        env:
-          ZISK_CLONE_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || '' }}
-        run: |
-          .github/scripts/docker_exec.sh \
-            -e ZISK_CLONE_REF="${ZISK_CLONE_REF}" \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME"
-              if [ -n "$ZISK_CLONE_REF" ]; then
-                echo "Cloning ZisK repository at ref ${ZISK_CLONE_REF}..."
-                git clone --branch "$ZISK_CLONE_REF" https://github.com/0xPolygonHermez/zisk.git
-              else
-                echo "Cloning ZisK repository default branch..."
-                git clone https://github.com/0xPolygonHermez/zisk.git
-              fi
-            '
-
-      - name: Run quickstart test
-        run: |
-          .github/scripts/docker_exec.sh \
-            -e ZISK_GHA=1 \
-            -- bash -c '
-              set -eo pipefail
-              # The test-env scripts resolve the repository through ZISK_REPO_DIR
-              # and must be run from their own directory (they source ./utils.sh).
-              export ZISK_REPO_DIR="$HOME/zisk"
-              cd "$ZISK_REPO_DIR/tools/test-env"
-              ./test_quickstart.sh
-            '
-
-      - name: Stop bare container
-        if: always()
-        run: |
-          docker rm -f "${TEST_CONTAINER}" || true
-          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
-          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+  install-from-binaries-gpu:
+    name: Install ZisK from binaries (GPU)
+    needs: install-from-binaries-cpu
+    uses: ./.github/workflows/install_from_binaries.yml
+    with:
+      runner: '{"group":"zisk-gpu"}'
+      variant: gpu

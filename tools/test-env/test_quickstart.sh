@@ -6,6 +6,9 @@ source "./utils.sh"
 # install-from-binaries job runs after installing ZisK from binaries): build,
 # run, setup, prove/verify with every backend combination, and run via the SDK.
 #
+# The whole set of combinations is run first on CPU and then again on GPU
+# (adding --gpu), so both proving paths are exercised.
+#
 # ZisK, its dependencies and the proving keys / setups are expected to be
 # already installed.
 
@@ -78,6 +81,38 @@ run_via_sdk() {
     check_output "${log_file}" "${EXPECTED_SDK_OUTPUT}" "run via SDK [${label}]" || return 1
 }
 
+# run_combinations: Run every prove/verify and SDK combination for one
+# accelerator mode — the guest program ones from the guest directory, the host
+# SDK ones from the host directory.
+#
+# Arguments:
+#   $1 (label)    — Accelerator label, prefixed to every combination name ("cpu"/"gpu")
+#   $2 (gpu_flag) — "--gpu" to prove with GPU acceleration, empty to prove on CPU
+#
+# Reads has_asm and EXAMPLE_DIR from the calling scope.
+run_combinations() {
+    local label="$1"
+    local gpu_flag="$2"
+
+    cd "${EXAMPLE_DIR}/guest" || return 1
+
+    prove_and_verify "${label} emulator" "${gpu_flag}" "${EXPECTED_STARK_VERIFIED}" || return 1
+    if [[ ${has_asm} -eq 1 ]]; then
+        prove_and_verify "${label} asm" "--asm ${gpu_flag}" "${EXPECTED_STARK_VERIFIED}" || return 1
+    fi
+    prove_and_verify "${label} emulator plonk" "--plonk ${gpu_flag}" "${EXPECTED_PLONK_VERIFIED}" || return 1
+    if [[ ${has_asm} -eq 1 ]]; then
+        prove_and_verify "${label} asm plonk" "--asm --plonk ${gpu_flag}" "${EXPECTED_PLONK_VERIFIED}" || return 1
+    fi
+
+    cd "${EXAMPLE_DIR}/host" || return 1
+
+    run_via_sdk "${label} emulator" "${gpu_flag}" || return 1
+    if [[ ${has_asm} -eq 1 ]]; then
+        run_via_sdk "${label} asm" "--asm ${gpu_flag}" || return 1
+    fi
+}
+
 main() {
     info "▶️  Running $(basename "$0") script..."
 
@@ -85,18 +120,30 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR || return 1
-
-    current_step=1
-    total_steps=10
+    load_env ZISK_REPO_DIR ONLY_CPU || return 1
 
     # The ASM backend is Linux-only, so its three combinations (prove, prove with
     # PLONK and run via the SDK) are skipped on macOS.
     local has_asm=1
     if [[ "${PLATFORM}" == "darwin" ]]; then
         has_asm=0
-        total_steps=$((total_steps - 3))
     fi
+
+    # Only enable GPU when not forced to CPU, not on macOS, and the installed
+    # cargo-zisk is actually a GPU build (its `--version` description contains
+    # "[gpu]", e.g. "cargo-zisk 0.18.0 [gpu] (790f9e2 ...)").
+    local has_gpu=0
+    if [[ "${ONLY_CPU:-}" != "1" ]] && [[ "${PLATFORM}" != "darwin" ]] && cargo-zisk --version 2>/dev/null | grep -q "\[gpu\]"; then
+        has_gpu=1
+    fi
+
+    # 4 fixed steps (shared memory, build, run and setup) plus one pass of
+    # combinations per accelerator mode: 4 proofs and 2 SDK runs, of which the 3
+    # ASM ones are dropped when the ASM backend is unavailable.
+    current_step=1
+    local steps_per_pass=6
+    [[ ${has_asm} -eq 0 ]] && steps_per_pass=3
+    total_steps=$(( 4 + steps_per_pass * (1 + has_gpu) ))
 
     if ! is_gha || [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
@@ -138,21 +185,14 @@ main() {
     if [[ ${has_asm} -eq 0 ]]; then
         warn "Skipping ASM combinations — the ASM backend is not supported on macOS"
     fi
-
-    prove_and_verify "emulator" "" "${EXPECTED_STARK_VERIFIED}" || return 1
-    if [[ ${has_asm} -eq 1 ]]; then
-        prove_and_verify "asm" "--asm" "${EXPECTED_STARK_VERIFIED}" || return 1
-    fi
-    prove_and_verify "emulator plonk" "--plonk" "${EXPECTED_PLONK_VERIFIED}" || return 1
-    if [[ ${has_asm} -eq 1 ]]; then
-        prove_and_verify "asm plonk" "--asm --plonk" "${EXPECTED_PLONK_VERIFIED}" || return 1
+    if [[ ${has_gpu} -eq 0 ]]; then
+        warn "Skipping GPU combinations — no GPU build of cargo-zisk is available"
     fi
 
-    cd "${EXAMPLE_DIR}/host" || return 1
-
-    run_via_sdk "emulator" "" || return 1
-    if [[ ${has_asm} -eq 1 ]]; then
-        run_via_sdk "asm" "--asm" || return 1
+    # Every combination on CPU first, then the same ones again with --gpu.
+    run_combinations "cpu" "" || return 1
+    if [[ ${has_gpu} -eq 1 ]]; then
+        run_combinations "gpu" "--gpu" || return 1
     fi
 
     cd "$current_dir"
