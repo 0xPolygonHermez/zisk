@@ -144,147 +144,17 @@ jobs:
               git clone https://github.com/0xPolygonHermez/zisk.git
             '
 
-      - name: Build guest
+      - name: Run quickstart test
         run: |
           .github/scripts/docker_exec.sh \
+            -e ZISK_GHA=1 \
             -- bash -c '
               set -eo pipefail
-              cd "$HOME/zisk/examples/hash/guest"
-              cargo-zisk build --release
-              # Check hash-guest elf has been generated
-              ELF=target/elf/riscv64ima-zisk-zkvm-elf/release/hash-guest
-              if [ ! -f "$ELF" ]; then
-                echo "❌ Build guest failed: $ELF not found"
-                exit 1
-              fi
-              echo "✅ $ELF generated"
-            '
-
-      - name: Run guest
-        run: |
-          .github/scripts/docker_exec.sh \
-            -e EXPECTED_HASH="sha256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069" \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/guest"
-              cargo-zisk run --release -i samples/example-input.bin 2>&1 | tee run_output.log
-              if ! grep -F "$EXPECTED_HASH" run_output.log; then
-                echo "❌ Run guest failed"
-                exit 1
-              fi
-            '
-
-      - name: Setup guest
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/guest"
-              cargo-zisk setup --release 2>&1 | tee setup_output.log
-              if ! grep -F "INFO: Hash ID: 219ce6c86862fe56c557e2d5f473de7d73f4e11bc0b61ac3185443a494b488ce" setup_output.log; then
-                echo "❌ Setup guest failed"
-                exit 1
-              fi
-            '
-
-      - name: Prove guest (emulator)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/guest"
-              cargo-zisk prove --release -i samples/example-input.bin -o proof.bin 2>&1 | tee prove_output.log
-              if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
-                echo "❌ Prove guest failed"
-                exit 1
-              fi
-              cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
-              if ! grep -F "STARK proof was verified" verify_output.log; then
-                echo "❌ Verify proof failed"
-                exit 1
-              fi
-            '
-
-      - name: Prove guest (asm)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/guest"
-              cargo-zisk prove --release -i samples/example-input.bin -o proof.bin --asm 2>&1 | tee prove_output.log
-              if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
-                echo "❌ Prove guest failed"
-                exit 1
-              fi
-              cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
-              if ! grep -F "STARK proof was verified" verify_output.log; then
-                echo "❌ Verify proof failed"
-                exit 1
-              fi
-            '
-
-      - name: Prove guest (emulator, plonk)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/guest"
-              cargo-zisk prove --release -i samples/example-input.bin -o proof.bin --plonk 2>&1 | tee prove_output.log
-              if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
-                echo "❌ Prove guest failed"
-                exit 1
-              fi
-              cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
-              if ! grep -F "PLONK proof was verified" verify_output.log; then
-                echo "❌ Verify proof failed"
-                exit 1
-              fi
-            '
-
-      - name: Prove guest (asm, plonk)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/guest"
-              cargo-zisk prove --release -i samples/example-input.bin -o proof.bin --plonk --asm 2>&1 | tee prove_output.log
-              if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
-                echo "❌ Prove guest failed"
-                exit 1
-              fi
-              cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
-              if ! grep -F "PLONK proof was verified" verify_output.log; then
-                echo "❌ Verify proof failed"
-                exit 1
-              fi
-            '
-
-      - name: Run via SDK (emulator)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -e EXPECTED_HASH="sha256('Hello Zisk!') => 0xd3e33ed651e7c8d8d4e30ce9a3e4a40e9f089f22435e279a84ea5f8ae234eead" \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/host"
-              cargo run --release 2>&1 | tee sdk_output.log
-              if ! grep -F "$EXPECTED_HASH" sdk_output.log; then
-                echo "❌ Run via SDK failed"
-                exit 1
-              fi
-            '
-
-      - name: Run via SDK (asm)
-        run: |
-          .github/scripts/docker_exec.sh \
-            -e EXPECTED_HASH="sha256('Hello Zisk!') => 0xd3e33ed651e7c8d8d4e30ce9a3e4a40e9f089f22435e279a84ea5f8ae234eead" \
-            -- bash -c '
-              set -eo pipefail
-              cd "$HOME/zisk/examples/hash/host"
-              cargo run --release 2>&1 | tee sdk_output.log
-              if ! grep -F "$EXPECTED_HASH" sdk_output.log; then
-                echo "❌ Run via SDK failed"
-                exit 1
-              fi
+              # The test-env scripts resolve the repository through ZISK_REPO_DIR
+              # and must be run from their own directory (they source ./utils.sh).
+              export ZISK_REPO_DIR="$HOME/zisk"
+              cd "$ZISK_REPO_DIR/tools/test-env"
+              ./test_quickstart.sh
             '
 
       - name: Stop bare container
