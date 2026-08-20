@@ -39,10 +39,9 @@ jobs:
   install-from-binaries:
     name: Install ZisK from binaries
     needs: check-latest-release
-    runs-on: self-hosted
+    runs-on: rocket
     container:
       image: ubuntu:22.04
-      options: --memory=56g --cpus=16
     timeout-minutes: 60
     env:
       CARGO_HOME: /github/home/.cargo
@@ -76,10 +75,11 @@ jobs:
       - name: Install ZisK dependencies
         shell: bash
         run: |
-          apt-get install -y xz-utils jq curl build-essential qemu-system libomp-dev \
-              libgmp-dev nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
-              libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev openmpi-bin openmpi-common \
-              ca-certificates gnupg lsb-release libclang-dev clang gcc-riscv64-unknown-elf
+          apt-get install -y \
+            xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev \
+            nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
+            libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev \
+            openmpi-bin openmpi-common libclang-dev clang gcc-riscv64-unknown-elf
 
       - name: Install and run ziskup
         run: |
@@ -94,54 +94,130 @@ jobs:
       - name: Add ZisK bin directory to PATH
         run: echo "$HOME/.zisk/bin" >> $GITHUB_PATH
 
-      - name: Create program
+      - name: Install PLONK setup
         shell: bash
         run: |
-          cargo-zisk new $HOME/guest
-
-      - name: Build program
-        shell: bash
-        run: |
-          cd $HOME/guest
-          cargo clean
-          cargo build --bin host --release -j 1
-
-      - name: Run program
-        shell: bash
-        run: |
-          cd $HOME/guest
-          ziskemu -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -c | tee run_output.log
-          if ! grep -qE "4fcbc136|2ce46a82|2248a8eb|785f0c7e|9dca7861|7267cace|d028d7e5|f6a2309c|000003e8|deadbeef" run_output.log; then
-            echo "❌ Run program failed"
+          if ! ziskup setup_snark; then
+            echo "❌ Install PLONK setup failed"
             exit 1
           fi
 
-      - name: Program setup
+      - name: Clone ZisK repository
         shell: bash
         run: |
-          cd $HOME/guest
-          cargo-zisk-dev program-setup -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -v 2>&1 | tee romsetup_output.log
-          if ! grep -F "ROM setup successfully completed" romsetup_output.log; then
-            echo "❌ Program setup failed"
+          git clone https://github.com/0xPolygonHermez/zisk.git
+
+      - name: Build guest
+        shell: bash
+        working-directory: zisk/examples/hash/guest
+        run: |
+          cargo-zisk build --release
+          # Check hash-guest elf has been generated
+          ELF=target/elf/riscv64ima-zisk-zkvm-elf/release/hash-guest
+          if [ ! -f "$ELF" ]; then
+            echo "❌ Build guest failed: $ELF not found"
+            exit 1
+          fi
+          echo "✅ $ELF generated"
+
+      - name: Run guest
+        shell: bash
+        working-directory: zisk/examples/hash/guest
+        run: |
+          cargo-zisk run --release -i samples/example-input.bin 2>&1 | tee run_output.log
+          if ! grep -F "SHA-256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069" run_output.log; then
+            echo "❌ Run guest failed"
             exit 1
           fi
 
-      - name: Prove program
+      - name: Setup guest
         shell: bash
+        working-directory: zisk/examples/hash/guest
         run: |
-          cd $HOME/guest
-          cargo-zisk-dev prove -e target/elf/riscv64ima-zisk-zkvm-elf/release/guest -i host/tmp/input.bin -o proof.bin -y -a -u 2>&1 | tee prove_output.log
-          if ! grep -F "Vadcop Final proof was verified" prove_output.log; then
-            echo "❌ Prove program failed"
+          cargo-zisk setup --release 2>&1 | tee setup_output.log
+          if ! grep -F "INFO: Hash ID: 219ce6c86862fe56c557e2d5f473de7d73f4e11bc0b61ac3185443a494b488ce" setup_output.log; then
+            echo "❌ Setup guest failed"
             exit 1
           fi
 
-      - name: Verify proof
+      - name: Prove guest (emulator)
         shell: bash
+        working-directory: zisk/examples/hash/guest
         run: |
-          cd $HOME/guest
-          cargo-zisk verify -p ./proof.bin 2>&1 | tee verify_output.log
+          cargo-zisk prove --release -i samples/example-input.bin -o proof.bin 2>&1 | tee prove_output.log
+          if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
+            echo "❌ Prove guest failed"
+            exit 1
+          fi
+          cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
           if ! grep -F "STARK proof was verified" verify_output.log; then
             echo "❌ Verify proof failed"
+            exit 1
+          fi
+
+
+      - name: Prove guest (asm)
+        shell: bash
+        working-directory: zisk/examples/hash/guest
+        run: |
+          cargo-zisk prove --release -i samples/example-input.bin -o proof.bin --asm 2>&1 | tee prove_output.log
+          if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
+            echo "❌ Prove guest failed"
+            exit 1
+          fi
+          cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
+          if ! grep -F "STARK proof was verified" verify_output.log; then
+            echo "❌ Verify proof failed"
+            exit 1
+          fi
+
+
+      - name: Prove guest (emulator, plonk)
+        shell: bash
+        working-directory: zisk/examples/hash/guest
+        run: |
+          cargo-zisk prove --release -i samples/example-input.bin -o proof.bin --plonk 2>&1 | tee prove_output.log
+          if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
+            echo "❌ Prove guest failed"
+            exit 1
+          fi
+          cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
+          if ! grep -F "PLONK proof was verified" verify_output.log; then
+            echo "❌ Verify proof failed"
+            exit 1
+          fi
+
+      - name: Prove guest (asm, plonk)
+        shell: bash
+        working-directory: zisk/examples/hash/guest
+        run: |
+          cargo-zisk prove --release -i samples/example-input.bin -o proof.bin --plonk --asm 2>&1 | tee prove_output.log
+          if ! grep -F "INFO: Proof saved to proof.bin" prove_output.log; then
+            echo "❌ Prove guest failed"
+            exit 1
+          fi
+          cargo-zisk verify -p proof.bin 2>&1 | tee verify_output.log
+          if ! grep -F "PLONK proof was verified" verify_output.log; then
+            echo "❌ Verify proof failed"
+            exit 1
+          fi
+
+      - name: Run via SDK (emulator)
+        shell: bash
+        working-directory: zisk/examples/hash/host
+        run: |
+          cargo run --release 2>&1 | tee sdk_output.log
+          if ! grep -F "sha256('Hello Zisk!') => 0xd3e33ed651e7c8d8d4e30ce9a3e4a40e9f089f22435e279a84ea5f8ae234eead" sdk_output.log; then
+            echo "❌ Run via SDK failed"
+            exit 1
+          fi
+
+      - name: Run via SDK (asm)
+        shell: bash
+        working-directory: zisk/examples/hash/host
+        run: |
+          cargo run --release 2>&1 | tee sdk_output.log
+          if ! grep -F "sha256('Hello Zisk!') => 0xd3e33ed651e7c8d8d4e30ce9a3e4a40e9f089f22435e279a84ea5f8ae234eead" sdk_output.log; then
+            echo "❌ Run via SDK failed"
             exit 1
           fi
