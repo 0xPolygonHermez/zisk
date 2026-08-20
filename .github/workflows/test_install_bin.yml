@@ -163,7 +163,7 @@ jobs:
       - name: Run guest
         run: |
           .github/scripts/docker_exec.sh \
-            -e EXPECTED_HASH="SHA-256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069" \
+            -e EXPECTED_HASH="sha256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069" \
             -- bash -c '
               set -eo pipefail
               cd "$HOME/zisk/examples/hash/guest"
