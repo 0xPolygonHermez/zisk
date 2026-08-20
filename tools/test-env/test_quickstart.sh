@@ -7,7 +7,8 @@ source "./utils.sh"
 # run, setup, prove/verify with every backend combination, and run via the SDK.
 #
 # The whole set of combinations is run first on CPU and then again on GPU
-# (adding --gpu), so both proving paths are exercised.
+# (adding --gpu), so both proving paths are exercised. ONLY_CPU=1 runs just the
+# CPU pass and ONLY_GPU=1 just the GPU one.
 #
 # ZisK, its dependencies and the proving keys / setups are expected to be
 # already installed.
@@ -120,13 +121,18 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR ONLY_CPU || return 1
+    load_env ZISK_REPO_DIR ONLY_CPU ONLY_GPU || return 1
 
     # The ASM backend is Linux-only, so its three combinations (prove, prove with
     # PLONK and run via the SDK) are skipped on macOS.
     local has_asm=1
     if [[ "${PLATFORM}" == "darwin" ]]; then
         has_asm=0
+    fi
+
+    if [[ "${ONLY_CPU:-}" == "1" ]] && [[ "${ONLY_GPU:-}" == "1" ]]; then
+        err "ONLY_CPU and ONLY_GPU are mutually exclusive"
+        return 1
     fi
 
     # Only enable GPU when not forced to CPU, not on macOS, and the installed
@@ -137,13 +143,25 @@ main() {
         has_gpu=1
     fi
 
+    # ONLY_GPU drops the CPU pass, so only the --gpu combinations are run. It is
+    # an error when there is no GPU build to run them with, since that would
+    # leave nothing to test.
+    local run_cpu=1
+    if [[ "${ONLY_GPU:-}" == "1" ]]; then
+        if [[ ${has_gpu} -eq 0 ]]; then
+            err "ONLY_GPU is set but no GPU build of cargo-zisk is available"
+            return 1
+        fi
+        run_cpu=0
+    fi
+
     # 4 fixed steps (shared memory, build, run and setup) plus one pass of
-    # combinations per accelerator mode: 4 proofs and 2 SDK runs, of which the 3
-    # ASM ones are dropped when the ASM backend is unavailable.
+    # combinations per accelerator mode to run: 4 proofs and 2 SDK runs, of which
+    # the 3 ASM ones are dropped when the ASM backend is unavailable.
     current_step=1
     local steps_per_pass=6
     [[ ${has_asm} -eq 0 ]] && steps_per_pass=3
-    total_steps=$(( 4 + steps_per_pass * (1 + has_gpu) ))
+    total_steps=$(( 4 + steps_per_pass * (run_cpu + has_gpu) ))
 
     if ! is_gha || [[ "${PLATFORM}" == "linux" ]]; then
         is_proving_key_installed || return 1
@@ -188,9 +206,14 @@ main() {
     if [[ ${has_gpu} -eq 0 ]]; then
         warn "Skipping GPU combinations — no GPU build of cargo-zisk is available"
     fi
+    if [[ ${run_cpu} -eq 0 ]]; then
+        warn "Skipping CPU combinations — ONLY_GPU is set"
+    fi
 
     # Every combination on CPU first, then the same ones again with --gpu.
-    run_combinations "cpu" "" || return 1
+    if [[ ${run_cpu} -eq 1 ]]; then
+        run_combinations "cpu" "" || return 1
+    fi
     if [[ ${has_gpu} -eq 1 ]]; then
         run_combinations "gpu" "--gpu" || return 1
     fi

@@ -37,9 +37,11 @@ jobs:
       TEST_CONTAINER: zisk-gha-install-bin-${{ inputs.variant }}
       # The CPU runners have no NVIDIA runtime, so the container must not ask
       # for GPU access there.
-      WITH_GPU: ${{ inputs.variant == 'gpu' && '1' || '0' }}
-      # Read by test_quickstart.sh, which skips the GPU pass when it is set to 1.
-      ONLY_CPU: ${{ inputs.variant == 'gpu' && '0' || '1' }}
+      RUNNER_WITH_GPU: ${{ inputs.variant == 'gpu' && '1' || '0' }}
+      # Read by test_quickstart.sh to run only the --gpu combinations. There is no
+      # ONLY_CPU counterpart: the CPU variant installs the CPU bundle of
+      # cargo-zisk, which the script already detects as having no GPU support.
+      ONLY_GPU: ${{ inputs.variant == 'gpu' && '1' || '0' }}
       CARGO_BUILD_JOBS: 1
       CARGO_INCREMENTAL: 0
 
@@ -159,7 +161,7 @@ jobs:
         run: |
           .github/scripts/docker_exec.sh \
             -e ZISK_GHA=1 \
-            -e ONLY_CPU="${ONLY_CPU}" \
+            -e ONLY_GPU="${ONLY_GPU}" \
             -- bash -c '
               set -eo pipefail
               # The test-env scripts resolve the repository through ZISK_REPO_DIR

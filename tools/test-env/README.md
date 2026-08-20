@@ -74,7 +74,7 @@ This will run the Docker container and open the ZisK test menu inside the contai
     Builds, runs and proves the ZisK example programs under `examples/` (both the host SDK examples and the guest programs), exercising every available `{asm, gpu}` backend combination and verifying each one.
 
 13. **Test quickstart**
-    Runs the quickstart sequence of the `hash` example: builds and runs the guest program, generates its setup, proves and verifies it with every backend combination (`emulator`/`asm`, with and without `--plonk`), and finally proves it through the host SDK example. It expects ZisK, its dependencies and the proving keys / setups to be already installed.
+    Runs the quickstart sequence of the `hash` example: builds and runs the guest program, generates its setup, proves and verifies it with every backend combination (`emulator`/`asm`, with and without `--plonk`), and finally proves it through the host SDK example. The whole set of combinations runs first on CPU and then again on GPU (adding `--gpu`) when a GPU build of `cargo-zisk` is installed; set `ONLY_CPU=1` to run just the CPU pass or `ONLY_GPU=1` to run just the GPU one. It expects ZisK, its dependencies and the proving keys / setups to be already installed.
 
 14. **Install setup from public packages**
     Downloads and installs the proving key files from the public packages corresponding to the `ZISK_SETUP_FILE` environment variable (falling back to a name derived from the installed `cargo-zisk-dev` version when unset).
