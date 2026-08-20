@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "82ee88e9bbd627ca08267ed49297b9d40341bb1055535380a74ed109adb131fa";
+pub const PILOUT_HASH: &str = "f05d3581f57d21f0135e36109f0b8ba9d59b233e6726e3e850615cef2d6c4d2a";
 
 //AIRGROUP CONSTANTS
 
@@ -175,13 +175,13 @@ pub type RomTrace<F> = GenericTrace<RomTraceRow<F>, 4194304, 0, 1>;
 trace_row!(MemFixedRow<F> {
  __L1__: F,
 });
-pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 4194304, 0, 2>;
+pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 8388608, 0, 2>;
 
 trace_row!(MemTraceRow<F> {
  addr:ubit(29), step:ubit(38), sel:bit, addr_changes:bit, step_dual:ubit(38), sel_dual:bit, value:[u32; 2], wr:bit, previous_step:ubit(40), l_increment:ubit(22), h_increment:u16, read_same_addr:bit,
 });
 
-pub type MemTrace<R> = GenericTrace<R, 4194304, 0, 2>;
+pub type MemTrace<R> = GenericTrace<R, 8388608, 0, 2>;
 
 trace_row!(InputDataFixedRow<F> {
  __L1__: F,
