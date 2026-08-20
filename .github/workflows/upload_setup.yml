@@ -29,7 +29,7 @@ on:
         default: false
 
 concurrency:
-  group: upload-setup-${{ github.ref }}
+  group: upload-setup
   cancel-in-progress: false
 
 permissions:
@@ -39,6 +39,7 @@ permissions:
 env:
   BUCKET: gs://zisk-setup
   TEST_CONTAINER: zisk-gha-upload-setup
+  SETUP_STAGE_ROOT: /home/gha/cache-setup/staging
 
 jobs:
   build-setup:
@@ -150,6 +151,28 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Stage setup outputs outside the workspace
+        run: |
+          # This workspace is shared with other workflows on the zisk-gpu runner
+          # group (pr.yml's test-x86_64), whose actions/checkout wipes build/ with
+          # `git clean -ffdx` — and upload-setup only runs hours later, after
+          # macos-dylibs. So park this run's setup outside the workspace; upload-setup
+          # moves it back before packing.
+          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}"
+          sudo mkdir -p "${SETUP_STAGE_ROOT}"
+          # Backstop for runs that never reach upload-setup's cleanup step.
+          sudo find "${SETUP_STAGE_ROOT}" -mindepth 1 -maxdepth 1 -type d -mtime +1 \
+            -exec rm -rf {} + || true
+          sudo rm -rf "$STAGE"
+          sudo mkdir -p "$STAGE"
+          sudo chown 1000:1000 "${SETUP_STAGE_ROOT}" "$STAGE"   # container user
+          for d in provingKey provingKeySnark circom; do
+            [ -d "$GITHUB_WORKSPACE/build/$d" ] || continue
+            echo "staging build/$d -> $STAGE/$d"
+            sudo mv "$GITHUB_WORKSPACE/build/$d" "$STAGE/$d"
+          done
+          ls -la "$STAGE"
+
   macos-dylibs:
     name: Build macOS dylibs
     needs: build-setup
@@ -216,6 +239,32 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
           sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
 
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          # Another workflow may have left this shared workspace on a different ref:
+          # the scripts run below and the sources hashed into the published .hash
+          # sidecar must come from this run's commit. clean: false resets only
+          # tracked files, keeping build/ and target/.
+          clean: false
+
+      - name: Restore staged setup into the workspace
+        run: |
+          # Replaces whatever build/ holds now — another job on this runner may have
+          # left a provingKey built from a different commit.
+          STAGE="${SETUP_STAGE_ROOT}/${{ github.run_id }}"
+          [ -d "$STAGE/provingKey" ] || {
+            echo "staged provingKey not found at $STAGE" >&2; exit 1; }
+          sudo mkdir -p "$GITHUB_WORKSPACE/build"
+          for d in provingKey provingKeySnark circom; do
+            [ -d "$STAGE/$d" ] || continue
+            echo "restoring $STAGE/$d -> build/$d"
+            sudo rm -rf "$GITHUB_WORKSPACE/build/$d"
+            sudo mv "$STAGE/$d" "$GITHUB_WORKSPACE/build/$d"
+          done
+          # Leftover from an earlier run: the artifact download below merges into it.
+          sudo rm -rf "$GITHUB_WORKSPACE/build/dylib"
+
       - name: Download dylib artifact
         if: ${{ needs.build-setup.outputs.include_dylib == '1' }}
         uses: actions/download-artifact@v4
@@ -275,3 +324,14 @@ jobs:
           docker rm -f "${TEST_CONTAINER}" || true
           sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
           sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+  cleanup:
+    name: Clean up staged setup
+    runs-on: gpu-hosted
+    needs: [build-setup, macos-dylibs, upload-setup]
+    # always(): the staged setup must go whatever happened upstream, including when
+    # upload-setup was skipped and never consumed it.
+    if: ${{ always() }}
+    steps:
+      - name: Remove staging directory
+        run: sudo rm -rf "${SETUP_STAGE_ROOT}/${{ github.run_id }}"
