@@ -92,7 +92,14 @@ jobs:
                 xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev \
                 nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
                 libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev \
-                openmpi-bin openmpi-common libclang-dev clang gcc-riscv64-unknown-elf
+                openmpi-bin openmpi-common libclang-dev clang gcc-riscv64-unknown-elf \
+                ca-certificates gnupg
+              # snarkjs needs Node.js, which the bare image does not ship. Same
+              # 20.x source that tools/test-env/install_deps.sh uses.
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+              apt-get install -y nodejs
+              npm install -g snarkjs@latest
+              snarkjs --version
             '
 
       - name: Install and run ziskup
