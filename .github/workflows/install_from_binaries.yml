@@ -99,7 +99,9 @@ jobs:
               curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
               apt-get install -y nodejs
               npm install -g snarkjs@latest
-              snarkjs --version
+              # `snarkjs --version` prints the version but exits 99, so the
+              # installed package is checked through npm instead.
+              npm ls -g --depth=0 snarkjs
             '
 
       - name: Install and run ziskup
