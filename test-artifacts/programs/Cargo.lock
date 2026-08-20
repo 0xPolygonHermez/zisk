@@ -834,6 +834,7 @@ dependencies = [
 name = "bigint"
 version = "0.1.0"
 dependencies = [
+ "zisklib",
  "ziskos",
 ]
 
@@ -976,6 +977,7 @@ dependencies = [
 name = "bls12_381"
 version = "0.1.0"
 dependencies = [
+ "zisklib",
  "ziskos",
 ]
 
@@ -1030,6 +1032,7 @@ dependencies = [
 name = "bn254"
 version = "0.1.0"
 dependencies = [
+ "zisklib",
  "ziskos",
 ]
 
@@ -4996,6 +4999,7 @@ dependencies = [
 name = "secp256k1"
 version = "0.1.0"
 dependencies = [
+ "zisklib",
  "ziskos",
 ]
 
@@ -5037,6 +5041,7 @@ dependencies = [
 name = "secp256r1"
 version = "0.1.0"
 dependencies = [
+ "zisklib",
  "ziskos",
 ]
 
@@ -7225,6 +7230,10 @@ dependencies = [
  "zisk-pil",
  "ziskasm",
 ]
+
+[[package]]
+name = "zisklib"
+version = "0.1.0"
 
 [[package]]
 name = "ziskos"

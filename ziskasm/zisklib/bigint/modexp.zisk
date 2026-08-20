@@ -12,6 +12,15 @@ zisklib_bin_decomp:
 	copyb(r5, r10) -> 8[a + 0]
 	copyb(0, BI_LENB) -> r5
 	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BI_BITS) -> r6
+	copyb(0, 0) -> r7
+bi_bc_zbits:
+	eq(r7, 128), j(bi_bc_zbitsd)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 1) -> r7
+	jump(bi_bc_zbits)
+bi_bc_zbitsd:
 	fcall_param(1, r11) -> r14
 	copyb(0, BI_J) -> r5
 	copyb(r5, 0) -> 8[a + 0]
@@ -47,10 +56,15 @@ bi_bc_rb:
 	eq(r6, r7), j(bi_bc_rbd)
 	fcall_get(0, 0) -> r14
 	copyb(0, [FREE_INPUT]) -> r17
-	sll(r6, 3) -> r16
+	srl(r6, 6) -> r16
+	sll(r16, 3) -> r16
 	copyb(0, BI_BITS) -> r5
 	add(r5, r16) -> r5
-	copyb(r5, r17) -> 8[a + 0]
+	and(r6, 63) -> r7
+	sll(r17, r7) -> r17
+	copyb(r5, 8[a + 0]) -> r7
+	or(r7, r17) -> r7
+	copyb(r5, r7) -> 8[a + 0]
 	copyb(0, BI_J) -> r5
 	copyb(r5, 8[a + 0]) -> r6
 	add(r6, 1) -> r6
@@ -59,6 +73,7 @@ bi_bc_rb:
 bi_bc_rbd:
 	copyb(0, BI_BITS) -> r5
 	copyb(r5, 8[a + 0]) -> r6
+	and(r6, 1) -> r6
 	copyb(0, 1) -> r7
 	eq(r6, r7), j(bi_bc_recinit)
 	jump(bi_bc_bad)
@@ -91,10 +106,14 @@ bi_bc_rec:
 	copyb(0, BI_NBITS) -> r5
 	copyb(r5, 8[a + 0]) -> r7
 	eq(r6, r7), j(bi_bc_recd)
-	sll(r6, 3) -> r16
+	srl(r6, 6) -> r16
+	sll(r16, 3) -> r16
 	copyb(0, BI_BITS) -> r5
 	add(r5, r16) -> r5
-	copyb(r5, 8[a + 0]) -> r17
+	copyb(r5, 8[a + 0]) -> r5
+	and(r6, 63) -> r16
+	srl(r5, r16) -> r5
+	and(r5, 1) -> r17
 	eq(r17, 0), j(bi_bc_recnext)
 	copyb(0, BI_NBITS) -> r5
 	copyb(r5, 8[a + 0]) -> r7
@@ -189,10 +208,14 @@ bi_me_loop:
 	call bn254_memcpy
 	copyb(0, BI_ME_J) -> r5
 	copyb(r5, 8[a + 0]) -> r6
-	sll(r6, 3) -> r16
+	srl(r6, 6) -> r16
+	sll(r16, 3) -> r16
 	copyb(0, BI_BITS) -> r5
 	add(r5, r16) -> r5
-	copyb(r5, 8[a + 0]) -> r17
+	copyb(r5, 8[a + 0]) -> r5
+	and(r6, 63) -> r16
+	srl(r5, r16) -> r5
+	and(r5, 1) -> r17
 	eq(r17, 0), j(bi_me_next)
 	copyb(0, BI_OUT) -> r10
 	copyb(0, BI_BASE) -> r11
@@ -305,10 +328,14 @@ bi_mel_sq:
 	call bn254_memcpy
 	copyb(0, BI_ML2_J) -> r5
 	copyb(r5, 8[a + 0]) -> r6
-	sll(r6, 3) -> r16
+	srl(r6, 6) -> r16
+	sll(r16, 3) -> r16
 	copyb(0, BI_BITS) -> r5
 	add(r5, r16) -> r5
-	copyb(r5, 8[a + 0]) -> r17
+	copyb(r5, 8[a + 0]) -> r5
+	and(r6, 63) -> r16
+	srl(r5, r16) -> r5
+	and(r5, 1) -> r17
 	eq(r17, 0), j(bi_mel_next)
 	copyb(0, BI_OUT) -> r10
 	copyb(0, BI_ML2_OUTLEN) -> r11

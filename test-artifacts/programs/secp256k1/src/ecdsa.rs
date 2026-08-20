@@ -1,4 +1,8 @@
+#[cfg(not(feature = "ziskasm"))]
 use ziskos::zisklib::ecdsa_verify_secp256k1;
+// ziskasm: the flat binding has identical signature — a plain rename.
+#[cfg(feature = "ziskasm")]
+use zisklib::secp256k1_ecdsa_verify as ecdsa_verify_secp256k1;
 
 pub fn ecdsa_tests() {
     // Verify (valids)

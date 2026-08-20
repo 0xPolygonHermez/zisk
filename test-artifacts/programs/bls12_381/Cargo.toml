@@ -5,3 +5,12 @@ edition.workspace = true
 
 [dependencies]
 ziskos.workspace = true
+
+# The ziskasm zisklib bindings (flat ABI, redirected to hand-written .zisk
+# routines at transpile time). Only linked for the `ziskasm` backend build.
+zisklib = { path = "../../../ziskasm/lang/rust", optional = true }
+
+[features]
+# Run the in-scope tests against the ziskasm zisklib instead of the in-guest
+# Rust zisklib. A per-module glue fn (or `use ... as` rename) adapts signatures.
+ziskasm = ["dep:zisklib"]

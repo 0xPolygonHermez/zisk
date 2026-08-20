@@ -1,4 +1,8 @@
+#[cfg(not(feature = "ziskasm"))]
 use ziskos::zisklib::hash_to_curve_g2_bls12_381;
+// ziskasm: the flat binding has identical signature — a plain rename.
+#[cfg(feature = "ziskasm")]
+use zisklib::bls12_381_hash_to_curve_g2 as hash_to_curve_g2_bls12_381;
 
 // DST used by the IETF test vectors (RFC 9380 §J.10.1)
 const DST: &[u8] = b"QUUX-V01-CS02-with-BLS12381G2_XMD:SHA-256_SSWU_RO_";
