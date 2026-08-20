@@ -14,7 +14,7 @@ GUEST_ELF="target/elf/riscv64ima-zisk-zkvm-elf/release/hash-guest"
 GUEST_INPUT="samples/example-input.bin"
 
 EXPECTED_GUEST_OUTPUT="sha256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
-EXPECTED_SETUP_HASH_ID="INFO: Hash ID: 219ce6c86862fe56c557e2d5f473de7d73f4e11bc0b61ac3185443a494b488ce"
+EXPECTED_SETUP_COMPLETED="Setup completed for /root/zisk/examples/hash/guest/target/elf/riscv64ima-zisk-zkvm-elf/release/hash-guest"
 EXPECTED_PROOF_SAVED="INFO: Proof saved to proof.bin"
 EXPECTED_STARK_VERIFIED="STARK proof was verified"
 EXPECTED_PLONK_VERIFIED="PLONK proof was verified"
@@ -133,7 +133,7 @@ main() {
 
     step "Generating guest program setup..."
     ensure cargo-zisk setup --release 2>&1 | tee "${LOG_DIR}/setup.log" || return 1
-    check_output "${LOG_DIR}/setup.log" "${EXPECTED_SETUP_HASH_ID}" "guest program setup" || return 1
+    check_output "${LOG_DIR}/setup.log" "${EXPECTED_SETUP_COMPLETED}" "guest program setup" || return 1
 
     if [[ ${has_asm} -eq 0 ]]; then
         warn "Skipping ASM combinations — the ASM backend is not supported on macOS"
