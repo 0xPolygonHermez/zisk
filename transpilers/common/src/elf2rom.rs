@@ -11,7 +11,7 @@ use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
 use zisk_core::zisk_rom::{DataSection64, ZiskRom};
 use zisk_core::zisk_rom_2_asm::{AsmGenerationMethod, ZiskRom2Asm};
-use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR, ZISKLIB_RAM_ADDR, ZISKLIB_ROM_ADDR};
+use zisk_core::{FLOAT_LIB_RAM_ADDR, FLOAT_LIB_ROM_ADDR};
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
@@ -56,93 +56,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // e_entry rather than booting from a fixed address).
     validate_entry_point(&payloads[elf_index])?;
 
-    // Assemble the hand-written ZisK library (library mode) at its reserved region,
-    // then build the guest-symbol → library-entry redirect map: a RISC-V call to an
-    // intercepted `ziskos_*` stub is redirected to the matching `zisklib_*` routine.
-    // The library sources are embedded at compile time, one file per precompile
-    // family; add a family by dropping in its `.zisk` file and listing it here.
-    const ZISK_LIBRARY: &[(&str, &str)] = &[
-        // Library-wide shared `pub define`s (memory-map constants and fcall IDs),
-        // visible to every family file via the multi-file pre-pass.
-        ("mem", include_str!("../../../ziskasm/zisklib/mem.zisk")),
-        ("fcall", include_str!("../../../ziskasm/zisklib/fcall.zisk")),
-        ("add", include_str!("../../../ziskasm/zisklib/add.zisk")),
-        ("keccak", include_str!("../../../ziskasm/zisklib/keccak.zisk")),
-        ("sha256", include_str!("../../../ziskasm/zisklib/sha256.zisk")),
-        ("blake2b", include_str!("../../../ziskasm/zisklib/blake2b.zisk")),
-        ("zkvm_io", include_str!("../../../ziskasm/zisklib/zkvm_io.zisk")),
-        // uint256 — one file per ziskos source file under `zisklib/uint256/`
-        // (add/mul/div/modular/pow) plus a common file holding the shared
-        // constants and scratch buffers.
-        ("uint256/common", include_str!("../../../ziskasm/zisklib/uint256/common.zisk")),
-        ("uint256/add", include_str!("../../../ziskasm/zisklib/uint256/add.zisk")),
-        ("uint256/mul", include_str!("../../../ziskasm/zisklib/uint256/mul.zisk")),
-        ("uint256/div", include_str!("../../../ziskasm/zisklib/uint256/div.zisk")),
-        ("uint256/modular", include_str!("../../../ziskasm/zisklib/uint256/modular.zisk")),
-        ("uint256/pow", include_str!("../../../ziskasm/zisklib/uint256/pow.zisk")),
-        // secp256k1 — one file per ziskos source file under `zisklib/secp256k1/`.
-        ("secp256k1/constants", include_str!("../../../ziskasm/zisklib/secp256k1/constants.zisk")),
-        ("secp256k1/field", include_str!("../../../ziskasm/zisklib/secp256k1/field.zisk")),
-        ("secp256k1/scalar", include_str!("../../../ziskasm/zisklib/secp256k1/scalar.zisk")),
-        ("secp256k1/curve", include_str!("../../../ziskasm/zisklib/secp256k1/curve.zisk")),
-        ("secp256k1/ecdsa", include_str!("../../../ziskasm/zisklib/secp256k1/ecdsa.zisk")),
-        ("secp256k1/glv", include_str!("../../../ziskasm/zisklib/secp256k1/glv.zisk")),
-        ("secp256k1/schnorr", include_str!("../../../ziskasm/zisklib/secp256k1/schnorr.zisk")),
-        // secp256r1 (NIST P-256) — one file per ziskos source file.
-        ("secp256r1/constants", include_str!("../../../ziskasm/zisklib/secp256r1/constants.zisk")),
-        ("secp256r1/field", include_str!("../../../ziskasm/zisklib/secp256r1/field.zisk")),
-        ("secp256r1/scalar", include_str!("../../../ziskasm/zisklib/secp256r1/scalar.zisk")),
-        ("secp256r1/curve", include_str!("../../../ziskasm/zisklib/secp256r1/curve.zisk")),
-        ("secp256r1/ecdsa", include_str!("../../../ziskasm/zisklib/secp256r1/ecdsa.zisk")),
-        // bn254 (alt_bn128) — one file per ziskos source file.
-        ("bn254/constants", include_str!("../../../ziskasm/zisklib/bn254/constants.zisk")),
-        ("bn254/util", include_str!("../../../ziskasm/zisklib/bn254/util.zisk")),
-        ("bn254/fp", include_str!("../../../ziskasm/zisklib/bn254/fp.zisk")),
-        ("bn254/fr", include_str!("../../../ziskasm/zisklib/bn254/fr.zisk")),
-        ("bn254/fp2", include_str!("../../../ziskasm/zisklib/bn254/fp2.zisk")),
-        ("bn254/curve", include_str!("../../../ziskasm/zisklib/bn254/curve.zisk")),
-        ("bn254/fp6", include_str!("../../../ziskasm/zisklib/bn254/fp6.zisk")),
-        ("bn254/fp12", include_str!("../../../ziskasm/zisklib/bn254/fp12.zisk")),
-        ("bn254/twist", include_str!("../../../ziskasm/zisklib/bn254/twist.zisk")),
-        ("bn254/cyclotomic", include_str!("../../../ziskasm/zisklib/bn254/cyclotomic.zisk")),
-        ("bn254/miller_loop", include_str!("../../../ziskasm/zisklib/bn254/miller_loop.zisk")),
-        ("bn254/final_exp", include_str!("../../../ziskasm/zisklib/bn254/final_exp.zisk")),
-        ("bn254/pairing", include_str!("../../../ziskasm/zisklib/bn254/pairing.zisk")),
-        // bls12_381 (384-bit Fp) — one file per ziskos source file.
-        ("bls12_381/constants", include_str!("../../../ziskasm/zisklib/bls12_381/constants.zisk")),
-        ("bls12_381/fp", include_str!("../../../ziskasm/zisklib/bls12_381/fp.zisk")),
-        ("bls12_381/fp2", include_str!("../../../ziskasm/zisklib/bls12_381/fp2.zisk")),
-        ("bls12_381/curve", include_str!("../../../ziskasm/zisklib/bls12_381/curve.zisk")),
-        ("bls12_381/fp6", include_str!("../../../ziskasm/zisklib/bls12_381/fp6.zisk")),
-        ("bls12_381/fp12", include_str!("../../../ziskasm/zisklib/bls12_381/fp12.zisk")),
-        ("bls12_381/twist", include_str!("../../../ziskasm/zisklib/bls12_381/twist.zisk")),
-        (
-            "bls12_381/cyclotomic",
-            include_str!("../../../ziskasm/zisklib/bls12_381/cyclotomic.zisk"),
-        ),
-        (
-            "bls12_381/miller_loop",
-            include_str!("../../../ziskasm/zisklib/bls12_381/miller_loop.zisk"),
-        ),
-        ("bls12_381/final_exp", include_str!("../../../ziskasm/zisklib/bls12_381/final_exp.zisk")),
-        ("bls12_381/subgroup", include_str!("../../../ziskasm/zisklib/bls12_381/subgroup.zisk")),
-        ("bls12_381/pairing", include_str!("../../../ziskasm/zisklib/bls12_381/pairing.zisk")),
-        ("bls12_381/map", include_str!("../../../ziskasm/zisklib/bls12_381/map.zisk")),
-        ("bls12_381/map_g2", include_str!("../../../ziskasm/zisklib/bls12_381/map_g2.zisk")),
-        ("bls12_381/hash", include_str!("../../../ziskasm/zisklib/bls12_381/hash.zisk")),
-        ("bls12_381/verify", include_str!("../../../ziskasm/zisklib/bls12_381/verify.zisk")),
-        ("bls12_381/kzg", include_str!("../../../ziskasm/zisklib/bls12_381/kzg.zisk")),
-        // bigint / modexp (EIP-198) — one file per ziskos bigint/*.rs source file.
-        ("bigint/common", include_str!("../../../ziskasm/zisklib/bigint/common.zisk")),
-        ("bigint/add_short", include_str!("../../../ziskasm/zisklib/bigint/add_short.zisk")),
-        ("bigint/add_agtb", include_str!("../../../ziskasm/zisklib/bigint/add_agtb.zisk")),
-        ("bigint/mul_short", include_str!("../../../ziskasm/zisklib/bigint/mul_short.zisk")),
-        ("bigint/mul_long", include_str!("../../../ziskasm/zisklib/bigint/mul_long.zisk")),
-        ("bigint/rem_short", include_str!("../../../ziskasm/zisklib/bigint/rem_short.zisk")),
-        ("bigint/rem_long", include_str!("../../../ziskasm/zisklib/bigint/rem_long.zisk")),
-        ("bigint/modexp", include_str!("../../../ziskasm/zisklib/bigint/modexp.zisk")),
-        ("bls12_381/fr", include_str!("../../../ziskasm/zisklib/bls12_381/fr.zisk")),
-    ];
+    // Assemble the canonical hand-written ZisK library, then build the
+    // guest-symbol → library-entry redirect map.
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[
         ("ziskos_add", "zisklib_add"),
@@ -178,8 +93,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     ];
 
     let library =
-        ziskasm::assemble_library_sources(ZISK_LIBRARY, ZISKLIB_ROM_ADDR, ZISKLIB_RAM_ADDR)
-            .map_err(|e| format!("assembling ZisK library: {e}"))?;
+        ziskasm::assemble_zisk_library().map_err(|e| format!("assembling ZisK library: {e}"))?;
 
     let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
     let guest_syms = get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;

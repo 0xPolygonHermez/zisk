@@ -64,6 +64,24 @@ pub fn assemble_files_with_defines<P: AsRef<Path>>(
     assemble(&program)
 }
 
+/// Like [`assemble_files_with_defines`], but also returns the symbol table
+/// (see [`assemble_with_symbols`]).
+pub fn assemble_files_with_symbols<P: AsRef<Path>>(
+    paths: &[P],
+    defines: &[&str],
+) -> Result<(ZiskRom, HashMap<String, u64>), String> {
+    let predefined: HashSet<String> = defines.iter().map(|s| s.to_string()).collect();
+    let srcs = read_sources(paths)?;
+    let seed = merge_public_defines(srcs.iter().map(|(_, s)| s.as_str()))?;
+    let mut program = Program::default();
+    for (name, src) in &srcs {
+        let parsed = parser::parse_program_seeded(src, name, &predefined, &seed)?;
+        program.instructions.extend(parsed.instructions);
+        program.data.extend(parsed.data);
+    }
+    assemble_with_symbols(&program)
+}
+
 /// Reads several `.zisk` files into `(name, source)` pairs (used so a multi-file
 /// assembly can gather `pub define`s before parsing any file).
 fn read_sources<P: AsRef<Path>>(paths: &[P]) -> Result<Vec<(String, String)>, String> {
@@ -205,6 +223,13 @@ pub fn assemble_library(
 
 /// Assembles an already-parsed program (instructions + data) into a `ZiskRom`.
 pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
+    Ok(assemble_with_symbols(program)?.0)
+}
+
+/// Like [`assemble`], but also returns the symbol table (every label and data
+/// name → its address) — the same table used internally to resolve jumps and
+/// symbolic operands.
+pub fn assemble_with_symbols(program: &Program) -> Result<(ZiskRom, HashMap<String, u64>), String> {
     if program.instructions.is_empty() {
         return Err("empty program: no instructions".into());
     }
@@ -303,7 +328,8 @@ pub fn assemble(program: &Program) -> Result<ZiskRom, String> {
     add_entry_exit_jmp(&mut rom, entry);
 
     rom.optimize_instruction_lookup().map_err(|e| e.to_string())?;
-    Ok(rom)
+    let symbols = symbols.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+    Ok((rom, symbols))
 }
 
 /// Lays out the `const` (ROM, at `rom_data_base`) and non-`const` (RAM, at
