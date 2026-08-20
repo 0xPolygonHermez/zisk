@@ -137,37 +137,49 @@ jobs:
             '
 
       - name: Clone ZisK repository
-        # On a manual run, clone the branch/tag the workflow was launched from, so
-        # the test exercises the code under development. A release run clones the
-        # default branch, which is what the published binaries are built from.
-        env:
-          ZISK_CLONE_REF: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || '' }}
+        # The programs under test always come from the default branch, which is
+        # what the published binaries were built from.
         run: |
           .github/scripts/docker_exec.sh \
-            -e ZISK_CLONE_REF="${ZISK_CLONE_REF}" \
             -- bash -c '
               set -eo pipefail
               cd "$HOME"
-              if [ -n "$ZISK_CLONE_REF" ]; then
-                echo "Cloning ZisK repository at ref ${ZISK_CLONE_REF}..."
-                git clone --branch "$ZISK_CLONE_REF" https://github.com/0xPolygonHermez/zisk.git
-              else
-                echo "Cloning ZisK repository default branch..."
-                git clone https://github.com/0xPolygonHermez/zisk.git
-              fi
+              git clone https://github.com/0xPolygonHermez/zisk.git
+            '
+
+      - name: Clone test scripts from the current ref
+        # On a manual run the test-env scripts come from the branch/tag the
+        # workflow was launched from, so changes to them can be tried out before
+        # they reach the default branch. The programs they test still come from
+        # the default-branch clone above. Nothing to do on a release run: there
+        # the scripts are taken from that same clone.
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          .github/scripts/docker_exec.sh \
+            -e ZISK_SCRIPTS_REF="${{ github.ref_name }}" \
+            -- bash -c '
+              set -eo pipefail
+              cd "$HOME"
+              echo "Cloning test scripts at ref ${ZISK_SCRIPTS_REF}..."
+              git clone --branch "$ZISK_SCRIPTS_REF" --depth 1 --single-branch \
+                https://github.com/0xPolygonHermez/zisk.git zisk-scripts
             '
 
       - name: Run quickstart test
+        env:
+          ZISK_SCRIPTS_DIR: ${{ github.event_name == 'workflow_dispatch' && 'zisk-scripts' || 'zisk' }}
         run: |
           .github/scripts/docker_exec.sh \
             -e ZISK_GHA=1 \
             -e ONLY_GPU="${ONLY_GPU}" \
+            -e ZISK_SCRIPTS_DIR="${ZISK_SCRIPTS_DIR}" \
             -- bash -c '
               set -eo pipefail
-              # The test-env scripts resolve the repository through ZISK_REPO_DIR
-              # and must be run from their own directory (they source ./utils.sh).
+              # The test-env scripts must be run from their own directory (they
+              # source ./utils.sh) and resolve the repository holding the programs
+              # under test through ZISK_REPO_DIR, so the two clones stay separate.
               export ZISK_REPO_DIR="$HOME/zisk"
-              cd "$ZISK_REPO_DIR/tools/test-env"
+              cd "$HOME/$ZISK_SCRIPTS_DIR/tools/test-env"
               ./test_quickstart.sh
             '
 
