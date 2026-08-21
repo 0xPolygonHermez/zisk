@@ -68,12 +68,21 @@ listed() {
     printf '%s\n' "$2" | grep -qxF -- "$1"
 }
 
+# depends_on <crate> <"crate<TAB>dependency" lines>
+depends_on() {
+    printf '%s\n' "$2" | awk -F'\t' -v crate="$1" '$1 == crate { print $2 }'
+}
+
 # check_crates <group> <list-name> <repo> <crate>...
 #
 # Compares the crates the repo marks as publishable with the ones the list
 # holds, and checks that the list order can be published: every crate has to
 # come after the workspace crates it depends on. Only the crates in the list are
 # considered dependencies here, since anything outside it is reported already.
+#
+# The list is walked in its own order, printing each crate as it is taken on, so
+# that the run shows how far it got and which crate the error below it belongs
+# to.
 check_crates() {
     local group="$1"
     local list_name="$2"
@@ -81,7 +90,7 @@ check_crates() {
     shift 3
     local expected=("$@")
 
-    local metadata publishable expected_list seen crate dependencies unordered
+    local metadata publishable expected_list dependencies seen crate dependency
 
     section \
         "$group crates" \
@@ -97,35 +106,6 @@ check_crates() {
 
     expected_list=$(printf '%s\n' "${expected[@]}")
 
-    echo "Marked to publish in the repo: $(printf '%s\n' "$publishable" | grep -c .)"
-    echo "Listed in $list_name: ${#expected[@]}"
-
-    # Every crate in the list has to be one the repo publishes, and only once.
-    seen=""
-
-    for crate in "${expected[@]}"; do
-        if ! listed "$crate" "$publishable"; then
-            fail "$crate is listed in $list_name but the repo does not publish it"
-        fi
-
-        if listed "$crate" "$seen"; then
-            fail "$crate is listed twice in $list_name"
-        fi
-
-        seen="$seen$crate"$'\n'
-    done
-
-    # And the other way round: a crate the repo publishes that nobody added to
-    # the list would be left behind by publish_crates.sh.
-    while IFS= read -r crate; do
-        if ! listed "$crate" "$expected_list"; then
-            fail "$crate is marked to publish in the repo but is missing from $list_name"
-        fi
-    done <<< "$publishable"
-
-    echo
-    echo "  ✓ $list_name matches the crates the repo publishes"
-
     # Pairs of "crate<TAB>dependency" for the workspace crates each publishable
     # crate depends on. Dev dependencies are left out: cargo strips the ones
     # without a version and they do not constrain the publish order.
@@ -137,21 +117,48 @@ check_crates() {
         | select(.kind == null or .kind == "build")
         | "\($crate)\t\(.name)"' | sort -u)
 
-    # The first crate the list publishes too early, walking it in order.
-    unordered=$(awk -F'\t' -v list="$list_name" '
-        NR == FNR { position[$1] = FNR; next }
-        ($1 in position) && ($2 in position) && position[$2] > position[$1] {
-            printf "%s comes before %s in %s, which it depends on\n", $1, $2, list
-        }' \
-        <(printf '%s\n' "${expected[@]}") \
-        <(printf '%s\n' "$dependencies") |
-        head -n1)
+    echo "Marked to publish in the repo: $(printf '%s\n' "$publishable" | grep -c .)"
+    echo "Listed in $list_name: ${#expected[@]}"
+    echo
 
-    if [ -n "$unordered" ]; then
-        fail "$unordered"
-    fi
+    # Every crate in the list has to be one the repo publishes, only once, and
+    # after everything it depends on. Since the list is walked in order, a
+    # dependency that is in the list but has not been seen yet is one this crate
+    # would be published before.
+    seen=""
 
-    echo "  ✓ $list_name is in dependency order"
+    for crate in "${expected[@]}"; do
+        printf '  %-35s ' "$crate"
+
+        if ! listed "$crate" "$publishable"; then
+            fail "$crate is listed in $list_name but the repo does not publish it"
+        fi
+
+        if listed "$crate" "$seen"; then
+            fail "$crate is listed twice in $list_name"
+        fi
+
+        for dependency in $(depends_on "$crate" "$dependencies"); do
+            if listed "$dependency" "$expected_list" &&
+               ! listed "$dependency" "$seen"; then
+                fail "$crate comes before $dependency in $list_name, which it depends on"
+            fi
+        done
+
+        seen="$seen$crate"$'\n'
+        echo "OK"
+    done
+
+    # And the other way round: a crate the repo publishes that nobody added to
+    # the list would be left behind by publish_crates.sh.
+    while IFS= read -r crate; do
+        if ! listed "$crate" "$expected_list"; then
+            fail "$crate is marked to publish in the repo but is missing from $list_name"
+        fi
+    done <<< "$publishable"
+
+    echo
+    echo "  ✓ $list_name matches the crates the repo publishes, in dependency order"
 }
 
 if [ -n "$PROOFMAN_REPO_PATH" ]; then
