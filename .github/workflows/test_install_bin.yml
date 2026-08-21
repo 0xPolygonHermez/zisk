@@ -39,12 +39,12 @@ jobs:
   # The same test runs twice: the CPU variant on the rocket runner, which has no
   # GPU, and the GPU variant on the zisk-gpu runner group. They are independent
   # (each one clones the repository and starts its own container) so they run in
-  # parallel, and both share the steps through the install_from_binaries
+  # parallel, and both share the steps through the test_install_bin_variant
   # reusable workflow.
   install-from-binaries-cpu:
     name: Install ZisK from binaries (CPU)
     needs: check-latest-release
-    uses: ./.github/workflows/install_from_binaries.yml
+    uses: ./.github/workflows/test_install_bin_variant.yml
     with:
       runner: '"rocket"'
       variant: cpu
@@ -52,7 +52,7 @@ jobs:
   install-from-binaries-gpu:
     name: Install ZisK from binaries (GPU)
     needs: check-latest-release
-    uses: ./.github/workflows/install_from_binaries.yml
+    uses: ./.github/workflows/test_install_bin_variant.yml
     with:
       runner: '{"group":"zisk-gpu"}'
       variant: gpu

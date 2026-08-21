@@ -1,4 +1,4 @@
-name: Install ZisK from binaries
+name: Test ZisK Installation (binaries, variant)
 
 # Reusable workflow that installs ZisK from the published binaries on a bare
 # Ubuntu container and runs the quickstart test against it. It is called once
@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 jobs:
-  install-from-binaries:
+  install-bin:
     name: Install ZisK from binaries (${{ inputs.variant }})
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 120

@@ -18,7 +18,6 @@ GUEST_ELF="target/elf/riscv64ima-zisk-zkvm-elf/release/hash-guest"
 GUEST_INPUT="samples/example-input.bin"
 
 EXPECTED_GUEST_OUTPUT="sha256('Hello World!') => 0x7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
-EXPECTED_SETUP_COMPLETED="Setup completed for /root/zisk/examples/hash/guest/target/elf/riscv64ima-zisk-zkvm-elf/release/hash-guest"
 EXPECTED_PROOF_SAVED="INFO: Proof saved to proof.bin"
 EXPECTED_STARK_VERIFIED="STARK proof was verified"
 EXPECTED_PLONK_VERIFIED="PLONK proof was verified"
@@ -172,6 +171,8 @@ main() {
         err "Example directory not found: ${EXAMPLE_DIR}"
         return 1
     fi
+
+    EXPECTED_SETUP_COMPLETED="Setup completed for ${EXAMPLE_DIR}/guest/${GUEST_ELF}"
 
     LOG_DIR="${WORKSPACE_DIR}/quickstart-logs"
     rm -rf "${LOG_DIR}"

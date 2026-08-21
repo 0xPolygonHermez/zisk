@@ -8,7 +8,8 @@
 #   FORCE_SETUP_BUILD            Ignore a cache hit and rebuild the setup (the
 #                                fresh build then refreshes the cache entry).
 #   DISABLE_RECURSIVE_SETUP      Build without aggregation (setup without -r).
-#   INSTALL_SETUP                Install the provingKey into $HOME/.zisk
+#   INSTALL_SETUP                Install the provingKey into $HOME/.zisk, plus the
+#                                provingKeySnark when the build produced one.
 #   INCLUDE_SNARK                After the proving key, also build the snark setup
 #                                (provingKeySnark/). Needs state-machines/publics.json
 #                                and the powers-of-tau file (PTAU_PATH).
@@ -101,10 +102,17 @@ main() {
     fi
 
     if [[ "${INSTALL_SETUP}" == "1" ]]; then
-        step "Copying provingKey directory to \$HOME/.zisk directory..."
+        step "Copying proving key directories to \$HOME/.zisk directory..."
         ensure mkdir -p "$HOME/.zisk" || return 1
         ensure rm -rf "$HOME/.zisk/provingKey" || return 1
         ensure cp -R "${ZISK_REPO}/build/provingKey" "$HOME/.zisk" || return 1
+
+        # The snark proving key goes with it whenever the build produced one
+        # (INCLUDE_SNARK=1), to the same place `ziskup setup_snark` installs it.
+        if [[ -d "${ZISK_REPO}/build/provingKeySnark" ]]; then
+            ensure rm -rf "$HOME/.zisk/provingKeySnark" || return 1
+            ensure cp -R "${ZISK_REPO}/build/provingKeySnark" "$HOME/.zisk" || return 1
+        fi
     fi
 
     success "ZisK setup completed successfully!"
