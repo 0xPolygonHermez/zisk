@@ -23,14 +23,14 @@ jobs:
   # (each one builds its own ZisK) so they run in parallel, and both share the
   # steps through the test_quickstart_variant reusable workflow.
   quickstart-cpu:
-    name: Quickstart from source (CPU)
+    name: Test Quickstart (CPU)
     uses: ./.github/workflows/test_quickstart_variant.yml
     with:
       runner: '"rocket"'
       variant: cpu
 
   quickstart-gpu:
-    name: Quickstart from source (GPU)
+    name: Test Quickstart (GPU)
     uses: ./.github/workflows/test_quickstart_variant.yml
     with:
       runner: '{"group":"zisk-gpu"}'
