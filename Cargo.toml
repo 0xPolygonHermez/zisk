@@ -186,7 +186,7 @@ proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofma
 # pil2-stark-setup = { path = "../pil2-proofman/setup/pil2-stark", version = "1.2.0-alpha" }
 # pil2-stark-recurser = { path = "../pil2-proofman/setup/stark-recurser", version = "1.2.0-alpha" }
 # pil2-pilout = { path = "../pil2-proofman/pilout", version = "1.2.0-alpha" }
-# proofman-starks-lib-c = { path = "../pil2-proofman/starks-lib-c", version = "1.2.0-alpha" }
+# proofman-starks-lib-c = { path = "../pil2-proofman/provers/starks-lib-c", version = "1.2.0-alpha" }
 
 # External dependencies
 arc-swap = "1"
