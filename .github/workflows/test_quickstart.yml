@@ -1,0 +1,37 @@
+name: Test ZisK Quickstart
+
+# Checks that the branch this workflow is launched from passes the steps of the
+# quickstart guide: ZisK and its setup (proving key + PLONK setup) are built
+# from the checked-out sources and the quickstart test is run against them.
+#
+# Sibling of test_install_bin.yml, which runs that same test against the
+# published binaries installed with ziskup.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The same test runs twice: the CPU variant on the rocket runner, which has no
+  # GPU, and the GPU variant on the zisk-gpu runner group. They are independent
+  # (each one builds its own ZisK) so they run in parallel, and both share the
+  # steps through the test_quickstart_variant reusable workflow.
+  quickstart-cpu:
+    name: Quickstart from source (CPU)
+    uses: ./.github/workflows/test_quickstart_variant.yml
+    with:
+      runner: '"rocket"'
+      variant: cpu
+
+  quickstart-gpu:
+    name: Quickstart from source (GPU)
+    uses: ./.github/workflows/test_quickstart_variant.yml
+    with:
+      runner: '{"group":"zisk-gpu"}'
+      variant: gpu
