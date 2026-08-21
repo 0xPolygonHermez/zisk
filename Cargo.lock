@@ -1088,7 +1088,7 @@ dependencies = [
  "predicates",
  "proofman",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rand 0.8.7",
  "rayon",
  "reqwest",
@@ -1132,9 +1132,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.4.3"
+version = "1.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "509591b7bcd67f4ef775afad7662703b4935daaa6ec0e5605cfb1090b32a2b6d"
+checksum = "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1991,9 +1991,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.17.0"
+version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e5e8f6c15a24b9a3ee5efec809ccd006d3b30e8b3bb63c39af737c7f87daa1d"
+checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
 name = "elf"
@@ -2465,9 +2465,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.17"
+version = "0.4.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f877e75f39e9827ec50a572dd592684ac28c029578726c85f1b2aa6ab807449"
+checksum = "839c0e8a181239723652be9062bb56ca5bf5f64011f73b623f6f4fc59086a228"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -2842,9 +2842,9 @@ checksum = "e590f038c1464a96894fd6d10127e90a8be4509f56ff7ecef851b15cee0b7caa"
 
 [[package]]
 name = "icu_provider"
-version = "2.3.0"
+version = "2.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a7ed671a6aad807a8651a2e1782a6598fda9ce5185dd8158549e95a91c6428"
+checksum = "d27bbb9d3abbefac45d55f647c9de1d44aafcd1186eb91879afef17c396c3e73"
 dependencies = [
  "displaydoc",
  "icu_locale_core",
@@ -3159,9 +3159,9 @@ dependencies = [
 
 [[package]]
 name = "keccak"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ffd9697dc4a9a62e2da93389f34400b77a28f0287711263cabb203b3ccb9c0e4"
+checksum = "d8f198d1db720e4940b5a493201d199d9f24f568f8f746bd13706243a2f71598"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.0",
@@ -3953,7 +3953,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3964,13 +3964,13 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "anyhow",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "serde",
  "serde_json",
  "tera",
@@ -3980,7 +3980,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "anyhow",
  "clap",
@@ -3990,8 +3990,8 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields",
- "proofman-starks-lib-c",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
+ "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "prost 0.13.5",
  "rayon",
@@ -4006,11 +4006,11 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -4224,7 +4224,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "bincode",
  "blake3",
@@ -4239,12 +4239,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-witness",
  "rayon",
  "serde",
@@ -4256,7 +4256,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "borsh",
  "colored",
@@ -4268,9 +4268,9 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-macros",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "serde",
@@ -4285,18 +4285,18 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
 ]
 
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "anyhow",
- "proofman-starks-src",
+ "proofman-starks-src 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "regex",
  "serde",
@@ -4307,31 +4307,43 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
+ "serde",
+]
+
+[[package]]
+name = "proofman-fields"
+version = "1.2.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#b19f4ecc66d3e28834a5caa39af6f0a7203aea2f"
+dependencies = [
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
  "serde",
 ]
 
 [[package]]
 name = "proofman-hints"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields",
- "proofman-starks-lib-c",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
+ "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4341,21 +4353,35 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src",
+ "proofman-starks-src 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
+]
+
+[[package]]
+name = "proofman-starks-lib-c"
+version = "1.2.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#b19f4ecc66d3e28834a5caa39af6f0a7203aea2f"
+dependencies = [
+ "crossbeam-channel",
+ "proofman-starks-src 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
 ]
 
 [[package]]
 name = "proofman-starks-src"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
+
+[[package]]
+name = "proofman-starks-src"
+version = "1.2.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#b19f4ecc66d3e28834a5caa39af6f0a7203aea2f"
 
 [[package]]
 name = "proofman-util"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4364,12 +4390,24 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "proofman-verifier"
+version = "1.2.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#b19f4ecc66d3e28834a5caa39af6f0a7203aea2f"
+dependencies = [
+ "bincode",
+ "num-traits",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
  "serde",
  "tracing",
 ]
@@ -4377,11 +4415,11 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#34989ed744058afba7e07ff053c05335458d7bb7"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer#f72f9686bc94cfda2eae055039b25678c58b1a61"
 dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
 ]
 
 [[package]]
@@ -7256,9 +7294,9 @@ dependencies = [
 
 [[package]]
 name = "zerovec-derive"
-version = "0.11.5"
+version = "0.11.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f212a141d820099d57ffafb9569be9617a6f27d3dc881fbee8fb56642f917a9"
+checksum = "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7272,7 +7310,7 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "thiserror 2.0.20",
@@ -7346,8 +7384,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
+ "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "serde",
  "serde_json",
  "sha2",
@@ -7461,7 +7499,7 @@ name = "zisk-core"
 version = "1.2.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -7487,7 +7525,7 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -7543,7 +7581,7 @@ name = "zisk-pil"
 version = "1.2.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -7564,7 +7602,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "regex",
@@ -7592,7 +7630,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -7613,7 +7651,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7631,7 +7669,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7646,7 +7684,7 @@ dependencies = [
 name = "zisk-precomp-common"
 version = "1.2.0-alpha"
 dependencies = [
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "zisk-common",
  "zisk-core",
  "zisk-sm-mem",
@@ -7659,7 +7697,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7677,7 +7715,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7723,7 +7761,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -7742,7 +7780,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7759,7 +7797,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7806,9 +7844,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
- "proofman-verifier",
+ "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7835,8 +7873,8 @@ dependencies = [
  "pil2-stark-recurser",
  "pil2-stark-setup",
  "proofman",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
+ "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "serde",
  "serde_json",
  "tera",
@@ -7861,7 +7899,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -7877,8 +7915,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields",
- "proofman-verifier",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
+ "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "serde",
  "serde_json",
@@ -7902,7 +7940,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7918,7 +7956,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -7934,7 +7972,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "static_assertions",
  "zisk-core",
 ]
@@ -7945,7 +7983,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -7963,7 +8001,7 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7978,7 +8016,7 @@ name = "zisk-sm-mem-common"
 version = "1.2.0-alpha"
 dependencies = [
  "clap",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -8002,7 +8040,7 @@ name = "zisk-sm-rom"
 version = "1.2.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8057,7 +8095,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.2.0-alpha"
 dependencies = [
- "proofman-verifier",
+ "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
 ]
 
 [[package]]
@@ -8074,7 +8112,7 @@ dependencies = [
  "config",
  "proofman",
  "proofman-common",
- "proofman-verifier",
+ "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "serde",
  "time",
@@ -8117,7 +8155,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rayon",
  "regex",
  "serde_json",
@@ -8163,7 +8201,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rand 0.8.7",
  "ripemd",
  "secp256k1",
@@ -8194,7 +8232,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields",
+ "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feature%2Fexps-q-optimizer)",
  "rand 0.8.7",
  "ripemd",
  "serde",

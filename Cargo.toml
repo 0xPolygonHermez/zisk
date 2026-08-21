@@ -147,18 +147,18 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = 
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.2.0-alpha" }
 
 # Proofman git
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
+proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feature/exps-q-optimizer" }
 
 # Proofman crates.io (enable once pil2-proofman is published; use instead of the path/git blocks)
 # proofman = "1.2.0-alpha"
