@@ -35,3 +35,63 @@ jobs:
     with:
       runner: '{"group":"zisk-gpu"}'
       variant: gpu
+
+  notify:
+    name: Notify Telegram
+    needs: [quickstart-cpu, quickstart-gpu]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send result to Telegram
+        env:
+          # Passing the credentials through env instead of interpolating them
+          # into the script keeps them out of the expanded command line.
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CPU_RESULT: ${{ needs.quickstart-cpu.result }}
+          GPU_RESULT: ${{ needs.quickstart-gpu.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
+            echo "::warning::TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set, skipping notification"
+            exit 0
+          fi
+
+          icon() {
+            case "$1" in
+              success)   printf '✅' ;;
+              failure)   printf '❌' ;;
+              cancelled) printf '🚫' ;;
+              *)         printf '⚠️' ;;
+            esac
+          }
+
+          if [ "$CPU_RESULT" = success ] && [ "$GPU_RESULT" = success ]; then
+            HEADER='✅ Test Quickstart OK'
+          else
+            HEADER='❌ Test Quickstart FAILED'
+          fi
+
+          # Telegram's HTML parser rejects bare &, < and > in the message text,
+          # and a branch name is allowed to contain them.
+          esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+          TEXT=$(printf '<b>%s</b>\nrepo: %s\nbranch: <code>%s</code> (%s)\nCPU: %s %s\nGPU: %s %s\n<a href="%s">View run</a>' \
+            "$HEADER" \
+            "$(esc "$GITHUB_REPOSITORY")" \
+            "$(esc "$BRANCH")" \
+            "${SHA:0:8}" \
+            "$(icon "$CPU_RESULT")" "$CPU_RESULT" \
+            "$(icon "$GPU_RESULT")" "$GPU_RESULT" \
+            "$RUN_URL")
+
+          curl -sS --fail-with-body -X POST \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            -d chat_id="$CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$TEXT"
