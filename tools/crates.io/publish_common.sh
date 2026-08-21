@@ -20,9 +20,9 @@
 
 PROOFMAN_CRATES=(
   "pil2-pilout"
-  "proofman-exps-codegen"
   "proofman-macros"
   "proofman-starks-src"
+  "proofman-exps-codegen"
   "proofman-util"
   "proofman-starks-lib-c"
   "proofman-fields"
@@ -35,7 +35,6 @@ PROOFMAN_CRATES=(
   "pil2-stark-setup"
   "pil2-std-lib"
   "proofman"
-  "proofman2"
 )
 
 ZISK_CRATES=(
