@@ -16,6 +16,15 @@ on:
         description: 'ZisK build to produce and test: "cpu" or "gpu"'
         required: true
         type: string
+      ref:
+        description: 'Git ref to build and test. Empty means the ref the workflow runs on'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      sha:
+        description: 'Commit that was built and tested'
+        value: ${{ jobs.quickstart-variant.outputs.sha }}
 
 permissions:
   contents: read
@@ -33,6 +42,8 @@ jobs:
     defaults:
       run:
         shell: bash
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
     env:
       TEST_CONTAINER: zisk-gha-quickstart-${{ inputs.variant }}
       # The CPU runners have no NVIDIA runtime, so the container must not ask
@@ -59,6 +70,16 @@ jobs:
 
       - name: Checkout sources
         uses: actions/checkout@v4
+        with:
+          # Empty checks out the ref the workflow runs on, which is what a manual
+          # run wants; the nightly run passes the branch it has to test.
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve checked-out commit
+        id: commit
+        # Reported by the caller: on a scheduled run github.sha is the default
+        # branch, not the branch under test.
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Prepare cache-setup directory
         run: |
@@ -104,24 +125,6 @@ jobs:
               free -h
               df -h /home/ziskuser/output /workspace
               nvidia-smi || true
-            '
-
-      - name: Check snarkjs is available
-        # PLONK proofs are verified by shelling out to snarkjs, in the last steps
-        # of the test: without this check a runner image missing it only fails
-        # hours into the job. `snarkjs --version` prints the version but exits 99,
-        # so the installed package is checked through npm instead.
-        run: |
-          .github/scripts/docker_exec.sh \
-            -u ziskuser \
-            -e IMAGE="${IMAGE}" \
-            -- bash -lc '
-              if ! command -v snarkjs >/dev/null; then
-                echo "❌ snarkjs not found in ${IMAGE}. Rebuild and push the runner"
-                echo "   image from tools/test-env (build_docker.sh + push_docker.sh)."
-                exit 1
-              fi
-              npm ls -g --depth=0 snarkjs
             '
 
       - name: Build ZisK

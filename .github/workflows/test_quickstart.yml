@@ -8,6 +8,10 @@ name: Test ZisK Quickstart
 # published binaries installed with ziskup.
 
 on:
+  schedule:
+    # Nightly. Cron is UTC, so this is 03:00 in Spain during winter time and
+    # 04:00 during summer time.
+    - cron: '0 2 * * *'
   workflow_dispatch:
 
 permissions:
@@ -22,12 +26,18 @@ jobs:
   # GPU, and the GPU variant on the zisk-gpu runner group. They are independent
   # (each one builds its own ZisK) so they run in parallel, and both share the
   # steps through the test_quickstart_variant reusable workflow.
+  #
+  # A manual run tests the branch it is launched from. A scheduled one always
+  # runs from the default branch, so the branch to test is taken from the
+  # TEST_QUICKSTART_BRANCH repository variable (Settings > Secrets and variables >
+  # Actions > Variables); leaving it unset tests the default branch.
   quickstart-cpu:
     name: Test Quickstart (CPU)
     uses: ./.github/workflows/test_quickstart_variant.yml
     with:
       runner: '"rocket"'
       variant: cpu
+      ref: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
 
   quickstart-gpu:
     name: Test Quickstart (GPU)
@@ -35,6 +45,7 @@ jobs:
     with:
       runner: '{"group":"zisk-gpu"}'
       variant: gpu
+      ref: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
 
   notify:
     name: Notify Telegram
@@ -51,8 +62,11 @@ jobs:
           CPU_RESULT: ${{ needs.quickstart-cpu.result }}
           GPU_RESULT: ${{ needs.quickstart-gpu.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          BRANCH: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
+          # The tested branch, not the one the workflow file comes from.
+          BRANCH: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
+          # Commit the variants actually checked out; github.sha is the fallback
+          # for a run that failed before reaching that step.
+          SHA: ${{ needs.quickstart-gpu.outputs.sha || needs.quickstart-cpu.outputs.sha || github.sha }}
         run: |
           set -euo pipefail
 
