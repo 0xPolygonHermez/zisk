@@ -389,7 +389,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
-            .aggregation(true);
+            .aggregation(std::env::var("ZISK_NO_AGGREGATION").map(|v| v != "1").unwrap_or(true));
 
         if prover_config.plonk {
             if prover_config.proving_key_snark.is_none() {
@@ -446,7 +446,7 @@ impl<T: ZiskBackend + 'static> Worker<T> {
         let mut prover_options = BackendProverOpts::default()
             .proving_key(prover_config.proving_key.clone())
             .verbose(prover_config.verbose)
-            .aggregation(true);
+            .aggregation(std::env::var("ZISK_NO_AGGREGATION").map(|v| v != "1").unwrap_or(true));
 
         if prover_config.plonk {
             if prover_config.proving_key_snark.is_none() {
