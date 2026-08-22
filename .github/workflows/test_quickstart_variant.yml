@@ -1,0 +1,173 @@
+name: Test ZisK Quickstart (variant)
+
+# Reusable workflow that builds ZisK, its proving key and the PLONK setup from
+# the checked-out sources on the ZisK runner container, and runs the quickstart
+# test against them. It is called once per variant (CPU and GPU) by
+# test_quickstart.yml.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'JSON value for runs-on, e.g. ''"rocket"'' or ''{"group":"zisk-gpu"}'''
+        required: true
+        type: string
+      variant:
+        description: 'ZisK build to produce and test: "cpu" or "gpu"'
+        required: true
+        type: string
+      ref:
+        description: 'Git ref to build and test. Empty means the ref the workflow runs on'
+        required: false
+        type: string
+        default: ''
+    outputs:
+      sha:
+        description: 'Commit that was built and tested'
+        value: ${{ jobs.quickstart-variant.outputs.sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  quickstart-variant:
+    name: Test Quickstart variant (${{ inputs.variant }})
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 300
+    # NOTE: We intentionally use 'docker exec' in individual steps rather than
+    # defining a job-level container, the same approach as the test-x86_64 job
+    # in pr.yml: the build scripts run in the ZisK runner image, which needs a
+    # privileged container with systemd as PID 1 (and GPU access on the zisk-gpu
+    # runners), something GitHub Actions job-level containers do not provide.
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    env:
+      TEST_CONTAINER: zisk-gha-quickstart-${{ inputs.variant }}
+      # The CPU runners have no NVIDIA runtime, so the container must not ask
+      # for GPU access there, and the image is the one built without CUDA.
+      RUNNER_WITH_GPU: ${{ inputs.variant == 'gpu' && '1' || '0' }}
+      IMAGE: ${{ inputs.variant == 'gpu' && 'ziskvm/zisk-runner-gpu:latest' || 'ziskvm/zisk-runner:latest' }}
+      # Read by build_zisk.sh: the CPU variant builds cargo-zisk with the
+      # cpu-only feature, which test_quickstart.sh then detects as a build
+      # without GPU support.
+      ONLY_CPU: ${{ inputs.variant == 'gpu' && '0' || '1' }}
+      # Read by test_quickstart.sh to run only the --gpu combinations; the CPU
+      # ones are covered by the CPU variant.
+      ONLY_GPU: ${{ inputs.variant == 'gpu' && '1' || '0' }}
+      # The powers-of-tau file lives in the persistent cache-setup directory,
+      # bind-mounted into the container at /home/ziskuser/output.
+      PTAU_HOST_PATH: /home/gha/cache-setup/powersOfTau28_hez_final_24.ptau
+      PTAU_CONTAINER_PATH: /home/ziskuser/output/powersOfTau28_hez_final_24.ptau
+
+    steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          # Empty checks out the ref the workflow runs on, which is what a manual
+          # run wants; the nightly run passes the branch it has to test.
+          ref: ${{ inputs.ref }}
+
+      - name: Resolve checked-out commit
+        id: commit
+        # Reported by the caller: on a scheduled run github.sha is the default
+        # branch, not the branch under test.
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare cache-setup directory
+        run: |
+          # USE_CACHE_SETUP writes the artifact cache to /home/ziskuser/output
+          # (bind-mounted from /home/gha/cache-setup); ziskuser (UID 1000) owns it.
+          sudo mkdir -p /home/gha/cache-setup
+          sudo chown -R 1000:1000 /home/gha/cache-setup
+          sudo chmod -R u+rwX /home/gha/cache-setup
+
+      - name: Download the powers-of-tau file
+        # Needed by the PLONK setup, which fails when it is missing instead of
+        # downloading it. It is ~18 GB, so it is kept in the persistent
+        # cache-setup directory and only fetched the first time. It is moved into
+        # place on success, so an interrupted run leaves no truncated file behind.
+        run: |
+          if [ -f "$PTAU_HOST_PATH" ]; then
+            echo "powers-of-tau already present at $PTAU_HOST_PATH"
+            ls -la "$PTAU_HOST_PATH"
+            exit 0
+          fi
+          echo "Downloading the powers-of-tau file to $PTAU_HOST_PATH..."
+          sudo curl -fL -C - --retry 3 -o "${PTAU_HOST_PATH}.part" \
+            https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau
+          sudo mv "${PTAU_HOST_PATH}.part" "$PTAU_HOST_PATH"
+          sudo chown 1000:1000 "$PTAU_HOST_PATH"
+
+      - name: Give workspace ownership to container user
+        run: |
+          # The container runs as ziskuser (UID 1000) and builds into the
+          # bind-mounted workspace.
+          sudo chown -R 1000:1000 "$GITHUB_WORKSPACE"
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE"
+
+      - name: Start test container
+        run: .github/scripts/start_test_container.sh
+
+      - name: Check resources
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -- bash -lc '
+              echo "CPUs: $(nproc)"
+              free -h
+              df -h /home/ziskuser/output /workspace
+              nvidia-smi || true
+            '
+
+      - name: Build ZisK
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e ONLY_CPU="${ONLY_CPU}" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_zisk.sh
+            '
+
+      - name: Build setup
+        # INCLUDE_SNARK adds the PLONK setup the --plonk combinations need; unlike
+        # the proving key it is not cached, so it is rebuilt on every run.
+        # INSTALL_SETUP installs both into $HOME/.zisk.
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e USE_CACHE_SETUP="1" \
+            -e INSTALL_SETUP="1" \
+            -e INCLUDE_SNARK="1" \
+            -e PTAU_PATH="${PTAU_CONTAINER_PATH}" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./build_setup.sh
+            '
+
+      - name: Run quickstart test
+        # ZISK_GHA and ZISK_REPO_DIR (=/workspace/zisk, the sources the binaries
+        # were built from) are already set on the container.
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e ONLY_GPU="${ONLY_GPU}" \
+            -- bash -lc '
+              cd /workspace/zisk/tools/test-env
+              ./test_quickstart.sh
+            '
+
+      - name: Stop test container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
