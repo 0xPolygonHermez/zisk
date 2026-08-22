@@ -21,8 +21,8 @@ permissions:
   contents: read
 
 jobs:
-  quickstart:
-    name: Quickstart from source (${{ inputs.variant }})
+  quickstart-variant:
+    name: Test Quickstart variant (${{ inputs.variant }})
     runs-on: ${{ fromJSON(inputs.runner) }}
     timeout-minutes: 300
     # NOTE: We intentionally use 'docker exec' in individual steps rather than
@@ -104,6 +104,24 @@ jobs:
               free -h
               df -h /home/ziskuser/output /workspace
               nvidia-smi || true
+            '
+
+      - name: Check snarkjs is available
+        # PLONK proofs are verified by shelling out to snarkjs, in the last steps
+        # of the test: without this check a runner image missing it only fails
+        # hours into the job. `snarkjs --version` prints the version but exits 99,
+        # so the installed package is checked through npm instead.
+        run: |
+          .github/scripts/docker_exec.sh \
+            -u ziskuser \
+            -e IMAGE="${IMAGE}" \
+            -- bash -lc '
+              if ! command -v snarkjs >/dev/null; then
+                echo "❌ snarkjs not found in ${IMAGE}. Rebuild and push the runner"
+                echo "   image from tools/test-env (build_docker.sh + push_docker.sh)."
+                exit 1
+              fi
+              npm ls -g --depth=0 snarkjs
             '
 
       - name: Build ZisK
