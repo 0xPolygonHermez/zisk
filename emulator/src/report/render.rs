@@ -1,4 +1,6 @@
-use super::parser::{CostRow, FropRow, MemRow, Offsets, OpRow, Report};
+use super::parser::{
+    CostRow, FropRow, MemFnAlignRow, MemFnCostRow, MemFnRatioRow, MemRow, Offsets, OpRow, Report,
+};
 use std::collections::HashMap;
 
 const CSS: &str = r#"
@@ -164,7 +166,100 @@ pub fn single(r: &Report) -> String {
         &sort_table("sort-detmemfull", "%", mem_sort(&r.detailed_mem_full)),
     ));
     h.push_str(&section("MEM OFFSETS", false, &offsets_table(&r.mem_offsets)));
+    h.push_str(&section("TOP MEMORY COST FUNCTIONS", false, &mem_top_cost_table(&r.mem_top_cost)));
+    h.push_str(&section(
+        "TOP UNALIGNED MEMORY FUNCTIONS",
+        false,
+        &mem_top_unaligned_table(&r.mem_top_unaligned),
+    ));
+    h.push_str(&section(
+        "TOP UNALIGNED/STEP RATIO FUNCTIONS",
+        false,
+        &mem_top_ratio_table(&r.mem_top_ratio),
+    ));
     h.push_str(&foot());
+    h
+}
+
+/// `MEM_TOP_COST`: functions ranked by the memory cost they spend, bar on the share of the
+/// program's memory cost.
+fn mem_top_cost_table(rows: &[MemFnCostRow]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut h = String::from(
+        "<div class=\"scroll\">\n<table class=\"ops\">\n<thead><tr><th></th>\
+         <th class=\"num\">MEM COST</th><th class=\"num\">%</th>\
+         <th class=\"num\">CALLS</th><th class=\"num\">COST/CALL</th><th></th></tr></thead>\n<tbody>\n",
+    );
+    for r in rows {
+        h.push_str(&format!(
+            "<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{:.2}%</td>\
+             <td class=\"num\">{}</td><td class=\"num\">{}</td><td>{}</td></tr>\n",
+            esc(&r.name),
+            fmt_num(r.cost),
+            r.cost_pct,
+            fmt_num(r.calls),
+            fmt_num(r.cost_per_call),
+            bar(r.cost_pct),
+        ));
+    }
+    h.push_str("</tbody>\n</table>\n</div>\n");
+    h
+}
+
+/// `MEM_TOP_UNALIGNED`: the same ranking restricted to the unaligned cost, with the aligned cost
+/// alongside; the bar tracks how much of the function's memory cost is unaligned.
+fn mem_top_unaligned_table(rows: &[MemFnAlignRow]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut h = String::from(
+        "<div class=\"scroll\">\n<table class=\"ops\">\n<thead><tr><th></th>\
+         <th class=\"num\">UNALIGNED</th><th class=\"num\">ALIGNED</th>\
+         <th class=\"num\">% UNALIGNED</th><th class=\"num\">CALLS</th><th></th></tr></thead>\n<tbody>\n",
+    );
+    for r in rows {
+        h.push_str(&format!(
+            "<tr><td>{}</td><td class=\"num\">{}</td><td class=\"num\">{}</td>\
+             <td class=\"num\">{:.2}%</td><td class=\"num\">{}</td><td>{}</td></tr>\n",
+            esc(&r.name),
+            fmt_num(r.unaligned),
+            fmt_num(r.aligned),
+            r.unaligned_pct,
+            fmt_num(r.calls),
+            bar(r.unaligned_pct),
+        ));
+    }
+    h.push_str("</tbody>\n</table>\n</div>\n");
+    h
+}
+
+/// `MEM_TOP_RATIO`: functions whose unaligned cost per step is furthest above the program average.
+/// The bar is the ratio itself, capped at 5x so the leaders stay distinguishable.
+fn mem_top_ratio_table(rows: &[MemFnRatioRow]) -> String {
+    if rows.is_empty() {
+        return String::new();
+    }
+    let mut h = String::from(
+        "<div class=\"scroll\">\n<table class=\"ops\">\n<thead><tr><th></th>\
+         <th class=\"num\">RATIO</th><th class=\"num\">UNALIGNED</th><th class=\"num\">% UNALIGNED</th>\
+         <th class=\"num\">UNALIGNED ACC./CALL</th><th class=\"num\">CALLS</th><th></th></tr></thead>\n<tbody>\n",
+    );
+    for r in rows {
+        h.push_str(&format!(
+            "<tr><td>{}</td><td class=\"num\">{:.2}x</td><td class=\"num\">{}</td>\
+             <td class=\"num\">{:.2}%</td><td class=\"num\">{}</td><td class=\"num\">{}</td><td>{}</td></tr>\n",
+            esc(&r.name),
+            r.ratio,
+            fmt_num(r.unaligned),
+            r.unaligned_pct,
+            fmt_num(r.accesses_per_call),
+            fmt_num(r.calls),
+            bar(r.ratio * 20.0),
+        ));
+    }
+    h.push_str("</tbody>\n</table>\n</div>\n");
     h
 }
 
@@ -290,6 +385,33 @@ pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> String {
             name_b,
         ),
     ));
+    // The per-function rankings are matched by function name; COUNT is the call count, COST the
+    // memory cost (total, then unaligned only).
+    h.push_str(&section(
+        "TOP MEMORY COST FUNCTIONS",
+        false,
+        &cmp_table(
+            // `false`: keep the ranking order the snapshot already carries (by memory cost).
+            &align(mem_cost_sort(&a.mem_top_cost), mem_cost_sort(&b.mem_top_cost), false),
+            true,
+            name_a,
+            name_b,
+        ),
+    ));
+    h.push_str(&section(
+        "TOP UNALIGNED MEMORY FUNCTIONS",
+        false,
+        &cmp_table(
+            &align(
+                mem_unaligned_sort(&a.mem_top_unaligned),
+                mem_unaligned_sort(&b.mem_top_unaligned),
+                false,
+            ),
+            true,
+            name_a,
+            name_b,
+        ),
+    ));
     h.push_str(&foot());
     h
 }
@@ -332,6 +454,28 @@ fn mem_sort(rows: &[MemRow]) -> Vec<SortRow> {
             pct2: r.count_pct,
             cost: r.cost,
             cost_pct: r.cost_pct,
+        })
+        .collect()
+}
+fn mem_cost_sort(rows: &[MemFnCostRow]) -> Vec<SortRow> {
+    rows.iter()
+        .map(|r| SortRow {
+            name: r.name.clone(),
+            count: r.calls,
+            pct2: 0.0,
+            cost: r.cost,
+            cost_pct: r.cost_pct,
+        })
+        .collect()
+}
+fn mem_unaligned_sort(rows: &[MemFnAlignRow]) -> Vec<SortRow> {
+    rows.iter()
+        .map(|r| SortRow {
+            name: r.name.clone(),
+            count: r.calls,
+            pct2: 0.0,
+            cost: r.unaligned,
+            cost_pct: r.unaligned_pct,
         })
         .collect()
 }
