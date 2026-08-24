@@ -697,7 +697,7 @@ checksum = "82f6aeea286b8eb4dd3431a1be1b59d290ace00f5bfd8e2a159bc2a05e2c1667"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -1279,7 +1279,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -1928,7 +1928,7 @@ checksum = "c6232dd377dcc64799954cbd3a9bb882e9cdc1308ccd87b1c098f1fb2eaf82a8"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -2064,7 +2064,7 @@ checksum = "a65863d15a4ce2888bd2f0f543cc963d3879c3a022c8ee43f6141d479a3ac815"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -2312,7 +2312,7 @@ checksum = "9fb9654ba8355388abeb8dcb4fc62f511300867002afc858860463bdd9fe0c44"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -3953,7 +3953,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3964,7 +3964,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -3980,7 +3980,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "anyhow",
  "clap",
@@ -4006,7 +4006,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4224,7 +4224,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "bincode",
  "blake3",
@@ -4256,7 +4256,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "borsh",
  "colored",
@@ -4285,7 +4285,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg)",
 ]
@@ -4293,7 +4293,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "anyhow",
  "proofman-starks-src 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg)",
@@ -4319,7 +4319,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "cfg-if",
  "num-bigint",
@@ -4331,7 +4331,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4343,7 +4343,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4362,7 +4362,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg)",
@@ -4376,12 +4376,12 @@ source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-de
 [[package]]
 name = "proofman-starks-src"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 
 [[package]]
 name = "proofman-util"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4402,7 +4402,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4415,7 +4415,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#61fce90653f9894671b2637c9ecf7f3af967c973"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=testss%2Fdbg#18ec580411edfed72d39b5df50ec5d844a61d6c7"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -4856,7 +4856,7 @@ checksum = "92ecd8964f8453721699a1ed72037b0db49ce2f5a5138486ee89bed6f67cdf3a"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -5412,7 +5412,7 @@ checksum = "e7a5d71263a5a7d47b41f6b3f06ba276f10cc18b0931f1799f710578e2309348"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -5765,9 +5765,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "3.0.3"
+version = "3.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
+checksum = "e6275cddf4610d1775e6d1fe9469b2e77d0f39fd98fb7450901b821e0c53649f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5933,7 +5933,7 @@ checksum = "bc04cd3e1236dd4a98afca4569f2deb3f120e5422a4023be2cb683f8486292af"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -6076,7 +6076,7 @@ checksum = "78773a2a397f451582ce068015985c33193cf6dea8b74d2a639fe457b2f07b0e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
@@ -7300,7 +7300,7 @@ checksum = "34df6fc39dbd26ddc9c10e6a2984476e13acce22e64e4487636ef494369225da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.3",
+ "syn 3.0.4",
 ]
 
 [[package]]
