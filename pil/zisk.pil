@@ -74,18 +74,18 @@ airgroup Zisk {
     set_group_virtual_tables([ARITH_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, BINARY_EXTENSION_FROPS_TABLE_ID]);
 
     // Main Program
-    Main(N: 2**22);
-    Rom(N: 2**22);
+    Main(N: 2**21);
+    Rom(N: 2**21);
 
     // Memory
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
+    Mem(N: 2**21, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
     Mem(N: 2**21, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
     RomData(N: 2**21, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data);
 
     MemAlign(N: 2**21);
-    MemAlignByte(N: 2**22, read: 1, write: 1);
-    MemAlignByte(N: 2**22, read: 1, write: 0) alias MemAlignReadByte;
-    MemAlignByte(N: 2**22, read: 0, write: 1) alias MemAlignWriteByte;
+    MemAlignByte(N: 2**21, read: 1, write: 1);
+    MemAlignByte(N: 2**21, read: 1, write: 0) alias MemAlignReadByte;
+    MemAlignByte(N: 2**21, read: 0, write: 1) alias MemAlignWriteByte;
     virtual MemAlignRom();
     
     // Standard operations
@@ -95,12 +95,12 @@ airgroup Zisk {
     virtual FrequentOps(table_id: ARITH_FROPS_TABLE_ID, 
                         bin_file: "state-machines/arith/src/arith_frops_fixed.bin") alias ArithFrops;
 
-    Binary(N: 2**22);
-    BinaryAdd(N: 2**22);
-    BinaryAddHi(N: 2**22);
+    Binary(N: 2**21);
+    BinaryAdd(N: 2**21);
+    BinaryAddHi(N: 2**21);
 
-    BinaryExtension(N: 2**22, full: 0);
-    BinaryExtension(N: 2**22, full: 1) alias BinaryExtensionFull;    
+    BinaryExtension(N: 2**21, full: 0);
+    BinaryExtension(N: 2**21, full: 1) alias BinaryExtensionFull;    
 
     virtual BinaryTable();
     virtual BinaryExtensionTable();
@@ -122,7 +122,7 @@ airgroup Zisk {
     ArithEq384(N: 2**20);
     virtual ArithEqLtTable();
 
-    Keccakf(N: 2**18);
+    Keccakf(N: 2**16);
     virtual KeccakfTable(KECCAKF_TABLE_SIZE);
 
     Sha256f(N: 2**18);
