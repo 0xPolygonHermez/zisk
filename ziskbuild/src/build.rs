@@ -136,10 +136,22 @@ pub fn execute_build_program(
             std::fs::write(&hints_marker, new_value)?;
         }
 
-        // Tell cargo to rerun if any assembly file is deleted
+        // Tell cargo to rerun if any assembly file is deleted.
+        //
+        // Only paths that exist may be watched. Cargo cannot distinguish "deleted" from "never
+        // created" — both are simply a missing path, and both re-run the build script. So watching
+        // an artifact that `gen_assembly` did not produce (the default, since `asm` is off) leaves
+        // the script permanently dirty: every host `cargo check`/`test`/`clippy` re-runs it, which
+        // rebuilds every guest, which does not create these files, because that is `rom-setup`'s
+        // job. Cargo never garbage-collects `target/`, so each of those rebuilds also leaks a full
+        // generation of guest artifacts.
+        //
+        // Same reasoning as `process_aggregations`, which skips its own emit for a missing dir.
         let assembly_files = get_assembly_file_paths(elf_path_std, &output_path, hints)?;
         for asm_file in assembly_files {
-            println!("cargo:rerun-if-changed={}", asm_file.display());
+            if asm_file.exists() {
+                println!("cargo:rerun-if-changed={}", asm_file.display());
+            }
         }
     }
 

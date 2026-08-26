@@ -207,6 +207,12 @@ impl BackendProverOpts {
 
         options.verbose_mode(self.verbose.into());
 
+        // The plonk wrapper borrows the GPU unified buffer; proofman pads the arena to the
+        // snark floor only when told a final snark will run.
+        if self.plonk {
+            options.final_snark();
+        }
+
         if !self.aggregation || self.verify_constraints {
             options.no_aggregation();
         }

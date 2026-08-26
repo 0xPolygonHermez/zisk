@@ -1,21 +1,20 @@
 mod keccakf;
+mod keccakf_chi_table;
 mod keccakf_constants;
-mod keccakf_expr_generator;
 mod keccakf_mem_inputs;
-mod keccakf_table;
+mod keccakf_xor5_table;
 
 pub use keccakf::*;
+use keccakf_chi_table::*;
 use keccakf_constants::*;
-pub use keccakf_expr_generator::*;
-use keccakf_table::*;
+use keccakf_xor5_table::*;
 
 zisk_common::zisk_precompile! {
     name = Keccakf,
     op_type = Keccak,
     trace = KeccakfTrace,
     num_available = {
-        ::zisk_pil::KeccakfTrace::<()>::NUM_ROWS / CLOCKS
-            - (::zisk_pil::KeccakfTrace::<()>::NUM_ROWS % CLOCKS != 0) as usize
+        OPS_PER_SLOT * (::zisk_pil::KeccakfTrace::<()>::NUM_ROWS / CLOCKS)
     },
     ops = [
         (OperationKeccakData, KeccakfInput),

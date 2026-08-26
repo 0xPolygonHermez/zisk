@@ -15,7 +15,14 @@ categories = { workspace = true }
 # proofman-verifier's default features; the workspace entry stays at defaults for
 # every other consumer. NOTE: keep this proofman source in sync with the git/
 # crates.io/local blocks in the root Cargo.toml.
-proofman-verifier = { version = "1.1.0-alpha", default-features = false, features = ["verify",] }
+# Proofman git
+# proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha", default-features = false, features = ["verify"] }
+
+# Proofman crates.io
+proofman-verifier = { version = "1.2.0-alpha", default-features = false, features = ["verify"] }
+
+# Proofman local development
+# proofman-verifier = { path = "../../pil2-proofman/verifier", version = "1.2.0-alpha", default-features = false, features = ["verify"] }
 
 [features]
 default = []
