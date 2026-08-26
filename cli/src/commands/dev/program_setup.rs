@@ -7,8 +7,8 @@ use crate::ux::{print_banner, print_banner_field};
 use anyhow::Result;
 use colored::Colorize;
 use proofman_common::{MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
-use proofman_starks_lib_c::set_gpu_mode_c;
 use proofman_fields::Goldilocks;
+use proofman_starks_lib_c::{get_num_gpus_c, set_gpu_mode_c};
 use std::str::FromStr;
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_common::ZiskPaths;
@@ -78,7 +78,12 @@ impl ProgramSetupCmd {
         let gpu = false;
 
         if !set_gpu_mode_c(gpu) {
-            anyhow::bail!("GPU mode requested but the prover library was built without CUDA support");
+            anyhow::bail!(
+                "GPU mode requested but the prover library was built without CUDA support"
+            );
+        }
+        if gpu && get_num_gpus_c() == 0 {
+            anyhow::bail!("GPU mode requested but no GPUs were found");
         }
 
         let mpi_ctx = Arc::new(MpiCtx::new());
