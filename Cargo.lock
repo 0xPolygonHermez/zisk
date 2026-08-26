@@ -1088,8 +1088,8 @@ dependencies = [
  "predicates",
  "proofman",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "proofman-starks-lib-c 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
+ "proofman-starks-lib-c",
  "rand 0.8.8",
  "rayon",
  "reqwest",
@@ -3964,7 +3964,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "serde",
  "serde_json",
  "tera",
@@ -3985,8 +3985,8 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "proofman-starks-lib-c 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
+ "proofman-starks-lib-c",
  "proofman-util",
  "prost 0.13.5",
  "rayon",
@@ -4006,7 +4006,7 @@ checksum = "61e3b142574e51db9a55d0bd4a79911a0183c895de7ff998ab54a73752719979"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -4236,12 +4236,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-starks-lib-c",
  "proofman-util",
- "proofman-verifier 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-verifier",
  "proofman-witness",
  "rayon",
  "serde",
@@ -4266,9 +4266,9 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-macros",
- "proofman-starks-lib-c 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
  "serde",
@@ -4286,7 +4286,7 @@ version = "1.2.0-alpha"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ca29934b9f7aba523d662cf07ebc6dbf60cd273b87f80f291bdb2a09baaf365"
 dependencies = [
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
 ]
 
 [[package]]
@@ -4296,7 +4296,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d66d898513e7e3c62cbe0106b2a61482ccd76524f5c0f478ae3886ccd88111bd"
 dependencies = [
  "anyhow",
- "proofman-starks-src 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-starks-src",
  "rayon",
  "regex",
  "serde",
@@ -4313,19 +4313,7 @@ dependencies = [
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "serde",
-]
-
-[[package]]
-name = "proofman-fields"
-version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#9ca9a2f11075ab458360c07f164573b8aefddde1"
-dependencies = [
- "cfg-if",
- "num-bigint",
- "paste",
- "proofman-starks-lib-c 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
+ "proofman-starks-lib-c",
  "serde",
 ]
 
@@ -4337,8 +4325,8 @@ checksum = "15636c9f92d68ad25b1303f6ca79d3183cf1034ec8c1ef325d6d6727fc59e7ce"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "proofman-starks-lib-c 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
+ "proofman-starks-lib-c",
  "tracing",
 ]
 
@@ -4360,16 +4348,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1f0b940c17f32bcc0b289fd11bd0f8a812c82a4d44a067cd67d773fef54b13f"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "proofman-starks-lib-c"
-version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#9ca9a2f11075ab458360c07f164573b8aefddde1"
-dependencies = [
- "crossbeam-channel",
- "proofman-starks-src 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
+ "proofman-starks-src",
 ]
 
 [[package]]
@@ -4377,11 +4356,6 @@ name = "proofman-starks-src"
 version = "1.2.0-alpha"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0efcb2cd92919487f86364fc3b51c8efa8ac2ea3a56f3d6c4d39b3bd464a5b50"
-
-[[package]]
-name = "proofman-starks-src"
-version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#9ca9a2f11075ab458360c07f164573b8aefddde1"
 
 [[package]]
 name = "proofman-util"
@@ -4401,20 +4375,8 @@ checksum = "5d265453d0cb920c636de66ef3d7dffbcef6a1a8adea91b8484d1b09398d2f51"
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
- "serde",
- "tracing",
-]
-
-[[package]]
-name = "proofman-verifier"
-version = "1.2.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha#9ca9a2f11075ab458360c07f164573b8aefddde1"
-dependencies = [
- "bincode",
- "num-traits",
- "proofman-fields 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
  "serde",
  "tracing",
 ]
@@ -4427,7 +4389,7 @@ checksum = "0e2be19384d25c30d2ade0f8c5d8ef44ae4d6170fd3d989c196fa77ade573116"
 dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
 ]
 
 [[package]]
@@ -7318,7 +7280,7 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-starks-lib-c",
  "proofman-util",
  "rayon",
  "thiserror 2.0.20",
@@ -7392,8 +7354,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "proofman-verifier 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
+ "proofman-verifier",
  "serde",
  "serde_json",
  "sha2",
@@ -7507,7 +7469,7 @@ name = "zisk-core"
 version = "1.2.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -7533,7 +7495,7 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -7589,7 +7551,7 @@ name = "zisk-pil"
 version = "1.2.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -7610,7 +7572,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "regex",
@@ -7638,7 +7600,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -7659,7 +7621,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7677,7 +7639,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7692,7 +7654,7 @@ dependencies = [
 name = "zisk-precomp-common"
 version = "1.2.0-alpha"
 dependencies = [
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "zisk-common",
  "zisk-core",
  "zisk-sm-mem",
@@ -7705,7 +7667,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7723,7 +7685,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7769,7 +7731,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -7788,7 +7750,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7805,7 +7767,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7852,9 +7814,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
- "proofman-verifier 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-verifier",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7881,8 +7843,8 @@ dependencies = [
  "pil2-stark-recurser",
  "pil2-stark-setup",
  "proofman",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "proofman-verifier 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
+ "proofman-verifier",
  "serde",
  "serde_json",
  "tera",
@@ -7907,7 +7869,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -7923,8 +7885,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "proofman-verifier 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
+ "proofman-verifier",
  "rayon",
  "serde",
  "serde_json",
@@ -7948,7 +7910,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7964,7 +7926,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
  "static_assertions",
  "tracing",
@@ -7980,7 +7942,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "static_assertions",
  "zisk-core",
 ]
@@ -7991,7 +7953,7 @@ version = "1.2.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8009,7 +7971,7 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "proofman-util",
  "rayon",
  "tracing",
@@ -8024,7 +7986,7 @@ name = "zisk-sm-mem-common"
 version = "1.2.0-alpha"
 dependencies = [
  "clap",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -8048,7 +8010,7 @@ name = "zisk-sm-rom"
 version = "1.2.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8103,7 +8065,7 @@ dependencies = [
 name = "zisk-verifier"
 version = "1.2.0-alpha"
 dependencies = [
- "proofman-verifier 1.2.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.2.0-alpha)",
+ "proofman-verifier",
 ]
 
 [[package]]
@@ -8120,7 +8082,7 @@ dependencies = [
  "config",
  "proofman",
  "proofman-common",
- "proofman-verifier 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-verifier",
  "rayon",
  "serde",
  "time",
@@ -8163,7 +8125,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rayon",
  "regex",
  "serde_json",
@@ -8209,7 +8171,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rand 0.8.8",
  "ripemd",
  "secp256k1",
@@ -8240,7 +8202,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields 1.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "proofman-fields",
  "rand 0.8.8",
  "ripemd",
  "serde",
