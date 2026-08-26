@@ -6,7 +6,8 @@ use crate::ux::{print_banner, print_banner_field};
 
 use anyhow::Result;
 use colored::Colorize;
-use proofman_common::{init_gpu_setup, MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
+use proofman_common::{MpiCtx, ProofCtx, ProofType, SetupCtx, SetupsVadcop};
+use proofman_starks_lib_c::set_gpu_mode_c;
 use proofman_fields::Goldilocks;
 use std::str::FromStr;
 use zisk_build::ZISK_VERSION_MESSAGE;
@@ -76,6 +77,10 @@ impl ProgramSetupCmd {
         #[cfg(feature = "cpu-only")]
         let gpu = false;
 
+        if !set_gpu_mode_c(gpu) {
+            anyhow::bail!("GPU mode requested but the prover library was built without CUDA support");
+        }
+
         let mpi_ctx = Arc::new(MpiCtx::new());
         let mut pctx = ProofCtx::create_ctx(proving_key, false, self.verbose.into(), mpi_ctx, gpu)?;
 
@@ -90,7 +95,6 @@ impl ProgramSetupCmd {
             gpu,
         )?);
         let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
-        init_gpu_setup(&pctx.global_info.hash, gpu)?;
 
         pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1, 1, false)?;
         let pctx = Arc::new(pctx);
