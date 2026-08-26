@@ -1089,6 +1089,7 @@ dependencies = [
  "proofman",
  "proofman-common",
  "proofman-fields",
+ "proofman-starks-lib-c",
  "rand 0.8.8",
  "rayon",
  "reqwest",
