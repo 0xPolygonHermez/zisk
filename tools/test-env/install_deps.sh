@@ -48,9 +48,9 @@ install_dependencies_linux() {
     done
 
     if [[ "$INSTALL_CUDA" == true ]]; then
-        total_steps=5
+        total_steps=6
     else
-        total_steps=4
+        total_steps=5
     fi
 
     step "Installing package dependencies for linux x86_64..."
@@ -66,6 +66,12 @@ install_dependencies_linux() {
     step "Installing Node.js 20.x..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | ( [[ "$(id -u)" -ne 0 ]] && sudo -E bash || bash )
     ensure_sudo apt-get install -y nodejs || return 1
+
+    step "Installing snarkjs..."
+    ensure_sudo npm install -g snarkjs@latest || return 1
+    # `snarkjs --version` prints the version but exits 99, so the installed
+    # package is checked through npm instead.
+    ensure npm ls -g --depth=0 snarkjs || return 1
 
     step "Installing Rust..."
     # Create the profile file if it doesn't exist

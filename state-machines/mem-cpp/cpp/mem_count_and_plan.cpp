@@ -62,7 +62,7 @@ void MemCountAndPlan::clear() {
     
     context->clear();
 }
-void MemCountAndPlan::prepare() {
+void MemCountAndPlan::prepare(uint32_t rom_rows, uint32_t input_rows, uint32_t ram_rows) {
 #ifdef MEM_STATS_ACTIVE
     uint64_t init = get_usec();
 #endif    
@@ -82,12 +82,12 @@ void MemCountAndPlan::prepare() {
     mem_align_counter = std::make_unique<MemAlignCounter>(context);
     plan_workers.clear();
     plan_workers.reserve(MAX_MEM_PLANNERS);
-    rom_data_planner = std::make_unique<ImmutableMemPlanner>(ROM_ROWS, ROM_ADDR, ROM_SIZE_MB, false);
+    rom_data_planner = std::make_unique<ImmutableMemPlanner>(rom_rows, ROM_ADDR, ROM_SIZE_MB, false);
     rom_data_planner->set_last_addr(ROM_ADDR - 8);
-    input_data_planner = std::make_unique<ImmutableMemPlanner>(INPUT_ROWS, INPUT_ADDR, INPUT_SIZE_MB, false);
-    quick_mem_planner = std::make_unique<MemPlanner>(0, RAM_ROWS, RAM_ADDR, RAM_SIZE_MB);
+    input_data_planner = std::make_unique<ImmutableMemPlanner>(input_rows, INPUT_ADDR, INPUT_SIZE_MB, false);
+    quick_mem_planner = std::make_unique<MemPlanner>(0, ram_rows, RAM_ADDR, RAM_SIZE_MB);
     for (int i = 0; i < MAX_MEM_PLANNERS; ++i) {
-        plan_workers.emplace_back(i+1, RAM_ROWS, RAM_ADDR, RAM_SIZE_MB);
+        plan_workers.emplace_back(i+1, ram_rows, RAM_ADDR, RAM_SIZE_MB);
     }
 #ifdef MEM_STATS_ACTIVE    
     t_prepare_us = get_usec() - init;
@@ -255,9 +255,9 @@ void MemCountAndPlan::stats() {
     printf("plan_phase: %04.2f ms\n", t_plan_us / 1000.0);
 }
 
-MemCountAndPlan *create_mem_count_and_plan(void) { 
+MemCountAndPlan *create_mem_count_and_plan(uint32_t rom_rows, uint32_t input_rows, uint32_t ram_rows) {
     MemCountAndPlan *mcp = new MemCountAndPlan();
-    mcp->prepare();
+    mcp->prepare(rom_rows, input_rows, ram_rows);
     return mcp;
 }
 

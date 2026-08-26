@@ -1,6 +1,6 @@
 {
   "Keccakf": {
-    "powBits": 19,
+    "powBits": 21,
     "hasCompressor": true
   },
   "VirtualTableZisk0": {

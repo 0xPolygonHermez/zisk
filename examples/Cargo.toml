@@ -32,5 +32,5 @@ zisk-sdk = { path = "../sdk" }
 zisk-test-artifacts = { path = "../test-artifacts", default-features = false }
 examples-utils = { path = "utils"}
 
-proofman-util = "1.1.0-alpha"
-proofman-fields = "1.1.0-alpha"
+proofman-util = "1.2.0-alpha"
+proofman-fields = "1.2.0-alpha"
