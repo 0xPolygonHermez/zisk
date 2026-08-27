@@ -43,13 +43,15 @@ pub fn get_rom_bin_path<F: PrimeField64>(
 }
 
 /// Return the `(minimal-trace, rom-histogram)` ASM binary filenames for `elf`.
-/// Names are content-addressed by the ELF hash (with a `-hints` marker when
-/// `with_hints` is set), so a given ELF always maps to the same artifacts.
+///
+/// Delegates the name to `zisk_rom_setup`, which is what generates these files.
+/// Rebuilding the name here instead would be a second definition of it, free to
+/// drift from the generator's — and it did: the protocol generation is part of
+/// the name now, and a resolver that did not know that would look for artifacts
+/// nobody writes.
 pub fn get_asm_paths(elf: &GuestProgram, with_hints: bool) -> Result<(String, String)> {
-    // Content-addressed by the ELF hash only — the same ELF maps to the same artifacts
-    // regardless of the program name, so a given hash is generated once.
     let hash = get_elf_data_hash(elf.elf());
-    let base = if with_hints { format!("{hash}-hints") } else { hash };
+    let base = zisk_rom_setup::asm_file_base(&hash, with_hints);
 
     Ok((format!("{base}-mt.bin"), format!("{base}-rh.bin")))
 }

@@ -2,6 +2,7 @@ mod codec;
 mod janitor;
 mod memory_ops;
 mod minimal_traces;
+mod reset;
 mod rom_histogram;
 mod services;
 mod shutdown;
@@ -12,6 +13,7 @@ mod stdio;
 // request/response payload types and the wire traits are crate-internal.
 pub(crate) use memory_ops::*;
 pub(crate) use minimal_traces::*;
+pub(crate) use reset::*;
 pub(crate) use rom_histogram::*;
 pub use services::*;
 pub(crate) use shutdown::*;
@@ -36,6 +38,8 @@ const CMD_RH_REQUEST_ID: u64 = 5;
 const CMD_RH_RESPONSE_ID: u64 = 6;
 const CMD_MO_REQUEST_ID: u64 = 7;
 const CMD_MO_RESPONSE_ID: u64 = 8;
+const CMD_RESET_REQUEST_ID: u64 = 9;
+const CMD_RESET_RESPONSE_ID: u64 = 10;
 const CMD_SHUTDOWN_REQUEST_ID: u64 = 1000000;
 const CMD_SHUTDOWN_RESPONSE_ID: u64 = 1000001;
 
@@ -58,6 +62,7 @@ mod tests {
             MemoryOperationsRequest { max_steps: 1, chunk_len: 2 }.to_request_payload(),
             [CMD_MO_REQUEST_ID, 1, 2, 0, 0]
         );
+        assert_eq!(ResetRequest.to_request_payload(), [CMD_RESET_REQUEST_ID, 0, 0, 0, 0]);
         assert_eq!(ShutdownRequest.to_request_payload(), [CMD_SHUTDOWN_REQUEST_ID, 0, 0, 0, 0]);
     }
 
@@ -71,6 +76,9 @@ mod tests {
 
         let r = RomHistogramResponse::from_response_payload([CMD_RH_RESPONSE_ID, 0, 9, 3, 77]);
         assert_eq!((r.result, r.allocated_len, r.trace_len, r.last_step), (0, 9, 3, 77));
+
+        let r = ResetResponse::from_response_payload([CMD_RESET_RESPONSE_ID, 0, 4096, 0, 0]);
+        assert_eq!((r.result, r.allocated_len), (0, 4096));
     }
 
     #[test]
@@ -91,6 +99,8 @@ mod tests {
             CMD_RH_RESPONSE_ID,
             CMD_MO_REQUEST_ID,
             CMD_MO_RESPONSE_ID,
+            CMD_RESET_REQUEST_ID,
+            CMD_RESET_RESPONSE_ID,
             CMD_SHUTDOWN_REQUEST_ID,
             CMD_SHUTDOWN_RESPONSE_ID,
         ];
