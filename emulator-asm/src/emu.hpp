@@ -99,6 +99,9 @@ typedef struct {
     uint64_t add256_counter;    
     uint64_t add256_duration;
 
+    uint64_t babyjubjub_add_counter;
+    uint64_t babyjubjub_add_duration;
+
 } AsmCallMetrics;
 
 extern AsmCallMetrics asm_call_metrics;
