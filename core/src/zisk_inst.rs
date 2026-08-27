@@ -83,10 +83,10 @@ pub enum ZiskOperationType {
     PubOut,
     ArithEq,
     ArithEq384,
-    BigInt, // Note: Add new core operations here
+    BigInt,
+    BabyJubJub, // Note: Add new core operations here
     Evm,
     Dma, // Note: To add extra params to precompiles calls
-    BabyJubJub,
     // ZisK Free Input Operations
     FcallParam,
     Fcall,

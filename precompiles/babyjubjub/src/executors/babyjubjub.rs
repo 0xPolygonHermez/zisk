@@ -312,7 +312,7 @@ mod tests {
         ];
         for (p1, p2, p3) in VECTORS {
             let mut got = [0u64; 8];
-            precompiles_helpers::babyjubjub_add(p1, p2, &mut got);
+            zisk_precomp_helpers::babyjubjub_add(p1, p2, &mut got);
             assert_eq!(&got, p3, "host helper diverged from babyjubjub-rs oracle");
             BabyJubJub::verify_add(p1, p2, p3);
         }

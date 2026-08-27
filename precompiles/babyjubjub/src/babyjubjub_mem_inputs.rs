@@ -1,7 +1,7 @@
 use proofman_fields::PrimeField64;
-use zisk_precomp_common::{MemProcessor, PrecompileMemInputs};
 use zisk_common::OP;
 use zisk_core::zisk_ops::ZiskOp;
+use zisk_precomp_common::{MemProcessor, PrecompileMemInputs};
 
 use crate::mem_inputs::{generate_babyjubjub_add_mem_inputs, skip_babyjubjub_add_mem_inputs};
 use crate::BabyJubJubSM;

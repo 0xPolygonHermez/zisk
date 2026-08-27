@@ -2,7 +2,7 @@ require "std_lookup.pil"
 require "std_range_check.pil"
 require "operations.pil"
 require "opids.pil"
-require "babyjubjub_lt_table.pil"
+require "arith_eq_lt_table.pil"
 
 // BabyJubJub (twisted Edwards) complete point addition, circom/circomlib compatible.
 //
@@ -92,6 +92,7 @@ airtemplate BabyJubJub (const int N = 2**18) {
     col witness bits(CHUNK_BITS) Nx;
     col witness bits(CHUNK_BITS) T;
     col witness bits(CHUNK_BITS) DT;
+
     col witness bits(Q_HSC_BITS) qa;
     col witness bits(Q_HSC_BITS) qb;
     col witness bits(Q_HSC_BITS) qn;
@@ -99,6 +100,7 @@ airtemplate BabyJubJub (const int N = 2**18) {
     col witness bits(Q_HSC_BITS) qdt;
     col witness bits(Q_HSC_BITS) qx;
     col witness bits(Q_HSC_BITS) qy;
+
     col witness bits(1) sel_op[OPS];
 
     const expr sel_babyjubjub_add = sel_op[0];
@@ -190,8 +192,8 @@ airtemplate BabyJubJub (const int N = 2**18) {
     // 1 - first clock
     // 2 - last clock
     const expr CLK_LT_SELECTOR = 2 * LAST_CLK + CLK_0;
-    lookup_assumes(BABYJUBJUB_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: in_use);
-    lookup_assumes(BABYJUBJUB_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: in_use);
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'x3_lt + x3_lt, delta_x3], sel: in_use);
+    lookup_assumes(ARITH_EQ_LT_TABLE_ID, [4 * CLK_LT_SELECTOR + 2 * 'y3_lt + y3_lt, delta_y3], sel: in_use);
 
     col witness bits(64, signed) carry[MAX_CEQS][CBC];
 

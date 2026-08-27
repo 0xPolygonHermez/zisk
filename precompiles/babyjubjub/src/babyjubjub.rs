@@ -5,10 +5,11 @@ use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_pil::{BabyJubJubTrace, BabyJubJubTraceRowOps};
+use zisk_precomp_arith_eq::ArithEqLtTableSM;
 
 use crate::{
-    executors, BabyJubJubAddInput, BabyJubJubInput, BabyJubJubLtTableSM, BABYJUBJUB_OP_NUM,
-    BABYJUBJUB_PRIME_CHUNKS, BABYJUBJUB_ROWS_BY_OP, SEL_OP_BABYJUBJUB_ADD,
+    executors, BabyJubJubAddInput, BabyJubJubInput, BABYJUBJUB_OP_NUM, BABYJUBJUB_PRIME_CHUNKS,
+    BABYJUBJUB_ROWS_BY_OP, SEL_OP_BABYJUBJUB_ADD,
 };
 use rayon::prelude::*;
 
@@ -51,9 +52,8 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
         let carry_range_id =
             std.get_range_id(-(p2_22 - 1), p2_22, None).expect("Failed to get range ID");
 
-        let table_id = std
-            .get_virtual_table_id(BabyJubJubLtTableSM::TABLE_ID)
-            .expect("Failed to get table ID");
+        let table_id =
+            std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
         Arc::new(Self {
             std,
@@ -190,7 +190,7 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
             let x3_lt = data.x3[i] < BABYJUBJUB_PRIME_CHUNKS[i]
                 || (i > 0 && data.x3[i] == BABYJUBJUB_PRIME_CHUNKS[i] && prev_x3_lt);
             trace[i].set_x3_lt(x3_lt);
-            let row = BabyJubJubLtTableSM::calculate_table_row(
+            let row = ArithEqLtTableSM::calculate_table_row(
                 prev_x3_lt,
                 x3_lt,
                 data.x3[i] - BABYJUBJUB_PRIME_CHUNKS[i],
@@ -202,7 +202,7 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
             let y3_lt = data.y3[i] < BABYJUBJUB_PRIME_CHUNKS[i]
                 || (i > 0 && data.y3[i] == BABYJUBJUB_PRIME_CHUNKS[i] && prev_y3_lt);
             trace[i].set_y3_lt(y3_lt);
-            let row = BabyJubJubLtTableSM::calculate_table_row(
+            let row = ArithEqLtTableSM::calculate_table_row(
                 prev_y3_lt,
                 y3_lt,
                 data.y3[i] - BABYJUBJUB_PRIME_CHUNKS[i],

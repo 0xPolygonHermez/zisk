@@ -52,7 +52,6 @@
 mod babyjubjub;
 mod babyjubjub_constants;
 mod babyjubjub_input;
-mod babyjubjub_lt_table;
 mod babyjubjub_mem_inputs;
 mod equations;
 mod executors;
@@ -61,7 +60,6 @@ mod mem_inputs;
 pub use babyjubjub::*;
 pub use babyjubjub_constants::*;
 pub use babyjubjub_input::*;
-pub use babyjubjub_lt_table::*;
 pub use executors::*;
 pub use mem_inputs::*;
 

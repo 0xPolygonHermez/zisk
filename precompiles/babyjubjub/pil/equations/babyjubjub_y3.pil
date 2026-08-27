@@ -12,7 +12,7 @@
 // terms_by_clock: 2
 
 
-const expr eq_babyjubjub_y3_chunks[31];
+const expr air.eq_babyjubjub_y3_chunks[31];
 
 // clock #0
 

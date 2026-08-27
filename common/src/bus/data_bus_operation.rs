@@ -672,9 +672,7 @@ impl OperationBusData<u64> {
 
             ZiskOperationType::BabyJubJub => match inst.op {
                 ZiskOp::BABYJUBJUB_ADD => {
-                    let mut data = unsafe {
-                        uninit_array::<OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE>().assume_init()
-                    };
+                    let mut data = [0u64; OPERATION_BUS_BABYJUBJUB_ADD_DATA_SIZE];
                     data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
                         .copy_from_slice(&[op, op_type, a, b, step]);
                     data[OPERATION_PRECOMPILED_BUS_DATA_SIZE..]
