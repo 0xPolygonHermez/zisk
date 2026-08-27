@@ -99,8 +99,19 @@ impl HintsShmem {
 
     /// Open per-service semaphores for the given program's `sem_prefix`.
     /// Replaces any previously bound semaphores.
+    ///
+    /// Both semaphores are swept to zero as they are bound, for the same reason
+    /// as [`crate::InputsShmemWriter::bind_semaphores`]: `sem_open` will not
+    /// reset an existing name's count, so an aborted run's unconsumed posts would
+    /// survive until this program was next activated.
+    ///
+    /// Sweeping is safe here because neither count is state. The authority on
+    /// progress is the pair of positions in the control segments — `submit`
+    /// re-reads them after every wake and re-decides — so these two are pure
+    /// wake-up signals, and a leftover count only buys a spurious wake and a spin
+    /// through the flow-control loop.
     pub fn bind_semaphores(&self, sem_prefix: &str) -> Result<()> {
-        let sems = AsmServices::SERVICES
+        let mut sems = AsmServices::SERVICES
             .iter()
             .map(|service| {
                 let avail_name = sem_prec_available_name(sem_prefix, *service);
@@ -115,6 +126,18 @@ impl HintsShmem {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+
+        let swept: u64 = sems
+            .iter_mut()
+            .map(|sem| {
+                crate::drain_semaphore(&mut sem.sem_available)
+                    + crate::drain_semaphore(&mut sem.sem_read)
+            })
+            .sum();
+        if swept != 0 {
+            tracing::debug!("Swept {swept} unconsumed precompile post(s) on '{sem_prefix}'");
+        }
+
         *self.separate_sem.lock().expect("separate_sem mutex poisoned") = Some(sems);
         Ok(())
     }

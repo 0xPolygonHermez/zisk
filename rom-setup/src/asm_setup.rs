@@ -182,16 +182,46 @@ pub fn ensure_ziskclib(emu_dir: &Path, source: EmulatorAsmSource) -> Result<()> 
     Ok(())
 }
 
+/// Protocol generation of the ASM binaries this build produces and talks to.
+///
+/// Part of the artifact filename, so a cached binary built against a different
+/// protocol is never reused. Without it the cache is addressed by the ELF hash
+/// alone, which says nothing about *which* `emulator-asm` source compiled the
+/// binary — so after a protocol change the old artifact keeps its name, gets
+/// reused, and dies on the first request it does not recognise (`ERROR: Invalid
+/// request id`), mid-job and far from the cause.
+///
+/// Bump this whenever a change to `emulator-asm` alters how the generated
+/// binaries behave — not only the request set or the shared-memory layout, but a
+/// bug fix inside a handler too: two binaries that speak the same protocol but
+/// behave differently must not share a name, or the buggy one keeps being served
+/// from the cache. Bumping costs one regeneration per program; not bumping costs
+/// a bug that survives the fix.
+///
+/// A hand-maintained number is the weak point here — forgetting to bump it is
+/// the same failure as not having it. A content hash over `emulator-asm/src`
+/// would be automatic, at the cost of regenerating on any edit including a
+/// comment; worth revisiting if this is ever missed.
+///
+/// - `1` — the original MT/RH/MO/FA/SD request set.
+/// - `2` — adds the reset request (`TYPE_RS`), sent when the active program changes.
+/// - `3` — the reset no longer touches the trace. `2` reset it out of band, which
+///   left the write pointer and `trace_address_threshold` inconsistent and made
+///   the next emulation map a fresh 2 GB chunk per chunk written, to the 32 GB cap.
+pub const ASM_PROTOCOL_VERSION: u32 = 3;
+
 /// Base filename for a program's ASM artifacts.
 ///
-/// Content-addressed by the ELF hash only — the same ELF always maps to the same
-/// artifacts regardless of the program name, so a given hash is generated once.
-fn asm_file_base(hash: &str, hints: bool) -> String {
-    if hints {
-        format!("{hash}-hints")
-    } else {
-        hash.to_string()
-    }
+/// Content-addressed by the ELF hash plus [`ASM_PROTOCOL_VERSION`]: the same ELF
+/// maps to the same artifacts regardless of the program name, so a given hash is
+/// generated once per protocol generation.
+///
+/// The single definition of this name. `prover-backend` resolves cached artifacts
+/// through [`get_assembly_file_paths_from_id`] rather than rebuilding the name,
+/// so the generator and the resolver cannot disagree about it.
+pub fn asm_file_base(hash: &str, hints: bool) -> String {
+    let hints = if hints { "-hints" } else { "" };
+    format!("{hash}{hints}-p{ASM_PROTOCOL_VERSION}")
 }
 
 /// Get the paths to all assembly binary files for a given ELF and output path
