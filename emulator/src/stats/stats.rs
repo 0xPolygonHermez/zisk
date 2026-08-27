@@ -3403,6 +3403,7 @@ impl Stats {
             ][..],
             ZiskOp::Secp256k1Add
             | ZiskOp::Secp256r1Add
+            | ZiskOp::BabyJubJubAdd
             | ZiskOp::Bn254CurveAdd
             | ZiskOp::Bn254ComplexAdd
             | ZiskOp::Bn254ComplexSub

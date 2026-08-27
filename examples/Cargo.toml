@@ -18,7 +18,6 @@ members = [
   "collatz/guest",
   "recurser/l2/host",
   "recurser/hash/host",
-  "babyjubjub/guest",
   "utils"
 ]
 

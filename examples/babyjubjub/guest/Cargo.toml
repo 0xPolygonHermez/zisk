@@ -1,7 +1,0 @@
-[package]
-name = "babyjubjub-guest"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-ziskos = { workspace = true }

@@ -260,6 +260,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Secp256r1Add
                 | ZiskOp::Secp256r1Dbl
                 | ZiskOp::Blake2
+                | ZiskOp::BabyJubJubAdd
         )
     }
 
@@ -288,6 +289,9 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_secp256r1dbl(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_babyjubjubadd(&self) -> bool {
         self.precompile_results()
     }
     pub fn precompile_results_fcall(&self) -> bool {
@@ -631,6 +635,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_secp256k1_dbl\n";
         *code += ".extern opcode_secp256r1_add\n";
         *code += ".extern opcode_secp256r1_dbl\n";
+        *code += ".extern opcode_babyjubjub_add\n";
         *code += ".extern opcode_fcall\n";
         *code += ".extern opcode_bn254_curve_add\n";
         *code += ".extern opcode_bn254_curve_dbl\n";
@@ -6157,11 +6162,42 @@ impl ZiskRom2Asm {
                 ctx.flag_is_always_zero = true;
             }
             ZiskOp::BabyJubJubAdd => {
-                // The babyjubjub_add precompile is only supported by the Rust emulator.
-                // Prove with `--emulator` (`-l`); the ASM emulator path is intentionally unsupported.
-                panic!(
-                    "babyjubjub_add precompile is not supported by the ASM emulator; prove with --emulator"
+                *code += &ctx.full_line_comment("BabyJubJubAdd".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
                 );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_babyjubjubadd() {
+                    *code += "\tmov rdi, [rdi]\n";
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the babyjubjub_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_babyjubjub_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
             }
             ZiskOp::DmaMemCpy | ZiskOp::DmaXMemCpy => {
                 // Use the memory address as the first and unique parameter

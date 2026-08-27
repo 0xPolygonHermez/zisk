@@ -83,6 +83,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/splitparstr.o \
              $(BUILD_DIR)/ec.o \
              $(BUILD_DIR)/bn254.o \
+             $(BUILD_DIR)/babyjubjub.o \
              $(BUILD_DIR)/bls12_381.o \
              $(BUILD_DIR)/fcall.o \
              $(BUILD_DIR)/keccakf_cache.o \
@@ -204,6 +205,9 @@ $(BUILD_DIR)/ec.o: $(SRC_DIR)/ec/ec.cpp $(SRC_DIR)/ec/ec.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/bn254.o: $(SRC_DIR)/bn254/bn254.cpp $(SRC_DIR)/bn254/bn254.hpp $(SRC_DIR)/bn254/bn254_fe.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/babyjubjub.o: $(SRC_DIR)/babyjubjub/babyjubjub.cpp $(SRC_DIR)/babyjubjub/babyjubjub.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/bls12_381.o: $(SRC_DIR)/bls12_381/bls12_381.cpp $(SRC_DIR)/bls12_381/bls12_381.hpp $(SRC_DIR)/bls12_381/bls12_381_fe.hpp | $(BUILD_DIR)
