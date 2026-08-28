@@ -75,7 +75,7 @@ airgroup Zisk {
     set_group_virtual_tables([ARITH_FROPS_TABLE_ID, BINARY_FROPS_TABLE_ID, BINARY_EXTENSION_FROPS_TABLE_ID]);
 
     // Main Program
-    Main(N: 2**22);
+    Main(N: 2**23);
     Rom(N: 2**22);
 
     // Memory
