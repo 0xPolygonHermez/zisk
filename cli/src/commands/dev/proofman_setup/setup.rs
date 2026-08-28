@@ -59,6 +59,21 @@ pub(crate) struct ZiskProofmanSetupSetup {
     #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
     pub hash: String,
 
+    /// Proofs each recursive2 circuit aggregates. Must be 2 or 3. Defaults per hash family --
+    /// 2 for blake3, 3 for poseidon.
+    #[arg(long)]
+    agg_arity: Option<usize>,
+
+    /// Pin every recursive air to 2^N rows instead of letting each size itself to its own gate
+    /// count. Setup fails, naming the air and both sizes, if any air needs more than N.
+    #[arg(long, env = "RECURSIVE_N_BITS")]
+    recursive_n_bits: Option<usize>,
+
+    /// Build the `vadcop_final_compressed` stage. Defaults per hash family: on for poseidon,
+    /// off for blake3. A key built without it can gain it later with `setup-compressed-final`.
+    #[arg(long)]
+    compressed_final: Option<bool>,
+
     /// Generate + compile per-AIR Q-expression CUDA kernels (.exps.so) at the end
     /// of setup. No-op if nvcc is not on PATH.
     #[arg(long, default_value_t = false)]
@@ -89,6 +104,20 @@ impl ZiskProofmanSetupSetup {
     pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
+        let agg_arity = self
+            .agg_arity
+            .unwrap_or_else(|| proofman_common::hash_family::default_aggregation_arity(&self.hash));
+        if !proofman_common::global_info::is_valid_aggregation_arity(agg_arity) {
+            anyhow::bail!(
+                "unsupported --agg-arity {}; valid values: {:?}",
+                agg_arity,
+                proofman_common::global_info::VALID_AGGREGATION_ARITIES
+            );
+        }
+        let compressed_final = self
+            .compressed_final
+            .unwrap_or_else(|| proofman_common::hash_family::compressed_final_by_default(&self.hash));
+
         let opts = SetupOptions {
             hash: self.hash.clone(),
             airout_path: self.airout.clone(),
@@ -99,6 +128,9 @@ impl ZiskProofmanSetupSetup {
             recursive_jobs: self.recursive_jobs,
             setup_jobs: self.setup_jobs,
             stats_output_path: self.output.clone(),
+            agg_arity,
+            recursive_n_bits: self.recursive_n_bits,
+            compressed_final,
             gen_exps: self.gen_exps,
             exps_arch: self.exps_arch.clone(),
             exps_cap: self.exps_cap,

@@ -27,9 +27,13 @@ pub(crate) struct ZiskProofmanSetupRecursiveTest {
     #[arg(short = 't', long, default_value = "aggregation")]
     pub r#type: String,
 
-    /// Hash function to use: Poseidon1 or Poseidon2
-    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2"])]
+    /// Hash function to use: Poseidon1, Poseidon2 or blake3
+    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
     pub hash: String,
+
+    /// Parallel BLAKE3 permutations per 56-row block (1..8). blake3 family only; defaults to 4.
+    #[arg(long)]
+    blake3_lanes: Option<usize>,
 
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
@@ -40,12 +44,21 @@ impl ZiskProofmanSetupRecursiveTest {
     pub(crate) fn run(&self) -> Result<()> {
         setup_logger(self.verbose.into());
 
+        if let Some(l) = self.blake3_lanes {
+            if !(1..=8).contains(&l) {
+                anyhow::bail!(
+                    "--blake3-lanes must be in 1..8 (the air's boundary depth caps it), got {l}"
+                );
+            }
+        }
+
         let opts = SetupRecursiveTestOptions {
             hash: self.hash.clone(),
             build_dir: self.build_dir.clone(),
             circom_path: self.circom_path.clone(),
             circom_name: self.circom_name.clone(),
             setup_type: self.r#type.clone(),
+            blake3_lanes: self.blake3_lanes,
         };
         run_setup_recursive_test(&opts)
     }

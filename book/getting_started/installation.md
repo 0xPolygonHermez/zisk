@@ -230,7 +230,7 @@ Please note that the process can be long, taking approximately 45-60 minutes dep
         --airout pil/zisk.pilout \
         --build-dir $HOME/.zisk \
         --fixed-dir tmp/fixed \
-        --stark-structs state-machines/starkstructs.json \
+        --stark-structs setup/starkstructs.poseidon.json \
         --recursive
     ```
 
