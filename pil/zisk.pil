@@ -79,7 +79,7 @@ airgroup Zisk {
     Rom(N: 2**22);
 
     // Memory
-    Mem(N: 2**22, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
+    Mem(N: 2**23, base_address: 0xA000_0000, size_mb: 512, large_mem: 1, dual_mem: 1);
     Mem(N: 2**21, base_address: 0x4000_0000, size_mb: 1024, large_mem: 1, free_input_mem: 1, enable_flag: enable_input_data) alias InputData;
     RomData(N: 2**21, base_address: 0x8000_0000, size_mb: 128, enable_flag: enable_rom_data);
 
@@ -124,7 +124,7 @@ airgroup Zisk {
     BabyJubJub(N: 2**18);
     virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 
-    Keccakf(N: 2**18, lanes_per_row: 25);
+    Keccakf(N: 2**20, lanes_per_row: 5);
     virtual KeccakfChiTable(KECCAKF_CHI_TABLE_SIZE);
     virtual KeccakfXor5Table(KECCAKF_XOR5_TABLE_SIZE);
 
