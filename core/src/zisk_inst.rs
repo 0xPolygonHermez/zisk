@@ -80,6 +80,7 @@ pub enum ZiskOperationType {
     Sha256,
     Poseidon,
     Blake2,
+    Blake2s,
     PubOut,
     ArithEq,
     ArithEq384,
@@ -91,6 +92,33 @@ pub enum ZiskOperationType {
     Fcall,
     FcallGet,
     Profile,
+}
+
+impl ZiskOperationType {
+    /// Whether this operation emits a record to the operation bus.
+    ///
+    /// Keep this explicit instead of relying on enum ordering: free-input
+    /// operations do not use the operation bus, while every core operation
+    /// does.
+    pub const fn uses_operation_bus(self) -> bool {
+        matches!(
+            self,
+            Self::Arith
+                | Self::Binary
+                | Self::BinaryE
+                | Self::Keccak
+                | Self::Sha256
+                | Self::Poseidon
+                | Self::Blake2
+                | Self::Blake2s
+                | Self::PubOut
+                | Self::ArithEq
+                | Self::ArithEq384
+                | Self::BigInt
+                | Self::Evm
+                | Self::Dma
+        )
+    }
 }
 
 pub const NONE_OP_TYPE_ID: u32 = ZiskOperationType::None as u32;
@@ -110,6 +138,18 @@ pub const FCALL_PARAM_OP_TYPE_ID: u32 = ZiskOperationType::FcallParam as u32;
 pub const FCALL_OP_TYPE_ID: u32 = ZiskOperationType::Fcall as u32;
 pub const DMA_OP_TYPE_ID: u32 = ZiskOperationType::Dma as u32;
 pub const BLAKE2_OP_TYPE_ID: u32 = ZiskOperationType::Blake2 as u32;
+pub const BLAKE2S_OP_TYPE_ID: u32 = ZiskOperationType::Blake2s as u32;
+
+#[cfg(test)]
+mod tests {
+    use super::ZiskOperationType;
+
+    #[test]
+    fn blake2s_emits_an_operation_bus_record() {
+        assert!(ZiskOperationType::Blake2s.uses_operation_bus());
+        assert!(!ZiskOperationType::FcallParam.uses_operation_bus());
+    }
+}
 
 /// ZisK instruction definition
 ///

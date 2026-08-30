@@ -12,6 +12,7 @@
 
 mod bigint;
 mod blake2b;
+mod blake2s;
 mod bls12_381;
 mod bn254;
 mod constants;
@@ -31,6 +32,7 @@ pub mod zkvm_io;
 // For public consumption
 pub use bigint::*;
 pub use blake2b::*;
+pub use blake2s::*;
 pub use bls12_381::*;
 pub use bn254::*;
 pub use constants::*;

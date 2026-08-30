@@ -43,6 +43,8 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.sha256_duration = 0;
     asm_call_metrics.blake2_counter = 0;
     asm_call_metrics.blake2_duration = 0;
+    asm_call_metrics.blake2s_counter = 0;
+    asm_call_metrics.blake2s_duration = 0;
     asm_call_metrics.poseidon2_counter = 0;
     asm_call_metrics.poseidon2_duration = 0;
     asm_call_metrics.poseidon1_counter = 0;
@@ -124,6 +126,16 @@ void print_asm_call_metrics (uint64_t total_duration)
     asm_printf("Blake2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.blake2_counter,
         asm_call_metrics.blake2_duration,
+        duration,
+        percentage);
+
+    // Print blake2s metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.blake2s_duration * 1000) / total_duration;
+    duration = asm_call_metrics.blake2s_counter == 0 ? 0 : (asm_call_metrics.blake2s_duration * 1000) / asm_call_metrics.blake2s_counter;
+    asm_call_total_duration += asm_call_metrics.blake2s_duration;
+    asm_printf("Blake2s: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.blake2s_counter,
+        asm_call_metrics.blake2s_duration,
         duration,
         percentage);
 
@@ -660,6 +672,48 @@ extern int _opcode_blake2(uint64_t * address)
     asm_call_metrics.blake2_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.blake2_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_blake2s(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+#ifdef DEBUG
+#ifdef ASM_CALL_METRICS
+    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s() counter=%lu address=%p\n", asm_call_metrics.blake2s_counter, address);
+#else
+    if (emu_verbose) asm_printf("opcode_blake2s() calling blake2s() address=%p\n", address);
+#endif
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call blake2s round function
+        blake2s_round((uint64_t *)address[1], (uint64_t *)address[2], address[0]);
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address[1], 16*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address[1], 16*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose) asm_printf("opcode_blake2s() called blake2s()\n");
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.blake2s_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.blake2s_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }

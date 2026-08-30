@@ -1,5 +1,6 @@
 #include "blake2.hpp"
 #include <cstddef>
+#include <cassert>
 
 /// Message word permutation schedule
 const size_t SIGMA[10][16] = {
@@ -73,4 +74,73 @@ void blake2b_round(uint64_t v[16], const uint64_t m[16], uint64_t round) {
     g(v, 1, 6, 11, 12, m[s[10]], m[s[11]]);
     g(v, 2, 7, 8, 13, m[s[12]], m[s[13]]);
     g(v, 3, 4, 9, 14, m[s[14]], m[s[15]]);
+}
+
+/// Rotation constants for the BLAKE2s G function
+const uint32_t S_R1 = 16;
+const uint32_t S_R2 = 12;
+const uint32_t S_R3 = 8;
+const uint32_t S_R4 = 7;
+
+// U32 rotate right
+static inline uint32_t rotate_right_32(uint32_t x, unsigned int n) {
+    n &= 31;
+    return n ? ((x >> n) | (x << (32 - n))) : x;
+}
+
+/// G mixing function for BLAKE2s. Structurally identical to BLAKE2b's; only the
+/// word width and the rotation amounts differ.
+static inline void gs(uint32_t v[16], size_t a, size_t b, size_t c, size_t d, uint32_t x, uint32_t y) {
+    uint32_t va = v[a];
+    uint32_t vb = v[b];
+    uint32_t vc = v[c];
+    uint32_t vd = v[d];
+
+    va = va + vb + x;
+    vd = rotate_right_32(vd ^ va, S_R1);
+    vc = vc + vd;
+    vb = rotate_right_32(vb ^ vc, S_R2);
+
+    va = va + vb + y;
+    vd = rotate_right_32(vd ^ va, S_R3);
+    vc = vc + vd;
+    vb = rotate_right_32(vb ^ vc, S_R4);
+
+    v[a] = va;
+    v[b] = vb;
+    v[c] = vc;
+    v[d] = vd;
+}
+
+/// BLAKE2s round function. `v` and `m` hold one 32-bit word per u64 slot.
+void blake2s_round(uint64_t v[16], const uint64_t m[16], uint64_t round) {
+    uint32_t vs[16];
+    uint32_t ms[16];
+    for (size_t i = 0; i < 16; i++) {
+        vs[i] = (uint32_t)v[i];
+        ms[i] = (uint32_t)m[i];
+    }
+
+    // BLAKE2s shares BLAKE2b's SIGMA schedule and uses its first 10 rows.
+    // Reject rather than reduce, matching the Rust helper and the state
+    // machine: the AIR cannot represent an index >= 10, so reducing would only
+    // defer the failure to witness generation.
+    assert(round < 10);
+    const size_t* s = SIGMA[round];
+
+    // Column step
+    gs(vs, 0, 4, 8, 12, ms[s[0]], ms[s[1]]);
+    gs(vs, 1, 5, 9, 13, ms[s[2]], ms[s[3]]);
+    gs(vs, 2, 6, 10, 14, ms[s[4]], ms[s[5]]);
+    gs(vs, 3, 7, 11, 15, ms[s[6]], ms[s[7]]);
+
+    // Diagonal step
+    gs(vs, 0, 5, 10, 15, ms[s[8]], ms[s[9]]);
+    gs(vs, 1, 6, 11, 12, ms[s[10]], ms[s[11]]);
+    gs(vs, 2, 7, 8, 13, ms[s[12]], ms[s[13]]);
+    gs(vs, 3, 4, 9, 14, ms[s[14]], ms[s[15]]);
+
+    for (size_t i = 0; i < 16; i++) {
+        v[i] = (uint64_t)vs[i];
+    }
 }

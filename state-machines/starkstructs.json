@@ -27,6 +27,9 @@
   "Blake2br": {
     "hasCompressor": true
   },
+  "Blake2sr": {
+    "hasCompressor": true
+  },
   "Arith256": {
     "hasCompressor": true
   },

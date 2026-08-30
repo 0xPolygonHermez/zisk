@@ -28,3 +28,8 @@ crunchy = "0.2"
 [features]
 default = []
 debug_dma = []
+
+[dev-dependencies]
+# Differential reference for the blake2s helper: the same crate ZKsync OS
+# hashes its state tree with.
+blake2 = "0.10"

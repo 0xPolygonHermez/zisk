@@ -1,0 +1,616 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "std_permutation.pil"
+require "std_range_check.pil"
+
+require "operations.pil"
+require "opids.pil"
+
+require "blake2br_table.pil"
+
+// Precompile in charge of performing the BLAKE2s round function.
+// For reference: https://www.rfc-editor.org/rfc/rfc7693.html or https://www.blake2.net/
+//
+// Structurally this is Blake2br with 32-bit words. Every design choice below is
+// inherited from `blake2br.pil`; the differences are:
+//
+//   * words are 32-bit, so each packs into ONE field-sized limb rather than a
+//     [lo, hi] pair — the two-limb CRT argument in add2/add3 collapses to a
+//     single comparison (p > 3·2³²).
+//   * rotations are 16/12/8/7 instead of 32/24/16/63. Of these, 16 and 8 are
+//     byte-aligned and cost nothing (they are absorbed into the XOR lookup's
+//     output column index). The other two decompose into a byte-aligned part
+//     plus a small shift-and-carry, exactly the trick Blake2br uses for >>> 63:
+//         >>> 12 = (<<< 16) <<< 4    4-bit carry
+//         >>>  7 = (<<< 24) <<< 1    1-bit carry, identical to Blake2br
+//   * the XOR lookup table is reused verbatim — it is byte-wise and therefore
+//     word-width agnostic.
+//
+// Memory representation: each 32-bit word occupies its own 8-byte slot with a
+// zero high limb, so the memory schedule is identical to Blake2br's. This
+// trades address space for a memory argument that needs no changes; packing two
+// words per slot would halve the memory operations and is the obvious later
+// optimisation.
+airtemplate Blake2sr(const int N = 2**20) {
+    /*
+       ═══════════════════════════════════════════════════════════════════════════
+       BLAKE2S ROUND FUNCTION SPECIFICATION
+       ═══════════════════════════════════════════════════════════════════════════
+
+       BLAKE2SR(v: [u32; 16], m: [u32; 16], i: u32) -> [u32; 16]
+
+       A round consists of 8 G function calls, identical in structure to Blake2b:
+            • Message word selection permutation for round i:
+                s[0..15] := SIGMA[i][0..15]
+
+            • 4 Column steps
+                v := G(v, 0, 4,  8, 12, m[s[ 0]], m[s[ 1]])
+                v := G(v, 1, 5,  9, 13, m[s[ 2]], m[s[ 3]])
+                v := G(v, 2, 6, 10, 14, m[s[ 4]], m[s[ 5]])
+                v := G(v, 3, 7, 11, 15, m[s[ 6]], m[s[ 7]])
+
+            • 4 Diagonal steps
+                v := G(v, 0, 5, 10, 15, m[s[ 8]], m[s[ 9]])
+                v := G(v, 1, 6, 11, 12, m[s[10]], m[s[11]])
+                v := G(v, 2, 7,  8, 13, m[s[12]], m[s[13]])
+                v := G(v, 3, 4,  9, 14, m[s[14]], m[s[15]])
+
+            G(v, a, b, c, d, x, y):
+                v[a] := (v[a] + v[b] + x) mod 2³²
+                v[d] := (v[d] ^ v[a]) >>> 16
+                v[c] := (v[c] + v[d]) mod 2³²
+                v[b] := (v[b] ^ v[c]) >>> 12
+                v[a] := (v[a] + v[b] + y) mod 2³²
+                v[d] := (v[d] ^ v[a]) >>>  8
+                v[c] := (v[c] + v[d]) mod 2³²
+                v[b] := (v[b] ^ v[c]) >>>  7
+
+       ═══════════════════════════════════════════════════════════════════════════
+       EXECUTION TRACE LAYOUT  (identical to Blake2br)
+       ═══════════════════════════════════════════════════════════════════════════
+
+           ROW      va        vb          vc         vd        xs         ys           STAGE
+        |------|----------|----------|----------|----------|----------|----------|----------------|
+        |  0   |  v[0]    |  v[4]    |  v[8]    |  v[12]   | m[s[0]]  | m[s[1]]  |  G1 - COL MIX  |
+        |  1   |  v[1]    |  v[5]    |  v[9]    |  v[13]   | m[s[2]]  | m[s[3]]  |  G2 - COL MIX  |
+        |  2   |  v[2]    |  v[6]    |  v[10]   |  v[14]   | m[s[4]]  | m[s[5]]  |  G3 - COL MIX  |
+        |  3   |  v[3]    |  v[7]    |  v[11]   |  v[15]   | m[s[6]]  | m[s[7]]  |  G4 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------|----------------|
+        |  4   |  v[0]    |  v[5]    |  v[10]   |  v[15]   | m[s[8]]  | m[s[9]]  |  G1 - DIA MIX  |
+        |  5   |  v[1]    |  v[6]    |  v[11]   |  v[12]   | m[s[10]] | m[s[11]] |  G2 - DIA MIX  |
+        |  6   |  v[2]    |  v[7]    |  v[8]    |  v[13]   | m[s[12]] | m[s[13]] |  G3 - DIA MIX  |
+        |  7   |  v[3]    |  v[4]    |  v[9]    |  v[14]   | m[s[14]] | m[s[15]] |  G4 - DIA MIX  |
+        |------|----------|----------|----------|----------|----------|----------|----------------|
+    */
+
+    const int CLOCKS_PER_G = 1;
+    const int NUM_G_PER_ROUND = 8;
+    const int CLOCKS = CLOCKS_PER_G * NUM_G_PER_ROUND;
+
+    // Calculate usable capacity
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_OPS;
+    if (NUM_NON_USABLE_ROWS == 0) {
+        if (N < CLOCKS) {
+            error(`N must be at least ${CLOCKS} to fit the Blake2sr arithmetization, but received N=${N}`);
+        }
+        NUM_OPS = N / CLOCKS;
+    } else {
+        if (N < 2*CLOCKS) {
+            error(`N must be at least ${2*CLOCKS} to fit the Blake2sr arithmetization, but received N=${N}`);
+        }
+        NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS - 1;
+    }
+
+    const int NUM_BLAKE2SR = NUM_OPS;
+    println(`The total number of Blake2sr's with N = ${N} is ${NUM_BLAKE2SR}`);
+
+    /// Message word permutation schedule. RFC 7693 shares one SIGMA between the
+    /// two variants; BLAKE2s runs 10 rounds and so uses every row exactly once.
+    const int SIGMA[10][16];
+    SIGMA[0] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+    SIGMA[1] = [14, 10, 4, 8, 9, 15, 13, 6, 1, 12, 0, 2, 11, 7, 5, 3];
+    SIGMA[2] = [11, 8, 12, 0, 5, 2, 15, 13, 10, 14, 3, 6, 7, 1, 9, 4];
+    SIGMA[3] = [7, 9, 3, 1, 13, 12, 11, 14, 2, 6, 5, 10, 4, 0, 15, 8];
+    SIGMA[4] = [9, 0, 5, 7, 2, 4, 10, 15, 14, 1, 11, 12, 6, 8, 3, 13];
+    SIGMA[5] = [2, 12, 6, 10, 0, 11, 8, 3, 4, 13, 7, 5, 15, 14, 1, 9];
+    SIGMA[6] = [12, 5, 1, 15, 14, 13, 4, 10, 0, 7, 6, 3, 9, 2, 8, 11];
+    SIGMA[7] = [13, 11, 7, 14, 12, 1, 3, 9, 5, 0, 15, 4, 8, 6, 2, 10];
+    SIGMA[8] = [6, 15, 14, 9, 11, 3, 0, 8, 12, 2, 13, 7, 1, 4, 10, 5];
+    SIGMA[9] = [10, 2, 8, 4, 7, 6, 1, 5, 15, 11, 9, 14, 3, 12, 13, 0];
+    const int SIGMA_LENGTH = length(SIGMA);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CLOCK SELECTORS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    if (NUM_NON_USABLE_ROWS == 0) {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS];
+    } else {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS, 0...];
+    }
+
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; i++) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    col witness bits(1) in_use;
+    in_use * (1 - in_use) === 0;
+
+    const expr in_use_latched = clock_set(start: 1, end: CLOCKS);
+    in_use_latched * (in_use - 'in_use) === 0;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ROUND INDEX AND SIGMA PERMUTATION
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    col witness bits(4) round_idx;
+    in_use * (1 - CLK_0) * (round_idx - 'round_idx) === 0;
+
+    col witness bits(1) round_idx_sel[SIGMA_LENGTH];
+
+    expr sum_sel = 0;
+    expr sum_weighted_sel = 0;
+    for (int i = 0; i < SIGMA_LENGTH; i++) {
+        round_idx_sel[i] * (round_idx_sel[i] - 1) === 0;
+        sum_sel += round_idx_sel[i];
+        sum_weighted_sel += round_idx_sel[i] * i;
+    }
+    sum_sel * (sum_sel - 1) === 0;
+    round_idx <== sum_weighted_sel;
+
+    col witness bits(4) sigma_idx[2];
+    for (int i = 0; i < 2; i++) {
+        expr sigma_idx_expr = 0;
+        for (int j = 0; j < SIGMA_LENGTH; j++) {
+            expr sigma_sum = 0;
+            for (int k = 0; k < CLOCKS; k++) {
+                sigma_sum += CLK[k] * SIGMA[j][2 * k + i];
+            }
+            sigma_idx_expr += sigma_sum * round_idx_sel[j];
+        }
+        sigma_idx[i] <== sigma_idx_expr;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MESSAGE WORDS (m and ms)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    col fixed MSG_IDX = [0, 2, 4, 6, 8, 10, 12, 14]...;
+
+    // Original message words as two 16-bit limbs (range checked)
+    col witness bits(16) x[2];
+    col witness bits(16) y[2];
+
+    for (int i = 0; i < 2; i++) {
+        range_check(expression: x[i], min: 0, max: P2_16 - 1);
+        range_check(expression: y[i], min: 0, max: P2_16 - 1);
+    }
+
+    const expr x_packed = pack_u32_limbs16(x);
+    const expr y_packed = pack_u32_limbs16(y);
+
+    // Permuted message words (selected by sigma_idx)
+    col witness bits(32) xs;
+    col witness bits(32) ys;
+
+    col witness bits(40) step_addr;
+
+    const int STEP_MAIN = 0;
+
+    col witness bits(40) op_step;
+    const expr op_step_expr = clock_shift(step_addr, STEP_MAIN, start: 0, end: CLOCKS);
+    op_step <== op_step_expr;
+
+    // A 32-bit word rides the permutation argument as a single value with a zero
+    // companion, keeping the argument shape identical to Blake2br's [lo, hi].
+    permutation_assumes(opid: BLAKE2SR_PERMUTATION_ID, expressions: [MSG_IDX     + 16 * op_step, x_packed, 0], sel: in_use, sel_is_binary: 1);
+    permutation_assumes(opid: BLAKE2SR_PERMUTATION_ID, expressions: [MSG_IDX + 1 + 16 * op_step, y_packed, 0], sel: in_use, sel_is_binary: 1);
+    permutation_proves(opid: BLAKE2SR_PERMUTATION_ID, expressions: [sigma_idx[0] + 16 * op_step, xs, 0], sel: in_use, sel_is_binary: 1);
+    permutation_proves(opid: BLAKE2SR_PERMUTATION_ID, expressions: [sigma_idx[1] + 16 * op_step, ys, 0], sel: in_use, sel_is_binary: 1);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // G-FUNCTION CONSTRAINTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // State variables. va/vc are 16-bit limbs (explicitly range checked); vb/vd
+    // are byte columns and are range checked by the XOR table.
+    col witness bits(16) va[2];
+    col witness bits(8) vb[4];
+    col witness bits(16) vc[2];
+    col witness bits(8) vd[4];
+
+    for (int i = 0; i < 2; i++) {
+        range_check(expression: va[i], min: 0, max: P2_16 - 1);
+        range_check(expression: vc[i], min: 0, max: P2_16 - 1);
+    }
+
+    const expr va_packed = pack_u32_limbs16(va);
+    const expr vb_packed = pack_u32(vb);
+    const expr vc_packed = pack_u32_limbs16(vc);
+    const expr vd_packed = pack_u32(vd);
+
+    // ── First half ──
+    // va' = va + vb + x
+    // vd' = (vd ^ va') >>> 16      byte-aligned: 2 bytes
+    // vc' = vc + vd'
+    // vb' = (vb ^ vc') >>> 12      = (<<< 16) <<< 4
+
+    // va' === (va + vb + x) mod 2³²
+    col witness bits(8) va_prime[4];
+    const expr va_prime_packed = pack_u32(va_prime);
+    add3_check_u32(va_packed, vb_packed, xs, va_prime_packed);
+
+    // vd' === (vd ^ va') >>> 16. ROTR 16 on a 4-byte word moves source byte i to
+    // destination (i - 2) mod 4, which the lookup writes directly.
+    col witness bits(8) vd_prime[4];
+    for (int i = 0; i < 4; i++) {
+        blake2br_table_check(a: vd[i], b: va_prime[i], c: vd_prime[(i + 2) % 4]);
+    }
+
+    // vc' === (vc + vd') mod 2³²
+    col witness bits(8) vc_prime[4];
+    const expr vc_prime_packed = pack_u32(vc_prime);
+    const expr vd_prime_packed = pack_u32(vd_prime);
+    add2_check_u32(vc_packed, vd_prime_packed, vc_prime_packed);
+
+    // vb' === (vb ^ vc') >>> 12 = ((vb ^ vc') <<< 16) <<< 4.
+    // The <<< 16 half is byte-aligned and absorbed into the lookup's output
+    // index; the residual <<< 4 is a shift-and-carry with a 4-bit carry.
+    col witness bits(8) vb_p_rot16[4];   // z = (vb ^ vc') <<< 16
+    col witness bits(4) vb_p_t;          // top 4 bits of z
+    for (int i = 0; i < 4; i++) {
+        blake2br_table_check(a: vb[i], b: vc_prime[i], c: vb_p_rot16[(i + 2) % 4]);
+    }
+    range_check(expression: vb_p_t, min: 0, max: 15);
+
+    const expr z_p = pack_u32(vb_p_rot16);
+    const expr vb_prime_packed = 16*z_p - P2_32*vb_p_t + vb_p_t;
+
+    // ── Second half ──
+    // va'' = va' + vb' + y
+    // vd'' = (vd' ^ va'') >>> 8    byte-aligned: 1 byte
+    // vc'' = vc' + vd''
+    // vb'' = (vb' ^ vc'') >>> 7    = (<<< 24) <<< 1
+
+    col witness bits(8) va_prime_prime[4];
+    const expr va_pp_packed = pack_u32(va_prime_prime);
+    add3_check_u32(va_prime_packed, vb_prime_packed, ys, va_pp_packed);
+
+    // The XOR table consumes vb' bytewise, so it needs vb' as byte columns as
+    // well as the packed form the addition used. The equality below is what ties
+    // the two representations together — without it the shift-and-carry above
+    // would be unconstrained.
+    col witness bits(8) vb_prime[4];
+    pack_u32(vb_prime) === vb_prime_packed;
+
+    // vd'' === (vd' ^ va'') >>> 8: source byte i to destination (i - 1) mod 4.
+    col witness bits(8) vd_prime_prime[4];
+    for (int i = 0; i < 4; i++) {
+        blake2br_table_check(a: vd_prime[i], b: va_prime_prime[i], c: vd_prime_prime[(i + 3) % 4]);
+    }
+
+    col witness bits(8) vc_prime_prime[4];
+    const expr vc_pp_packed = pack_u32(vc_prime_prime);
+    const expr vd_pp_packed = pack_u32(vd_prime_prime);
+    add2_check_u32(vc_prime_packed, vd_pp_packed, vc_pp_packed);
+
+    // vb'' === (vb' ^ vc'') >>> 7 = ((vb' ^ vc'') <<< 24) <<< 1.
+    // <<< 24 on a 4-byte word is ROTR 8: source byte i to destination (i-1)%4.
+    // The residual <<< 1 is the same doubling Blake2br uses for its >>> 63.
+    col witness bits(8) vb_pp_rot24[4];  // z = (vb' ^ vc'') <<< 24
+    col witness bits(1) vb_pp_t;         // top bit of z
+    for (int i = 0; i < 4; i++) {
+        blake2br_table_check(a: vb_prime[i], b: vc_prime_prime[i], c: vb_pp_rot24[(i + 3) % 4]);
+    }
+    vb_pp_t * (1 - vb_pp_t) === 0;
+
+    const expr z_pp = pack_u32(vb_pp_rot24);
+    const expr vb_pp_packed = 2*z_pp - P2_32*vb_pp_t + vb_pp_t;
+    // ── Why both carries are uniquely determined ──
+    //
+    // Write z = h·2²⁸ + l with h = z >>> 28 and l < 2²⁸. The constraint above
+    // computes
+    //
+    //     16·z - 2³²·t + t = (h - t)·2³² + 16·l + t
+    //
+    // and equates it to a value that is byte-bound to [0, 2³²). Over the
+    // integers:
+    //
+    //     t = h  ->  16·l + t <= 16·(2²⁸-1) + 15 = 2³² - 1   in range
+    //     t < h  ->  >= 2³²                                   out of range
+    //     t > h  ->  negative                                 out of range
+    //
+    // so t is FORCED to equal z >>> 28, not merely constrained to four bits.
+    // The whole expression stays within (-15·2³², 16·2³²), far inside the
+    // field, so no reduction mod p can bring an out-of-range value back in.
+    // The same derivation with h = z >>> 31 covers the 1-bit carry below.
+    //
+    // NOTE, and this differs from Blake2br: its non-byte-aligned rotation
+    // (>>> 63) is the LAST step of G, so a transition constraint always
+    // observes the result and supplies the [0, 2³²) bound. Blake2s's >>> 12 is
+    // mid-G and no transition constraint ever sees vb_prime. The bound comes
+    // instead from the explicit byte columns tied by
+    // `pack_u32(vb_prime) === vb_prime_packed`, whose bytes are bound as
+    // `a`-inputs of the following XOR lookup. Remove that tie and the >>> 12
+    // carry becomes free.
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TRANSITION CONSTRAINTS
+    // ═══════════════════════════════════════════════════════════════════════════
+    // The diagonal mix consumes the column mix's output, and the next column mix
+    // consumes the previous diagonal mix's output.
+
+    (CLK[4] + CLK[5] + CLK[6] + CLK[7]) * (va_packed - (4)'va_pp_packed) === 0;
+
+    (CLK[4] + CLK[5] + CLK[6]) * (vb_packed - (3)'vb_pp_packed) + CLK[7] * (vb_packed - (7)'vb_pp_packed) === 0;
+
+    (CLK[4] + CLK[5]) * (vc_packed - (2)'vc_pp_packed) + (CLK[6] + CLK[7]) * (vc_packed - (6)'vc_pp_packed) === 0;
+
+    CLK[4] * (vd_packed - (1)'vd_pp_packed) + (CLK[5] + CLK[6] + CLK[7]) * (vd_packed - (5)'vd_pp_packed) === 0;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MEMORY INTERFACE
+    // ═══════════════════════════════════════════════════════════════════════════
+    //
+    // Identical schedule to Blake2br: 51 memory operations over 7 ports. Each
+    // 32-bit word occupies its own 8-byte slot with a zero high limb, so the
+    // addressing, port assignment and clocking are unchanged.
+    //
+    //         clock:        0      1       2       3      4       5       6       7
+    //   port 0 (va):      R v0   R v1    R v2    R v3   W v'0   W v'1   W v'2   W v'3
+    //   port 1 (vb):      R v4   R v5    R v6    R v7   W v'5   W v'6   W v'7   W v'4
+    //   port 2 (vc):      R v8   R v9    R v10   R v11  W v'10  W v'11  W v'8   W v'9
+    //   port 3 (vd):      R v12  R v13   R v14   R v15  W v'15  W v'12  W v'13  W v'14
+    //   port 4 (x):       R m0   R m2    R m4    R m6   R m8    R m10   R m12   R m14
+    //   port 5 (y):       R m1   R m3    R m5    R m7   R m9    R m11   R m13   R m15
+    //   port 6 (params):  R idx  R ptr0  R ptr1
+
+    const int ADDR_OP = STEP_MAIN + 1;
+    const int ADDR_STATE = ADDR_OP + 1;
+    const int ADDR_INPUT = ADDR_STATE + 1;
+    const int ADDR_IND_0 = ADDR_INPUT + 1;
+    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+
+    clock_eq(step_addr, ADDR_STATE, ADDR_IND_0) === 0;
+    clock_eq(step_addr, ADDR_INPUT, ADDR_IND_1) === 0;
+
+    const int NUM_STATE_WORDS = 16;
+    const int NUM_INPUT_WORDS = 16;
+    const int NUM_STATE_PORTS = 4;
+    const int NUM_MSG_PORTS = 2;
+    const int NUM_PARAMS = 3;
+    const int WORD_SIZE = 8;         // bytes per memory slot (u32 zero-extended)
+
+    const int CLOCKS_READ_STATE = NUM_STATE_WORDS / NUM_STATE_PORTS;
+    const int CLOCKS_READ_INPUT = NUM_INPUT_WORDS / NUM_MSG_PORTS;
+    const int CLOCKS_WRITE_STATE = NUM_STATE_WORDS / NUM_STATE_PORTS;
+    const int WRITE_START = CLOCKS - CLOCKS_WRITE_STATE;
+
+    const expr clks_read_state = clock_set(start: 0, end: CLOCKS_READ_STATE);
+    const expr clks_write_state = clock_set(start: WRITE_START, end: CLOCKS);
+    const expr clks_read_input = clock_set(start: 0, end: CLOCKS_READ_INPUT);
+    const expr clks_read_params = clock_set(start: 0, end: NUM_PARAMS);
+
+    // ── State ports ──
+    for (int port = 0; port < NUM_STATE_PORTS; port++) {
+        const expr mem_addr =
+            clock_shift(step_addr, ADDR_STATE,
+                        start: 0, end: CLOCKS_READ_STATE,
+                        offset: WORD_SIZE * CLOCKS_READ_STATE * port,
+                        delta: WORD_SIZE) +
+            clock_shift(step_addr, ADDR_STATE,
+                        start: WRITE_START, end: CLOCKS,
+                        offset: WORD_SIZE * CLOCKS_WRITE_STATE * port,
+                        delta: WORD_SIZE,
+                        offset_shift: port);
+
+        const expr mem_lo;
+        switch (port) {
+            case 0:
+                mem_lo = clks_read_state * va_packed + clks_write_state * va_pp_packed;
+            case 1:
+                mem_lo = clks_read_state * vb_packed + clks_write_state * vb_pp_packed;
+            case 2:
+                mem_lo = clks_read_state * vc_packed + clks_write_state * vc_pp_packed;
+            case 3:
+                mem_lo = clks_read_state * vd_packed + clks_write_state * vd_pp_packed;
+            default:
+                error(`Unexpected state port index: ${port}`);
+        }
+
+        // The zero high limb is what forces the guest's slots to hold bare
+        // 32-bit values: a slot with anything in its upper half cannot satisfy
+        // the memory argument.
+        precompiled_mem_op(
+            is_write: clks_write_state,
+            sel: (clks_read_state + clks_write_state) * in_use,
+            main_step: op_step,
+            addr: mem_addr,
+            value: [mem_lo, 0]
+        );
+    }
+
+    // ── Message ports ──
+    for (int port = 0; port < NUM_MSG_PORTS; port++) {
+        const expr mem_addr = clock_shift(step_addr, ADDR_INPUT,
+                                          start: 0, end: CLOCKS_READ_INPUT,
+                                          offset: WORD_SIZE * port,
+                                          delta: WORD_SIZE * NUM_MSG_PORTS);
+
+        const expr mem_lo;
+        if (port == 0) {
+            mem_lo = clks_read_input * x_packed;
+        } else {
+            mem_lo = clks_read_input * y_packed;
+        }
+
+        precompiled_mem_op(
+            is_write: 0,
+            sel: clks_read_input * in_use,
+            main_step: op_step,
+            addr: mem_addr,
+            value: [mem_lo, 0]
+        );
+    }
+
+    // ── Param port ──
+    const expr mem_addr = clock_shift(step_addr, ADDR_OP, start: 0, end: NUM_PARAMS, delta: WORD_SIZE);
+    const expr mem_value = CLK[0] * round_idx + clock_shift(step_addr, ADDR_IND_0, 1) + clock_shift(step_addr, ADDR_IND_1, 2);
+    precompiled_mem_op(
+        is_write: 0,
+        sel: clks_read_params * in_use,
+        main_step: op_step,
+        addr: mem_addr,
+        value: [mem_value, 0]
+    );
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MAIN PROCESSOR INTEGRATION
+    // ═══════════════════════════════════════════════════════════════════════════
+    col witness bits(1) in_use_clk_0;
+    in_use_clk_0 <== CLK_0 * in_use;
+
+    proves_operation(op: OP_BLAKE2SR, b: [step_addr'(ADDR_OP), 0], main_step: step_addr'(STEP_MAIN),
+                     mul: in_use_clk_0);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HELPERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+
+
+    function clock_eq(const expr mvcol, int pos1, int pos2): const expr {
+        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
+    }
+
+    function clock_set(const expr mvcol = 1, int start = 0, int end = -1, const int step = 1, const int skip = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        
+        int clock_idx = start;
+        int count = 0;
+        int in_group = 0;
+        while (count < end - start) {
+            result += air.CLK[clock_idx];
+            count++;
+            in_group++;
+            clock_idx++;
+            
+            // After 'step' consecutive clocks, skip 'skip' clocks
+            if (skip > 0 && in_group == step) {
+                clock_idx += skip;
+                in_group = 0;
+            }
+        }
+        return result * mvcol;
+    }
+
+    function clock_set_with_seq(const expr mvcol = 1, const int seq[]): const expr {
+        const int len = length(seq);
+        assert(len > 0);
+        
+        expr result = 0;
+        for (int i = 0; i < len; i++) {
+            result += air.CLK[seq[i]];
+        }
+        return result * mvcol;
+    }
+
+    function clock_shift(const expr mvcol, const int pos, const int start = 0, int end = -1, const int step = 1, const int skip = 0, int offset = 0, const int delta = 0, const int offset_shift = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+        
+        const int num_clocks = end - start;
+
+        int clock_idx = start;
+        int count = 0;
+        int in_group = 0;
+        while (count < num_clocks) {
+            const int col_idx = (pos - clock_idx) % air.CLOCKS;
+            // Compute the shifted offset index: (count + offset_shift) mod num_clocks
+            const int shifted_count = (count + offset_shift) % num_clocks;
+            const int current_offset = offset + delta * shifted_count;
+            
+            if (current_offset != 0) {
+                result += air.CLK[clock_idx] * (mvcol'(col_idx) + current_offset);
+            } else {
+                result += air.CLK[clock_idx] * mvcol'(col_idx);
+            }
+            
+            count++;
+            in_group++;
+            clock_idx++;
+            
+            // After 'step' consecutive clocks, skip 'skip' clocks
+            if (skip > 0 && in_group == step) {
+                clock_idx += skip;
+                in_group = 0;
+            }
+        }
+        return result;
+    }
+
+    function clock_shift_with_seq(const expr mvcol, const int pos, const int seq[]): const expr {
+        const int len = length(seq);
+        assert(len > 0);
+        
+        expr result = 0;
+        for (int i = 0; i < len; i++) {
+            const int col_idx = (pos - seq[i]) % air.CLOCKS;
+            result += air.CLK[seq[i]] * mvcol'(col_idx);
+        }
+        return result;
+    }
+
+    function pack(const expr a[], const int s): expr {
+        const int len = length(a);
+        assert(len > 0);
+        assert(s > 0);
+        const int base = 2**s;
+        expr packed = 0;
+        for (int j = 0; j < len; j++) {
+            packed += a[j] * base**j;
+        }
+        return packed;
+    }
+
+    function pack_bytes(const expr a[]): expr {
+        return pack(a, 8);
+    }
+
+    /// Pack a 32-bit word given as 4 bytes into a single limb.
+    function pack_u32(const expr w[]): expr {
+        assert(length(w) == 4);
+        return pack_bytes(w);
+    }
+
+    /// Pack a 32-bit word given as 2 16-bit limbs into a single limb.
+    function pack_u32_limbs16(const expr w[]): expr {
+        assert(length(w) == 2);
+        return pack(w, 16);
+    }
+
+    /// c == (a + b) mod 2³² when active == 1.
+    ///
+    /// Assumes a, b, c ∈ [0, 2³²) and p > 2·2³². Since a single 32-bit limb
+    /// fits the field directly, the two-limb CRT argument Blake2br needs
+    /// collapses to one comparison: c - a - b is 0 or -2³² over the integers.
+    function add2_check_u32(const expr a, const expr b, const expr c, const expr active = 1) {
+        expr sum = c - a - b;
+        active * (sum * (sum + P2_32)) === 0;
+    }
+
+    /// d == (a + b + c) mod 2³² when active == 1.
+    ///
+    /// Assumes a, b, c, d ∈ [0, 2³²) and p > 3·2³².
+    function add3_check_u32(const expr a, const expr b, const expr c, const expr d, const expr active = 1) {
+        expr sum = d - a - b - c;
+        active * (sum * (sum + P2_32) * (sum + 2*P2_32)) === 0;
+    }
+}

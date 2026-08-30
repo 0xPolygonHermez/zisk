@@ -286,7 +286,7 @@ impl<D: Copy + Into<u64>> TryFrom<&[D]> for ExtOperationData<D> {
                     data.try_into().map_err(|_| "Invalid OperationPoseidonData size")?;
                 Ok(ExtOperationData::OperationPoseidonData(array))
             }
-            ZiskOp::BLAKE2 => {
+            ZiskOp::BLAKE2 | ZiskOp::BLAKE2S => {
                 let array: OperationBlake2Data<D> =
                     data.try_into().map_err(|_| "Invalid OperationBlake2Data size")?;
                 Ok(ExtOperationData::OperationBlake2Data(array))
@@ -493,7 +493,7 @@ impl OperationBusData<u64> {
                 ExtOperationData::OperationPoseidonData(data)
             }
 
-            ZiskOperationType::Blake2 => {
+            ZiskOperationType::Blake2 | ZiskOperationType::Blake2s => {
                 let mut data = [0u64; OPERATION_BUS_BLAKE2_DATA_SIZE];
                 data[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
                     .copy_from_slice(&[op, op_type, a, b, step]);
@@ -755,7 +755,7 @@ impl OperationBusData<u64> {
                 &buffer[..OPERATION_BUS_POSEIDON_DATA_SIZE]
             }
 
-            ZiskOperationType::Blake2 => {
+            ZiskOperationType::Blake2 | ZiskOperationType::Blake2s => {
                 debug_assert_eq!(ctx.precompiled.input_data.len(), 35);
                 buffer[0..OPERATION_PRECOMPILED_BUS_DATA_SIZE]
                     .copy_from_slice(&[op, op_type, a, b, step]);

@@ -33,6 +33,9 @@ typedef struct {
     uint64_t blake2_counter;
     uint64_t blake2_duration;
 
+    uint64_t blake2s_counter;
+    uint64_t blake2s_duration;
+
     uint64_t poseidon2_counter;
     uint64_t poseidon2_duration;
 
