@@ -918,6 +918,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake2s"
+version = "0.1.0"
+dependencies = [
+ "rand 0.8.8",
+ "zisk-precomp-helpers",
+ "zisk-sdk",
+ "ziskos",
+]
+
+[[package]]
 name = "blake3"
 version = "1.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"

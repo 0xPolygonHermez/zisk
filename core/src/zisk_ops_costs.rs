@@ -12,7 +12,13 @@ pub const ARITH_EQ_COST: u64 = 90 * 16;
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;
 pub const ADD256_COST: u64 = 104;
-pub const BLAKE2_COST: u64 = 24 * 209;
+// CLOCKS (8) x area (cm1 119 + cm2 109 + cm3 6 = 234). Was 24 * 209: the 24 is
+// the pre-21d497cd3 CLOCKS (CLOCKS_PER_G was 3) and 209 the area before that
+// commit reshaped the AIR, so it overstated a blake2b round by 2.68x.
+pub const BLAKE2_COST: u64 = 8 * 234;
+// CLOCKS (8) x area (cm1 73 + cm2 76 + cm3 6 = 155), read from the compiled
+// Blake2sr.starkinfo.json.
+pub const BLAKE2S_COST: u64 = 8 * 155;
 pub const MAIN_COST: u64 = 68;
 
 pub const ADD_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_ADD_COST; // step extra + and + add
@@ -28,15 +34,18 @@ pub const SLL_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_E_COST; // step e
     +------------+------------------------+-----------------+--------------+----------+----------+
     | Poseidon   | 14 x 392 = 5.488       |  96 (nominal)   |     57,2     |   1,0x   |    1     |
     | SHA2-256   | 72 x 122 = 8.784       |  64             |    137,3     |   2,4x   |    1     |
-    | Blake2b    | 12 x 24 x 209 = 60.192 | 128             |    470,3     |   8,2x   |    1     |
+    | Blake2b    | 12 x 8 x 234 = 22.464  | 128             |    175,5     |   3,1x   |    1     |
+    | Blake2s    | 10 x 8 x 155 = 12.400  |  64             |    193,8     |   3,4x   |    1     |
     | Keccak-256 | 25 x 3023 = 75.575     | 136             |    555,7     |   9,7x   |    1     |
     +------------+------------------------+-----------------+--------------+----------+----------+
 
     Notes:
     - Poseidon bytes are nominal (12 Goldilocks elements x 8 bytes); a Goldilocks element
     holds ~63.99 bits, so the truly absorbable payload is slightly under 96 bytes.
-    - Blake2b's BLAKE2_COST is the cost of a single round; a full compression is 12 rounds,
-    which is the full-op cost used in the table above.
+    - BLAKE2_COST and BLAKE2S_COST are the cost of a single round; a full compression is
+    12 rounds for Blake2b and 10 for Blake2s, which is the full-op cost used above.
+    - The Keccak-256 row still shows 25 x 3023 = 75.575, which predates 170673fab changing
+    KECCAK_COST to 2652 x 29 / 2 = 38.454 (282,8 per byte, 4,9x). Left as found.
 */
 
 // Costs for DMA

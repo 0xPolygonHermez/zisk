@@ -13,13 +13,13 @@ use zisk_precomp_helpers::DmaInfo;
 use ziskos::zisklib::fcall_proxy;
 
 use crate::{
-    blake2br, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
+    blake2br, blake2sr, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
     ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST, ARITHAM32_COST,
-    ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST,
-    DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST,
-    DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST,
-    INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST,
-    REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
+    ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2S_COST,
+    BLAKE2_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
+    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR,
+    FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE,
+    POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
 };
 use paste::paste;
 use proofman_fields::{
@@ -65,6 +65,7 @@ pub enum OpType {
     Evm,
     Dma,
     Blake2,
+    Blake2s,
     Profile,
 }
 
@@ -86,6 +87,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Evm => ZiskOperationType::Evm,
             OpType::Dma => ZiskOperationType::Dma,
             OpType::Blake2 => ZiskOperationType::Blake2,
+            OpType::Blake2s => ZiskOperationType::Blake2s,
             OpType::Profile => ZiskOperationType::Profile,
         }
     }
@@ -111,6 +113,7 @@ impl Display for OpType {
             Self::Evm => write!(f, "Evm"),
             Self::Dma => write!(f, "Dma"),
             Self::Blake2 => write!(f, "Blake2"),
+            Self::Blake2s => write!(f, "Blake2s"),
             Self::Profile => write!(f, "Profile"),
         }
     }
@@ -137,6 +140,7 @@ impl FromStr for OpType {
             "evm" => Ok(Self::Evm),
             "dma" => Ok(Self::Dma),
             "bl" => Ok(Self::Blake2),
+            "bls" => Ok(Self::Blake2s),
             "profile" => Ok(Self::Profile),
             _ => Err(InvalidOpTypeError),
         }
@@ -525,6 +529,7 @@ define_ops! {
     (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
     (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
     (Blake2, "blake2", Blake2, BLAKE2_COST, 0xea, 280 , 128, opc_blake2, op_blake2, ops_blake2),
+    (Blake2s, "blake2s", Blake2s, BLAKE2S_COST, 0xed, 280 , 128, opc_blake2s, op_blake2s, ops_blake2s),
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
@@ -899,6 +904,52 @@ pub fn opc_blake2(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_blake2(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_blake2() is not implemented");
+}
+
+#[inline(always)]
+pub fn opc_blake2s(ctx: &mut InstContext) {
+    const WORDS: usize = 3 + 2 * 16; // index,addr_state,addr_input,state[16],input[16]
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 3, 2, 16, 0, Some(0), &mut data, "blake2s");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        let index = data[0];
+        let (params, rest) = data.split_at_mut(3);
+        let (state_slice, input_slice) = rest.split_at_mut(16);
+        let state: &mut [u64; 16] = state_slice.try_into().unwrap();
+        let input: &[u64; 16] = input_slice[..16].try_into().unwrap();
+
+        blake2sr(index, state, input);
+
+        let state_addr = params[1];
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(state_addr + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented. Blake2s can only be called from the system call context via
+/// InstContext. This is provided just for completeness.
+#[inline(always)]
+pub fn op_blake2s(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_blake2s() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_blake2s(ctx: &InstContext, stats: &mut dyn OpStats) {
+    // Same shape as ops_blake2: 3 params at ctx.b, state read+written, input read.
+    let param_addr = ctx.b;
+
+    stats.mem_align_read(param_addr, 3);
+    let state_addr = ctx.mem.read(param_addr + 8, 8);
+    let input_addr = ctx.mem.read(param_addr + 16, 8);
+    stats.mem_align_read(state_addr, 16);
+    stats.mem_align_read(input_addr, 16);
+    stats.mem_align_write(state_addr, 16);
 }
 
 #[inline(always)]

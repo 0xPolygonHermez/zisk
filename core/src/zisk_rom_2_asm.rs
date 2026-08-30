@@ -260,6 +260,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Secp256r1Add
                 | ZiskOp::Secp256r1Dbl
                 | ZiskOp::Blake2
+                | ZiskOp::Blake2s
         )
     }
 
@@ -5044,6 +5045,46 @@ impl ZiskRom2Asm {
                 // Set result
                 *code +=
                     &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2: c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::Blake2s => {
+                // Use the memory address as the first and unique parameter
+                *code += &ctx.full_line_comment("Blake2s: rdi = b".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_mem_reads(ctx, code, 3, &[0, 16, 16]);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 3, &[0, 16, 16], 1, 1, 16);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_blake2() {
+                    *code += "\tmov rdi, [rdi+8]\n";
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 16);
+                } else {
+                    // Call the Blake2s function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_blake2s\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code +=
+                    &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("Blake2s: c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }

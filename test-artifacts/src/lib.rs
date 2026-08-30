@@ -33,6 +33,9 @@ pub const ELF_ARITH384_MOD: GuestProgram = load_program!("arith384_mod");
 pub const ELF_BIG_INPUT: GuestProgram = load_program!("big_input");
 #[cfg(feature = "blake2")]
 pub const ELF_BLAKE2: GuestProgram = load_program!("blake2");
+
+#[cfg(feature = "blake2s")]
+pub const ELF_BLAKE2S: GuestProgram = load_program!("blake2s");
 #[cfg(feature = "bls12_381")]
 pub const ELF_BLS12_381: GuestProgram = load_program!("bls12_381");
 #[cfg(feature = "bls12_381_add")]

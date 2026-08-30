@@ -10,7 +10,9 @@ mod keccak;
 pub use arith_eq::*;
 pub use arith_eq_384::*;
 pub use big_int::*;
-pub use blake2::{blake2b_compress, blake2b_round};
+pub use blake2::{
+    blake2b_compress, blake2b_round, blake2s_compress, blake2s_round, BLAKE2S_ROUNDS,
+};
 pub use common::*;
 pub use dma::*;
 pub use jump_dest::*;
