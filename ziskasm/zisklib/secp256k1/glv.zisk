@@ -262,88 +262,334 @@ gsm_ret0:
 	pop r1
 	ret
 
-u64 SECP_GLD_A[8]    = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SECP_GLD_B[8]    = 0, 0, 0, 0, 0, 0, 0, 0
-u64 SECP_GLD_K2[1]   = 0
-u64 SECP_GLD_P[1]    = 0
-u64 SECP_GLD_RES[1]  = 0
-u64 SECP_GLD_AINF[1] = 0
-u64 SECP_GLD_BINF[1] = 0
+; ---------------------------------------------------------------------------
+; 4-way GLV double-scalar multiplication: k1*G + k2*p with a SINGLE shared
+; doubling ladder (~128 doublings total) instead of two separate glv_scalar_mul
+; ladders (~256). Mirrors ziskos' interleaved Strauss-Shamir over the four
+; half-scalars (A1,A2 of k1; B1,B2 of k2). Each pair is built into a 34-u64
+; region: +0 K1[4] +32 K2[4] +64 P1[8] +128 P2[8] +192 T[8] +256 Tinf +264 sig.
+; ---------------------------------------------------------------------------
+u64 SECP_D4_GPAIR[34] = 0
+u64 SECP_D4_PPAIR[34] = 0
+u64 SECP_D4_RES[8]    = 0
+u64 SECP_D4_RESPTR[1] = 0
+u64 SECP_D4_PTPTR[1]  = 0
+u64 SECP_D4_HDR[2]    = 0
+u64 SECP_D4_SAVE[2]   = 0
+u64 SECP_PB_BASE[1]   = 0
+u64 SECP_PB_REGION[1] = 0
 
-; u64 zisklib_glv_double_scalar_mul_with_g_secp256k1(const u64* k1, const u64* k2,
-;                                                    const u64* p, u64* result)
-;   [r10=k1, r11=k2, r12=p, r13=result] -> r10 = 1 if k1*G + k2*p is infinity,
-;   else 0. GLV-accelerated: A = glv_scalar_mul(k1, G), B = glv_scalar_mul(k2, p),
-;   then combine (each half via the endomorphism -> ~128 doublings). Labels `gd_`.
+; void secp_glv_build_pair(const u64* k, const u64* base, u64* region)
+;   [r10=k, r11=base, r12=region] fills region with K1,K2,P1=±base,P2=±phi(base),
+;   T=P1+P2, Tinf, sig. base is an on-curve 8-u64 point (x||y).
+secp_glv_build_pair:
+	push r1
+	copyb(0, SECP_PB_BASE) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; (K1,K2,sig) = glv_decompose(k)  [r10=k, r11=&K1, r12=&K2 -> r10=sig]
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 32) -> r12
+	call zisklib_glv_decompose_fn_secp256k1
+	copyb(0, SECP_PB_REGION) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r6, r10) -> 8[a + 264]
+	; P1 = sig1 ? -base : base  (region+64)
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 8[a + 264]) -> r6
+	and(r6, 1) -> r6
+	eq(r6, 0), j(bp_p1_pos)
+	copyb(0, SECP_PB_BASE) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, SECP_PB_REGION) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	add(r6, 64) -> r6
+	copyb(0, 4) -> r7
+bp_p1x:
+	eq(r7, 0), j(bp_p1yn)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bp_p1x)
+bp_p1yn:
+	copyb(0, SECP_PB_BASE) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 96) -> r11
+	call zisklib_neg_fp_secp256k1
+	jump(bp_p2)
+bp_p1_pos:
+	copyb(0, SECP_PB_BASE) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, SECP_PB_REGION) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	add(r6, 64) -> r6
+	copyb(0, 8) -> r7
+bp_p1cp:
+	eq(r7, 0), j(bp_p2)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bp_p1cp)
+bp_p2:
+	; P2.x = beta * base.x  (region+128)
+	copyb(0, SECP_BETA) -> r10
+	copyb(0, SECP_PB_BASE) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 128) -> r12
+	call zisklib_mul_fp_secp256k1
+	; P2.y = sig2 ? -base.y : base.y
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(r5, 8[a + 264]) -> r6
+	srl(r6, 1) -> r6
+	and(r6, 1) -> r6
+	eq(r6, 0), j(bp_p2_pos)
+	copyb(0, SECP_PB_BASE) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 160) -> r11
+	call zisklib_neg_fp_secp256k1
+	jump(bp_t)
+bp_p2_pos:
+	copyb(0, SECP_PB_BASE) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	add(r5, 32) -> r5
+	copyb(0, SECP_PB_REGION) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	add(r6, 160) -> r6
+	copyb(0, 4) -> r7
+bp_p2cp:
+	eq(r7, 0), j(bp_t)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(bp_p2cp)
+bp_t:
+	; T = P1 + P2  (region+192), Tinf -> region+256
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, 64) -> r10
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r11
+	add(r11, 128) -> r11
+	copyb(0, SECP_PB_REGION) -> r5
+	copyb(r5, 8[a + 0]) -> r12
+	add(r12, 192) -> r12
+	call zisklib_point_add_secp256k1
+	copyb(0, SECP_PB_REGION) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r6, r10) -> 8[a + 256]
+	pop r1
+	ret
+
+; secp_addpt [leaf]: res(SECP_D4_RES) += *(SECP_D4_PTPTR); r13 = res_inf in/out.
+;   Handles res=inf (copy pt), res=-pt (-> inf), res=pt (double), else add.
+secp_addpt:
+	eq(r13, 0), j(sa_addni)
+	copyb(0, SECP_D4_PTPTR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, SECP_D4_RES) -> r6
+	copyb(0, 8) -> r7
+sa_set:
+	eq(r7, 0), j(sa_set0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sa_set)
+sa_set0:
+	copyb(0, 0) -> r13
+	ret
+sa_addni:
+	copyb(0, SECP_D4_RES) -> r5
+	copyb(0, SECP_D4_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(0, 4) -> r7
+sa_xl:
+	eq(r7, 0), j(sa_ycmp)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(sa_xn)
+	jump(sa_doadd)
+sa_xn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sa_xl)
+sa_ycmp:
+	copyb(0, SECP_D4_RES) -> r5
+	add(r5, 32) -> r5
+	copyb(0, SECP_D4_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	add(r6, 32) -> r6
+	copyb(0, 4) -> r7
+sa_yl:
+	eq(r7, 0), j(sa_dodbl)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(sa_yn)
+	copyb(0, 1) -> r13
+	ret
+sa_yn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(sa_yl)
+sa_doadd:
+	copyb(0, SECP_D4_HDR) -> r5
+	copyb(0, SECP_D4_RES) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, SECP_D4_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	secp256k1_add(0, r5)
+	ret
+sa_dodbl:
+	copyb(0, SECP_D4_RES) -> r5
+	secp256k1_dbl(0, r5)
+	ret
+
+; u64 zisklib_glv_double_scalar_mul_with_g_secp256k1(k1, k2, p, result)
+;   [r10=k1, r11=k2, r12=p, r13=result] -> r10 = 1 if k1*G + k2*p is infinity.
+;   4-way GLV interleave: ONE shared doubling ladder over both scalars (~128 dbl).
 zisklib_glv_double_scalar_mul_with_g_secp256k1:
 	push r1
-	copyb(0, SECP_GLD_K2) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, SECP_GLD_P) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, SECP_GLD_RES) -> r5
+	copyb(0, SECP_D4_RESPTR) -> r5
 	copyb(r5, r13) -> 8[a + 0]
-	; A = glv_scalar_mul(k1, G)
+	copyb(0, SECP_D4_SAVE) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(r5, r12) -> 8[a + 8]
+	; G-pair from (k1, G)
 	copyb(0, SECP_G_X) -> r11
-	copyb(0, SECP_GLD_A) -> r12
-	call zisklib_glv_scalar_mul_secp256k1
-	copyb(0, SECP_GLD_AINF) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	; B = glv_scalar_mul(k2, p)
-	copyb(0, SECP_GLD_K2) -> r5
+	copyb(0, SECP_D4_GPAIR) -> r12
+	call secp_glv_build_pair
+	; P-pair from (k2, p)
+	copyb(0, SECP_D4_SAVE) -> r5
 	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, SECP_GLD_P) -> r5
-	copyb(r5, 8[a + 0]) -> r11
-	copyb(0, SECP_GLD_B) -> r12
-	call zisklib_glv_scalar_mul_secp256k1
-	copyb(0, SECP_GLD_BINF) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	; combine
-	copyb(0, SECP_GLD_AINF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, SECP_GLD_BINF) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	eq(r6, 0), j(gd_afin)
-	eq(r7, 0), j(gd_copyB)
+	copyb(r5, 8[a + 8]) -> r11
+	copyb(0, SECP_D4_PPAIR) -> r12
+	call secp_glv_build_pair
+	; shared ladder: bit 127..0 in r15, res_inf in r13
+	copyb(0, 127) -> r15
+	copyb(0, 1) -> r13
+sd_iter:
+	eq(r13, 0), j(sd_dbl)
+	jump(sd_gp)
+sd_dbl:
+	copyb(0, SECP_D4_RES) -> r5
+	secp256k1_dbl(0, r5)
+sd_gp:
+	srl(r15, 6) -> r7
+	sll(r7, 3) -> r7
+	and(r15, 63) -> r14
+	copyb(0, SECP_D4_GPAIR) -> r5
+	add(r5, r7) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	srl(r5, r14) -> r5
+	and(r5, 1) -> r5
+	copyb(0, SECP_D4_GPAIR) -> r6
+	add(r6, 32) -> r6
+	add(r6, r7) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	srl(r6, r14) -> r6
+	and(r6, 1) -> r6
+	eq(r5, 0), j(sd_g0)
+	eq(r6, 0), j(sd_gP1)
+	copyb(0, SECP_D4_GPAIR) -> r5
+	copyb(r5, 8[a + 256]) -> r5
+	ltu(0, r5), j(sd_pp)
+	copyb(0, SECP_D4_GPAIR) -> r6
+	add(r6, 192) -> r6
+	jump(sd_gadd)
+sd_gP1:
+	copyb(0, SECP_D4_GPAIR) -> r6
+	add(r6, 64) -> r6
+	jump(sd_gadd)
+sd_g0:
+	eq(r6, 0), j(sd_pp)
+	copyb(0, SECP_D4_GPAIR) -> r6
+	add(r6, 128) -> r6
+sd_gadd:
+	copyb(0, SECP_D4_PTPTR) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	call secp_addpt
+sd_pp:
+	srl(r15, 6) -> r7
+	sll(r7, 3) -> r7
+	and(r15, 63) -> r14
+	copyb(0, SECP_D4_PPAIR) -> r5
+	add(r5, r7) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	srl(r5, r14) -> r5
+	and(r5, 1) -> r5
+	copyb(0, SECP_D4_PPAIR) -> r6
+	add(r6, 32) -> r6
+	add(r6, r7) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	srl(r6, r14) -> r6
+	and(r6, 1) -> r6
+	eq(r5, 0), j(sd_p0)
+	eq(r6, 0), j(sd_pP1)
+	copyb(0, SECP_D4_PPAIR) -> r5
+	copyb(r5, 8[a + 256]) -> r5
+	ltu(0, r5), j(sd_nx)
+	copyb(0, SECP_D4_PPAIR) -> r6
+	add(r6, 192) -> r6
+	jump(sd_padd)
+sd_pP1:
+	copyb(0, SECP_D4_PPAIR) -> r6
+	add(r6, 64) -> r6
+	jump(sd_padd)
+sd_p0:
+	eq(r6, 0), j(sd_nx)
+	copyb(0, SECP_D4_PPAIR) -> r6
+	add(r6, 128) -> r6
+sd_padd:
+	copyb(0, SECP_D4_PTPTR) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	call secp_addpt
+sd_nx:
+	eq(r15, 0), j(sd_fin)
+	sub(r15, 1) -> r15
+	jump(sd_iter)
+sd_fin:
+	eq(r13, 0), j(sd_store)
 	copyb(0, 1) -> r10
 	pop r1
 	ret
-gd_copyB:
-	copyb(0, SECP_GLD_B) -> r5
-	copyb(0, SECP_GLD_RES) -> r6
+sd_store:
+	copyb(0, SECP_D4_RES) -> r5
+	copyb(0, SECP_D4_RESPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
 	copyb(0, 8) -> r7
-gd_cB:
-	eq(r7, 0), j(gd_fin0)
+sd_st:
+	eq(r7, 0), j(sd_r0)
 	copyb(r5, 8[a + 0]) -> r14
 	copyb(r6, r14) -> 8[a + 0]
 	add(r5, 8) -> r5
 	add(r6, 8) -> r6
 	sub(r7, 1) -> r7
-	jump(gd_cB)
-gd_afin:
-	eq(r7, 0), j(gd_add)
-	copyb(0, SECP_GLD_A) -> r5
-	copyb(0, SECP_GLD_RES) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(0, 8) -> r7
-gd_cA:
-	eq(r7, 0), j(gd_fin0)
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, r14) -> 8[a + 0]
-	add(r5, 8) -> r5
-	add(r6, 8) -> r6
-	sub(r7, 1) -> r7
-	jump(gd_cA)
-gd_fin0:
+	jump(sd_st)
+sd_r0:
 	copyb(0, 0) -> r10
-	pop r1
-	ret
-gd_add:
-	copyb(0, SECP_GLD_A) -> r10
-	copyb(0, SECP_GLD_B) -> r11
-	copyb(0, SECP_GLD_RES) -> r5
-	copyb(r5, 8[a + 0]) -> r12
-	call zisklib_point_add_secp256k1
 	pop r1
 	ret

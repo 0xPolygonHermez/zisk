@@ -4,40 +4,33 @@
 ; Prefixes `bcp_` / `beq_`.
 ; ============================================================================
 
+define EXTRA_PARAMS 0xa0400f00
+
 ; void bn254_memcpy(const u64* src, u64* dst, u64 nwords)  [r10=src, r11=dst, r12=n]
+;   Uses the ZisK dma_memcpy bulk-copy precompile: ONE op regardless of size
+;   (vs ~2-7 ops/word in software). Buffers are u64 arrays (8-byte aligned) and
+;   the byte count is nwords*8 (multiple of 8) -> the aligned fast path. The
+;   count is passed via EXTRA_PARAMS_ADDR, as required by the non-extended form.
 bn254_memcpy:
-	copyb(0, r10) -> r5
-	copyb(0, r11) -> r6
-	copyb(0, r12) -> r7
-bcp_loop:
-	eq(r7, 0), j(bcp_done)
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, r14) -> 8[a + 0]
-	add(r5, 8) -> r5
-	add(r6, 8) -> r6
-	sub(r7, 1) -> r7
-	jump(bcp_loop)
+	eq(r12, 0), j(bcp_done)
+	sll(r12, 3) -> r5                   ; byte count = nwords * 8
+	copyb(0, r5) -> [EXTRA_PARAMS]
+	dma_memcpy(r11, r10) -> r5          ; dst(r11) <- src(r10)
 bcp_done:
 	ret
 
 ; u64 bn254_eqn(const u64* a, const u64* b, u64 nwords)  [r10=a, r11=b, r12=n]
 ;   -> r10 = 1 if all n u64 limbs are equal, else 0.
+;   Uses the dma_memcmp precompile (ONE op): byte order is irrelevant for an
+;   equality test. dma_memcmp returns 0 iff all bytes match.
 bn254_eqn:
-	copyb(0, r10) -> r5
-	copyb(0, r11) -> r6
-	copyb(0, r12) -> r7
-beq_loop:
-	eq(r7, 0), j(beq_eq)
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, 8[a + 0]) -> r15
-	eq(r14, r15), j(beq_next)
+	eq(r12, 0), j(beq_eq)
+	sll(r12, 3) -> r5                   ; byte count = nwords * 8
+	copyb(0, r5) -> [EXTRA_PARAMS]
+	dma_memcmp(r10, r11) -> r5          ; r5 = 0 iff equal
+	eq(r5, 0), j(beq_eq)
 	copyb(0, 0) -> r10
 	ret
-beq_next:
-	add(r5, 8) -> r5
-	add(r6, 8) -> r6
-	sub(r7, 1) -> r7
-	jump(beq_loop)
 beq_eq:
 	copyb(0, 1) -> r10
 	ret
@@ -53,8 +46,10 @@ bn254_ltn:
 	add(r5, r14) -> r5
 	add(r6, r14) -> r6
 	copyb(0, r12) -> r7
-bltn_loop:
-	eq(r7, 0), j(bltn_ge)
+	; handle the top (n mod 4) words 1x (MSW-first) so the rest is a multiple of 4
+	and(r12, 3) -> r16
+bltn_rem:
+	eq(r16, 0), j(bltn_main)
 	copyb(r5, 8[a + 0]) -> r14
 	copyb(r6, 8[a + 0]) -> r15
 	ltu(r14, r15), j(bltn_lt)
@@ -62,7 +57,34 @@ bltn_loop:
 	sub(r5, 8) -> r5
 	sub(r6, 8) -> r6
 	sub(r7, 1) -> r7
-	jump(bltn_loop)
+	sub(r16, 1) -> r16
+	jump(bltn_rem)
+bltn_main:
+	; 4x-unrolled: r5/r6 = &top word of the remaining block; drop to group base
+	; (r5-24) and compare offsets 24,16,8,0 high->low with positive immediates.
+	eq(r7, 0), j(bltn_ge)
+	sub(r5, 24) -> r5
+	sub(r6, 24) -> r6
+	copyb(r5, 8[a + 24]) -> r14
+	copyb(r6, 8[a + 24]) -> r15
+	ltu(r14, r15), j(bltn_lt)
+	ltu(r15, r14), j(bltn_ge)
+	copyb(r5, 8[a + 16]) -> r14
+	copyb(r6, 8[a + 16]) -> r15
+	ltu(r14, r15), j(bltn_lt)
+	ltu(r15, r14), j(bltn_ge)
+	copyb(r5, 8[a + 8]) -> r14
+	copyb(r6, 8[a + 8]) -> r15
+	ltu(r14, r15), j(bltn_lt)
+	ltu(r15, r14), j(bltn_ge)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(bltn_lt)
+	ltu(r15, r14), j(bltn_ge)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 4) -> r7
+	jump(bltn_main)
 bltn_lt:
 	copyb(0, 1) -> r10
 	ret

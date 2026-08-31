@@ -22,17 +22,10 @@ zisklib_mul_long:
 	copyb(0, BI_LENB) -> r5
 	copyb(r5, 8[a + 0]) -> r7
 	add(r6, r7) -> r6
-	sll(r6, 2) -> r6
+	sll(r6, 5) -> r6
 	copyb(0, BI_OPTR) -> r14
 	copyb(r14, 8[a + 0]) -> r14
-	copyb(0, 0) -> r7
-bi_mll_z:
-	eq(r7, r6), j(bi_mll_zd)
-	copyb(r14, 0) -> 8[a + 0]
-	add(r14, 8) -> r14
-	add(r7, 1) -> r7
-	jump(bi_mll_z)
-bi_mll_zd:
+	dma_xmemset(r14, r6) -> r5, j(0, 4)
 	copyb(0, BI_HDR) -> r5
 	copyb(0, BI_APTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6

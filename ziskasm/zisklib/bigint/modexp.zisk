@@ -408,16 +408,9 @@ zisklib_modexp_u64_c:
 	copyb(r5, r6) -> 8[a + 0]
 	copyb(0, BI_DP_BLEN) -> r5
 	copyb(r5, 8[a + 0]) -> r6
-	sll(r6, 2) -> r6
+	sll(r6, 5) -> r6
 	copyb(0, BI_BASEPAD) -> r7
-	copyb(0, 0) -> r16
-bi_dp_z1:
-	eq(r16, r6), j(bi_dp_z1d)
-	copyb(r7, 0) -> 8[a + 0]
-	add(r7, 8) -> r7
-	add(r16, 1) -> r16
-	jump(bi_dp_z1)
-bi_dp_z1d:
+	dma_xmemset(r7, r6) -> r5, j(0, 4)
 	copyb(0, BI_APTR) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BI_BASEPAD) -> r11
@@ -426,16 +419,9 @@ bi_dp_z1d:
 	call bn254_memcpy
 	copyb(0, BI_DP_MLEN) -> r5
 	copyb(r5, 8[a + 0]) -> r6
-	sll(r6, 2) -> r6
+	sll(r6, 5) -> r6
 	copyb(0, BI_MODPAD) -> r7
-	copyb(0, 0) -> r16
-bi_dp_z2:
-	eq(r16, r6), j(bi_dp_z2d)
-	copyb(r7, 0) -> 8[a + 0]
-	add(r7, 8) -> r7
-	add(r16, 1) -> r16
-	jump(bi_dp_z2)
-bi_dp_z2d:
+	dma_xmemset(r7, r6) -> r5, j(0, 4)
 	copyb(0, BI_BPTR) -> r10
 	copyb(r10, 8[a + 0]) -> r10
 	copyb(0, BI_MODPAD) -> r11

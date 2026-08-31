@@ -392,84 +392,193 @@ rsm_inf:
 	pop r1
 	ret
 
-u64 R1_DSM_A[8]    = 0, 0, 0, 0, 0, 0, 0, 0
-u64 R1_DSM_B[8]    = 0, 0, 0, 0, 0, 0, 0, 0
-u64 R1_DSM_K2[1]   = 0
-u64 R1_DSM_P[1]    = 0
-u64 R1_DSM_RES[1]  = 0
-u64 R1_DSM_AINF[1] = 0
-u64 R1_DSM_BINF[1] = 0
+; ---------------------------------------------------------------------------
+; Shamir double-scalar multiplication: k1*G + k2*p with ONE shared 256-bit
+; doubling ladder (~256 dbl) instead of two separate scalar_mul ladders (~512).
+; No endomorphism (P-256 has no GLV); precompute T = G + p and interleave the
+; per-bit adds of G / p / T. Leading zero bits are skipped naturally (doubling
+; is bypassed while res is infinity). Labels `d2_` / `ra_` (r1_addpt).
+; ---------------------------------------------------------------------------
+u64 R1_D2_K1[4]    = 0
+u64 R1_D2_K2[4]    = 0
+u64 R1_D2_Q[8]     = 0
+u64 R1_D2_T[8]     = 0
+u64 R1_D2_TINF[1]  = 0
+u64 R1_D2_RES[8]   = 0
+u64 R1_D2_RESPTR[1] = 0
+u64 R1_D2_PTPTR[1] = 0
+u64 R1_D2_HDR[2]   = 0
+u64 R1_D2_SAVE[2]  = 0
 
-; u64 zisklib_double_scalar_mul_with_g_secp256r1(const u64* k1, const u64* k2,
-;                                                const u64* p, u64* result)
+; r1_addpt [leaf]: res(R1_D2_RES) += *(R1_D2_PTPTR); r13 = res_inf in/out.
+r1_addpt:
+	eq(r13, 0), j(ra_addni)
+	copyb(0, R1_D2_PTPTR) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	copyb(0, R1_D2_RES) -> r6
+	copyb(0, 8) -> r7
+ra_set:
+	eq(r7, 0), j(ra_set0)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ra_set)
+ra_set0:
+	copyb(0, 0) -> r13
+	ret
+ra_addni:
+	copyb(0, R1_D2_RES) -> r5
+	copyb(0, R1_D2_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(0, 4) -> r7
+ra_xl:
+	eq(r7, 0), j(ra_ycmp)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(ra_xn)
+	jump(ra_doadd)
+ra_xn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ra_xl)
+ra_ycmp:
+	copyb(0, R1_D2_RES) -> r5
+	add(r5, 32) -> r5
+	copyb(0, R1_D2_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	add(r6, 32) -> r6
+	copyb(0, 4) -> r7
+ra_yl:
+	eq(r7, 0), j(ra_dodbl)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r28
+	eq(r14, r28), j(ra_yn)
+	copyb(0, 1) -> r13
+	ret
+ra_yn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(ra_yl)
+ra_doadd:
+	copyb(0, R1_D2_HDR) -> r5
+	copyb(0, R1_D2_RES) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, R1_D2_PTPTR) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	secp256r1_add(0, r5)
+	ret
+ra_dodbl:
+	copyb(0, R1_D2_RES) -> r5
+	secp256r1_dbl(0, r5)
+	ret
+
+; u64 zisklib_double_scalar_mul_with_g_secp256r1(k1, k2, p, result)
 ;   [r10=k1, r11=k2, r12=p, r13=result] -> r10 = 1 if k1*G + k2*p is infinity.
-;   A = k1*G, B = k2*p, then combine. Labels `rdsm_`.
+;   Shamir: ONE shared 256-bit doubling ladder over bases G and p.
 zisklib_double_scalar_mul_with_g_secp256r1:
 	push r1
-	copyb(0, R1_DSM_K2) -> r5
-	copyb(r5, r11) -> 8[a + 0]
-	copyb(0, R1_DSM_P) -> r5
-	copyb(r5, r12) -> 8[a + 0]
-	copyb(0, R1_DSM_RES) -> r5
+	copyb(0, R1_D2_RESPTR) -> r5
 	copyb(r5, r13) -> 8[a + 0]
-	copyb(0, R1_G_X) -> r11
-	copyb(0, R1_DSM_A) -> r12
-	call zisklib_scalar_mul_secp256r1
-	copyb(0, R1_DSM_AINF) -> r5
-	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, R1_DSM_K2) -> r5
+	copyb(0, R1_D2_SAVE) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(r5, r12) -> 8[a + 8]
+	; K1 = reduce(k1)  [reduce_fn(r10=k1, r11=&K1)]
+	copyb(0, R1_D2_K1) -> r11
+	call zisklib_reduce_fn_secp256r1
+	; K2 = reduce(k2)
+	copyb(0, R1_D2_SAVE) -> r5
 	copyb(r5, 8[a + 0]) -> r10
-	copyb(0, R1_DSM_P) -> r5
-	copyb(r5, 8[a + 0]) -> r11
-	copyb(0, R1_DSM_B) -> r12
-	call zisklib_scalar_mul_secp256r1
-	copyb(0, R1_DSM_BINF) -> r5
+	copyb(0, R1_D2_K2) -> r11
+	call zisklib_reduce_fn_secp256r1
+	; Q = p  (copy 8 words)
+	copyb(0, R1_D2_SAVE) -> r5
+	copyb(r5, 8[a + 8]) -> r5
+	copyb(0, R1_D2_Q) -> r6
+	copyb(0, 8) -> r7
+d2_cpq:
+	eq(r7, 0), j(d2_tbuild)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(d2_cpq)
+d2_tbuild:
+	; T = G + Q  (point_add handles double/inf), Tinf -> R1_D2_TINF
+	copyb(0, R1_G_X) -> r10
+	copyb(0, R1_D2_Q) -> r11
+	copyb(0, R1_D2_T) -> r12
+	call zisklib_point_add_secp256r1
+	copyb(0, R1_D2_TINF) -> r5
 	copyb(r5, r10) -> 8[a + 0]
-	copyb(0, R1_DSM_AINF) -> r5
-	copyb(r5, 8[a + 0]) -> r6
-	copyb(0, R1_DSM_BINF) -> r5
-	copyb(r5, 8[a + 0]) -> r7
-	eq(r6, 0), j(rdsm_afin)
-	eq(r7, 0), j(rdsm_copyB)
+	; ladder: bit 255..0 in r15, res_inf in r13
+	copyb(0, 255) -> r15
+	copyb(0, 1) -> r13
+d2_iter:
+	eq(r13, 0), j(d2_dbl)
+	jump(d2_sel)
+d2_dbl:
+	copyb(0, R1_D2_RES) -> r5
+	secp256r1_dbl(0, r5)
+d2_sel:
+	srl(r15, 6) -> r7
+	sll(r7, 3) -> r7
+	and(r15, 63) -> r14
+	copyb(0, R1_D2_K1) -> r5
+	add(r5, r7) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	srl(r5, r14) -> r5
+	and(r5, 1) -> r5
+	copyb(0, R1_D2_K2) -> r6
+	add(r6, r7) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	srl(r6, r14) -> r6
+	and(r6, 1) -> r6
+	eq(r5, 0), j(d2_b1z)
+	eq(r6, 0), j(d2_useG)
+	copyb(0, R1_D2_TINF) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	ltu(0, r5), j(d2_next)
+	copyb(0, R1_D2_T) -> r6
+	jump(d2_add)
+d2_useG:
+	copyb(0, R1_G_X) -> r6
+	jump(d2_add)
+d2_b1z:
+	eq(r6, 0), j(d2_next)
+	copyb(0, R1_D2_Q) -> r6
+d2_add:
+	copyb(0, R1_D2_PTPTR) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	call r1_addpt
+d2_next:
+	eq(r15, 0), j(d2_fin)
+	sub(r15, 1) -> r15
+	jump(d2_iter)
+d2_fin:
+	eq(r13, 0), j(d2_store)
 	copyb(0, 1) -> r10
 	pop r1
 	ret
-rdsm_copyB:
-	copyb(0, R1_DSM_B) -> r5
-	copyb(0, R1_DSM_RES) -> r6
+d2_store:
+	copyb(0, R1_D2_RES) -> r5
+	copyb(0, R1_D2_RESPTR) -> r6
 	copyb(r6, 8[a + 0]) -> r6
 	copyb(0, 8) -> r7
-rdsm_cB:
-	eq(r7, 0), j(rdsm_fin0)
+d2_st:
+	eq(r7, 0), j(d2_r0)
 	copyb(r5, 8[a + 0]) -> r14
 	copyb(r6, r14) -> 8[a + 0]
 	add(r5, 8) -> r5
 	add(r6, 8) -> r6
 	sub(r7, 1) -> r7
-	jump(rdsm_cB)
-rdsm_afin:
-	eq(r7, 0), j(rdsm_add)
-	copyb(0, R1_DSM_A) -> r5
-	copyb(0, R1_DSM_RES) -> r6
-	copyb(r6, 8[a + 0]) -> r6
-	copyb(0, 8) -> r7
-rdsm_cA:
-	eq(r7, 0), j(rdsm_fin0)
-	copyb(r5, 8[a + 0]) -> r14
-	copyb(r6, r14) -> 8[a + 0]
-	add(r5, 8) -> r5
-	add(r6, 8) -> r6
-	sub(r7, 1) -> r7
-	jump(rdsm_cA)
-rdsm_fin0:
+	jump(d2_st)
+d2_r0:
 	copyb(0, 0) -> r10
-	pop r1
-	ret
-rdsm_add:
-	copyb(0, R1_DSM_A) -> r10
-	copyb(0, R1_DSM_B) -> r11
-	copyb(0, R1_DSM_RES) -> r5
-	copyb(r5, 8[a + 0]) -> r12
-	call zisklib_point_add_secp256r1
 	pop r1
 	ret
