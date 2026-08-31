@@ -15,14 +15,14 @@
 #                      <build-dir>/provingKey/. Errors out if that directory
 #                      is missing — populate it first with setup_build.sh
 #                      (no flag).
-#   --compile-pil      run only frops + compile-pil + regenerate
+#   --compile-pil      run only fixed-data gen + compile-pil + regenerate
 #                      pil/src/pil_helpers/traces.rs. No setup.
 #   --compressed-final re-run only vadcop_final_compressed on top of an existing
 #                      <build-dir>/provingKey/<name>/vadcop_final/.
 #   --gen-exps-only    (re)generate per-AIR Q-expression CUDA kernels (.exps.so)
 #                      on top of an existing <build-dir>/provingKey/, without
 #                      re-running setup. No-op if nvcc is not on PATH.
-#   --stats            run frops + compile-pil + proofman-setup stats.
+#   --stats            run fixed-data gen + compile-pil + proofman-setup stats.
 #
 # pil-helpers (pil/src/pil_helpers/traces.rs) is regenerated as the last step
 # of compile-pil in every mode that compiles the PIL, so traces.rs stays in
@@ -35,15 +35,22 @@
 #   - every *.pil under  pil/ state-machines/ precompiles/
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
 #   - state-machines/starkstructs.json
-#   - the three *_fixed.bin files written by the frops generators
+#   - the *_fixed.bin files written by the fixed-data generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
 #     ${PROOFMAN_DIR}/package.json
-#   - pil2-stark-setup ref: its git source string from Cargo.lock, or — when
-#     proofman is a local path dep — a content key from the local checkout
+#   - pil2-stark-setup: a content key over the setup-relevant proofman paths
+#     (setup/ pil2-stark/ provers/starks-lib-c — git tree OIDs + dirty state),
+#     so proofman bumps that only touch prover runtime code keep the same key
+#
+# FORCE_SETUP_BUILD=1 ignores a cache hit and rebuilds (then refreshes the
+# entry) — the escape hatch if a setup-relevant change slipped past the
+# content key's path list.
 #
 # The pil2-proofman checkout is resolved from `cargo metadata` — whatever cargo
 # compiled into cargo-zisk-dev, be it the git dep's checkout under
-# ~/.cargo/git/checkouts/ or a local path dep. No env var, nothing to keep in sync.
+# ~/.cargo/git/checkouts/ or a local path dep. A crates.io dep has no checkout,
+# so its .cargo_vcs_info.json commit is fetched into $ZISK_PROOFMAN_CACHE_DIR
+# (default ~/.zisk/pil2-proofman/<sha>). No env var, nothing to keep in sync.
 
 set -euo pipefail
 
@@ -100,7 +107,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          to gha_pil2_compiler_branch in Cargo.toml; unset there
                          too => proofman's own pinned version. Also settable via
                          PIL2_COMPILER_BRANCH env var.
-  --compile-pil          Run only frops + compile-pil + pil-helpers regen
+  --compile-pil          Run only fixed-data gen + compile-pil + pil-helpers regen
                          (writes pil/zisk.pilout and pil/src/pil_helpers/).
                          No setup.
   --no-aggregation       Setup without -r.
@@ -116,7 +123,7 @@ usage: $0 [--build-dir DIR] [--cache-dir DIR] [--recursive-jobs N] [--setup-jobs
                          the --gen-exps flag, which runs it during a full setup.)
   --stats                Run proofman-setup stats.
   --print-hash           Print the build-input sha256 (the cache key) and exit.
-                         Runs frops generation but no compile-pil / setup.
+                         Runs fixed-data generation but no compile-pil / setup.
 
 To package the result (provingKey + circom + snark tarballs), run:
   (cd tools/test-env && ./upload_setup.sh)
@@ -206,7 +213,7 @@ else
 fi
 cd "$ROOT_DIR"
 
-# Resolves PROOFMAN_DIR, defines generate_frops / compute_input_hash, and sets
+# Resolves PROOFMAN_DIR, defines generate_fixed_data / compute_input_hash, and sets
 # VERSION / INCLUDE_PATHS. See setup_common.sh for the contract.
 . "$SCRIPT_DIR/setup_common.sh"
 
@@ -289,6 +296,12 @@ run_pil_helpers() {
 # <build-dir>/provingKey/. No-op (exit 0) when nvcc is absent. Called from the
 # build path so the kernels land in provingKey/ *before* it is copied into the
 # cache — a subsequent cache hit then reuses them instead of regenerating.
+#
+# --stark-src is the one setup asset with no env-var escape hatch: gen-exps needs
+# the pil2-stark C++ headers to compile the kernels and defaults them to
+# <CARGO_MANIFEST_DIR>/../../pil2-stark, which only exists when proofman is a
+# git/path dep. Unlike the paths export_proofman_paths handles, this one has to be
+# passed as a flag, so keep it in step with $PROOFMAN_DIR here.
 run_gen_exps() {
   if ! command -v nvcc >/dev/null 2>&1; then
     echo "==> gen-exps (SKIPPED — nvcc not on PATH)" >&2
@@ -298,6 +311,7 @@ run_gen_exps() {
   cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
     --proving-key "$BUILD_DIR/provingKey" \
     --arch "$EXPS_ARCH" \
+    --stark-src "$PROOFMAN_DIR/pil2-stark" \
     ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
 }
 
@@ -306,14 +320,14 @@ run_gen_exps() {
 case "$MODE" in
 
   compile_pil)
-    generate_frops
+    generate_fixed_data
     run_compile_pil
     echo "done. pil/zisk.pilout and pil/src/pil_helpers/ regenerated."
     exit 0
     ;;
 
   stats)
-    generate_frops
+    generate_fixed_data
     run_compile_pil
     echo "==> proofman-setup stats"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
@@ -371,9 +385,11 @@ case "$MODE" in
       exit 0
     fi
     echo "==> proofman-setup gen-exps (arch: $EXPS_ARCH)"
+    # Keep --stark-src in step with run_gen_exps (see the comment there).
     cargo run --release --bin cargo-zisk-dev -- proofman-setup gen-exps \
       --proving-key "$BUILD_DIR/provingKey" \
       --arch "$EXPS_ARCH" \
+      --stark-src "$PROOFMAN_DIR/pil2-stark" \
       ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "done. .exps.so kernels regenerated under $BUILD_DIR/provingKey/"
     echo "to repackage the updated provingKey/: (cd tools/test-env && ./upload_setup.sh)"
@@ -382,15 +398,15 @@ case "$MODE" in
 
   print_hash)
     # Keep stdout clean: only compute_input_hash's 64-hex line goes to stdout
-    # (its own progress already goes to stderr). frops generation is noisy, so
+    # (its own progress already goes to stderr). fixed-data generation is noisy, so
     # send its output to stderr too — consumers capture stdout as the hash.
-    generate_frops 1>&2
+    generate_fixed_data 1>&2
     compute_input_hash
     exit 0
     ;;
 
   build|no_aggregation)
-    generate_frops
+    generate_fixed_data
     LOCAL_HASH="$(compute_input_hash)"
     echo "local input hash: $LOCAL_HASH"
 
@@ -406,7 +422,9 @@ case "$MODE" in
       [ "$MODE" = "no_aggregation" ] && cache_key="${short_hash}-no-aggregation"
       CACHE_ENTRY="$CACHE_DIR/$cache_platform/$cache_key"
 
-      if [ -d "$CACHE_ENTRY/provingKey" ]; then
+      if [ "${FORCE_SETUP_BUILD:-0}" = "1" ] && [ -d "$CACHE_ENTRY/provingKey" ]; then
+        echo "==> FORCE_SETUP_BUILD=1 — ignoring cache hit at $CACHE_ENTRY (will rebuild, then refresh)"
+      elif [ -d "$CACHE_ENTRY/provingKey" ]; then
         echo "==> cache hit: $CACHE_ENTRY (skipping compile-pil + setup)"
         rm -rf "$BUILD_DIR/provingKey"
         mkdir -p "$BUILD_DIR"

@@ -93,21 +93,35 @@ impl OpsCosts {
     }
 
     pub fn add_fixed_cost_op(&mut self, op_code: u8) {
-        if let Some((index, fixed_cost)) = TABLE.table[op_code as usize] {
-            // PubOut has a fixed cost of 0 but must still be counted, so that the
-            // aggregate counts (total_count()) stay consistent with the per-opcode
-            // count_and_cost table below.
-            let counted = fixed_cost > 0 || op_code == ZiskOp::PubOut.code();
+        match TABLE.table[op_code as usize] {
+            Some((_, fixed_cost)) => self.add_cost_op(op_code, fixed_cost),
+            None => panic!("Invalid op code: {}", op_code),
+        }
+    }
+
+    /// Accounts one execution of `op_code` charging an explicit `cost` instead of the opcode's
+    /// tabulated fixed cost. Used for cheaper opcode variants (e.g. an add_hi ADD charged at
+    /// `BINARY_ADD_HI_COST`), so the per-opcode and aggregate costs reflect the reduced cost.
+    pub fn add_cost_op(&mut self, op_code: u8, cost: u64) {
+        if let Some((index, _)) = TABLE.table[op_code as usize] {
+            // Some opcodes have a cost of 0 but must still be counted, so that the aggregate counts
+            // (total_count()) stay consistent with the per-opcode count_and_cost table below and
+            // they remain visible in the report: PubOut and the free-input calls (fcall*).
+            let counted = cost > 0
+                || op_code == ZiskOp::PubOut.code()
+                || op_code == ZiskOp::Fcall.code()
+                || op_code == ZiskOp::FcallGet.code()
+                || op_code == ZiskOp::FcallParam.code();
             if counted && !self.is_compact() {
                 self.count_and_cost[index].0 += 1;
-                self.count_and_cost[index].1 += fixed_cost;
+                self.count_and_cost[index].1 += cost;
             }
             if counted {
                 if index >= TABLE.base_count {
-                    self.precompiled_cost += fixed_cost;
+                    self.precompiled_cost += cost;
                     self.precompiled_count += 1;
                 } else {
-                    self.base_cost += fixed_cost;
+                    self.base_cost += cost;
                     self.base_count += 1;
                 }
             }

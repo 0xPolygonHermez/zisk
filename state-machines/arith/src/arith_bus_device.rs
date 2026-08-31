@@ -6,7 +6,7 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use fields::Goldilocks;
+use proofman_fields::Goldilocks;
 use std::collections::VecDeque;
 use zisk_common::{
     BusDevice, BusDeviceMode, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE,

@@ -161,7 +161,7 @@ pub(crate) fn reset_output() {
 #[allow(dead_code)]
 mod _interface_type_checks {
     use super::*;
-    use zkvm_interface as bindings;
+    use zisk_zkvm_interface as bindings;
 
     fn _check() {
         let _ = [bindings::read_input, super::read_input];

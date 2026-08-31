@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::SegmentId;
@@ -15,7 +15,7 @@ use crate::{
     dma_trace, Dma64AlignedInput, Dma64AlignedModule, DMA_64_ALIGNED_MEMSET_OPS_BY_ROW,
     F_SEL_MEMSET,
 };
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 
 /// The `Dma64AlignedMemSetSM` struct encapsulates the logic of the Dma64Aligned State Machine.
 pub struct Dma64AlignedMemSetSM<F: PrimeField64> {

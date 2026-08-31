@@ -34,7 +34,7 @@ use std::thread::JoinHandle;
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use std::sync::Arc;
 
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
+use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 use zisk_common::ExecutorStatsHandle;
 
@@ -179,9 +179,9 @@ fn join_runner_during_cleanup<T>(label: &str, handle: JoinHandle<ExecutorResult<
 mod tests {
     use super::*;
     use crate::error::ExecutorError;
-    use asm_runner::AsmRHData;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+    use zisk_asm_runner::AsmRHData;
 
     /// Spawn a no-op MO runner that returns an empty `AsmRunnerMO`.
     fn spawn_canned_mo() -> JoinHandle<ExecutorResult<AsmRunnerMO>> {

@@ -5,13 +5,14 @@ pub const BINARY_ADD_COST: u64 = 25;
 pub const BINARY_E_COST: u64 = 56;
 pub const ARITHA32_COST: u64 = 97;
 pub const ARITHAM32_COST: u64 = 97;
-pub const KECCAK_COST: u64 = 25 * 3023;
+pub const KECCAK_COST: u64 = 2652 * 29 / 2;
 pub const SHA256_COST: u64 = 72 * 122;
 pub const POSEIDON_COST: u64 = 14 * 392;
 pub const ARITH_EQ_COST: u64 = 90 * 16;
 pub const FCALL_COST: u64 = INTERNAL_COST;
 pub const ARITH_EQ_384_COST: u64 = 80 * 24;
 pub const ADD256_COST: u64 = 104;
+pub const BABYJUBJUB_COST: u64 = ARITH_EQ_COST;
 pub const BLAKE2_COST: u64 = 24 * 209;
 pub const MAIN_COST: u64 = 68;
 
@@ -46,6 +47,7 @@ pub const DMA_INPUTCPY_COST: u64 = 40;
 pub const DMA_MEMCMP_COST: u64 = DMA_COST;
 pub const DMA_MEMCPY_COST: u64 = 46;
 pub const DMA_MEMSET_COST: u64 = DMA_COST;
+pub const JUMP_DEST_COST: u64 = 63 * 4; // Cost for computing the jumpdest bitmap 1 64-bit word
 
 // Costs for DMA PrePost
 

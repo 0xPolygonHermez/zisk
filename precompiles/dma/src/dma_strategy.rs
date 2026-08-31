@@ -18,7 +18,7 @@ use crate::{
 #[cfg(feature = "save_dma_plans")]
 use crate::get_dma_air_name;
 
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use zisk_common::{BusDeviceMetrics, BusDeviceMode, CheckPoint, ChunkId};
 use zisk_core::{
     DMA_64_ALIGNED_COST, DMA_64_ALIGNED_INPUTCPY_COST, DMA_64_ALIGNED_MEMCPY_COST,
@@ -207,7 +207,11 @@ impl<F: PrimeField64> DmaStrategy<F> {
         info.inputcpy = rows_inputcpy.div_ceil(rows_x_inputcpy_instance);
 
         let remain_dma = rows_full % rows_x_full_instance;
-        let available_on_dma = if rows_full == 0 { 0 } else { rows_x_full_instance - remain_dma };
+        // Free rows left in the tail of the last full instance. When `rows_full` is an exact
+        // multiple of the capacity (0 included) that last instance is completely full, so there is
+        // nothing available: the outer `%` is what keeps `rows_x_full_instance - 0` from being read
+        // as a whole free instance, which would overflow `info.full` and panic the builder.
+        let available_on_dma = (rows_x_full_instance - remain_dma) % rows_x_full_instance;
         let remain_dma_memcpy = rows_memcpy % rows_x_memcpy_instance;
         let remain_dma_inputcpy = rows_inputcpy % rows_x_inputcpy_instance;
         let remain = remain_dma_memcpy + remain_dma_inputcpy;
@@ -780,3 +784,7 @@ impl<F: PrimeField64> DmaStrategy<F> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "tests/dma_strategy_tests.rs"]
+mod tests;

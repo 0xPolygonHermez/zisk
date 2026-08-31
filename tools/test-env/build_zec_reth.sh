@@ -31,12 +31,21 @@ main() {
         fi
     fi
 
+    # Also covers DISABLE_CLONE_REPO=1, where the checkout is reused as-is.
+    ensure_submodules "zisk-eth-client" || return 1
+
     GUEST_DIR="zisk-eth-client/bin/guests/stateless-validator-reth"
     ELF_FILE="${GUEST_DIR}/target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth"
     GUEST_CARGO_TOML="${GUEST_DIR}/Cargo.toml"
     CLIENT_CARGO_TOML="zisk-eth-client/Cargo.toml"
 
     step "Patching Cargo.toml files to use local zisk repo..."
+
+    # `cargo-zisk build` takes no --locked, so the lock is pinned here instead, while
+    # the checkout is still pristine. This ELF and the native ethproofs build both
+    # deserialize the same pre-generated input files, so a third-party dependency
+    # drifting between them silently desyncs those formats.
+    verify_cargo_lock "${GUEST_DIR}" || return 1
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         # GNU sed
@@ -53,10 +62,11 @@ main() {
     # Guest Cargo.toml: only depends on ziskos.
     patch_cargo_dep "${GUEST_CARGO_TOML}" "ziskos" "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
-    # Client Cargo.toml: depends on zisk-sdk, zkvm-interface and ziskos.
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"       "${ZISK_REPO_DIR}/sdk"               || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"         "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
+    # Client Cargo.toml: depends on zisk-sdk, zisk-zkvm-interface and ziskos.
+    # (zisk-zkvm-interface was renamed from zkvm-interface; the on-disk dir is still zkvm-interface.)
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"            "${ZISK_REPO_DIR}/sdk"               || return 1
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
+    patch_cargo_dep "${CLIENT_CARGO_TOML}" "ziskos"              "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
     step "Building zec-reth ELF..."
     ensure cd "${GUEST_DIR}" || return 1

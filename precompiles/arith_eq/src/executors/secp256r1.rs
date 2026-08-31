@@ -2,7 +2,7 @@ use super::ArithEqData;
 use lazy_static::lazy_static;
 use num_bigint::BigInt;
 use num_traits::Zero;
-use precompiles_helpers::{bigint2_to_8_u64, bigint_from_field, bigint_to_16_chunks};
+use zisk_precomp_helpers::{bigint2_to_8_u64, bigint_from_field, bigint_to_16_chunks};
 
 use crate::equations;
 use ark_secp256r1::Fq as Secp256r1Field;

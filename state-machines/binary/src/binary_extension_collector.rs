@@ -2,14 +2,16 @@
 //!
 //! It manages collected inputs for the `BinaryExtensionSM` to compute witnesses
 
-use crate::{BinaryExtensionFrops, BinaryInput};
+use crate::{
+    extension_requires_full, BinaryCollectCursor, BinaryExtensionFrops, BinaryInput, ChunkCollect,
+    CollectAction, EXT_KINDS, KIND_EXT_CLEAN, KIND_EXT_DIRTY,
+};
 use zisk_common::{
-    BusDevice, BusId, CollectSkipper, ExtOperationData, OperationBusData, A, B, OP,
-    OPERATION_BUS_ID,
+    BusDevice, BusId, ExtOperationData, OperationBusData, A, B, OP, OPERATION_BUS_ID,
 };
 
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
+use proofman_fields::PrimeField64;
 use std::sync::Arc;
 
 use zisk_core::ZiskOperationType;
@@ -19,11 +21,8 @@ pub struct BinaryExtensionCollector<F: PrimeField64> {
     /// Collected inputs for witness computation.
     pub inputs: Vec<BinaryInput>,
 
-    pub num_operations: usize,
-    pub collect_skipper: CollectSkipper,
-
-    /// Flag to indicate that force to execute to end of chunk
-    force_execute_to_end: bool,
+    /// Decides, operation by operation, what belongs to this instance.
+    cursor: BinaryCollectCursor<EXT_KINDS>,
 
     /// The table ID for the Binary Extension FROPS
     frops_table_id: usize,
@@ -33,23 +32,20 @@ pub struct BinaryExtensionCollector<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> BinaryExtensionCollector<F> {
-    pub fn new(
-        num_operations: usize,
-        collect_skipper: CollectSkipper,
-        force_execute_to_end: bool,
-        std: Arc<Std<F>>,
-    ) -> Self {
+    /// Creates a new `BinaryExtensionCollector`.
+    ///
+    /// # Arguments
+    /// * `collect` - What this instance takes from the chunk: a `(count, skip)` per kind of
+    ///   operation, plus which of the chunk's frequent operations it accounts for.
+    /// * `std` - PIL2 standard library utilities.
+    ///
+    /// # Returns
+    /// A new `BinaryExtensionCollector` ready to replay the chunk.
+    pub fn new(collect: ChunkCollect<EXT_KINDS>, std: Arc<Std<F>>) -> Self {
         let frops_table_id = std
             .get_virtual_table_id(BinaryExtensionFrops::TABLE_ID)
             .expect("Failed to get FROPS table ID");
-        Self {
-            inputs: Vec::with_capacity(num_operations),
-            num_operations,
-            collect_skipper,
-            force_execute_to_end,
-            frops_table_id,
-            std,
-        }
+        Self { inputs: Vec::new(), cursor: BinaryCollectCursor::new(collect), frops_table_id, std }
     }
 
     /// Processes data received on the bus, collecting the inputs necessary for witness computation.
@@ -65,40 +61,35 @@ impl<F: PrimeField64> BinaryExtensionCollector<F> {
     #[inline(always)]
     pub fn process_data(&mut self, bus_id: &BusId, data: &[u64]) -> bool {
         debug_assert!(*bus_id == OPERATION_BUS_ID);
-        let instance_complete = self.inputs.len() == self.num_operations;
-
-        if instance_complete && !self.force_execute_to_end {
-            return false;
-        }
-
-        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
 
         let op_data: ExtOperationData<u64> =
             data.try_into().expect("Regular Metrics: Failed to convert data");
 
-        let op_type = OperationBusData::get_op_type(&op_data);
-
-        if op_type as u32 != ZiskOperationType::BinaryE as u32 {
+        if OperationBusData::get_op_type(&op_data) as u32 != ZiskOperationType::BinaryE as u32 {
             return true;
         }
 
-        if self.collect_skipper.should_skip_query(frops_row == BinaryExtensionFrops::NO_FROPS) {
-            return true;
+        // Operations whose unused operand parts are dirty can only be proven by the full air.
+        let kind = if extension_requires_full(data[OP] as u8, data[A], data[B]) {
+            KIND_EXT_DIRTY
+        } else {
+            KIND_EXT_CLEAN
+        };
+
+        let frops_row = BinaryExtensionFrops::get_row(data[OP] as u8, data[A], data[B]);
+
+        match self.cursor.next(kind, frops_row != BinaryExtensionFrops::NO_FROPS) {
+            CollectAction::Stop => false,
+            CollectAction::Pass => true,
+            CollectAction::CountFrop => {
+                self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
+                true
+            }
+            CollectAction::Collect => {
+                self.inputs.push(BinaryInput::from(&op_data));
+                !self.cursor.is_done()
+            }
         }
-
-        if frops_row != BinaryExtensionFrops::NO_FROPS {
-            self.std.inc_virtual_row_one(self.frops_table_id, frops_row);
-            return true;
-        }
-
-        if instance_complete {
-            // instance complete => no FROPS operation => discard, inputs complete
-            return true;
-        }
-
-        self.inputs.push(BinaryInput::from(&op_data));
-
-        self.inputs.len() < self.num_operations || self.force_execute_to_end
     }
 }
 

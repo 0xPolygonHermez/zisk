@@ -10,9 +10,8 @@
 //! 3. Executes chunks and routes data to the appropriate collectors
 
 use crossbeam::atomic::AtomicCell;
-use data_bus::DataBusTrait;
-use fields::PrimeField64;
 use proofman_common::ProofCtx;
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::{
     collections::HashMap,
@@ -24,14 +23,14 @@ use std::{
 };
 use tracing::error;
 use zisk_common::{
-    CheckPoint, ChunkId, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
+    CheckPoint, ChunkId, DataBusTrait, EmuTrace, ExecutorStatsHandle, Instance, PayloadType, Stats,
 };
 use zisk_core::ZiskRom;
 use ziskemu::ZiskEmulator;
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
 use crate::{state::ChunkCollector, ExecutionState, StaticDataBusCollect, StaticSMBundle};
-use asm_runner::AsmRunnerRH;
+use zisk_asm_runner::AsmRunnerRH;
 
 /// Per-instance chunk-collector slot map. Same shape as
 /// [`crate::ChunkCollectorStore::inner`].
@@ -49,7 +48,7 @@ struct WorkerCtx<'a, F: PrimeField64> {
 
     // ── Inputs ──
     zisk_rom: &'a ZiskRom,
-    min_traces: &'a [EmuTrace],
+    min_traces: &'a [Arc<EmuTrace>],
     pctx: &'a ProofCtx<F>,
 
     // ── Output sinks ──
@@ -110,7 +109,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
     /// - `global_id_chunks[global_id]` = list of chunk_ids this instance needs
     pub fn compute_chunks_to_execute(
         &self,
-        min_traces: &[EmuTrace],
+        min_traces: &[Arc<EmuTrace>],
         secn_instances: &HashMap<usize, &dyn Instance<F>>,
     ) -> (Vec<Vec<usize>>, HashMap<usize, Vec<usize>>) {
         let mut chunks_to_execute = vec![Vec::new(); min_traces.len()];
@@ -419,8 +418,7 @@ impl<F: PrimeField64> ChunkDataCollector<F> {
         // Run the emulator over this chunk's traces.
         ZiskEmulator::process_emu_traces::<F, _, _>(
             ctx.zisk_rom,
-            ctx.min_traces,
-            chunk_id,
+            &ctx.min_traces[chunk_id],
             &mut data_bus,
         );
 

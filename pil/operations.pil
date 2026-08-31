@@ -11,7 +11,7 @@
       - DMA Operations:
         - 0xDA-0xDF
       - Precompiles:
-        - 0xE1-0xEA
+        - 0xE1-0xED
         - 0xF0-0xF5
         - 0xF9-0xFE
       - Misc:
@@ -108,6 +108,8 @@ const int OP_REMU_W = 0xBD;
 const int OP_DIV_W = 0xBE;
 const int OP_REM_W = 0xBF;
 
+const int OP_JUMP_DEST = 0xC0;
+
 const int OP_DMA_MEMCPY = 0xD0;
 const int OP_DMA_MEMCMP = 0xD1;
 const int OP_DMA_INPUTCPY = 0xD2;
@@ -135,6 +137,8 @@ const int OP_BLAKE2BR = 0xEA;
 
 const int OP_POSEIDON2 = 0xEB;
 const int OP_POSEIDON1 = 0xEC;
+
+const int OP_BABYJUBJUB_ADD = 0xED;
 
 const int OP_ADD256 = 0xF0;
 const int OP_KECCAKF = 0xF1;

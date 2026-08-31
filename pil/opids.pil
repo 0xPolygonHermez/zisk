@@ -5,6 +5,7 @@ const int OPERATION_BUS_ID = 5000;
 const int MAIN_CONTINUATION_ID = 1000;
 const int MEMORY_CONTINUATION_ID = 11;
 const int ROM_DATA_CONTINUATION_ID = 12;
+
 // ROM id
 const int ROM_BUS_ID = 7890;
 
@@ -27,15 +28,21 @@ const int BINARY_EXTENSION_FROPS_TABLE_ID = 5012;
 
 // Precompiles
 const int ARITH_EQ_LT_TABLE_ID = 5002;
-const int KECCAKF_TABLE_ID = 126;
-const int BLAKE2BR_PERMUTATION_ID = 127;
-const int BLAKE2BR_TABLE_ID = 128;
+const int KECCAKF_CHI_TABLE_ID = 126;
+const int KECCAKF_XOR5_TABLE_ID = 127;
+const int BLAKE2BR_PERMUTATION_ID = 128;
+const int BLAKE2BR_TABLE_ID = 129;
 
 // DMA
 const int DMA_BUS_ID = 8000;
 const int DMA_ROM_ID = 8001;
 const int DMA_PRE_POST_TABLE_ID = 8002;
 const int DMA_BYTE_CMP_TABLE_ID = 8003;
+
+// EVM
+const int JUMP_DEST_CONT_ID = 8100;
+const int JUMP_DEST_COMPRESSOR_TABLE_ID = 8101;
+const int JUMP_DEST_BITMAP_TABLE_ID = 8102;
 
 // Ranges
 const int DUAL_RANGE_7_BITS_ID = 77;

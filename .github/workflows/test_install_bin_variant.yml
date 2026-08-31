@@ -1,0 +1,191 @@
+name: Test ZisK Installation (binaries, variant)
+
+# Reusable workflow that installs ZisK from the published binaries on a bare
+# Ubuntu container and runs the quickstart test against it. It is called once
+# per variant (CPU and GPU) by test_install_bin.yml.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'JSON value for runs-on, e.g. ''"rocket"'' or ''{"group":"zisk-gpu"}'''
+        required: true
+        type: string
+      variant:
+        description: 'ZisK bundle to install and test: "cpu" or "gpu"'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  install-bin:
+    name: Install ZisK from binaries (${{ inputs.variant }})
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 120
+    # NOTE: We intentionally use 'docker exec' in individual steps rather than
+    # defining a job-level container, the same approach as the test-x86_64 job
+    # in pr.yml: the zisk-gpu runners need a privileged container with GPU
+    # access, which GitHub Actions job-level containers do not provide.
+    # The image is a plain Ubuntu because installing the ZisK dependencies and
+    # the ziskup bundle is what this job tests.
+    defaults:
+      run:
+        shell: bash
+    env:
+      TEST_CONTAINER: zisk-gha-install-bin-${{ inputs.variant }}
+      # The CPU runners have no NVIDIA runtime, so the container must not ask
+      # for GPU access there.
+      RUNNER_WITH_GPU: ${{ inputs.variant == 'gpu' && '1' || '0' }}
+      # Read by test_quickstart.sh to run only the --gpu combinations. There is no
+      # ONLY_CPU counterpart: the CPU variant installs the CPU bundle of
+      # cargo-zisk, which the script already detects as having no GPU support.
+      ONLY_GPU: ${{ inputs.variant == 'gpu' && '1' || '0' }}
+      CARGO_BUILD_JOBS: 1
+      CARGO_INCREMENTAL: 0
+
+    steps:
+      - name: Fix workspace permissions
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true
+
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Start bare container
+        run: .github/scripts/start_bare_container.sh
+
+      - name: Check resources
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c '
+              echo "CPUs: $(nproc)"
+              free -h
+              nvidia-smi || true
+            '
+
+      - name: Install tools
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c '
+              set -eo pipefail
+              apt-get update
+              apt-get install -y curl git
+            '
+
+      - name: Install rust toolchain
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c '
+              set -eo pipefail
+              curl --proto =https --tlsv1.2 -sSf https://sh.rustup.rs \
+                | sh -s -- -y --profile default --default-toolchain stable
+              rustc --version
+            '
+
+      - name: Install ZisK dependencies
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c '
+              set -eo pipefail
+              apt-get install -y \
+                xz-utils jq curl build-essential qemu-system libomp-dev libgmp-dev \
+                nlohmann-json3-dev protobuf-compiler uuid-dev libgrpc++-dev \
+                libsecp256k1-dev libsodium-dev libpqxx-dev nasm libopenmpi-dev \
+                openmpi-bin openmpi-common libclang-dev clang gcc-riscv64-unknown-elf \
+                ca-certificates gnupg
+              # snarkjs needs Node.js, which the bare image does not ship. Same
+              # 20.x source that tools/test-env/install_deps.sh uses.
+              curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+              apt-get install -y nodejs
+              npm install -g snarkjs@latest
+              # `snarkjs --version` prints the version but exits 99, so the
+              # installed package is checked through npm instead.
+              npm ls -g --depth=0 snarkjs
+            '
+
+      - name: Install and run ziskup
+        # The variant is requested explicitly (--cpu/--gpu) instead of relying on
+        # GH_RUNNER=1, which forces the CPU bundle and would leave the GPU job
+        # without a GPU build to test. --provingkey is what GH_RUNNER installed.
+        run: |
+          .github/scripts/docker_exec.sh \
+            -e ZISK_VARIANT="${{ inputs.variant }}" \
+            -- bash -c '
+              set -eo pipefail
+              cd "$HOME"
+              curl -s -o install.sh https://raw.githubusercontent.com/0xPolygonHermez/zisk/main/ziskup/install.sh
+              chmod +x install.sh
+              ./install.sh --provingkey "--${ZISK_VARIANT}" -y
+            '
+
+      - name: Set stable as default Rust toolchain
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c 'rustup default stable'
+
+      - name: Install PLONK setup
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c '
+              if ! ziskup setup_snark; then
+                echo "❌ Install PLONK setup failed"
+                exit 1
+              fi
+            '
+
+      - name: Clone ZisK repository
+        # The programs under test always come from the default branch, which is
+        # what the published binaries were built from.
+        run: |
+          .github/scripts/docker_exec.sh \
+            -- bash -c '
+              set -eo pipefail
+              cd "$HOME"
+              git clone https://github.com/0xPolygonHermez/zisk.git
+            '
+
+      - name: Clone test scripts from the current ref
+        # On a manual run the test-env scripts come from the branch/tag the
+        # workflow was launched from, so changes to them can be tried out before
+        # they reach the default branch. The programs they test still come from
+        # the default-branch clone above. Nothing to do on a release run: there
+        # the scripts are taken from that same clone.
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          .github/scripts/docker_exec.sh \
+            -e ZISK_SCRIPTS_REF="${{ github.ref_name }}" \
+            -- bash -c '
+              set -eo pipefail
+              cd "$HOME"
+              echo "Cloning test scripts at ref ${ZISK_SCRIPTS_REF}..."
+              git clone --branch "$ZISK_SCRIPTS_REF" --depth 1 --single-branch \
+                https://github.com/0xPolygonHermez/zisk.git zisk-scripts
+            '
+
+      - name: Run quickstart test
+        env:
+          ZISK_SCRIPTS_DIR: ${{ github.event_name == 'workflow_dispatch' && 'zisk-scripts' || 'zisk' }}
+        run: |
+          .github/scripts/docker_exec.sh \
+            -e ZISK_GHA=1 \
+            -e ONLY_GPU="${ONLY_GPU}" \
+            -e ZISK_SCRIPTS_DIR="${ZISK_SCRIPTS_DIR}" \
+            -- bash -c '
+              set -eo pipefail
+              # The test-env scripts must be run from their own directory (they
+              # source ./utils.sh) and resolve the repository holding the programs
+              # under test through ZISK_REPO_DIR, so the two clones stay separate.
+              export ZISK_REPO_DIR="$HOME/zisk"
+              cd "$HOME/$ZISK_SCRIPTS_DIR/tools/test-env"
+              ./test_quickstart.sh
+            '
+
+      - name: Stop bare container
+        if: always()
+        run: |
+          docker rm -f "${TEST_CONTAINER}" || true
+          sudo chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE" || true
+          sudo chmod -R u+rwX "$GITHUB_WORKSPACE" || true

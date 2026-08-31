@@ -1,6 +1,6 @@
 use std::error::Error;
-use test_artifacts::ELF_FIB_MOD;
 use zisk_sdk::{EmbeddedOpts, ProverClient, ZiskStdin};
+use zisk_test_artifacts::ELF_FIB_MOD;
 
 fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting ZisK Prover Client...\n");

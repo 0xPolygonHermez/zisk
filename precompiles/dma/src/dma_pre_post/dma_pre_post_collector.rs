@@ -3,9 +3,9 @@
 
 use std::any::Any;
 
-use precompiles_helpers::DmaInfo;
 use zisk_common::{BusDevice, BusId, ChunkId, DMA_ENCODED, OP, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
+use zisk_precomp_helpers::DmaInfo;
 
 use crate::{DmaCollectCounters, DmaCollectorRoutingLog, DmaPrePostInput};
 

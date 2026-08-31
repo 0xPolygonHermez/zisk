@@ -6,7 +6,7 @@
 pub struct Blake2brTableSM;
 
 impl Blake2brTableSM {
-    pub const TABLE_ID: usize = 128;
+    pub const TABLE_ID: usize = 129;
 
     /// Calculates the table row for the XOR tuple (a, b, a ^ b).
     ///

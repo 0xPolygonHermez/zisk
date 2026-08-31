@@ -19,8 +19,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod sha256f_tests {
-    use test_artifacts::ELF_SHA256;
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::ELF_SHA256;
 
     /// Number of `syscall_sha256_f` invocations the guest will perform.
     const NUM_SHA256FS: u64 = 10;

@@ -1,5 +1,5 @@
 [package]
-name = "test-artifacts"
+name = "zisk-test-artifacts"
 description = "Compiled Zisk guest ELFs used as fixtures by other crates' tests and benchmarks."
 readme = "README.md"
 version = "1.0.0"
@@ -24,11 +24,11 @@ default = ["all"]
 # use, e.g. `test-artifacts = { workspace = true, default-features = false, features = ["fib_mod"] }`.
 all = [
   "add256", "agg_verify", "arith256", "arith256_mod", "arith384_mod",
-  "big_input", "bigint", "blake2", "bls12_381", "bls12_381_add",
+  "babyjubjub_add", "big_input", "bigint", "blake2", "bls12_381", "bls12_381_add",
   "bls12_381_complex_add", "bls12_381_complex_mul", "bls12_381_complex_sub",
   "bls12_381_dbl", "bn254", "bn254_add", "bn254_complex_add",
   "bn254_complex_mul", "bn254_complex_sub", "bn254_dbl", "diagnostic",
-  "diagnostic-hints", "fib_mod", "hashes", "keccak", "liveness",
+  "diagnostic-hints", "fib_mod", "hashes", "keccak", "keccakf_cache", "liveness",
   "missing_entrypoint", "panic_modes", "poseidon1", "poseidon2", "secp256k1",
   "secp256k1_add", "secp256k1_dbl", "secp256r1", "secp256r1_add",
   "secp256r1_dbl", "sha256", "uint256",
@@ -42,6 +42,7 @@ agg_verify = []
 arith256 = []
 arith256_mod = []
 arith384_mod = []
+babyjubjub_add = []
 big_input = []
 bigint = []
 blake2 = []
@@ -62,6 +63,7 @@ diagnostic-hints = []
 fib_mod = []
 hashes = []
 keccak = []
+keccakf_cache = []
 liveness = []
 missing_entrypoint = []
 panic_modes = []

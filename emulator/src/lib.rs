@@ -2,7 +2,7 @@
 //! the corresponding output data, according to the configured options.
 //!
 //! ```text
-//! ELF file --> riscv2zisk --> ZiskRom    \
+//! ELF file --> zisk_transpiler_riscv --> ZiskRom    \
 //!                                         |
 //! ZiskRom ------------------> ZiskInst's  |
 //!     \--> RO data                         > Emu --> Output data, statistics, metrics, logs...
@@ -23,6 +23,8 @@ mod emu_reg_trace;
 mod emu_segment;
 mod emulator;
 mod emulator_errors;
+mod reg_step_check;
+pub mod report;
 pub mod stats;
 
 pub use disasm::*;
@@ -36,5 +38,6 @@ pub use emu_reg_trace::*;
 pub use emu_segment::*;
 pub use emulator::*;
 pub use emulator_errors::*;
+pub use reg_step_check::*;
 pub use stats::*;
 pub use zisk_common::ProfilingMode;

@@ -20,6 +20,15 @@ fi
 
 IMAGE="${IMAGE:-ziskvm/zisk-runner-gpu:latest}"
 
+# GPU access is requested unless RUNNER_WITH_GPU is set to 0: a runner without a
+# GPU has no NVIDIA container runtime, and 'docker run --gpus all' fails
+# outright there. Such a runner also needs IMAGE=ziskvm/zisk-runner:latest, the
+# image built without CUDA.
+GPU_ARGS=()
+if [[ "${RUNNER_WITH_GPU:-1}" == "1" ]]; then
+    GPU_ARGS+=(--gpus all)
+fi
+
 docker rm -f "${TEST_CONTAINER}" || true
 
 docker run -d \
@@ -27,7 +36,7 @@ docker run -d \
     --pull=always \
     --privileged \
     --cgroupns=host \
-    --gpus all \
+    "${GPU_ARGS[@]}" \
     --shm-size=48g \
     -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
     -v "$GITHUB_WORKSPACE":/workspace/zisk:rw \

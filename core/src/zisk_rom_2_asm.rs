@@ -260,6 +260,7 @@ impl ZiskAsmContext {
                 | ZiskOp::Secp256r1Add
                 | ZiskOp::Secp256r1Dbl
                 | ZiskOp::Blake2
+                | ZiskOp::BabyJubJubAdd
         )
     }
 
@@ -288,6 +289,9 @@ impl ZiskAsmContext {
         self.precompile_results()
     }
     pub fn precompile_results_secp256r1dbl(&self) -> bool {
+        self.precompile_results()
+    }
+    pub fn precompile_results_babyjubjubadd(&self) -> bool {
         self.precompile_results()
     }
     pub fn precompile_results_fcall(&self) -> bool {
@@ -631,6 +635,7 @@ impl ZiskRom2Asm {
         *code += ".extern opcode_secp256k1_dbl\n";
         *code += ".extern opcode_secp256r1_add\n";
         *code += ".extern opcode_secp256r1_dbl\n";
+        *code += ".extern opcode_babyjubjub_add\n";
         *code += ".extern opcode_fcall\n";
         *code += ".extern opcode_bn254_curve_add\n";
         *code += ".extern opcode_bn254_curve_dbl\n";
@@ -6156,6 +6161,44 @@ impl ZiskRom2Asm {
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }
+            ZiskOp::BabyJubJubAdd => {
+                *code += &ctx.full_line_comment("BabyJubJubAdd".to_string());
+
+                // Use the memory address as the first and unique parameter
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rdi = b = address")
+                );
+
+                // Save data into mem_reads
+                if ctx.minimal_trace() {
+                    Self::precompiled_save_mem_reads(ctx, code, 2, &[8, 8]);
+                }
+
+                // Save memory operations into mem_reads
+                if ctx.mem_op() {
+                    Self::mem_op_precompiled_read_and_write(ctx, code, 2, &[8, 8], 0, 0, 8);
+                }
+
+                // Get result from precompile results data
+                if ctx.precompile_results_babyjubjubadd() {
+                    *code += "\tmov rdi, [rdi]\n";
+                    Self::precompile_results_array(ctx, code, unusual_code, "rdi", 8);
+                } else {
+                    // Call the babyjubjub_add function
+                    Self::push_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                    *code += "\tcall _opcode_babyjubjub_add\n";
+                    Self::pop_internal_registers(ctx, code, false);
+                    //Self::assert_rsp_is_aligned(ctx, code);
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
             ZiskOp::DmaMemCpy | ZiskOp::DmaXMemCpy => {
                 // Use the memory address as the first and unique parameter
                 *code += &ctx.full_line_comment("DmaMemCpy".to_string());
@@ -6388,6 +6431,53 @@ impl ZiskRom2Asm {
                     ctx.a.string_value,
                     ctx.comment_str("c = a = destination")
                 );
+                ctx.c.is_saved = true;
+                ctx.flag_is_always_zero = true;
+            }
+            ZiskOp::JumpDest => {
+                *code += &ctx.full_line_comment("JumpDest".to_string());
+
+                *code += &format!(
+                    "\tmov rdi, {} {}\n",
+                    ctx.a.string_value,
+                    ctx.comment_str("rdi = a = bitmap")
+                );
+                *code += &format!(
+                    "\tmov rsi, {} {}\n",
+                    ctx.b.string_value,
+                    ctx.comment_str("rsi = b = bytecode")
+                );
+                *code += &format!(
+                    "\tmov rdx, 0x{:08x} {}\n",
+                    EXTRA_PARAMS_ADDR,
+                    ctx.comment_str("rdx = @EXTERN_PARAM")
+                );
+                *code += &format!("\tmov rdx, [rdx] {}\n", ctx.comment_str("rdx = [EXTERN_PARAM]"));
+
+                assert_eq!(REG_MEM_READS_ADDRESS, "r12");
+                assert_eq!(REG_MEM_READS_SIZE, "r13");
+
+                match ctx.mode {
+                    AsmGenerationMethod::AsmMinimalTraces => {
+                        // The trace carries the whole source range, 1 + count/8
+                        // qwords, so it needs the dynamic trace check.
+                        *code += "\tcall direct_jump_dest_mtrace_with_count_check\n";
+                    }
+                    AsmGenerationMethod::AsmRomHistogram | AsmGenerationMethod::AsmFast => {
+                        // ROM hasn't a variable trace, only multiplicities
+                        *code += "\tcall jump_dest_fast\n";
+                    }
+                    AsmGenerationMethod::AsmMemOp => {
+                        // Unlike the DMA ops, the mops count is not bounded by a
+                        // constant: loads can alternate word on / word off, so the
+                        // reads cost up to ceil(count/16) entries on top of the
+                        // EXTRA_PARAM read and the bitmap write block.
+                        *code += "\tcall direct_jump_dest_mops_with_count_check\n";
+                    }
+                }
+
+                // Set result
+                *code += &format!("\txor {}, {} {}\n", REG_C, REG_C, ctx.comment_str("c = 0"));
                 ctx.c.is_saved = true;
                 ctx.flag_is_always_zero = true;
             }

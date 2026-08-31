@@ -20,19 +20,19 @@ use zisk_pil::{
 };
 
 use anyhow::{anyhow, Result};
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
+use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
     StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
+use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
@@ -198,12 +198,20 @@ impl BackendProverOpts {
             options.packed();
         }
 
-        // Only call packed_info when packed or gpu is enabled
-        if self.packed || self.gpu {
+        // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
+        // is the single source of truth — gpu() force-enables it and the executor's row-type gate
+        // reads the same flag — so the two sides can't diverge.
+        if options.packed {
             options.packed_info(get_packed_info());
         }
 
         options.verbose_mode(self.verbose.into());
+
+        // The plonk wrapper borrows the GPU unified buffer; proofman pads the arena to the
+        // snark floor only when told a final snark will run.
+        if self.plonk {
+            options.final_snark();
+        }
 
         if !self.aggregation || self.verify_constraints {
             options.no_aggregation();

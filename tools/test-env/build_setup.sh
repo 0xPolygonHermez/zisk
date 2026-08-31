@@ -5,8 +5,11 @@
 # Env vars (loaded from .env / shell / Cargo.toml via load_env):
 #   USE_CACHE_SETUP              Reuse/populate a local provingKey cache under
 #                                $OUTPUT_DIR, keyed by <platform>/<input-hash>.
+#   FORCE_SETUP_BUILD            Ignore a cache hit and rebuild the setup (the
+#                                fresh build then refreshes the cache entry).
 #   DISABLE_RECURSIVE_SETUP      Build without aggregation (setup without -r).
-#   INSTALL_SETUP                Install the provingKey into $HOME/.zisk
+#   INSTALL_SETUP                Install the provingKey into $HOME/.zisk, plus the
+#                                provingKeySnark when the build produced one.
 #   INCLUDE_SNARK                After the proving key, also build the snark setup
 #                                (provingKeySnark/). Needs state-machines/publics.json
 #                                and the powers-of-tau file (PTAU_PATH).
@@ -48,8 +51,8 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP DISABLE_RECURSIVE_SETUP \
-        INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
+    load_env ZISK_REPO_DIR PIL2_COMPILER_BRANCH USE_CACHE_SETUP FORCE_SETUP_BUILD \
+        DISABLE_RECURSIVE_SETUP INSTALL_SETUP INCLUDE_SNARK DYLIB_INPUT_FILES \
         HASH PTAU_PATH RECURSIVE_JOBS SETUP_JOBS || return 1
 
     # Default the hash function when neither the shell, .env, nor Cargo.toml set
@@ -99,10 +102,17 @@ main() {
     fi
 
     if [[ "${INSTALL_SETUP}" == "1" ]]; then
-        step "Copying provingKey directory to \$HOME/.zisk directory..."
+        step "Copying proving key directories to \$HOME/.zisk directory..."
         ensure mkdir -p "$HOME/.zisk" || return 1
         ensure rm -rf "$HOME/.zisk/provingKey" || return 1
         ensure cp -R "${ZISK_REPO}/build/provingKey" "$HOME/.zisk" || return 1
+
+        # The snark proving key goes with it whenever the build produced one
+        # (INCLUDE_SNARK=1), to the same place `ziskup setup_snark` installs it.
+        if [[ -d "${ZISK_REPO}/build/provingKeySnark" ]]; then
+            ensure rm -rf "$HOME/.zisk/provingKeySnark" || return 1
+            ensure cp -R "${ZISK_REPO}/build/provingKeySnark" "$HOME/.zisk" || return 1
+        fi
     fi
 
     success "ZisK setup completed successfully!"

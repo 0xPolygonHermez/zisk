@@ -1,4 +1,4 @@
-use zkvm_interface::{zkvm_modexp, zkvm_status_ZKVM_EOK as ZKVM_EOK};
+use zisk_zkvm_interface::{zkvm_modexp, zkvm_status_ZKVM_EOK as ZKVM_EOK};
 
 pub fn diagnostic_zkvm_modexp() {
     // 2^3 mod 5 = 3

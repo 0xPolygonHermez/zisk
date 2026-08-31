@@ -5,9 +5,9 @@ use std::time::Instant;
 #[cfg(any(feature = "test_data", feature = "test_data_secp256k1"))]
 mod test_data;
 #[cfg(any(feature = "test_data", feature = "test_data_secp256k1"))]
-use precompiles_helpers::{secp256k1_add, secp256k1_dbl};
-#[cfg(any(feature = "test_data", feature = "test_data_secp256k1"))]
 use test_data::{get_secp256k1_add_test_data, get_secp256k1_dbl_test_data};
+#[cfg(any(feature = "test_data", feature = "test_data_secp256k1"))]
+use zisk_precomp_helpers::{secp256k1_add, secp256k1_dbl};
 fn verify_secp256k1_add(test_id: usize, p1: &[u64; 8], p2: &[u64; 8], p: &mut [u64; 8]) {
     let mut _p = [0u64; 8];
     secp256k1_add(p1, p2, &mut _p);

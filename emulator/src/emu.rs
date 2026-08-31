@@ -1,20 +1,20 @@
 use std::borrow::Cow;
 use std::mem;
 
-use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions};
-use fields::PrimeField64;
-use mem_common::MemHelpers;
-use riscv::RiscVRegisters;
+use crate::{ElfSymbolReader, EmuContext, EmuOptions, EmuRegTrace, ParEmuOptions, RegStepCheck};
+use proofman_fields::PrimeField64;
 use zisk_common::{
     OperationBusData, RomBusData, MAX_OPERATION_DATA_SIZE, MEM_BUS_ID, OPERATION_BUS_ID,
     ROM_BUS_ID, ZISK_PUBLICS,
 };
 use zisk_core::mem::DataSection;
-use zisk_pil::MainTraceRowOps;
+
+use zisk_pil::{IndexedFill, MainTraceRowOps};
+use zisk_riscv::RiscVRegisters;
+use zisk_sm_mem_common::MemHelpers;
 // #[cfg(feature = "sp")]
 // use zisk_core::SRC_SP;
-use data_bus::DataBusTrait;
-use zisk_common::{EmuTrace, EmuTraceStart};
+use zisk_common::{DataBusTrait, EmuTrace, EmuTraceStart};
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_core::{
     EmulationMode, InstContext, Mem, ZiskInst, ZiskOperationType, ZiskRom, FREG_F0, FREG_INST,
@@ -23,6 +23,23 @@ use zisk_core::{
 };
 
 const LOAD_SYMBOLS: [&str; 3] = ["_heap_bottom", "_heap_top", "ZISK_BUMP_HEAP_POS"];
+
+/// Feeds the fast register step-distance check (`--reg-step-check`) with the registers accessed by
+/// one instruction: the `a` and `b` operands when they are sourced from a register, and the store
+/// destination when it is a register. Which registers those are mirrors `source_a`, `source_b` and
+/// `store_c`. All of them are accounted at the same step, so their relative order is irrelevant.
+#[inline(always)]
+fn track_reg_step_check(check: &mut RegStepCheck, instruction: &ZiskInst, step: u64) {
+    if instruction.a_src == SRC_REG {
+        check.on_access(instruction.a_offset_imm0 as usize, step);
+    }
+    if instruction.b_src == SRC_REG {
+        check.on_access(instruction.b_offset_imm0 as usize, step);
+    }
+    if instruction.store == STORE_REG {
+        check.on_access(instruction.store_offset as usize, step);
+    }
+}
 
 /// ZisK emulator structure, containing the ZisK rom, the list of ZisK operations, and the
 /// execution context
@@ -1528,7 +1545,11 @@ impl<'a> Emu<'a> {
     /// Run the whole program, fast
     #[inline(always)]
     pub fn run_fast(&mut self, options: &EmuOptions) {
-        if options.with_progress {
+        if self.ctx.reg_step_check.is_some() {
+            // `--reg-step-check` gets its own loop so that `step_fast`, the hot path, stays free of
+            // any check of its own.
+            self.run_fast_reg_step_check(options);
+        } else if options.with_progress {
             while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
                 self.step_fast_with_progress();
             }
@@ -1544,6 +1565,20 @@ impl<'a> Emu<'a> {
                 "Emu::run_fast() finished with error at step={} pc=0x{:x}",
                 self.ctx.inst_ctx.step, self.ctx.inst_ctx.pc
             );
+        }
+    }
+
+    /// Run the whole program fast while measuring the register step distances (`--reg-step-check`).
+    /// Same loop as `run_fast`, only adding the per-instruction register accounting, which is a
+    /// handful of comparisons per step.
+    fn run_fast_reg_step_check(&mut self, options: &EmuOptions) {
+        while !self.ctx.inst_ctx.end && (self.ctx.inst_ctx.step < options.max_steps) {
+            let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
+            let step = self.ctx.inst_ctx.step;
+            if let Some(check) = self.ctx.reg_step_check.as_mut() {
+                track_reg_step_check(check, instruction, step);
+            }
+            self.step_fast_inst(instruction);
         }
     }
 
@@ -1605,6 +1640,14 @@ impl<'a> Emu<'a> {
         //     );*/
         //     [0u64; 32]
         // };
+        self.step_fast_inst(instruction);
+    }
+
+    /// Body of `step_fast` for an already fetched instruction, so a caller that has to inspect the
+    /// instruction before executing it (`run_fast_reg_step_check`) does not look it up twice. Always
+    /// inlined, so `step_fast` keeps the exact same shape it had.
+    #[inline(always)]
+    fn step_fast_inst(&mut self, instruction: &ZiskInst) {
         self.source_a(instruction);
         self.source_b(instruction);
 
@@ -1767,9 +1810,52 @@ impl<'a> Emu<'a> {
         self.ctx.stats.set_sdk_top_functions(options.top_functions);
         self.ctx.stats.set_mem_stats(options.mem_stats);
         self.ctx.stats.set_mem_full_stats(options.mem_full_stats);
+        // Byte-offset counters feed the on-screen table (--mem-full-stats) and the snapshot
+        // (--save-stats / --ref-stats / --html-report), so collect them whenever any of those is
+        // requested.
+        self.ctx.stats.set_collect_offsets(options.mem_full_stats || options.snapshot_enabled());
+        self.ctx.stats.set_log_costly_unaligned(options.log_costly_unaligned);
+        self.ctx.stats.set_callstack_strict(options.callstack_mode == "strict");
+        self.ctx.stats.set_opcode_breakdown(options.opcode_breakdown);
+        self.ctx.stats.set_pattern_analysis(options.pattern_analysis);
+        self.ctx.stats.set_duplicates(options.duplicates);
+        self.ctx.stats.set_duplicates_depth(options.duplicates_depth);
+        self.ctx.stats.set_duplicates_detail(options.duplicates_detail);
+        if let Some(list) = &options.duplicates_ops {
+            // Parse the comma-separated opcode names, keeping only supported precompiles.
+            let supported: std::collections::HashSet<u8> =
+                crate::Stats::dup_supported_opcodes().into_iter().collect();
+            let mut set = std::collections::HashSet::new();
+            for name in list.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                match ZiskOp::try_from_name(name) {
+                    Ok(op) if supported.contains(&op.code()) => {
+                        set.insert(op.code());
+                    }
+                    Ok(op) => eprintln!(
+                        "--duplicates-ops: '{name}' (0x{:02x}) is not a duplicate-analyzed \
+                         precompile, ignoring",
+                        op.code()
+                    ),
+                    Err(_) => {
+                        eprintln!("--duplicates-ops: unknown opcode name '{name}', ignoring")
+                    }
+                }
+            }
+            self.ctx.stats.set_duplicates_ops(Some(set));
+        }
+        self.ctx.stats.set_reg_step_distance(options.reg_step_distance);
+        self.ctx.stats.set_reg_step_limit(options.reg_step_limit());
+        self.ctx.stats.set_reg_step_flush_bits(options.reg_step_flush_bits);
+        if options.reg_step_check {
+            self.ctx.reg_step_check = Some(Box::new(RegStepCheck::new(
+                options.reg_step_limit(),
+                options.reg_step_flush_bits,
+            )));
+        }
         self.ctx.stats.set_sdk_width(options.sdk_width);
         self.ctx.stats.set_store_ops(options.store_op_output.is_some());
         self.ctx.stats.set_legacy_frops(options.legacy_frops);
+        self.ctx.stats.set_sort_by_units(options.sort_by_units);
         if let Some(profiler_output) = &options.profiler_output {
             self.ctx.stats.set_profiler_output(profiler_output.clone());
         }
@@ -1840,6 +1926,7 @@ impl<'a> Emu<'a> {
             || options.legacy_stats
             || options.trace_steps
             || options.store_op_output.is_some()
+            || options.snapshot_enabled()
             || options.trace_changes_enabled();
 
         // While not done
@@ -1917,12 +2004,58 @@ impl<'a> Emu<'a> {
 
         // Print stats report (only for real stats; a pure `--trace-steps` run
         // turns on do_stats just to emit the per-op trace, not the report).
-        if options.stats || options.legacy_stats {
+        // `--save-stats` / `--ref-stats` also need this path to write / compare the snapshot.
+        if options.stats || options.legacy_stats || options.snapshot_enabled() {
             self.ctx.stats.on_finish(&self.ctx.inst_ctx);
             let report = self.ctx.stats.report(self.rom);
             println!("{report}");
             if let Some(store_op_output_file) = &options.store_op_output {
                 self.ctx.stats.flush_op_data_to_file(store_op_output_file).unwrap();
+            }
+
+            // Save an aggregate stats snapshot for later comparison.
+            if let Some(save_path) = &options.save_stats {
+                match std::fs::write(save_path, self.ctx.stats.stats_csv(options.csv_sep())) {
+                    Ok(()) => println!("Stats snapshot saved to: {save_path}"),
+                    Err(e) => eprintln!("Failed to save stats snapshot to {save_path}: {e}"),
+                }
+            }
+
+            // Compare this run against a previously saved reference snapshot.
+            if let Some(ref_path) = &options.ref_stats {
+                let color = crate::resolve_color(&options.color);
+                match self.ctx.stats.compare_stats(
+                    ref_path,
+                    options.diff_use_csv(),
+                    color,
+                    options.csv_sep(),
+                ) {
+                    Ok(comparison) => println!("{comparison}"),
+                    Err(e) => eprintln!("Failed to read reference stats snapshot {ref_path}: {e}"),
+                }
+            }
+
+            // Render this run as an HTML page, comparing it against the reference snapshot when
+            // one was given. The snapshot content goes straight to the renderer, so no CSV file
+            // is involved unless `--save-stats` asked for one.
+            if let Some(html_path) = &options.html_report {
+                let current = self.ctx.stats.stats_csv(options.csv_sep());
+                // With a reference, render the comparison; on its own, render just this run.
+                // `None` means the reference could not be read — the text comparison above has
+                // already reported why, so do not blame the write for a read that failed.
+                let html = match &options.ref_stats {
+                    Some(ref_path) => std::fs::read_to_string(ref_path).ok().map(|reference| {
+                        crate::report::render_compare(&reference, ref_path, &current, "current run")
+                    }),
+                    None => Some(crate::report::render_single(&current)),
+                };
+                match html {
+                    Some(html) => match std::fs::write(html_path, html) {
+                        Ok(()) => println!("HTML report written to: {html_path}"),
+                        Err(e) => eprintln!("Failed to write HTML report to {html_path}: {e}"),
+                    },
+                    None => eprintln!("HTML report skipped: reference snapshot unavailable"),
+                }
             }
 
             // Generate disassembly if requested
@@ -1950,6 +2083,11 @@ impl<'a> Emu<'a> {
                     println!("Disassembly written successfully");
                 }
             }
+        }
+
+        // Single-line verdict of the fast register step-distance check (`--reg-step-check`).
+        if let Some(check) = &self.ctx.reg_step_check {
+            println!("{}", check.report(self.ctx.inst_ctx.step));
         }
     }
 
@@ -2073,7 +2211,14 @@ impl<'a> Emu<'a> {
         let instruction = self.rom.get_instruction(self.ctx.inst_ctx.pc);
 
         if self.ctx.do_stats {
-            self.ctx.stats.set_current_pc(pc);
+            self.ctx.stats.set_current_pc(pc, self.ctx.inst_ctx.step);
+        }
+
+        // `--reg-step-check` normally runs on the fast path (`run_fast_reg_step_check`); this keeps
+        // it working when another option forces the full emulation path, e.g. combined with -X.
+        let step = self.ctx.inst_ctx.step;
+        if let Some(check) = &mut self.ctx.reg_step_check {
+            track_reg_step_check(check, instruction, step);
         }
 
         if options.with_progress && self.ctx.inst_ctx.step & 0xF_FFFF == 0 {
@@ -2494,12 +2639,11 @@ impl<'a> Emu<'a> {
     /// Run a slice of the program to generate full traces
     pub fn process_emu_traces<T, DB: DataBusTrait<u64, T>>(
         &mut self,
-        vec_traces: &[EmuTrace],
-        chunk_id: usize,
+        chunk: &EmuTrace,
         data_bus: &mut DB,
     ) {
         // Set initial state
-        let emu_trace_start = &vec_traces[chunk_id].start_state;
+        let emu_trace_start = &chunk.start_state;
         self.ctx.inst_ctx.pc = emu_trace_start.pc;
         self.ctx.inst_ctx.sp = emu_trace_start.sp;
         self.ctx.inst_ctx.step = emu_trace_start.step;
@@ -2510,11 +2654,7 @@ impl<'a> Emu<'a> {
         let mut current_step_idx = 0;
         let mut mem_reads_index: usize = 0;
         loop {
-            if !self.step_emu_traces(
-                &vec_traces[chunk_id].mem_reads,
-                &mut mem_reads_index,
-                data_bus,
-            ) {
+            if !self.step_emu_traces(&chunk.mem_reads, &mut mem_reads_index, data_bus) {
                 break;
             }
 
@@ -2523,7 +2663,7 @@ impl<'a> Emu<'a> {
             }
 
             current_step_idx += 1;
-            if current_step_idx == vec_traces[chunk_id].steps {
+            if current_step_idx == chunk.steps {
                 break;
             }
         }
@@ -2627,7 +2767,7 @@ impl<'a> Emu<'a> {
         reg_trace: &mut EmuRegTrace,
         step_range_check: Option<&mut [u32]>,
     ) where
-        R: MainTraceRowOps<F>,
+        R: MainTraceRowOps<F> + IndexedFill,
     {
         if self.ctx.inst_ctx.pc == 0 {
             println!("PC=0 CRASH (step:{})", self.ctx.inst_ctx.step);
@@ -2691,9 +2831,9 @@ impl<'a> Emu<'a> {
         inst_ctx: &InstContext,
         reg_trace: &EmuRegTrace,
     ) where
-        R: MainTraceRowOps<F>,
+        R: MainTraceRowOps<F> + IndexedFill,
     {
-        // Calculate intermediate values
+        // Runtime columns (always written).
         let a: [u32; 2] =
             [(inst_ctx.a & 0xFFFFFFFF) as u32, ((inst_ctx.a >> 32) & 0xFFFFFFFF) as u32];
         let b: [u32; 2] =
@@ -2704,100 +2844,184 @@ impl<'a> Emu<'a> {
             (reg_trace.store_reg_prev_value & 0xFFFFFFFF) as u32,
             ((reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF) as u32,
         ];
-
         let addr1 = (inst.b_offset_imm0 as i64
             + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u32;
-
-        let jmp_offset1 = if inst.jmp_offset1 >= 0 {
-            inst.jmp_offset1 as u64
-        } else {
-            F::neg(F::from_u64((-inst.jmp_offset1) as u64)).as_canonical_u64()
-        };
-
-        let jmp_offset2 = if inst.jmp_offset2 >= 0 {
-            inst.jmp_offset2 as u64
-        } else {
-            F::neg(F::from_u64((-inst.jmp_offset2) as u64)).as_canonical_u64()
-        };
-
-        let store_offset = if inst.store_offset >= 0 {
-            inst.store_offset as u64
-        } else {
-            F::neg(F::from_u64((-inst.store_offset) as u64)).as_canonical_u64()
-        };
-
-        let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
-            inst.a_offset_imm0
-        } else {
-            F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64)).as_canonical_u64()
-        };
-        let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-            inst.b_offset_imm0
-        } else {
-            F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
-        };
 
         trace.set_all_a(&a);
         trace.set_all_b(&b);
         trace.set_all_c(&c);
         trace.set_flag(inst_ctx.flag);
-        trace.set_pc(inst.paddr as u32);
-        trace.set_a_src_imm(inst.a_src == SRC_IMM);
-        trace.set_a_src_mem(inst.a_src == SRC_MEM);
-        trace.set_a_src_reg(inst.a_src == SRC_REG);
-        trace.set_a_offset_imm0(a_offset_imm0);
-        // #[cfg(not(feature = "sp"))]
-        trace.set_a_imm1(inst.a_use_sp_imm1 as u32);
-        // #[cfg(feature = "sp")]
-        // trace.set_sp(inst_ctx.sp);
-        // #[cfg(feature = "sp")]
-        // trace.set_a_src_sp(inst.a_src == SRC_SP),
-        // #[cfg(feature = "sp")]
-        // trace.set_a_use_sp_imm1(inst.a_use_sp_imm1),
-        trace.set_is_precompiled(inst.is_precompiled);
-        trace.set_b_src_imm(inst.b_src == SRC_IMM);
-        trace.set_b_src_mem(inst.b_src == SRC_MEM);
-        trace.set_b_src_reg(inst.b_src == SRC_REG);
-        trace.set_b_offset_imm0(b_offset_imm0);
-        // #[cfg(not(feature = "sp"))]
-        trace.set_b_imm1(inst.b_use_sp_imm1 as u32);
-        // #[cfg(feature = "sp")]
-        // trace.set_b_use_sp_imm1(inst.b_use_sp_imm1),
-        trace.set_b_src_ind(inst.b_src == SRC_IND);
-        trace.set_ind_width(inst.ind_width as u8);
-        trace.set_is_external_op(inst.is_external_op);
-        // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
-        // of the copyb, use to get free-input information
-        trace.set_op(
-            if inst.op == ZiskOp::Fcall.code()
+        trace.set_addr1(addr1);
+        trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
+        trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
+        trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
+        trace.set_all_store_reg_prev_value(&store_prev_value);
+        // No-op on the full rows; stores the table index on the indexed row.
+        trace.set_row_index(inst.sorted_pc_list_index as u32);
+
+        // Instruction-derived columns: constant per `pc`. Compiled out for the indexed row
+        // (they live in the table); it carries only the index above.
+        if !<R as IndexedFill>::IS_INDEXED {
+            let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+                inst.jmp_offset1 as u64
+            } else {
+                F::neg(F::from_u64((-inst.jmp_offset1) as u64)).as_canonical_u64()
+            };
+            let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+                inst.jmp_offset2 as u64
+            } else {
+                F::neg(F::from_u64((-inst.jmp_offset2) as u64)).as_canonical_u64()
+            };
+            let store_offset = if inst.store_offset >= 0 {
+                inst.store_offset as u64
+            } else {
+                F::neg(F::from_u64((-inst.store_offset) as u64)).as_canonical_u64()
+            };
+            let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+                inst.a_offset_imm0
+            } else {
+                F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64)).as_canonical_u64()
+            };
+            let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+                inst.b_offset_imm0
+            } else {
+                F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
+            };
+
+            trace.set_pc(inst.paddr as u32);
+            trace.set_a_src_imm(inst.a_src == SRC_IMM);
+            trace.set_a_src_mem(inst.a_src == SRC_MEM);
+            trace.set_a_src_reg(inst.a_src == SRC_REG);
+            trace.set_a_offset_imm0(a_offset_imm0);
+            // #[cfg(not(feature = "sp"))]
+            trace.set_a_imm1(inst.a_use_sp_imm1 as u32);
+            // #[cfg(feature = "sp")]
+            // trace.set_sp(inst_ctx.sp);
+            // #[cfg(feature = "sp")]
+            // trace.set_a_src_sp(inst.a_src == SRC_SP),
+            // #[cfg(feature = "sp")]
+            // trace.set_a_use_sp_imm1(inst.a_use_sp_imm1),
+            trace.set_is_precompiled(inst.is_precompiled);
+            trace.set_b_src_imm(inst.b_src == SRC_IMM);
+            trace.set_b_src_mem(inst.b_src == SRC_MEM);
+            trace.set_b_src_reg(inst.b_src == SRC_REG);
+            trace.set_b_offset_imm0(b_offset_imm0);
+            // #[cfg(not(feature = "sp"))]
+            trace.set_b_imm1(inst.b_use_sp_imm1 as u32);
+            // #[cfg(feature = "sp")]
+            // trace.set_b_use_sp_imm1(inst.b_use_sp_imm1),
+            trace.set_b_src_ind(inst.b_src == SRC_IND);
+            trace.set_ind_width(inst.ind_width as u8);
+            trace.set_is_external_op(inst.is_external_op);
+            // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
+            // of the copyb, use to get free-input information
+            trace.set_op(
+                if inst.op == ZiskOp::Fcall.code()
+                    || inst.op == ZiskOp::FcallGet.code()
+                    || inst.op == ZiskOp::FcallParam.code()
+                {
+                    ZiskOp::CopyB.code()
+                } else {
+                    inst.op
+                },
+            );
+            trace.set_store_pc(inst.store_pc);
+            trace.set_store_mem(inst.store == STORE_MEM);
+            trace.set_store_reg(inst.store == STORE_REG);
+            trace.set_store_ind(inst.store == STORE_IND);
+            trace.set_store_offset(store_offset);
+            trace.set_set_pc(inst.set_pc);
+            // #[cfg(feature = "sp")]
+            // trace.set_store_use_sp(inst.store_use_sp);
+            // #[cfg(feature = "sp")]
+            // trace.set_sp(inst_ctx.sp);
+            // #[cfg(feature = "sp")]
+            // trace.set_inc_sp(inst.inc_sp);
+            trace.set_jmp_offset1(jmp_offset1);
+            trace.set_jmp_offset2(jmp_offset2);
+            trace.set_m32(inst.m32);
+        }
+    }
+
+    /// Instruction table for the indexed Main packing: one packed entry per instruction
+    /// (indexed by `sorted_pc_list_index`) holding the instruction-derived columns. The
+    /// per-column values must match the `@instr` setters in [`build_full_trace_step`].
+    pub fn build_main_instr_table<F: PrimeField64>(rom: &ZiskRom) -> Vec<u64> {
+        use zisk_pil::MainTraceRowInstrTable;
+
+        let words_per_entry = MainTraceRowInstrTable::<F>::PACKED_WORDS;
+        let n = rom.sorted_pc_list.len();
+        let mut table = vec![0u64; n * words_per_entry];
+
+        for (idx, &pc) in rom.sorted_pc_list.iter().enumerate() {
+            let inst = &rom.insts[&pc].i;
+
+            // Signed offsets are stored as canonical field elements (mirrors build_full_trace_step).
+            let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+                inst.jmp_offset1 as u64
+            } else {
+                F::neg(F::from_u64((-inst.jmp_offset1) as u64)).as_canonical_u64()
+            };
+            let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+                inst.jmp_offset2 as u64
+            } else {
+                F::neg(F::from_u64((-inst.jmp_offset2) as u64)).as_canonical_u64()
+            };
+            let store_offset = if inst.store_offset >= 0 {
+                inst.store_offset as u64
+            } else {
+                F::neg(F::from_u64((-inst.store_offset) as u64)).as_canonical_u64()
+            };
+            let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+                inst.a_offset_imm0
+            } else {
+                F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64)).as_canonical_u64()
+            };
+            let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+                inst.b_offset_imm0
+            } else {
+                F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
+            };
+            let op = if inst.op == ZiskOp::Fcall.code()
                 || inst.op == ZiskOp::FcallGet.code()
                 || inst.op == ZiskOp::FcallParam.code()
             {
                 ZiskOp::CopyB.code()
             } else {
                 inst.op
-            },
-        );
-        trace.set_store_pc(inst.store_pc);
-        trace.set_store_mem(inst.store == STORE_MEM);
-        trace.set_store_reg(inst.store == STORE_REG);
-        trace.set_store_ind(inst.store == STORE_IND);
-        trace.set_store_offset(store_offset);
-        trace.set_set_pc(inst.set_pc);
-        // #[cfg(feature = "sp")]
-        // trace.set_store_use_sp(inst.store_use_sp);
-        // #[cfg(feature = "sp")]
-        // trace.set_sp(inst_ctx.sp);
-        // #[cfg(feature = "sp")]
-        // trace.set_inc_sp(inst.inc_sp);
-        trace.set_jmp_offset1(jmp_offset1);
-        trace.set_jmp_offset2(jmp_offset2);
-        trace.set_m32(inst.m32);
-        trace.set_addr1(addr1);
-        trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
-        trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
-        trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
-        trace.set_all_store_reg_prev_value(&store_prev_value);
+            };
+
+            let mut e = MainTraceRowInstrTable::<F>::default();
+            e.set_pc(inst.paddr as u32);
+            e.set_a_src_imm(inst.a_src == SRC_IMM);
+            e.set_a_src_mem(inst.a_src == SRC_MEM);
+            e.set_a_src_reg(inst.a_src == SRC_REG);
+            e.set_a_offset_imm0(a_offset_imm0);
+            e.set_a_imm1(inst.a_use_sp_imm1 as u32);
+            e.set_is_precompiled(inst.is_precompiled);
+            e.set_b_src_imm(inst.b_src == SRC_IMM);
+            e.set_b_src_mem(inst.b_src == SRC_MEM);
+            e.set_b_src_reg(inst.b_src == SRC_REG);
+            e.set_b_src_ind(inst.b_src == SRC_IND);
+            e.set_b_offset_imm0(b_offset_imm0);
+            e.set_b_imm1(inst.b_use_sp_imm1 as u32);
+            e.set_ind_width(inst.ind_width as u8);
+            e.set_is_external_op(inst.is_external_op);
+            e.set_op(op);
+            e.set_store_pc(inst.store_pc);
+            e.set_store_mem(inst.store == STORE_MEM);
+            e.set_store_ind(inst.store == STORE_IND);
+            e.set_store_reg(inst.store == STORE_REG);
+            e.set_store_offset(store_offset);
+            e.set_set_pc(inst.set_pc);
+            e.set_jmp_offset1(jmp_offset1);
+            e.set_jmp_offset2(jmp_offset2);
+            e.set_m32(inst.m32);
+
+            table[idx * words_per_entry..(idx + 1) * words_per_entry].copy_from_slice(&e.packed);
+        }
+
+        table
     }
 
     /// Returns if the emulation ended

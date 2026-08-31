@@ -39,6 +39,22 @@ pub enum MainSmError {
     #[error("fill_trace_outputs is empty; segment has no minimal traces")]
     EmptyFillTraceOutput,
 
+    /// A non-final segment was handed fewer minimal-trace chunks than it spans.
+    /// Only the last segment may be partial, so this means the caller's
+    /// minimal-trace store did not hold the whole segment — computing it anyway
+    /// would silently produce a truncated Main witness.
+    #[error(
+        "main segment {segment_id} is incomplete: got {got} minimal traces, expected {expected}"
+    )]
+    IncompleteSegment {
+        /// The segment whose chunk range was short.
+        segment_id: usize,
+        /// Minimal traces actually supplied.
+        got: usize,
+        /// Minimal traces the segment spans (`num_within`).
+        expected: usize,
+    },
+
     /// `MemHelpers::mem_step_to_slot` returned a value outside the expected `0..=2` range.
     #[error("mem_step_to_slot produced invalid slot {slot}")]
     InvalidSlot {

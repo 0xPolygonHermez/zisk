@@ -9,22 +9,22 @@
 
 #![allow(unused)]
 
-use precompiles_helpers::DmaInfo;
+use zisk_precomp_helpers::DmaInfo;
 use ziskos::zisklib::fcall_proxy;
 
 use crate::{
     blake2br, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
     ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST, ARITHAM32_COST,
-    ARITH_EQ_384_COST, ARITH_EQ_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST, BLAKE2_COST,
-    DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST,
-    DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST,
-    INPUT_ADDR, INTERNAL_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST, REG_A0,
-    SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
-};
-use fields::{
-    poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
+    ARITH_EQ_384_COST, ARITH_EQ_COST, BABYJUBJUB_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST,
+    BLAKE2_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
+    DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR,
+    FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE,
+    POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
 };
 use paste::paste;
+use proofman_fields::{
+    poseidon1_hash, poseidon2_hash, Goldilocks, Poseidon1_16, Poseidon2_16, PrimeField64,
+};
 use std::{
     collections::HashMap,
     fmt::{Debug, Display},
@@ -32,7 +32,10 @@ use std::{
     str::FromStr,
 };
 use tiny_keccak::keccakf;
-use ziskos::zisklib::FCALL_INPUT_READY_ID;
+use ziskos::zisklib::{
+    keccakf_cache::KECCAKF_STATE_WORDS, FCALL_GET_KECCAKF_CACHE_INDEX_ID, FCALL_INPUT_READY_ID,
+    FCALL_SET_KECCAKF_CACHE_INDEX_ID,
+};
 
 use crate::ops_core::*;
 use crate::ops_core_context::*;
@@ -59,9 +62,11 @@ pub enum OpType {
     Fcall,
     ArithEq384,
     BigInt,
+    Evm,
     Dma,
     Blake2,
     Profile,
+    BabyJubJub,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -79,9 +84,11 @@ impl From<OpType> for ZiskOperationType {
             OpType::Fcall => ZiskOperationType::Fcall,
             OpType::ArithEq384 => ZiskOperationType::ArithEq384,
             OpType::BigInt => ZiskOperationType::BigInt,
+            OpType::Evm => ZiskOperationType::Evm,
             OpType::Dma => ZiskOperationType::Dma,
             OpType::Blake2 => ZiskOperationType::Blake2,
             OpType::Profile => ZiskOperationType::Profile,
+            OpType::BabyJubJub => ZiskOperationType::BabyJubJub,
         }
     }
 }
@@ -103,9 +110,11 @@ impl Display for OpType {
             Self::Fcall => write!(f, "Fcall"),
             Self::ArithEq384 => write!(f, "Arith384"),
             Self::BigInt => write!(f, "BigInt"),
+            Self::Evm => write!(f, "Evm"),
             Self::Dma => write!(f, "Dma"),
             Self::Blake2 => write!(f, "Blake2"),
             Self::Profile => write!(f, "Profile"),
+            Self::BabyJubJub => write!(f, "BabyJubJub"),
         }
     }
 }
@@ -128,9 +137,11 @@ impl FromStr for OpType {
             "fcall" => Ok(Self::Fcall),
             "aeq384" => Ok(Self::ArithEq384),
             "bint" => Ok(Self::BigInt),
+            "evm" => Ok(Self::Evm),
             "dma" => Ok(Self::Dma),
             "bl" => Ok(Self::Blake2),
             "profile" => Ok(Self::Profile),
+            "babyjubjub" => Ok(Self::BabyJubJub),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -486,7 +497,10 @@ define_ops! {
     (RemuW, "remu_w", ArithA32, ARITHA32_COST, 0xbd, 0, 0, opc_remu_w, op_remu_w, ops_none),
     (DivW, "div_w", ArithA32, ARITHA32_COST, 0xbe, 0, 0, opc_div_w, op_div_w, ops_none),
     (RemW, "rem_w", ArithA32, ARITHA32_COST, 0xbf, 0, 0, opc_rem_w, op_rem_w, ops_none),
-    // opcpdes 0xc0-0xcf are available
+    // input_size = 8: one synthesized minimal-trace header word (count + number of loaded
+    // source words), followed by the loaded words themselves via data_ext_len.
+    (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
+    // opcpdes 0xc1-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
@@ -507,6 +521,7 @@ define_ops! {
     (Bls12_381ComplexSub, "bls12_381_complex_sub", ArithEq384, ARITH_EQ_384_COST, 0xe6, 208, 96, opc_bls12_381_complex_sub, op_bls12_381_complex_sub, ops_bls12_381_complex_sub),
     (Bls12_381ComplexMul, "bls12_381_complex_mul", ArithEq384, ARITH_EQ_384_COST, 0xe7, 208, 96, opc_bls12_381_complex_mul, op_bls12_381_complex_mul, ops_bls12_381_complex_mul),
     (Add256, "add256", BigInt, ADD256_COST, 0xf0, 104, 32, opc_add256, op_add256, ops_add256),
+    (BabyJubJubAdd, "babyjubjub_add", BabyJubJub, BABYJUBJUB_COST, 0xed, 144, 64, opc_babyjubjub_add, op_babyjubjub_add, ops_babyjubjub_add),
     (Keccak, "keccak", Keccak, KECCAK_COST, 0xf1, 200, 200, opc_keccak, op_keccak, ops_none),
     (Arith256, "arith256", ArithEq, ARITH_EQ_COST, 0xf2, 136, 64, opc_arith256, op_arith256, ops_arith256),
     (Arith256Mod, "arith256_mod", ArithEq, ARITH_EQ_COST, 0xf3, 168, 32, opc_arith256_mod, op_arith256_mod, ops_arith256_mod),
@@ -543,12 +558,22 @@ pub fn opc_keccak(ctx: &mut InstContext) {
     const WORDS: usize = 25;
     let mut data = [0u64; WORDS];
 
+    // Index this permutation must be cached under, if fcall_set_keccakf_cache_index() asked for
+    // it. It is consumed whatever the emulation mode is, so that a request always applies to the
+    // Keccak-f that follows it
+    let cache_index = ctx.keccakf_cache.take_pending_index();
+
     // Get input data from memory or from the precompiled context
     match ctx.emulation_mode {
         EmulationMode::Mem => {
             // Read data from the memory address
             for (i, d) in data.iter_mut().enumerate() {
                 *d = ctx.mem.read(address + (8 * i as u64), 8);
+            }
+
+            // Cache the input state, before it is overwritten by the permutation
+            if let Some(index) = cache_index {
+                ctx.keccakf_cache.store(&data, index);
             }
 
             // Call keccakf
@@ -569,6 +594,11 @@ pub fn opc_keccak(ctx: &mut InstContext) {
             ctx.precompiled.input_data.clear();
             for (i, d) in data.iter_mut().enumerate() {
                 ctx.precompiled.input_data.push(*d);
+            }
+
+            // Cache the input state, before it is overwritten by the permutation
+            if let Some(index) = cache_index {
+                ctx.keccakf_cache.store(&data, index);
             }
 
             // Call keccakf
@@ -1104,7 +1134,7 @@ pub fn opc_add256(ctx: &mut InstContext) {
         let a: &[u64; 4] = a.try_into().expect("opc_add256: a.len != 4");
         let b: &[u64; 4] = b.try_into().expect("opc_add256: b.len != 4");
         let mut c = [0u64; 4];
-        let cout = precompiles_helpers::add256(a, b, cin, &mut c);
+        let cout = zisk_precomp_helpers::add256(a, b, cin, &mut c);
 
         let c_addr = params[3];
         for (i, c_item) in c.iter().enumerate() {
@@ -1154,7 +1184,7 @@ pub fn opc_arith256(ctx: &mut InstContext) {
         let mut dl = [0u64; 4];
         let mut dh = [0u64; 4];
 
-        precompiles_helpers::arith256(a, b, c, &mut dl, &mut dh);
+        zisk_precomp_helpers::arith256(a, b, c, &mut dl, &mut dh);
 
         // [a,b,c,3:dl,4:dh]
         for (i, dl_item) in dl.iter().enumerate() {
@@ -1203,7 +1233,7 @@ pub fn opc_arith256_mod(ctx: &mut InstContext) {
 
         let mut d = [0u64; 4];
 
-        precompiles_helpers::arith256_mod(a, b, c, module, &mut d);
+        zisk_precomp_helpers::arith256_mod(a, b, c, module, &mut d);
 
         // [a,b,c,module,4:d]
         for (i, d) in d.iter().enumerate() {
@@ -1243,7 +1273,7 @@ pub fn opc_secp256k1_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_secp256k1_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256k1_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::secp256k1_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1277,7 +1307,7 @@ pub fn opc_secp256k1_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256k1_dbl(p1, &mut p3);
+        zisk_precomp_helpers::secp256k1_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1316,7 +1346,7 @@ pub fn opc_secp256r1_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_secp256r1_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256r1_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::secp256r1_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1350,7 +1380,7 @@ pub fn opc_secp256r1_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::secp256r1_dbl(p1, &mut p3);
+        zisk_precomp_helpers::secp256r1_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1389,7 +1419,7 @@ pub fn opc_bn254_curve_add(ctx: &mut InstContext) {
         let p2: &[u64; 8] = p2.try_into().expect("opc_bn254_curve_add: p2.len != 8");
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::bn254_curve_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::bn254_curve_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1414,6 +1444,46 @@ pub fn ops_bn254_curve_add(ctx: &InstContext, stats: &mut dyn OpStats) {
 }
 
 #[inline(always)]
+pub fn opc_babyjubjub_add(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8;
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "babyjubjub_add");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // ignore 2 indirections
+        let (_, rest) = data.split_at(2);
+        let (p1, p2) = rest.split_at(8);
+
+        let p1: &[u64; 8] = p1.try_into().expect("opc_babyjubjub_add: p1.len != 8");
+        let p2: &[u64; 8] = p2.try_into().expect("opc_babyjubjub_add: p2.len != 8");
+        let mut p3 = [0u64; 8];
+
+        zisk_precomp_helpers::babyjubjub_add(p1, p2, &mut p3);
+
+        // [0:p1,p2]
+        for (i, d) in p3.iter().enumerate() {
+            ctx.mem.write(data[0] + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  BabyJubJubAdd can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_babyjubjub_add(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_babyjubjub_add() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_babyjubjub_add(ctx: &InstContext, stats: &mut dyn OpStats) {
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
+}
+
+#[inline(always)]
 pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
     const WORDS: usize = 8; // one input of 8 64-bit words
     let mut data = [0u64; WORDS];
@@ -1424,7 +1494,7 @@ pub fn opc_bn254_curve_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 8] = &data;
         let mut p3 = [0u64; 8];
 
-        precompiles_helpers::bn254_curve_dbl(p1, &mut p3);
+        zisk_precomp_helpers::bn254_curve_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1463,7 +1533,7 @@ pub fn opc_bn254_complex_add(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_add: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_add(f1, f2, &mut f3);
+        zisk_precomp_helpers::bn254_complex_add(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1503,7 +1573,7 @@ pub fn opc_bn254_complex_sub(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_sub: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_sub(f1, f2, &mut f3);
+        zisk_precomp_helpers::bn254_complex_sub(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1543,7 +1613,7 @@ pub fn opc_bn254_complex_mul(ctx: &mut InstContext) {
         let f2: &[u64; 8] = f2.try_into().expect("opc_bn254_complex_mul: f2.len != 8");
         let mut f3 = [0u64; 8];
 
-        precompiles_helpers::bn254_complex_mul(f1, f2, &mut f3);
+        zisk_precomp_helpers::bn254_complex_mul(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1589,7 +1659,7 @@ pub fn opc_arith384_mod(ctx: &mut InstContext) {
 
         let mut d = [0u64; 6];
 
-        precompiles_helpers::arith384_mod(a, b, c, module, &mut d);
+        zisk_precomp_helpers::arith384_mod(a, b, c, module, &mut d);
 
         // [a,b,c,module,4:d]
         for (i, d) in d.iter().enumerate() {
@@ -1629,7 +1699,7 @@ pub fn opc_bls12_381_curve_add(ctx: &mut InstContext) {
         let p2: &[u64; 12] = p2.try_into().expect("opc_bls12_381_curve_add: p2.len != 12");
         let mut p3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_curve_add(p1, p2, &mut p3);
+        zisk_precomp_helpers::bls12_381_curve_add(p1, p2, &mut p3);
 
         // [0:p1,p2]
         for (i, d) in p3.iter().enumerate() {
@@ -1664,7 +1734,7 @@ pub fn opc_bls12_381_curve_dbl(ctx: &mut InstContext) {
         let p1: &[u64; 12] = &data;
         let mut p3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_curve_dbl(p1, &mut p3);
+        zisk_precomp_helpers::bls12_381_curve_dbl(p1, &mut p3);
 
         for (i, d) in p3.iter().enumerate() {
             ctx.mem.write(ctx.b + (8 * i as u64), *d, 8);
@@ -1703,7 +1773,7 @@ pub fn opc_bls12_381_complex_add(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_add: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_add(f1, f2, &mut f3);
+        zisk_precomp_helpers::bls12_381_complex_add(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1743,7 +1813,7 @@ pub fn opc_bls12_381_complex_sub(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_sub: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
+        zisk_precomp_helpers::bls12_381_complex_sub(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1783,7 +1853,7 @@ pub fn opc_bls12_381_complex_mul(ctx: &mut InstContext) {
         let f2: &[u64; 12] = f2.try_into().expect("opc_bls12_381_complex_mul: f2.len != 12");
         let mut f3 = [0u64; 12];
 
-        precompiles_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
+        zisk_precomp_helpers::bls12_381_complex_mul(f1, f2, &mut f3);
 
         // [0:f1,f2]
         for (i, d) in f3.iter().enumerate() {
@@ -1921,6 +1991,29 @@ pub fn opc_fcall(ctx: &mut InstContext) {
             );
         }
         0
+    } else if function_id == FCALL_SET_KECCAKF_CACHE_INDEX_ID as u64 {
+        if ctx.fcall.parameters_size != 1 {
+            panic!(
+                "opc_fcall() FCALL_SET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != 1",
+                ctx.fcall.parameters_size
+            );
+        }
+
+        // The next keccak instruction will cache its input state under this index
+        ctx.keccakf_cache.set_pending_index(ctx.fcall.parameters[0]);
+        0
+    } else if function_id == FCALL_GET_KECCAKF_CACHE_INDEX_ID as u64 {
+        if ctx.fcall.parameters_size != KECCAKF_STATE_WORDS as u64 {
+            panic!(
+                "opc_fcall() FCALL_GET_KECCAKF_CACHE_INDEX_ID called with parameters_size={} != {}",
+                ctx.fcall.parameters_size, KECCAKF_STATE_WORDS
+            );
+        }
+
+        // Returns the index the state was cached under, or KECCAKF_CACHE_INDEX_NOT_FOUND
+        let index = ctx.keccakf_cache.get(&ctx.fcall.parameters[..KECCAKF_STATE_WORDS]);
+        ctx.fcall.result[0] = index;
+        1
     } else {
         fcall_proxy(function_id, &ctx.fcall.parameters, &mut ctx.fcall.result)
     };

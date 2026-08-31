@@ -8,6 +8,17 @@ use thiserror::Error;
 /// Crate-wide error type for the executor.
 #[derive(Debug, Error)]
 pub enum ExecutorError {
+    /// The ASM MT reader delivered a chunk whose index does not extend the
+    /// progressive minimal-trace store contiguously (main-witness advancement
+    /// relies on in-order delivery).
+    #[error("main advancement: expected next chunk index {expected}, got {got}")]
+    ChunkOutOfOrder {
+        /// Index the reader delivered.
+        got: usize,
+        /// Store length (the only index that extends it contiguously).
+        expected: usize,
+    },
+
     /// The `global_id` referenced by the chunk's plan is missing from the supplied `instances` map.
     #[error("instance not found for global_id={global_id}")]
     InstanceNotFound {
@@ -91,11 +102,11 @@ pub enum ExecutorError {
 
     /// Forwarded error from `sm-main`.
     #[error(transparent)]
-    MainSm(#[from] sm_main::MainSmError),
+    MainSm(#[from] zisk_sm_main::MainSmError),
 
     /// Forwarded error from `sm-rom` (ROM state-machine setup / planning).
     #[error(transparent)]
-    Rom(#[from] sm_rom::RomError),
+    Rom(#[from] zisk_sm_rom::RomError),
 
     /// Forwarded error from `ziskemu` (Rust emulator).
     #[error(transparent)]

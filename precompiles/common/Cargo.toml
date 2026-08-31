@@ -1,16 +1,19 @@
 [package]
-name = "precompiles-common"
+name = "zisk-precomp-common"
+description = "Common utilities and helpers for ZisK precompiles"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
-sm-mem = { workspace = true }
-mem-common = { workspace = true }
+zisk-sm-mem = { workspace = true }
+zisk-sm-mem-common = { workspace = true }
 
-fields = { workspace = true }
+proofman-fields = { workspace = true }

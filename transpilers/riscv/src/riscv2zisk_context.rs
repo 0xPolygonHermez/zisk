@@ -5,14 +5,15 @@
 use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
     SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
-    SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
-    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
-    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
-    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
-    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
-    SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID,
-    SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID,
-    SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
+    SYSCALL_BABYJUBJUB_ADD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
+    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
+    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
+    SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
+    SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID,
+    SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID, SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID,
+    SYSCALL_SECP256K1_DBL_ID, SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID,
+    SYSCALL_SHA256F_ID,
 };
 
 use zisk_core::zisk_rom::ZiskRom;
@@ -28,7 +29,7 @@ use zisk_core::{FLOAT_LIB_ROM_ADDR, FLOAT_LIB_SP, FREG_F0, FREG_INST, FREG_RA, F
 // The CSR precompiled addresses are defined in the `definitions/src/syscall.rs` file
 // because legacy versions of Rust do not support constant parameters in `asm!` macros.
 // Important: The order should be the same as in such file.
-const CSR_PRECOMPILED: [&str; 28] = [
+const CSR_PRECOMPILED: [&str; 30] = [
     "keccak",
     "arith256",
     "arith256_mod",
@@ -57,6 +58,8 @@ const CSR_PRECOMPILED: [&str; 28] = [
     "blake2",
     "profile",
     "poseidon1",
+    "jump_dest",
+    "babyjubjub_add",
 ];
 const CSR_PRECOMPILED_ADDR_START: u16 = SYSCALL_KECCAKF_ID;
 const CSR_FCALL_ADDR_START: u16 = 0x8C0;
@@ -64,8 +67,11 @@ const CSR_FCALL_ADDR_END: u16 = 0x8DF;
 const CSR_FCALL_GET_ADDR: u16 = 0xFFE;
 const CSR_FCALL_PARAM_ADDR_START: u16 = 0x8F0;
 const CSR_FCALL_PARAM_ADDR_END: u16 = 0x8FF;
+/// Word count of each fcall parameter port, indexed by its offset from
+/// [`CSR_FCALL_PARAM_ADDR_START`]. Must match `words_to_port` in ziskos's `ziskos_fcall_param!`:
+/// the guest picks the port from this table, the transpiler reads the count back out of it.
 const CSR_FCALL_PARAM_OFFSET_TO_WORDS: [u64; 16] =
-    [1, 2, 4, 8, 12, 16, 20, 24, 28, 32, 48, 64, 80, 96, 128, 256];
+    [1, 2, 4, 8, 12, 16, 20, 24, 25, 32, 48, 64, 80, 96, 128, 256];
 
 const CAUSE_EXIT: u64 = 93;
 const M64: u64 = 0xFFFFFFFFFFFFFFFF;
@@ -1724,7 +1730,7 @@ impl<'a> Riscv2ZiskContext<'a> {
         let rom_address = i.rom_address;
         // Special DMA patterns that can have rd != 0
         match i.csr as u16 {
-            SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID => {
+            SYSCALL_DMA_MEMCPY_ID | SYSCALL_DMA_MEMCMP_ID | SYSCALL_JUMP_DEST_ID => {
                 assert!(!next_instructions.is_empty());
                 return self.transpile_dma_memcpy_memcmp_pattern(i, next_instructions);
             }
@@ -1821,7 +1827,8 @@ impl<'a> Riscv2ZiskContext<'a> {
                 | SYSCALL_POSEIDON1_ID
                 | SYSCALL_SECP256R1_ADD_ID
                 | SYSCALL_SECP256R1_DBL_ID
-                | SYSCALL_BLAKE2B_ROUND_ID => {
+                | SYSCALL_BLAKE2B_ROUND_ID
+                | SYSCALL_BABYJUBJUB_ADD_ID => {
                     let mut zib =
                         ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
                     zib.src_b("reg", i.rs1 as u64, false);
@@ -2514,8 +2521,13 @@ impl<'a> Riscv2ZiskContext<'a> {
             let next_pc = next_instructions[1].rom_address;
 
             if next_instructions[0].inst_name == RiscvInstName::Add && next_instructions.len() > 1 {
-                let op =
-                    if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 { "dma_memcpy" } else { "dma_memcmp" };
+                let op = if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 {
+                    "dma_memcpy"
+                } else if i.csr == SYSCALL_DMA_MEMCMP_ID as u32 {
+                    "dma_memcmp"
+                } else {
+                    "jump_dest"
+                };
                 if next_instructions[0].rd == 0 {
                     // memcpy/memcmp transpilation pattern:
                     //
@@ -2546,6 +2558,17 @@ impl<'a> Riscv2ZiskContext<'a> {
                 }
             }
             if next_instructions[0].inst_name == RiscvInstName::Addi {
+                // Only the DMA has an opcode for an immediate count (the x variants), which carries
+                // it in extended_arg. jump_dest has a single opcode that takes its count from
+                // EXTRA_PARAMS, so it never reaches here: ziskos_jump_dest! always materialises the
+                // size in a register and emits Add. Serving both sources would mean a second opcode
+                // or a flag in the AIR to pick between them, for a case that does not occur — the
+                // length of a bytecode is not known at compile time.
+                assert!(
+                    i.csr != SYSCALL_JUMP_DEST_ID as u32,
+                    "jump_dest with an immediate size at pc 0x{:08x}: the guest must pass it in a register",
+                    i.rom_address
+                );
                 let op = if i.csr == SYSCALL_DMA_MEMCPY_ID as u32 {
                     "dma_xmemcpy"
                 } else {
@@ -2588,6 +2611,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             i.csr, i.rom_address, next_0
         );
     }
+
     fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {
         if i.imme == 0 && next_instructions.len() > 1 {
             let next_pc = next_instructions[1].rom_address;

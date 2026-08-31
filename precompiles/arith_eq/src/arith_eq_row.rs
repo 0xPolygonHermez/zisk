@@ -22,9 +22,9 @@
 //!   * A config becomes buildable by adding a `zisk_precompile_explicit!(sm = ArithEqSM, trace = …)`
 //!     registration pointing every alias at the one shared `ArithEqSM`.
 
-use fields::PrimeField64;
 use proofman_common::trace::TraceRow;
 use proofman_common::{AirInstance, ProofmanResult};
+use proofman_fields::PrimeField64;
 
 /// The 11 sub-operations, in the canonical order used by both the PIL selector list and the witness
 /// (`SEL_OP_*` in `arith_eq_constants`).
@@ -194,7 +194,7 @@ macro_rules! impl_arith_eq_row {
         opt: [ $($opt:ident),* $(,)? ],
         sels: [ $( $variant:ident => $sel_set:ident, $clk0_set:ident ),* $(,)? ]
     ) => {
-            impl<F: fields::PrimeField64> $crate::ArithEqRow<F> for ::zisk_pil::$row<F> {
+            impl<F: proofman_fields::PrimeField64> $crate::ArithEqRow<F> for ::zisk_pil::$row<F> {
                 type Trace = ::zisk_pil::$trace<Self>;
 
                 const AIR_NAME: &'static str = ::std::stringify!($trace);

@@ -65,6 +65,7 @@ extern "C" {
         n_workers: u32,
         worker_id: u32,
         gpu_id: i32,
+        instance_rows: *const u32,
     ) -> bool;
     pub fn count_and_plan_add_chunk(
         h: *mut CountAndPlanHandle,

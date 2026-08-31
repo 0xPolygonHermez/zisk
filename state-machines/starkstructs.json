@@ -1,5 +1,6 @@
 {
   "Keccakf": {
+    "powBits": 21,
     "hasCompressor": true
   },
   "VirtualTableZisk0": {
@@ -39,6 +40,9 @@
     "hasCompressor": true
   },
   "ArithBn254Complex": {
+    "hasCompressor": true
+  },
+  "BabyJubJub": {
     "hasCompressor": true
   }
 }

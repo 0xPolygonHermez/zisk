@@ -3,9 +3,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
 use zisk_common::{Proof, StatsCostPerType};
 use zisk_prover_backend::ProveOutput;
+use zisk_recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
 
 use super::{EmbeddedClient, EmbeddedProver};
 use crate::job_handle::{fire_event, fire_result_event, JobHandle, SubscriberList};
@@ -94,7 +94,8 @@ fn run_setup_aggregation_program_blocking(
     prover: &EmbeddedProver,
     agg: &Recurser,
 ) -> Result<SetupResult> {
-    let artifacts = recurser::artifacts::RecurserArtifacts::new(&agg.output_dir, &agg.recurser_id);
+    let artifacts =
+        zisk_recurser::artifacts::RecurserArtifacts::new(&agg.output_dir, &agg.recurser_id);
     if artifacts.is_active() {
         tracing::info!(
             "Recurser '{}' already set up at {}; registering",

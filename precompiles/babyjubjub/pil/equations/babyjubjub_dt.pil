@@ -1,0 +1,399 @@
+// code generated
+//
+// equation: d*T-DT-p*qdt+p*offset
+//
+// d: 168696
+// p: 0x30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F0000001
+// offset: 0x10
+// (p*offset): 0x30644E72E131A029B85045B68181585D2833E84879B9709143E1F593F00000010
+//
+// chunks:16
+// chunk_bits:16
+// terms_by_clock: 2
+
+
+const expr air.eq_babyjubjub_dt_chunks[31];
+
+// clock #0
+
+eq_babyjubjub_dt_chunks[ 0] =   37624 * T                   //   d[0] * T[0]
+                              - DT                          // - DT[0]
+                              - qdt                         // - qdt[0]
+                              + 0x10;                       // + (p*offset)[0]
+
+eq_babyjubjub_dt_chunks[ 1] =   2 * T                       //   d[1] * T[0]
+                              + 37624 * T'                  // + d[0] * T[1]
+                              - DT'                         // - DT[1]
+                              - 0xF000 * qdt                // - p[1] * qdt[0]
+                              - qdt';                       // - qdt[1]
+
+// clock #1
+
+eq_babyjubjub_dt_chunks[ 2] =   2 * T                       //   d[1] * T[1]
+                              + 37624 * T'                  // + d[0] * T[2]
+                              - DT'                         // - DT[2]
+                              - 0xF593 * 'qdt               // - p[2] * qdt[0]
+                              - 0xF000 * qdt                // - p[1] * qdt[1]
+                              - qdt'                        // - qdt[2]
+                              + 0x593F;                     // + (p*offset)[2]
+
+eq_babyjubjub_dt_chunks[ 3] =   2 * T'                      //   d[1] * T[2]
+                              + 37624 * T'2                 // + d[0] * T[3]
+                              - DT'2                        // - DT[3]
+                              - 0x43E1 * 'qdt               // - p[3] * qdt[0]
+                              - 0xF593 * qdt                // - p[2] * qdt[1]
+                              - 0xF000 * qdt'               // - p[1] * qdt[2]
+                              - qdt'2                       // - qdt[3]
+                              + 0x3E1F;                     // + (p*offset)[3]
+
+// clock #2
+
+eq_babyjubjub_dt_chunks[ 4] =   2 * T'                      //   d[1] * T[3]
+                              + 37624 * T'2                 // + d[0] * T[4]
+                              - DT'2                        // - DT[4]
+                              - 0x7091 * 2'qdt              // - p[4] * qdt[0]
+                              - 0x43E1 * 'qdt               // - p[3] * qdt[1]
+                              - 0xF593 * qdt                // - p[2] * qdt[2]
+                              - 0xF000 * qdt'               // - p[1] * qdt[3]
+                              - qdt'2                       // - qdt[4]
+                              + 0x914;                      // + (p*offset)[4]
+
+eq_babyjubjub_dt_chunks[ 5] =   2 * T'2                     //   d[1] * T[4]
+                              + 37624 * T'3                 // + d[0] * T[5]
+                              - DT'3                        // - DT[5]
+                              - 0x79B9 * 2'qdt              // - p[5] * qdt[0]
+                              - 0x7091 * 'qdt               // - p[4] * qdt[1]
+                              - 0x43E1 * qdt                // - p[3] * qdt[2]
+                              - 0xF593 * qdt'               // - p[2] * qdt[3]
+                              - 0xF000 * qdt'2              // - p[1] * qdt[4]
+                              - qdt'3                       // - qdt[5]
+                              + 0x9B97;                     // + (p*offset)[5]
+
+// clock #3
+
+eq_babyjubjub_dt_chunks[ 6] =   2 * T'2                     //   d[1] * T[5]
+                              + 37624 * T'3                 // + d[0] * T[6]
+                              - DT'3                        // - DT[6]
+                              - 0xE848 * 3'qdt              // - p[6] * qdt[0]
+                              - 0x79B9 * 2'qdt              // - p[5] * qdt[1]
+                              - 0x7091 * 'qdt               // - p[4] * qdt[2]
+                              - 0x43E1 * qdt                // - p[3] * qdt[3]
+                              - 0xF593 * qdt'               // - p[2] * qdt[4]
+                              - 0xF000 * qdt'2              // - p[1] * qdt[5]
+                              - qdt'3                       // - qdt[6]
+                              + 0x8487;                     // + (p*offset)[6]
+
+eq_babyjubjub_dt_chunks[ 7] =   2 * T'3                     //   d[1] * T[6]
+                              + 37624 * T'4                 // + d[0] * T[7]
+                              - DT'4                        // - DT[7]
+                              - 0x2833 * 3'qdt              // - p[7] * qdt[0]
+                              - 0xE848 * 2'qdt              // - p[6] * qdt[1]
+                              - 0x79B9 * 'qdt               // - p[5] * qdt[2]
+                              - 0x7091 * qdt                // - p[4] * qdt[3]
+                              - 0x43E1 * qdt'               // - p[3] * qdt[4]
+                              - 0xF593 * qdt'2              // - p[2] * qdt[5]
+                              - 0xF000 * qdt'3              // - p[1] * qdt[6]
+                              - qdt'4                       // - qdt[7]
+                              + 0x833E;                     // + (p*offset)[7]
+
+// clock #4
+
+eq_babyjubjub_dt_chunks[ 8] =   2 * T'3                     //   d[1] * T[7]
+                              + 37624 * T'4                 // + d[0] * T[8]
+                              - DT'4                        // - DT[8]
+                              - 0x585D * 4'qdt              // - p[8] * qdt[0]
+                              - 0x2833 * 3'qdt              // - p[7] * qdt[1]
+                              - 0xE848 * 2'qdt              // - p[6] * qdt[2]
+                              - 0x79B9 * 'qdt               // - p[5] * qdt[3]
+                              - 0x7091 * qdt                // - p[4] * qdt[4]
+                              - 0x43E1 * qdt'               // - p[3] * qdt[5]
+                              - 0xF593 * qdt'2              // - p[2] * qdt[6]
+                              - 0xF000 * qdt'3              // - p[1] * qdt[7]
+                              - qdt'4                       // - qdt[8]
+                              + 0x85D2;                     // + (p*offset)[8]
+
+eq_babyjubjub_dt_chunks[ 9] =   2 * T'4                     //   d[1] * T[8]
+                              + 37624 * T'5                 // + d[0] * T[9]
+                              - DT'5                        // - DT[9]
+                              - 0x8181 * 4'qdt              // - p[9] * qdt[0]
+                              - 0x585D * 3'qdt              // - p[8] * qdt[1]
+                              - 0x2833 * 2'qdt              // - p[7] * qdt[2]
+                              - 0xE848 * 'qdt               // - p[6] * qdt[3]
+                              - 0x79B9 * qdt                // - p[5] * qdt[4]
+                              - 0x7091 * qdt'               // - p[4] * qdt[5]
+                              - 0x43E1 * qdt'2              // - p[3] * qdt[6]
+                              - 0xF593 * qdt'3              // - p[2] * qdt[7]
+                              - 0xF000 * qdt'4              // - p[1] * qdt[8]
+                              - qdt'5                       // - qdt[9]
+                              + 0x1815;                     // + (p*offset)[9]
+
+// clock #5
+
+eq_babyjubjub_dt_chunks[10] =   2 * T'4                     //   d[1] * T[9]
+                              + 37624 * T'5                 // + d[0] * T[10]
+                              - DT'5                        // - DT[10]
+                              - 0x45B6 * 5'qdt              // - p[10] * qdt[0]
+                              - 0x8181 * 4'qdt              // - p[9] * qdt[1]
+                              - 0x585D * 3'qdt              // - p[8] * qdt[2]
+                              - 0x2833 * 2'qdt              // - p[7] * qdt[3]
+                              - 0xE848 * 'qdt               // - p[6] * qdt[4]
+                              - 0x79B9 * qdt                // - p[5] * qdt[5]
+                              - 0x7091 * qdt'               // - p[4] * qdt[6]
+                              - 0x43E1 * qdt'2              // - p[3] * qdt[7]
+                              - 0xF593 * qdt'3              // - p[2] * qdt[8]
+                              - 0xF000 * qdt'4              // - p[1] * qdt[9]
+                              - qdt'5                       // - qdt[10]
+                              + 0x5B68;                     // + (p*offset)[10]
+
+eq_babyjubjub_dt_chunks[11] =   2 * T'5                     //   d[1] * T[10]
+                              + 37624 * T'6                 // + d[0] * T[11]
+                              - DT'6                        // - DT[11]
+                              - 0xB850 * 5'qdt              // - p[11] * qdt[0]
+                              - 0x45B6 * 4'qdt              // - p[10] * qdt[1]
+                              - 0x8181 * 3'qdt              // - p[9] * qdt[2]
+                              - 0x585D * 2'qdt              // - p[8] * qdt[3]
+                              - 0x2833 * 'qdt               // - p[7] * qdt[4]
+                              - 0xE848 * qdt                // - p[6] * qdt[5]
+                              - 0x79B9 * qdt'               // - p[5] * qdt[6]
+                              - 0x7091 * qdt'2              // - p[4] * qdt[7]
+                              - 0x43E1 * qdt'3              // - p[3] * qdt[8]
+                              - 0xF593 * qdt'4              // - p[2] * qdt[9]
+                              - 0xF000 * qdt'5              // - p[1] * qdt[10]
+                              - qdt'6                       // - qdt[11]
+                              + 0x8504;                     // + (p*offset)[11]
+
+// clock #6
+
+eq_babyjubjub_dt_chunks[12] =   2 * T'5                     //   d[1] * T[11]
+                              + 37624 * T'6                 // + d[0] * T[12]
+                              - DT'6                        // - DT[12]
+                              - 0xA029 * 6'qdt              // - p[12] * qdt[0]
+                              - 0xB850 * 5'qdt              // - p[11] * qdt[1]
+                              - 0x45B6 * 4'qdt              // - p[10] * qdt[2]
+                              - 0x8181 * 3'qdt              // - p[9] * qdt[3]
+                              - 0x585D * 2'qdt              // - p[8] * qdt[4]
+                              - 0x2833 * 'qdt               // - p[7] * qdt[5]
+                              - 0xE848 * qdt                // - p[6] * qdt[6]
+                              - 0x79B9 * qdt'               // - p[5] * qdt[7]
+                              - 0x7091 * qdt'2              // - p[4] * qdt[8]
+                              - 0x43E1 * qdt'3              // - p[3] * qdt[9]
+                              - 0xF593 * qdt'4              // - p[2] * qdt[10]
+                              - 0xF000 * qdt'5              // - p[1] * qdt[11]
+                              - qdt'6                       // - qdt[12]
+                              + 0x29B;                      // + (p*offset)[12]
+
+eq_babyjubjub_dt_chunks[13] =   2 * T'6                     //   d[1] * T[12]
+                              + 37624 * T'7                 // + d[0] * T[13]
+                              - DT'7                        // - DT[13]
+                              - 0xE131 * 6'qdt              // - p[13] * qdt[0]
+                              - 0xA029 * 5'qdt              // - p[12] * qdt[1]
+                              - 0xB850 * 4'qdt              // - p[11] * qdt[2]
+                              - 0x45B6 * 3'qdt              // - p[10] * qdt[3]
+                              - 0x8181 * 2'qdt              // - p[9] * qdt[4]
+                              - 0x585D * 'qdt               // - p[8] * qdt[5]
+                              - 0x2833 * qdt                // - p[7] * qdt[6]
+                              - 0xE848 * qdt'               // - p[6] * qdt[7]
+                              - 0x79B9 * qdt'2              // - p[5] * qdt[8]
+                              - 0x7091 * qdt'3              // - p[4] * qdt[9]
+                              - 0x43E1 * qdt'4              // - p[3] * qdt[10]
+                              - 0xF593 * qdt'5              // - p[2] * qdt[11]
+                              - 0xF000 * qdt'6              // - p[1] * qdt[12]
+                              - qdt'7                       // - qdt[13]
+                              + 0x131A;                     // + (p*offset)[13]
+
+// clock #7
+
+eq_babyjubjub_dt_chunks[14] =   2 * T'6                     //   d[1] * T[13]
+                              + 37624 * T'7                 // + d[0] * T[14]
+                              - DT'7                        // - DT[14]
+                              - 0x4E72 * 7'qdt              // - p[14] * qdt[0]
+                              - 0xE131 * 6'qdt              // - p[13] * qdt[1]
+                              - 0xA029 * 5'qdt              // - p[12] * qdt[2]
+                              - 0xB850 * 4'qdt              // - p[11] * qdt[3]
+                              - 0x45B6 * 3'qdt              // - p[10] * qdt[4]
+                              - 0x8181 * 2'qdt              // - p[9] * qdt[5]
+                              - 0x585D * 'qdt               // - p[8] * qdt[6]
+                              - 0x2833 * qdt                // - p[7] * qdt[7]
+                              - 0xE848 * qdt'               // - p[6] * qdt[8]
+                              - 0x79B9 * qdt'2              // - p[5] * qdt[9]
+                              - 0x7091 * qdt'3              // - p[4] * qdt[10]
+                              - 0x43E1 * qdt'4              // - p[3] * qdt[11]
+                              - 0xF593 * qdt'5              // - p[2] * qdt[12]
+                              - 0xF000 * qdt'6              // - p[1] * qdt[13]
+                              - qdt'7                       // - qdt[14]
+                              + 0xE72E;                     // + (p*offset)[14]
+
+eq_babyjubjub_dt_chunks[15] =   2 * T'7                     //   d[1] * T[14]
+                              + 37624 * T'8                 // + d[0] * T[15]
+                              - DT'8                        // - DT[15]
+                              - 0x3064 * 7'qdt              // - p[15] * qdt[0]
+                              - 0x4E72 * 6'qdt              // - p[14] * qdt[1]
+                              - 0xE131 * 5'qdt              // - p[13] * qdt[2]
+                              - 0xA029 * 4'qdt              // - p[12] * qdt[3]
+                              - 0xB850 * 3'qdt              // - p[11] * qdt[4]
+                              - 0x45B6 * 2'qdt              // - p[10] * qdt[5]
+                              - 0x8181 * 'qdt               // - p[9] * qdt[6]
+                              - 0x585D * qdt                // - p[8] * qdt[7]
+                              - 0x2833 * qdt'               // - p[7] * qdt[8]
+                              - 0xE848 * qdt'2              // - p[6] * qdt[9]
+                              - 0x79B9 * qdt'3              // - p[5] * qdt[10]
+                              - 0x7091 * qdt'4              // - p[4] * qdt[11]
+                              - 0x43E1 * qdt'5              // - p[3] * qdt[12]
+                              - 0xF593 * qdt'6              // - p[2] * qdt[13]
+                              - 0xF000 * qdt'7              // - p[1] * qdt[14]
+                              - qdt'8                       // - qdt[15]
+                              + 0x644;                      // + (p*offset)[15]
+
+// clock #8
+
+eq_babyjubjub_dt_chunks[16] =   2 * T'7                     //   d[1] * T[15]
+                              - 0x3064 * 7'qdt              // - p[15] * qdt[1]
+                              - 0x4E72 * 6'qdt              // - p[14] * qdt[2]
+                              - 0xE131 * 5'qdt              // - p[13] * qdt[3]
+                              - 0xA029 * 4'qdt              // - p[12] * qdt[4]
+                              - 0xB850 * 3'qdt              // - p[11] * qdt[5]
+                              - 0x45B6 * 2'qdt              // - p[10] * qdt[6]
+                              - 0x8181 * 'qdt               // - p[9] * qdt[7]
+                              - 0x585D * qdt                // - p[8] * qdt[8]
+                              - 0x2833 * qdt'               // - p[7] * qdt[9]
+                              - 0xE848 * qdt'2              // - p[6] * qdt[10]
+                              - 0x79B9 * qdt'3              // - p[5] * qdt[11]
+                              - 0x7091 * qdt'4              // - p[4] * qdt[12]
+                              - 0x43E1 * qdt'5              // - p[3] * qdt[13]
+                              - 0xF593 * qdt'6              // - p[2] * qdt[14]
+                              - 0xF000 * qdt'7              // - p[1] * qdt[15]
+                              + 0x3;                        // + (p*offset)[16]
+
+eq_babyjubjub_dt_chunks[17] = - 0x3064 * 6'qdt              // - p[15] * qdt[2]
+                              - 0x4E72 * 5'qdt              // - p[14] * qdt[3]
+                              - 0xE131 * 4'qdt              // - p[13] * qdt[4]
+                              - 0xA029 * 3'qdt              // - p[12] * qdt[5]
+                              - 0xB850 * 2'qdt              // - p[11] * qdt[6]
+                              - 0x45B6 * 'qdt               // - p[10] * qdt[7]
+                              - 0x8181 * qdt                // - p[9] * qdt[8]
+                              - 0x585D * qdt'               // - p[8] * qdt[9]
+                              - 0x2833 * qdt'2              // - p[7] * qdt[10]
+                              - 0xE848 * qdt'3              // - p[6] * qdt[11]
+                              - 0x79B9 * qdt'4              // - p[5] * qdt[12]
+                              - 0x7091 * qdt'5              // - p[4] * qdt[13]
+                              - 0x43E1 * qdt'6              // - p[3] * qdt[14]
+                              - 0xF593 * qdt'7;             // - p[2] * qdt[15]
+
+// clock #9
+
+eq_babyjubjub_dt_chunks[18] = - 0x3064 * 6'qdt              // - p[15] * qdt[3]
+                              - 0x4E72 * 5'qdt              // - p[14] * qdt[4]
+                              - 0xE131 * 4'qdt              // - p[13] * qdt[5]
+                              - 0xA029 * 3'qdt              // - p[12] * qdt[6]
+                              - 0xB850 * 2'qdt              // - p[11] * qdt[7]
+                              - 0x45B6 * 'qdt               // - p[10] * qdt[8]
+                              - 0x8181 * qdt                // - p[9] * qdt[9]
+                              - 0x585D * qdt'               // - p[8] * qdt[10]
+                              - 0x2833 * qdt'2              // - p[7] * qdt[11]
+                              - 0xE848 * qdt'3              // - p[6] * qdt[12]
+                              - 0x79B9 * qdt'4              // - p[5] * qdt[13]
+                              - 0x7091 * qdt'5              // - p[4] * qdt[14]
+                              - 0x43E1 * qdt'6;             // - p[3] * qdt[15]
+
+eq_babyjubjub_dt_chunks[19] = - 0x3064 * 5'qdt              // - p[15] * qdt[4]
+                              - 0x4E72 * 4'qdt              // - p[14] * qdt[5]
+                              - 0xE131 * 3'qdt              // - p[13] * qdt[6]
+                              - 0xA029 * 2'qdt              // - p[12] * qdt[7]
+                              - 0xB850 * 'qdt               // - p[11] * qdt[8]
+                              - 0x45B6 * qdt                // - p[10] * qdt[9]
+                              - 0x8181 * qdt'               // - p[9] * qdt[10]
+                              - 0x585D * qdt'2              // - p[8] * qdt[11]
+                              - 0x2833 * qdt'3              // - p[7] * qdt[12]
+                              - 0xE848 * qdt'4              // - p[6] * qdt[13]
+                              - 0x79B9 * qdt'5              // - p[5] * qdt[14]
+                              - 0x7091 * qdt'6;             // - p[4] * qdt[15]
+
+// clock #10
+
+eq_babyjubjub_dt_chunks[20] = - 0x3064 * 5'qdt              // - p[15] * qdt[5]
+                              - 0x4E72 * 4'qdt              // - p[14] * qdt[6]
+                              - 0xE131 * 3'qdt              // - p[13] * qdt[7]
+                              - 0xA029 * 2'qdt              // - p[12] * qdt[8]
+                              - 0xB850 * 'qdt               // - p[11] * qdt[9]
+                              - 0x45B6 * qdt                // - p[10] * qdt[10]
+                              - 0x8181 * qdt'               // - p[9] * qdt[11]
+                              - 0x585D * qdt'2              // - p[8] * qdt[12]
+                              - 0x2833 * qdt'3              // - p[7] * qdt[13]
+                              - 0xE848 * qdt'4              // - p[6] * qdt[14]
+                              - 0x79B9 * qdt'5;             // - p[5] * qdt[15]
+
+eq_babyjubjub_dt_chunks[21] = - 0x3064 * 4'qdt              // - p[15] * qdt[6]
+                              - 0x4E72 * 3'qdt              // - p[14] * qdt[7]
+                              - 0xE131 * 2'qdt              // - p[13] * qdt[8]
+                              - 0xA029 * 'qdt               // - p[12] * qdt[9]
+                              - 0xB850 * qdt                // - p[11] * qdt[10]
+                              - 0x45B6 * qdt'               // - p[10] * qdt[11]
+                              - 0x8181 * qdt'2              // - p[9] * qdt[12]
+                              - 0x585D * qdt'3              // - p[8] * qdt[13]
+                              - 0x2833 * qdt'4              // - p[7] * qdt[14]
+                              - 0xE848 * qdt'5;             // - p[6] * qdt[15]
+
+// clock #11
+
+eq_babyjubjub_dt_chunks[22] = - 0x3064 * 4'qdt              // - p[15] * qdt[7]
+                              - 0x4E72 * 3'qdt              // - p[14] * qdt[8]
+                              - 0xE131 * 2'qdt              // - p[13] * qdt[9]
+                              - 0xA029 * 'qdt               // - p[12] * qdt[10]
+                              - 0xB850 * qdt                // - p[11] * qdt[11]
+                              - 0x45B6 * qdt'               // - p[10] * qdt[12]
+                              - 0x8181 * qdt'2              // - p[9] * qdt[13]
+                              - 0x585D * qdt'3              // - p[8] * qdt[14]
+                              - 0x2833 * qdt'4;             // - p[7] * qdt[15]
+
+eq_babyjubjub_dt_chunks[23] = - 0x3064 * 3'qdt              // - p[15] * qdt[8]
+                              - 0x4E72 * 2'qdt              // - p[14] * qdt[9]
+                              - 0xE131 * 'qdt               // - p[13] * qdt[10]
+                              - 0xA029 * qdt                // - p[12] * qdt[11]
+                              - 0xB850 * qdt'               // - p[11] * qdt[12]
+                              - 0x45B6 * qdt'2              // - p[10] * qdt[13]
+                              - 0x8181 * qdt'3              // - p[9] * qdt[14]
+                              - 0x585D * qdt'4;             // - p[8] * qdt[15]
+
+// clock #12
+
+eq_babyjubjub_dt_chunks[24] = - 0x3064 * 3'qdt              // - p[15] * qdt[9]
+                              - 0x4E72 * 2'qdt              // - p[14] * qdt[10]
+                              - 0xE131 * 'qdt               // - p[13] * qdt[11]
+                              - 0xA029 * qdt                // - p[12] * qdt[12]
+                              - 0xB850 * qdt'               // - p[11] * qdt[13]
+                              - 0x45B6 * qdt'2              // - p[10] * qdt[14]
+                              - 0x8181 * qdt'3;             // - p[9] * qdt[15]
+
+eq_babyjubjub_dt_chunks[25] = - 0x3064 * 2'qdt              // - p[15] * qdt[10]
+                              - 0x4E72 * 'qdt               // - p[14] * qdt[11]
+                              - 0xE131 * qdt                // - p[13] * qdt[12]
+                              - 0xA029 * qdt'               // - p[12] * qdt[13]
+                              - 0xB850 * qdt'2              // - p[11] * qdt[14]
+                              - 0x45B6 * qdt'3;             // - p[10] * qdt[15]
+
+// clock #13
+
+eq_babyjubjub_dt_chunks[26] = - 0x3064 * 2'qdt              // - p[15] * qdt[11]
+                              - 0x4E72 * 'qdt               // - p[14] * qdt[12]
+                              - 0xE131 * qdt                // - p[13] * qdt[13]
+                              - 0xA029 * qdt'               // - p[12] * qdt[14]
+                              - 0xB850 * qdt'2;             // - p[11] * qdt[15]
+
+eq_babyjubjub_dt_chunks[27] = - 0x3064 * 'qdt               // - p[15] * qdt[12]
+                              - 0x4E72 * qdt                // - p[14] * qdt[13]
+                              - 0xE131 * qdt'               // - p[13] * qdt[14]
+                              - 0xA029 * qdt'2;             // - p[12] * qdt[15]
+
+// clock #14
+
+eq_babyjubjub_dt_chunks[28] = - 0x3064 * 'qdt               // - p[15] * qdt[13]
+                              - 0x4E72 * qdt                // - p[14] * qdt[14]
+                              - 0xE131 * qdt';              // - p[13] * qdt[15]
+
+eq_babyjubjub_dt_chunks[29] = - 0x3064 * qdt                // - p[15] * qdt[14]
+                              - 0x4E72 * qdt';              // - p[14] * qdt[15]
+
+// clock #15
+
+eq_babyjubjub_dt_chunks[30] = - 0x3064 * qdt;               // - p[15] * qdt[15]
+
