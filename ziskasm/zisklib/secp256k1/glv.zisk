@@ -498,19 +498,21 @@ sd_dbl:
 	copyb(0, SECP_D4_RES) -> r5
 	secp256k1_dbl(0, r5)
 sd_gp:
-	srl(r15, 6) -> r7
-	sll(r7, 3) -> r7
-	and(r15, 63) -> r14
+	; word byte offset (r16) and bit position (r17) — same for all 4 scalars this
+	; iteration; secp_addpt preserves r16/r17, so compute once and reuse in sd_pp.
+	srl(r15, 6) -> r16
+	sll(r16, 3) -> r16
+	and(r15, 63) -> r17
 	copyb(0, SECP_D4_GPAIR) -> r5
-	add(r5, r7) -> r5
+	add(r5, r16) -> r5
 	copyb(r5, 8[a + 0]) -> r5
-	srl(r5, r14) -> r5
+	srl(r5, r17) -> r5
 	and(r5, 1) -> r5
 	copyb(0, SECP_D4_GPAIR) -> r6
 	add(r6, 32) -> r6
-	add(r6, r7) -> r6
+	add(r6, r16) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	srl(r6, r14) -> r6
+	srl(r6, r17) -> r6
 	and(r6, 1) -> r6
 	eq(r5, 0), j(sd_g0)
 	eq(r6, 0), j(sd_gP1)
@@ -533,19 +535,17 @@ sd_gadd:
 	copyb(r5, r6) -> 8[a + 0]
 	call secp_addpt
 sd_pp:
-	srl(r15, 6) -> r7
-	sll(r7, 3) -> r7
-	and(r15, 63) -> r14
+	; reuse r16 (offset) / r17 (bit) from sd_gp — no recompute
 	copyb(0, SECP_D4_PPAIR) -> r5
-	add(r5, r7) -> r5
+	add(r5, r16) -> r5
 	copyb(r5, 8[a + 0]) -> r5
-	srl(r5, r14) -> r5
+	srl(r5, r17) -> r5
 	and(r5, 1) -> r5
 	copyb(0, SECP_D4_PPAIR) -> r6
 	add(r6, 32) -> r6
-	add(r6, r7) -> r6
+	add(r6, r16) -> r6
 	copyb(r6, 8[a + 0]) -> r6
-	srl(r6, r14) -> r6
+	srl(r6, r17) -> r6
 	and(r6, 1) -> r6
 	eq(r5, 0), j(sd_p0)
 	eq(r6, 0), j(sd_pP1)
