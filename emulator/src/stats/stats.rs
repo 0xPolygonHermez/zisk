@@ -3385,6 +3385,9 @@ impl Stats {
                 Indirect { param: 1, words: 16 },
                 Indirect { param: 2, words: 16 },
             ][..],
+            ZiskOp::Blake3 => {
+                &[Indirect { param: 0, words: 8 }, Indirect { param: 1, words: 8 }][..]
+            }
             ZiskOp::Add256 => &[
                 Indirect { param: 0, words: 4 },
                 Indirect { param: 1, words: 4 },

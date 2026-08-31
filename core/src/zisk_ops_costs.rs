@@ -14,6 +14,7 @@ pub const ARITH_EQ_384_COST: u64 = 80 * 24;
 pub const ADD256_COST: u64 = 104;
 pub const BABYJUBJUB_COST: u64 = ARITH_EQ_COST;
 pub const BLAKE2_COST: u64 = 24 * 209;
+pub const BLAKE3_COST: u64 = 56 * 73;
 pub const MAIN_COST: u64 = 68;
 
 pub const ADD_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_ADD_COST; // step extra + and + add

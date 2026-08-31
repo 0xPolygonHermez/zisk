@@ -1,0 +1,579 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "std_range_check.pil"
+
+require "operations.pil"
+require "opids.pil"
+
+require "blake3f_table.pil"
+
+// Precompile in charge of performing the BLAKE3 permutation
+// For reference: https://www.ietf.org/archive/id/draft-aumasson-blake3-00.html or https://github.com/BLAKE3-team/BLAKE3
+
+airtemplate Blake3f(const int N = 2**20, const int LANES = 1) {
+    /*
+       ═══════════════════════════════════════════════════════════════════════════
+       BLAKE3 ROUND FUNCTION SPECIFICATION
+       ═══════════════════════════════════════════════════════════════════════════
+
+       BLAKE3(v: [u32; 16], m: [u32; 16]) -> [u32; 16]
+
+        Each round consists of 8 G function calls and a permutation:
+
+            • 4 Column steps: Mix columns independently
+                v := G(v, 0, 4,  8, 12, m[ 0], m[ 1])
+                v := G(v, 1, 5,  9, 13, m[ 2], m[ 3])
+                v := G(v, 2, 6, 10, 14, m[ 4], m[ 5])
+                v := G(v, 3, 7, 11, 15, m[ 6], m[ 7])
+
+            • 4 Diagonal steps: Mix diagonals independently
+                v := G(v, 0, 5, 10, 15, m[ 8], m[ 9])
+                v := G(v, 1, 6, 11, 12, m[10], m[11])
+                v := G(v, 2, 7,  8, 13, m[12], m[13])
+                v := G(v, 3, 4,  9, 14, m[14], m[15])
+
+            • Message word selection permutation for round i:
+                m := PERMUTE(m)
+
+        Each G function performs 8 sequential operations on two input 
+        words x and y into four words indexed by a, b, c, and d in v:
+            G(v, a, b, c, d, x, y):
+                v[a] := (v[a] + v[b] + x) mod 2³²
+                v[d] := (v[d] ^ v[a]) >>> 16
+                v[c] := (v[c] + v[d]) mod 2³²
+                v[b] := (v[b] ^ v[c]) >>> 12
+                v[a] := (v[a] + v[b] + y) mod 2³²
+                v[d] := (v[d] ^ v[a]) >>> 8
+                v[c] := (v[c] + v[d]) mod 2³²
+                v[b] := (v[b] ^ v[c]) >>> 7
+
+       ═══════════════════════════════════════════════════════════════════════════
+       EXECUTION TRACE LAYOUT
+       ═══════════════════════════════════════════════════════════════════════════
+
+           ROW      va        vb          vc         vd         x          y        ROUND         STAGE      
+        |------|----------|----------|----------|----------|----------|----------|---------|----------------|
+        |  0   |  v[0]    |  v[4]    |  v[8]    |  v[12]   |   m[0]   |   m[1]   |    1    |  G1 - COL MIX  | <-- V/M IN
+        |  1   |  v[1]    |  v[5]    |  v[9]    |  v[13]   |   m[2]   |   m[3]   |    1    |  G2 - COL MIX  | <-- V/M IN
+        |  2   |  v[2]    |  v[6]    |  v[10]   |  v[14]   |   m[4]   |   m[5]   |    1    |  G3 - COL MIX  | <-- V/M IN
+        |  3   |  v[3]    |  v[7]    |  v[11]   |  v[15]   |   m[6]   |   m[7]   |    1    |  G4 - COL MIX  | <-- V/M IN
+        |------|----------|----------|----------|----------|----------|----------|---------|----------------|
+        |  4   |  v[0]    |  v[5]    |  v[10]   |  v[15]   |   m[8]   |   m[9]   |    1    |  G1 - DIA MIX  | <-- M IN
+        |  5   |  v[1]    |  v[6]    |  v[11]   |  v[12]   |   m[10]  |   m[11]  |    1    |  G2 - DIA MIX  | <-- M IN
+        |  6   |  v[2]    |  v[7]    |  v[8]    |  v[13]   |   m[12]  |   m[13]  |    1    |  G3 - DIA MIX  | <-- M IN
+        |  7   |  v[3]    |  v[4]    |  v[9]    |  v[14]   |   m[14]  |   m[15]  |    1    |  G4 - DIA MIX  | <-- M IN
+        |------|----------|----------|----------|----------|----------|----------|---------|----------------|
+        | ...  |   ...    |   ...    |   ...    |   ...    |   ...    |   ...    |   ...   |       ...      |
+        |------|----------|----------|----------|----------|----------|----------|---------|----------------|
+        |  48  |  v[0]    |  v[4]    |  v[8]    |  v[12]   |   m[0]   |   m[1]   |    7    |  G1 - COL MIX  |
+        |  49  |  v[1]    |  v[5]    |  v[9]    |  v[13]   |   m[2]   |   m[3]   |    7    |  G2 - COL MIX  |
+        |  50  |  v[2]    |  v[6]    |  v[10]   |  v[14]   |   m[4]   |   m[5]   |    7    |  G3 - COL MIX  |
+        |  51  |  v[3]    |  v[7]    |  v[11]   |  v[15]   |   m[6]   |   m[7]   |    7    |  G4 - COL MIX  |
+        |------|----------|----------|----------|----------|----------|----------|---------|----------------|
+        |  52  |  v[0]    |  v[5]    |  v[10]   |  v[15]   |   m[8]   |   m[9]   |    7    |  G1 - DIA MIX  | <-- V OUT
+        |  53  |  v[1]    |  v[6]    |  v[11]   |  v[12]   |   m[10]  |   m[11]  |    7    |  G2 - DIA MIX  | <-- V OUT
+        |  54  |  v[2]    |  v[7]    |  v[8]    |  v[13]   |   m[12]  |   m[13]  |    7    |  G3 - DIA MIX  | <-- V OUT
+        |  55  |  v[3]    |  v[4]    |  v[9]    |  v[14]   |   m[14]  |   m[15]  |    7    |  G4 - DIA MIX  | <-- V OUT
+        |------|----------|----------|----------|----------|----------|----------|---------|----------------|
+
+    */
+
+    const int CLOCKS_PER_G = 1;
+    const int NUM_G_PER_ROUND = 8;
+    const int NUM_ROUNDS = 7;
+    const int CLOCKS_PER_ROUND = CLOCKS_PER_G * NUM_G_PER_ROUND;
+    const int CLOCKS = CLOCKS_PER_ROUND * NUM_ROUNDS;
+
+    // Calculate usable capacity
+    const int NUM_NON_USABLE_ROWS = N % CLOCKS;
+    const int NUM_OPS = (N - NUM_NON_USABLE_ROWS) / CLOCKS;
+    if (NUM_OPS < 1) {
+        error(`N must be at least ${CLOCKS} to fit the Blake3 arithmetization, but received N=${N}`);
+    }
+
+    if (LANES < 1) {
+        error(`LANES must be at least 1, but received LANES=${LANES}`);
+    }
+
+    // Each row carries LANES independent G evaluations, so one CLOCKS-row cycle
+    // completes LANES Blake3 permutations instead of one.
+    const int NUM_BLAKE3 = NUM_OPS * LANES;
+    println(`The total number of Blake3's with N = 2^${log2(N)} and LANES = ${LANES} is ${NUM_BLAKE3}`);
+
+    // Message word permutation schedule
+    const int SIGMA[7][16];
+    SIGMA[0] = [ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15];
+    SIGMA[1] = [ 2,  6,  3, 10,  7,  0,  4, 13,  1, 11, 12,  5,  9, 14, 15,  8];
+    SIGMA[2] = [ 3,  4, 10, 12, 13,  2,  7, 14,  6,  5,  9,  0, 11, 15,  8,  1];
+    SIGMA[3] = [10,  7, 12,  9, 14,  3, 13, 15,  4,  0, 11,  2,  5,  8,  1,  6];
+    SIGMA[4] = [12, 13,  9, 11, 15, 10, 14,  8,  7,  2,  5,  3,  0,  1,  6,  4];
+    SIGMA[5] = [ 9, 14, 11,  5,  8, 12, 15,  1, 13,  3,  0, 10,  2,  6,  4,  7];
+    SIGMA[6] = [11, 15,  5,  0,  1,  9,  8,  6, 14, 10,  2, 12,  3,  4,  7, 13];
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CLOCK SELECTORS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Base clock: 1 at first cycle row, 0 elsewhere within each cycle
+    if (NUM_NON_USABLE_ROWS == 0) {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS];
+    } else {
+        col fixed air.CLK_0 = [[1, 0:(CLOCKS-1)]:NUM_OPS, 0...];
+    }
+
+    // Clock selectors for each row in the cycle
+    const expr CLK[CLOCKS];
+    for (int i = 0; i < CLOCKS; i++) {
+        CLK[i] = (i)'CLK_0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // IN-USE SELECTORS AND OPERATION DATA (one per lane)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Indicates whether each lane is currently in use within the cycle
+    col witness bits(1) in_use[LANES];
+    col witness bits(1) in_use_clk_0[LANES];
+
+    // Step and addresses of the operation, stored at the first rows of the cycle
+    col witness bits(40) step_addr[LANES];
+
+    // Per-op discriminator: the main step of the operation, broadcast to every row of the cycle
+    col witness bits(40) op_step[LANES];
+
+    // Positions of the operation data within step_addr
+    const int STEP_MAIN = 0;
+    const int ADDR_OP = STEP_MAIN + 1;
+    const int ADDR_STATE = ADDR_OP + 1;
+    const int ADDR_INPUT = ADDR_STATE + 1;
+    const int ADDR_IND_0 = ADDR_INPUT + 1;
+    const int ADDR_IND_1 = ADDR_IND_0 + 1;
+
+    // Selector latching: once activated, stays active for the full cycle
+    const expr in_use_latched = clock_set(start: 1, end: CLOCKS);
+
+    for (int l = 0; l < LANES; l++) {
+        in_use[l] * (1 - in_use[l]) === 0;
+        in_use_latched * (in_use[l] - 'in_use[l]) === 0;
+
+        // Lanes are filled in order: lane l+1 can only be in use if lane l is
+        if (l > 0) {
+            in_use[l] * (1 - in_use[l - 1]) === 0;
+        }
+
+        in_use_clk_0[l] <== CLK_0 * in_use[l];
+
+        op_step[l] <== clock_shift(step_addr[l], STEP_MAIN, start: 0, end: CLOCKS);
+
+        // Verify address indirections match
+        clock_eq(step_addr[l], ADDR_STATE, ADDR_IND_0) === 0;
+        clock_eq(step_addr[l], ADDR_INPUT, ADDR_IND_1) === 0;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // WITNESS COLUMNS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Every column carries a leading lane index: the row holds LANES independent G
+    // evaluations side by side. Only the lookup tables below are shared between lanes,
+    // which is the whole point of widening instead of lengthening the trace.
+    col witness bits(16) va[LANES][2];
+    col witness bits(8) vb[LANES][4];
+    col witness bits(16) vc[LANES][2];
+    col witness bits(8) vd[LANES][4];
+    col witness bits(16) x[LANES][2];
+    col witness bits(16) y[LANES][2];
+
+    // va' === (va + vb + x) mod 2³²
+    col witness bits(8) va_prime[LANES][4];
+
+    // vd' === (vd ^ va') >>> 16 (Note that ROTR 16 is a byte-aligned rotation)
+    col witness bits(8) vd_prime[LANES][4];
+
+    // vc' === (vc + vd') mod 2³²
+    col witness bits(8) vc_prime[LANES][4];
+
+    // vb' === (vb ^ vc') >>> 12, as the two byte pieces the table returns
+    col witness bits(8) vb_prime_s[LANES][4][2];
+
+    // va'' === (va' + vb' + y) mod 2³²
+    col witness bits(8) va_prime_prime[LANES][4];
+
+    // vd'' === (vd' ^ va'') >>> 8 (Note that ROTR 8 is a byte-aligned rotation)
+    col witness bits(8) vd_prime_prime[LANES][4];
+
+    // vc'' === (vc' + vd'') mod 2³²
+    col witness bits(8) vc_prime_prime[LANES][4];
+
+    /*
+        vb'' === (vb' ^ vc'') >>> 7 = ((vb' ^ vc'') >>> 8) <<< 1
+
+        ROTR 8 is a byte-aligned rotation and ROTL 1 is 2·y mod 2³² plus the
+        top bit of y: z = vb' ^ vc'' is computed with plain XOR (rot 0) lookups and the
+        rotation costs one boolean witness.
+    */
+    col witness bits(8) vb_pp_xor[LANES][4]; // z = vb' ^ vc''
+    col witness bits(1) vb_pp_t[LANES];      // top bit of y = rotr8(z), i.e., bit 7 of z[0]
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TRANSITION / MESSAGE SELECTORS (shared by every lane)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Column-to-diagonal clock selectors
+    const expr ctd1_clocks = clock_set(start: 4, end: 11, step: 1, skip: 7);
+    const expr ctd2_clocks = clock_set(start: 5, end: 12, step: 1, skip: 7);
+    const expr ctd3_clocks = clock_set(start: 6, end: 13, step: 1, skip: 7);
+    const expr ctd4_clocks = clock_set(start: 7, end: 14, step: 1, skip: 7);
+    const expr ctd12_clocks = ctd1_clocks + ctd2_clocks;
+    const expr ctd34_clocks = ctd3_clocks + ctd4_clocks;
+    const expr ctd123_clocks = ctd12_clocks + ctd3_clocks;
+    const expr ctd234_clocks = ctd2_clocks + ctd34_clocks;
+    const expr ctd_clocks = ctd12_clocks + ctd34_clocks;
+
+    // Round-by-round clock selectors
+    const expr rbr1_clocks = clock_set(start: 8, end: 8 + NUM_ROUNDS - 1, step: 1, skip: 7);
+    const expr rbr2_clocks = clock_set(start: 9, end: 9 + NUM_ROUNDS - 1, step: 1, skip: 7);
+    const expr rbr3_clocks = clock_set(start: 10, end: 10 + NUM_ROUNDS - 1, step: 1, skip: 7);
+    const expr rbr4_clocks = clock_set(start: 11, end: 11 + NUM_ROUNDS - 1, step: 1, skip: 7);
+    const expr rbr12_clocks = rbr1_clocks + rbr2_clocks;
+    const expr rbr34_clocks = rbr3_clocks + rbr4_clocks;
+    const expr rbr123_clocks = rbr12_clocks + rbr3_clocks;
+    const expr rbr234_clocks = rbr2_clocks + rbr3_clocks + rbr4_clocks;
+    const expr rbr_clocks = rbr12_clocks + rbr34_clocks;
+
+    expr msg_idx_x = 0;
+    expr msg_idx_y = 0;
+    for (int p = 0; p < CLOCKS; p++) {
+        const int r = (p / CLOCKS_PER_ROUND);
+        const int g = (p % CLOCKS_PER_ROUND);
+
+        msg_idx_x += CLK[p] * SIGMA[r][2 * g];
+        msg_idx_y += CLK[p] * SIGMA[r][2 * g + 1];
+    }
+
+    // Selectors for round 0 and rounds 1..6
+    const expr round0_sel   = clock_set(start: 0, end: CLOCKS_PER_ROUND);
+    const expr rounds16_sel = clock_set(start: CLOCKS_PER_ROUND, end: CLOCKS);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MEMORY CLOCK SELECTORS (shared by every lane)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    const int WORD_SIZE = 8;                                              // bytes per u64 memory word
+    const int NUM_INPUT_WORDS = 8;                                        // m[0..15] as 8 u64 words
+    const int NUM_STATE_WORDS = 8;                                        // v[0..15] as 8 u64 words
+    const int NUM_PARAMS = 2;                                             // state ptr, input ptr
+    const int READ_INPUT_START = 0;
+    const int READ_STATE_START = READ_INPUT_START + NUM_INPUT_WORDS;      // 8
+    const int READ_PARAMS_START = READ_STATE_START + NUM_STATE_WORDS;     // 16
+    const int WRITE_STATE_START = CLOCKS - NUM_STATE_WORDS;               // 48
+
+    const expr clks_read_input = clock_set(start: READ_INPUT_START, end: READ_INPUT_START + NUM_INPUT_WORDS);
+    const expr clks_read_state = clock_set(start: READ_STATE_START, end: READ_STATE_START + NUM_STATE_WORDS);
+    const expr clks_read_params = clock_set(start: READ_PARAMS_START, end: READ_PARAMS_START + NUM_PARAMS);
+    const expr clks_write_state = clock_set(start: WRITE_STATE_START, end: CLOCKS);
+    const expr clks_mem = clks_read_input + clks_read_state + clks_read_params + clks_write_state;
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PER-LANE CONSTRAINTS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    for (int l = 0; l < LANES; l++) {
+        // ───────────────────────────────────────────────────────────────────────
+        // G-FUNCTION CONSTRAINTS
+        // ───────────────────────────────────────────────────────────────────────
+
+        // Range-check the limbs of va, vc, x, y (vb, vd are range-checked by the XOR table)
+        for (int i = 0; i < 2; i++) {
+            range_check(expression: va[l][i], min: 0, max: P2_16 - 1);
+            range_check(expression: vc[l][i], min: 0, max: P2_16 - 1);
+            range_check(expression: x[l][i], min: 0, max: P2_16 - 1);
+            range_check(expression: y[l][i], min: 0, max: P2_16 - 1);
+        }
+
+        // Packed expressions
+        const expr va_packed = pack(va[l], 16);
+        const expr vb_packed = pack_bytes(vb[l]);
+        const expr vc_packed = pack(vc[l], 16);
+        const expr vd_packed = pack_bytes(vd[l]);
+
+        const expr x_packed = pack(x[l], 16);
+        const expr y_packed = pack(y[l], 16);
+
+        // va' === (va + vb + x) mod 2³²
+        const expr va_prime_packed = pack_bytes(va_prime[l]);
+        add3_check(va_packed, vb_packed, x_packed, va_prime_packed);
+
+        // vd' === (vd ^ va') >>> 16 (Note that ROTR 16 is a byte-aligned rotation)
+        for (int i = 0; i < 4; i++) {
+            xor_rotr_check(a: vd[l][i], b: va_prime[l][i], rot: 0, c0: vd_prime[l][(i + 2) % 4], c1: 0);
+        }
+
+        // vc' === (vc + vd') mod 2³²
+        const expr vc_prime_packed = pack_bytes(vc_prime[l]);
+        const expr vd_prime_packed = pack_bytes(vd_prime[l]);
+        add2_check(vc_packed, vd_prime_packed, vc_prime_packed);
+
+        // vb' === (vb ^ vc') >>> 12
+        for (int i = 0; i < 4; i++) {
+            xor_rotr_check(a: vb[l][i], b: vc_prime[l][i], rot: 12, c0: vb_prime_s[l][i][0], c1: vb_prime_s[l][i][1]);
+        }
+
+        /*
+            ROTR 12
+            x    in[x]         out[x]           out[x][0..3]
+            ----------------------------------------------------
+            0    0x11      0x01_10_00_00     0x01 0x10 XXXX XXXX
+            1    0x22      0x20_00_00_02     0x20 XXXX XXXX 0x02
+            2    0x33      0x00_00_03_30     XXXX XXXX 0x03 0x30
+            3    0x44      0x00_04_40_00     XXXX 0x04 0x40 XXXX
+            ----------------------------------------------------
+            Result:        0x21_14_43_32     0x21 0x14 0x43 0x32
+        */
+        const expr vb_prime[4];
+        vb_prime[0] = vb_prime_s[l][1][1] + vb_prime_s[l][2][0];
+        vb_prime[1] = vb_prime_s[l][2][1] + vb_prime_s[l][3][0];
+        vb_prime[2] = vb_prime_s[l][0][0] + vb_prime_s[l][3][1];
+        vb_prime[3] = vb_prime_s[l][0][1] + vb_prime_s[l][1][0];
+
+        // va'' === (va' + vb' + y) mod 2³²
+        const expr va_prime_prime_packed = pack_bytes(va_prime_prime[l]);
+        const expr vb_prime_packed = pack_bytes(vb_prime);
+        add3_check(va_prime_packed, vb_prime_packed, y_packed, va_prime_prime_packed);
+
+        // vd'' === (vd' ^ va'') >>> 8 (Note that ROTR 8 is a byte-aligned rotation)
+        for (int i = 0; i < 4; i++) {
+            xor_rotr_check(a: vd_prime[l][i], b: va_prime_prime[l][i], rot: 0, c0: vd_prime_prime[l][(i + 3) % 4], c1: 0);
+        }
+
+        // vc'' === (vc' + vd'') mod 2³²
+        const expr vc_prime_prime_packed = pack_bytes(vc_prime_prime[l]);
+        const expr vd_prime_prime_packed = pack_bytes(vd_prime_prime[l]);
+        add2_check(vc_prime_packed, vd_prime_prime_packed, vc_prime_prime_packed);
+
+        for (int i = 0; i < 4; i++) {
+            xor_rotr_check(a: vb_prime[i], b: vc_prime_prime[l][i], rot: 0, c0: vb_pp_xor[l][i], c1: 0);
+        }
+        vb_pp_t[l] * (1 - vb_pp_t[l]) === 0;
+
+        // y = rotr8(z): byte i of y is z[(i + 1) % 4]
+        const expr vb_pp_rotr8 = pack_bytes([vb_pp_xor[l][1], vb_pp_xor[l][2], vb_pp_xor[l][3], vb_pp_xor[l][0]]);
+        // vb'' = rotl1(y) = 2·y mod 2³² + top(y)
+        const expr vb_pp_packed = 2*vb_pp_rotr8 - P2_32*vb_pp_t[l] + vb_pp_t[l];
+        // The carry bit is sound with just booleanity: z bytes are table-bound, so y < 2³², and
+        // the transition constraint equates vb_pp_packed to a future vb_packed which is also < 2³².
+        // If the prover lies about vb_pp_t, the expression lands outside [0, 2³²) as a field element
+        // (off by ±(2³² - 1)), so the equality can never hold.
+
+        // ───────────────────────────────────────────────────────────────────────
+        // TRANSITION CONSTRAINTS
+        // ───────────────────────────────────────────────────────────────────────
+
+        // We should prove that the input of the diagonal G mixing is equal to the output of the column G mixing
+        // Also, that the input of the next column G mixing is equal to the output of the previous diagonal G mixing
+        const expr va_pp_packed = pack_bytes(va_prime_prime[l]);
+        const expr vc_pp_packed = pack_bytes(vc_prime_prime[l]);
+        const expr vd_pp_packed = pack_bytes(vd_prime_prime[l]);
+
+        (ctd_clocks + rbr_clocks) * (va_packed - (4)'va_pp_packed) === 0;
+
+        ctd123_clocks * (vb_packed - (3)'vb_pp_packed) + ctd4_clocks * (vb_packed - (7)'vb_pp_packed) +
+        rbr1_clocks * (vb_packed - (1)'vb_pp_packed) + rbr234_clocks * (vb_packed - (5)'vb_pp_packed) === 0;
+
+        (ctd12_clocks + rbr12_clocks) * (vc_packed - (2)'vc_pp_packed) + 
+        (ctd34_clocks + rbr34_clocks) * (vc_packed - (6)'vc_pp_packed) === 0;
+
+        ctd1_clocks * (vd_packed - (1)'vd_pp_packed) + ctd234_clocks * (vd_packed - (5)'vd_pp_packed) +
+        rbr123_clocks * (vd_packed - (3)'vd_pp_packed) + rbr4_clocks * (vd_packed - (7)'vd_pp_packed) === 0;
+
+        // ───────────────────────────────────────────────────────────────────────
+        // MESSAGE PERMUTATION CONSTRAINTS
+        // ───────────────────────────────────────────────────────────────────────
+
+        // unique key per (operation, lane, word): the main step is unique per operation
+        // and 16 indices per lane, so no key is ever shared between two Blake3's
+        const expr key_x = msg_idx_x + 16 * (LANES * op_step[l] + l);
+        const expr key_y = msg_idx_y + 16 * (LANES * op_step[l] + l);
+
+        // Round 0 writes the message; rounds 1..6 read it
+        lookup_proves(BLAKE3F_MSG_ID, [key_x, x_packed], mul: (NUM_ROUNDS - 1) * round0_sel * in_use[l]);
+        lookup_proves(BLAKE3F_MSG_ID, [key_y, y_packed], mul: (NUM_ROUNDS - 1) * round0_sel * in_use[l]);
+        lookup_assumes(BLAKE3F_MSG_ID, [key_x, x_packed], sel: rounds16_sel * in_use[l], sel_is_binary: 1);
+        lookup_assumes(BLAKE3F_MSG_ID, [key_y, y_packed], sel: rounds16_sel * in_use[l], sel_is_binary: 1);
+
+        // ───────────────────────────────────────────────────────────────────────
+        // MEMORY INTERFACE
+        // ───────────────────────────────────────────────────────────────────────
+        //
+        // MEMORY ACCESS MAP (per lane)
+        // =============================================================
+        //   clock  0..7  | STEP_MAIN     | R | ADDR_INPUT + 8·k |  m[2k], m[2k+1]
+        //   clock  8..15 | STEP_MAIN     | R | ADDR_STATE + 8·k |  v[2k], v[2k+1]
+        //   clock 16..17 | STEP_MAIN     | R | ADDR_OP + 8·k    |  ADDR_IND_k
+        //   clock 48..55 | STEP_MAIN + 1 | W | ADDR_STATE + 8·k |  v'[2k], v'[2k+1]
+        // =============================================================
+        //
+        // Reads of the message happen at the round-0 rows, where [x, y] hold
+        // [m[2k], m[2k+1]] (SIGMA[0] is the identity); the lookup argument above
+        // binds the remaining rounds to the same message words.
+        // Reads of the state reference the round-0 column-mix rows, where
+        // (va, vb, vc, vd) at row k hold (v[k], v[4+k], v[8+k], v[12+k]).
+        // Writes of the state reference the round-6 diagonal-mix rows (52..55),
+        // where (va'', vb'', vc'', vd'') at row 52+k hold the final state with
+        // the diagonal indexing (v[k], v[4+(k+1)%4], v[8+(k+2)%4], v[12+(k+3)%4]).
+
+        const expr mem_addr =
+            clock_shift(step_addr[l], ADDR_INPUT, start: READ_INPUT_START, end: READ_INPUT_START + NUM_INPUT_WORDS, delta: WORD_SIZE) +
+            clock_shift(step_addr[l], ADDR_STATE, start: READ_STATE_START, end: READ_STATE_START + NUM_STATE_WORDS, delta: WORD_SIZE) +
+            clock_shift(step_addr[l], ADDR_OP, start: READ_PARAMS_START, end: READ_PARAMS_START + NUM_PARAMS, delta: WORD_SIZE) +
+            clock_shift(step_addr[l], ADDR_STATE, start: WRITE_STATE_START, end: CLOCKS, delta: WORD_SIZE);
+
+        const expr mem_value[2];
+        mem_value[0] =
+            clks_read_input * x_packed +
+            CLK[8] * (8)'va_packed + CLK[9] * (7)'va_packed +
+            CLK[10] * (10)'vb_packed + CLK[11] * (9)'vb_packed +
+            CLK[12] * (12)'vc_packed + CLK[13] * (11)'vc_packed +
+            CLK[14] * (14)'vd_packed + CLK[15] * (13)'vd_packed +
+            clock_shift(step_addr[l], ADDR_IND_0, READ_PARAMS_START) +
+            clock_shift(step_addr[l], ADDR_IND_1, READ_PARAMS_START + 1) +
+            CLK[48] * va_pp_packed'(4) + CLK[49] * va_pp_packed'(5) +
+            CLK[50] * vb_pp_packed'(5) + CLK[51] * vb_pp_packed'(2) +
+            CLK[52] * vc_pp_packed'(2) + CLK[53] * (1)'vc_pp_packed +
+            CLK[54] * (1)'vd_pp_packed + CLK[55] * vd_pp_packed;
+
+        mem_value[1] =
+            clks_read_input * y_packed +
+            CLK[8] * (7)'va_packed + CLK[9] * (6)'va_packed +
+            CLK[10] * (9)'vb_packed + CLK[11] * (8)'vb_packed +
+            CLK[12] * (11)'vc_packed + CLK[13] * (10)'vc_packed +
+            CLK[14] * (13)'vd_packed + CLK[15] * (12)'vd_packed +
+            CLK[48] * va_pp_packed'(5) + CLK[49] * va_pp_packed'(6) +
+            CLK[50] * vb_pp_packed'(2) + CLK[51] * vb_pp_packed'(3) +
+            CLK[52] * vc_pp_packed'(3) + CLK[53] * vc_pp_packed +
+            CLK[54] * vd_pp_packed + CLK[55] * (3)'vd_pp_packed;
+            // addresses are 32-bit values, so the high half of the param reads is 0
+
+        precompiled_mem_op(
+            is_write: clks_write_state,
+            sel: clks_mem * in_use[l],
+            main_step: op_step[l],
+            addr: mem_addr,
+            value: mem_value
+        );
+
+        // ───────────────────────────────────────────────────────────────────────
+        // MAIN PROCESSOR INTEGRATION
+        // ───────────────────────────────────────────────────────────────────────
+
+        proves_operation(op: OP_BLAKE3F, b: [step_addr[l]'(ADDR_OP), 0], main_step: step_addr[l]'(STEP_MAIN),
+                         mul: in_use_clk_0[l]);
+    }
+
+    // Given a,b,c,active it checks c == (a + b) mod 2³² when active == 1
+    // Assumes that a,b,c ∈ [0, 2³²), active ∈ {0,1} and that p > 2³²
+    function add2_check(const expr a, const expr b, const expr c, const expr active = 1) {
+        // c == (a + b) mod 2³² iff c - a - b ∈ {0, -2³²} (over the integers)
+        // Since p > 2³², all values in the set {0, -2³²} are distinct mod p,
+        // so we can check that c - a - b = 0, -2³² (mod p)
+        const expr sum = c - a - b;
+        active * (sum * (sum + P2_32)) === 0;
+    }
+
+    // Given a,b,c,d,active, it checks d == (a + b + c) mod 2³² when active == 1
+    // Assumes that a,b,c,d ∈ [0, 2³²), active ∈ {0,1} and that p > 2·2³²
+    function add3_check(const expr a, const expr b, const expr c, const expr d, const expr active = 1) {
+        // d == (a + b + c) mod 2³² iff d - a - b - c ∈ {0, -2³², -2·2³²} (over the integers)
+        // Since p > 2·2³², all values in the set {0, -2³², -2·2³²} are distinct mod p,
+        // so we can check that d - a - b - c = 0, -2³², -2·2³² (mod p)
+        const expr sum = d - a - b - c;
+        active * (sum * (sum + P2_32) * (sum + 2*P2_32)) === 0;
+    }
+
+    // Packs an array of s-bit limbs (little-endian) into a single expression
+    function pack(const expr a[], const int s): expr {
+        const int len = length(a);
+        assert(len > 0);
+        assert(s > 0);
+        const int base = 2**s;
+        expr packed = 0;
+        for (int j = 0; j < len; j++) {
+            packed += a[j] * base**j;
+        }
+        return packed;
+    }
+
+    function pack_bytes(const expr a[]): expr {
+        return pack(a, 8);
+    }
+
+    // At the first row of each cycle, returns the difference between the values of
+    // mvcol at cycle positions pos1 and pos2 (used to equate address indirections)
+    function clock_eq(const expr mvcol, int pos1, int pos2): const expr {
+        return air.CLK_0 * (mvcol'(pos1) - mvcol'(pos2));
+    }
+
+    // Sum of clock selectors CLK[start..end) (end exclusive), optionally skipping
+    // 'skip' clocks after every 'step' consecutive ones, multiplied by mvcol
+    function clock_set(const expr mvcol = 1, int start = 0, int end = -1, const int step = 1, const int skip = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+
+        int clock_idx = start;
+        int count = 0;
+        int in_group = 0;
+        while (count < end - start) {
+            result += air.CLK[clock_idx];
+            count++;
+            in_group++;
+            clock_idx++;
+
+            // After 'step' consecutive clocks, skip 'skip' clocks
+            if (skip > 0 && in_group == step) {
+                clock_idx += skip;
+                in_group = 0;
+            }
+        }
+        return result * mvcol;
+    }
+
+    // At each clock in [start, end) (end exclusive), returns the value of mvcol at
+    // cycle position pos, plus an offset that grows by delta at each selected clock
+    function clock_shift(const expr mvcol, const int pos, const int start = 0, int end = -1, const int step = 1, const int skip = 0, int offset = 0, const int delta = 0, const int offset_shift = 0): const expr {
+        expr result = 0;
+        if (end == -1) {
+            end = start + 1;
+        }
+
+        const int num_clocks = end - start;
+
+        int clock_idx = start;
+        int count = 0;
+        int in_group = 0;
+        while (count < num_clocks) {
+            const int col_idx = (pos - clock_idx) % air.CLOCKS;
+            // Compute the shifted offset index: (count + offset_shift) mod num_clocks
+            const int shifted_count = (count + offset_shift) % num_clocks;
+            const int current_offset = offset + delta * shifted_count;
+
+            if (current_offset != 0) {
+                result += air.CLK[clock_idx] * (mvcol'(col_idx) + current_offset);
+            } else {
+                result += air.CLK[clock_idx] * mvcol'(col_idx);
+            }
+
+            count++;
+            in_group++;
+            clock_idx++;
+
+            // After 'step' consecutive clocks, skip 'skip' clocks
+            if (skip > 0 && in_group == step) {
+                clock_idx += skip;
+                in_group = 0;
+            }
+        }
+        return result;
+    }
+}

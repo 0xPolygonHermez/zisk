@@ -13,11 +13,12 @@
 //! - [`syscall_arith384_mod`] — 384-bit modular multiply-add: `d = (a * b + c) mod m`
 //!
 //! ### Hashing
-//! - [`syscall_blake2br`] — BLAKE2b round function
-//! - [`syscall_keccakf`] — Keccak-f\[1600\] permutation
+//! - [`syscall_blake2b_round`] — BLAKE2b round function
+//! - [`syscall_blake3f`] — BLAKE3f round function
+//! - [`syscall_keccak_f`] — Keccak-f\[1600\] permutation
 //! - [`syscall_poseidon1`] — Poseidon1 hash function
 //! - [`syscall_poseidon2`] — Poseidon2 hash function
-//! - [`syscall_sha256f`] — SHA-256 compression function
+//! - [`syscall_sha256_f`] — SHA-256 compression function
 //!
 //! ### Elliptic curve (secp256k1)
 //! - [`syscall_secp256k1_add`] — Point addition on secp256k1
@@ -41,6 +42,7 @@ mod arith256_mod;
 mod arith384_mod;
 mod babyjubjub_add;
 mod blake2br;
+mod blake3f;
 mod bls12_381_complex_add;
 mod bls12_381_complex_mul;
 mod bls12_381_complex_sub;
@@ -68,6 +70,7 @@ pub use arith256_mod::*;
 pub use arith384_mod::*;
 pub use babyjubjub_add::*;
 pub use blake2br::*;
+pub use blake3f::*;
 pub use bls12_381_complex_add::*;
 pub use bls12_381_complex_mul::*;
 pub use bls12_381_complex_sub::*;
