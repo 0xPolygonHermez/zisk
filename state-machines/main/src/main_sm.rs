@@ -136,7 +136,7 @@ impl<F: PrimeField64> MainInstance<F> {
         // check distance, keeping it below 2^24 regardless of NUM_ROWS.
         let flush_size = NUM_ROWS.min(Self::FLUSH_WINDOW_ROWS);
         let flush_count = NUM_ROWS / flush_size;
-        if chunk_size > flush_size {
+        if chunk_size > flush_size || flush_size % chunk_size != 0 {
             // flush windows must be aligned to chunk boundaries
             return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: flush_size });
         }
