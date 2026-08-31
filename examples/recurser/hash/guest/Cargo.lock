@@ -288,6 +288,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "blake3"
+version = "1.8.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6d9e454fc11f76977dc803893aff6304ed33d6a26efae8696573bea74baa27ae"
+dependencies = [
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "cpufeatures 0.3.1",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -351,10 +364,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "constant_time_eq"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
+
+[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "cpufeatures"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ca28b0ae3115b884660db4118d803791fd6756b6e88f39c0f3f7859060d7566"
 dependencies = [
  "libc",
 ]
@@ -787,44 +815,65 @@ dependencies = [
 
 [[package]]
 name = "proofman-fields"
-version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ea663e7b8fbeaba6a3d0e6046fd7d85250186cdc2fac56ce102bfe8bfcfdf0d"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#35f361a212a0bba4c09e4e83ca94e4e52f1f7889"
+dependencies = [
+ "blake3",
+ "cfg-if",
+ "num-bigint",
+ "paste",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "serde",
+]
+
+[[package]]
+name = "proofman-fields"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#14974d0d4b65759f9e4060a415f7175077295fd1"
 dependencies = [
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
  "serde",
 ]
 
 [[package]]
 name = "proofman-starks-lib-c"
-version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eebeb94ceceb5009296fa5603ea710861ca262af8dcdcd43c243707aec9d6726"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#35f361a212a0bba4c09e4e83ca94e4e52f1f7889"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+]
+
+[[package]]
+name = "proofman-starks-lib-c"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#14974d0d4b65759f9e4060a415f7175077295fd1"
+dependencies = [
+ "crossbeam-channel",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
 ]
 
 [[package]]
 name = "proofman-starks-src"
-version = "1.1.0-alpha.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f652a3899833633da4829ee714b7d8ecdece399929bfd6673a471ecf0ce3227"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#35f361a212a0bba4c09e4e83ca94e4e52f1f7889"
+
+[[package]]
+name = "proofman-starks-src"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#14974d0d4b65759f9e4060a415f7175077295fd1"
 
 [[package]]
 name = "proofman-verifier"
-version = "1.1.0-alpha"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e578aca4212b4e4d083d62c54c74cbf2aa01926e15a76d6b0c9c70a4b98e2719"
+version = "1.3.0-alpha"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha#14974d0d4b65759f9e4060a415f7175077295fd1"
 dependencies = [
- "bincode",
  "num-traits",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
  "serde",
- "tracing",
 ]
 
 [[package]]
@@ -905,7 +954,7 @@ dependencies = [
 name = "recurser-hash-common"
 version = "0.1.0"
 dependencies = [
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-develop-1.3.0-alpha)",
 ]
 
 [[package]]
@@ -1032,7 +1081,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "digest",
 ]
 
@@ -1295,19 +1344,19 @@ dependencies = [
 
 [[package]]
 name = "zisk-circuit"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 
 [[package]]
 name = "zisk-definitions"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 
 [[package]]
 name = "zisk-lib-c"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 
 [[package]]
 name = "zisk-precomp-helpers"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 dependencies = [
  "ark-bls12-381",
  "ark-bn254",
@@ -1324,7 +1373,7 @@ dependencies = [
 
 [[package]]
 name = "zisk-stream"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 dependencies = [
  "libc",
  "thiserror",
@@ -1333,21 +1382,21 @@ dependencies = [
 
 [[package]]
 name = "zisk-verifier"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 dependencies = [
  "proofman-verifier",
 ]
 
 [[package]]
 name = "zisk-zkvm-interface"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 dependencies = [
  "bindgen",
 ]
 
 [[package]]
 name = "ziskos"
-version = "1.1.0-alpha"
+version = "1.3.0-alpha"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -1368,7 +1417,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
  "rand 0.8.7",
  "ripemd",
  "secp256k1",
