@@ -3,8 +3,6 @@ use pil2_stark_setup::commands::setup::{run_setup, SetupOptions};
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 
-const DEFAULT_HASH: &str = "Poseidon1";
-
 /// Parse a job-count flag, rejecting 0 (a 0-sized rayon/nvcc pool is invalid).
 fn parse_jobs(s: &str) -> std::result::Result<usize, String> {
     let n: usize = s.parse().map_err(|_| format!("`{s}` is not a valid number"))?;
@@ -56,7 +54,7 @@ pub(crate) struct ZiskProofmanSetupSetup {
 
     /// Hash function to use: Poseidon1 or Poseidon2
     /// Hash function to use: Poseidon1, Poseidon2 or blake3
-    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
+    #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     pub hash: String,
 
     /// Proofs each recursive2 circuit aggregates. Must be 2 or 3. Defaults per hash family --
@@ -114,9 +112,9 @@ impl ZiskProofmanSetupSetup {
                 proofman_common::global_info::VALID_AGGREGATION_ARITIES
             );
         }
-        let compressed_final = self
-            .compressed_final
-            .unwrap_or_else(|| proofman_common::hash_family::compressed_final_by_default(&self.hash));
+        let compressed_final = self.compressed_final.unwrap_or_else(|| {
+            proofman_common::hash_family::compressed_final_by_default(&self.hash)
+        });
 
         let opts = SetupOptions {
             hash: self.hash.clone(),

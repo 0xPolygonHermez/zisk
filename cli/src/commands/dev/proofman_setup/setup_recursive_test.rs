@@ -5,8 +5,6 @@ use pil2_stark_setup::commands::setup_recursive_test::{
 use zisk_build::ZISK_VERSION_MESSAGE;
 use zisk_prover_backend::setup_logger;
 
-const DEFAULT_HASH: &str = "Poseidon1";
-
 #[derive(clap::Args)]
 #[command(author, about, long_about = None, version = ZISK_VERSION_MESSAGE)]
 /// Set up a test recursive circuit from a user-provided circom file.
@@ -28,7 +26,7 @@ pub(crate) struct ZiskProofmanSetupRecursiveTest {
     pub r#type: String,
 
     /// Hash function to use: Poseidon1, Poseidon2 or blake3
-    #[arg(long, default_value = DEFAULT_HASH, value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
+    #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     pub hash: String,
 
     /// Parallel BLAKE3 permutations per 56-row block (1..8). blake3 family only; defaults to 4.

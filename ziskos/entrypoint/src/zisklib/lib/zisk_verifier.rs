@@ -1,5 +1,5 @@
 /// Hash family the recursion was proven with.
-const HASH: &str = "Poseidon1";
+const HASH: &str = "blake3";
 
 pub fn verify_zisk_proof(zisk_proof: &[u64]) -> bool {
     if zisk_proof.len() < zisk_verifier::VADCOP_VK_LEN_WORDS {

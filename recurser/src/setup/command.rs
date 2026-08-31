@@ -125,7 +125,11 @@ pub fn run_setup_recurser_aggregator(opts: &SetupRecurserAggregatorOptions) -> R
 }
 
 fn hash_from_global_info(global_info: &Value) -> String {
-    global_info.get("hash").and_then(|v| v.as_str()).unwrap_or("Poseidon1").to_string()
+    global_info
+        .get("hash")
+        .and_then(|v| v.as_str())
+        .unwrap_or(proofman_common::hash_family::DEFAULT_HASH_ID)
+        .to_string()
 }
 
 /// Read the local proving key's vadcop_final verkey as 4 decimal-string limbs.

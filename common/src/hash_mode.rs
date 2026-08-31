@@ -13,11 +13,13 @@ use std::path::Path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 pub enum HashMode {
     /// Poseidon1 hashing.
-    #[default]
     Poseidon1,
     /// Poseidon2 hashing.
     Poseidon2,
     /// Blake hashing
+    // The default tracks proofman's `hash_family::DEFAULT_HASH_ID`; a test below pins the two
+    // together, since an enum variant cannot be derived from that const.
+    #[default]
     Blake3,
 }
 
@@ -41,6 +43,15 @@ impl HashMode {
         }
     }
 
+    /// Whether this mode's proving key can carry a final BN128 SNARK stage.
+    ///
+    /// The wrap recurses the vadcop_final proof into a circom circuit over BN128, and only the
+    /// poseidon families have that path built (proofman's `recursivef` verifier and its circom
+    /// templates). `setup-snark` and the wrap commands refuse a Blake3 key.
+    pub fn supports_snark(&self) -> bool {
+        !matches!(self, HashMode::Blake3)
+    }
+
     /// Short, lowercase tag embedded in cache/verkey filenames so the two modes'
     /// artifacts are distinct on disk.
     pub fn file_tag(&self) -> &'static str {
@@ -51,7 +62,7 @@ impl HashMode {
         }
     }
 
-    /// Canonical capitalized name (`"Poseidon1"`/`"Poseidon2"`), matching the
+    /// Canonical name (`"Poseidon1"`/`"Poseidon2"`/`"blake3"`), matching the
     /// hash family string carried in proofs and DTOs.
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -160,6 +171,34 @@ mod tests {
             assert!(HashMode::from_proving_key(d).is_err())
         });
         with_proving_key(Some("not json"), |d| assert!(HashMode::from_proving_key(d).is_err()));
+    }
+
+    /// The BN128 wrap is poseidon-only; this must track proofman's `hash_family::supports_snark`.
+    #[test]
+    fn only_the_poseidon_modes_support_a_snark() {
+        assert!(!HashMode::Blake3.supports_snark());
+        assert!(HashMode::Poseidon1.supports_snark());
+        assert!(HashMode::Poseidon2.supports_snark());
+    }
+
+    /// One default, defined in proofman. This enum cannot derive its `#[default]` from that const,
+    /// so the pin is a test: if proofman's default moves, move `#[default]` with it.
+    #[test]
+    fn the_default_mode_is_proofmans_default_family() {
+        assert_eq!(HashMode::default().as_str(), proofman_common::hash_family::DEFAULT_HASH_ID);
+    }
+
+    /// Every mode this enum knows must be a family proofman knows, and vice versa.
+    #[test]
+    fn the_modes_match_proofmans_family_list() {
+        let mut mine: Vec<&str> = [HashMode::Poseidon1, HashMode::Poseidon2, HashMode::Blake3]
+            .iter()
+            .map(|m| m.as_str())
+            .collect();
+        let mut theirs: Vec<&str> = proofman_common::hash_family::FAMILIES.to_vec();
+        mine.sort_unstable();
+        theirs.sort_unstable();
+        assert_eq!(mine, theirs);
     }
 
     #[test]
