@@ -142,7 +142,7 @@ GEN_EXPS_ON_HIT=0
 # Env defaults; the --recursive-jobs / --setup-jobs CLI flags override these below.
 RECURSIVE_JOBS_ARG="${RECURSIVE_JOBS:-}"
 SETUP_JOBS_ARG="${SETUP_JOBS:-}"
-HASH="${HASH:-Poseidon1}"
+HASH="${HASH:-blake3}"
 SKIP_COMPILE_PIL=0
 VERBOSE_COUNT=0
 # Opt-in: generate + compile per-AIR Q-expression CUDA kernels (.exps.so) during
@@ -357,6 +357,14 @@ case "$MODE" in
       echo "download it (~18 GB) into the parent folder of the repo with:" >&2
       echo "  (cd .. && curl -L -O https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_24.ptau)" >&2
       echo "or point PTAU_PATH=/path/to/ptau at an existing copy." >&2
+      exit 1
+    fi
+
+    # The BN128 wrap is poseidon-only, so catch it here rather than after the ptau check and a
+    # long setup run.
+    if [ "$(printf '%s' "$HASH" | tr '[:upper:]' '[:lower:]')" = "blake3" ]; then
+      echo "setup-snark is not supported for HASH=$HASH: the BN128 wrap is only built for the" >&2
+      echo "poseidon families. Rebuild the proving key with --hash Poseidon1 or Poseidon2." >&2
       exit 1
     fi
 

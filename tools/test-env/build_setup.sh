@@ -16,7 +16,7 @@
 #   DYLIB_INPUT_FILES            After the build, copy the inputs needed to compile
 #                                the macOS dylib files into build/dylib_input.
 #   RECURSIVE_JOBS / SETUP_JOBS  Setup pipeline concurrency.
-#   HASH                         Hash function (default: Poseidon1).
+#   HASH                         Hash function (default: blake3).
 #   PTAU_PATH                    Powers-of-tau file for the snark setup
 #                                (default: ../powersOfTau28_hez_final_24.ptau).
 
@@ -57,7 +57,7 @@ main() {
 
     # Default the hash function when neither the shell, .env, nor Cargo.toml set
     # it. Exported so the setup_build.sh child process inherits it.
-    export HASH="${HASH:-Poseidon1}"
+    export HASH="${HASH:-blake3}"
 
     current_step=1
     total_steps=2   # computing hash + building setup
@@ -91,6 +91,10 @@ main() {
     rm -f "$setup_log"
 
     if [[ "${INCLUDE_SNARK}" == "1" ]]; then
+        if [[ "${HASH,,}" == "blake3" ]]; then
+            err "INCLUDE_SNARK=1 needs a poseidon HASH; the BN128 wrap has no blake3 path (HASH=${HASH})"
+            return 1
+        fi
         step "Building snark setup..."
         build_flags=(--build-dir build --snark)
         ensure "${SCRIPT_DIR}/setup_build.sh" "${build_flags[@]}" || return 1
