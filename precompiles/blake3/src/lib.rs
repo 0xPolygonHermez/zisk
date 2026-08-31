@@ -12,7 +12,7 @@ zisk_common::zisk_precompile! {
     trace = Blake3fTrace,
     num_available = {
         let n = ::zisk_pil::Blake3fTrace::<::zisk_pil::Blake3fTraceRow<F>>::NUM_ROWS;
-        n / CLOCKS
+        n / CLOCKS * LANES
     },
     ops = [
         (OperationBlake3Data, Blake3Input),

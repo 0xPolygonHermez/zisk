@@ -9,6 +9,9 @@ pub const PARAM_CHUNKS: usize = 8;
 pub const START_READ_PARAMS: usize = OPERATION_PRECOMPILED_BUS_DATA_SIZE + PARAMS;
 
 // Generic Parameters
+/// Number of operations packed side by side on every row; must match the LANES
+/// argument of Blake3f in pil/zisk.pil
+pub const LANES: usize = 2;
 pub const CLOCKS_PER_G: usize = 1;
 pub const NUM_G_PER_ROUND: usize = 8;
 pub const NUM_ROUNDS: usize = 7;
