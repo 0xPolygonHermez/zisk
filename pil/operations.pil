@@ -11,7 +11,7 @@
       - DMA Operations:
         - 0xDA-0xDF
       - Precompiles:
-        - 0xE1-0xED
+        - 0xE1-0xEE
         - 0xF0-0xF5
         - 0xF9-0xFE
       - Misc:
@@ -139,6 +139,8 @@ const int OP_POSEIDON2 = 0xEB;
 const int OP_POSEIDON1 = 0xEC;
 
 const int OP_BABYJUBJUB_ADD = 0xED;
+
+const int OP_BLAKE3F = 0xEE;
 
 const int OP_ADD256 = 0xF0;
 const int OP_KECCAKF = 0xF1;

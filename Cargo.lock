@@ -7494,6 +7494,7 @@ dependencies = [
  "zisk-precomp-babyjubjub",
  "zisk-precomp-big-int",
  "zisk-precomp-blake2",
+ "zisk-precomp-blake3",
  "zisk-precomp-common",
  "zisk-precomp-dma",
  "zisk-precomp-evm",
@@ -7645,6 +7646,23 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-blake2"
+version = "1.3.0-alpha"
+dependencies = [
+ "pil2-std-lib",
+ "proofman-common",
+ "proofman-fields",
+ "proofman-util",
+ "rayon",
+ "tracing",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+ "zisk-precomp-common",
+ "zisk-test-artifacts",
+]
+
+[[package]]
+name = "zisk-precomp-blake3"
 version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
