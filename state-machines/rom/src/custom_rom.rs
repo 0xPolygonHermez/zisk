@@ -76,7 +76,8 @@ impl CustomRom {
             trace[index].b_offset_imm0 = Self::signed_to_field(inst.b_offset_imm0 as i64);
             trace[index].b_imm1 =
                 F::from_u64(if inst.b_src == SRC_IMM { inst.b_use_sp_imm1 } else { 0 });
-            trace[index].ind_width = F::from_u64(inst.ind_width);
+            trace[index].b_bytes = F::from_u64(inst.b_bytes);
+            trace[index].store_bytes = F::from_u64(inst.store_bytes);
             // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
             // of the copyb, use to get free-input information
             trace[index].op = if inst.op == ZiskOp::Fcall.code()
@@ -99,7 +100,7 @@ impl CustomRom {
         //   line          = base address of the group
         //   a_offset_imm0 = value[0] low  32 bits    a_imm1        = value[0] high 32 bits
         //   b_offset_imm0 = value[1] low  32 bits    b_imm1        = value[1] high 32 bits
-        //   ind_width     = value[2] low  32 bits    op            = value[2] high 32 bits
+        //   b_bytes       = value[2] low  32 bits    op            = value[2] high 32 bits
         //   store_offset  = value[3] low  32 bits    jmp_offset1   = value[3] high 32 bits
         //   flags         = MEMORY_STORE_OP (2) for RAM or MEMORY_ROM_INIT_OP (4) for ROM
         //   is_data       = 1
@@ -133,7 +134,7 @@ impl CustomRom {
                 trace[data_row_index].a_imm1 = F::from_u32((get(0) >> 32) as u32);
                 trace[data_row_index].b_offset_imm0 = F::from_u32(get(1) as u32);
                 trace[data_row_index].b_imm1 = F::from_u32((get(1) >> 32) as u32);
-                trace[data_row_index].ind_width = F::from_u32(get(2) as u32);
+                trace[data_row_index].b_bytes = F::from_u32(get(2) as u32);
                 trace[data_row_index].op = F::from_u32((get(2) >> 32) as u32);
                 trace[data_row_index].store_offset = F::from_u32(get(3) as u32);
                 trace[data_row_index].jmp_offset1 = F::from_u32((get(3) >> 32) as u32);

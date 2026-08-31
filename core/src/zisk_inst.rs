@@ -131,7 +131,14 @@ pub struct ZiskInst {
     pub is_precompiled: bool,
     // #[cfg(feature = "sp")]
     // pub set_sp: bool,
-    pub ind_width: u64,
+    /// Width in bytes of the `b` memory access as seen by the memory bus: the indirection
+    /// width when `b_src == SRC_IND`, 8 bytes otherwise (registers and direct memory
+    /// accesses always move a full 64-bit word).  Published as the `b_bytes` ROM column.
+    pub b_bytes: u64,
+    /// Width in bytes of the `c` memory access as seen by the memory bus: the indirection
+    /// width when `store == STORE_IND`, 8 bytes otherwise.  Published as the `store_bytes`
+    /// ROM column.
+    pub store_bytes: u64,
     // #[cfg(feature = "sp")]
     // pub inc_sp: u64,
     pub end: bool,
@@ -174,7 +181,8 @@ impl Default for ZiskInst {
             is_precompiled: false,
             // #[cfg(feature = "sp")]
             // set_sp: false,
-            ind_width: 0,
+            b_bytes: 0,
+            store_bytes: 0,
             // #[cfg(feature = "sp")]
             // inc_sp: 0,
             end: false,
@@ -230,8 +238,11 @@ impl ZiskInst {
         if self.b_offset_imm0 != 0 {
             s += &format!(" b_offset_imm0=0x{:x}", self.b_offset_imm0);
         }
-        if self.ind_width != 0 {
-            s += &format!(" ind_width={}", self.ind_width);
+        if self.b_bytes != 8 {
+            s += &format!(" b_bytes={}", self.b_bytes);
+        }
+        if self.store_bytes != 8 {
+            s += &format!(" store_bytes={}", self.store_bytes);
         }
         {
             s += &format!(" op={}={}", self.op, self.op_str);

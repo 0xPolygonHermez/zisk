@@ -32,11 +32,11 @@ fn indexed_reconstruction_matches_full_packing() {
     assert_eq!(table.len(), rom.sorted_pc_list.len() * wpe);
 
     // The indexed descriptor is generated beside MainTraceRow (self-contained module).
-    assert_eq!(MainTraceRowPackedIndexed::<Goldilocks>::COL_SOURCE.len(), 38);
+    assert_eq!(MainTraceRowPackedIndexed::<Goldilocks>::COL_SOURCE.len(), 39);
     assert_eq!(MainTraceRowPackedIndexed::<Goldilocks>::INDEX_BITS, 32);
     assert_eq!(
         MainTraceRowPackedIndexed::<Goldilocks>::COL_SOURCE.iter().filter(|&&s| s == 1).count(),
-        25,
+        26,
     );
 
     for (i, &pc) in rom.sorted_pc_list.iter().enumerate() {
@@ -74,7 +74,6 @@ fn indexed_reconstruction_matches_full_packing() {
         assert_eq!(full.get_all_b(), compact.get_all_b(), "b @pc {pc:#x}");
         assert_eq!(full.get_all_c(), compact.get_all_c(), "c @pc {pc:#x}");
         assert_eq!(full.get_flag(), compact.get_flag(), "flag @pc {pc:#x}");
-        assert_eq!(full.get_addr1(), compact.get_addr1(), "addr1 @pc {pc:#x}");
         assert_eq!(
             full.get_a_reg_prev_mem_step(),
             compact.get_a_reg_prev_mem_step(),
@@ -114,7 +113,8 @@ fn indexed_reconstruction_matches_full_packing() {
         assert_eq!(full.get_b_src_ind(), tbl.get_b_src_ind(), "b_src_ind @pc {pc:#x}");
         assert_eq!(full.get_b_offset_imm0(), tbl.get_b_offset_imm0(), "b_offset_imm0 @pc {pc:#x}");
         assert_eq!(full.get_b_imm1(), tbl.get_b_imm1(), "b_imm1 @pc {pc:#x}");
-        assert_eq!(full.get_ind_width(), tbl.get_ind_width(), "ind_width @pc {pc:#x}");
+        assert_eq!(full.get_b_bytes(), tbl.get_b_bytes(), "b_bytes @pc {pc:#x}");
+        assert_eq!(full.get_store_bytes(), tbl.get_store_bytes(), "store_bytes @pc {pc:#x}");
         assert_eq!(
             full.get_is_external_op(),
             tbl.get_is_external_op(),

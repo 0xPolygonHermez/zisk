@@ -449,15 +449,15 @@ impl ZiskAsmContext {
 //             offset += 4;
 //         }
 //         if instruction.b_src == SRC_IND {
-//             match instruction.ind_width {
+//             match instruction.b_bytes {
 //                 1 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_1,
 //                 2 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_2,
 //                 4 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_4,
 //                 8 => self.header_mask |= TRACE_CONTEXT_HEADER_READ_B_8,
 //                 _ => {
 //                     panic!(
-//                         "ZiskAsmMemTraceContext::configure() invalid instruction.ind_width={}",
-//                         instruction.ind_width
+//                         "ZiskAsmMemTraceContext::configure() invalid instruction.b_bytes={}",
+//                         instruction.b_bytes
 //                     );
 //                 }
 //             }
@@ -470,15 +470,15 @@ impl ZiskAsmContext {
 //             offset += 4;
 //         }
 //         if instruction.store == STORE_IND {
-//             match instruction.ind_width {
+//             match instruction.store_bytes {
 //                 1 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_1,
 //                 2 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_2,
 //                 4 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_4,
 //                 8 => self.header_mask |= TRACE_CONTEXT_HEADER_WRITE_C_4,
 //                 _ => {
 //                     panic!(
-//                         "ZiskAsmMemTraceContext::configure() invalid instruction.ind_width={}",
-//                         instruction.ind_width
+//                         "ZiskAsmMemTraceContext::configure() invalid instruction.store_bytes={}",
+//                         instruction.store_bytes
 //                     );
 //                 }
 //             }
@@ -1668,8 +1668,7 @@ impl ZiskRom2Asm {
                 //*s += &format!("\tmov {}, {} {}\n", REG_B, ctx.b.string_value, ctx.commit_str("b = b_value"));
             }
             SRC_IND => {
-                *code +=
-                    &ctx.full_line_comment(format!("b=SRC_IND width={}", instruction.ind_width));
+                *code += &ctx.full_line_comment(format!("b=SRC_IND width={}", instruction.b_bytes));
 
                 // Make sure register a is stored in REG_A
                 // However, since b's source is an indirection, a's source is normally a register
@@ -1716,7 +1715,7 @@ impl ZiskRom2Asm {
                 }
 
                 // Read from memory and store in the proper register: b or c
-                match instruction.ind_width {
+                match instruction.b_bytes {
                     8 => {
                         // Read 8-bytes value from address
                         *code += &format!(
@@ -1769,14 +1768,14 @@ impl ZiskRom2Asm {
                         );
                     }
                     _ => panic!(
-                        "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
-                        instruction.ind_width, ctx.pc
+                        "ZiskRom2Asm::save_to_asm() Invalid b_bytes={} pc={}",
+                        instruction.b_bytes, ctx.pc
                     ),
                 }
 
                 // Generate mem reads
                 if ctx.minimal_trace() {
-                    match instruction.ind_width {
+                    match instruction.b_bytes {
                         8 => {
                             // // Check if address is aligned, i.e. it is a multiple of 8
                             *code += &format!(
@@ -1898,7 +1897,7 @@ impl ZiskRom2Asm {
                             );
 
                             // Compute next_aligned from ORIGINAL addr (in AUX), not prev_aligned
-                            let address_increment = instruction.ind_width - 1;
+                            let address_increment = instruction.b_bytes - 1;
                             *code += &format!(
                                 "\tadd {}, {} {}\n",
                                 REG_AUX,
@@ -1998,8 +1997,8 @@ impl ZiskRom2Asm {
                             );
                         }
                         _ => panic!(
-                            "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
-                            instruction.ind_width, ctx.pc
+                            "ZiskRom2Asm::save_to_asm() Invalid b_bytes={} pc={}",
+                            instruction.b_bytes, ctx.pc
                         ),
                     }
                 }
@@ -2007,7 +2006,7 @@ impl ZiskRom2Asm {
                 ctx.b.is_saved = !ctx.store_b_in_c;
 
                 if ctx.mem_op() {
-                    Self::b_src_ind_mops(ctx, code, reg_address, instruction.ind_width);
+                    Self::b_src_ind_mops(ctx, code, reg_address, instruction.b_bytes);
                 }
             }
             _ => panic!(
@@ -2128,7 +2127,7 @@ impl ZiskRom2Asm {
             STORE_IND => {
                 assert!(ctx.c.is_saved);
                 *code +=
-                    &ctx.full_line_comment(format!("STORE_IND width={}", instruction.ind_width));
+                    &ctx.full_line_comment(format!("STORE_IND width={}", instruction.store_bytes));
 
                 // Check if address is constant and calculate it if so, to optimize code and get alignment info
                 let address_is_constant = ctx.a.is_constant && !instruction.store_use_sp;
@@ -2181,7 +2180,7 @@ impl ZiskRom2Asm {
 
                 // Generate mem_reads
                 if ctx.minimal_trace() {
-                    match instruction.ind_width {
+                    match instruction.store_bytes {
                         8 => {
                             // Check if address is aligned, i.e. it is a multiple of 8
                             if address_is_constant {
@@ -2240,7 +2239,7 @@ impl ZiskRom2Asm {
                                 reg_address,
                                 ctx.comment_str("value = original address")
                             );
-                            let address_increment = instruction.ind_width - 1;
+                            let address_increment = instruction.store_bytes - 1;
                             *code += &format!(
                                 "\tadd {}, {} {}\n",
                                 REG_VALUE,
@@ -2372,14 +2371,14 @@ impl ZiskRom2Asm {
                             }
                         }
                         _ => panic!(
-                            "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
-                            instruction.ind_width, ctx.pc
+                            "ZiskRom2Asm::save_to_asm() Invalid store_bytes={} pc={}",
+                            instruction.store_bytes, ctx.pc
                         ),
                     }
                 }
 
                 // Store mem[address] = value
-                match instruction.ind_width {
+                match instruction.store_bytes {
                     8 => {
                         if instruction.store_pc {
                             *code += &format!(
@@ -2491,13 +2490,13 @@ impl ZiskRom2Asm {
                         }
                     }
                     _ => panic!(
-                        "ZiskRom2Asm::save_to_asm() Invalid ind_width={} pc={}",
-                        instruction.ind_width, ctx.pc
+                        "ZiskRom2Asm::save_to_asm() Invalid store_bytes={} pc={}",
+                        instruction.store_bytes, ctx.pc
                     ),
                 }
 
                 if ctx.mem_op() {
-                    Self::c_store_ind_mem_op(ctx, code, instruction.ind_width, reg_address);
+                    Self::c_store_ind_mem_op(ctx, code, instruction.store_bytes, reg_address);
                 }
             }
             _ => panic!(

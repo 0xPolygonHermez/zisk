@@ -283,7 +283,7 @@ fn inst_to_asm(inst: &ZiskInst, labels: &HashMap<u64, String>, next_pc: Option<u
             }
             SRC_IND => {
                 let offset = inst.b_offset_imm0 as i64;
-                let width = match inst.ind_width {
+                let width = match inst.b_bytes {
                     1 => "b",
                     2 => "h",
                     4 => "w",

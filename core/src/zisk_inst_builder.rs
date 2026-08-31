@@ -16,6 +16,10 @@ use crate::{
 pub struct ZiskInstBuilder {
     /// Zisk instruction
     pub i: ZiskInst,
+    /// Width of the RISC-V indirect access this instruction performs, if any.  Callers set
+    /// it before knowing which side ends up indirect, so [`ZiskInstBuilder::build`] is what
+    /// turns it into `i.b_bytes` / `i.store_bytes`.
+    ind_width: u64,
 }
 
 impl ZiskInstBuilder {
@@ -244,8 +248,10 @@ impl ZiskInstBuilder {
     }
 
     /// Set the indirection data width.  Accepted values are 1, 2, 4 and 8 (bytes.)
+    /// It applies to whichever side of the instruction is indirect, resolved in
+    /// [`ZiskInstBuilder::build`]; call order with respect to `src_b()`/`store()` is free.
     pub fn ind_width(&mut self, w: u64) {
-        self.i.ind_width = match w {
+        self.ind_width = match w {
             1 | 2 | 4 | 8 => w,
             _ => {
                 panic!("ZiskInstBuilder::indWidth() invalid widtch={w}");
@@ -275,6 +281,19 @@ impl ZiskInstBuilder {
 
     /// Called when the instruction has been built
     pub fn build(&mut self, rom: &mut ZiskRom) {
+        // Resolve the indirection width into the per-side bus widths the Main and Rom AIRs
+        // read (`b_bytes` / `store_bytes`).  Only the indirect side narrows; every other
+        // access moves a full 64-bit word.
+        let b_ind = self.i.b_src == SRC_IND;
+        let store_ind = self.i.store == STORE_IND;
+        assert!(
+            self.ind_width != 0 || !(b_ind || store_ind),
+            "ZiskInstBuilder::build() indirect access without ind_width at pc 0x{:x}",
+            self.i.paddr
+        );
+        self.i.b_bytes = if b_ind { self.ind_width } else { 8 };
+        self.i.store_bytes = if store_ind { self.ind_width } else { 8 };
+
         // Set the instruction index to the current value of the ZiskRom build counter
         self.i.index = rom.build_counter;
         rom.build_counter += 1;
@@ -297,5 +316,76 @@ impl ZiskInstBuilder {
     pub fn set_meta_rs1_rd(&mut self, rs1: u8, rd: u8) {
         self.i.meta_rs1 = Some(rs1);
         self.i.meta_rd = Some(rd);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Builds one instruction through the ROM and hands back the widths it ended up with.
+    fn build_widths(setup: impl FnOnce(&mut ZiskInstBuilder)) -> (u64, u64) {
+        let paddr = 0x8000_0000;
+        let mut rom = ZiskRom::default();
+        let mut zib = ZiskInstBuilder::new(paddr);
+        setup(&mut zib);
+        zib.build(&mut rom);
+        let inst = &rom.insts[&paddr].i;
+        (inst.b_bytes, inst.store_bytes)
+    }
+
+    /// `ind_width` narrows only the side that is actually indirect; the other one keeps the
+    /// full 64-bit word.  Main and the Rom AIR both read these fields, so a wrong side here
+    /// would show up as a ROM lookup that no longer matches.
+    #[test]
+    fn ind_width_narrows_only_the_indirect_side() {
+        let (b, store) = build_widths(|zib| {
+            zib.ind_width(2);
+            zib.src_b("ind", 0, false);
+            zib.store("reg", 1, false, false);
+        });
+        assert_eq!((b, store), (2, 8));
+
+        let (b, store) = build_widths(|zib| {
+            zib.ind_width(4);
+            zib.src_b("reg", 1, false);
+            zib.store("ind", 0, false, false);
+        });
+        assert_eq!((b, store), (8, 4));
+    }
+
+    /// The transpiler calls `ind_width()` both before and after `src_b()`/`store()`, so the
+    /// resolution must not depend on the call order.
+    #[test]
+    fn ind_width_resolves_regardless_of_call_order() {
+        let before = build_widths(|zib| {
+            zib.ind_width(1);
+            zib.src_b("ind", 0, false);
+        });
+        let after = build_widths(|zib| {
+            zib.src_b("ind", 0, false);
+            zib.ind_width(1);
+        });
+        assert_eq!(before, after);
+        assert_eq!(before, (1, 8));
+    }
+
+    /// An instruction with no indirection at all moves full words on both sides: the ROM
+    /// must never publish a zero-byte memory access.
+    #[test]
+    fn instructions_without_indirection_move_full_words() {
+        let (b, store) = build_widths(|zib| {
+            zib.src_b("reg", 1, false);
+            zib.store("reg", 2, false, false);
+        });
+        assert_eq!((b, store), (8, 8));
+    }
+
+    #[test]
+    #[should_panic(expected = "indirect access without ind_width")]
+    fn indirect_access_without_a_width_is_rejected() {
+        build_widths(|zib| {
+            zib.src_b("ind", 0, false);
+        });
     }
 }

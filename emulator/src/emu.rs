@@ -525,10 +525,10 @@ impl<'a> Emu<'a> {
                 }
 
                 // get it from memory
-                self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+                self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(addr, instruction.b_bytes);
 
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(addr, instruction.ind_width);
+                    self.ctx.stats.on_memory_read(addr, instruction.b_bytes);
                 }
             }
             _ => panic!(
@@ -596,14 +596,13 @@ impl<'a> Emu<'a> {
                 }
 
                 // If the operation is a register operation, get it from the context registers
-                if Mem::is_full_aligned(address, instruction.ind_width) {
-                    self.ctx.inst_ctx.b =
-                        self.ctx.inst_ctx.mem.read(address, instruction.ind_width);
+                if Mem::is_full_aligned(address, instruction.b_bytes) {
+                    self.ctx.inst_ctx.b = self.ctx.inst_ctx.mem.read(address, instruction.b_bytes);
                     mem_reads.push(self.ctx.inst_ctx.b);
                 } else {
                     let mut additional_data: Vec<u64>;
                     (self.ctx.inst_ctx.b, additional_data) =
-                        self.ctx.inst_ctx.mem.read_required(address, instruction.ind_width);
+                        self.ctx.inst_ctx.mem.read_required(address, instruction.b_bytes);
                     debug_assert!(!additional_data.is_empty());
                     mem_reads.append(&mut additional_data);
                 }
@@ -614,7 +613,7 @@ impl<'a> Emu<'a> {
                 );*/
 
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(address, instruction.ind_width);
+                    self.ctx.stats.on_memory_read(address, instruction.b_bytes);
                 }
             }
             _ => panic!(
@@ -697,20 +696,20 @@ impl<'a> Emu<'a> {
                 }
 
                 // Otherwise, get it from memory
-                if Mem::is_full_aligned(address, instruction.ind_width) {
+                if Mem::is_full_aligned(address, instruction.b_bytes) {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
                     *mem_reads_index += 1;
                 } else {
                     let (required_address_1, required_address_2) =
-                        Mem::required_addresses(address, instruction.ind_width);
+                        Mem::required_addresses(address, instruction.b_bytes);
                     if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data = mem_reads[*mem_reads_index];
                         *mem_reads_index += 1;
                         self.ctx.inst_ctx.b = Mem::get_single_not_aligned_data(
                             address,
-                            instruction.ind_width,
+                            instruction.b_bytes,
                             raw_data,
                         );
                     } else {
@@ -722,7 +721,7 @@ impl<'a> Emu<'a> {
                         *mem_reads_index += 1;
                         self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
                             address,
-                            instruction.ind_width,
+                            instruction.b_bytes,
                             raw_data_1,
                             raw_data_2,
                         );
@@ -734,7 +733,7 @@ impl<'a> Emu<'a> {
                 );*/
 
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(address, instruction.ind_width);
+                    self.ctx.stats.on_memory_read(address, instruction.b_bytes);
                 }
             }
             _ => panic!(
@@ -841,7 +840,7 @@ impl<'a> Emu<'a> {
                 }
 
                 // Otherwise, get it from memory
-                if Mem::is_full_aligned(address, instruction.ind_width) {
+                if Mem::is_full_aligned(address, instruction.b_bytes) {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
                     *mem_reads_index += 1;
@@ -854,28 +853,28 @@ impl<'a> Emu<'a> {
                     );
                     data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
                 } else {
-                    if instruction.ind_width == 0 || address > 0xFFFF_FFFF {
+                    if instruction.b_bytes == 0 || address > 0xFFFF_FFFF {
                         println!(
                             "ILLEGAL INSTRUCTION/ADDRESS 0x{:08X} {} S:{} {:?}",
-                            address, instruction.ind_width, self.ctx.inst_ctx.step, instruction
+                            address, instruction.b_bytes, self.ctx.inst_ctx.step, instruction
                         );
                     }
                     let (required_address_1, required_address_2) =
-                        Mem::required_addresses(address, instruction.ind_width);
+                        Mem::required_addresses(address, instruction.b_bytes);
                     if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data = mem_reads[*mem_reads_index];
                         *mem_reads_index += 1;
                         self.ctx.inst_ctx.b = Mem::get_single_not_aligned_data(
                             address,
-                            instruction.ind_width,
+                            instruction.b_bytes,
                             raw_data,
                         );
                         let payload = MemHelpers::mem_load(
                             address as u32,
                             self.ctx.inst_ctx.step,
                             1,
-                            instruction.ind_width as u8,
+                            instruction.b_bytes as u8,
                             [raw_data, 0],
                         );
                         data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
@@ -888,7 +887,7 @@ impl<'a> Emu<'a> {
                         *mem_reads_index += 1;
                         self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
                             address,
-                            instruction.ind_width,
+                            instruction.b_bytes,
                             raw_data_1,
                             raw_data_2,
                         );
@@ -896,7 +895,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             1,
-                            instruction.ind_width as u8,
+                            instruction.b_bytes as u8,
                             [raw_data_1, raw_data_2],
                         );
                         data_bus.write_to_bus(MEM_BUS_ID, &payload, &[]);
@@ -908,7 +907,7 @@ impl<'a> Emu<'a> {
                 );*/
 
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(address, instruction.ind_width);
+                    self.ctx.stats.on_memory_read(address, instruction.b_bytes);
                 }
             }
             _ => panic!(
@@ -990,20 +989,20 @@ impl<'a> Emu<'a> {
                 }
 
                 // Otherwise, get it from memory
-                if Mem::is_full_aligned(address, instruction.ind_width) {
+                if Mem::is_full_aligned(address, instruction.b_bytes) {
                     assert!(*mem_reads_index < mem_reads.len());
                     self.ctx.inst_ctx.b = mem_reads[*mem_reads_index];
                     *mem_reads_index += 1;
                 } else {
                     let (required_address_1, required_address_2) =
-                        Mem::required_addresses(address, instruction.ind_width);
+                        Mem::required_addresses(address, instruction.b_bytes);
                     if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data = mem_reads[*mem_reads_index];
                         *mem_reads_index += 1;
                         self.ctx.inst_ctx.b = Mem::get_single_not_aligned_data(
                             address,
-                            instruction.ind_width,
+                            instruction.b_bytes,
                             raw_data,
                         );
                     } else {
@@ -1015,7 +1014,7 @@ impl<'a> Emu<'a> {
                         *mem_reads_index += 1;
                         self.ctx.inst_ctx.b = Mem::get_double_not_aligned_data(
                             address,
-                            instruction.ind_width,
+                            instruction.b_bytes,
                             raw_data_1,
                             raw_data_2,
                         );
@@ -1027,7 +1026,7 @@ impl<'a> Emu<'a> {
                 );*/
 
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_read(address, instruction.ind_width);
+                    self.ctx.stats.on_memory_read(address, instruction.b_bytes);
                 }
             }
             _ => panic!(
@@ -1115,19 +1114,19 @@ impl<'a> Emu<'a> {
                 // reported); reading elsewhere could hit an unmapped section.
                 let trace_stack = trace_changes && (RAM_ADDR..SYS_ADDR).contains(&addr);
                 let prev = if trace_stack {
-                    self.ctx.inst_ctx.mem.read(addr, instruction.ind_width)
+                    self.ctx.inst_ctx.mem.read(addr, instruction.store_bytes)
                 } else {
                     0
                 };
 
                 // Get it from memory
-                self.ctx.inst_ctx.mem.write(addr, val, instruction.ind_width);
+                self.ctx.inst_ctx.mem.write(addr, val, instruction.store_bytes);
                 if self.ctx.do_stats {
-                    self.ctx.stats.on_memory_write(addr, instruction.ind_width, val);
+                    self.ctx.stats.on_memory_write(addr, instruction.store_bytes, val);
                     if trace_stack {
                         // Read back the stored value so the reported `post` reflects
-                        // the width-truncated bytes actually written (ind_width < 8).
-                        let post = self.ctx.inst_ctx.mem.read(addr, instruction.ind_width);
+                        // the width-truncated bytes actually written (store_bytes < 8).
+                        let post = self.ctx.inst_ctx.mem.read(addr, instruction.store_bytes);
                         self.ctx.stats.trace_stack_change(addr, prev, post, self.get_reg(2));
                     }
                 }
@@ -1195,16 +1194,16 @@ impl<'a> Emu<'a> {
 
                 // If the operation is a register operation, write it to the context registers
                 // If not aligned, get old raw data from memory, then write it
-                if Mem::is_full_aligned(address, instruction.ind_width) {
-                    self.ctx.inst_ctx.mem.write(address, value, instruction.ind_width);
+                if Mem::is_full_aligned(address, instruction.store_bytes) {
+                    self.ctx.inst_ctx.mem.write(address, value, instruction.store_bytes);
                 } else {
                     let mut additional_data: Vec<u64>;
                     (self.ctx.inst_ctx.b, additional_data) =
-                        self.ctx.inst_ctx.mem.read_required(address, instruction.ind_width);
+                        self.ctx.inst_ctx.mem.read_required(address, instruction.store_bytes);
                     debug_assert!(!additional_data.is_empty());
                     mem_reads.append(&mut additional_data);
 
-                    self.ctx.inst_ctx.mem.write(address, value, instruction.ind_width);
+                    self.ctx.inst_ctx.mem.write(address, value, instruction.store_bytes);
                 }
             }
             _ => panic!(
@@ -1268,9 +1267,9 @@ impl<'a> Emu<'a> {
                 let address = address as u64;
 
                 // If not aligned, get old raw data from memory, then write it
-                if !Mem::is_full_aligned(address, instruction.ind_width) {
+                if !Mem::is_full_aligned(address, instruction.store_bytes) {
                     let (required_address_1, required_address_2) =
-                        Mem::required_addresses(address, instruction.ind_width);
+                        Mem::required_addresses(address, instruction.store_bytes);
                     if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
                         *mem_reads_index += 1;
@@ -1386,12 +1385,12 @@ impl<'a> Emu<'a> {
                 let address = address as u64;
 
                 // Otherwise, if aligned
-                if Mem::is_full_aligned(address, instruction.ind_width) {
+                if Mem::is_full_aligned(address, instruction.store_bytes) {
                     let payload = MemHelpers::mem_write(
                         address as u32,
                         self.ctx.inst_ctx.step,
                         2,
-                        instruction.ind_width as u8,
+                        instruction.store_bytes as u8,
                         value,
                         [value, 0],
                     );
@@ -1400,7 +1399,7 @@ impl<'a> Emu<'a> {
                 // Otherwise, if not aligned, get old raw data from memory, then write it
                 else {
                     let (required_address_1, required_address_2) =
-                        Mem::required_addresses(address, instruction.ind_width);
+                        Mem::required_addresses(address, instruction.store_bytes);
                     if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
                         let raw_data = mem_reads[*mem_reads_index];
@@ -1410,7 +1409,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             2,
-                            instruction.ind_width as u8,
+                            instruction.store_bytes as u8,
                             value,
                             [raw_data, 0],
                         );
@@ -1427,7 +1426,7 @@ impl<'a> Emu<'a> {
                             address as u32,
                             self.ctx.inst_ctx.step,
                             2,
-                            instruction.ind_width as u8,
+                            instruction.store_bytes as u8,
                             value,
                             [raw_data_1, raw_data_2],
                         );
@@ -1496,9 +1495,9 @@ impl<'a> Emu<'a> {
                 let address = address as u64;
 
                 // If not aligned, get old raw data from memory, then write it
-                if !Mem::is_full_aligned(address, instruction.ind_width) {
+                if !Mem::is_full_aligned(address, instruction.store_bytes) {
                     let (required_address_1, required_address_2) =
-                        Mem::required_addresses(address, instruction.ind_width);
+                        Mem::required_addresses(address, instruction.store_bytes);
                     if required_address_1 == required_address_2 {
                         assert!(*mem_reads_index < mem_reads.len());
                         *mem_reads_index += 1;
@@ -2844,14 +2843,11 @@ impl<'a> Emu<'a> {
             (reg_trace.store_reg_prev_value & 0xFFFFFFFF) as u32,
             ((reg_trace.store_reg_prev_value >> 32) & 0xFFFFFFFF) as u32,
         ];
-        let addr1 = (inst.b_offset_imm0 as i64
-            + if inst.b_src == SRC_IND { inst_ctx.a as i64 } else { 0 }) as u32;
 
         trace.set_all_a(&a);
         trace.set_all_b(&b);
         trace.set_all_c(&c);
         trace.set_flag(inst_ctx.flag);
-        trace.set_addr1(addr1);
         trace.set_a_reg_prev_mem_step(reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(reg_trace.reg_prev_steps[2]);
@@ -2911,7 +2907,8 @@ impl<'a> Emu<'a> {
             // #[cfg(feature = "sp")]
             // trace.set_b_use_sp_imm1(inst.b_use_sp_imm1),
             trace.set_b_src_ind(inst.b_src == SRC_IND);
-            trace.set_ind_width(inst.ind_width as u8);
+            trace.set_b_bytes(inst.b_bytes as u8);
+            trace.set_store_bytes(inst.store_bytes as u8);
             trace.set_is_external_op(inst.is_external_op);
             // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
             // of the copyb, use to get free-input information
@@ -3005,7 +3002,8 @@ impl<'a> Emu<'a> {
             e.set_b_src_ind(inst.b_src == SRC_IND);
             e.set_b_offset_imm0(b_offset_imm0);
             e.set_b_imm1(inst.b_use_sp_imm1 as u32);
-            e.set_ind_width(inst.ind_width as u8);
+            e.set_b_bytes(inst.b_bytes as u8);
+            e.set_store_bytes(inst.store_bytes as u8);
             e.set_is_external_op(inst.is_external_op);
             e.set_op(op);
             e.set_store_pc(inst.store_pc);

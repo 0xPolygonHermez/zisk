@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "1648b0ebfbcee647e93bd458d620783abb7d3dca9a4a84c71c13ae07e72c1971";
+pub const PILOUT_HASH: &str = "5527c9df363ad87c4b958af19207083e6c9572254cbf6c8e067d04ce5b9cc966";
 
 //AIRGROUP CONSTANTS
 
@@ -158,7 +158,7 @@ trace_row!(MainFixedRow<F> {
 pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 4194304, 0, 0>;
 
 trace_row!(MainTraceRow<F> {
- a:[u32; 2], b:[u32; 2], c:[u32; 2], flag:bit, pc:u32, a_src_imm:bit, a_src_mem:bit, a_offset_imm0:u64, a_imm1:u32, is_precompiled:bit, b_src_imm:bit, b_src_mem:bit, b_offset_imm0:u64, b_imm1:u32, b_src_ind:bit, ind_width:ubit(4), is_external_op:bit, op:u8, store_pc:bit, store_mem:bit, store_ind:bit, store_offset:u64, set_pc:bit, jmp_offset1:u64, jmp_offset2:u64, m32:bit, addr1:u32, a_reg_prev_mem_step:ubit(38), b_reg_prev_mem_step:ubit(38), store_reg_prev_mem_step:ubit(38), store_reg_prev_value:[u32; 2], a_src_reg:bit, b_src_reg:bit, store_reg:bit,
+ a:[u32; 2], b:[u32; 2], c:[u32; 2], flag:bit, pc:u32, a_src_imm:bit, a_src_mem:bit, a_offset_imm0:u64, a_imm1:u32, is_precompiled:bit, b_src_imm:bit, b_src_mem:bit, b_offset_imm0:u64, b_imm1:u32, b_src_ind:bit, b_bytes:ubit(4), is_external_op:bit, op:u8, store_pc:bit, store_mem:bit, store_ind:bit, store_bytes:ubit(4), store_offset:u64, set_pc:bit, jmp_offset1:u64, jmp_offset2:u64, m32:bit, addr1:u32, a_reg_prev_mem_step:ubit(38), b_reg_prev_mem_step:ubit(38), store_reg_prev_mem_step:ubit(38), store_reg_prev_value:[u32; 2], a_src_reg:bit, b_src_reg:bit, store_reg:bit,
 });
 
 pub type MainTrace<R> = GenericTrace<R, 4194304, 0, 0>;
@@ -604,7 +604,7 @@ trace_row!(JumpDestTraceRow<F> {
 pub type JumpDestTrace<R> = GenericTrace<R, 2097152, 0, 40>;
 
 trace_row!(VirtualTableZisk0FixedRow<F> {
- UID: [F; 12], column: [F; 96], __L1__: F,
+ COL_0_0_0: F, COL_0_0_1: F, COL_0_0_2: F, COL_0_0_3: F, COL_0_0_5: F, COL_0_0_7: F, COL_1_8_0: F, COL_1_8_1: F, COL_1_8_2: F, COL_1_8_3: F, COL_1_8_5: F, COL_1_8_7: F, COL_2_16_1: F, COL_2_16_3: F, COL_2_16_5: F, COL_5_40_0: F, COL_5_40_1: F, COL_5_40_2: F, COL_5_40_3: F, COL_5_40_5: F, COL_5_40_6: F, COL_6_48_0: F, COL_6_48_1: F, COL_6_48_2: F, COL_6_48_3: F, COL_6_48_5: F, COL_7_56_1: F, COL_7_56_3: F, COL_7_56_5: F, COL_8_64_0: F, COL_8_64_1: F, COL_8_64_2: F, COL_8_64_3: F, COL_8_64_5: F, COL_8_64_6: F, COL_9_72_1: F, COL_9_72_3: F, COL_9_72_5: F, COL_9_72_6: F, COL_10_80_0: F, COL_10_80_1: F, COL_10_80_2: F, COL_10_80_3: F, COL_10_80_5: F, COL_10_80_6: F, COL_11_88_0: F, COL_11_88_1: F, COL_11_88_2: F, COL_11_88_3: F, COL_11_88_5: F, COL_11_88_6: F, COL_11_88_7: F, UID_11: F, __L1__: F,
 });
 pub type VirtualTableZisk0Fixed<F> = GenericTrace<VirtualTableZisk0FixedRow<F>, 2097152, 0, 41>;
 
@@ -615,7 +615,7 @@ trace_row!(VirtualTableZisk0TraceRow<F> {
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 41>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- UID: [F; 21], column: [F; 56], __L1__: F,
+ __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_2: F, COL_20_49_3: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, UID_20: F, __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 42>;
 
@@ -626,7 +626,7 @@ trace_row!(VirtualTableZisk1TraceRow<F> {
 pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 42>;
 
 trace_row!(RomRomTraceRow<F> {
- is_data: F, line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, ind_width: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, flags: F,
+ is_data: F, line: F, a_offset_imm0: F, a_imm1: F, b_offset_imm0: F, b_imm1: F, b_bytes: F, op: F, store_offset: F, jmp_offset1: F, jmp_offset2: F, store_bytes: F, flags: F,
 });
 pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 4194304, 0, 1, 0>;
 
@@ -887,7 +887,7 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 0, PackedInfoConst {
         is_packed: true,
         num_packed_words: 14,
-        unpack_info: &[32, 32, 32, 32, 32, 32, 1, 32, 1, 1, 64, 32, 1, 1, 1, 64, 32, 1, 4, 1, 8, 1, 1, 1, 64, 1, 64, 64, 1, 32, 38, 38, 38, 32, 32, 1, 1, 1],
+        unpack_info: &[32, 32, 32, 32, 32, 32, 1, 32, 1, 1, 64, 32, 1, 1, 1, 64, 32, 1, 4, 1, 8, 1, 1, 1, 4, 64, 1, 64, 64, 1, 32, 38, 38, 38, 32, 32, 1, 1, 1],
     }),
     (0, 2, PackedInfoConst {
         is_packed: true,

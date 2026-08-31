@@ -32,7 +32,8 @@ indexed_trace_row!(MainTraceRow<F> {
     b_offset_imm0: u64 @instr,
     b_imm1: u32 @instr,
     b_src_ind: bit @instr,
-    ind_width: ubit(4) @instr,
+    b_bytes: ubit(4) @instr,
+    store_bytes: ubit(4) @instr,
     is_external_op: bit @instr,
     op: u8 @instr,
     store_pc: bit @instr,
@@ -43,6 +44,8 @@ indexed_trace_row!(MainTraceRow<F> {
     jmp_offset1: u64 @instr,
     jmp_offset2: u64 @instr,
     m32: bit @instr,
+    // Filled by proofman from the `witness_calc` hint of the `addr1 <== ...` PIL
+    // constraint; the emulator leaves it at zero.
     addr1: u32,
     a_reg_prev_mem_step: ubit(38),
     b_reg_prev_mem_step: ubit(38),
