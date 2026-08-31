@@ -34,7 +34,7 @@
 # An input-side sha256 over:
 #   - every *.pil under  pil/ state-machines/ precompiles/
 #   - every *.pil under  ${PROOFMAN_DIR}/pil2-components/lib/std/pil
-#   - state-machines/starkstructs.json
+#   - setup/starkstructs.<family>.json (picked by $HASH)
 #   - the *_fixed.bin files written by the fixed-data generators
 #   - pil2-compiler ref: the branch override if set, else the dep ref from
 #     ${PROOFMAN_DIR}/package.json
@@ -332,7 +332,7 @@ case "$MODE" in
     echo "==> proofman-setup stats"
     cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
       --airout pil/zisk.pilout \
-      --starkstructs state-machines/starkstructs.json \
+      --starkstructs "$(starkstructs_path)" \
       -o tmp/stats.txt \
       ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "stats written to tmp/stats.txt"
@@ -471,7 +471,7 @@ if [ "$CACHE_HIT" -eq 0 ]; then
     --airout pil/zisk.pilout \
     --build-dir "$BUILD_DIR" \
     --fixed-dir tmp/fixed \
-    --stark-structs state-machines/starkstructs.json \
+    --stark-structs "$(starkstructs_path)" \
     --hash "$HASH" \
     ${setup_recursive_flag[@]+"${setup_recursive_flag[@]}"} \
     ${setup_jobs_flags[@]+"${setup_jobs_flags[@]}"}

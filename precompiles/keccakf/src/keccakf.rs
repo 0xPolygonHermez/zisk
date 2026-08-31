@@ -153,7 +153,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
         let mut cells = [0u8; WIDTH];
         let mut ta = [0u8; 5];
         let mut tb = [0u8; 5];
-        // let mut chi_accs = [0u32; LANE_BITS];
+        let mut chi_accs = [0u32; LANE_BITS];
         for r in 0..=ROUNDS {
             // Sliced state-group of round r
             let group = GROUP_ROUND_0 + r * ROWS_PER_STATE;
@@ -221,14 +221,14 @@ impl<F: PrimeField64> KeccakfSM<F> {
 
                     // The committed accumulator holds the packed lookup INPUT
                     // (base 28), NOT the compact table-row index (base 16)
-                    // chi_accs[z] = KeccakfChiTableSM::calculate_table_input(&ta, &tb, rc);
+                    chi_accs[z] = KeccakfChiTableSM::calculate_table_input(&ta, &tb, rc);
                 }
 
                 // On narrow layouts the packed χ-inputs of χ-row group y are
                 // committed at its anchor row, the group-row holding lane 5y.
                 // NOTE: chi_acc only exists for lanes_per_row < 25; comment out
                 //       when instantiating the wide layout.
-                // trace[group + (5 * y) / LANES_PER_ROW].set_all_chi_acc(&chi_accs);
+                trace[group + (5 * y) / LANES_PER_ROW].set_all_chi_acc(&chi_accs);
             }
 
             // Advance both instances one round
