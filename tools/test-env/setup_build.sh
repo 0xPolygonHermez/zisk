@@ -333,6 +333,7 @@ case "$MODE" in
     cargo run --release --bin cargo-zisk-dev -- proofman-setup stats \
       --airout pil/zisk.pilout \
       --starkstructs "$(starkstructs_path)" \
+      --hash "$HASH" \
       -o tmp/stats.txt \
       ${VERBOSE_FLAGS[@]+"${VERBOSE_FLAGS[@]}"}
     echo "stats written to tmp/stats.txt"
