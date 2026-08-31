@@ -131,7 +131,7 @@ pub fn gen_recurser_setup(
     tracing::info!("Compiling {}...", template);
     let compile_output = std::process::Command::new(config.circom_exec)
         .args([
-            "--O1",
+            "--O2",
             "--r1cs",
             "--prime",
             "goldilocks",

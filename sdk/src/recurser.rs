@@ -20,6 +20,9 @@ pub struct Recurser {
     pub(crate) templates: zisk_recurser::CircomTemplates,
     // SDK-managed paths — not exposed to the user.
     pub(crate) setup_dir: String,
+    /// The proving key's hash family, captured at build time from the same
+    /// globalInfo.json the `recurser_id` was derived against.
+    pub(crate) hash_mode: HashMode,
     pub(crate) output_dir: String,
     pub(crate) vk_cache: Arc<OnceLock<ProgramVK>>,
 }
@@ -51,23 +54,10 @@ impl Recurser {
                  Did `client.setup(&agg).run()` complete?"
             ))
         })?;
-        // The hash family is a property of the proving key the recurser was set
-        // up against; read it from the same globalInfo.json the setup did so the
-        // verkey's mode matches the proofs it will be verified against.
-        let hash_mode = read_setup_hash_mode(&self.setup_dir)?;
-        let vk = ProgramVK { vk: limbs.to_vec(), hash_mode };
+        let vk = ProgramVK { vk: limbs.to_vec(), hash_mode: self.hash_mode };
         let _ = self.vk_cache.set(vk.clone());
         Ok(vk)
     }
-}
-
-/// Read the recurser's hash family from the proving key's `globalInfo.json`,
-/// the same source `run_setup_recurser_aggregator` uses.
-fn read_setup_hash_mode(setup_dir: &str) -> Result<HashMode> {
-    zisk_recurser::setup::read_proving_key_hash(setup_dir)
-        .map_err(SdkError::backend)?
-        .parse::<HashMode>()
-        .map_err(SdkError::backend)
 }
 
 /// The body must declare `template <name>(...)` exactly once — the same check
@@ -87,13 +77,13 @@ fn expect_template_decl(circuit: &CircomCircuit, template: &str) -> Result<()> {
 /// duplicate check. Empty input → empty output (the VK-agnostic default), so
 /// callers pay the ELF-reading cost only when they supply an allow-list.
 ///
-/// Uses `GuestProgram::vk()` (the default `Poseidon1` hash mode). Duplicates
-/// are rejected: the circuit's membership check (`1 - ∏(1-eq)`) assumes the
-/// baked `programVKs[]` are unique.
-fn derive_program_vks(programs: &[&GuestProgram]) -> Result<Vec<[String; 4]>> {
+/// Derived under the proving key's `hash_mode`; a verkey is only valid relative
+/// to one. Duplicates are rejected: the circuit's membership check
+/// (`1 - ∏(1-eq)`) assumes the baked `programVKs[]` are unique.
+fn derive_program_vks(programs: &[&GuestProgram], hash_mode: HashMode) -> Result<Vec<[String; 4]>> {
     let mut vks: Vec<[String; 4]> = Vec::with_capacity(programs.len());
     for prog in programs {
-        let pvk = prog.vk().map_err(|e| {
+        let pvk = prog.vk_with_mode(hash_mode).map_err(|e| {
             SdkError::Recurser(format!("failed to derive VK for program '{}': {e}", prog.name()))
         })?;
         let limbs: [u64; 4] = <[u64; 4]>::try_from(pvk.vk.as_slice()).map_err(|_| {
@@ -220,10 +210,16 @@ impl<'a> AggregationProgramBuilder<'a> {
             .as_ref()
             .map(|c| zisk_recurser::NormalizeCircuit { body: c.source().to_string() });
 
+        let setup_dir = ZiskPaths::global()
+            .home
+            .to_str()
+            .ok_or_else(|| SdkError::Recurser("default ~/.zisk path is not valid UTF-8".into()))?
+            .to_string();
+
         // Derive the optional leaf allow-list VKs. Only touches ELFs when a
         // `programs` list was supplied — the VK-agnostic default stays cheap.
-        let program_vks = derive_program_vks(&self.programs)?;
-
+        let hash_mode = HashMode::local().map_err(SdkError::backend)?;
+        let program_vks = derive_program_vks(&self.programs, hash_mode)?;
         let templates = zisk_recurser::CircomTemplates {
             normalize: normalize.clone(),
             aggregate_publics: self.aggregate.source().to_string(),
@@ -232,11 +228,6 @@ impl<'a> AggregationProgramBuilder<'a> {
             program_vks: program_vks.clone(),
         };
 
-        let setup_dir = ZiskPaths::global()
-            .home
-            .to_str()
-            .ok_or_else(|| SdkError::Recurser("default ~/.zisk path is not valid UTF-8".into()))?
-            .to_string();
         let output_dir = ZiskPaths::global()
             .home
             .join("recurser")
@@ -266,6 +257,7 @@ impl<'a> AggregationProgramBuilder<'a> {
             recurser_id,
             templates,
             setup_dir,
+            hash_mode,
             output_dir,
             vk_cache: Arc::new(OnceLock::new()),
         })
@@ -363,6 +355,7 @@ mod tests {
                 program_vks: vec![],
             },
             setup_dir: "/tmp/zisk-test-setup".into(),
+            hash_mode: HashMode::default(),
             output_dir: "/tmp/zisk-test-output".into(),
             vk_cache: Arc::new(OnceLock::new()),
         }

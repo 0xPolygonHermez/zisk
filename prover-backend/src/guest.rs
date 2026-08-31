@@ -146,12 +146,13 @@ impl GuestProgram {
     pub fn hash(&self) -> &str {
         &self.program_id.hash_id
     }
-    /// Verkey from the ELF, using the default [`HashMode`] (`Poseidon1`).
+    /// Verkey from the ELF, under the local proving key's [`HashMode`].
     ///
-    /// For a key built with a different mode, use [`vk_with_mode`](Self::vk_with_mode);
-    /// otherwise the verkey is rejected at verify time against that key's proofs.
+    /// A verkey is only valid relative to a mode. Use
+    /// [`vk_with_mode`](Self::vk_with_mode) when the proofs come from a key of
+    /// another family.
     pub fn vk(&self) -> Result<ProgramVK> {
-        self.vk_with_mode(HashMode::default())
+        self.vk_with_mode(HashMode::local()?)
     }
 
     /// Verkey from the ELF, under the proving key's [`HashMode`].

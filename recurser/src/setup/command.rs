@@ -128,15 +128,6 @@ fn hash_from_global_info(global_info: &Value) -> String {
     global_info.get("hash").and_then(|v| v.as_str()).unwrap_or("Poseidon1").to_string()
 }
 
-pub fn read_proving_key_hash(setup_dir: &str) -> Result<String> {
-    let path = PathBuf::from(setup_dir).join("provingKey").join("pilout.globalInfo.json");
-    let global_info: Value = serde_json::from_str(
-        &fs::read_to_string(&path).with_context(|| format!("Failed to read {:?}", path))?,
-    )
-    .with_context(|| format!("Failed to parse {:?}", path))?;
-    Ok(hash_from_global_info(&global_info))
-}
-
 /// Read the local proving key's vadcop_final verkey as 4 decimal-string limbs.
 /// Shared by every layer that derives a `recurser_id` (SDK builder, setup
 /// command, worker claimed-id check) — the verkey is part of the id digest.

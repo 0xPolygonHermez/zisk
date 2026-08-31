@@ -20,7 +20,7 @@ use zisk_cluster_common::{
     StreamDataDto, WorkerState,
 };
 use zisk_cluster_common::{DataId, JobId};
-use zisk_common::{ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
+use zisk_common::{HashMode, ProgramVK, Proof, StatsCostPerType, ZiskExecutorTime, ZiskPaths};
 use zisk_prover_backend::{Asm, Emu, GuestProgram, ZiskBackend, ZiskProver};
 
 use crate::config::WorkerServiceConfig;
@@ -1647,16 +1647,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             )
         })?;
 
-        // The hash family is a property of the proving key the recurser was set
-        // up against; read it from the same globalInfo.json the setup used so it
-        // travels with the verkey for verify-time matching. Reading from disk
-        // (not the setup return) also covers the cache-hit branch above.
-        let setup_dir = ZiskPaths::global()
-            .home
-            .to_str()
-            .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?;
-        let hash_mode = zisk_recurser::setup::read_proving_key_hash(setup_dir)
-            .map_err(|e| anyhow!("failed to read recurser hash family: {e}"))?;
+        // The hash family is a property of the proving key the recurser was set up
+        // against, so it travels with the verkey for verify-time matching. Read from
+        // disk (not the setup return) so the cache-hit branch above is covered too.
+        let hash_mode = HashMode::local()
+            .map_err(|e| anyhow!("failed to read recurser hash family: {e}"))?
+            .as_str()
+            .to_string();
 
         info!(
             "[Recurser] job_id {} Completed recurser setup for recurser_id {}",
