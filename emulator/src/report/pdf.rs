@@ -83,28 +83,32 @@ pub fn single(r: &Report) -> Vec<u8> {
     if let Some(c) = find(r, "TOTAL") {
         l.push(body_line(kv("TOTAL COST", &fmt_num(c))));
     }
-    if let Some(c) = find(r, "FROPS") {
-        l.push(body_line(kv("FROPS", &fmt_num(c))));
+    if let Some(c) = r.cost.iter().find(|c| c.label == "FROPS") {
+        l.push(body_line(format!("{} ({:.2}%)", kv("FROPS", &fmt_num(c.cost)), c.pct)));
     }
     if r.ram_usage.used > 0 {
-        l.push(body_line(kv(
-            "RAM USAGE",
-            &format!("{} ({:.2}%)", fmt_num(r.ram_usage.used), r.ram_usage.pct),
+        l.push(body_line(format!(
+            "{} ({:.2}%)",
+            kv("RAM USAGE", &fmt_num(r.ram_usage.used)),
+            r.ram_usage.pct
         )));
     }
-    l.push(body_line(kv(
-        "ROM USAGE",
-        &format!("{} ({:.2}%)", fmt_num(r.rom_usage.used), r.rom_usage.pct),
+    l.push(body_line(format!(
+        "{} ({:.2}%)",
+        kv("ROM USAGE", &fmt_num(r.rom_usage.used)),
+        r.rom_usage.pct
     )));
 
     let cost_rows: Vec<Vec<String>> = r
         .cost
         .iter()
+        .filter(|c| c.label != "FROPS")
         .map(|c| vec![c.label.clone(), fmt_num(c.cost), format!("{:.2}%", c.pct)])
         .collect();
     let cost_styles: Vec<RowStyle> = r
         .cost
         .iter()
+        .filter(|c| c.label != "FROPS")
         .map(|c| RowStyle { bold: matches!(c.label.as_str(), "TOTAL" | "VARIABLE"), tail: None })
         .collect();
     table(
@@ -125,7 +129,10 @@ pub fn single(r: &Report) -> Vec<u8> {
     section_mem(&mut l, "DETAILED MEM", &r.detailed_mem);
     section_mem(&mut l, "DETAILED MEM (FULL)", &r.detailed_mem_full);
 
+    let mut sections: Vec<(Vec<Item>, f64, f64, bool)> = vec![(l, A4_SHORT, A4_LONG, false)];
+
     if !r.mem_offsets.rows.is_empty() {
+        let mut ml: Vec<Item> = Vec::new();
         let mut headers: Vec<String> = vec![String::new()];
         headers.extend(r.mem_offsets.cols.iter().cloned());
         let hdr: Vec<&str> = headers.iter().map(|s| s.as_str()).collect();
@@ -141,10 +148,11 @@ pub fn single(r: &Report) -> Vec<u8> {
                 row
             })
             .collect();
-        table(&mut l, "MEM OFFSETS", &hdr, &aligns, &rows, None, None);
+        table(&mut ml, "MEM OFFSETS", &hdr, &aligns, &rows, None, None);
+        sections.push((ml, A4_LONG, A4_SHORT, true));
     }
 
-    text_pdf(&l, A4_SHORT, A4_LONG)
+    render_sections(&sections)
 }
 
 fn section_op(l: &mut Vec<Item>, title: &str, rows: &[OpRow]) {
@@ -257,8 +265,8 @@ pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> Vec<u8> {
     cmp_table(
         &mut l,
         "COST DISTRIBUTION",
-        a.cost.iter().map(|c| (c.label.clone(), c.cost)).collect(),
-        b.cost.iter().map(|c| (c.label.clone(), c.cost)).collect(),
+        a.cost.iter().filter(|c| c.label != "FROPS").map(|c| (c.label.clone(), c.cost)).collect(),
+        b.cost.iter().filter(|c| c.label != "FROPS").map(|c| (c.label.clone(), c.cost)).collect(),
         false,
     );
     cmp_table(&mut l, "COST BY BASE OPCODE", op_cost(&a.op_base), op_cost(&b.op_base), true);
@@ -281,7 +289,7 @@ pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> Vec<u8> {
         true,
     );
 
-    text_pdf(&l, A4_LONG, A4_SHORT)
+    render_sections(&[(l, A4_LONG, A4_SHORT, false)])
 }
 
 fn op_cost(rows: &[OpRow]) -> Vec<(String, u64)> {
@@ -528,10 +536,8 @@ fn item_height(it: &Item) -> f64 {
     }
 }
 
-fn text_pdf(items: &[Item], page_w: f64, page_h: f64) -> Vec<u8> {
+fn paginate(items: &[Item], page_h: f64) -> Vec<Vec<&Item>> {
     let start_y = page_h - TOP_MARGIN;
-    let max_cols = ((page_w - 2.0 * MARGIN) / charw(BODY)) as usize;
-
     let mut pages: Vec<Vec<&Item>> = Vec::new();
     let mut cur: Vec<&Item> = Vec::new();
     let mut y = start_y;
@@ -556,6 +562,16 @@ fn text_pdf(items: &[Item], page_w: f64, page_h: f64) -> Vec<u8> {
     }
     if pages.is_empty() || !cur.is_empty() {
         pages.push(cur);
+    }
+    pages
+}
+
+fn render_sections(sections: &[(Vec<Item>, f64, f64, bool)]) -> Vec<u8> {
+    let mut pages: Vec<(Vec<&Item>, f64, f64, bool)> = Vec::new();
+    for (items, page_w, page_h, center) in sections {
+        for pg in paginate(items, *page_h) {
+            pages.push((pg, *page_w, *page_h, *center));
+        }
     }
 
     let n_pages = pages.len();
@@ -590,9 +606,25 @@ fn text_pdf(items: &[Item], page_w: f64, page_h: f64) -> Vec<u8> {
     wr(&mut out, "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n");
 
     let cw = charw(BODY);
-    for (k, page) in pages.iter().enumerate() {
+    for (k, (page, page_w, page_h, center)) in pages.iter().enumerate() {
+        let (page_w, page_h, center) = (*page_w, *page_h, *center);
         let page_id = 6 + 2 * k;
         let content_id = 7 + 2 * k;
+        let start_y = page_h - TOP_MARGIN;
+        let max_cols = ((page_w - 2.0 * MARGIN) / cw) as usize;
+        let table_w = if center {
+            page.iter()
+                .filter_map(|it| match it {
+                    Item::Line(ln) => Some(ln.band_cols),
+                    _ => None,
+                })
+                .max()
+                .unwrap_or(0) as f64
+                * cw
+        } else {
+            0.0
+        };
+        let dx = if center { ((page_w - table_w) / 2.0 - MARGIN).max(0.0) } else { 0.0 };
 
         let mut gfx = String::new();
         let mut txt = String::from("BT\n");
@@ -603,7 +635,7 @@ fn text_pdf(items: &[Item], page_w: f64, page_h: f64) -> Vec<u8> {
             match it {
                 Item::Line(ln) => {
                     if let Some(bg) = ln.band {
-                        let bx = MARGIN - 2.0;
+                        let bx = MARGIN + dx - 2.0;
                         let bw = ln.band_cols as f64 * cw + 4.0;
                         gfx.push_str(&format!(
                             "{:.3} {:.3} {:.3} rg\n{:.2} {:.2} {:.2} {:.2} re f\n",
@@ -617,7 +649,7 @@ fn text_pdf(items: &[Item], page_w: f64, page_h: f64) -> Vec<u8> {
                         ));
                     }
                     for &cs in &ln.col_seps {
-                        let x = MARGIN + cs * cw;
+                        let x = MARGIN + dx + cs * cw;
                         gfx.push_str(&format!(
                             "{:.3} {:.3} {:.3} RG\n0.4 w\n{:.2} {:.2} m {:.2} {:.2} l S\n",
                             RULE_COLOR[0],
@@ -632,7 +664,7 @@ fn text_pdf(items: &[Item], page_w: f64, page_h: f64) -> Vec<u8> {
                     let base = top - ln.size;
                     let fid = font_id(ln.font);
                     for s in &ln.segs {
-                        let x = MARGIN + s.col as f64 * cw;
+                        let x = MARGIN + dx + s.col as f64 * cw;
                         txt.push_str(&format!(
                             "/{} {} Tf\n{:.3} {:.3} {:.3} rg\n1 0 0 1 {:.2} {:.2} Tm\n({}) Tj\n",
                             fid,
@@ -648,15 +680,14 @@ fn text_pdf(items: &[Item], page_w: f64, page_h: f64) -> Vec<u8> {
                 }
                 Item::Rule => {
                     let ry = top - h * 0.5;
+                    let (x1, x2) = if center {
+                        (MARGIN + dx, MARGIN + dx + table_w)
+                    } else {
+                        (MARGIN, page_w - MARGIN)
+                    };
                     gfx.push_str(&format!(
                         "{:.3} {:.3} {:.3} RG\n0.6 w\n{:.1} {:.2} m {:.1} {:.2} l S\n",
-                        RULE_COLOR[0],
-                        RULE_COLOR[1],
-                        RULE_COLOR[2],
-                        MARGIN,
-                        ry,
-                        page_w - MARGIN,
-                        ry
+                        RULE_COLOR[0], RULE_COLOR[1], RULE_COLOR[2], x1, ry, x2, ry
                     ));
                 }
                 Item::Gap(_) => {}
