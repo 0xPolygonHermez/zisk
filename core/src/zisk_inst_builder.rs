@@ -299,3 +299,30 @@ impl ZiskInstBuilder {
         self.i.meta_rd = Some(rd);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `slli.uw` is proven by the binary extension assuming its operands reach the bus already
+    /// zero-extended to 32 bits, which is what the m32 flag does (see `main.pil` and
+    /// `OperationBusData::from_instruction`). m32 is derived from the operation name, so this
+    /// pins the assumption: renaming the operation would silently drop the zero extension.
+    #[test]
+    fn sll_u_w_sets_m32() {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.op("sll_u_w").unwrap();
+        assert!(zib.i.m32, "sll_u_w must set m32 so that a reaches the bus zero-extended");
+    }
+
+    /// The shift-and-adds, in contrast, take a full 64-bit b operand (rs2), so they must not mask
+    /// anything on the bus.
+    #[test]
+    fn sh_add_does_not_set_m32() {
+        for op in ["sh1add", "sh2add", "sh3add"] {
+            let mut zib = ZiskInstBuilder::new(0);
+            zib.op(op).unwrap();
+            assert!(!zib.i.m32, "{op} must not set m32");
+        }
+    }
+}

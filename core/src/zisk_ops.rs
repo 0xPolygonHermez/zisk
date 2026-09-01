@@ -19,7 +19,7 @@ use crate::{
     DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST, DMA_MEMCPY_COST,
     DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR, FCALL_COST,
     INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE, POSEIDON_COST,
-    REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
+    REG_A0, SHA256_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
 };
 use paste::paste;
 use proofman_fields::{
@@ -463,11 +463,11 @@ define_ops! {
     (Binv, "binv", BinaryE, BINARY_E_COST, 0x46, 0, 0, opc_binv, op_binv, ops_none),
     (Bset, "bset", BinaryE, BINARY_E_COST, 0x47, 0, 0, opc_bset, op_bset, ops_none),
     (AddUW, "add_u_w", BinaryE, ADD_U_W_COST, 0x48, 0, 0, opc_add_u_w, op_add_u_w, ops_none),
-    (Sh1add, "sh1add", BinaryE, SH_ADD_COST, 0x49, 0, 0, opc_sh1add, op_sh1add, ops_none),
+    (Sh1add, "sh1add", Binary, BINARY_COST, 0x49, 0, 0, opc_sh1add, op_sh1add, ops_none),
     (Sh1addUW, "sh1add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4a, 0, 0, opc_sh1add_u_w, op_sh1add_u_w, ops_none),
-    (Sh2add, "sh2add", BinaryE, SH_ADD_COST, 0x4b, 0, 0, opc_sh2add, op_sh2add, ops_none),
+    (Sh2add, "sh2add", Binary, BINARY_COST, 0x4b, 0, 0, opc_sh2add, op_sh2add, ops_none),
     (Sh2addUW, "sh2add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4c, 0, 0, opc_sh2add_u_w, op_sh2add_u_w, ops_none),
-    (Sh3add, "sh3add", BinaryE, SH_ADD_U_W_COST, 0x4d, 0, 0, opc_sh3add, op_sh3add, ops_none),
+    (Sh3add, "sh3add", Binary, BINARY_COST, 0x4d, 0, 0, opc_sh3add, op_sh3add, ops_none),
     (Sh3addUW, "sh3add_u_w", BinaryE, SH_ADD_U_W_COST, 0x4e, 0, 0, opc_sh3add_u_w, op_sh3add_u_w, ops_none),
     (SllUW, "sll_u_w", BinaryE, SLL_U_W_COST, 0x4f, 0, 0, opc_sll_u_w, op_sll_u_w, ops_none),
     (Clmul, "clmul", BinaryE, BINARY_E_COST, 0x52, 0, 0, opc_clmul, op_clmul, ops_none),

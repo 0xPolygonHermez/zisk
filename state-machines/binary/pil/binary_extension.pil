@@ -41,7 +41,13 @@ full-doubleword ops, 32 for word/sub-word ops (the *_W variants and the sign-ext
     │  BEXT  │   shift   │  64  │ 0x45 │
     │  BINV  │   shift   │  64  │ 0x46 │
     │  BSET  │   shift   │  64  │ 0x47 │
+    │ SLL_UW │   shift   │  32  │ 0x4f │
     └────────┴───────────┴──────┴──────┘
+
+SLL_UW (slli.uw) is the only op whose operand is 32 bits but whose result is a full 64-bit value:
+it shifts left the zero extension of a[31:0] by up to 63 positions. Its instruction sets the m32
+flag, so the bus never carries the high half of a (nor of b, the shift amount, which is a 6-bit
+immediate), which is exactly the zero extension the operation needs.
 
 Examples:
 =======================================
@@ -100,7 +106,7 @@ airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int 
     const int BYTE_BASE = (1 << BYTES);
 
     // Primary columns
-    col witness bits(7)  op;                  // operation code (up to 0x47 = OP_BSET)
+    col witness bits(7)  op;                  // operation code (up to 0x4f = OP_SLL_UW)
     col witness bits(8)  free_in_a[BYTES];    // input A per byte
     col witness bits(6)  free_in_b;           // input B (only bits: 0..5 , values: 0..63)
     col witness bits(32) free_in_c[BYTES][2]; // output C byte, split in 2 parts

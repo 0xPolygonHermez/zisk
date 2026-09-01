@@ -613,9 +613,12 @@ impl<'a> Riscv2ZiskContext<'a> {
             RiscvInstName::Bseti => self.immediate_op(riscv_instruction, "bset", 4),
 
             // Address generation operations (Zba)
-            #[cfg(feature = "zba_native")]
-            RiscvInstName::AddUw => self.create_register_op(riscv_instruction, "add_u_w", 4),
-            #[cfg(all(feature = "zba", not(feature = "zba_native")))]
+            //
+            // Only sh<n>add and slli.uw have a native ZisK operation. The .uw shift-and-adds are
+            // transpiled to `and 0xFFFFFFFF` (the zero extension) plus the native sh<n>add, and
+            // add.uw to `and 0xFFFFFFFF` plus `add`, which is what the non-native path already
+            // does for it.
+            #[cfg(any(feature = "zba", feature = "zba_native"))]
             RiscvInstName::AddUw => self.add_u_w(riscv_instruction),
 
             #[cfg(feature = "zba_native")]
@@ -624,7 +627,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             RiscvInstName::Sh1add => self.sh1add(riscv_instruction),
 
             #[cfg(feature = "zba_native")]
-            RiscvInstName::Sh1addUw => self.create_register_op(riscv_instruction, "sh1add_u_w", 4),
+            RiscvInstName::Sh1addUw => self.sh_add_u_w_native(riscv_instruction, "sh1add"),
             #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh1addUw => self.sh1add_u_w(riscv_instruction),
 
@@ -634,7 +637,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             RiscvInstName::Sh2add => self.sh2add(riscv_instruction),
 
             #[cfg(feature = "zba_native")]
-            RiscvInstName::Sh2addUw => self.create_register_op(riscv_instruction, "sh2add_u_w", 4),
+            RiscvInstName::Sh2addUw => self.sh_add_u_w_native(riscv_instruction, "sh2add"),
             #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh2addUw => self.sh2add_u_w(riscv_instruction),
 
@@ -644,7 +647,7 @@ impl<'a> Riscv2ZiskContext<'a> {
             RiscvInstName::Sh3add => self.sh3add(riscv_instruction),
 
             #[cfg(feature = "zba_native")]
-            RiscvInstName::Sh3addUw => self.create_register_op(riscv_instruction, "sh3add_u_w", 4),
+            RiscvInstName::Sh3addUw => self.sh_add_u_w_native(riscv_instruction, "sh3add"),
             #[cfg(all(feature = "zba", not(feature = "zba_native")))]
             RiscvInstName::Sh3addUw => self.sh3add_u_w(riscv_instruction),
 

@@ -3,9 +3,13 @@
     ==========================
       - Binary Operations:
         - 0x02-0x20
+        - 0x32-0x35 (Zbb/Zbkb bitwise)
+        - 0x49, 0x4B, 0x4D (Zba shift-and-add)
         - 0x50, 0x51, 0x60, 0x61
       - Binary Extension Operations:
         - 0x21-0x29
+        - 0x31, 0x36-0x47 (Zbb/Zbs/Zbkb)
+        - 0x4F (Zba slli.uw)
       - Arithmetic Operations:
         - 0xB0-0xBF
       - DMA Operations:
@@ -88,6 +92,15 @@ const int OP_BCLR = 0x44;
 const int OP_BEXT = 0x45;
 const int OP_BINV = 0x46;
 const int OP_BSET = 0x47;
+
+// Zba shift-and-add operations, proven by Binary: c = b + (a << shift)
+const int OP_SH1ADD = 0x49;
+const int OP_SH2ADD = 0x4B;
+const int OP_SH3ADD = 0x4D;
+
+// Zba slli.uw, proven by Binary Extension: c = zext32(a) << (b & 0x3F). Its instruction sets the
+// m32 flag, so the high half of a never reaches the bus (that is the zero extension)
+const int OP_SLL_UW = 0x4F;
 
 const int OP_PUBOUT = 0x30;
 

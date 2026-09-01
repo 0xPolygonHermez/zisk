@@ -20,7 +20,11 @@ elf = "0.7.4"
 zisk-lib-float = { workspace = true, optional = true }
 
 [features]
-default = []
+# Zba is proven natively by ZisK (sh<n>add and slli.uw in the binary state machines, add.uw
+# and the .uw shift-and-adds by transpilation), so it is enabled by default like the Zbb /
+# Zbs / Zbkb extensions. Use `default-features = false` (plus `zba` for the decomposed
+# sequences) to opt out.
+default = ["zba_native"]
 float = ["dep:zisk-lib-float", "zisk-lib-float/float", "zisk-riscv/float", "zisk-core/float"]
 zba = ["zisk-riscv/zba", "zisk-core/zba"]
 zbc = ["zisk-riscv/zbc", "zisk-core/zbc"]

@@ -26,6 +26,13 @@ require "binary_table.pil"
     │ AND           │   0x0e   │   0x0e   │                │       │                    │    X    │
     │ OR            │   0x0f   │   0x0f   │                │       │                    │    X    │
     │ XOR           │   0x10   │   0x10   │                │       │                    │    X    │
+    │ BREV8         │   0x32   │   0x32   │                │       │                    │    X    │
+    │ ANDN          │   0x33   │   0x33   │                │       │                    │    X    │
+    │ ORN           │   0x34   │   0x34   │                │       │                    │    X    │
+    │ XNOR          │   0x35   │   0x35   │                │       │                    │    X    │
+    │ SH1ADD        │   0x49   │   0x49   │                │   X   │                    │    X    │
+    │ SH2ADD        │   0x4b   │   0x4b   │                │   X   │                    │    X    │
+    │ SH3ADD        │   0x4d   │   0x4d   │                │   X   │                    │    X    │
     │ LT_ABS_NP (*) │   0x50   │   0x50   │        X       │   X   │       X            │         │
     │ LT_ABS_PN (*) │   0x51   │   0x51   │        X       │   X   │       X            │         │
     ┼───────────────┼──────────┼──────────┼────────────────┼───────┼────────────────────┼─────────┼
@@ -67,9 +74,10 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     col witness bits(8) free_in_a[BYTES];   // input A per byte
     col witness bits(8) free_in_b[BYTES];   // input B per byte
     col witness bits(8) free_in_c[BYTES];   // output C per byte
-    col witness bits(2) carry[BYTES];       // per-byte carry chain:
+    col witness bits(4) carry[BYTES];       // per-byte carry chain:
                                             //      (cin[i]=carry[i-1], cout[i]=carry[i])
-                                            // 2 bits to hold LT_ABS_NP's packed {clt + 2*cneg}, all other ops use only bit 0
+                                            // 4 bits to hold SH3ADD's {carry + bits shifted out} in [0,8] and
+                                            // LT_ABS_NP's packed {clt + 2*cneg}, all other ops use only bit 0
 
     // Flags and helpers
     col witness bits(1) mode32;             // 1 if operation is in 32-bit mode; 0 if in 64-bit mode
@@ -93,18 +101,22 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     where pos_ind indicates relevant byte positions
 
     Example for 8 bytes:
-        │──────────────────│───────────│────│────│──────────│────│──────────────────--------------------------------------------──────────│
+        │──────────────────│───────────│────│────│──────────│────│──────────────────-----------------------------------------------────────│
         │     pos_ind      │    opid   │ a  │ b  │ cin      │ c  │ cout + flags                                                           │
-        │──────────────────│───────────│────│────│──────────│────│──────────────────--------------------------------------------──────────│
-        │ 2*use_first_byte │   b_op    │ a0 │ b0 │ 0        │ c0 │ carry[0] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │   b_op    │ a1 │ b1 │ carry[0] │ c1 │ carry[1] + 2*result_is_a + 4*use_first_byte                            │
-        │        0         │   b_op    │ a2 │ b2 │ carry[1] │ c2 │ carry[2] + 2*result_is_a + 4*use_first_byte                            │
-        │      mode32      │   b_op    │ a3 │ b3 │ carry[2] │ c3 │ carry[3] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │        0         │ b_op|SEXT │ a4 │ b4 │ carry[3] │ c4 │ carry[4] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │        0         │ b_op|SEXT │ a5 │ b5 │ carry[4] │ c5 │ carry[5] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │        0         │ b_op|SEXT │ a6 │ b6 │ carry[5] │ c6 │ carry[6] + 2*result_is_a + 4*use_first_byte + 8*(mode32 * c_is_signed) │
-        │      mode64      │ b_op|SEXT │ a7 │ b7 │ carry[6] │ c7 │ carry[7] + 2*result_is_a + 4*use_first_byte + 8*c_is_signed            │
-        │──────────────────│───────────│────│────│──────────│────│──────────────────--------------------------------------------──────────│
+        │──────────────────│───────────│────│────│──────────│────│──────────────────-----------------------------------------------────────│
+        │ 2*use_first_byte │   b_op    │ a0 │ b0 │ 0        │ c0 │ carry[0] + 16*result_is_a + 32*use_first_byte                          │
+        │        0         │   b_op    │ a1 │ b1 │ carry[0] │ c1 │ carry[1] + 16*result_is_a + 32*use_first_byte                          │
+        │        0         │   b_op    │ a2 │ b2 │ carry[1] │ c2 │ carry[2] + 16*result_is_a + 32*use_first_byte                          │
+        │      mode32      │   b_op    │ a3 │ b3 │ carry[2] │ c3 │ carry[3] + 16*result_is_a + 32*use_first_byte + 64*(mode32*c_is_signed)│
+        │        0         │ b_op|SEXT │ a4 │ b4 │ carry[3] │ c4 │ carry[4] + 16*result_is_a + 32*use_first_byte + 64*(mode32*c_is_signed)│
+        │        0         │ b_op|SEXT │ a5 │ b5 │ carry[4] │ c5 │ carry[5] + 16*result_is_a + 32*use_first_byte + 64*(mode32*c_is_signed)│
+        │        0         │ b_op|SEXT │ a6 │ b6 │ carry[5] │ c6 │ carry[6] + 16*result_is_a + 32*use_first_byte + 64*(mode32*c_is_signed)│
+        │      mode64      │ b_op|SEXT │ a7 │ b7 │ carry[6] │ c7 │ carry[7] + 16*result_is_a + 32*use_first_byte + 64*c_is_signed         │
+        │──────────────────│───────────│────│────│──────────│────│──────────────────-----------------------------------------------────────│
+
+    The carry keeps the 4 low bits of the flags for itself: the SHxADD family transports in it both the
+    addition carry and the bits shifted out of the previous byte (up to 8 for SH3ADD), so packing the
+    remaining flags above it is what makes the decoding of the looked up FLAGS value unique
     */
 
     // Auxiliary columns (primarily used to lower the lookup call complexity)
@@ -114,16 +126,16 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     mode32_and_c_is_signed <== mode32 * c_is_signed;
 
     // Lookups
-    lookup_assumes(BINARY_TABLE_ID, [2*use_first_byte, b_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 2*result_is_a + 4*use_first_byte]);
+    lookup_assumes(BINARY_TABLE_ID, [2*use_first_byte, b_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 16*result_is_a + 32*use_first_byte]);
     for (int i = 1; i < BYTES; i++) {
         if (i < HALF_BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte]);
+            lookup_assumes(BINARY_TABLE_ID, [0, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte]);
         } else if (i == HALF_BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [mode32, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte + 8*mode32_and_c_is_signed]);
+            lookup_assumes(BINARY_TABLE_ID, [mode32, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte + 64*mode32_and_c_is_signed]);
         } else if (i < BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte + 8*mode32_and_c_is_signed]);
+            lookup_assumes(BINARY_TABLE_ID, [0, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte + 64*mode32_and_c_is_signed]);
         } else  {
-            lookup_assumes(BINARY_TABLE_ID, [mode64, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 2*result_is_a + 4*use_first_byte + 8*c_is_signed]);
+            lookup_assumes(BINARY_TABLE_ID, [mode64, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte + 64*c_is_signed]);
         }
     }
 
