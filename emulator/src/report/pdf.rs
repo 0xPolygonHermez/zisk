@@ -433,10 +433,10 @@ fn table(
         return;
     }
     let ncol = headers.len();
-    let mut w: Vec<usize> = headers.iter().map(|h| h.len()).collect();
+    let mut w: Vec<usize> = headers.iter().map(|h| h.chars().count()).collect();
     for row in rows {
         for (c, wc) in w.iter_mut().enumerate() {
-            let len = row.get(c).map(|s| s.len()).unwrap_or(0);
+            let len = row.get(c).map(|s| s.chars().count()).unwrap_or(0);
             *wc = (*wc).max(len);
         }
     }
