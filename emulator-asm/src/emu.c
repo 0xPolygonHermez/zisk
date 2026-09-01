@@ -17,10 +17,12 @@
 #include "../../lib-c/c/src/arith256/arith256.hpp"
 #include "../../lib-c/c/src/arith384/arith384.hpp"
 #include "../../lib-c/c/src/bn254/bn254.hpp"
+#include "../../lib-c/c/src/babyjubjub/babyjubjub.hpp"
 #include "../../lib-c/c/src/bls12_381/bls12_381.hpp"
 #include "../../lib-c/c/src/poseidon2/poseidon2_goldilocks.hpp"
 #include "../../lib-c/c/src/poseidon1/poseidon1_goldilocks.hpp"
 #include "../../lib-c/c/src/blake2/blake2.hpp"
+#include "../../lib-c/c/src/blake3/blake3.hpp"
 #include "../../lib-c/c/src/chfast/zisk_keccak.h"
 
 extern void zisk_sha256(uint64_t state[4], uint64_t input[8]);
@@ -43,6 +45,8 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.sha256_duration = 0;
     asm_call_metrics.blake2_counter = 0;
     asm_call_metrics.blake2_duration = 0;
+    asm_call_metrics.blake3_counter = 0;
+    asm_call_metrics.blake3_duration = 0;
     asm_call_metrics.poseidon2_counter = 0;
     asm_call_metrics.poseidon2_duration = 0;
     asm_call_metrics.poseidon1_counter = 0;
@@ -89,6 +93,8 @@ void reset_asm_call_metrics (void)
     asm_call_metrics.bls12_381_complex_mul_duration = 0;
     asm_call_metrics.add256_counter = 0;
     asm_call_metrics.add256_duration = 0;
+    asm_call_metrics.babyjubjub_add_counter = 0;
+    asm_call_metrics.babyjubjub_add_duration = 0;
 }
 
 void print_asm_call_metrics (uint64_t total_duration)
@@ -124,6 +130,16 @@ void print_asm_call_metrics (uint64_t total_duration)
     asm_printf("Blake2: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.blake2_counter,
         asm_call_metrics.blake2_duration,
+        duration,
+        percentage);
+
+    // Print blake3 metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.blake3_duration * 1000) / total_duration;
+    duration = asm_call_metrics.blake3_counter == 0 ? 0 : (asm_call_metrics.blake3_duration * 1000) / asm_call_metrics.blake3_counter;
+    asm_call_total_duration += asm_call_metrics.blake3_duration;
+    asm_printf("Blake3: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.blake3_counter,
+        asm_call_metrics.blake3_duration,
         duration,
         percentage);
 
@@ -354,6 +370,16 @@ void print_asm_call_metrics (uint64_t total_duration)
     asm_printf("Add256: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
         asm_call_metrics.add256_counter,
         asm_call_metrics.add256_duration,
+        duration,
+        percentage);
+
+    // Print babyjubjub_add metrics
+    percentage = total_duration == 0 ? 0 : (asm_call_metrics.babyjubjub_add_duration * 1000) / total_duration;
+    duration = asm_call_metrics.babyjubjub_add_counter == 0 ? 0 : (asm_call_metrics.babyjubjub_add_duration * 1000) / asm_call_metrics.babyjubjub_add_counter;
+    asm_call_total_duration += asm_call_metrics.babyjubjub_add_duration;
+    asm_printf("babyjubjub_add: counter = %lu, duration = %lu us, single duration = %lu ns, per thousand = %lu \n",
+        asm_call_metrics.babyjubjub_add_counter,
+        asm_call_metrics.babyjubjub_add_duration,
         duration,
         percentage);
 
@@ -660,6 +686,48 @@ extern int _opcode_blake2(uint64_t * address)
     asm_call_metrics.blake2_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.blake2_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_blake3(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+#ifdef DEBUG
+#ifdef ASM_CALL_METRICS
+    if (emu_verbose) asm_printf("opcode_blake3() calling blake3_f() counter=%lu address=%p\n", asm_call_metrics.blake3_counter, address);
+#else
+    if (emu_verbose) asm_printf("opcode_blake3() calling blake3_f() address=%p\n", address);
+#endif
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call blake3 permutation function (address[0] = state ptr, address[1] = input ptr)
+        blake3_f((uint32_t *)address[0], (const uint32_t *)address[1]);
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)address[0], 8*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)address[0], 8*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose) asm_printf("opcode_blake3() called blake3_f()\n");
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.blake3_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.blake3_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }
@@ -1368,6 +1436,71 @@ extern int _opcode_bn254_curve_add(uint64_t * address)
     asm_call_metrics.bn254_curve_add_counter++;
     gettimeofday(&asm_call_stop, NULL);
     asm_call_metrics.bn254_curve_add_duration += TimeDiff(asm_call_start, asm_call_stop);
+#endif
+    return 0;
+}
+
+extern int _opcode_babyjubjub_add(uint64_t * address)
+{
+#ifdef ASM_CALL_METRICS
+    gettimeofday(&asm_call_start, NULL);
+#endif
+
+    uint64_t * p1 = (uint64_t *)address[0];
+    uint64_t * p2 = (uint64_t *)address[1];
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+#ifdef ASM_CALL_METRICS
+        asm_printf("_opcode_babyjubjub_add() calling BabyJubJubAddP() counter=%lu address=%p p1_address=%p p2_address=%p\n", asm_call_metrics.babyjubjub_add_counter, address, p1, p2);
+#else
+        asm_printf("_opcode_babyjubjub_add() calling BabyJubJubAddP() address=%p p1_address=%p p2_address=%p\n", address, p1, p2);
+#endif
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+        asm_printf("p2.x = %lx:%lx:%lx:%lx\n", p2[3], p2[2], p2[1], p2[0]);
+        asm_printf("p2.y = %lx:%lx:%lx:%lx\n", p2[7], p2[6], p2[5], p2[4]);
+    }
+#endif
+
+#ifdef ASM_PRECOMPILE_CACHE
+    if (precompile_cache_storing)
+    {
+#endif
+        // Call point addition function
+        int result = BabyJubJubAddP (
+            p1, // p1 = [x1, y1] = 8x64bits
+            p2, // p2 = [x2, y2] = 8x64bits
+            p1 // p3 = [x3, y3] = 8x64bits
+        );
+        if (result != 0)
+        {
+            asm_printf("_opcode_babyjubjub_add() failed calling BabyJubJubAddP() result=%d;", result);
+            exit(-1);
+        }
+
+#ifdef ASM_PRECOMPILE_CACHE
+        // Store result in cache
+        precompile_cache_store((uint8_t *)p1, 8*8);
+    }
+    else if (precompile_cache_loading)
+    {
+        // Load result from cache
+        precompile_cache_load((uint8_t *)p1, 8*8);
+    }
+#endif
+
+#ifdef DEBUG
+    if (emu_verbose)
+    {
+        asm_printf("p1.x = %lx:%lx:%lx:%lx\n", p1[3], p1[2], p1[1], p1[0]);
+        asm_printf("p1.y = %lx:%lx:%lx:%lx\n", p1[7], p1[6], p1[5], p1[4]);
+    }
+#endif
+#ifdef ASM_CALL_METRICS
+    asm_call_metrics.babyjubjub_add_counter++;
+    gettimeofday(&asm_call_stop, NULL);
+    asm_call_metrics.babyjubjub_add_duration += TimeDiff(asm_call_start, asm_call_stop);
 #endif
     return 0;
 }

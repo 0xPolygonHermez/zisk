@@ -32,5 +32,8 @@ zisk-sdk = { path = "../sdk" }
 zisk-test-artifacts = { path = "../test-artifacts", default-features = false }
 examples-utils = { path = "utils"}
 
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
-proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.2.0-alpha" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.3.0-alpha" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "pre-develop-1.3.0-alpha" }
+
+# proofman-util = "1.3.0-alpha"
+# proofman-fields = "1.3.0-alpha"

@@ -24,7 +24,7 @@ default = ["all"]
 # use, e.g. `test-artifacts = { workspace = true, default-features = false, features = ["fib_mod"] }`.
 all = [
   "add256", "agg_verify", "arith256", "arith256_mod", "arith384_mod",
-  "big_input", "bigint", "blake2", "bls12_381", "bls12_381_add",
+  "babyjubjub_add", "big_input", "bigint", "blake2", "blake3", "bls12_381", "bls12_381_add",
   "bls12_381_complex_add", "bls12_381_complex_mul", "bls12_381_complex_sub",
   "bls12_381_dbl", "bn254", "bn254_add", "bn254_complex_add",
   "bn254_complex_mul", "bn254_complex_sub", "bn254_dbl", "diagnostic",
@@ -42,9 +42,11 @@ agg_verify = []
 arith256 = []
 arith256_mod = []
 arith384_mod = []
+babyjubjub_add = []
 big_input = []
 bigint = []
 blake2 = []
+blake3 = []
 bls12_381 = []
 bls12_381_add = []
 bls12_381_complex_add = []

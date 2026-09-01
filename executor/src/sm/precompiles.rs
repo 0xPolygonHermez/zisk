@@ -14,12 +14,13 @@
 
 use zisk_common::ComponentBuilder;
 use zisk_core::{
-    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BIG_INT_OP_TYPE_ID, BLAKE2_OP_TYPE_ID,
-    KECCAK_OP_TYPE_ID, POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID,
+    ARITH_EQ_384_OP_TYPE_ID, ARITH_EQ_OP_TYPE_ID, BABYJUBJUB_OP_TYPE_ID, BIG_INT_OP_TYPE_ID,
+    BLAKE2_OP_TYPE_ID, BLAKE3_OP_TYPE_ID, KECCAK_OP_TYPE_ID, POSEIDON_OP_TYPE_ID,
+    SHA256_OP_TYPE_ID,
 };
 use zisk_pil::{
-    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, BLAKE_2_BR_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS,
-    SHA_256_F_AIR_IDS,
+    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, BABY_JUB_JUB_AIR_IDS, BLAKE_2_BR_AIR_IDS,
+    BLAKE_3_F_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
 };
 use zisk_precomp_arith_eq::{
     ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager,
@@ -28,8 +29,12 @@ use zisk_precomp_arith_eq::{
 use zisk_precomp_arith_eq_384::{
     ArithEq384Collector, ArithEq384CounterInputGen, ArithEq384Instance, ArithEq384Manager,
 };
+use zisk_precomp_babyjubjub::{
+    BabyJubJubCollector, BabyJubJubCounterInputGen, BabyJubJubInstance, BabyJubJubManager,
+};
 use zisk_precomp_big_int::{Add256Collector, Add256CounterInputGen, Add256Instance, Add256Manager};
 use zisk_precomp_blake2::{Blake2Collector, Blake2CounterInputGen, Blake2Instance, Blake2Manager};
+use zisk_precomp_blake3::{Blake3Collector, Blake3CounterInputGen, Blake3Instance, Blake3Manager};
 use zisk_precomp_keccakf::{
     KeccakfCollector, KeccakfCounterInputGen, KeccakfInstance, KeccakfManager,
 };
@@ -61,6 +66,11 @@ crate::register_precompiles! {
         air: BLAKE_2_BR_AIR_IDS,
         rank_assign: false,
     ] => Blake2Manager<F>,
+    Blake3 [
+        op: BLAKE3_OP_TYPE_ID,
+        air: BLAKE_3_F_AIR_IDS,
+        rank_assign: false,
+    ] => Blake3Manager<F>,
     ArithEq [
         op: ARITH_EQ_OP_TYPE_ID,
         air: ARITH_EQ_CONFIG_AIR_IDS,
@@ -76,4 +86,9 @@ crate::register_precompiles! {
         air: ADD_256_AIR_IDS,
         rank_assign: false,
     ] => Add256Manager<F>,
+    BabyJubJub [
+        op: BABYJUBJUB_OP_TYPE_ID,
+        air: BABY_JUB_JUB_AIR_IDS,
+        rank_assign: false,
+    ] => BabyJubJubManager<F>,
 }

@@ -360,3 +360,63 @@ jobs:
           args: --all-features --all-targets -- -D warnings -A incomplete-features
         env:
           CARGO_INCREMENTAL: 1
+
+  crates-to-publish:
+    name: Crates to publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Check ZisK crates to publish
+        run: tools/crates.io/check_crates_to_publish.sh --zisk-repo-path "$GITHUB_WORKSPACE"
+
+      - name: Clone the pil2-proofman commit the dependencies point at
+        id: proofman
+        # PROOFMAN_CRATES is checked against the very commit that is built into
+        # ZisK. Cargo.lock records it for the `proofman` package as
+        # git+<url>?branch=<branch>#<commit>, the resolved form of what the root
+        # Cargo.toml declares, so it carries both the repo and the exact commit.
+        # Any other source (a crates.io version, a local path) means there is no
+        # git repo to look at and the check is skipped.
+        #
+        # The check runs even when the ZisK one above failed, so that a single
+        # run reports both repos instead of one at a time.
+        if: ${{ !cancelled() }}
+        run: |
+          set -uo pipefail
+
+          source=$(grep -A3 '^name = "proofman"$' Cargo.lock |
+              sed -n 's/^source = "\(.*\)"$/\1/p' | head -n1) || true
+
+          case "$source" in
+              git+*\#*) ;;
+              *)
+                  echo "::notice::proofman is not a git dependency (source: ${source:-none}) — skipping the PROOFMAN_CRATES check"
+                  exit 0
+                  ;;
+          esac
+
+          url=${source#git+}
+          url=${url%%\#*}
+          url=${url%%\?*}
+          commit=${source##*\#}
+          dir="$RUNNER_TEMP/pil2-proofman"
+
+          echo "Cloning $url at $commit"
+
+          set -e
+          git init -q "$dir"
+          git -C "$dir" remote add origin "$url"
+          # GitHub serves reachable commits directly, so the common path stays
+          # shallow. Fall back to a full fetch on servers that refuse a
+          # by-commit request.
+          git -C "$dir" fetch -q --depth 1 origin "$commit" ||
+              git -C "$dir" fetch -q origin
+          git -C "$dir" checkout -q --detach "$commit"
+
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Check Proofman crates to publish
+        if: ${{ !cancelled() && steps.proofman.outputs.dir != '' }}
+        run: tools/crates.io/check_crates_to_publish.sh --proofman-repo-path "${{ steps.proofman.outputs.dir }}"

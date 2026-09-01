@@ -27,6 +27,9 @@
   "Blake2br": {
     "hasCompressor": true
   },
+  "Blake3f": {
+    "hasCompressor": true
+  },
   "Arith256": {
     "hasCompressor": true
   },
@@ -40,6 +43,9 @@
     "hasCompressor": true
   },
   "ArithBn254Complex": {
+    "hasCompressor": true
+  },
+  "BabyJubJub": {
     "hasCompressor": true
   }
 }

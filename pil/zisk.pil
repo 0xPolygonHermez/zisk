@@ -23,6 +23,7 @@ require "arith/pil/arith.pil"
 require "big_int/pil/big_int_add.pil"
 require "arith_eq/pil/arith_eq.pil"
 require "arith_eq_384/pil/arith_eq_384.pil"
+require "babyjubjub/pil/babyjubjub.pil"
 require "keccakf/pil/keccakf.pil"
 require "sha256f/pil/sha256f.pil"
 require "dma/pil/dma.pil"
@@ -34,6 +35,7 @@ require "dma/pil/dma_64_aligned.pil"
 require "dma/pil/dma_unaligned.pil"
 require "poseidon/pil/poseidon.pil"
 require "blake2/pil/blake2br.pil"
+require "blake3/pil/blake3f.pil"
 
 enable_range_stats();
 
@@ -120,7 +122,8 @@ airgroup Zisk {
     ArithEq(N: 2**20, equations: EQ_BN254_EC) alias ArithBn254Ec;
     ArithEq(N: 2**20, equations: EQ_BN254_ADD + EQ_BN254_SUB + EQ_BN254_MUL) alias ArithBn254Complex;        
     ArithEq384(N: 2**20);
-    virtual ArithEqLtTable();
+    BabyJubJub(N: 2**18);
+    virtual ArithEqLtTable(ARITH_EQ_LT_TABLE_SIZE);
 
     Keccakf(N: 2**18, lanes_per_row: 25);
     virtual KeccakfChiTable(KECCAKF_CHI_TABLE_SIZE);
@@ -132,6 +135,9 @@ airgroup Zisk {
 
     Blake2br(N: 2**18);
     virtual Blake2brTable(BLAKE2BR_TABLE_SIZE);
+
+    Blake3f(N: 2**20, LANES:2);
+    virtual Blake3fTable(BLAKE3F_TABLE_SIZE);
 
     Dma();
     Dma(enable: E_DMA_MEMCPY) alias DmaMemCpy;
