@@ -361,10 +361,6 @@ airtemplate BabyJubJub (const int N = 2**18) {
         return res;
     }
 
-    function chunk_to_m32_on_clock(const expr cl, int index, int current_clock): const expr {
-        return air.CLK[cl]*(index_on_clock(cl, index, current_clock) + index_on_clock(cl, index + 1, current_clock));
-    }
-
     function index_on_clock(const expr cl, int index, int current_clock): const expr {
         return cl'(index - current_clock);
     }

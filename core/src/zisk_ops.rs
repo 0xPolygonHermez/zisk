@@ -13,10 +13,10 @@ use zisk_precomp_helpers::DmaInfo;
 use ziskos::zisklib::fcall_proxy;
 
 use crate::{
-    blake2br, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
+    blake2br, blake3f, operations::*, sha256f, EmulationMode, InstContext, Mem, ZiskOperationType,
     ZiskRequiredOperation, ADD256_COST, ADD_U_W_COST, ARITHA32_COST, ARITHAM32_COST,
     ARITH_EQ_384_COST, ARITH_EQ_COST, BABYJUBJUB_COST, BINARY_ADD_COST, BINARY_COST, BINARY_E_COST,
-    BLAKE2_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
+    BLAKE2_COST, BLAKE3_COST, DMA_64_ALIGNED_COST, DMA_COST, DMA_INPUTCPY_COST, DMA_MEMCMP_COST,
     DMA_MEMCPY_COST, DMA_MEMSET_COST, DMA_PRE_POST_COST, DMA_UNALIGNED_COST, EXTRA_PARAMS_ADDR,
     FCALL_COST, INPUT_ADDR, INTERNAL_COST, JUMP_DEST_COST, KECCAK_COST, M64, MAX_INPUT_SIZE,
     POSEIDON_COST, REG_A0, SHA256_COST, SH_ADD_COST, SH_ADD_U_W_COST, SLL_U_W_COST, SYS_ADDR,
@@ -67,6 +67,7 @@ pub enum OpType {
     Blake2,
     Profile,
     BabyJubJub,
+    Blake3,
 }
 
 impl From<OpType> for ZiskOperationType {
@@ -89,6 +90,7 @@ impl From<OpType> for ZiskOperationType {
             OpType::Blake2 => ZiskOperationType::Blake2,
             OpType::Profile => ZiskOperationType::Profile,
             OpType::BabyJubJub => ZiskOperationType::BabyJubJub,
+            OpType::Blake3 => ZiskOperationType::Blake3,
         }
     }
 }
@@ -115,6 +117,7 @@ impl Display for OpType {
             Self::Blake2 => write!(f, "Blake2"),
             Self::Profile => write!(f, "Profile"),
             Self::BabyJubJub => write!(f, "BabyJubJub"),
+            Self::Blake3 => write!(f, "Blake3"),
         }
     }
 }
@@ -142,6 +145,7 @@ impl FromStr for OpType {
             "bl" => Ok(Self::Blake2),
             "profile" => Ok(Self::Profile),
             "babyjubjub" => Ok(Self::BabyJubJub),
+            "b3" => Ok(Self::Blake3),
             _ => Err(InvalidOpTypeError),
         }
     }
@@ -530,6 +534,7 @@ define_ops! {
     (Secp256r1Add, "secp256r1_add", ArithEq, ARITH_EQ_COST, 0xe8, 144, 64, opc_secp256r1_add, op_secp256r1_add, ops_secp256r1_add),
     (Secp256r1Dbl, "secp256r1_dbl", ArithEq, ARITH_EQ_COST, 0xe9, 64, 64, opc_secp256r1_dbl, op_secp256r1_dbl, ops_secp256r1_dbl),
     (Blake2, "blake2", Blake2, BLAKE2_COST, 0xea, 280 , 128, opc_blake2, op_blake2, ops_blake2),
+    (Blake3, "blake3", Blake3, BLAKE3_COST, 0xee, 144, 64, opc_blake3, op_blake3, ops_blake3),
     (FcallParam, "fcall_param", Fcall, FCALL_COST, 0xf6, 0, 0, opc_fcall_param, op_fcall_param, ops_none),
     (Fcall, "fcall", Fcall, FCALL_COST, 0xf7, 0, 0, opc_fcall, op_fcall, ops_none),
     (FcallGet, "fcall_get", Fcall, FCALL_COST, 0xf8, 0, 0, opc_fcall_get, op_fcall_get, ops_none),
@@ -904,6 +909,53 @@ pub fn opc_blake2(ctx: &mut InstContext) {
 #[inline(always)]
 pub fn op_blake2(_a: u64, _b: u64) -> (u64, bool) {
     unimplemented!("op_blake2() is not implemented");
+}
+
+/// Performs the Blake3 permutation (7 rounds of G-mixing, no feed-forward) over a 16-u32 state,
+/// reading the state and input block through the two pointers stored at the address in register B,
+/// and writing the permuted state back through the first pointer.
+#[inline(always)]
+pub fn opc_blake3(ctx: &mut InstContext) {
+    const WORDS: usize = 2 + 2 * 8; // addr_state,addr_input,state[8],input[8]
+    let mut data = [0u64; WORDS];
+
+    precompiled_load_data(ctx, 2, 2, 8, 0, None, &mut data, "blake3");
+
+    if ctx.emulation_mode != EmulationMode::ConsumeMemReads {
+        // Get the state and input slices
+        // 0 - addr_state
+        // 1 - addr_input
+        let (params, rest) = data.split_at_mut(2);
+        let (state_slice, input_slice) = rest.split_at_mut(8);
+        let state: &mut [u64; 8] = state_slice.try_into().unwrap();
+        let input: &[u64; 8] = input_slice[..8].try_into().unwrap();
+
+        // Compute the blake3f output
+        blake3f(state, input);
+
+        let state_addr = params[0];
+        for (i, d) in state.iter().enumerate() {
+            ctx.mem.write(state_addr + (8 * i as u64), *d, 8);
+        }
+    }
+
+    ctx.c = 0;
+    ctx.flag = false;
+}
+
+/// Unimplemented.  Blake3 can only be called from the system call context via InstContext.
+/// This is provided just for completeness.
+#[inline(always)]
+pub fn op_blake3(_a: u64, _b: u64) -> (u64, bool) {
+    unimplemented!("op_blake3() is not implemented");
+}
+
+#[inline(always)]
+pub fn ops_blake3(ctx: &InstContext, stats: &mut dyn OpStats) {
+    // Mirrors opc_blake3's precompiled_load_data(ctx, 2, 2, 8, 0, None): the 2 params at ctx.b are
+    // both pointers ([state_addr, input_addr]). State is read and written back (8 words), input is
+    // read only (8 words).
+    precompiled_stats_data(ctx, stats, &[8, 8], &[], 1);
 }
 
 #[inline(always)]

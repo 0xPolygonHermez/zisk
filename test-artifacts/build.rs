@@ -20,6 +20,7 @@ const PROGRAMS: &[&str] = &[
     "big_input",
     "bigint",
     "blake2",
+    "blake3",
     "bls12_381",
     "bls12_381_add",
     "bls12_381_complex_add",
