@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use zisk_common::Plan;
 use zisk_pil::{InputDataTrace, MemTrace, RomDataTrace};
-use zisk_sm_mem_common::{MemAlignCounters, MemAlignPlanner};
+use zisk_sm_mem_common::{
+    input_data_lanes_x_row, mem_lanes_x_row, MemAlignCounters, MemAlignPlanner,
+};
 
 use crate::gpu_bindings;
 
@@ -74,10 +76,16 @@ impl GpuCountAndPlan {
     ) -> bool {
         // Rows per instance for {ROM, INPUT, RAM}, from the PIL trace sizes
         // so the GPU planner never hardcodes them.
+        //
+        // `InputData` and `Mem` pack `lanes_x_row` memory lanes on each row and
+        // the offsets they emit are expressed in virtual rows (one per lane), so
+        // their budget is scaled by the lane count (see
+        // [`zisk_sm_mem_common::MemLanes`]). `RomData` is not an instance of the
+        // `Mem` template and keeps one operation per row.
         let instance_rows: [u32; 3] = [
             RomDataTrace::<()>::NUM_ROWS as u32,
-            InputDataTrace::<()>::NUM_ROWS as u32,
-            MemTrace::<()>::NUM_ROWS as u32,
+            (InputDataTrace::<()>::NUM_ROWS * input_data_lanes_x_row()) as u32,
+            (MemTrace::<()>::NUM_ROWS * mem_lanes_x_row()) as u32,
         ];
         unsafe {
             gpu_bindings::count_and_plan_setup(

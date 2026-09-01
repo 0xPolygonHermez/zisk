@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "3388077915278649f53f558308dc22145b761dc6da8ecca7d39bd7456d8680ed";
+pub const PILOUT_HASH: &str = "249a2ae684869178c5eb5bd3b92af259446952686f89eb6da0de3c8bb15bc258";
 
 //AIRGROUP CONSTANTS
 
@@ -194,7 +194,7 @@ trace_row!(MemFixedRow<F> {
 pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 8388608, 0, 2>;
 
 trace_row!(MemTraceRow<F> {
- addr:ubit(29), step:ubit(38), sel:bit, addr_changes:bit, step_dual:ubit(38), sel_dual:bit, value:[u32; 2], wr:bit, previous_step:ubit(40), l_increment:ubit(22), h_increment:u16, read_same_addr:bit,
+ addr:[ubit(29); 2], step:[ubit(38); 2], sel:[bit; 2], addr_changes:[bit; 2], step_dual:[ubit(38); 2], sel_dual:[bit; 2], value:[[u32; 2]; 2], wr:[bit; 2], previous_step:[ubit(40); 2], l_increment:[ubit(22); 2], h_increment:[u16; 2], read_same_addr:[bit; 2],
 });
 
 pub type MemTrace<R> = GenericTrace<R, 8388608, 0, 2>;
@@ -205,7 +205,7 @@ trace_row!(InputDataFixedRow<F> {
 pub type InputDataFixed<F> = GenericTrace<InputDataFixedRow<F>, 4194304, 0, 3>;
 
 trace_row!(InputDataTraceRow<F> {
- addr:ubit(29), step:ubit(38), sel:bit, addr_changes:bit, value_word:[u16; 4], is_free_read:bit,
+ addr:[ubit(29); 1], step:[ubit(38); 1], sel:[bit; 1], addr_changes:[bit; 1], value_word:[[u16; 4]; 1], is_free_read:[bit; 1],
 });
 
 pub type InputDataTrace<R> = GenericTrace<R, 4194304, 0, 3>;
@@ -1034,8 +1034,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 2, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 4,
-        unpack_info: &[29, 38, 1, 1, 38, 1, 32, 32, 1, 40, 22, 16, 1],
+        num_packed_words: 8,
+        unpack_info: &[29, 29, 38, 38, 1, 1, 1, 1, 38, 38, 1, 1, 32, 32, 32, 32, 1, 1, 40, 40, 22, 22, 16, 16, 1, 1],
     }),
     (0, 3, PackedInfoConst {
         is_packed: true,
