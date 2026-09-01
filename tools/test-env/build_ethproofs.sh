@@ -34,11 +34,14 @@ main() {
         fi
     fi
 
-    CLIENT_DIR="zisk-ethproofs"
-    CLIENT_BIN="${CLIENT_DIR}/target/release/ethproofs-client"
-    CLIENT_CARGO_TOML="${CLIENT_DIR}/Cargo.toml"
+    ZISK_ETHPROOFS_DIR="zisk-ethproofs"
+    ZISK_ETHPROOFS_BIN="${ZISK_ETHPROOFS_DIR}/target/release/ethproofs-client"
+    ZISK_ETHPROOFS_CARGO_TOML="${ZISK_ETHPROOFS_DIR}/Cargo.toml"
+    ZISK_REPO_DIR="$(get_zisk_repo_dir)"
+    ZISK_ETH_CLIENT_REPO_DIR="${WORKSPACE_DIR}/zisk-eth-client"
+    ZEC_CARGO_TOML="${ZISK_ETH_CLIENT_REPO_DIR}/Cargo.toml"
 
-    step "Patching Cargo.toml files to use local zisk repo..."
+    step "Patching Cargo.toml files..."
 
     if [[ "${PLATFORM}" == "linux" ]]; then
         # GNU sed
@@ -48,11 +51,6 @@ main() {
         SED_PARAMS=( -i "" -E )
     fi
 
-    # Resolve the absolute path to the ZisK repo (handles ZISK_REPO_DIR overrides used by GHA),
-    # then repoint each git dependency to its local crate so the build uses this repo.
-    ZISK_REPO_DIR="$(get_zisk_repo_dir)"
-    ZISK_ETH_CLIENT_REPO_DIR="${WORKSPACE_DIR}/zisk-eth-client"
-
     # `input` pulls input-ziskethone, whose rust-input-gen lives in the ziskethone
     # submodule; cargo cannot resolve the workspace without it.
     ensure_submodules "${ZISK_ETH_CLIENT_REPO_DIR}" || return 1
@@ -60,15 +58,19 @@ main() {
     # Checked while the checkout is still pristine: `input` is always repointed just
     # below, so from that point on the lock has to be re-resolved and --locked is off
     # the table.
-    verify_cargo_lock "${CLIENT_DIR}" || return 1
+    verify_cargo_lock "${ZISK_ETHPROOFS_DIR}" || return 1
 
-    # Client Cargo.toml: depends on zisk-sdk.
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "zisk-sdk"    "${ZISK_REPO_DIR}/sdk"               || return 1
+    # Patch zisk-ethproofs Cargo.toml
+    patch_cargo_dep "${ZISK_ETHPROOFS_CARGO_TOML}" "zisk-sdk"    "${ZISK_REPO_DIR}/sdk"               || return 1
+    patch_cargo_dep "${ZISK_ETHPROOFS_CARGO_TOML}" "input"       "${ZISK_ETH_CLIENT_REPO_DIR}/crates/input"  || return 1
 
-    patch_cargo_dep "${CLIENT_CARGO_TOML}" "input"       "${ZISK_ETH_CLIENT_REPO_DIR}/crates/input"  || return 1
+    # Patch zisk-eth-client Cargo.toml
+    patch_cargo_dep "${ZEC_CARGO_TOML}" "zisk-sdk"            "${ZISK_REPO_DIR}/sdk"               || return 1
+    patch_cargo_dep "${ZEC_CARGO_TOML}" "zisk-zkvm-interface" "${ZISK_REPO_DIR}/zkvm-interface"    || return 1
+    patch_cargo_dep "${ZEC_CARGO_TOML}" "ziskos"              "${ZISK_REPO_DIR}/ziskos/entrypoint" || return 1
 
     step "Building ethproofs-client..."
-    ensure cd "${CLIENT_DIR}" || return 1
+    ensure cd "${ZISK_ETHPROOFS_DIR}" || return 1
     # Pin the committed Cargo.lock when the manifest was left untouched above, so a
     # stale lock fails loudly instead of being re-resolved: this build and the guest
     # ELF both deserialize the same pre-generated input files, and a third-party
@@ -82,11 +84,11 @@ main() {
     cd "${WORKSPACE_DIR}" || return 1
 
     step "Verifying ethproofs-client binary was generated..."
-    if [[ ! -f "${CLIENT_BIN}" ]]; then
-        err "ethproofs-client binary not found: ${CLIENT_BIN}"
+    if [[ ! -f "${ZISK_ETHPROOFS_BIN}" ]]; then
+        err "ethproofs-client binary not found: ${ZISK_ETHPROOFS_BIN}"
         return 1
     fi
-    info "ethproofs-client binary generated: ${CLIENT_BIN}"
+    info "ethproofs-client binary generated: ${ZISK_ETHPROOFS_BIN}"
 
     cd "$current_dir"
 
