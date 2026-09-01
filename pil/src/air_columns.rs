@@ -36,7 +36,7 @@ const Q_COLUMNS: u64 = 6;
 ///
 /// The order is the air order of the pilout, i.e. the order of the `AIR_IDS` consts in
 /// [`crate::pil_helpers`]; [`air_ids_match_the_generated_consts`] pins it.
-const WITNESS_COLUMNS: [(u64, u64); 47] = [
+const WITNESS_COLUMNS: [(u64, u64); 48] = [
     (38, 8),   // 0  Main
     (1, 3),    // 1  Rom
     (13, 3),   // 2  Mem
@@ -74,16 +74,17 @@ const WITNESS_COLUMNS: [(u64, u64); 47] = [
     (102, 3),  // 34 Sha256f
     (84, 37),  // 35 Poseidon
     (119, 34), // 36 Blake2br
-    (34, 7),   // 37 Dma
-    (35, 12),  // 38 Dma64Aligned
-    (35, 12),  // 39 Dma64AlignedLarge
-    (14, 5),   // 40 Dma64AlignedMemSet
-    (26, 6),   // 41 Dma64AlignedMem
-    (26, 6),   // 42 Dma64AlignedMemLarge
-    (31, 10),  // 43 Dma64AlignedMemCpy
-    (24, 4),   // 44 DmaUnaligned
-    (66, 10),  // 45 DmaPrePost
-    (32, 8),   // 46 JumpDest
+    (114, 32), // 37 Blake3f
+    (34, 7),   // 38 Dma
+    (35, 12),  // 39 Dma64Aligned
+    (35, 12),  // 40 Dma64AlignedLarge
+    (14, 5),   // 41 Dma64AlignedMemSet
+    (26, 6),   // 42 Dma64AlignedMem
+    (26, 6),   // 43 Dma64AlignedMemLarge
+    (31, 10),  // 44 Dma64AlignedMemCpy
+    (24, 4),   // 45 DmaUnaligned
+    (66, 10),  // 46 DmaPrePost
+    (32, 8),   // 47 JumpDest
 ];
 
 /// Columns the setup commits for `air_id`, stage-2 counted in field elements.
@@ -119,7 +120,7 @@ mod tests {
         assert_eq!(MAIN_AIR_IDS[0], 0);
         assert_eq!(BINARY_AIR_IDS[0], 13);
         assert_eq!(ARITH_EQ_AIR_IDS[0], 22);
-        assert_eq!(DMA_AIR_IDS[0], 37);
+        assert_eq!(DMA_AIR_IDS[0], 38);
     }
 
     /// Each declared count must cover at least the committed width of its trace row — the setup counts
@@ -149,6 +150,8 @@ mod tests {
             MemAlignByteLargeTrace: MemAlignByteLargeTraceRow,
             MemAlignReadByteLargeTrace: MemAlignReadByteLargeTraceRow,
             ArithTrace: ArithTraceRow,
+            Blake2brTrace: Blake2brTraceRow,
+            Blake3fTrace: Blake3fTraceRow,
             BinaryTrace: BinaryTraceRow,
             BinaryLargeTrace: BinaryLargeTraceRow,
             BinaryAddTrace: BinaryAddTraceRow,

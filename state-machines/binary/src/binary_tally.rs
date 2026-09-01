@@ -24,8 +24,13 @@ pub const RANGE_16_BITS: usize = 0xFFFF + 1;
 /// task it is running on — which it increments directly, one per range-checked chunk it produces.
 /// The last row may get a shorter slice when `inputs` does not divide evenly.
 ///
-/// The work is split into exactly one chunk per rayon thread, so the histograms are as few as they
-/// can be while every thread still has one to itself.
+/// The rows are split into no more chunks than there are rayon threads, so the number of histograms
+/// is bounded by the thread count rather than by the finer split rayon would choose on its own.
+///
+/// # Panics
+/// Panics in debug builds if `rows` does not hold exactly one row per `inputs_per_row` inputs. The
+/// two sides are zipped, so a mismatch would silently drop rows (leaving the trace underfilled) or
+/// inputs (losing operations), neither of which surfaces until the bus fails to balance.
 pub fn fill_and_tally<R, T, Fill>(
     rows: &mut [R],
     inputs: &[T],
@@ -38,6 +43,12 @@ where
     Fill: Fn(&mut R, &[T], &mut [u32]) + Sync + Send,
 {
     debug_assert!(inputs_per_row > 0, "a row must take at least one input");
+    debug_assert_eq!(
+        rows.len(),
+        inputs.len().div_ceil(inputs_per_row),
+        "the rows must hold exactly the {} inputs, {inputs_per_row} to a row",
+        inputs.len(),
+    );
 
     let tasks = rayon::current_num_threads().max(1);
     let rows_per_task = rows.len().div_ceil(tasks).max(1);
@@ -93,6 +104,31 @@ mod tests {
                 assert_eq!(filled.iter().sum::<u64>(), count as u64);
             }
         }
+    }
+
+    /// The split never asks for more chunks than there are threads, which is what bounds how many
+    /// histograms are alive at once. It can be fewer — there is no work to give every thread when
+    /// the rows are few.
+    #[test]
+    fn the_split_never_exceeds_the_thread_count() {
+        let threads = rayon::current_num_threads().max(1);
+        for rows in [1usize, 2, threads - 1, threads, threads + 1, 7 * threads + 3, 100_000] {
+            let rows_per_task = rows.div_ceil(threads).max(1);
+            assert!(
+                rows.div_ceil(rows_per_task) <= threads,
+                "{rows} rows split into {} chunks, more than the {threads} threads",
+                rows.div_ceil(rows_per_task),
+            );
+        }
+    }
+
+    /// Rows and inputs that do not line up would silently drop one or the other, so the contract is
+    /// checked rather than trusted.
+    #[test]
+    #[should_panic(expected = "the rows must hold exactly")]
+    fn mismatched_rows_and_inputs_are_an_error() {
+        // Ten inputs three to a row need four rows, not three.
+        fill_and_tally(&mut [0u64; 3], &[0u64; 10], 3, |_, _, _| {});
     }
 
     /// No work means an all-zero tally rather than a panic on the empty reduction.
