@@ -47,6 +47,9 @@ impl<'a, C: Client> WrapRequest<'a, C> {
     }
 
     /// Set a timeout for the wrap job.
+    ///
+    /// The timeout is applied by [`run`](Self::run). Calls to
+    /// [`run_sync`](Self::run_sync) do not currently use this value.
     #[must_use]
     pub fn timeout(mut self, duration: Duration) -> Self {
         self.timeout = Some(duration);
