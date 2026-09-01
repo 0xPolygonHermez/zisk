@@ -49,6 +49,7 @@ enum Item {
     Line(Line),
     Rule,
     Gap(f64),
+    KeepStart(f64),
 }
 
 #[derive(Clone, Copy)]
@@ -446,7 +447,9 @@ fn table(
     let table_cols = w.iter().sum::<usize>() + 2 * ncol.saturating_sub(1);
     let seps: Vec<f64> =
         (1..ncol).map(|c| (w[..c].iter().sum::<usize>() + 2 * c) as f64 - 1.0).collect();
-
+    let row_h = BODY * LINE_FACTOR;
+    let reserve = 6.0 + RULE_H + SECTION * LINE_FACTOR + row_h + rows.len().min(2) as f64 * row_h;
+    l.push(Item::KeepStart(reserve));
     l.push(Item::Gap(6.0));
     l.push(Item::Rule);
     l.push(line(vec![seg(title.to_string(), 0, GREEN_TITLE)], FontKind::Title, SECTION, None, 0));
@@ -533,6 +536,7 @@ fn item_height(it: &Item) -> f64 {
         Item::Line(l) => l.size * LINE_FACTOR,
         Item::Rule => RULE_H,
         Item::Gap(h) => *h,
+        Item::KeepStart(_) => 0.0,
     }
 }
 
@@ -543,6 +547,14 @@ fn paginate(items: &[Item], page_h: f64) -> Vec<Vec<&Item>> {
     let mut y = start_y;
     let mut header: Option<&Item> = None;
     for it in items {
+        if let Item::KeepStart(min_h) = it {
+            header = None;
+            if y - *min_h < BOTTOM_MARGIN && !cur.is_empty() {
+                pages.push(std::mem::take(&mut cur));
+                y = start_y;
+            }
+            continue;
+        }
         let h = item_height(it);
         if y - h < BOTTOM_MARGIN && !cur.is_empty() {
             pages.push(std::mem::take(&mut cur));
@@ -691,6 +703,7 @@ fn render_sections(sections: &[(Vec<Item>, f64, f64, bool)]) -> Vec<u8> {
                     ));
                 }
                 Item::Gap(_) => {}
+                Item::KeepStart(_) => {}
             }
             y -= h;
         }
