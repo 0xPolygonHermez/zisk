@@ -23,11 +23,13 @@ zisk_precompile! {
     traces = [
         (
             ArithEq384Trace,
-            arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS)
+            arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384Trace::<()>::NUM_ROWS),
+            ::zisk_pil::ARITH_EQ_384_INSTANCE_COST
         ),
         (
             ArithEq384LargeTrace,
-            arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384LargeTrace::<()>::NUM_ROWS)
+            arith_eq_384_ops_per_instance(::zisk_pil::ArithEq384LargeTrace::<()>::NUM_ROWS),
+            ::zisk_pil::ARITH_EQ_384_LARGE_INSTANCE_COST
         ),
     ],
     ops = [

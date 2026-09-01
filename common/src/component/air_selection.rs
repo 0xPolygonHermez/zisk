@@ -4,7 +4,7 @@
 //!
 //! A solution is better when it needs **fewer instances**; between solutions with the same instance
 //! count, the one with **less area** wins. Area is `rows × setup columns` per instance — see
-//! [`zisk_pil::instance_area`] — so a half-empty instance of a wide air is dearer than a full one of a
+//! [`zisk_pil::air_costs`] — so a half-empty instance of a wide air is dearer than a full one of a
 //! narrow air of the same height, but neither is ever preferred to using one instance less.
 //!
 //! This is what makes the "large" airs (`BinaryLarge`, `MemAlignLarge`, `Dma64AlignedLarge`, …) worth
@@ -21,8 +21,6 @@
 //! [`select_sizes`] is the degenerate one: a single kind of work and airs that differ only in size.
 //! It is what a family whose only choice is "how big" needs — `ArithEq384`, `Keccakf`, and every air
 //! that gained nothing but a `Large` sibling.
-
-use zisk_pil::instance_area;
 
 /// One air a family may instantiate.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,10 +39,13 @@ pub struct AirChoice {
 }
 
 impl AirChoice {
-    /// Builds a choice from the air's identity and height, taking its width from
-    /// [`zisk_pil::setup_columns`].
-    pub fn new(airgroup_id: usize, air_id: usize, rows: usize) -> Self {
-        Self { airgroup_id, air_id, rows: rows as u64, area: instance_area(air_id, rows) }
+    /// Builds a choice from the air's identity, capacity and cost.
+    ///
+    /// `cost` is that air's `*_INSTANCE_COST` constant from `zisk_pil`. It is passed rather than
+    /// looked up by `air_id` on purpose: air ids are positional, so a lookup would follow the PIL's
+    /// numbering instead of the air the caller meant.
+    pub fn new(airgroup_id: usize, air_id: usize, rows: usize, cost: usize) -> Self {
+        Self { airgroup_id, air_id, rows: rows as u64, area: cost as u64 }
     }
 }
 

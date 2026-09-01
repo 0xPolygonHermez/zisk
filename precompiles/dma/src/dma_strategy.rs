@@ -46,7 +46,9 @@ use zisk_common::{select_airs, AirChoice, BusDeviceMetrics, BusDeviceMode, Check
 use zisk_pil::{
     Dma64AlignedLargeTrace, Dma64AlignedMemCpyTrace, Dma64AlignedMemLargeTrace,
     Dma64AlignedMemSetTrace, Dma64AlignedMemTrace, Dma64AlignedTrace, DmaPrePostTrace, DmaTrace,
-    DmaUnalignedTrace,
+    DmaUnalignedTrace, DMA_64_ALIGNED_INSTANCE_COST, DMA_64_ALIGNED_LARGE_INSTANCE_COST,
+    DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST, DMA_64_ALIGNED_MEM_INSTANCE_COST,
+    DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST, DMA_64_ALIGNED_MEM_SET_INSTANCE_COST,
 };
 
 /// Airs of the 64-bit-aligned group, in the order the strategy and the hand-out both use.
@@ -182,31 +184,37 @@ impl<F: PrimeField64> DmaStrategy<F> {
                 Dma64AlignedLargeTrace::<()>::AIRGROUP_ID,
                 Dma64AlignedLargeTrace::<()>::AIR_ID,
                 Self::DMA_64_ALIGNED_LARGE_ROWS,
+                DMA_64_ALIGNED_LARGE_INSTANCE_COST,
             ),
             AirChoice::new(
                 Dma64AlignedTrace::<()>::AIRGROUP_ID,
                 Dma64AlignedTrace::<()>::AIR_ID,
                 Self::DMA_64_ALIGNED_ROWS,
+                DMA_64_ALIGNED_INSTANCE_COST,
             ),
             AirChoice::new(
                 Dma64AlignedMemLargeTrace::<()>::AIRGROUP_ID,
                 Dma64AlignedMemLargeTrace::<()>::AIR_ID,
                 Self::DMA_64_ALIGNED_MEM_LARGE_ROWS,
+                DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST,
             ),
             AirChoice::new(
                 Dma64AlignedMemTrace::<()>::AIRGROUP_ID,
                 Dma64AlignedMemTrace::<()>::AIR_ID,
                 Self::DMA_64_ALIGNED_MEM_ROWS,
+                DMA_64_ALIGNED_MEM_INSTANCE_COST,
             ),
             AirChoice::new(
                 Dma64AlignedMemCpyTrace::<()>::AIRGROUP_ID,
                 Dma64AlignedMemCpyTrace::<()>::AIR_ID,
                 Self::DMA_64_ALIGNED_MEMCPY_ROWS,
+                DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST,
             ),
             AirChoice::new(
                 Dma64AlignedMemSetTrace::<()>::AIRGROUP_ID,
                 Dma64AlignedMemSetTrace::<()>::AIR_ID,
                 Self::DMA_64_ALIGNED_MEMSET_ROWS,
+                DMA_64_ALIGNED_MEM_SET_INSTANCE_COST,
             ),
         ]
     }

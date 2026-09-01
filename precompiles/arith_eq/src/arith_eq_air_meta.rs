@@ -9,9 +9,9 @@
 //! columns over more rows. The tall one is what keeps the instance count down; the short one is what
 //! keeps the area down once the count is settled.
 //!
-//! This table is the planner's static input; it is derived from the generated column layout in
-//! `zisk_pil` and the `equations` bitmask each alias was instantiated with. `num_rows` is read from
-//! the trace types and the width from [`zisk_pil::setup_columns`], so both stay in sync with the PIL.
+//! This table is the planner's static input; it is derived from the `equations` bitmask each alias
+//! was instantiated with. `num_rows` is read from the trace types and the cost from
+//! that air's `*_INSTANCE_COST` constant in [`zisk_pil::air_costs`].
 
 use crate::{ArithEqInput, ArithEqOp, ArithEqSM};
 use proofman_common::{AirInstance, ProofmanResult, SetupCtx};
@@ -25,19 +25,13 @@ pub struct ArithEqAirMeta {
     pub air_id: usize,
     /// Sub-operations this air can prove.
     pub ops: &'static [ArithEqOp],
-    /// Columns the setup commits for this air (the width its area is proportional to).
-    pub row_size: usize,
+    /// Area of one instance of this air, full or not.
+    pub cost: usize,
     /// Rows per instance (capacity).
     pub num_rows: usize,
 }
 
 impl ArithEqAirMeta {
-    /// Area of one instance of this air, full or not.
-    #[inline]
-    pub fn instance_cost(&self) -> usize {
-        self.row_size * self.num_rows
-    }
-
     /// Whether this air covers `op`.
     #[inline]
     pub fn covers(&self, op: ArithEqOp) -> bool {
@@ -54,20 +48,21 @@ impl ArithEqAirMeta {
 pub fn air_metas() -> Vec<ArithEqAirMeta> {
     use ArithEqOp::*;
 
-    /// One config's two heights, sharing the operations they cover.
+    /// One config's two heights, sharing the operations they cover. Each is paired with its own
+    /// `*_INSTANCE_COST` constant rather than a lookup by air id, since air ids are positional.
     macro_rules! config {
-        ($ops:expr, $short:ident, $tall:ident) => {
+        ($ops:expr, $short:ident, $short_cost:ident, $tall:ident, $tall_cost:ident) => {
             [
                 ArithEqAirMeta {
                     air_id: $short::<()>::AIR_ID,
                     ops: $ops,
-                    row_size: setup_columns($short::<()>::AIR_ID) as usize,
+                    cost: $short_cost,
                     num_rows: $short::<()>::NUM_ROWS,
                 },
                 ArithEqAirMeta {
                     air_id: $tall::<()>::AIR_ID,
                     ops: $ops,
-                    row_size: setup_columns($tall::<()>::AIR_ID) as usize,
+                    cost: $tall_cost,
                     num_rows: $tall::<()>::NUM_ROWS,
                 },
             ]
@@ -76,21 +71,37 @@ pub fn air_metas() -> Vec<ArithEqAirMeta> {
 
     let mut metas = Vec::with_capacity(8);
     // arith256 + arith256_mod.
-    metas.extend(config!(&[Arith256, Arith256Mod], Arith256XTrace, Arith256XLargeTrace));
+    metas.extend(config!(
+        &[Arith256, Arith256Mod],
+        Arith256XTrace,
+        ARITH_256_X_INSTANCE_COST,
+        Arith256XLargeTrace,
+        ARITH_256_X_LARGE_INSTANCE_COST
+    ));
     // secp256k1 add/dbl.
     metas.extend(config!(
         &[Secp256k1Add, Secp256k1Dbl],
         ArithSecp256K1Trace,
-        ArithSecp256K1LargeTrace
+        ARITH_SECP_256_K_1_INSTANCE_COST,
+        ArithSecp256K1LargeTrace,
+        ARITH_SECP_256_K_1_LARGE_INSTANCE_COST
     ));
     // bn254 EC add/dbl and complex add/sub/mul.
     metas.extend(config!(
         &[Bn254CurveAdd, Bn254CurveDbl, Bn254ComplexAdd, Bn254ComplexSub, Bn254ComplexMul],
         ArithBn254Trace,
-        ArithBn254LargeTrace
+        ARITH_BN_254_INSTANCE_COST,
+        ArithBn254LargeTrace,
+        ARITH_BN_254_LARGE_INSTANCE_COST
     ));
     // The full airs, which cover every operation and are the only home of the secp256r1 ones.
-    metas.extend(config!(&ArithEqOp::ALL, ArithEqTrace, ArithEqLargeTrace));
+    metas.extend(config!(
+        &ArithEqOp::ALL,
+        ArithEqTrace,
+        ARITH_EQ_INSTANCE_COST,
+        ArithEqLargeTrace,
+        ARITH_EQ_LARGE_INSTANCE_COST
+    ));
     metas
 }
 

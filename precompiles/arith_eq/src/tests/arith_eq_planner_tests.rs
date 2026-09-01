@@ -21,12 +21,7 @@ fn meta_of(air_id: usize) -> ArithEqAirMeta {
 }
 
 fn plan_area(plan: &[ArithEqAirPlan]) -> u64 {
-    plan.iter()
-        .map(|p| {
-            let m = meta_of(p.air_id);
-            p.instances * m.num_rows as u64 * m.row_size as u64
-        })
-        .sum()
+    plan.iter().map(|p| p.instances * meta_of(p.air_id).cost as u64).sum()
 }
 
 fn plan_instances(plan: &[ArithEqAirPlan]) -> u64 {
@@ -71,7 +66,7 @@ fn every_config_is_a_size_ladder() {
     ] {
         let (short, tall) = (meta_of(short), meta_of(tall));
         assert!(tall.num_rows > short.num_rows, "air {} must be taller", tall.air_id);
-        assert_eq!(tall.row_size, short.row_size, "air {} must be as wide", tall.air_id);
+        assert!(tall.cost > short.cost, "air {} must cost more, being taller", tall.air_id);
         assert_eq!(tall.ops, short.ops, "air {} must cover the same operations", tall.air_id);
     }
 }

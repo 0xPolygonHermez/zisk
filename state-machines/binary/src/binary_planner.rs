@@ -49,8 +49,11 @@ use zisk_common::{
     Plan, Planner,
 };
 use zisk_pil::{
-    instance_area, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddLargeTrace, BinaryAddTrace,
+    BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddLargeTrace, BinaryAddTrace,
     BinaryExtensionLargeTrace, BinaryExtensionTrace, BinaryLargeTrace, BinaryTrace,
+    BINARY_ADD_HI_INSTANCE_COST, BINARY_ADD_HI_LARGE_INSTANCE_COST, BINARY_ADD_INSTANCE_COST,
+    BINARY_ADD_LARGE_INSTANCE_COST, BINARY_EXTENSION_INSTANCE_COST,
+    BINARY_EXTENSION_LARGE_INSTANCE_COST, BINARY_INSTANCE_COST, BINARY_LARGE_INSTANCE_COST,
 };
 
 /// Slot of each air within [`add_family`] / [`InstanceCounts`], in hand-out order.
@@ -96,12 +99,12 @@ fn add_capacities() -> InstanceCounts {
 /// Area of one instance of each add-family air, in [`slot`] order.
 fn add_areas() -> InstanceCounts {
     [
-        instance_area(BinaryAddHiLargeTrace::<()>::AIR_ID, BinaryAddHiLargeTrace::<()>::NUM_ROWS),
-        instance_area(BinaryAddHiTrace::<()>::AIR_ID, BinaryAddHiTrace::<()>::NUM_ROWS),
-        instance_area(BinaryAddLargeTrace::<()>::AIR_ID, BinaryAddLargeTrace::<()>::NUM_ROWS),
-        instance_area(BinaryAddTrace::<()>::AIR_ID, BinaryAddTrace::<()>::NUM_ROWS),
-        instance_area(BinaryLargeTrace::<()>::AIR_ID, BinaryLargeTrace::<()>::NUM_ROWS),
-        instance_area(BinaryTrace::<()>::AIR_ID, BinaryTrace::<()>::NUM_ROWS),
+        BINARY_ADD_HI_LARGE_INSTANCE_COST as u64,
+        BINARY_ADD_HI_INSTANCE_COST as u64,
+        BINARY_ADD_LARGE_INSTANCE_COST as u64,
+        BINARY_ADD_INSTANCE_COST as u64,
+        BINARY_LARGE_INSTANCE_COST as u64,
+        BINARY_INSTANCE_COST as u64,
     ]
 }
 
@@ -112,11 +115,13 @@ fn ext_ladder() -> [AirChoice; EXT_AIRS] {
             BinaryExtensionLargeTrace::<()>::AIRGROUP_ID,
             BinaryExtensionLargeTrace::<()>::AIR_ID,
             BinaryExtensionLargeTrace::<()>::NUM_ROWS,
+            BINARY_EXTENSION_LARGE_INSTANCE_COST,
         ),
         AirChoice::new(
             BinaryExtensionTrace::<()>::AIRGROUP_ID,
             BinaryExtensionTrace::<()>::AIR_ID,
             BinaryExtensionTrace::<()>::NUM_ROWS,
+            BINARY_EXTENSION_INSTANCE_COST,
         ),
     ]
 }
@@ -391,48 +396,14 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use proofman_common::trace::TraceRow;
     use proofman_fields::Goldilocks;
     use std::collections::HashMap;
     use zisk_common::Counter;
-    use zisk_pil::{
-        setup_columns, BinaryAddHiLargeTraceRow, BinaryAddHiTraceRow, BinaryAddLargeTraceRow,
-        BinaryAddTraceRow, BinaryExtensionLargeTraceRow, BinaryExtensionTraceRow,
-        BinaryLargeTraceRow, BinaryTraceRow,
-    };
 
     type TestPlanner = BinaryPlanner<Goldilocks>;
 
     fn cap(slot: usize) -> u64 {
         add_capacities()[slot]
-    }
-
-    /// The declared setup widths come from a generated setup, so they cannot be checked against the
-    /// PIL exactly. What must hold is that each covers at least the committed width of its trace row.
-    #[test]
-    fn the_declared_widths_cover_the_committed_columns() {
-        macro_rules! check {
-            ($( $trace:ident : $row:ident ),+ $(,)?) => {$(
-                let air_id = $trace::<()>::AIR_ID;
-                let row_size = $row::<Goldilocks>::ROW_SIZE as u64;
-                assert!(
-                    setup_columns(air_id) >= row_size,
-                    "the setup width of {} ({}) no longer covers its {row_size} committed columns",
-                    stringify!($trace),
-                    setup_columns(air_id),
-                );
-            )+};
-        }
-        check!(
-            BinaryTrace: BinaryTraceRow,
-            BinaryLargeTrace: BinaryLargeTraceRow,
-            BinaryAddTrace: BinaryAddTraceRow,
-            BinaryAddLargeTrace: BinaryAddLargeTraceRow,
-            BinaryAddHiTrace: BinaryAddHiTraceRow,
-            BinaryAddHiLargeTrace: BinaryAddHiLargeTraceRow,
-            BinaryExtensionTrace: BinaryExtensionTraceRow,
-            BinaryExtensionLargeTrace: BinaryExtensionLargeTraceRow,
-        );
     }
 
     /// The candidate set — keep the whole packed instances, or one more — is only exhaustive because

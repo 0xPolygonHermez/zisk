@@ -43,7 +43,10 @@ use proofman_fields::Goldilocks;
 use zisk_common::{select_airs, AirChoice, ChunkId, Plan};
 use zisk_pil::{
     MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace, MemAlignReadByteLargeTrace,
-    MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
+    MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace, MEM_ALIGN_BYTE_INSTANCE_COST,
+    MEM_ALIGN_BYTE_LARGE_INSTANCE_COST, MEM_ALIGN_INSTANCE_COST, MEM_ALIGN_LARGE_INSTANCE_COST,
+    MEM_ALIGN_READ_BYTE_INSTANCE_COST, MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST,
+    MEM_ALIGN_WRITE_BYTE_INSTANCE_COST,
 };
 
 const ROWS_WRITE_BYTE: u32 = 3;
@@ -109,8 +112,8 @@ fn air_choices() -> [AirChoice; air::COUNT] {
     // A full operation cannot straddle two instances, so the tail of a `MemAlign` instance may be
     // unusable. Taking it off the height here is what keeps the granted instances able to hold what
     // the sizing routed to them; the byte airs prove one-row operations and never fragment.
-    let full = |airgroup_id, air_id, rows: usize| {
-        let mut choice = AirChoice::new(airgroup_id, air_id, rows);
+    let full = |airgroup_id, air_id, rows: usize, cost: usize| {
+        let mut choice = AirChoice::new(airgroup_id, air_id, rows, cost);
         choice.rows -= WORSE_FRAGMENTATION as u64;
         choice
     };
@@ -119,36 +122,43 @@ fn air_choices() -> [AirChoice; air::COUNT] {
             MemAlignReadByteLargeTrace::<()>::AIRGROUP_ID,
             MemAlignReadByteLargeTrace::<()>::AIR_ID,
             MemAlignReadByteLargeTrace::<()>::NUM_ROWS,
+            MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST,
         ),
         AirChoice::new(
             MemAlignReadByteTrace::<()>::AIRGROUP_ID,
             MemAlignReadByteTrace::<()>::AIR_ID,
             MemAlignReadByteTrace::<()>::NUM_ROWS,
+            MEM_ALIGN_READ_BYTE_INSTANCE_COST,
         ),
         AirChoice::new(
             MemAlignWriteByteTrace::<()>::AIRGROUP_ID,
             MemAlignWriteByteTrace::<()>::AIR_ID,
             MemAlignWriteByteTrace::<()>::NUM_ROWS,
+            MEM_ALIGN_WRITE_BYTE_INSTANCE_COST,
         ),
         AirChoice::new(
             MemAlignByteLargeTrace::<()>::AIRGROUP_ID,
             MemAlignByteLargeTrace::<()>::AIR_ID,
             MemAlignByteLargeTrace::<()>::NUM_ROWS,
+            MEM_ALIGN_BYTE_LARGE_INSTANCE_COST,
         ),
         AirChoice::new(
             MemAlignByteTrace::<()>::AIRGROUP_ID,
             MemAlignByteTrace::<()>::AIR_ID,
             MemAlignByteTrace::<()>::NUM_ROWS,
+            MEM_ALIGN_BYTE_INSTANCE_COST,
         ),
         full(
             MemAlignLargeTrace::<()>::AIRGROUP_ID,
             MemAlignLargeTrace::<()>::AIR_ID,
             MemAlignLargeTrace::<()>::NUM_ROWS,
+            MEM_ALIGN_LARGE_INSTANCE_COST,
         ),
         full(
             MemAlignTrace::<()>::AIRGROUP_ID,
             MemAlignTrace::<()>::AIR_ID,
             MemAlignTrace::<()>::NUM_ROWS,
+            MEM_ALIGN_INSTANCE_COST,
         ),
     ]
 }

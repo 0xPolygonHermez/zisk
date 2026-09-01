@@ -71,21 +71,15 @@ fn cap(m: &ArithEqAirMeta) -> u64 {
     m.num_rows as u64 / ARITH_EQ_ROWS_BY_OP as u64
 }
 
-/// Area of one instance of `m`, full or not.
-#[inline]
-fn instance_area(m: &ArithEqAirMeta) -> u64 {
-    m.num_rows as u64 * m.row_size as u64
-}
-
 /// Total area to prove `ops` operations in air `m`: `ceil(ops/cap) · num_rows · row_size`.
 ///
 /// The definition of the cost model, kept for the tests to state expected areas with. The sweep in
 /// `plan_air_strategy` inlines it against hoisted `caps`/`instance_areas` instead of calling it, so
-/// it does not redo both divisions once per air per combination.
+/// it does not redo the division once per air per combination.
 #[cfg(test)]
 #[inline]
 fn area(m: &ArithEqAirMeta, ops: u64) -> u64 {
-    ops.div_ceil(cap(m)) * instance_area(m)
+    ops.div_ceil(cap(m)) * m.cost as u64
 }
 
 /// A leftover to place: fewer than `cap` operations of one op, and the airs that could take them.
@@ -123,10 +117,10 @@ pub fn plan_air_strategy(
         assert!(!candidates.is_empty(), "plan_air_strategy: {op:?} is covered by no present air");
 
         // The most capacious covering air proves the bulk in the fewest instances; among equally
-        // capacious ones, the narrowest does it in the least area.
+        // capacious ones, the cheapest does it in the least area.
         let bulk_air = *candidates
             .iter()
-            .min_by_key(|&&j| (std::cmp::Reverse(cap(&metas[j])), metas[j].row_size))
+            .min_by_key(|&&j| (std::cmp::Reverse(cap(&metas[j])), metas[j].cost))
             .unwrap();
         let bulk = count / cap(&metas[bulk_air]) * cap(&metas[bulk_air]);
         if bulk > 0 {
@@ -151,7 +145,7 @@ pub fn plan_air_strategy(
     // Hoisted out of the sweep below: `area` would otherwise recompute both divisions once per air
     // per combination.
     let caps: Vec<u64> = metas.iter().map(cap).collect();
-    let instance_areas: Vec<u64> = metas.iter().map(instance_area).collect();
+    let instance_areas: Vec<u64> = metas.iter().map(|m| m.cost as u64).collect();
 
     // Mixed-radix sweep over the tail placements: choice[i] indexes tails[i].candidates.
     let mut choice = vec![0usize; tails.len()];

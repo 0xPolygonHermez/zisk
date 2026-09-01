@@ -101,6 +101,8 @@ pub use paste::paste as __zisk_paste;
 /// * `num_available` — a *compile-time expression* for the operations one of its
 ///   instances holds. Consumed by the static `ComponentPlanBuilder::planner()`
 ///   impl, so no constructed SM is required for the planning phase;
+/// * `cost` — that air's `*_INSTANCE_COST` constant from `zisk_pil`. Named rather
+///   than looked up by `air_id`, since air ids are positional;
 /// * `row` / `row_packed` — the row layout, shared by every air of the ladder.
 ///
 /// The SM (`$sm<F>`) must:
@@ -125,6 +127,7 @@ macro_rules! zisk_precompile_explicit {
                     air_group_id = $air_group_id_path:expr,
                     num_rows = $air_num_rows:expr,
                     num_available = $num_available:expr,
+                    cost = $air_cost:expr,
                     row = $trace_row:path,
                     row_packed = $trace_row_packed:path $(,)?
                 }
@@ -293,12 +296,12 @@ macro_rules! zisk_precompile_explicit {
                     let ladder: ::std::vec::Vec<$crate::AirChoice> = self
                         .instances_info
                         .iter()
-                        .zip([ $( $air_num_rows ),+ ])
-                        .map(|(info, num_rows)| $crate::AirChoice {
+                        .zip([ $( $air_cost ),+ ])
+                        .map(|(info, cost)| $crate::AirChoice {
                             airgroup_id: info.airgroup_id,
                             air_id: info.air_id,
                             rows: info.num_ops as u64,
-                            area: ::zisk_pil::instance_area(info.air_id, num_rows),
+                            area: cost as u64,
                         })
                         .collect();
 
@@ -665,10 +668,15 @@ macro_rules! zisk_precompile_explicit {
 /// Two forms, and the short one is the common case:
 ///
 /// ```text
-/// trace = FooTrace, num_available = <ops per instance>      // a single air
+/// trace = FooTrace,                                          // a single air
+/// num_available = <ops per instance>,
+/// cost = FOO_INSTANCE_COST,
 ///
 /// row = FooTrace,                                           // a size ladder
-/// traces = [ (FooTrace, <ops>), (FooLargeTrace, <ops>) ],
+/// traces = [
+///     (FooTrace,      <ops>, FOO_INSTANCE_COST),
+///     (FooLargeTrace, <ops>, FOO_LARGE_INSTANCE_COST),
+/// ],
 /// ```
 ///
 /// The short form reexpands to the long one with a single entry, so there is one
@@ -692,7 +700,7 @@ macro_rules! zisk_precompile {
         name = $name:ident,
         op_type = $op_type:ident,
         row = $row_trace:ident,
-        traces = [ $( ($trace:ident, $num_available:expr) ),+ $(,)? ],
+        traces = [ $( ($trace:ident, $num_available:expr, $air_cost:expr) ),+ $(,)? ],
         ops = [
             $(
                 (
@@ -716,6 +724,7 @@ macro_rules! zisk_precompile {
                             air_group_id = ::zisk_pil::$trace::<()>::AIRGROUP_ID,
                             num_rows = ::zisk_pil::$trace::<()>::NUM_ROWS,
                             num_available = $num_available,
+                            cost = $air_cost,
                             row = ::zisk_pil::[<$row_trace Row>],
                             row_packed = ::zisk_pil::[<$row_trace RowPacked>],
                         }
@@ -736,6 +745,7 @@ macro_rules! zisk_precompile {
         op_type = $op_type:ident,
         trace = $trace:ident,
         num_available = $num_available:expr,
+        cost = $air_cost:expr,
         ops = [
             $(
                 (
@@ -750,7 +760,7 @@ macro_rules! zisk_precompile {
             name = $name,
             op_type = $op_type,
             row = $trace,
-            traces = [ ($trace, $num_available) ],
+            traces = [ ($trace, $num_available, $air_cost) ],
             ops = [
                 $(
                     ( $ext_variant $( => $enum_variant )? , $sub_input )
