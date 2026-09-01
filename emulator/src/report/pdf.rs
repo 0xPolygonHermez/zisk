@@ -394,18 +394,14 @@ fn delta(a: Option<u64>, b: Option<u64>) -> (String, String) {
         ""
     };
     let delta = format!("{}{}", sign, fmt_num(d.unsigned_abs() as u64));
-    let pct = if a.unwrap_or(0) == 0 {
-        "new".to_string()
-    } else {
-        let p = d as f64 / av as f64 * 100.0;
-        let s = if p > 0.0 {
-            "+"
-        } else if p < 0.0 {
-            "-"
-        } else {
-            ""
-        };
-        format!("{}{:.2}%", s, p.abs())
+    let pct = match (a.unwrap_or(0), b.unwrap_or(0)) {
+        (0, 0) => "0.00%".to_string(),
+        (0, _) => "new".to_string(),
+        (av, _) => {
+            let p = d as f64 / av as f64 * 100.0;
+            let s = if p > 0.0 { "+" } else if p < 0.0 { "-" } else { "" };
+            format!("{}{:.2}%", s, p.abs())
+        }
     };
     (delta, pct)
 }
