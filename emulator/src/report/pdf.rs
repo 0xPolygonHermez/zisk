@@ -399,7 +399,13 @@ fn delta(a: Option<u64>, b: Option<u64>) -> (String, String) {
         (0, _) => "new".to_string(),
         (av, _) => {
             let p = d as f64 / av as f64 * 100.0;
-            let s = if p > 0.0 { "+" } else if p < 0.0 { "-" } else { "" };
+            let s = if p > 0.0 {
+                "+"
+            } else if p < 0.0 {
+                "-"
+            } else {
+                ""
+            };
             format!("{}{:.2}%", s, p.abs())
         }
     };
