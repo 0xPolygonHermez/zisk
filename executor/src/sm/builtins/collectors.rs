@@ -6,14 +6,15 @@ use proofman_fields::PrimeField64;
 use zisk_common::BusDeviceMode;
 use zisk_common::{ChunkId, Instance};
 use zisk_pil::{
-    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_AIR_IDS,
-    BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_FULL_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
-    DMA_64_ALIGNED_INPUT_CPY_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
-    DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS, DMA_INPUT_CPY_AIR_IDS, DMA_MEM_CPY_AIR_IDS,
-    DMA_PRE_POST_AIR_IDS, DMA_PRE_POST_INPUT_CPY_AIR_IDS, DMA_PRE_POST_MEM_CPY_AIR_IDS,
-    DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS, MEM_AIR_IDS, MEM_ALIGN_AIR_IDS,
-    MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS,
-    ROM_DATA_AIR_IDS,
+    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_ADD_HI_LARGE_AIR_IDS,
+    BINARY_ADD_LARGE_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
+    BINARY_EXTENSION_LARGE_AIR_IDS, BINARY_LARGE_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
+    DMA_64_ALIGNED_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
+    DMA_64_ALIGNED_MEM_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS,
+    DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS,
+    MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS,
+    MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS,
+    MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
 };
 use zisk_precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
@@ -168,13 +169,13 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 self.mem.push((gid, inst.build_mem_collector(chunk, mem_sections)));
                 Ok(true)
             }
-            id if id == MEM_ALIGN_AIR_IDS[0] => {
+            id if id == MEM_ALIGN_AIR_IDS[0] || id == MEM_ALIGN_LARGE_AIR_IDS[0] => {
                 let inst =
                     downcast::<F, MemAlignInstance<F>>(secn, air_id, gid, "MemAlignInstance")?;
                 self.mem_align.push((gid, inst.build_mem_align_collector(chunk)));
                 Ok(true)
             }
-            id if id == MEM_ALIGN_BYTE_AIR_IDS[0] => {
+            id if id == MEM_ALIGN_BYTE_AIR_IDS[0] || id == MEM_ALIGN_BYTE_LARGE_AIR_IDS[0] => {
                 let inst = downcast::<F, MemAlignByteInstance<F>>(
                     secn,
                     air_id,
@@ -184,7 +185,9 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 self.mem_align.push((gid, inst.build_mem_align_byte_collector(chunk)));
                 Ok(true)
             }
-            id if id == MEM_ALIGN_READ_BYTE_AIR_IDS[0] => {
+            id if id == MEM_ALIGN_READ_BYTE_AIR_IDS[0]
+                || id == MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS[0] =>
+            {
                 let inst = downcast::<F, MemAlignReadByteInstance<F>>(
                     secn,
                     air_id,
@@ -217,7 +220,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         gid: usize,
     ) -> ExecutorResult<bool> {
         match air_id {
-            id if id == BINARY_AIR_IDS[0] => {
+            id if id == BINARY_AIR_IDS[0] || id == BINARY_LARGE_AIR_IDS[0] => {
                 let inst = downcast::<F, BinaryBasicInstance<F>>(
                     secn,
                     air_id,
@@ -227,13 +230,13 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 self.binary_basic.push((gid, inst.build_binary_basic_collector(chunk)));
                 Ok(true)
             }
-            id if id == BINARY_ADD_AIR_IDS[0] => {
+            id if id == BINARY_ADD_AIR_IDS[0] || id == BINARY_ADD_LARGE_AIR_IDS[0] => {
                 let inst =
                     downcast::<F, BinaryAddInstance<F>>(secn, air_id, gid, "BinaryAddInstance")?;
                 self.binary_add.push((gid, inst.build_binary_add_collector(chunk)));
                 Ok(true)
             }
-            id if id == BINARY_ADD_HI_AIR_IDS[0] => {
+            id if id == BINARY_ADD_HI_AIR_IDS[0] || id == BINARY_ADD_HI_LARGE_AIR_IDS[0] => {
                 let inst = downcast::<F, BinaryAddHiInstance<F>>(
                     secn,
                     air_id,
@@ -243,7 +246,7 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 self.binary_add_hi.push((gid, inst.build_binary_add_hi_collector(chunk)));
                 Ok(true)
             }
-            id if id == BINARY_EXTENSION_AIR_IDS[0] || id == BINARY_EXTENSION_FULL_AIR_IDS[0] => {
+            id if id == BINARY_EXTENSION_AIR_IDS[0] || id == BINARY_EXTENSION_LARGE_AIR_IDS[0] => {
                 let inst = downcast::<F, BinaryExtensionInstance<F>>(
                     secn,
                     air_id,
@@ -298,28 +301,23 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         gid: usize,
     ) -> ExecutorResult<bool> {
         match air_id {
-            id if id == DMA_AIR_IDS[0]
-                || id == DMA_MEM_CPY_AIR_IDS[0]
-                || id == DMA_INPUT_CPY_AIR_IDS[0] =>
-            {
+            id if id == DMA_AIR_IDS[0] => {
                 let inst = downcast::<F, DmaInstance<F>>(secn, air_id, gid, "DmaInstance")?;
                 self.dma.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
-            id if id == DMA_PRE_POST_AIR_IDS[0]
-                || id == DMA_PRE_POST_MEM_CPY_AIR_IDS[0]
-                || id == DMA_PRE_POST_INPUT_CPY_AIR_IDS[0] =>
-            {
+            id if id == DMA_PRE_POST_AIR_IDS[0] => {
                 let inst =
                     downcast::<F, DmaPrePostInstance<F>>(secn, air_id, gid, "DmaPrePostInstance")?;
                 self.dma_pre_post.push((gid, inst.build_dma_collector(chunk)));
                 Ok(true)
             }
             id if id == DMA_64_ALIGNED_AIR_IDS[0]
+                || id == DMA_64_ALIGNED_LARGE_AIR_IDS[0]
                 || id == DMA_64_ALIGNED_MEM_CPY_AIR_IDS[0]
-                || id == DMA_64_ALIGNED_INPUT_CPY_AIR_IDS[0]
                 || id == DMA_64_ALIGNED_MEM_SET_AIR_IDS[0]
-                || id == DMA_64_ALIGNED_MEM_AIR_IDS[0] =>
+                || id == DMA_64_ALIGNED_MEM_AIR_IDS[0]
+                || id == DMA_64_ALIGNED_MEM_LARGE_AIR_IDS[0] =>
             {
                 let inst = downcast::<F, Dma64AlignedInstance<F>>(
                     secn,

@@ -1,3 +1,33 @@
+//! Sizing and filling the mem-align instances.
+//!
+//! # The airs
+//!
+//! Five kinds of operation are counted — `full_5`, `full_3`, `full_2`, `read_byte` and `write_byte` —
+//! and each air proves a subset of them at a row cost of its own:
+//!
+//! | air                                    | proves                | rows per operation      |
+//! |----------------------------------------|-----------------------|-------------------------|
+//! | `MemAlign` / `MemAlignLarge`           | everything            | 5 / 3 / 2, 2 read, 3 write |
+//! | `MemAlignByte` / `MemAlignByteLarge`   | read_byte, write_byte | 1                       |
+//! | `MemAlignReadByte` / `…ReadByteLarge`  | read_byte             | 1                       |
+//! | `MemAlignWriteByte`                    | write_byte            | 1                       |
+//!
+//! The byte airs are the cheap home for a byte operation — one row instead of two or three — but the
+//! `MemAlign` airs prove it too, which is what lets a handful of byte operations ride in the room the
+//! full ones already paid for instead of opening an instance of their own.
+//!
+//! # The strategy
+//!
+//! [`zisk_common::select_airs`] decides, under the shared criterion (fewest instances first, least
+//! area to break a tie), which air each kind goes to and how many instances of each are granted. The
+//! assignment is then written into the fill order and the per-air costs, so [`MemAlignInstanceCounter`]
+//! only ever offers a kind to the air it was assigned to — which is what keeps the fill from
+//! consuming room the sizing had promised to another kind.
+//!
+//! An operation never straddles two instances, so a `MemAlign` instance can waste up to
+//! [`WORSE_FRAGMENTATION`] rows in its tail. That is taken off the height the sizing sees rather than
+//! patched afterwards, so the granted instances always hold what was routed to them.
+
 use core::panic;
 use std::{
     collections::HashMap,
@@ -10,22 +40,121 @@ use std::{
 use crate::{MemAlignCheckPoint, MemAlignCounters};
 use crate::{MemAlignInstanceCounter, MemCounters};
 use proofman_fields::Goldilocks;
-use zisk_common::{ChunkId, Plan};
+use zisk_common::{select_airs, AirChoice, ChunkId, Plan};
 use zisk_pil::{
-    MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
-    MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS,
-    MEM_ALIGN_WRITE_BYTE_AIR_IDS,
+    MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace, MemAlignReadByteLargeTrace,
+    MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
 };
 
 const ROWS_WRITE_BYTE: u32 = 3;
 const ROWS_READ_BYTE: u32 = 2;
-const WORSE_FRAGMENTATION: u32 = 4; // worse case fragmentation rows per full instance
 
-// Base Columns cost by instance
-const MEM_ALIGN_BCOLS: u32 = 56;
-const MEM_ALIGN_READ_BYTE_BCOLS: u32 = 25;
-const MEM_ALIGN_WRITE_BYTE_BCOLS: u32 = 32;
-const MEM_ALIGN_BYTE_BCOLS: u32 = 32;
+/// Rows a `MemAlign` instance can lose in its tail: an operation takes up to five rows and cannot
+/// straddle two instances, so up to four are left unusable.
+const WORSE_FRAGMENTATION: u32 = 4;
+
+/// Kinds of operation the strategy places, in the order [`MemCounters::to_array`] reports them.
+mod kind {
+    /// Operations taking five rows in a `MemAlign` air.
+    pub const FULL_5: usize = 0;
+    /// Operations taking three rows in a `MemAlign` air.
+    pub const FULL_3: usize = 1;
+    /// Operations taking two rows in a `MemAlign` air.
+    pub const FULL_2: usize = 2;
+    /// Unaligned byte reads.
+    pub const READ_BYTE: usize = 3;
+    /// Unaligned byte writes.
+    pub const WRITE_BYTE: usize = 4;
+    /// Number of kinds.
+    pub const COUNT: usize = 5;
+}
+
+/// Airs of the family, in the order the strategy and the fill both use: the specialised and tallest
+/// first, so the cheap homes fill before the general air is reached.
+mod air {
+    /// `MemAlignReadByteLarge`.
+    pub const READ_BYTE_LARGE: usize = 0;
+    /// `MemAlignReadByte`.
+    pub const READ_BYTE: usize = 1;
+    /// `MemAlignWriteByte`.
+    pub const WRITE_BYTE: usize = 2;
+    /// `MemAlignByteLarge`.
+    pub const BYTE_LARGE: usize = 3;
+    /// `MemAlignByte`.
+    pub const BYTE: usize = 4;
+    /// `MemAlignLarge`.
+    pub const FULL_LARGE: usize = 5;
+    /// `MemAlign`.
+    pub const FULL: usize = 6;
+    /// Number of airs.
+    pub const COUNT: usize = 7;
+}
+
+/// Rows one operation of each kind takes in each air, or `0` where the air cannot prove the kind.
+///
+/// This is both the strategy's cost table and the counters' capability mask: a zero cost is what tells
+/// [`MemAlignInstanceCounter`] the air does not support the kind.
+const ROW_COST: [[u32; kind::COUNT]; air::COUNT] = [
+    [0, 0, 0, 1, 0],                            // MemAlignReadByteLarge
+    [0, 0, 0, 1, 0],                            // MemAlignReadByte
+    [0, 0, 0, 0, 1],                            // MemAlignWriteByte
+    [0, 0, 0, 1, 1],                            // MemAlignByteLarge
+    [0, 0, 0, 1, 1],                            // MemAlignByte
+    [5, 3, 2, ROWS_READ_BYTE, ROWS_WRITE_BYTE], // MemAlignLarge
+    [5, 3, 2, ROWS_READ_BYTE, ROWS_WRITE_BYTE], // MemAlign
+];
+
+/// The airs the strategy chooses between, in [`air`] order.
+fn air_choices() -> [AirChoice; air::COUNT] {
+    // A full operation cannot straddle two instances, so the tail of a `MemAlign` instance may be
+    // unusable. Taking it off the height here is what keeps the granted instances able to hold what
+    // the sizing routed to them; the byte airs prove one-row operations and never fragment.
+    let full = |airgroup_id, air_id, rows: usize| {
+        let mut choice = AirChoice::new(airgroup_id, air_id, rows);
+        choice.rows -= WORSE_FRAGMENTATION as u64;
+        choice
+    };
+    [
+        AirChoice::new(
+            MemAlignReadByteLargeTrace::<()>::AIRGROUP_ID,
+            MemAlignReadByteLargeTrace::<()>::AIR_ID,
+            MemAlignReadByteLargeTrace::<()>::NUM_ROWS,
+        ),
+        AirChoice::new(
+            MemAlignReadByteTrace::<()>::AIRGROUP_ID,
+            MemAlignReadByteTrace::<()>::AIR_ID,
+            MemAlignReadByteTrace::<()>::NUM_ROWS,
+        ),
+        AirChoice::new(
+            MemAlignWriteByteTrace::<()>::AIRGROUP_ID,
+            MemAlignWriteByteTrace::<()>::AIR_ID,
+            MemAlignWriteByteTrace::<()>::NUM_ROWS,
+        ),
+        AirChoice::new(
+            MemAlignByteLargeTrace::<()>::AIRGROUP_ID,
+            MemAlignByteLargeTrace::<()>::AIR_ID,
+            MemAlignByteLargeTrace::<()>::NUM_ROWS,
+        ),
+        AirChoice::new(
+            MemAlignByteTrace::<()>::AIRGROUP_ID,
+            MemAlignByteTrace::<()>::AIR_ID,
+            MemAlignByteTrace::<()>::NUM_ROWS,
+        ),
+        full(
+            MemAlignLargeTrace::<()>::AIRGROUP_ID,
+            MemAlignLargeTrace::<()>::AIR_ID,
+            MemAlignLargeTrace::<()>::NUM_ROWS,
+        ),
+        full(
+            MemAlignTrace::<()>::AIRGROUP_ID,
+            MemAlignTrace::<()>::AIR_ID,
+            MemAlignTrace::<()>::NUM_ROWS,
+        ),
+    ]
+}
+
+/// One instance counter per air, in [`air`] order.
+type Counters = [MemAlignInstanceCounter; air::COUNT];
 
 #[allow(dead_code)]
 pub struct MemAlignPlanner<'a> {
@@ -33,46 +162,35 @@ pub struct MemAlignPlanner<'a> {
     chunk_id: Option<ChunkId>,
     chunks: Vec<ChunkId>,
     check_points: HashMap<ChunkId, MemAlignCheckPoint>,
-    full: MemAlignInstanceCounter,
-    read_byte: MemAlignInstanceCounter,
-    write_byte: MemAlignInstanceCounter,
-    byte: MemAlignInstanceCounter,
+
+    /// One counter per air, in [`air`] order: the strategy grants each its instances and the fill
+    /// then walks them in that order, so the specialised airs take what they were assigned before
+    /// the general one is reached.
+    counters_by_air: Counters,
+
     counters: Arc<Vec<(ChunkId, &'a MemCounters)>>,
 }
 
 impl<'a> MemAlignPlanner<'a> {
     pub fn new(counters: Arc<Vec<(ChunkId, &'a MemCounters)>>) -> Self {
-        let full = MemAlignInstanceCounter::new(
-            MEM_ALIGN_AIR_IDS[0],
-            0,
-            MemAlignTrace::<Goldilocks>::NUM_ROWS as u32,
-            &[5, 3, 2, 2, 3],
-            &[0, 1, 2, 3, 4],
-        );
-
-        let read_byte = MemAlignInstanceCounter::new(
-            MEM_ALIGN_READ_BYTE_AIR_IDS[0],
-            0,
+        let choices = air_choices();
+        let heights = [
+            MemAlignReadByteLargeTrace::<Goldilocks>::NUM_ROWS as u32,
             MemAlignReadByteTrace::<Goldilocks>::NUM_ROWS as u32,
-            &[0, 0, 0, 1, 0],
-            &[3],
-        );
-
-        let write_byte = MemAlignInstanceCounter::new(
-            MEM_ALIGN_WRITE_BYTE_AIR_IDS[0],
-            0,
             MemAlignWriteByteTrace::<Goldilocks>::NUM_ROWS as u32,
-            &[0, 0, 0, 0, 1],
-            &[4],
-        );
-
-        let byte = MemAlignInstanceCounter::new(
-            MEM_ALIGN_BYTE_AIR_IDS[0],
-            0,
+            MemAlignByteLargeTrace::<Goldilocks>::NUM_ROWS as u32,
             MemAlignByteTrace::<Goldilocks>::NUM_ROWS as u32,
-            &[0, 0, 0, 1, 1],
-            &[4, 3],
-        );
+            MemAlignLargeTrace::<Goldilocks>::NUM_ROWS as u32,
+            MemAlignTrace::<Goldilocks>::NUM_ROWS as u32,
+        ];
+
+        // The counters start with no kind enabled; `set_strategy` turns on exactly the ones the
+        // sizing assigned to each air, which is what keeps the fill from consuming room promised
+        // elsewhere. The height is the air's real one — the fragmentation allowance only shrinks
+        // what the sizing counts on, never what a filled instance may use.
+        let counters_by_air = std::array::from_fn(|a| {
+            MemAlignInstanceCounter::new(choices[a].air_id, 0, heights[a], &[0; kind::COUNT], &[])
+        });
 
         Self {
             plans: Vec::new(),
@@ -80,19 +198,10 @@ impl<'a> MemAlignPlanner<'a> {
             chunks: Vec::new(),
             check_points: HashMap::new(),
             counters,
-            read_byte,
-            write_byte,
-            byte,
-            full,
+            counters_by_air,
         }
     }
 
-    /// Saves the counters to a file.
-    ///
-    /// # Parameters
-    /// - `path`: Path to the file where counters will be saved
-    ///
-    /// # Returns
     /// Result indicating success or an IO error
     pub fn save_counters_to_file<P: AsRef<Path>>(&self, path: P) -> std::io::Result<()> {
         let file = File::create(path)?;
@@ -156,45 +265,25 @@ impl<'a> MemAlignPlanner<'a> {
         Ok((counters, full_rows, read_byte, write_byte))
     }
 
-    fn check_pendings(&self, pendings: &[u32; 5]) {
-        if pendings.iter().any(|&x| x > 0) {
-            println!(
-                "[ReadByte] Instances:{}/{} Rows:{}/{} used:({:?})",
-                self.read_byte.get_instances_available(),
-                self.read_byte.get_instances(),
-                self.read_byte.rows_available,
-                self.read_byte.num_rows,
-                self.read_byte.get_used()
-            );
-            println!(
-                "[WriteByte] Instances:{}/{} Rows:{}/{} used:({:?})",
-                self.write_byte.get_instances_available(),
-                self.write_byte.get_instances(),
-                self.write_byte.rows_available,
-                self.write_byte.num_rows,
-                self.write_byte.get_used()
-            );
-            println!(
-                "[Byte] Instances:{}/{} Rows:{}/{} used:({:?})",
-                self.byte.get_instances_available(),
-                self.byte.get_instances(),
-                self.byte.rows_available,
-                self.byte.num_rows,
-                self.byte.get_used()
-            );
-            println!(
-                "[Full] Instances:{}/{} Rows:{}/{} used:({:?})",
-                self.full.get_instances_available(),
-                self.full.get_instances(),
-                self.full.rows_available,
-                self.full.num_rows,
-                self.full.get_used()
-            );
-            println!("[Pending] (F5,F3,F2,RB,WB) {pendings:?}");
-            let _ = self.save_counters_to_file("tmp/mem_align_counters_crash.txt");
-            panic!("Some counters are pending");
+    fn check_pendings(&self, pendings: &[u32; kind::COUNT]) {
+        if pendings.iter().all(|&x| x == 0) {
+            return;
         }
+        for (a, counter) in self.counters_by_air.iter().enumerate() {
+            println!(
+                "[air {a}] Instances:{}/{} Rows:{}/{} used:({:?})",
+                counter.get_instances_available(),
+                counter.get_instances(),
+                counter.rows_available,
+                counter.num_rows,
+                counter.get_used()
+            );
+        }
+        println!("[Pending] (F5,F3,F2,RB,WB) {pendings:?}");
+        let _ = self.save_counters_to_file("tmp/mem_align_counters_crash.txt");
+        panic!("Some counters are pending");
     }
+
     pub fn align_plan(&mut self) {
         if self.counters.is_empty() {
             panic!("MemPlanner::plan() No metrics found");
@@ -211,14 +300,15 @@ impl<'a> MemAlignPlanner<'a> {
         self.close_instances();
         self.drain_all_plans();
     }
-    fn align_plan_add_chunk(&mut self, chunk_id: ChunkId, totals: &[u32; 5]) {
+
+    fn align_plan_add_chunk(&mut self, chunk_id: ChunkId, totals: &[u32; kind::COUNT]) {
         let mut pendings = *totals;
-        self.read_byte.add_to_instance(chunk_id, totals, &mut pendings);
-        self.write_byte.add_to_instance(chunk_id, totals, &mut pendings);
-        self.byte.add_to_instance(chunk_id, totals, &mut pendings);
-        self.full.add_to_instance(chunk_id, totals, &mut pendings);
+        for counter in self.counters_by_air.iter_mut() {
+            counter.add_to_instance(chunk_id, totals, &mut pendings);
+        }
         self.check_pendings(&pendings);
     }
+
     pub fn align_plan_from_counters(
         &mut self,
         full_rows: u32,
@@ -239,25 +329,19 @@ impl<'a> MemAlignPlanner<'a> {
     }
 
     fn close_instances(&mut self) {
-        self.read_byte.close_instance();
-        self.write_byte.close_instance();
-        self.byte.close_instance();
-        self.full.close_instance();
+        for counter in self.counters_by_air.iter_mut() {
+            counter.close_instance();
+        }
     }
+
     fn drain_all_plans(&mut self) {
-        // Calculate total capacity needed
-        let total_capacity: usize = self.read_byte.plans.len()
-            + self.write_byte.plans.len()
-            + self.byte.plans.len()
-            + self.full.plans.len();
-
+        let total_capacity: usize = self.counters_by_air.iter().map(|c| c.plans.len()).sum();
         self.plans = Vec::with_capacity(total_capacity);
-
-        self.plans.append(&mut self.read_byte.plans);
-        self.plans.append(&mut self.write_byte.plans);
-        self.plans.append(&mut self.byte.plans);
-        self.plans.append(&mut self.full.plans);
+        for counter in self.counters_by_air.iter_mut() {
+            self.plans.append(&mut counter.plans);
+        }
     }
+
     fn calculate_totals(&mut self) -> (u32, u32, u32) {
         let mut read_byte = 0;
         let mut write_byte = 0;
@@ -272,80 +356,86 @@ impl<'a> MemAlignPlanner<'a> {
         }
         (full_rows, read_byte, write_byte)
     }
+
+    /// Decides which air proves each kind and how many instances of each are granted, then writes
+    /// that decision into the counters so the fill follows it.
+    ///
+    /// The full operations are counted in rows already (`full_rows`), so they enter the sizing as a
+    /// single kind that only the `MemAlign` airs can prove; the byte kinds carry their own row cost
+    /// per air, which is what makes riding in the `MemAlign` room the dearer option per operation and
+    /// yet the better one whenever it spares an instance.
     fn calculate_strategy_from_totals(&mut self, full_rows: u32, read_byte: u32, write_byte: u32) {
-        let read_byte_instance_cost = MEM_ALIGN_READ_BYTE_BCOLS * self.read_byte.num_rows;
-        let write_byte_instance_cost = MEM_ALIGN_WRITE_BYTE_BCOLS * self.write_byte.num_rows;
-        let byte_instance_cost = MEM_ALIGN_BYTE_BCOLS * self.byte.num_rows;
-        let full_instance_cost = MEM_ALIGN_BCOLS * self.full.num_rows;
+        let choices = air_choices();
 
-        let mut byte_instances = 0;
-        let mut read_byte_instances = read_byte / self.read_byte.num_rows;
-        let mut write_byte_instances = write_byte / self.write_byte.num_rows;
-        let mut full_instances = (full_rows / self.full.num_rows)
-            + if (full_rows % self.full.num_rows) > 0 { 1 } else { 0 };
+        // Rows each kind takes in each air able to prove it. The three full kinds are already summed
+        // into `full_rows`, so they share one entry and are routed together.
+        let options = |ops: u32, k: usize| -> Vec<(usize, u64)> {
+            (0..air::COUNT)
+                .filter(|&a| ROW_COST[a][k] != 0)
+                .map(|a| (a, ops as u64 * ROW_COST[a][k] as u64))
+                .collect()
+        };
+        let kinds = vec![
+            (0..air::COUNT)
+                .filter(|&a| ROW_COST[a][kind::FULL_5] != 0)
+                .map(|a| (a, full_rows as u64))
+                .collect::<Vec<_>>(),
+            options(read_byte, kind::READ_BYTE),
+            options(write_byte, kind::WRITE_BYTE),
+        ];
 
-        let p_read_byte = read_byte % self.read_byte.num_rows;
-        let p_write_byte = write_byte % self.write_byte.num_rows;
+        let selection = select_airs(&kinds, &choices);
 
-        // calculate the worse case of fragmentation at end of instance
-        let fragmentation_rows = WORSE_FRAGMENTATION * full_instances;
+        // Turn on, in each air, exactly the kinds routed to it. A kind with no operations is left off
+        // everywhere: enabling it would let the fill hand rows to an air the sizing never counted.
+        let mut costs = [[0u32; kind::COUNT]; air::COUNT];
+        if full_rows > 0 {
+            let a = selection.assignment[0];
+            for k in [kind::FULL_5, kind::FULL_3, kind::FULL_2] {
+                costs[a][k] = ROW_COST[a][k];
+            }
+        }
+        if read_byte > 0 {
+            let a = selection.assignment[1];
+            costs[a][kind::READ_BYTE] = ROW_COST[a][kind::READ_BYTE];
+        }
+        if write_byte > 0 {
+            let a = selection.assignment[2];
+            costs[a][kind::WRITE_BYTE] = ROW_COST[a][kind::WRITE_BYTE];
+        }
 
-        let max_full_free_rows = (full_instances * self.full.num_rows) - full_rows;
+        for (a, counter) in self.counters_by_air.iter_mut().enumerate() {
+            counter.set_instances(selection.instances[a] as u32);
+            // The kinds an air proves, dearest first, so the rows it has go to the operations that
+            // would cost the most elsewhere.
+            let mut order: Vec<usize> = (0..kind::COUNT).filter(|&k| costs[a][k] != 0).collect();
+            order.sort_by_key(|&k| std::cmp::Reverse(costs[a][k]));
+            counter.set_costs(&costs[a]);
+            counter.update_order(&order);
+        }
 
-        // for security reasons, the worst case was that last 4 rows are lost.
-        let full_free_rows = max_full_free_rows.saturating_sub(fragmentation_rows);
-
-        let full_free_byte = full_free_rows / ROWS_WRITE_BYTE;
-        let _strategy =
-            if (ROWS_READ_BYTE * p_read_byte + ROWS_WRITE_BYTE * p_write_byte) <= full_free_rows {
-                /* nothing, no need extra instances use free space on full mem_align */
-                "+0"
-            } else if (ROWS_WRITE_BYTE * p_write_byte) <= full_free_rows {
-                // If all writes fit in the cache then only need one instance for pending reads.
-                read_byte_instances += 1;
-                "+read_byte"
-            } else if (ROWS_READ_BYTE * p_read_byte) <= full_free_rows {
-                // If all reads fit in the cache then only need one instance for pending writes.
-                write_byte_instances += 1;
-                "+write_byte"
-            } else if (p_write_byte + p_read_byte) <= self.byte.num_rows {
-                // If all pending reads and writes fit in read-write byte instance, we need one instance for both.
-                byte_instances += 1;
-                "+byte"
-            } else if (p_read_byte + p_write_byte - full_free_byte) <= self.byte.num_rows
-                && byte_instance_cost <= (read_byte_instance_cost + write_byte_instance_cost)
-            {
-                // at this point all reads no fit to full free rows, same for writes, and both no fit to byte instance.
-                // but, a part of reads (uses less full rows) could fit in the full free rows. The rest of reads and all
-                // pending writes fit in the byte instance (this is verified by if condition)
-                byte_instances += 1;
-                "+byte +0"
-            } else if (p_read_byte * ROWS_READ_BYTE + p_write_byte * ROWS_WRITE_BYTE)
-                < (full_free_rows + self.full.num_rows - WORSE_FRAGMENTATION)
-                && full_instance_cost <= (read_byte_instance_cost + write_byte_instance_cost)
-            {
-                // if all pending reads and writes fit on last free rows plus one new full instance.
-                full_instances += 1;
-                "+full"
-            } else {
-                // if we need to add more than one instance for pending reads and writes, better use
-                // two specific and cheaper instances.
-                read_byte_instances += 1;
-                write_byte_instances += 1;
-                "+read_byte +write_byte"
-            };
-        self.byte.set_instances(byte_instances);
-        self.read_byte.set_instances(read_byte_instances);
-        self.write_byte.set_instances(write_byte_instances);
-        self.full.set_instances(full_instances);
+        tracing::debug!(
+            "··· MemAlign instances: read_byte_large={} read_byte={} write_byte={} byte_large={} \
+             byte={} full_large={} full={}",
+            selection.instances[air::READ_BYTE_LARGE],
+            selection.instances[air::READ_BYTE],
+            selection.instances[air::WRITE_BYTE],
+            selection.instances[air::BYTE_LARGE],
+            selection.instances[air::BYTE],
+            selection.instances[air::FULL_LARGE],
+            selection.instances[air::FULL],
+        );
     }
+
     fn calculate_strategy(&mut self) {
         let (full_rows, read_byte, write_byte) = self.calculate_totals();
         self.calculate_strategy_from_totals(full_rows, read_byte, write_byte);
     }
+
     pub fn plan(&mut self) {
         self.align_plan();
     }
+
     pub fn collect_plans(&mut self) -> Vec<Plan> {
         std::mem::take(&mut self.plans)
     }

@@ -26,6 +26,7 @@ mod binary_extension_table;
 mod binary_input;
 mod binary_kinds;
 mod binary_planner;
+mod binary_tally;
 
 pub use binary::*;
 use binary_add::*;
@@ -54,3 +55,4 @@ use binary_extension_table::*;
 use binary_input::*;
 pub use binary_kinds::*;
 use binary_planner::*;
+use binary_tally::*;

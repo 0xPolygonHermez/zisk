@@ -7403,6 +7403,7 @@ dependencies = [
  "tracing",
  "zisk-core",
  "zisk-definitions",
+ "zisk-pil",
  "zisk-stream",
  "zisk-verifier",
 ]
@@ -8054,6 +8055,7 @@ dependencies = [
  "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
  "rayon",
  "static_assertions",
+ "tracing",
  "zisk-common",
  "zisk-core",
  "zisk-pil",

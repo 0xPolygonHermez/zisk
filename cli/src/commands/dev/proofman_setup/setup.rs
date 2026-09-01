@@ -114,9 +114,9 @@ impl ZiskProofmanSetupSetup {
                 proofman_common::global_info::VALID_AGGREGATION_ARITIES
             );
         }
-        let compressed_final = self
-            .compressed_final
-            .unwrap_or_else(|| proofman_common::hash_family::compressed_final_by_default(&self.hash));
+        let compressed_final = self.compressed_final.unwrap_or_else(|| {
+            proofman_common::hash_family::compressed_final_by_default(&self.hash)
+        });
 
         let opts = SetupOptions {
             hash: self.hash.clone(),

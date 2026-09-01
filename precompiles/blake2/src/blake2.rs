@@ -5,10 +5,10 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 use zisk_common::OperationBlake2Data;
-use zisk_pil::{Blake2brTrace, Blake2brTraceRow, Blake2brTraceRowOps};
+use zisk_pil::{Blake2brTraceRowOps, ZISK_AIRGROUP_ID};
 
 use super::blake2_constants::{BLAKE2BR_TABLE_SIZE, CLOCKS, R1_G, R2_G, R3_G, R4_G, SIGMA};
 use super::blake2_table::Blake2brTableSM;
@@ -60,13 +60,13 @@ impl Blake2Input {
 }
 
 /// The `Blake2SM` struct encapsulates the logic of the Blake2 State Machine.
+/// Nothing here depends on the height of the air: the capacity is taken from the trace each call
+/// builds, so a taller sibling would need no change.
 pub struct Blake2SM<F: PrimeField64> {
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
     /// Number of available blake2s in the trace.
-    pub num_available_blake2s: usize,
-
     range_id: usize,
 
     table_id: usize,
@@ -79,9 +79,6 @@ impl<F: PrimeField64> Blake2SM<F> {
     /// A new `Blake2SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_non_usable_rows = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS % CLOCKS;
-        let num_available_blake2s = Blake2brTrace::<Blake2brTraceRow<F>>::NUM_ROWS / CLOCKS
-            - (num_non_usable_rows != 0) as usize;
 
         let range_id = std.get_range_id(0, (1 << 16) - 1, None).expect("Failed to get range ID");
 
@@ -89,7 +86,7 @@ impl<F: PrimeField64> Blake2SM<F> {
             .get_virtual_table_id(Blake2brTableSM::TABLE_ID)
             .expect("Failed to get Blake2br table ID");
 
-        Arc::new(Self { std, num_available_blake2s, range_id, table_id })
+        Arc::new(Self { std, range_id, table_id })
     }
 
     /// Processes one operation, filling its CLOCKS-row chunk of the trace and
@@ -229,15 +226,26 @@ impl<F: PrimeField64> Blake2SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Blake2brTraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<
+        R: Blake2brTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<Blake2Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Blake2brTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
+            trace_buffer,
+        )?;
         let num_rows = trace.num_rows();
-        let num_available_blake2s = self.num_available_blake2s;
+        // Capacity of the air this call builds, taken from `NUM_ROWS`: deriving it from a
+        // fixed trace alias instead is what breaks the moment the air gains a taller
+        // sibling, since the instance would be measured against the short air's capacity.
+        let num_available_blake2s = NUM_ROWS / CLOCKS - (NUM_ROWS % CLOCKS != 0) as usize;
 
         // Check that we can fit all the blake2s in the trace
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();

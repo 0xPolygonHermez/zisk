@@ -14,8 +14,8 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{
-    BinaryExtensionFullTrace, BinaryExtensionFullTraceRow, BinaryExtensionFullTraceRowPacked,
-    BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked,
+    BinaryExtensionLargeTrace, BinaryExtensionTrace, BinaryExtensionTraceRow,
+    BinaryExtensionTraceRowPacked,
 };
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
@@ -56,7 +56,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
     ) -> Self {
         assert!(
             ictx.plan.air_id == BinaryExtensionTrace::<()>::AIR_ID
-                || ictx.plan.air_id == BinaryExtensionFullTrace::<()>::AIR_ID,
+                || ictx.plan.air_id == BinaryExtensionLargeTrace::<()>::AIR_ID,
             "BinaryExtensionInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -70,9 +70,10 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
         Self { binary_extension_sm, collect_info, ictx, std }
     }
 
-    /// `true` when this instance proves the full air (and therefore owns the dirty shapes).
-    fn is_full(&self) -> bool {
-        self.ictx.plan.air_id == BinaryExtensionFullTrace::<()>::AIR_ID
+    /// `true` when this instance is the tall air. The two commit the same columns, so this only
+    /// picks the trace that carries the right height and air id.
+    fn is_large(&self) -> bool {
+        self.ictx.plan.air_id == BinaryExtensionLargeTrace::<()>::AIR_ID
     }
 
     pub fn build_binary_extension_collector(
@@ -113,8 +114,9 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             })
             .collect();
 
-        // The two airs have different column sets, so the row type selects which one is filled.
-        match (self.is_full(), packed) {
+        // The row type is the same for both airs; the trace type is what carries the height and the
+        // air id of the one this instance proves.
+        match (self.is_large(), packed) {
             (false, true) => {
                 Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionTrace<
                     BinaryExtensionTraceRowPacked<F>,
@@ -130,16 +132,16 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
                 )?))
             }
             (true, true) => {
-                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionFullTrace<
-                    BinaryExtensionFullTraceRowPacked<F>,
-                >, BinaryExtensionFullTraceRowPacked<F>>(
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionLargeTrace<
+                    BinaryExtensionTraceRowPacked<F>,
+                >, BinaryExtensionTraceRowPacked<F>>(
                     &inputs, trace_buffer
                 )?))
             }
             (true, false) => {
-                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionFullTrace<
-                    BinaryExtensionFullTraceRow<F>,
-                >, BinaryExtensionFullTraceRow<F>>(
+                Ok(Some(self.binary_extension_sm.compute_witness::<BinaryExtensionLargeTrace<
+                    BinaryExtensionTraceRow<F>,
+                >, BinaryExtensionTraceRow<F>>(
                     &inputs, trace_buffer
                 )?))
             }

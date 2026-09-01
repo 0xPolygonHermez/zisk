@@ -7,9 +7,9 @@ use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 
 use crate::{MemAlignInput, MemAlignRomSM, MemOp};
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use rayon::prelude::*;
-use zisk_pil::{MemAlignTrace, MemAlignTraceRowOps, DUAL_RANGE_BYTE_ID};
+use zisk_pil::{MemAlignTraceRowOps, DUAL_RANGE_BYTE_ID, ZISK_AIRGROUP_ID};
 
 const RC: usize = 2;
 const CHUNK_NUM: usize = 8;
@@ -841,13 +841,21 @@ impl<F: PrimeField64> MemAlignSM<F> {
         ((value >> (chunk * CHUNK_BITS)) & CHUNK_BITS_MASK) as u8
     }
 
-    pub fn compute_witness<R: MemAlignTraceRowOps<F>>(
+    /// `MemAlign` and `MemAlignLarge` commit the same columns and differ only in height, so the row
+    /// type `R` serves both and the air is picked by the `NUM_ROWS` / `AIR_ID` consts of the trace
+    /// this builds.
+    pub fn compute_witness<
+        R: MemAlignTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         mem_ops: &[Vec<MemAlignInput>],
         used_rows: usize,
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = MemAlignTrace::<R>::new_from_vec(trace_buffer)?;
+        let mut trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
         let mut dual_mults = vec![0u64; 1 << (2 * CHUNK_BITS)];
 
         let num_rows = trace.num_rows();

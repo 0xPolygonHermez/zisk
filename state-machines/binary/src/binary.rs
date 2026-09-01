@@ -17,7 +17,8 @@ use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Planner};
 use zisk_pil::{
-    BinaryAddHiTrace, BinaryAddTrace, BinaryExtensionFullTrace, BinaryExtensionTrace, BinaryTrace,
+    BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddLargeTrace, BinaryAddTrace,
+    BinaryExtensionLargeTrace, BinaryExtensionTrace, BinaryLargeTrace, BinaryTrace,
 };
 
 /// The `BinarySM` struct represents the Binary State Machine,
@@ -86,29 +87,26 @@ impl<F: PrimeField64> ComponentBuilder<F> for BinarySM<F> {
     ///
     /// # Returns
     /// A boxed implementation of `Instance` for binary operations.
+    /// Each air and its `Large` sibling share one instance type, which picks the trace — and with it
+    /// the height and air id — from `ictx.plan.air_id`.
     fn build_instance(&self, ictx: InstanceCtx) -> Box<dyn Instance<F>> {
         match ictx.plan.air_id {
-            BinaryTrace::<()>::AIR_ID => Box::new(BinaryBasicInstance::new(
-                self.binary_basic_sm.clone(),
-                ictx,
-                self.std.clone(),
-            )),
-            // Both extension airs share one instance type; it picks the row layout by air_id.
-            BinaryExtensionTrace::<()>::AIR_ID | BinaryExtensionFullTrace::<()>::AIR_ID => {
+            BinaryTrace::<()>::AIR_ID | BinaryLargeTrace::<()>::AIR_ID => Box::new(
+                BinaryBasicInstance::new(self.binary_basic_sm.clone(), ictx, self.std.clone()),
+            ),
+            BinaryExtensionTrace::<()>::AIR_ID | BinaryExtensionLargeTrace::<()>::AIR_ID => {
                 Box::new(BinaryExtensionInstance::new(
                     self.binary_extension_sm.clone(),
                     ictx,
                     self.std.clone(),
                 ))
             }
-            BinaryAddTrace::<()>::AIR_ID => {
+            BinaryAddTrace::<()>::AIR_ID | BinaryAddLargeTrace::<()>::AIR_ID => {
                 Box::new(BinaryAddInstance::new(self.binary_add_sm.clone(), ictx, self.std.clone()))
             }
-            BinaryAddHiTrace::<()>::AIR_ID => Box::new(BinaryAddHiInstance::new(
-                self.binary_add_hi_sm.clone(),
-                ictx,
-                self.std.clone(),
-            )),
+            BinaryAddHiTrace::<()>::AIR_ID | BinaryAddHiLargeTrace::<()>::AIR_ID => Box::new(
+                BinaryAddHiInstance::new(self.binary_add_hi_sm.clone(), ictx, self.std.clone()),
+            ),
             _ => panic!("BinarySM::get_instance() Unsupported air_id: {:?}", ictx.plan.air_id),
         }
     }

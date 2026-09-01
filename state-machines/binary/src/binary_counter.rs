@@ -5,7 +5,7 @@
 //! This module implements the `Metrics` and `BusDevice` traits, enabling seamless integration with
 //! the system bus for both monitoring and input generation.
 
-use crate::{add_shape, extension_requires_full, AddShape, BinaryBasicFrops, BinaryExtensionFrops};
+use crate::{add_shape, AddShape, BinaryBasicFrops, BinaryExtensionFrops};
 use zisk_common::{BusDevice, BusId, Counter, Metrics, A, B, OP, OPERATION_BUS_ID, OP_TYPE};
 use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 
@@ -18,7 +18,7 @@ use zisk_core::{zisk_ops::ZiskOp, ZiskOperationType};
 /// The buckets are **disjoint**: every binary / binary-extension operation on the bus lands in
 /// exactly one of them, so their sum is the total number of operations. Each bucket corresponds to
 /// the air (or set of airs) able to prove that operation, which is what lets the planner size the
-/// instances — see [`crate::add_shape`] and [`crate::extension_requires_full`] for the split.
+/// instances — see [`crate::add_shape`] for the split.
 #[derive(Default)]
 pub struct BinaryCounter {
     /// Counter for binary add operations needing the full 64-bit add (only add, no addw).
@@ -32,11 +32,9 @@ pub struct BinaryCounter {
     /// Counter for basic binary operations, but not considering add operations
     pub counter_basic_wo_add: Counter,
 
-    /// Counter for binary extension operations the reduced `BinaryExtension` air can prove.
+    /// Counter for binary extension operations. Both extension airs are instantiated `full`, so
+    /// they all belong to one bucket.
     pub counter_extension: Counter,
-
-    /// Counter for binary extension operations that need the `BinaryExtensionFull` air.
-    pub counter_extension_full: Counter,
 }
 
 impl BinaryCounter {
@@ -108,16 +106,10 @@ impl Metrics for BinaryCounter {
                 self.counter_basic_wo_add.update(1);
             }
         } else if op_type == BINARY_E {
-            // Operations whose unused operand parts are dirty can only be proven by the full air.
-            let counter = if extension_requires_full(data[OP] as u8, data[A], data[B]) {
-                &mut self.counter_extension_full
-            } else {
-                &mut self.counter_extension
-            };
             if BinaryExtensionFrops::is_frequent_op(data[OP] as u8, data[A], data[B]) {
-                counter.update_frops(1);
+                self.counter_extension.update_frops(1);
             } else {
-                counter.update(1);
+                self.counter_extension.update(1);
             }
         }
     }

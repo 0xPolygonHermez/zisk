@@ -18,9 +18,13 @@ use zisk_core::{
     BLAKE2_OP_TYPE_ID, KECCAK_OP_TYPE_ID, POSEIDON_OP_TYPE_ID, SHA256_OP_TYPE_ID,
 };
 use zisk_pil::{
-    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, BABY_JUB_JUB_AIR_IDS, BLAKE_2_BR_AIR_IDS,
-    KECCAKF_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
+    ADD_256_AIR_IDS, ARITH_EQ_384_AIR_IDS, ARITH_EQ_384_LARGE_AIR_IDS, BABY_JUB_JUB_AIR_IDS,
+    BLAKE_2_BR_AIR_IDS, KECCAKF_AIR_IDS, POSEIDON_AIR_IDS, SHA_256_F_AIR_IDS,
 };
+
+/// Both heights of the `ArithEq384` air, which the planner sizes as one ladder.
+const ARITH_EQ_384_CONFIG_AIR_IDS: &[usize] =
+    &[ARITH_EQ_384_AIR_IDS[0], ARITH_EQ_384_LARGE_AIR_IDS[0]];
 use zisk_precomp_arith_eq::{
     ArithEqCollector, ArithEqCounterInputGen, ArithEqInstance, ArithEqManager,
     ARITH_EQ_CONFIG_AIR_IDS,
@@ -71,7 +75,7 @@ crate::register_precompiles! {
     ] => ArithEqManager<F>,
     ArithEq384 [
         op: ARITH_EQ_384_OP_TYPE_ID,
-        air: ARITH_EQ_384_AIR_IDS,
+        air: ARITH_EQ_384_CONFIG_AIR_IDS,
         rank_assign: false,
     ] => ArithEq384Manager<F>,
     Add256 [

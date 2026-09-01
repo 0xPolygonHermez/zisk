@@ -8,7 +8,9 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{MemAlignByteTrace, MemAlignByteTraceRow, MemAlignByteTraceRowPacked};
+use zisk_pil::{
+    MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignByteTraceRow, MemAlignByteTraceRowPacked,
+};
 
 pub struct MemAlignByteInstance<F: PrimeField64> {
     /// Instance context
@@ -29,6 +31,12 @@ impl<F: PrimeField64> MemAlignByteInstance<F> {
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { ictx, checkpoint, mem_align_byte_sm: mem_align_sm }
+    }
+
+    /// `true` when this instance is the tall air. The two commit the same columns, so the row type
+    /// is shared and only the trace — and with it the height and air id — differs.
+    fn is_large(&self) -> bool {
+        self.ictx.plan.air_id == MemAlignByteLargeTrace::<()>::AIR_ID
     }
 
     pub fn build_mem_align_byte_collector(&self, chunk_id: ChunkId) -> MemAlignCollector {
@@ -56,18 +64,25 @@ impl<F: PrimeField64> Instance<F> for MemAlignByteInstance<F> {
                 collector.inputs
             })
             .collect();
-        Ok(Some(if packed {
-            self.mem_align_byte_sm
-                .compute_witness::<
-                    MemAlignByteTrace<MemAlignByteTraceRowPacked<F>>,
-                    MemAlignByteTraceRowPacked<F>,
-                >(&inputs, total_rows as usize, trace_buffer)?
-        } else {
-            self.mem_align_byte_sm
-                .compute_witness::<
-                    MemAlignByteTrace<MemAlignByteTraceRow<F>>,
-                    MemAlignByteTraceRow<F>,
-                >(&inputs, total_rows as usize, trace_buffer)?
+        let sm = &self.mem_align_byte_sm;
+        let used_rows = total_rows as usize;
+        Ok(Some(match (self.is_large(), packed) {
+            (false, true) => sm.compute_witness::<
+                MemAlignByteTrace<MemAlignByteTraceRowPacked<F>>,
+                MemAlignByteTraceRowPacked<F>,
+            >(&inputs, used_rows, trace_buffer)?,
+            (false, false) => sm.compute_witness::<
+                MemAlignByteTrace<MemAlignByteTraceRow<F>>,
+                MemAlignByteTraceRow<F>,
+            >(&inputs, used_rows, trace_buffer)?,
+            (true, true) => sm.compute_witness::<
+                MemAlignByteLargeTrace<MemAlignByteTraceRowPacked<F>>,
+                MemAlignByteTraceRowPacked<F>,
+            >(&inputs, used_rows, trace_buffer)?,
+            (true, false) => sm.compute_witness::<
+                MemAlignByteLargeTrace<MemAlignByteTraceRow<F>>,
+                MemAlignByteTraceRow<F>,
+            >(&inputs, used_rows, trace_buffer)?,
         }))
     }
 

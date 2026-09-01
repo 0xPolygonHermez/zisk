@@ -13,7 +13,14 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow, BinaryAddTraceRowPacked};
+use zisk_pil::{BinaryAddLargeTrace, BinaryAddTrace, BinaryAddTraceRow, BinaryAddTraceRowPacked};
+
+/// Height and air id of each `BinaryAdd` air, as const-generic arguments for the witness
+/// computation.
+const ROWS: usize = BinaryAddTrace::<()>::NUM_ROWS;
+const AIR_ID: usize = BinaryAddTrace::<()>::AIR_ID;
+const LARGE_ROWS: usize = BinaryAddLargeTrace::<()>::NUM_ROWS;
+const LARGE_AIR_ID: usize = BinaryAddLargeTrace::<()>::AIR_ID;
 
 /// The `BinaryAddInstance` struct represents an instance for binary add witness computations.
 ///
@@ -49,9 +56,8 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryAddTrace::<()>::AIR_ID,
+        assert!(
+            ictx.plan.air_id == AIR_ID || ictx.plan.air_id == LARGE_AIR_ID,
             "BinaryAddInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -65,13 +71,13 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         Self { binary_add_sm, collect_info, ictx, std }
     }
 
+    /// `true` when this instance is the tall air. The two commit the same columns, so this only
+    /// picks the height and air id the trace is built with.
+    fn is_large(&self) -> bool {
+        self.ictx.plan.air_id == LARGE_AIR_ID
+    }
+
     pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector<F> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryAddTrace::<()>::AIR_ID,
-            "BinaryAddInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
         BinaryAddCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
@@ -105,17 +111,25 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
-                self.binary_add_sm
-                    .compute_witness::<BinaryAddTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
-                self.binary_add_sm
-                    .compute_witness::<BinaryAddTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
-        }
+        let sm = &self.binary_add_sm;
+        Ok(Some(match (self.is_large(), packed) {
+            (false, true) => sm.compute_witness::<BinaryAddTraceRowPacked<F>, ROWS, AIR_ID>(
+                &inputs,
+                trace_buffer,
+            )?,
+            (false, false) => {
+                sm.compute_witness::<BinaryAddTraceRow<F>, ROWS, AIR_ID>(&inputs, trace_buffer)?
+            }
+            (true, true) => sm
+                .compute_witness::<BinaryAddTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
+                    &inputs,
+                    trace_buffer,
+                )?,
+            (true, false) => sm.compute_witness::<BinaryAddTraceRow<F>, LARGE_ROWS, LARGE_AIR_ID>(
+                &inputs,
+                trace_buffer,
+            )?,
+        }))
     }
 
     /// Retrieves the checkpoint associated with this instance.

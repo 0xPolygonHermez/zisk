@@ -1,10 +1,9 @@
 //! Classification helpers that decide which binary air can prove a given bus operation.
 //!
-//! Two of the binary airs come in pairs where the cheaper one only covers a subset of the operand
-//! shapes: `BinaryAddHi` vs `BinaryAdd` for additions, and `BinaryExtension` vs
-//! `BinaryExtensionFull` for the extension ops. These predicates are the single source of truth
-//! for that split — the counter uses them to bucket operations, the collectors to accept or reject
-//! them, and the planner to size the instances — so all three always agree.
+//! The additions split by operand shape: the packed `BinaryAddHi` airs only cover the ones whose
+//! result fits in the low limb, and `BinaryAdd` / `Binary` take the rest. [`add_shape`] is the single
+//! source of truth for that split — the counter uses it to bucket operations, the collectors to
+//! accept or reject them, and the planner to size the instances — so all three always agree.
 //!
 //! Operand convention: for `a op b = c`, each of `a`, `b` and `c` is a 64-bit value seen as two
 //! 32-bit limbs, `[0]` being the low part and `[1]` the high part.
@@ -12,14 +11,19 @@
 use zisk_core::zisk_ops::ZiskOp;
 
 /// Number of independent additions packed into one `BinaryAddHi` row.
-/// MUST match `adds_x_row` in `state-machines/binary/pil/binary_add_hi.pil`.
+/// MUST match `adds_x_row` of the `BinaryAddHi` alias in `pil/zisk.pil`.
 pub const ADDS_X_ROW: usize = 3;
+
+/// Number of independent additions packed into one `BinaryAddHiLarge` row.
+/// MUST match `adds_x_row` of the `BinaryAddHiLarge` alias in `pil/zisk.pil`.
+pub const ADDS_X_ROW_LARGE: usize = 5;
+
+/// The widest packing any add-hi air uses, so one row can be built through a fixed-size buffer
+/// whatever air is being filled.
+pub const MAX_ADDS_X_ROW: usize = ADDS_X_ROW_LARGE;
 
 /// High limb of a negative 32-bit value sign-extended to 64 bits.
 pub const NEG_HI: u64 = 0xFFFF_FFFF;
-
-/// Largest shift amount / bit index representable by the reduced extension air's `free_in_b`.
-const LS_6_BITS: u64 = 0x3F;
 
 const MASK_32: u64 = 0xFFFF_FFFF;
 
@@ -151,38 +155,6 @@ pub fn opcode_is_shift_word(opcode: ZiskOp) -> bool {
     }
 }
 
-/// Returns `true` when a `BinaryE` operation can only be proven by `BinaryExtensionFull`.
-///
-/// The reduced air drops the columns that the full one uses to carry the "dirty" parts of the
-/// operands (`free_in_b_bit6`, `free_in_b_bit7` and `b[2]`) plus the byte-chain selectors, so it
-/// only covers operations whose unused operand parts are zero:
-///
-/// * byte-chain families (`CTZ`, `CTZ_W`, `CLZ`, `CLZ_W`) always need the full air, since the
-///   reduced one has no `op_is_chain` / `op_is_chain_rev` columns at all;
-/// * shift family: the reduced air carries the whole amount in `free_in_b`, so `b` must fit in
-///   6 bits (which also forces `b[1] == 0`);
-/// * combine (pack) family: the reduced air forces both high limbs to zero;
-/// * the remaining single-source ops: the reduced air forces the bus `a` operand to zero, which
-///   is what the transpiler emits for them (`src_a` is the immediate 0).
-#[inline(always)]
-pub fn extension_requires_full(op: u8, a: u64, b: u64) -> bool {
-    let opcode = ZiskOp::try_from_code(op).expect("extension_requires_full(): invalid ZiskOp code");
-
-    if opcode_is_chain(opcode) || opcode_is_chain_rev(opcode) {
-        return true;
-    }
-
-    if opcode_is_shift(opcode) {
-        return b > LS_6_BITS;
-    }
-
-    if opcode_is_combine(opcode) {
-        return (a >> 32) != 0 || (b >> 32) != 0;
-    }
-
-    a != 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,35 +192,5 @@ mod tests {
     #[test]
     fn add_shape_full_when_b_hi_is_neither_zero_nor_all_ones() {
         assert_eq!(add_shape(0, 1 << 32), AddShape::Full);
-    }
-
-    #[test]
-    fn extension_chain_always_requires_full() {
-        for op in [ZiskOp::Ctz, ZiskOp::CtzW, ZiskOp::Clz, ZiskOp::ClzW] {
-            assert!(extension_requires_full(op.code(), 0, 0));
-        }
-    }
-
-    #[test]
-    fn extension_shift_requires_full_only_when_amount_is_dirty() {
-        let sll = ZiskOp::Sll.code();
-        assert!(!extension_requires_full(sll, 0x1234, 63));
-        assert!(extension_requires_full(sll, 0x1234, 64));
-        assert!(extension_requires_full(sll, 0x1234, 1 << 32));
-    }
-
-    #[test]
-    fn extension_combine_requires_full_only_when_a_high_limb_is_dirty() {
-        let pack = ZiskOp::Pack.code();
-        assert!(!extension_requires_full(pack, 0xFFFF_FFFF, 0xFFFF_FFFF));
-        assert!(extension_requires_full(pack, 1 << 32, 0));
-        assert!(extension_requires_full(pack, 0, 1 << 32));
-    }
-
-    #[test]
-    fn extension_single_source_requires_full_only_when_bus_a_is_set() {
-        let rev8 = ZiskOp::Rev8.code();
-        assert!(!extension_requires_full(rev8, 0, u64::MAX));
-        assert!(extension_requires_full(rev8, 1, u64::MAX));
     }
 }

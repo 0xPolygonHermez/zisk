@@ -4,7 +4,6 @@ use std::sync::Arc;
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::ArithEqTrace;
 
 use crate::{
     arith_eq_constants::*, executors, Arith256Input, Arith256ModInput, ArithEqInput,
@@ -17,10 +16,10 @@ use crate::{
 use rayon::prelude::*;
 
 /// The `ArithEqSM` struct encapsulates the logic of the ArithEq State Machine.
+///
+/// Nothing here depends on the height of the air: one state machine serves every config at every
+/// height, and the capacity is taken from the trace each call builds.
 pub struct ArithEqSM<F: PrimeField64> {
-    /// Number of available arith256s in the trace.
-    pub num_available_ops: usize,
-
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
@@ -51,7 +50,6 @@ impl<F: PrimeField64> ArithEqSM<F> {
     /// A new `ArithEqSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_ops = ArithEqTrace::<()>::NUM_ROWS / ARITH_EQ_ROWS_BY_OP;
         let p2_22 = 1 << 22;
         let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None).expect("Failed to get range ID");
         let chunk_range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
@@ -62,14 +60,7 @@ impl<F: PrimeField64> ArithEqSM<F> {
         let table_id =
             std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
-        Arc::new(Self {
-            std,
-            num_available_ops,
-            q_hsc_range_id,
-            chunk_range_id,
-            carry_range_id,
-            table_id,
-        })
+        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
     }
     fn get_lt_flags(input: &ArithEqInput) -> u8 {
         const X3_LT_FLAG: u8 = 1;
@@ -669,7 +660,9 @@ impl<F: PrimeField64> ArithEqSM<F> {
         //   q_hsc: QS q-columns range-checked on the last clock only            → QS
         //   chunk: x1..y3 (6·16=96) + q on the 15 non-last clocks (QS·15) + s (USE_S·16)
         //   carry: MAX_CEQS · CBC(2) · 16 rows                                   → CEQS·32
-        let padding_ops = (self.num_available_ops - index) as u64;
+        // Capacity of *this* config's air, taken from the trace: the configs come in two heights
+        // and hold a different number of operations each.
+        let padding_ops = (num_rows / ARITH_EQ_ROWS_BY_OP - index) as u64;
         let q_hsc_per_op = R::QS as u64;
         let chunk_per_op = 96 + R::QS as u64 * 15 + if R::USE_S { 16 } else { 0 };
         let carry_per_op = R::CEQS as u64 * 32;

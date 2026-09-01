@@ -2,9 +2,9 @@ use proofman_fields::PrimeField64;
 use std::sync::Arc;
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{BabyJubJubTrace, BabyJubJubTraceRowOps};
+use zisk_pil::{BabyJubJubTraceRowOps, ZISK_AIRGROUP_ID};
 use zisk_precomp_arith_eq::ArithEqLtTableSM;
 
 use crate::{
@@ -14,10 +14,10 @@ use crate::{
 use rayon::prelude::*;
 
 /// The `BabyJubJubSM` struct encapsulates the logic of the BabyJubJub State Machine.
+///
+/// Nothing here depends on the height of the air: the capacity is taken from the trace each call
+/// builds, so a taller sibling would need no change.
 pub struct BabyJubJubSM<F: PrimeField64> {
-    /// Number of available babyjubjub operations in the trace.
-    pub num_available_ops: usize,
-
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
@@ -45,7 +45,6 @@ struct BabyJubJubStepAddr {
 impl<F: PrimeField64> BabyJubJubSM<F> {
     /// Creates a new BabyJubJub State Machine instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
-        let num_available_ops = BabyJubJubTrace::<()>::NUM_ROWS / BABYJUBJUB_ROWS_BY_OP;
         let p2_22 = 1 << 22;
         let q_hsc_range_id = std.get_range_id(0, p2_22 - 1, None).expect("Failed to get range ID");
         let chunk_range_id = std.get_range_id(0, 0xFFFF, None).expect("Failed to get range ID");
@@ -55,14 +54,7 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
         let table_id =
             std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
-        Arc::new(Self {
-            std,
-            num_available_ops,
-            q_hsc_range_id,
-            chunk_range_id,
-            carry_range_id,
-            table_id,
-        })
+        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
     }
 
     fn expand_addr_step_on_trace<R: BabyJubJubTraceRowOps<F>>(
@@ -214,13 +206,20 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
     }
 
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
-    pub fn compute_witness<R: BabyJubJubTraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<
+        R: BabyJubJubTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<BabyJubJubInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = BabyJubJubTrace::<R>::new_from_vec(trace_buffer)?;
+        let mut trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let num_rows_needed = total_inputs * BABYJUBJUB_ROWS_BY_OP;
@@ -263,7 +262,8 @@ impl<F: PrimeField64> BabyJubJubSM<F> {
             }
         });
 
-        let padding_ops = (self.num_available_ops - index) as u64;
+        // Capacity of the air this call builds, so a taller sibling would need no change here.
+        let padding_ops = (num_rows / BABYJUBJUB_ROWS_BY_OP - index) as u64;
         self.std.range_check(self.q_hsc_range_id, 0, 7 * padding_ops);
         self.std.range_check(self.chunk_range_id, 0, 281 * padding_ops);
         self.std.range_check(self.carry_range_id, 0, 224 * padding_ops);
