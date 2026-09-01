@@ -30,6 +30,8 @@ pub(crate) use alloc_crate as alloc_extern;
 
 mod profile;
 #[cfg(zisk_guest)]
+pub use dma::*;
+#[cfg(zisk_guest)]
 pub use fcall::*;
 pub mod io;
 pub use profile::*;

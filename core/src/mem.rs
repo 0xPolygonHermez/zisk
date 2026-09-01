@@ -100,7 +100,7 @@
 //! * The third RW memory region, the general-purpose RAM that follows the output region, can be
 //!   used during the program execution as general purpose memory.
 
-use crate::{M16, M3, M32, M8, REG_FIRST, REG_LAST};
+use crate::{MemSnapshots, M16, M3, M32, M8, REG_FIRST, REG_LAST};
 use core::fmt;
 
 /// Fist input data memory address
@@ -159,6 +159,9 @@ pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 pub const UART_ADDR: u64 = SYS_ADDR + 0x200;
 /// Extra parameters of repcompiles are stored in fixed memory area (256 bytes => 32 parameters)
 pub const EXTRA_PARAMS_ADDR: u64 = SYS_ADDR + 0x0F00;
+/// Second extra parameter slot, where the `mt` DMA operations read the temporal reference of their
+/// source from
+pub const EXTRA_PARAMS_TEMPORAL_REF_ADDR: u64 = EXTRA_PARAMS_ADDR + 8;
 /// Float registers first address
 pub const FREG_FIRST: u64 = SYS_ADDR + 0x1000;
 /// CSR memory address; contains control and status registers
@@ -227,13 +230,20 @@ pub struct Mem {
     pub read_sections: Vec<MemSection>,
     pub write_section: MemSection,
     pub free_input: u64,
+    /// Copies of memory regions taken by `execute_advice`, read back by the `mt` DMA operations
+    pub snapshots: MemSnapshots,
 }
 
 impl Mem {
     /// Memory structure constructor
     pub fn new() -> Mem {
-        //println!("Mem::new()");
-        Mem { read_sections: Vec::new(), write_section: MemSection::new(), free_input: 0 }
+        //println!("Mem::new()")
+        Mem {
+            read_sections: Vec::new(),
+            write_section: MemSection::new(),
+            free_input: 0,
+            snapshots: MemSnapshots::new(),
+        }
     }
 
     /// Adds a read section to the memory structure
@@ -997,6 +1007,108 @@ impl Mem {
 
         let count = count as usize;
         dst_section.buffer[dst_offset..dst_offset + count].fill(data);
+    }
+
+    /// Captures the current contents of `[addr, addr + count)` and tags them with `temporal_ref`,
+    /// so that a later `mt` DMA operation carrying the same temporal reference can read them back
+    /// after the region has been overwritten.  This is what `execute_advice` does.
+    ///
+    /// The captured range is widened outwards to its 64-bit envelope, because the `mt` operations
+    /// read their source as whole 64-bit words.
+    pub fn capture_snapshot(&mut self, temporal_ref: u64, addr: u64, count: u64) {
+        if count == 0 {
+            return;
+        }
+        let addr64 = addr & !0x07;
+        let end64 = (addr + count).next_multiple_of(8);
+        let count64 = end64 - addr64;
+
+        let data = {
+            let section = self.get_readable_section(addr64, count64);
+            let offset = (addr64 - section.start) as usize;
+            section.buffer[offset..offset + count64 as usize].to_vec()
+        };
+        self.snapshots.capture(temporal_ref, addr64, data);
+    }
+
+    /// Returns the snapshot bytes of `[addr, addr + count)` as of `temporal_ref`, panicking with a
+    /// description of what is available when the range is not covered.  A miss is always a guest
+    /// bug: a missing `execute_advice`, a temporal reference that has already been evicted, or an
+    /// advised range narrower than the range being read.
+    pub fn read_snapshot(&self, temporal_ref: u64, addr: u64, count: u64) -> &[u8] {
+        match self.snapshots.read(temporal_ref, addr, count) {
+            Some(data) => data,
+            None => panic!(
+                "Mem::read_snapshot() cannot serve 0x{addr:08X}..0x{:08X} ({count} bytes): {}. \
+                 The guest must call execute_advice() on the whole source range right after \
+                 requesting the temporal reference",
+                addr + count,
+                self.snapshots.describe(temporal_ref)
+            ),
+        }
+    }
+
+    /// `memcpy()` whose source is read from the snapshot taken at `temporal_ref` instead of from
+    /// the current memory contents
+    pub fn memcpy_from_snapshot(&mut self, dst: u64, temporal_ref: u64, src: u64, count: u64) {
+        if count == 0 {
+            return;
+        }
+        let data = self.read_snapshot(temporal_ref, src, count).to_vec();
+        let dst_section = self.get_writeable_section(dst, count);
+        let dst_offset = (dst - dst_section.start) as usize;
+        dst_section.buffer[dst_offset..dst_offset + count as usize].copy_from_slice(&data);
+    }
+
+    /// `memcmp()` whose `b` side is read from the snapshot taken at `temporal_ref` instead of from
+    /// the current memory contents.  Returns the same `(result, effective_count)` pair as
+    /// [`Mem::memcmp`].
+    pub fn memcmp_from_snapshot(
+        &self,
+        a: u64,
+        temporal_ref: u64,
+        b: u64,
+        count: u64,
+    ) -> (u64, usize) {
+        if count == 0 {
+            return (0, 0);
+        }
+
+        let count_usize = count as usize;
+        let a_section = self.get_readable_section(a, count);
+        let a_offset = (a - a_section.start) as usize;
+        let b_data = self.read_snapshot(temporal_ref, b, count);
+
+        let a_data = &a_section.buffer[a_offset..a_offset + count_usize];
+        for (i, (&byte_a, &byte_b)) in a_data.iter().zip(b_data.iter()).enumerate() {
+            if byte_a != byte_b {
+                let diff = (byte_a as i64) - (byte_b as i64);
+                return (diff as u64, i + 1);
+            }
+        }
+        (0, count_usize)
+    }
+
+    /// `push_from_mem()` reading from the snapshot taken at `temporal_ref`.  `addr` must be 64-bit
+    /// aligned, which is always the case for the source words the `mt` operations record in the
+    /// minimal trace.
+    pub fn push_from_snapshot(
+        &self,
+        data: &mut Vec<u64>,
+        temporal_ref: u64,
+        addr: u64,
+        count: u64,
+    ) {
+        if count == 0 {
+            return;
+        }
+        debug_assert_eq!(addr & 0x07, 0);
+        debug_assert_eq!(count & 0x07, 0);
+
+        let bytes = self.read_snapshot(temporal_ref, addr, count);
+        for word in bytes.chunks_exact(8) {
+            data.push(u64::from_le_bytes(word.try_into().unwrap()));
+        }
     }
 
     /// Reads `count` bytes from memory starting at `addr` and appends them as u64 values to `data`.

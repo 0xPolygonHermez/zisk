@@ -134,6 +134,11 @@ pub struct InstContext {
 
     /// Input data length, stored in the context to be used by the FCALL_INPUT_READY_ID fcall
     pub input_len: u64,
+
+    /// Last temporal reference requested by the guest, i.e. the `step` of the most recent `flag`
+    /// operation tagged with [`TEMPORAL_REF_REQUEST_TAG`].  `execute_advice` tags the memory copy
+    /// it takes with this value, and the `mt` DMA operations look their source up by it.
+    pub temporal_ref: u64,
 }
 
 /// RisK instruction context implementation
@@ -160,6 +165,7 @@ impl InstContext {
             extended_arg: 0,
             stats_hint: 0,
             input_len: 0,
+            temporal_ref: 0,
         }
     }
 

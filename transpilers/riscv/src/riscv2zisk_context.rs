@@ -4,22 +4,24 @@
 
 use crate::{riscv_interpreter, RiscvInst, RiscvInstName};
 use zisk_definitions::{
-    SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID, SYSCALL_ARITH384_MOD_ID,
-    SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID, SYSCALL_BLS12_381_COMPLEX_MUL_ID,
-    SYSCALL_BLS12_381_COMPLEX_SUB_ID, SYSCALL_BLS12_381_CURVE_ADD_ID,
-    SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID, SYSCALL_BN254_COMPLEX_MUL_ID,
-    SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID, SYSCALL_BN254_CURVE_DBL_ID,
-    SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID, SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID,
+    EXECUTE_ADVICE_MARKER_ID, SYSCALL_ADD256_ID, SYSCALL_ARITH256_ID, SYSCALL_ARITH256_MOD_ID,
+    SYSCALL_ARITH384_MOD_ID, SYSCALL_BLAKE2B_ROUND_ID, SYSCALL_BLS12_381_COMPLEX_ADD_ID,
+    SYSCALL_BLS12_381_COMPLEX_MUL_ID, SYSCALL_BLS12_381_COMPLEX_SUB_ID,
+    SYSCALL_BLS12_381_CURVE_ADD_ID, SYSCALL_BLS12_381_CURVE_DBL_ID, SYSCALL_BN254_COMPLEX_ADD_ID,
+    SYSCALL_BN254_COMPLEX_MUL_ID, SYSCALL_BN254_COMPLEX_SUB_ID, SYSCALL_BN254_CURVE_ADD_ID,
+    SYSCALL_BN254_CURVE_DBL_ID, SYSCALL_DMA_INPUTCPY_ID, SYSCALL_DMA_MEMCMP_ID,
+    SYSCALL_DMA_MEMCPY_ID, SYSCALL_DMA_MEMSET_ID, SYSCALL_DMA_MTCMP_ID, SYSCALL_DMA_MTCPY_ID,
     SYSCALL_JUMP_DEST_ID, SYSCALL_KECCAKF_ID, SYSCALL_POSEIDON1_ID, SYSCALL_POSEIDON2_ID,
     SYSCALL_PROFILE_ID, SYSCALL_SECP256K1_ADD_ID, SYSCALL_SECP256K1_DBL_ID,
     SYSCALL_SECP256R1_ADD_ID, SYSCALL_SECP256R1_DBL_ID, SYSCALL_SHA256F_ID,
+    SYSCALL_TEMPORAL_REF_ADVICE_ID, SYSCALL_TEMPORAL_REF_ID, TEMPORAL_REF_REQUEST_TAG,
 };
 
 use zisk_core::zisk_rom::ZiskRom;
 use zisk_core::{
     convert_vector, ZiskInstBuilder, ARCH_ID_CSR_ADDR, ARCH_ID_ZISK, CSR_ADDR, EXTRA_PARAMS_ADDR,
-    INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR, ROM_ADDR_MAX, ROM_ENTRY,
-    ROM_EXIT,
+    EXTRA_PARAMS_TEMPORAL_REF_ADDR, INPUT_ADDR, MAX_ZISK_OS_ROM_ADDR, MTVEC, OUTPUT_ADDR, ROM_ADDR,
+    ROM_ADDR_MAX, ROM_ENTRY, ROM_EXIT,
 };
 
 #[cfg(feature = "float")]
@@ -91,11 +93,16 @@ pub struct Riscv2ZiskContext<'a> {
     /// - insert the created instructions in the rom.insts map, using the instruction pc as key
     pub rom: &'a mut ZiskRom,
     pub deprecated: bool,
+    /// Address just past the last `execute_advice` pattern recognised so far.  The two `addi`
+    /// instructions the pattern swallows are still transpiled one by one (the jump skips over them
+    /// at run time), so this keeps the closing marker from being mistaken for the start of another
+    /// pattern.
+    advice_pattern_end: u64,
 }
 
 impl<'a> Riscv2ZiskContext<'a> {
     pub fn new(rom: &'a mut ZiskRom) -> Self {
-        Self { rom, deprecated: false }
+        Self { rom, deprecated: false, advice_pattern_end: 0 }
     }
     fn notify_deprecated(&mut self, msg: &str) {
         if !self.deprecated {
@@ -160,7 +167,9 @@ impl<'a> Riscv2ZiskContext<'a> {
 
             // I.2. Integer Computational (Register-Immediate)
             RiscvInstName::Addi => {
-                if riscv_instruction.rd == 0 {
+                if self.transpile_execute_advice_pattern(riscv_instruction, next_instructions) {
+                    // the marker addi became the execute_advice operation
+                } else if riscv_instruction.rd == 0 {
                     if riscv_instruction.rs1 == 0 && riscv_instruction.rs2 == 0 {
                         // r0 = r0 + imm(0) = 0
                         self.nop(riscv_instruction, 4);
@@ -1731,6 +1740,14 @@ impl<'a> Riscv2ZiskContext<'a> {
                 assert!(!next_instructions.is_empty());
                 return self.transpile_dma_memcpy_memcmp_pattern(i, next_instructions);
             }
+            SYSCALL_DMA_MTCPY_ID | SYSCALL_DMA_MTCMP_ID => {
+                assert!(!next_instructions.is_empty());
+                return self.transpile_dma_mtcpy_mtcmp_pattern(i, next_instructions);
+            }
+            SYSCALL_TEMPORAL_REF_ADVICE_ID => {
+                assert!(!next_instructions.is_empty());
+                return self.transpile_temporal_ref_advice_pattern(i, next_instructions);
+            }
             SYSCALL_DMA_MEMSET_ID => {
                 assert!(!next_instructions.is_empty());
                 return self.transpile_dma_memset_pattern(i, next_instructions);
@@ -1879,7 +1896,18 @@ impl<'a> Riscv2ZiskContext<'a> {
         } else if i.rs1 == 0 {
             let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
             zib.src_a("imm", 0, false);
-            if i.csr == CSR_FCALL_GET_ADDR as u32 {
+            if i.csr == SYSCALL_TEMPORAL_REF_ID as u32 {
+                // A temporal reference is simply the step of this instruction, which the flag
+                // operation leaves in c.  The tag in b is what marks this flag as a *request*, so
+                // that the execute_advice that follows knows which reference to bind its copy to;
+                // it is out of reach of the 12-bit immediate that feeds b on an ordinary hint.
+                zib.src_b("imm", TEMPORAL_REF_REQUEST_TAG, false);
+                zib.op("flag").unwrap();
+                zib.verbose(&format!(
+                    "csrrs r{}, 0x{:X}, r0 => temporal_ref (flag: c = step)",
+                    i.rd, i.csr
+                ));
+            } else if i.csr == CSR_FCALL_GET_ADDR as u32 {
                 zib.src_b("mem", INPUT_ADDR, false);
                 zib.op("fcall_get").unwrap();
                 zib.verbose(&format!(
@@ -2606,6 +2634,307 @@ impl<'a> Riscv2ZiskContext<'a> {
                         consecutive add/addi (next[0]:{})",
             i.csr, i.rom_address, next_0
         );
+    }
+
+    /// Recognises the `execute_advice` pattern and, when it matches, emits the operation in place
+    /// of the leading marker.  Returns whether it matched.
+    ///
+    /// ```text
+    ///  pc:    addi x0, x0, ID                ===>  execute_advice x0, reg(address), count ─┐
+    ///  pc+4:  addi x0, reg(address), count         addi x0, reg(address), count           │ jmp
+    ///  pc+8:  addi x0, x0, ID                      addi x0, x0, ID                        │ pc+12
+    ///  pc+12: ..........                           ..........   <─────────────────────────┘
+    /// ```
+    ///
+    /// The middle instruction is, on its own, an ordinary hint `addi`, so the two markers are what
+    /// make the pattern recognisable.  A register count is accepted too (`add x0, reg(address),
+    /// reg(count)` in the middle), which is the only way past the 12-bit reach of an immediate.
+    fn transpile_execute_advice_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+    ) -> bool {
+        // The two instructions a previous match swallowed are still transpiled one by one; the
+        // closing marker must not be taken for the start of another pattern.
+        if i.rom_address < self.advice_pattern_end {
+            return false;
+        }
+        if i.rd != 0 || i.rs1 != 0 || i.imm != EXECUTE_ADVICE_MARKER_ID {
+            return false;
+        }
+        if next_instructions.len() < 3 {
+            return false;
+        }
+        let middle = &next_instructions[0];
+        let closing = &next_instructions[1];
+        if closing.inst_name != RiscvInstName::Addi
+            || closing.rd != 0
+            || closing.rs1 != 0
+            || closing.imm != EXECUTE_ADVICE_MARKER_ID
+        {
+            return false;
+        }
+
+        let next_pc = next_instructions[2].rom_address;
+        let (count, is_count_an_imm) = match middle.inst_name {
+            RiscvInstName::Addi => (middle.imm as u64, true),
+            RiscvInstName::Add => (middle.rs2 as u64, false),
+            _ => panic!(
+                "Invalid execute_advice pattern at address 0x{:08x}: the middle instruction must \
+                 be an add/addi (found {})",
+                i.rom_address,
+                middle.inst_name.as_str()
+            ),
+        };
+        assert!(
+            middle.rd == 0 && middle.rs1 != 0,
+            "Invalid execute_advice pattern at address 0x{:08x}: the middle instruction must be \
+             `add[i] x0, reg(address), count` (found rd=r{}, rs1=r{})",
+            i.rom_address,
+            middle.rd,
+            middle.rs1
+        );
+        assert!(
+            !is_count_an_imm || middle.imm > 0,
+            "Invalid execute_advice pattern at address 0x{:08x}: count must be positive (found {})",
+            i.rom_address,
+            middle.imm
+        );
+
+        self.advice_pattern_end = next_pc;
+        self.create_extended_precompiles_op(
+            i,
+            "execute_advice",
+            middle.rs1,
+            count,
+            0,
+            0,
+            is_count_an_imm,
+            next_pc,
+        );
+        true
+    }
+
+    /// Transpiles the fused "open a temporal reference and advise one region under it" pattern.
+    ///
+    /// Saves a step over the two-instruction form: the `flag` request and the `execute_advice`
+    /// each cost one, this costs one for both.  The reference is handed back in `rd`, which is what
+    /// the guest stores.
+    ///
+    /// ```text
+    ///  i:  csrrs rd, 0x820, reg(addr)  ===>  execute_advice_ref rd, reg(addr), count ─┐
+    ///  n0: add[i] x0, reg(addr), count       add[i] x0, reg(addr), count              │ jmp
+    ///  n1: ..........                        ..........   <──────────────────────────┘
+    /// ```
+    ///
+    /// The count is an immediate with `addi` and a register with `add`, exactly as in the DMA
+    /// patterns.  For more than one region under the same reference, use the two-instruction form:
+    /// this leaves the reference open, so plain `execute_advice`s can keep adding to it.
+    fn transpile_temporal_ref_advice_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+    ) {
+        if i.imme == 0 {
+            let n0 = &next_instructions[0];
+            let is_immediate_count = n0.inst_name == RiscvInstName::Addi;
+            if (is_immediate_count || n0.inst_name == RiscvInstName::Add) && n0.rd == 0 {
+                let next_pc = next_instructions[1].rom_address;
+                let count = if is_immediate_count { n0.imm as u64 } else { n0.rs2 as u64 };
+                self.create_extended_precompiles_op(
+                    i,
+                    "execute_advice_ref",
+                    n0.rs1,
+                    count,
+                    i.rd,
+                    next_pc as i64 - i.rom_address as i64,
+                    is_immediate_count,
+                    next_pc,
+                );
+                return;
+            }
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as a temporal-reference \
+             advice with a consecutive add/addi (address, count) (next[0]:{})",
+            i.csr, i.rom_address, next_0
+        );
+    }
+
+    /// Transpiles the `mt` DMA family, i.e. the memcpy/memcmp variants whose source is read as it
+    /// was at a temporal reference instead of as it is now.
+    ///
+    /// They take one parameter more than their `mem` counterparts, the temporal reference, which
+    /// travels in the second extra-parameter slot; hence the extra instruction in the pattern.
+    ///
+    /// ```text
+    ///  i:  csrrs rd, 0x81D/E, reg(src)  ===>  sd reg(count), [EXTRA_PARAMS]   ────┐
+    ///                                         sd reg(tref), [EXTRA_PARAMS + 8] ───┤ internal
+    ///                                         mtcxx rd, reg(dst), reg(src)  ──────┤
+    ///  n0: add  x0, reg(dst), reg(count)       add  x0, reg(dst), reg(count)       │ jmp
+    ///  n1: add  x0, reg(tref), x0              add  x0, reg(tref), x0              │ next[2]
+    ///  n2: ..........                          ..........   <─────────────────────┘
+    /// ```
+    ///
+    /// With an `addi` in `n0` the count is an immediate and travels in the extended argument, which
+    /// selects the `x` variants (`dma_xmtcpy` / `dma_xmtcmp`) and drops the first store.
+    fn transpile_dma_mtcpy_mtcmp_pattern(
+        &mut self,
+        i: &RiscvInst,
+        next_instructions: &[RiscvInst],
+    ) {
+        let is_cpy = i.csr == SYSCALL_DMA_MTCPY_ID as u32;
+        if i.imme == 0 && next_instructions.len() > 2 {
+            let n0 = &next_instructions[0];
+            let n1 = &next_instructions[1];
+            let is_immediate_count = n0.inst_name == RiscvInstName::Addi;
+            if (is_immediate_count || n0.inst_name == RiscvInstName::Add)
+                && n0.rd == 0
+                && n1.inst_name == RiscvInstName::Add
+                && n1.rd == 0
+                && n1.rs1 != 0
+            {
+                let rd = i.rd;
+                let src = i.rs1;
+                let dst = n0.rs1;
+                let tref = n1.rs1;
+                let next_pc = next_instructions[2].rom_address;
+
+                if is_immediate_count {
+                    let op = if is_cpy { "dma_xmtcpy" } else { "dma_xmtcmp" };
+                    self.create_precompiles_temporal_ref_op(
+                        i,
+                        next_pc,
+                        rd,
+                        op,
+                        dst,
+                        src,
+                        tref,
+                        n0.imm as i64,
+                    );
+                } else {
+                    let op = if is_cpy { "dma_mtcpy" } else { "dma_mtcmp" };
+                    self.create_precompiles_quad_param_op(
+                        i, next_pc, rd, op, dst, src, n0.rs2, tref,
+                    );
+                }
+                return;
+            }
+        }
+        let next_0 = next_instructions.first().map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        let next_1 = next_instructions.get(1).map(|inst| inst.inst_name.as_str()).unwrap_or("");
+        panic!(
+            "Invalid use of CSR (0x{:03X}) at address 0x{:08x}, must be used as mtcpy/mtcmp with a \
+             consecutive add/addi (dst, count) and add (tref) (next[0]:{} next[1]:{})",
+            i.csr, i.rom_address, next_0, next_1
+        );
+    }
+
+    /// Creates a Zisk `mt` DMA call whose count comes from a register: both the count and the
+    /// temporal reference have to be staged in the extra-parameters area first.
+    #[allow(clippy::too_many_arguments)]
+    fn create_precompiles_quad_param_op(
+        &mut self,
+        i: &RiscvInst,
+        next_pc: u64,
+        rd: u32,
+        op: &str,
+        rs1: u32,
+        rs2: u32,
+        rs_count: u32,
+        rs_tref: u32,
+    ) {
+        let rom_address = i.rom_address;
+        let internal_address_1 = self.rom.get_internal_address();
+        let internal_address_2 = self.rom.get_internal_address();
+        {
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", rs_count as u64, false);
+            zib.op("copyb").unwrap();
+            zib.store("mem", EXTRA_PARAMS_ADDR as i64, false, false);
+            zib.set_next_internal_address(internal_address_1);
+            let jump_address = internal_address_1 as i64 - rom_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!(
+                "sd r{}, (0x{:X}) (param 0x{:03X}) 1/3",
+                rs_count, EXTRA_PARAMS_ADDR, i.csr
+            ));
+            zib.build(self.rom);
+        }
+        {
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", rs_tref as u64, false);
+            zib.op("copyb").unwrap();
+            zib.store("mem", EXTRA_PARAMS_TEMPORAL_REF_ADDR as i64, false, false);
+            zib.set_next_internal_address(internal_address_2);
+            let jump_address = internal_address_2 as i64 - internal_address_1 as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!(
+                "sd r{}, (0x{:X}) (temporal_ref 0x{:03X}) 2/3",
+                rs_tref, EXTRA_PARAMS_TEMPORAL_REF_ADDR, i.csr
+            ));
+            zib.build(self.rom);
+        }
+        {
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_2, rom_address);
+            zib.src_a("reg", rs1 as u64, false);
+            zib.src_b("reg", rs2 as u64, false);
+            zib.op(op).unwrap();
+            zib.store("reg", rd as i64, false, false);
+            let jump_address = next_pc as i64 - internal_address_2 as i64;
+            // jmp_offset1 is 0 because it is a precompiled and it is used as extended param
+            zib.j(0, jump_address);
+            zib.verbose(&format!("{} r{}, r{}, r{} 3/3", op, rd, rs1, rs2));
+            zib.build(self.rom);
+        }
+    }
+
+    /// Creates a Zisk `mt` DMA call whose count is an immediate (the `x` variants): only the
+    /// temporal reference has to be staged in the extra-parameters area, the count travels in the
+    /// extended argument.
+    #[allow(clippy::too_many_arguments)]
+    fn create_precompiles_temporal_ref_op(
+        &mut self,
+        i: &RiscvInst,
+        next_pc: u64,
+        rd: u32,
+        op: &str,
+        rs1: u32,
+        rs2: u32,
+        rs_tref: u32,
+        count: i64,
+    ) {
+        let rom_address = i.rom_address;
+        let internal_address_1 = self.rom.get_internal_address();
+        {
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
+            zib.src_a("imm", 0, false);
+            zib.src_b("reg", rs_tref as u64, false);
+            zib.op("copyb").unwrap();
+            zib.store("mem", EXTRA_PARAMS_TEMPORAL_REF_ADDR as i64, false, false);
+            zib.set_next_internal_address(internal_address_1);
+            let jump_address = internal_address_1 as i64 - rom_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!(
+                "sd r{}, (0x{:X}) (temporal_ref 0x{:03X}) 1/2",
+                rs_tref, EXTRA_PARAMS_TEMPORAL_REF_ADDR, i.csr
+            ));
+            zib.build(self.rom);
+        }
+        {
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
+            zib.src_a("reg", rs1 as u64, false);
+            zib.src_b("reg", rs2 as u64, false);
+            zib.op(op).unwrap();
+            zib.store("reg", rd as i64, false, false);
+            let jump_address = next_pc as i64 - internal_address_1 as i64;
+            zib.j(count, jump_address);
+            zib.verbose(&format!("{} r{}, r{}, r{}, {count} 2/2", op, rd, rs1, rs2));
+            zib.build(self.rom);
+        }
     }
 
     fn transpile_dma_inputcpy_pattern(&mut self, i: &RiscvInst, next_instructions: &[RiscvInst]) {

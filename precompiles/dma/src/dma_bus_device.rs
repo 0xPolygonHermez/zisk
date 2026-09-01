@@ -195,6 +195,11 @@ impl DmaCounterInputGen {
             }
             ZiskOp::DMA_INPUTCPY => self.incr_counters(encoded, DMA_COUNTER_INPUTCPY, step),
             ZiskOp::DMA_XMEMSET => self.incr_counters(encoded, DMA_COUNTER_MEMSET, step),
+            // The mt family reads its source out of the snapshot store that only the Rust
+            // emulator keeps, so there is no state machine behind it yet.
+            ZiskOp::DMA_MTCPY | ZiskOp::DMA_MTCMP | ZiskOp::DMA_XMTCPY | ZiskOp::DMA_XMTCMP => {
+                panic!("DMA Cmd 0x{op:02X} (mt family) is emulator-only, it cannot be proven yet")
+            }
             _ => panic!("Unknown DMA Cmd 0x{op:02X}"),
         }
     }

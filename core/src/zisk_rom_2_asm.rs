@@ -6441,6 +6441,20 @@ impl ZiskRom2Asm {
             ZiskOp::Profile => {
                 unimplemented!("Internal opcode Profile");
             }
+            // The mt DMA family and its execute_advice hint are, for now, emulator-only: they need
+            // the snapshot store that lives in `Mem`, and `flag` would have to return `step` here
+            // too (it is constant-folded to 0 by this generator).
+            ZiskOp::ExecuteAdvice
+            | ZiskOp::ExecuteAdviceRef
+            | ZiskOp::DmaMtCpy
+            | ZiskOp::DmaMtCmp
+            | ZiskOp::DmaXMtCpy
+            | ZiskOp::DmaXMtCmp => {
+                panic!(
+                    "opcode {:?} not supported in assembly emulator, use ziskemu instead",
+                    inst.op
+                );
+            }
             ZiskOp::AddUW
             | ZiskOp::Sh1add
             | ZiskOp::Sh1addUW

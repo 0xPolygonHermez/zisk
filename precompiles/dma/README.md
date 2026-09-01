@@ -58,3 +58,11 @@ does not rely on link order to make acceleration take effect.
 > C/Rust application that already provides its own libc `mem*`, the host controls
 > final linking. Use `--whole-archive` (or an equivalent forced-inclusion flag)
 > if you want ziskos' accelerated definitions to win there.
+
+## Related
+
+[`MT_OPERATIONS.md`](./MT_OPERATIONS.md) documents the `mt` family — `memcpy` and
+`memcmp` variants that read their source as it was at an earlier point of the
+execution rather than as it is now. Unlike the operations above, that family is
+emulation-only and parked; the document explains the mechanism and why it stopped
+there.

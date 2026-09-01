@@ -496,15 +496,25 @@ define_ops! {
     // input_size = 8: one synthesized minimal-trace header word (count + number of loaded
     // source words), followed by the loaded words themselves via data_ext_len.
     (JumpDest, "jump_dest", Evm, JUMP_DEST_COST, 0xc0, 8, 0, opc_jump_dest, op_jump_dest, ops_jump_dest),
-    // opcpdes 0xc1-0xcf are available
+    // execute_advice is a hint, not a proven operation: it only tells the emulator to keep a copy
+    // of a memory region for a later mt DMA operation, so it costs nothing and needs no SM.
+    (ExecuteAdvice, "execute_advice", Internal, INTERNAL_COST, 0xc1, 0, 0, opc_execute_advice, op_execute_advice, ops_none),
+    (ExecuteAdviceRef, "execute_advice_ref", Internal, INTERNAL_COST, 0xc2, 0, 0, opc_execute_advice_ref, op_execute_advice_ref, ops_none),
+    // opcpdes 0xc2-0xcf are available
 
     (DmaMemCpy, "dma_memcpy", Dma, DMA_MEMCPY_COST, 0xd0, 8, 0, opc_dma_memcpy, op_dma_memcpy, ops_dma_memcpy),
     (DmaMemCmp, "dma_memcmp", Dma, DMA_MEMCMP_COST, 0xd1, 16, 0, opc_dma_memcmp, op_dma_memcmp, ops_dma_memcmp),
     (DmaInputCpy, "dma_inputcpy", Dma, DMA_INPUTCPY_COST, 0xd2, 8, 0, opc_dma_inputcpy, op_dma_inputcpy, ops_dma_inputcpy),
+    // The mt family: memcpy/memcmp reading their source as it was at a temporal reference rather
+    // than as it is now.  Emulator-only for now, there is no state machine behind them yet.
+    (DmaMtCpy, "dma_mtcpy", Dma, DMA_MEMCPY_COST, 0xd3, 8, 0, opc_dma_mtcpy, op_dma_mtcpy, ops_dma_mtcpy),
+    (DmaMtCmp, "dma_mtcmp", Dma, DMA_MEMCMP_COST, 0xd4, 16, 0, opc_dma_mtcmp, op_dma_mtcmp, ops_dma_mtcmp),
+    (DmaXMtCpy, "dma_xmtcpy", Dma, DMA_MEMCPY_COST, 0xd5, 8, 0, opc_dma_xmtcpy, op_dma_xmtcpy, ops_dma_xmtcpy),
     (DmaXMemCpy, "dma_xmemcpy", Dma, DMA_MEMCPY_COST, 0xd6, 8, 0, opc_dma_xmemcpy, op_dma_xmemcpy, ops_dma_xmemcpy),
     (DmaXMemCmp, "dma_xmemcmp", Dma, DMA_MEMCMP_COST, 0xd7, 16, 0, opc_dma_xmemcmp, op_dma_xmemcmp, ops_dma_xmemcmp),
+    (DmaXMtCmp, "dma_xmtcmp", Dma, DMA_MEMCMP_COST, 0xd8, 16, 0, opc_dma_xmtcmp, op_dma_xmtcmp, ops_dma_xmtcmp),
     (DmaXMemSet, "dma_xmemset", Dma, DMA_MEMSET_COST, 0xd9, 8, 0, opc_dma_xmemset, op_dma_xmemset, ops_dma_xmemset),
-    // opcodes 0xd2-0xd9 future reserved for dma operations (memset, memcpy256, memcmp256)
+    // opcodes 0xd0-0xd9 are all taken now
     // opcodes 0xda-0xdf reserved for dma extra operations (costs)
     // opcodes 0xe0 is available
     (Profile, "profile", Profile, 0, 0xe0, 0, 0, opc_profile, op_profile, ops_profile),

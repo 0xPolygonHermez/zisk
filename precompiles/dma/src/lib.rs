@@ -39,3 +39,20 @@ pub use dma_planner::*;
 pub use dma_pre_post::*;
 pub use dma_strategy::*;
 pub use dma_unaligned::*;
+
+#[cfg(test)]
+mod dma_mt_tests {
+    use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::ELF_DMA_MT;
+
+    /// Drives the `mt` DMA family (`dma_mtcpy`, `dma_mtcmp` and their extended variants) together
+    /// with the `execute_advice` hint and the temporal-reference request from a guest: the guest
+    /// asserts every result itself, so a wrong lowering or a wrong emulation surfaces as a failed
+    /// emulation.
+    ///
+    /// The mt family has no state machine yet, so this covers the emulator only.
+    #[test]
+    fn dma_mt_tests() {
+        ELF_DMA_MT.run_emulation(ZiskStdin::new(), None).expect("dma mt guest emulation failed");
+    }
+}

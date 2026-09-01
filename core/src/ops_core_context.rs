@@ -1,12 +1,27 @@
 use crate::ops_core::*;
 use crate::InstContext;
+use zisk_definitions::TEMPORAL_REF_REQUEST_TAG;
 
 /* Internal instructions */
 
 /// InstContext-based wrapper over op_flag()
+///
+/// `c` carries the current `step`, which is what makes the `flag` operation usable as the guest's
+/// source of temporal references for the `mt` DMA operations.  Every other user of `flag` (nop,
+/// hint, jal) either discards `c` or stores the pc instead, so this is transparent to them.
+///
+/// A `flag` whose `b` is [`TEMPORAL_REF_REQUEST_TAG`] is a temporal reference *request*: it is
+/// recorded in the context so that the `execute_advice` that follows knows which temporal
+/// reference to tag its memory copy with.  The tag is out of reach of the 12-bit immediate that
+/// feeds `b` on a hint `addi`, so an ordinary hint can never be mistaken for a request.
 #[inline(always)]
 pub fn opc_flag(ctx: &mut InstContext) {
-    (ctx.c, ctx.flag) = op_flag(ctx.a, ctx.b);
+    let (_, flag) = op_flag(ctx.a, ctx.b);
+    ctx.c = ctx.step;
+    ctx.flag = flag;
+    if ctx.b == TEMPORAL_REF_REQUEST_TAG {
+        ctx.temporal_ref = ctx.step;
+    }
 }
 
 /// InstContext-based wrapper over op_copyb()

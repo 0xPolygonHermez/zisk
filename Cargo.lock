@@ -7668,6 +7668,7 @@ dependencies = [
  "zisk-pil",
  "zisk-precomp-common",
  "zisk-precomp-helpers",
+ "zisk-test-artifacts",
 ]
 
 [[package]]
