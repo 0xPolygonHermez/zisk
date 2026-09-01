@@ -5,13 +5,14 @@
 //! - [`uint256`] — Low-level 256-bit add, subtract, multiply, divide, and power.
 //!
 //! ## Hashing
-//! - [`blake2b`], [`keccak256`], [`sha256`], [`ripemd160`]
+//! - [`blake2b`], [`blake3`], [`keccak256`], [`sha256`], [`ripemd160`]
 //!
 //! ## Elliptic curves
 //! - [`secp256k1`], [`secp256r1`], [`bn254`], [`bls12_381`]
 
 mod bigint;
 mod blake2b;
+mod blake3;
 mod bls12_381;
 mod bn254;
 mod constants;
@@ -31,6 +32,7 @@ pub mod zkvm_io;
 // For public consumption
 pub use bigint::*;
 pub use blake2b::*;
+pub use blake3::*;
 pub use bls12_381::*;
 pub use bn254::*;
 pub use constants::*;

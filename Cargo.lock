@@ -2566,9 +2566,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermit-abi"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
+checksum = "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
 
 [[package]]
 name = "hex"
@@ -3961,7 +3961,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3972,7 +3972,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -3988,7 +3988,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "anyhow",
  "clap",
@@ -4014,7 +4014,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4232,7 +4232,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "bincode",
  "blake3",
@@ -4264,7 +4264,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "borsh",
  "colored",
@@ -4293,7 +4293,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
 ]
@@ -4301,7 +4301,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "anyhow",
  "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
@@ -4315,7 +4315,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4340,7 +4340,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4352,7 +4352,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4362,7 +4362,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
@@ -4380,7 +4380,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 
 [[package]]
 name = "proofman-starks-src"
@@ -4390,7 +4390,7 @@ source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-de
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4399,7 +4399,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4424,7 +4424,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#3c94a8040b458fe2bfcbb72ac9484e9caaa1f84e"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -7550,6 +7550,7 @@ dependencies = [
  "zisk-precomp-babyjubjub",
  "zisk-precomp-big-int",
  "zisk-precomp-blake2",
+ "zisk-precomp-blake3",
  "zisk-precomp-common",
  "zisk-precomp-dma",
  "zisk-precomp-evm",
@@ -7701,6 +7702,23 @@ dependencies = [
 
 [[package]]
 name = "zisk-precomp-blake2"
+version = "1.3.0-alpha"
+dependencies = [
+ "pil2-std-lib",
+ "proofman-common",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-util",
+ "rayon",
+ "tracing",
+ "zisk-common",
+ "zisk-core",
+ "zisk-pil",
+ "zisk-precomp-common",
+ "zisk-test-artifacts",
+]
+
+[[package]]
+name = "zisk-precomp-blake3"
 version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
@@ -7909,6 +7927,7 @@ dependencies = [
  "pil2-stark-recurser",
  "pil2-stark-setup",
  "proofman",
+ "proofman-common",
  "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
  "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
  "serde",

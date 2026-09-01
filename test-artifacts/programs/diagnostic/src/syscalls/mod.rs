@@ -2,6 +2,7 @@ mod arith256;
 mod arith384;
 mod babyjubjub;
 mod blake2;
+mod blake3;
 mod bls12_381;
 mod bn254;
 mod keccakf;
@@ -23,6 +24,7 @@ pub fn diagnostic_syscalls() {
     poseidon2::diagnostic_poseidon2();
     secp256k1::diagnostic_secp256k1();
     secp256r1::diagnostic_secp256r1();
+    blake3::diagnostic_blake3();
     sha256f::diagnostic_sha256f();
 
     println!("All system call diagnostics passed!");

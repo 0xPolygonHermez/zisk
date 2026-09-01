@@ -95,6 +95,7 @@ OTHER_OBJS = $(BUILD_DIR)/alt_bn128.o \
              $(BUILD_DIR)/poseidon2_goldilocks.o \
              $(BUILD_DIR)/poseidon1_goldilocks.o \
              $(BUILD_DIR)/blake2.o \
+             $(BUILD_DIR)/blake3.o \
              $(BUILD_DIR)/keccak.o \
              $(BUILD_DIR)/bcon_sha256.o
 
@@ -241,6 +242,9 @@ $(BUILD_DIR)/poseidon1_goldilocks.o: $(SRC_DIR)/poseidon1/poseidon1_goldilocks.c
 	gcc $(CFLAGS) $(INCLUDES) -I$(SRC_DIR)/poseidon2 -c $< -o $@
 
 $(BUILD_DIR)/blake2.o: $(SRC_DIR)/blake2/blake2.cpp $(SRC_DIR)/blake2/blake2.hpp | $(BUILD_DIR)
+	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/blake3.o: $(SRC_DIR)/blake3/blake3.cpp $(SRC_DIR)/blake3/blake3.hpp | $(BUILD_DIR)
 	gcc $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 $(BUILD_DIR)/keccak.o: $(SRC_DIR)/chfast/keccak.c $(SRC_DIR)/chfast/keccak.h $(SRC_DIR)/chfast/hash_types.h $(SRC_DIR)/chfast/attributes.h | $(BUILD_DIR)

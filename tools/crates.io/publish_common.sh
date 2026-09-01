@@ -73,6 +73,7 @@ ZISK_CRATES=(
   "zisk-precomp-arith-eq"
   "zisk-precomp-big-int"
   "zisk-precomp-blake2"
+  "zisk-precomp-blake3"
   "zisk-precomp-dma"
   "zisk-precomp-evm"
   "zisk-precomp-keccakf"

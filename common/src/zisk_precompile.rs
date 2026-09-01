@@ -4,10 +4,10 @@
 //!
 //! ## Why this exists
 //!
-//! ZisK's seven uniform precompiles (`blake2`, `keccakf`, `sha256f`,
-//! `poseidon2`, `add256`, `babyjubjub`, `arith_eq_384`) share byte-isomorphic
-//! shell code. This module generates that boilerplate from a small
-//! declarative invocation.
+//! ZisK's uniform precompiles (`blake2`, `blake3`, `keccakf`, `sha256f`,
+//! `poseidon2`, `add256`, `arith_eq`, `arith_eq_384`, `babyjubjub`) share
+//! byte-isomorphic shell code. This module generates that boilerplate from
+//! a small declarative invocation.
 //!
 //! `arith_eq` is deliberately not one of them: its config airs cover *different*
 //! sets of operations, so choosing between them is a per-operation decision this

@@ -48,6 +48,7 @@ members = [
   "precompiles/keccakf",
   "precompiles/sha256f",
   "precompiles/blake2",
+  "precompiles/blake3",
   "precompiles/big_int",
   "precompiles/babyjubjub",
   "precompiles/dma",
@@ -107,6 +108,7 @@ zisk-precomp-helpers = { path = "precompiles/helpers", version = "1.3.0-alpha" }
 zisk-precomp-keccakf = { path = "precompiles/keccakf", version = "1.3.0-alpha" }
 zisk-precomp-sha256f = { path = "precompiles/sha256f", version = "1.3.0-alpha" }
 zisk-precomp-blake2 = { path = "precompiles/blake2", version = "1.3.0-alpha" }
+zisk-precomp-blake3 = { path = "precompiles/blake3", version = "1.3.0-alpha" }
 zisk-precomp-poseidon = { path = "precompiles/poseidon", version = "1.3.0-alpha" }
 zisk-precomp-big-int = { path = "precompiles/big_int", version = "1.3.0-alpha" }
 zisk-precomp-babyjubjub = { path = "precompiles/babyjubjub", version = "1.3.0-alpha" }

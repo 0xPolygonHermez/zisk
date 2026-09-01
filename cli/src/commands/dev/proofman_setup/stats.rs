@@ -32,7 +32,7 @@ pub(crate) struct ZiskProofmanSetupStats {
     impols: bool,
 
     /// Hash family (tree/transcript geometry), as in proofman-setup
-    #[arg(long, default_value = "Poseidon1", value_parser = ["Poseidon1", "Poseidon2", "blake3"])]
+    #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     hash: String,
 
     /// Verbosity (-v, -vv)
