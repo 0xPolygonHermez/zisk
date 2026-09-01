@@ -12,7 +12,10 @@ main() {
 
     info "Loading environment variables..."
     # Load environment variables from .env file (only the ones used by this script)
-    load_env ZISK_REPO_DIR ZISK_ETHPROOFS_BRANCH DISABLE_CLONE_REPO ENABLE_HINTS || return 1
+    load_env ZISK_REPO_DIR ZISK_ETHPROOFS_BRANCH DISABLE_CLONE_REPO ENABLE_HINTS ZEC_GUEST || return 1
+
+    # Pins ENABLE_HINTS, which drives the --cfg zisk_hints build below.
+    resolve_zec_guest || return 1
 
     cd "${WORKSPACE_DIR}" || return 1
 

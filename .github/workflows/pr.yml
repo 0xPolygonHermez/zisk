@@ -136,6 +136,8 @@ jobs:
         shell: bash
     env:
       TEST_CONTAINER: zisk-gha-test
+      # zisk-eth-client guest under test: ziskethone or reth.
+      ZEC_GUEST: ziskethone
 
     steps:
       - name: Fix workspace permissions
@@ -219,20 +221,27 @@ jobs:
               ./test_diagnostic.sh
             '
 
-      - name: Build zec-reth ELF file
+      # The ziskethone ELF is committed in zisk-eth-client and consumed as-is
+      # (REBUILD_ZISKETHONE_GUEST=1 rebuilds it, which needs a cmake the published
+      # test image does not have).
+      - name: Build zec guest ELF file
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
+            -e ZEC_GUEST="${ZEC_GUEST}" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
-              ./build_zec_reth.sh
+              ./build_zec_guest.sh
             '
 
+      # Input names carry a _zec_<guest> suffix, which the scripts retarget at
+      # ZEC_GUEST.
       - name: Prove Ethereum block
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
-            -e BLOCK_INPUTS_SINGLE="mainnet_24628607_66_7_zec_reth.bin,mainnet_24626900_221_16_zec_reth.bin" \
+            -e ZEC_GUEST="${ZEC_GUEST}" \
+            -e BLOCK_INPUTS_SINGLE="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_eth_block.sh
@@ -242,16 +251,21 @@ jobs:
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
-            -e BLOCK_INPUTS_ETHPROOFS="mainnet_24628595_641_54_zec_reth.bin,mainnet_24697073_308_22_zec_reth.bin" \
+            -e ZEC_GUEST="${ZEC_GUEST}" \
+            -e BLOCK_INPUTS_ETHPROOFS="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
             '
 
+      # reth only: ENABLE_HINTS is pinned to 0 for ziskethone, which emits no
+      # hints, so this would just repeat the step above.
       - name: Ethproofs test (hints)
+        if: env.ZEC_GUEST == 'reth'
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
+            -e ZEC_GUEST="${ZEC_GUEST}" \
             -e ENABLE_HINTS="1" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
@@ -268,7 +282,8 @@ jobs:
   test-macos:
     name: Test on macOS
     runs-on: macos-14
-    timeout-minutes: 45
+    # Includes the ziskethone cross-toolchain build (~10-15 min on a cold runner).
+    timeout-minutes: 75
     defaults:
       run:
         shell: bash
@@ -293,10 +308,13 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
-      - name: Build zec-reth ELF file
+      # Rebuilt rather than taken from the committed ELF: cross-compiling the
+      # ziskethone guest is what this job is here to cover on macOS. Costs a
+      # ~10-15 min toolchain install on a cold runner.
+      - name: Build zec guest ELF file
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
-          ./build_zec_reth.sh
+          REBUILD_ZISKETHONE_GUEST=1 ./build_zec_guest.sh
 
       - name: Test sha_hasher
         run: |

@@ -43,9 +43,11 @@ This will run the Docker container and open the ZisK test menu inside the contai
    Rebuilds the macOS witness libraries from the proving key produced by option **3. Build setup from source** (and the snark proving key, when present) and collects the resulting `*.dylib` into `build/dylib`, preserving the `provingKey/` (and `provingKeySnark/`) directory layout.
    This option must be run on macOS — it aborts otherwise, since the dylibs are platform-specific. The collected dylibs are later merged into the packaged proving key by option **6. Upload setup**.
 
-5. **Build zec-reth ELF**
-   Clones the `zisk-eth-client` repository (branch specified by `ZISK_ETH_CLIENT_BRANCH`) and patches its `bin/guests/stateless-validator-reth/Cargo.toml` so that the `ziskos` dependency points to the local ZisK repository resolved from `ZISK_REPO_DIR` (or `${HOME}/workspace/zisk` if unset). It then builds the guest with `cargo-zisk build --release` and verifies that `target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth` was produced.
-   The resulting ELF is consumed by options **9. Test Ethereum Block** and **10. Test EthProofs**, so this option must be run before either of them.
+5. **Build zec guest ELF (ZEC_GUEST)**
+   Clones the `zisk-eth-client` repository (branch specified by `ZISK_ETH_CLIENT_BRANCH`) and produces the guest ELF selected by `ZEC_GUEST`: `ziskethone` (default) or `reth`. In both cases the client `Cargo.toml`'s git dependencies on ZisK are repointed to the local ZisK repository resolved from `ZISK_REPO_DIR` (or `${HOME}/workspace/zisk` if unset).
+   For `reth` it also patches `bin/guests/stateless-validator-reth/Cargo.toml` so that `ziskos` points to the local repository, builds the guest with `cargo-zisk build --release` and verifies that `target/elf/riscv64ima-zisk-zkvm-elf/release/zec-reth` was produced.
+   For `ziskethone` the ELF is the one committed at `bin/guests/stateless-validator-ziskethone/elf/zec-ziskethone.elf`. Set `REBUILD_ZISKETHONE_GUEST=1` to regenerate it from the C++ sources in the `third_party/ziskethone` submodule; that needs `cmake` and installs a RISC-V cross-toolchain on first use (~10-15 min).
+   The resulting ELF is consumed by options **9. Test Ethereum Block** and **10. Test EthProofs**, so this option must be run before either of them, with the same `ZEC_GUEST`.
 
 6. **Upload setup**
    Packages the setup artifacts (`.tar.gz` + `.md5`) from the files generated in option **3. Build setup from source** (it requires `build/provingKey`): the proving key and verify key always, plus the circom circuits (`zisk-circuits`) and snark proving key (`zisk-provingkey-plonk`) when present in `build/`. When the macOS dylibs from option **4. Build dylib files (macOS)** are provided, they are merged into the proving key before packing.
@@ -59,12 +61,12 @@ This will run the Docker container and open the ZisK test menu inside the contai
    It also performs constraints verification.
 
 9. **Test Ethereum Block**
-   Tests Ethereum block proof generation using the `zec-reth` ELF and the input files cloned by option **5. Build zec-reth ELF** (which must be run beforehand).
+   Tests Ethereum block proof generation using the ELF selected by `ZEC_GUEST` and the input files cloned by option **5. Build zec guest ELF (ZEC_GUEST)** (which must be run beforehand). The `_zec_<client>` suffix of the configured input names is retargeted to `ZEC_GUEST`, so the same `BLOCK_INPUTS_*` value serves either guest, as long as the block has an input committed for it.
    First, it proves the input files specified in the `BLOCK_INPUTS_SINGLE` environment variable using cargo-zisk with one single process (no mpi). Second, it proves the input files specified in the `BLOCK_INPUTS_MPI` environment variable using cargo-zisk and mpi with the number of processes and threads specified in `MPI_PROCESSES` and `MPI_THREADS` environment variables.
 
 10. **Test EthProofs**
-    Clones the `zisk-ethproofs` repository, builds it, and deploys the `zisk-coordinator` and `zisk-worker` services. Requires the `zec-reth` ELF and inputs produced by option **5. Build zec-reth ELF** (which must be run beforehand).
-    Then runs the `ethproofs-client` binary against the deployed coordinator using the input files specified in `BLOCK_INPUTS_ETHPROOFS` (or `BLOCK_INPUTS_ETHPROOFS_HINTS` when `ENABLE_HINTS=1`).
+    Clones the `zisk-ethproofs` repository, builds it, and deploys the `zisk-coordinator` and `zisk-worker` services. Requires the ELF and inputs produced by option **5. Build zec guest ELF (ZEC_GUEST)** (which must be run beforehand, with the same `ZEC_GUEST`).
+    Then runs the `ethproofs-client` binary against the deployed coordinator using the input files specified in `BLOCK_INPUTS_ETHPROOFS` (or `BLOCK_INPUTS_ETHPROOFS_HINTS` when `ENABLE_HINTS=1`). Hints are a `reth`-only path: `ENABLE_HINTS` is pinned to `0` when `ZEC_GUEST=ziskethone`, which emits none.
     The distributed services are automatically uninstalled when the test finishes.
 
 11. **Test ELF diagnostic**

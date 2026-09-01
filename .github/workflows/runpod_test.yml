@@ -113,16 +113,19 @@ jobs:
               ./build_zisk.sh
             '
 
+      # Pinned to reth: this run proves with hints, and deploy_cluster.py ships the
+      # reth ELF by name.
       - name: Build zec-reth ELF
         run: |
           .github/scripts/docker_exec.sh \
             -u ziskuser \
+            -e ZEC_GUEST="reth" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               # Pass the zisk-eth-client branch explicitly (read from zisk Cargo.toml)
               export ZISK_ETH_CLIENT_BRANCH="$(sed -nE "s/^[[:space:]]*gha_zisk_eth_client_branch[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" /workspace/zisk/Cargo.toml | head -n1)"
               echo "Using zisk-eth-client branch: ${ZISK_ETH_CLIENT_BRANCH}"
-              ./build_zec_reth.sh
+              ./build_zec_guest.sh
             '
 
       - name: Build ethproofs binary
@@ -133,6 +136,8 @@ jobs:
               cd /workspace/zisk/tools/test-env
               # Pass the zisk-ethproofs branch explicitly (read from zisk Cargo.toml)
               export ZISK_ETHPROOFS_BRANCH="$(sed -nE "s/^[[:space:]]*gha_zisk_ethproofs_branch[[:space:]]*=[[:space:]]*\"([^\"]*)\".*/\1/p" /workspace/zisk/Cargo.toml | head -n1)"
+              # Must match the guest built above, or ENABLE_HINTS would be pinned to 0.
+              export ZEC_GUEST=reth
               export ENABLE_HINTS=1
               echo "Using zisk-ethproofs branch: ${ZISK_ETHPROOFS_BRANCH}"
               ./build_ethproofs.sh
