@@ -753,7 +753,7 @@ fn find_cost<'a>(cost: &'a [CostRow], label: &str) -> Option<&'a CostRow> {
     cost.iter().find(|c| c.label == label)
 }
 
-fn fmt_num(n: u64) -> String {
+pub(crate) fn fmt_num(n: u64) -> String {
     let s = n.to_string();
     let len = s.len();
     let mut out = String::with_capacity(len + len / 3);
