@@ -4,25 +4,19 @@ use crate::{
     ExecuteOutput, ProveOutput, VerifyConstraintsOutput, ZiskAggPhaseResult, ZiskPhaseResult,
 };
 use anyhow::Result;
-use asm_runner::HintsShmem;
 use colored::Colorize;
-use executor::{AsmResources, EmulatorAsm, ZiskExecutor};
-use fields::Goldilocks;
-use precompiles_hints::HintsProcessor;
 use proofman::get_vadcop_final_proof_vkey;
 use proofman::{
     AggProofs, AggProofsRegister, ProofMan, ProvePhase, ProvePhaseInputs, ProvePhaseResult,
     SnarkProtocol, SnarkWrapper, WitnessInfo,
 };
 use proofman_common::{ProofCtx, ProofOptions, RowInfo};
+use proofman_fields::Goldilocks;
 use proofman_verifier::VadcopFinalProof;
-use recurser::prove::{
-    prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
-    RegisteredRecurser,
-};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use zisk_asm_runner::HintsShmem;
 use zisk_cluster_common::StreamMessage;
 use zisk_common::io::StreamSource;
 use zisk_common::stats_mark;
@@ -31,6 +25,12 @@ use zisk_common::{io::ZiskStdin, ExecutorStatsHandle, ZiskExecutorSummary};
 use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
+};
+use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
+use zisk_precomp_hints::HintsProcessor;
+use zisk_recurser::prove::{
+    prove_recurser_aggregator, register_recurser_setup, ProveRecurserAggregatorOptions,
+    RegisteredRecurser,
 };
 
 pub(crate) struct ProverBackend {
@@ -195,6 +195,29 @@ impl ProverBackend {
         rom_bin_path: &std::path::Path,
         with_hints: bool,
     ) -> Result<()> {
+        // Indexed Main: build + register this program's instruction table (before `set_rom`
+        // moves the Arc). Same gate the executor uses to pick the compact row.
+        if self.executor.is_packed() {
+            let table = ziskemu::Emu::build_main_instr_table::<Goldilocks>(&zisk_rom);
+            let words_per_entry =
+                zisk_pil::MainTraceRowInstrTable::<Goldilocks>::PACKED_WORDS as u64;
+            let num_entries = zisk_rom.sorted_pc_list.len() as u64;
+            tracing::info!(
+                "Main indexed packing: compact rows + {} instruction table ({:.1} MB)",
+                num_entries,
+                (table.len() * std::mem::size_of::<u64>()) as f64 / 1e6,
+            );
+            self.proofman
+                .register_instruction_table(
+                    zisk_pil::MAIN_AIRGROUP_ID,
+                    zisk_pil::MAIN_AIR_ID,
+                    &table,
+                    num_entries,
+                    words_per_entry,
+                )
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+        }
+
         self.executor.set_rom(zisk_rom, with_hints)?;
 
         let custom_commits_map = HashMap::from([("rom".to_string(), rom_bin_path.to_path_buf())]);
@@ -385,10 +408,10 @@ impl ProverBackend {
 
         self.proofman.set_barrier();
 
-        let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
-
         match (proof_kind, proof) {
             (ProofKind::Plonk, Some(vadcop_proof)) => {
+                let vadcop_vk_u64 = self.get_vadcop_vk(minimal)?;
+
                 // Freshly proven vadcop_final proof — stamp the default
                 // vadcop_final verkey (no override).
                 let snark_proof = self
@@ -448,7 +471,7 @@ impl ProverBackend {
                     ),
                     body: ProofBody::Vadcop {
                         proof: p.proof,
-                        zisk_vk: vadcop_vk_u64,
+                        zisk_vk: self.get_vadcop_vk(minimal)?,
                         // A freshly proven leaf is a raw vadcop_final proof
                         // (Final, flag=1) or its compressed form (Minimal).
                         // Recurser (aggregated) proofs come from the fold path.

@@ -1,0 +1,47 @@
+require "std_constants.pil"
+require "std_lookup.pil"
+require "opids.pil"
+
+const int BLAKE3F_TABLE_SIZE = P2_17;
+
+airtemplate Blake3fTable(const int N) {
+    if (N < BLAKE3F_TABLE_SIZE) {
+        error(`N must be at least ${BLAKE3F_TABLE_SIZE}, but N=${N} was provided`);
+    }
+
+    // Inputs A (8 bits)
+    col fixed A = [0..MASK_8]...;
+
+    // Input B (8 bits)
+    col fixed B = [0:P2_8..MASK_8:P2_8]...;
+
+    // Rotation (1 bit)
+    col fixed ROTATION = [0:P2_16, 12:P2_16]...;
+
+    // Output C2 (8 bits)
+    col fixed C_ROT[2];
+
+    #pragma transpile
+    for (int i = 0; i < N; i++) {
+        const int [rot, a, b] = [ROTATION[i], A[i], B[i]];
+
+        // ROTR the XOR byte
+        const int byte = a ^ b;
+        const int c = ((byte >> rot) | (byte << ((32 - rot) % 32))) & MASK_32;
+
+        const int s   = (32 - rot) % 32;  // normalized bit shift
+        const int l   = (s / 8) % 4;
+        const int lp1 = (l + 1) % 4;
+
+        C_ROT[0][i] = (c >> (8 * l))   & MASK_8;
+        C_ROT[1][i] = (c >> (8 * lp1)) & MASK_8;
+    }
+
+    col witness multiplicity;
+    lookup_proves(BLAKE3F_TABLE_ID, [A, B, ROTATION, C_ROT[0], C_ROT[1]], multiplicity);
+}
+
+// Checks that [c0, c1] are the two byte pieces of (a ^ b) >>> rot, as computed by the table
+function xor_rotr_check(const expr a, const expr b, const int rot, const expr c0, const expr c1) {
+    lookup_assumes(BLAKE3F_TABLE_ID, [a, b, rot, c0, c1]);
+}

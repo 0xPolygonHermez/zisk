@@ -23,7 +23,7 @@
 
 use std::{fs, path::Path, process::ExitCode};
 
-use sm_arith::{decode_current_table, decode_table, parse_rows, LEGACY_LAYOUT};
+use zisk_sm_arith::{decode_current_table, decode_table, parse_rows, LEGACY_LAYOUT};
 
 const OUTPUT: &str = "state-machines/arith/docs/arith_table.txt";
 
@@ -52,7 +52,7 @@ fn main() -> ExitCode {
             if legacy {
                 decode_table(&rows, &LEGACY_LAYOUT, coarse)
             } else {
-                decode_table(&rows, &sm_arith::CURRENT_LAYOUT, coarse)
+                decode_table(&rows, &zisk_sm_arith::CURRENT_LAYOUT, coarse)
             }
         }
         None => {

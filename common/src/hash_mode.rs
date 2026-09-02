@@ -15,6 +15,8 @@ pub enum HashMode {
     Poseidon1,
     /// Poseidon2 hashing.
     Poseidon2,
+    /// Blake hashing
+    Blake3,
 }
 
 impl HashMode {
@@ -24,6 +26,7 @@ impl HashMode {
         match self {
             HashMode::Poseidon1 => 4,
             HashMode::Poseidon2 => 4,
+            HashMode::Blake3 => 2,
         }
     }
 
@@ -32,6 +35,7 @@ impl HashMode {
         match self {
             HashMode::Poseidon1 => 2,
             HashMode::Poseidon2 => 2,
+            HashMode::Blake3 => 2,
         }
     }
 
@@ -41,6 +45,7 @@ impl HashMode {
         match self {
             HashMode::Poseidon1 => "poseidon1",
             HashMode::Poseidon2 => "poseidon2",
+            HashMode::Blake3 => "blake3",
         }
     }
 
@@ -50,6 +55,7 @@ impl HashMode {
         match self {
             HashMode::Poseidon1 => "Poseidon1",
             HashMode::Poseidon2 => "Poseidon2",
+            HashMode::Blake3 => "blake3",
         }
     }
 }
@@ -61,6 +67,7 @@ impl std::str::FromStr for HashMode {
         match s.to_ascii_lowercase().as_str() {
             "poseidon1" => Ok(HashMode::Poseidon1),
             "poseidon2" => Ok(HashMode::Poseidon2),
+            "blake3" => Ok(HashMode::Blake3),
             other => Err(CommonError::Invalid(format!("unrecognized HashMode: {other:?}"))),
         }
     }

@@ -1,0 +1,52 @@
+require "std_lookup.pil"
+require "opids.pil"
+require "keccakf_chi_table.pil"
+
+// xor5 normalization table for the sliced Keccak-f precompile.
+//
+// θ's column sums C[x,z] = Σ_y state[x,y,z] have slot values in [0,5] per
+// instance, i.e. V = sA + 8·sB with sA, sB ∈ [0,5] (36 valid values). The
+// table returns the sliced parities C = (sA mod 2) + 8·(sB mod 2), three
+// positions per lookup:
+//      row j = w_0 + 36·w_1 + 36²·w_2   with   w_k = sA_k + 6·sB_k
+
+const int KECCAKF_XOR5_VALUES = 36;     // (sA, sB) ∈ [0,5]²
+const int KECCAKF_XOR5_BATCH = 3;       // C positions normalized per lookup
+const int KECCAKF_XOR5_TABLE_SIZE = KECCAKF_XOR5_VALUES ** KECCAKF_XOR5_BATCH; // 46_656
+
+airtemplate KeccakfXor5Table(const int N) {
+    // Ensure that the chosen size fits
+    if (N < KECCAKF_XOR5_TABLE_SIZE) {
+        error(`N must be at least ${KECCAKF_XOR5_TABLE_SIZE}, but N=${N} was provided`);
+    }
+    println(`The Keccak-f's xor5 Table size is ${KECCAKF_XOR5_TABLE_SIZE}`);
+
+    col fixed V[KECCAKF_XOR5_BATCH];
+    col fixed C[KECCAKF_XOR5_BATCH];
+    #pragma transpile
+    for (int i = 0; i < N; i++) {
+        const int jdx = i % KECCAKF_XOR5_TABLE_SIZE;
+
+        const int w0 = jdx % 36;
+        const int w1 = (jdx / 36) % 36;
+        const int w2 = (jdx / 1296) % 36;
+
+        const int sa0 = w0 % 6;
+        const int sa1 = w1 % 6;
+        const int sa2 = w2 % 6;
+        const int sb0 = w0 / 6;
+        const int sb1 = w1 / 6;
+        const int sb2 = w2 / 6;
+
+        V[0][i] = sa0 + KECCAKF_SLOT * sb0;
+        V[1][i] = sa1 + KECCAKF_SLOT * sb1;
+        V[2][i] = sa2 + KECCAKF_SLOT * sb2;
+
+        C[0][i] = sa0 % 2 + KECCAKF_SLOT * (sb0 % 2);
+        C[1][i] = sa1 % 2 + KECCAKF_SLOT * (sb1 % 2);
+        C[2][i] = sa2 % 2 + KECCAKF_SLOT * (sb2 % 2);
+    }
+
+    col witness multiplicity;
+    lookup_proves(KECCAKF_XOR5_TABLE_ID, [...V, ...C], multiplicity);
+}

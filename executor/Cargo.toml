@@ -1,51 +1,56 @@
 [package]
-name = "executor"
+name = "zisk-executor"
+description = "Execution engine that orchestrates witness generation across ZisK state machines"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [dependencies]
-sm-main = { workspace = true }
-sm-rom = { workspace = true }
+zisk-sm-main = { workspace = true }
+zisk-sm-rom = { workspace = true }
 zisk-pil = { workspace = true }
 ziskemu = { workspace = true }
 zisk-core = { workspace = true }
 zisk-common = { workspace = true }
-data-bus = { workspace = true }
-asm-runner = { workspace = true }
-mem-common = { workspace = true }
+zisk-asm-runner = { workspace = true }
+zisk-sm-mem-common = { workspace = true }
 
 proofman = { workspace = true }
 proofman-common = { workspace = true }
 proofman-util = { workspace = true }
-witness = { workspace = true }
-fields = { workspace = true }
+proofman-witness = { workspace = true }
+proofman-fields = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
-pil-std-lib = { workspace = true }
-precompiles-hints = { workspace = true }
+pil2-std-lib = { workspace = true }
+zisk-precomp-hints = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 arc-swap = { workspace = true }
 paste = { workspace = true }
 crossbeam = "0.8.4"
 
-precompiles-common = { workspace = true }
-precomp-keccakf = { workspace = true }
-precomp-sha256f = { workspace = true }
-precomp-poseidon = { workspace = true }
-precomp-blake2 = { workspace = true }
-precomp-arith-eq = { workspace = true }
-precomp-arith-eq-384 = { workspace = true }
-precomp-big-int = { workspace = true }
-precomp-dma = { workspace = true }
+zisk-precomp-common = { workspace = true }
+zisk-precomp-keccakf = { workspace = true }
+zisk-precomp-sha256f = { workspace = true }
+zisk-precomp-poseidon = { workspace = true }
+zisk-precomp-blake2 = { workspace = true }
+zisk-precomp-blake3 = { workspace = true }
+zisk-precomp-arith-eq = { workspace = true }
+zisk-precomp-arith-eq-384 = { workspace = true }
+zisk-precomp-big-int = { workspace = true }
+zisk-precomp-babyjubjub = { workspace = true }
+zisk-precomp-dma = { workspace = true }
+zisk-precomp-evm = { workspace = true }
 
-sm-arith = { workspace = true }
-sm-binary = { workspace = true }
-sm-mem = { workspace = true }
+zisk-sm-arith = { workspace = true }
+zisk-sm-binary = { workspace = true }
+zisk-sm-mem = { workspace = true }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 named-sem = { workspace = true }
@@ -53,4 +58,4 @@ named-sem = { workspace = true }
 [features]
 default = []
 stats = []
-cpu-only = ["asm-runner/cpu-only"]
+cpu-only = ["zisk-asm-runner/cpu-only"]

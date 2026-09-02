@@ -15,8 +15,8 @@
 //!
 //!     cargo test -p integration-tests --test diagnostic_remote -- --ignored --nocapture
 
-use test_artifacts::ELF_DIAGNOSTIC;
 use zisk_sdk::{ExecutorKind, ProverClient, ZiskStdin};
+use zisk_test_artifacts::ELF_DIAGNOSTIC;
 
 /// Coordinator URL for the remote variant, overridable via
 /// `ZISK_TEST_COORDINATOR_URL`. Default mirrors `liveness_smoke`.

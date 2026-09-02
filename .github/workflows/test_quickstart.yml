@@ -1,0 +1,111 @@
+name: Test ZisK Quickstart
+
+# Checks that the branch this workflow is launched from passes the steps of the
+# quickstart guide: ZisK and its setup (proving key + PLONK setup) are built
+# from the checked-out sources and the quickstart test is run against them.
+#
+# Sibling of test_install_bin.yml, which runs that same test against the
+# published binaries installed with ziskup.
+
+on:
+  schedule:
+    # Nightly. Cron is UTC, so this is 03:00 in Spain during winter time and
+    # 04:00 during summer time.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The same test runs twice: the CPU variant on the rocket runner, which has no
+  # GPU, and the GPU variant on the zisk-gpu runner group. They are independent
+  # (each one builds its own ZisK) so they run in parallel, and both share the
+  # steps through the test_quickstart_variant reusable workflow.
+  #
+  # A manual run tests the branch it is launched from. A scheduled one always
+  # runs from the default branch, so the branch to test is taken from the
+  # TEST_QUICKSTART_BRANCH repository variable (Settings > Secrets and variables >
+  # Actions > Variables); leaving it unset tests the default branch.
+  quickstart-cpu:
+    name: Test Quickstart (CPU)
+    uses: ./.github/workflows/test_quickstart_variant.yml
+    with:
+      runner: '"rocket"'
+      variant: cpu
+      ref: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
+
+  quickstart-gpu:
+    name: Test Quickstart (GPU)
+    uses: ./.github/workflows/test_quickstart_variant.yml
+    with:
+      runner: '{"group":"zisk-gpu"}'
+      variant: gpu
+      ref: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
+
+  notify:
+    name: Notify Telegram
+    needs: [quickstart-cpu, quickstart-gpu]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send result to Telegram
+        env:
+          # Passing the credentials through env instead of interpolating them
+          # into the script keeps them out of the expanded command line.
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CPU_RESULT: ${{ needs.quickstart-cpu.result }}
+          GPU_RESULT: ${{ needs.quickstart-gpu.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # The tested branch, not the one the workflow file comes from.
+          BRANCH: ${{ (github.event_name == 'schedule' && vars.TEST_QUICKSTART_BRANCH) || github.ref_name }}
+          # Commit the variants actually checked out; github.sha is the fallback
+          # for a run that failed before reaching that step.
+          SHA: ${{ needs.quickstart-gpu.outputs.sha || needs.quickstart-cpu.outputs.sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
+            echo "::warning::TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not set, skipping notification"
+            exit 0
+          fi
+
+          icon() {
+            case "$1" in
+              success)   printf '✅' ;;
+              failure)   printf '❌' ;;
+              cancelled) printf '🚫' ;;
+              *)         printf '⚠️' ;;
+            esac
+          }
+
+          if [ "$CPU_RESULT" = success ] && [ "$GPU_RESULT" = success ]; then
+            HEADER='✅ Test Quickstart OK'
+          else
+            HEADER='❌ Test Quickstart FAILED'
+          fi
+
+          # Telegram's HTML parser rejects bare &, < and > in the message text,
+          # and a branch name is allowed to contain them.
+          esc() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+
+          TEXT=$(printf '<b>%s</b>\nrepo: %s\nbranch: <code>%s</code> (%s)\nCPU: %s %s\nGPU: %s %s\n<a href="%s">View run</a>' \
+            "$HEADER" \
+            "$(esc "$GITHUB_REPOSITORY")" \
+            "$(esc "$BRANCH")" \
+            "${SHA:0:8}" \
+            "$(icon "$CPU_RESULT")" "$CPU_RESULT" \
+            "$(icon "$GPU_RESULT")" "$GPU_RESULT" \
+            "$RUN_URL")
+
+          curl -sS --fail-with-body -X POST \
+            "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+            -d chat_id="$CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$TEXT"

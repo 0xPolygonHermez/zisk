@@ -10,8 +10,8 @@ use crate::save_dma_collectors;
 #[cfg(feature = "save_dma_inputs")]
 use crate::DmaInput;
 use crate::{DmaCheckPoint, DmaModule};
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::sync::Arc;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType, StatsType,

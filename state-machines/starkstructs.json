@@ -1,14 +1,13 @@
 {
   "Keccakf": {
-    "powBits": 23,
-    "lastLevelVerification": 1,
+    "powBits": 21,
     "hasCompressor": true
   },
   "VirtualTableZisk0": {
     "powBits": 20
   },
   "VirtualTableZisk1": {
-    "powBits": 20
+    "powBits": 23
   },
   "Rom": {
     "powBits": 20
@@ -28,6 +27,9 @@
   "Blake2br": {
     "hasCompressor": true
   },
+  "Blake3f": {
+    "hasCompressor": true
+  },
   "Arith256": {
     "hasCompressor": true
   },
@@ -41,6 +43,9 @@
     "hasCompressor": true
   },
   "ArithBn254Complex": {
+    "hasCompressor": true
+  },
+  "BabyJubJub": {
     "hasCompressor": true
   }
 }

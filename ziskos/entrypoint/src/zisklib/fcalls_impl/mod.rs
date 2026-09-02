@@ -8,6 +8,7 @@ pub mod bigint_div;
 pub mod bin_decomp;
 pub mod bls12_381;
 pub mod bn254;
+pub mod keccakf_cache;
 pub mod msb_pos_256;
 pub mod msb_pos_384;
 mod proxy;

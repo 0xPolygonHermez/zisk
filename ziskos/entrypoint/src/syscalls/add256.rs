@@ -33,7 +33,7 @@ pub extern "C" fn syscall_add256(
 ) -> u64 {
     #[cfg(not(zisk_guest))]
     {
-        let cout = precompiles_helpers::add256(params.a, params.b, params.cin, params.c);
+        let cout = zisk_precomp_helpers::add256(params.a, params.b, params.cin, params.c);
         #[cfg(feature = "hints")]
         {
             hints.extend_from_slice(params.c);

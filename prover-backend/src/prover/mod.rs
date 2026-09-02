@@ -14,22 +14,25 @@ use proofman::{
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
-use zisk_pil::get_packed_info;
+use zisk_pil::{
+    get_packed_info, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
+    ZISK_AIRGROUP_ID,
+};
 
 use anyhow::{anyhow, Result};
-use asm_runner::HintsShmem;
-use precompiles_hints::HintsProcessor;
 use std::{
     collections::HashMap,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
+use zisk_asm_runner::HintsShmem;
 use zisk_common::{
     io::{StreamSource, ZiskStdin},
     AirInstanceCount, ExecutorStatsHandle, ProgramVK, Proof, ProofBody, ProofKind,
     StatsCostPerType, ZiskExecutorTime,
 };
 use zisk_core::ZiskRom;
+use zisk_precomp_hints::HintsProcessor;
 
 use crate::{ExecuteOutput, ProveOutput, VerifyConstraintsOutput};
 
@@ -79,6 +82,28 @@ impl AsmOptions {
         self
     }
 }
+
+/// Airs whose const *tree* is kept preallocated on-device, as `(airgroup_id, air_id)`.
+/// Cascades to each air's Basic and Recursive1 circuits. Airgroup 0's Recursive2 tree is
+/// always resident and must not be listed. Costs `const_tree_size` of VRAM per entry and
+/// saves a disk load on every proof of that air, so this is the expensive knob.
+///
+/// Main reproduces the residency proofman hardcoded before it became caller-chosen;
+/// dropping it would silently make every Main proof reload its tree from disk.
+const PRELOADED_CONST_TREE_GPU: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, MAIN_AIR_IDS[0])];
+
+/// Airs proved at most once per run, as `(airgroup_id, air_id)`. Lets proofman drop their
+/// `("const", false)` region and unpack into the const tree's node area instead, saving
+/// `N * nConstants` of aux trace per stream. Only airs big enough to build their const tree
+/// on the fly are affected; the rest keep the normal layout.
+///
+/// The two virtual tables qualify: each is registered once via `add_table`/`add_table_all`,
+/// so nothing ever reuses their const pols across proofs. Listing an air that IS proved more
+/// than once would re-merkelize its fixed columns on every proof.
+const TABLE_AIRS_GPU: &[(usize, usize)] = &[
+    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0]),
+    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_1_AIR_IDS[0]),
+];
 
 /// Comprehensive prover configuration containing all settings
 #[derive(Clone)]
@@ -162,18 +187,31 @@ impl BackendProverOpts {
 
         if self.gpu {
             options.gpu();
+            // GPU-only knobs, fixed in code rather than exposed as user options: the right
+            // choice depends on the air mix and the card, not on the caller. See the
+            // constants above before changing either list.
+            options.preloaded_const_tree_gpu(PRELOADED_CONST_TREE_GPU.to_vec());
+            options.table_airs_gpu(TABLE_AIRS_GPU.to_vec());
         }
 
         if self.packed {
             options.packed();
         }
 
-        // Only call packed_info when packed or gpu is enabled
-        if self.packed || self.gpu {
+        // Packed traces need packed_info, with Main in compact (indexed) form. `options.packed`
+        // is the single source of truth — gpu() force-enables it and the executor's row-type gate
+        // reads the same flag — so the two sides can't diverge.
+        if options.packed {
             options.packed_info(get_packed_info());
         }
 
         options.verbose_mode(self.verbose.into());
+
+        // The plonk wrapper borrows the GPU unified buffer; proofman pads the arena to the
+        // snark floor only when told a final snark will run.
+        if self.plonk {
+            options.final_snark();
+        }
 
         if !self.aggregation || self.verify_constraints {
             options.no_aggregation();
@@ -363,6 +401,9 @@ pub trait ProverEngine {
 
     /// This rank's index in the global MPI context (`0` when MPI is unused).
     fn world_rank(&self) -> i32;
+
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    fn n_processes(&self) -> i32;
 
     /// This rank's index within its node (`0` when MPI is unused).
     fn local_rank(&self) -> i32;
@@ -617,6 +658,11 @@ impl<C: ZiskBackend> ZiskProver<C> {
     /// If MPI is not used, this will always return 0.
     pub fn world_rank(&self) -> i32 {
         self.prover.world_rank()
+    }
+
+    /// Number of ranks in the global MPI context (`1` when MPI is unused).
+    pub fn n_processes(&self) -> i32 {
+        self.prover.n_processes()
     }
 
     /// Get the local rank of the prover. The local rank is the rank of the prover in the local MPI context.

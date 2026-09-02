@@ -110,6 +110,10 @@ impl StatsCosts {
         self.ops.add_fixed_cost_op(op_code);
     }
     #[inline(always)]
+    pub fn add_cost_op(&mut self, op_code: u8, cost: u64) {
+        self.ops.add_cost_op(op_code, cost);
+    }
+    #[inline(always)]
     pub fn add_variable_cost_op(&mut self, op_code: u8, variable_cost: u64) {
         self.ops.add_variable_cost_op(op_code, variable_cost);
     }

@@ -1,11 +1,14 @@
 [package]
-name = "recurser"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-keywords.workspace = true
-repository.workspace = true
-categories.workspace = true
+name = "zisk-recurser"
+description = "Recursive proof aggregation layer for the ZisK zkVM"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+keywords = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+documentation = { workspace = true }
+categories = { workspace = true }
 
 [dependencies]
 serde = { workspace = true }
@@ -16,10 +19,10 @@ blake3 = { workspace = true }
 anyhow = { workspace = true }
 
 pil2-stark-setup = { workspace = true }
-pilout = { workspace = true }
-stark-recurser = { workspace = true }
+pil2-pilout = { workspace = true }
+pil2-stark-recurser = { workspace = true }
 proofman = { workspace = true }
 proofman-verifier = { workspace = true }
+proofman-fields = { workspace = true }
 zisk-verifier = { workspace = true }
-fields = { workspace = true }
 tracing = { workspace = true }

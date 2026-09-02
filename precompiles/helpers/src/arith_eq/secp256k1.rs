@@ -1,6 +1,6 @@
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "linux", target_arch = "x86_64"))] {
-        use lib_c::add_point_ec_p_c;
+        use zisk_lib_c::add_point_ec_p_c;
 
         #[inline(always)]
         pub fn secp256k1_add(p1: &[u64; 8], p2: &[u64; 8], p: &mut [u64; 8]) {

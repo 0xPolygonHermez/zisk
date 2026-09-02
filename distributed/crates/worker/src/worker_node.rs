@@ -1543,7 +1543,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         prover: &ZiskProver<T>,
         setup: SetupAggregationProgram,
     ) -> Result<(Vec<u8>, String)> {
-        use recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
+        use zisk_recurser::setup::{run_setup_recurser_aggregator, SetupRecurserAggregatorOptions};
 
         info!(
             "[Recurser] job_id {} Received SetupAggregationProgram for recurser_id {}",
@@ -1564,8 +1564,10 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .ok_or_else(|| anyhow!("~/.zisk/recurser path is not valid UTF-8"))?
             .to_string();
 
-        let normalize =
-            spec.normalize.as_ref().map(|n| recurser::NormalizeCircuit { body: n.body.clone() });
+        let normalize = spec
+            .normalize
+            .as_ref()
+            .map(|n| zisk_recurser::NormalizeCircuit { body: n.body.clone() });
         // Proto `ProgramVk { limbs }` → 4-limb array. Pad/truncate defensively;
         // a wrong length changes the derived id and is caught by the check below.
         let program_vks: Vec<[String; 4]> = spec
@@ -1580,9 +1582,9 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         // The artifact dir is keyed by the *claimed* id; recompute the id from
         // the spec so a mismatched claim can't be served another definition's
         // completed setup (or silently register under the wrong name).
-        let zisk_vk = recurser::setup::read_vadcop_final_verkey(&setup_dir)
+        let zisk_vk = zisk_recurser::setup::read_vadcop_final_verkey(&setup_dir)
             .map_err(|e| anyhow!("failed to read local vadcop_final verkey: {e:#}"))?;
-        let expected_inputs = recurser::RecurserManifestInputs::new(
+        let expected_inputs = zisk_recurser::RecurserManifestInputs::new(
             zisk_vk,
             program_vks.clone(),
             normalize.as_ref(),
@@ -1602,13 +1604,13 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
         }
 
         let artifacts =
-            recurser::artifacts::RecurserArtifacts::new(&output_dir, &setup.recurser_id);
+            zisk_recurser::artifacts::RecurserArtifacts::new(&output_dir, &setup.recurser_id);
 
         if !artifacts.is_active() {
             let opts = SetupRecurserAggregatorOptions {
                 setup_dir,
                 output_dir: output_dir.clone(),
-                templates: recurser::CircomTemplates {
+                templates: zisk_recurser::CircomTemplates {
                     normalize,
                     aggregate_publics: spec.aggregate_publics_body.clone(),
                     n_free: spec.n_free as usize,
@@ -1653,7 +1655,7 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .home
             .to_str()
             .ok_or_else(|| anyhow!("~/.zisk path is not valid UTF-8"))?;
-        let hash_mode = recurser::setup::read_proving_key_hash(setup_dir)
+        let hash_mode = zisk_recurser::setup::read_proving_key_hash(setup_dir)
             .map_err(|e| anyhow!("failed to read recurser hash family: {e}"))?;
 
         info!(
@@ -1732,7 +1734,8 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             .map_err(|e| anyhow!("recurser prove failed: {e}"))?;
 
         // Stamp the output Proof with the recurser's own verkey as zisk_vk.
-        let artifacts = recurser::artifacts::RecurserArtifacts::new(&output_dir, &req.recurser_id);
+        let artifacts =
+            zisk_recurser::artifacts::RecurserArtifacts::new(&output_dir, &req.recurser_id);
         let vk_bytes = std::fs::read(artifacts.verkey_bin_path())
             .map_err(|e| anyhow!("failed to read recurser verkey: {e}"))?;
         if vk_bytes.len() != 32 {
@@ -2178,20 +2181,23 @@ impl<T: ZiskBackend + 'static> WorkerNodeGrpc<T> {
             ));
         }
 
+        if !input_data.payload.is_empty() && input_data.payload.len() % 8 != 0 {
+            return Err(anyhow!(
+                "InputStreamData payload length {} is not a multiple of 8 bytes",
+                input_data.payload.len()
+            ));
+        }
+
         // gRPC `InputStreamData` only reaches rank 0. Mirror it to peer ranks
         // via MPI so their ASM children get the same bytes — without this
         // they wait on `chunk_done` until the semaphore times out (~10 s) and
-        // every streamed-input job fails on every rank ≠ 0.
+        // every streamed-input job fails on every rank ≠ 0. Skipped when this
+        // is the only rank: the conversion and borsh pass below copy the chunk
+        // twice for nobody.
         // Wire format matches what `process_hints` broadcasts for hint-driven
         // inputs (see `precompiles/hints/src/hints_processor.rs`): tag byte
         // followed by a borsh-encoded `StreamMessage { data: Vec<u64> }`.
-        if !input_data.payload.is_empty() {
-            if input_data.payload.len() % 8 != 0 {
-                return Err(anyhow!(
-                    "InputStreamData payload length {} is not a multiple of 8 bytes",
-                    input_data.payload.len()
-                ));
-            }
+        if self.worker.n_processes() > 1 && !input_data.payload.is_empty() {
             let data_u64: Vec<u64> = input_data
                 .payload
                 .chunks_exact(8)

@@ -5,9 +5,9 @@
 use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
-use fields::PrimeField64;
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
@@ -228,8 +228,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
-                    let flags = cout + 2 * result_is_a + 8 * plast[i] * c_is_signed;
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cout + 16 * result_is_a + 64 * plast[i] * c_is_signed;
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::calculate_table_row(
@@ -295,8 +295,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
-                    let flags = cout + 2 * result_is_a + 8 * plast[i] * c_is_signed;
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cout + 16 * result_is_a + 64 * plast[i] * c_is_signed;
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::calculate_table_row(
@@ -361,8 +361,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
-                    let flags = cout + 4;
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cout + 32;
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::calculate_table_row(
@@ -413,8 +413,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
-                    let flags = cout + 4;
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cout + 32;
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::calculate_table_row(
@@ -473,7 +473,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
                     let flags = cin;
 
                     // Store the required in the vector
@@ -530,7 +530,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
                     let flags = cout;
 
                     // Store the required in the vector
@@ -575,7 +575,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     let previous_cin = cin;
                     cin = cout;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
                     let flags = cout;
 
                     // Store the required in the vector
@@ -617,8 +617,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
-                    let flags = cin + 8 * plast[i] * c_is_signed;
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cin + 64 * plast[i] * c_is_signed;
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::calculate_table_row(
@@ -662,8 +662,8 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cin = if i == carry_byte { 0 } else { cout };
                     carry[i] = cin as u8;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
-                    let flags = cin + 8 * plast[i] * c_is_signed;
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cin + 64 * plast[i] * c_is_signed;
 
                     // Store the required in the vector
                     let row = BinaryBasicTableSM::calculate_table_row(
@@ -728,7 +728,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     cin = cout;
                     carry[i] = cin as u8;
 
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
                     let flags = cin;
 
                     // Store the required in the vector
@@ -765,7 +765,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_all_carry(&[0u8; 8]);
 
                 for i in 0..8 {
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
                     let flags = 0;
 
                     // Store the required in the vector
@@ -797,7 +797,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_all_carry(&[0u8; 8]);
 
                 for i in 0..8 {
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
                     let flags = 0;
 
                     // Store the required in the vector
@@ -829,7 +829,7 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                 row.set_all_carry(&[0u8; 8]);
 
                 for i in 0..8 {
-                    // FLAGS[i] = cout + 2*result_is_a + 4*use_first_byte + 8*c_is_signed
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
                     let flags = 0;
 
                     // Store the required in the vector
@@ -874,6 +874,51 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
                     );
                     self.std.inc_virtual_row_one(self.table_id, row);
                 }
+            }
+            SH1ADD_OP | SH2ADD_OP | SH3ADD_OP => {
+                // Zba shift-and-add: c = b + (a << shift), computed as an addition of the shifted
+                // operand. The `shift` low bits of the shifted byte are always zero, so the bits
+                // shifted out of the previous byte are simply added to it, together with the
+                // addition carry: cin = (a_prev >> (8 - shift)) + carry, in [0, 2^shift]
+                row.set_use_first_byte(false);
+                row.set_result_is_a(false);
+                row.set_c_is_signed(false);
+
+                binary_basic_table_op = match opcode {
+                    SH1ADD_OP => BinaryBasicTableOp::Sh1add,
+                    SH2ADD_OP => BinaryBasicTableOp::Sh2add,
+                    _ => BinaryBasicTableOp::Sh3add,
+                };
+                let shift = binary_basic_table_op.shift();
+
+                let mut carry = [0u8; 8];
+                for i in 0..8 {
+                    // Calculate carry
+                    let previous_cin = cin;
+                    let a_byte = a_bytes[i] as u64;
+                    let result = ((a_byte << shift) & 0xFF) + b_bytes[i] as u64 + cin;
+
+                    // The bits shifted out of this byte travel with the addition carry. Both are
+                    // discarded in the last byte, since the result is truncated to 64 bits
+                    cout = (result >> 8) + (a_byte >> (8 - shift));
+                    cin = if i == carry_byte { 0 } else { cout };
+                    carry[i] = cin as u8;
+
+                    // FLAGS[i] = cout + 16*result_is_a + 32*use_first_byte + 64*c_is_signed
+                    let flags = cin;
+
+                    // Store the required in the vector
+                    let row = BinaryBasicTableSM::calculate_table_row(
+                        binary_basic_table_op,
+                        a_byte,
+                        b_bytes[i] as u64,
+                        previous_cin,
+                        plast[i],
+                        flags,
+                    );
+                    self.std.inc_virtual_row_one(self.table_id, row);
+                }
+                row.set_all_carry(&carry);
             }
             _ => panic!("BinaryBasicSM::process_slice() found invalid opcode={opcode}"),
         }

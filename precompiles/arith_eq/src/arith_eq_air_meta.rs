@@ -10,9 +10,9 @@
 //! are read from the trace types so cost stays in sync with the PIL automatically.
 
 use crate::{ArithEqInput, ArithEqOp, ArithEqSM};
-use fields::{Goldilocks, PrimeField64};
 use proofman_common::trace::TraceRow;
 use proofman_common::{AirInstance, ProofmanResult, SetupCtx};
+use proofman_fields::{Goldilocks, PrimeField64};
 use zisk_pil::*;
 
 /// Static description of one `ArithEq` config air.

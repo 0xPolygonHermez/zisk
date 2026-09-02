@@ -17,8 +17,8 @@ zisk_common::zisk_precompile! {
 
 #[cfg(test)]
 mod poseidon_tests {
-    use test_artifacts::{ELF_POSEIDON1, ELF_POSEIDON2};
     use zisk_common::io::ZiskStdin;
+    use zisk_test_artifacts::{ELF_POSEIDON1, ELF_POSEIDON2};
 
     /// Number of `syscall_poseidon2` invocations the guest will perform.
     const NUM_POSEIDON2S: u64 = 10;

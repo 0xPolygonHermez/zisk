@@ -12,10 +12,10 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use crate::error::ExecutorResult;
-use fields::PrimeField64;
+use proofman_fields::PrimeField64;
 use proofman_util::{timer_start_info, timer_stop_and_log_info};
-use sm_main::MainPlanner;
-use zisk_common::{stats_begin, stats_end, EmuTrace, ExecutorStatsHandle, Plan, StatsScope};
+use zisk_common::{stats_begin, stats_end, ExecutorStatsHandle, Plan, StatsScope};
+use zisk_sm_main::MainPlanner;
 
 use crate::sm::{extend_mem_plans, plan_sec};
 use crate::{BackendArtifacts, CountersChunkMetrics};
@@ -28,6 +28,8 @@ pub struct SecondaryPlanArtifacts {
     pub count_and_plan_duration: Duration,
     /// Wall-clock waiting on the MO runner and merging its plans.
     pub count_and_plan_mo_duration: Duration,
+    /// Bytes of the borrowed GPU buffer the mem-ops planner used for this block
+    pub gpu_mops_used_bytes: Option<u64>,
 }
 
 /// Pure-planning phase actor. Owns chunk size only.
@@ -41,9 +43,14 @@ impl<F: PrimeField64> PlanPhase<F> {
         Self { chunk_size, _marker: std::marker::PhantomData }
     }
 
-    /// Plan the main SM instances. Pure: unit-testable on synthetic `EmuTrace`.
-    pub fn plan_main(min_traces: &[EmuTrace], chunk_size: u64) -> ExecutorResult<Vec<Plan>> {
-        Ok(MainPlanner::plan(min_traces, chunk_size)?)
+    /// Minimal-trace chunk size this phase plans with.
+    pub fn chunk_size(&self) -> u64 {
+        self.chunk_size
+    }
+
+    /// Plan the main SM instances. Pure: depends only on the chunk count.
+    pub fn plan_main(num_chunks: usize, chunk_size: u64) -> ExecutorResult<Vec<Plan>> {
+        Ok(MainPlanner::plan_count(num_chunks, chunk_size)?)
     }
 
     /// Plan the secondary SM instances from per-chunk counters via static dispatch.
@@ -59,13 +66,13 @@ impl<F: PrimeField64> PlanPhase<F> {
     #[allow(unused_variables)]
     pub fn run_main(
         &self,
-        min_traces: &[EmuTrace],
+        num_chunks: usize,
         stats: &ExecutorStatsHandle,
         exec_scope: &StatsScope,
     ) -> ExecutorResult<Vec<Plan>> {
         stats_begin!(stats, exec_scope, _main_plan_scope, "MAIN_PLAN", 0);
         timer_start_info!(PLAN_MAIN);
-        let plans = Self::plan_main(min_traces, self.chunk_size)?;
+        let plans = Self::plan_main(num_chunks, self.chunk_size)?;
         timer_stop_and_log_info!(PLAN_MAIN);
         stats_end!(stats, &_main_plan_scope);
         Ok(plans)
@@ -96,7 +103,7 @@ impl<F: PrimeField64> PlanPhase<F> {
         let mo_start = Instant::now();
 
         stats_begin!(stats, exec_scope, _mo_wait_scope, "MO_PLAN_WAIT", 0);
-        let mem_plans = backend.await_mem_plans()?;
+        let (mem_plans, gpu_mops_used_bytes) = backend.await_mem_plans()?;
         stats_end!(stats, &_mo_wait_scope);
 
         stats_begin!(stats, exec_scope, _mo_add_scope, "MO_PLAN_ADD", 0);
@@ -110,6 +117,7 @@ impl<F: PrimeField64> PlanPhase<F> {
             secn_planning,
             count_and_plan_duration,
             count_and_plan_mo_duration,
+            gpu_mops_used_bytes,
         })
     }
 }
@@ -117,27 +125,22 @@ impl<F: PrimeField64> PlanPhase<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
     type F = Goldilocks;
 
     const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
 
-    fn synthetic_traces(n: usize) -> Vec<EmuTrace> {
-        vec![EmuTrace::default(); n]
-    }
-
     #[test]
     fn plan_main_empty_traces_yields_empty_plan() {
-        let plans =
-            PlanPhase::<F>::plan_main(&[], NUM_ROWS as u64).expect("empty traces planned ok");
+        let plans = PlanPhase::<F>::plan_main(0, NUM_ROWS as u64).expect("empty traces planned ok");
         assert!(plans.is_empty());
     }
 
     #[test]
     fn plan_main_single_full_trace_yields_one_plan() {
-        let plans = PlanPhase::<F>::plan_main(&synthetic_traces(1), NUM_ROWS as u64).expect("ok");
+        let plans = PlanPhase::<F>::plan_main(1, NUM_ROWS as u64).expect("ok");
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].airgroup_id, ZISK_AIRGROUP_ID);
         assert_eq!(plans[0].air_id, MAIN_AIR_IDS[0]);
@@ -145,14 +148,13 @@ mod tests {
 
     #[test]
     fn plan_main_segments_via_ceil_div() {
-        let plans =
-            PlanPhase::<F>::plan_main(&synthetic_traces(3), (NUM_ROWS as u64) / 2).expect("ok");
+        let plans = PlanPhase::<F>::plan_main(3, (NUM_ROWS as u64) / 2).expect("ok");
         assert_eq!(plans.len(), 2);
     }
 
     #[test]
     fn plan_main_rejects_non_power_of_two_chunk_size() {
-        match PlanPhase::<F>::plan_main(&synthetic_traces(1), 3) {
+        match PlanPhase::<F>::plan_main(1, 3) {
             Ok(_) => panic!("non-power-of-two chunk_size must error"),
             Err(err) => {
                 assert!(err.to_string().to_lowercase().contains("power of two"));

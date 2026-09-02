@@ -5,23 +5,23 @@
 //! * Registers read/write counters (total and per register)
 //! * Operations counters (total and per opcode)
 
-use fields::Goldilocks;
-use riscv::RiscVRegisters;
-use sm_arith::{ArithFrops, ArithLegacyFrops};
-use sm_binary::{
-    BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
-};
+use proofman_fields::Goldilocks;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fs::File,
     io::{BufWriter, IsTerminal, Write},
 };
 use zisk_core::{
-    zisk_ops::{OpStats, ZiskOp},
+    zisk_ops::{OpStats, OpType, ZiskOp},
     InstContext, ZiskInst, ZiskOperationType, ZiskRom, RAM_ADDR, REGS_IN_MAIN_TOTAL_NUMBER,
     ROM_ADDR, ROM_ENTRY, ROM_ENTRY_SIZE, ROM_EXIT, ROM_SIZE, STORE_NONE, SYS_ADDR,
 };
 use zisk_pil::RomRomTrace;
+use zisk_riscv::RiscVRegisters;
+use zisk_sm_arith::{ArithFrops, ArithLegacyFrops};
+use zisk_sm_binary::{
+    BinaryBasicFrops, BinaryBasicLegacyFrops, BinaryExtensionFrops, BinaryExtensionLegacyFrops,
+};
 
 use zisk_definitions::{
     PROFILE_END_COST_ID, PROFILE_END_STEPS_ID, PROFILE_REPORT_END_COST_ID,
@@ -34,8 +34,8 @@ use zisk_core::{STORE_IND, UART_ADDR};
 
 use crate::{
     CallPathProfiler, MemoryOperationsStats, OpsCosts, OpsCount, RamMonitor, RegionsOfInterest,
-    StatsCosts, StatsCoverageReport, StatsReport, BASE_COST, MAIN_COST, MEM_ACCESS_INVALID,
-    MEM_ACCESS_MONITOR, MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
+    StatsCosts, StatsCoverageReport, StatsReport, BASE_COST, BINARY_ADD_HI_COST, MAIN_COST,
+    MEM_ACCESS_INVALID, MEM_ACCESS_MONITOR, MEM_WRITE_COST, NO_ROI_ID, ROM_READ_COST,
 };
 
 #[derive(Debug, Clone)]
@@ -52,11 +52,115 @@ pub struct CallStackEntry {
 
 const OP_DATA_BUFFER_DEFAULT_CAPACITY: usize = 128 * 1024 * 1024;
 const CAT_MASK: [u64; 3] = [0xFFFF_FFFF_0000_0000, 0xFFFF_FFFF_FFFF_0000, 0x0000_0000_FFFF_FFFF];
-const OP_CATEGORIES: usize = 4 * 3;
+const OP_MASK_CATEGORIES: usize = 4 * 3;
+const OP_BIN_EXT_LT_64_CATS: usize = 2;
+const OP_CATEGORIES: usize = OP_MASK_CATEGORIES + OP_BIN_EXT_LT_64_CATS;
+const OP_BIN_EXT_A_LT_64_CAT: usize = OP_MASK_CATEGORIES;
+const OP_BIN_EXT_B_LT_64_CAT: usize = OP_BIN_EXT_A_LT_64_CAT + 1;
+
+// Pattern analysis (`--pattern-analysis`): human-readable label for each operand category (see the
+// `CAT_MASK` handling in `on_op`). For each mask the four shapes are: a,b,c masked bits all zero;
+// a zero / b all-ones; a all-ones / b zero; a,b all-ones. `hi32`/`hi48` = the high 32/48 bits,
+// `lo32` = the low 32 bits; `=0` means those bits are zero, `=1` means all ones.
+//
+// The second label is the one used for the single-operand opcodes of `B_ONLY_OPS`, whose `a` is
+// zero by definition: the condition on `a` holds trivially and is dropped from the label. `None`
+// means the whole category is vacuous for them — either it only constrains `a` (`a<64`), or it
+// requires `a` to be all-ones, which can never happen — so the pattern is not reported at all.
+const CAT_LABELS: [(&str, Option<&str>); OP_CATEGORIES] = [
+    ("a,b,c hi32=0", Some("b,c hi32=0")),
+    ("a hi32=0,b hi32=1", Some("b hi32=1")),
+    ("a hi32=1,b hi32=0", None),
+    ("a,b hi32=1", None),
+    ("a,b,c hi48=0", Some("b,c hi48=0")),
+    ("a hi48=0,b hi48=1", Some("b hi48=1")),
+    ("a hi48=1,b hi48=0", None),
+    ("a,b hi48=1", None),
+    ("a,b,c lo32=0", Some("b,c lo32=0")),
+    ("a lo32=0,b lo32=1", Some("b lo32=1")),
+    ("a lo32=1,b lo32=0", None),
+    ("a,b lo32=1", None),
+    ("a<64", None),
+    ("b<64", Some("b<64")),
+];
+/// Opcodes that take a single operand: their `op_*` implementation ignores `a` (see `op_rev8`,
+/// `op_signextend_b`, … in `zisk_core`), so `a` is always zero and any pattern constraining it is
+/// true by definition. They are reported with the reduced `CAT_LABELS` labels.
+const B_ONLY_OPS: [u8; 12] = [
+    ZiskOp::SIGNEXTEND_B,
+    ZiskOp::SIGNEXTEND_H,
+    ZiskOp::SIGNEXTEND_W,
+    ZiskOp::REV8,
+    ZiskOp::BREV8,
+    ZiskOp::CLZ,
+    ZiskOp::CLZ_W,
+    ZiskOp::CTZ,
+    ZiskOp::CTZ_W,
+    ZiskOp::CPOP,
+    ZiskOp::CPOP_W,
+    ZiskOp::ORC_B,
+];
+/// A category is reported as a pattern only if it covers more than this percentage of the opcode's
+/// operations AND at least `PATTERN_MIN_COUNT` operations in absolute terms.
+const PATTERN_MIN_PCT: f64 = 10.0;
+const PATTERN_MIN_COUNT: u64 = 4_000;
 
 const REG_RA_IDX: u8 = 1;
 const REG_T0_IDX: u8 = 5;
 const RETURN_REGS: [u8; 2] = [REG_RA_IDX, REG_T0_IDX];
+
+// ------------------------------------------------------------------------------------------------
+// Cheap opcode variants: opcodes whose operands meet a condition that makes them cheaper to prove,
+// counted separately so their reduced cost can be accounted for and shown as a per-opcode
+// breakdown. A general mechanism — currently the BinaryAddHi shapes of ADD:
+//   add_hi0 : hi32(a)=hi32(c)=0 and hi32(b)=0            (both operands fit in 32 bits)
+//   add_hif : hi32(a)=hi32(c)=0 and hi32(b)=0xFFFF_FFFF  (a subtraction encoded as an addition)
+// ------------------------------------------------------------------------------------------------
+const ADD_CODE: u8 = ZiskOp::Add.code();
+const HI32_MASK: u64 = 0xFFFF_FFFF_0000_0000;
+const CHEAP_ADD_HI0: usize = 0;
+const CHEAP_ADD_HIF: usize = 1;
+const CHEAP_VARIANT_COUNT: usize = 2;
+/// (base opcode, label, reduced cost) for each cheap variant, indexed by `CHEAP_*`.
+const CHEAP_VARIANTS: [(u8, &str, u64); CHEAP_VARIANT_COUNT] =
+    [(ADD_CODE, "add_hi0", BINARY_ADD_HI_COST), (ADD_CODE, "add_hif", BINARY_ADD_HI_COST)];
+
+// ------------------------------------------------------------------------------------------------
+// Precompile duplicate analysis: detect precompile calls that repeat the same computation (same
+// input content → same output) so the redundant proving cost (the potential deduplication saving)
+// can be reported. Works for every precompile except DMA — the ones with a content descriptor
+// below. The key is the operand *content*, not the `b` address, so identical inputs stored at
+// different memory buffers are still detected as duplicates.
+// ------------------------------------------------------------------------------------------------
+/// Maximum number of innermost call-stack ROIs (leaf + callers) recorded per precompile call, so
+/// the detail report can show where the duplicates come from. The actual depth is configurable
+/// (`--duplicates-depth`) up to this maximum.
+const DUP_MAX_ROI_DEPTH: usize = 8;
+
+/// One segment of a precompile's input content, describing where to read operand words from,
+/// relative to the parameter block at `ctx.b` (all addresses are 8-byte words).
+#[derive(Clone, Copy)]
+enum DupSeg {
+    /// In-place operands: read `words` consecutive words starting at `ctx.b` (no indirection),
+    /// appended after any previous `Direct` segment.
+    Direct { words: usize },
+    /// Indirected operand: the param at `ctx.b + 8*param` is a pointer; read `words` words from it.
+    Indirect { param: usize, words: usize },
+    /// Inline scalar: the param at `ctx.b + 8*param` is a literal value (e.g. add256 carry-in,
+    /// blake2 block index), included as a single content word.
+    Literal { param: usize },
+}
+
+/// Per-precompile duplicate-analysis state.
+#[derive(Debug, Default)]
+struct DupStats {
+    /// Occurrence count of each input-content fingerprint (the number of words is precompile-fixed).
+    states: HashMap<Box<[u64]>, u64>,
+    /// Per-call-path stats: the innermost `duplicates_depth` ROIs (leaf first, padded with
+    /// `usize::MAX`) → (total calls on that path, of which duplicates). Lets the detail report
+    /// attribute the redundant calls to their call paths.
+    call_paths: HashMap<[usize; DUP_MAX_ROI_DEPTH], (u64, u64)>,
+}
 
 #[derive(Debug)]
 pub struct ProfileStats {
@@ -100,9 +204,32 @@ pub struct Stats {
     store_ops: bool,
     /// Flag to use the legacy FROPS tables when computing FROPS coverage statistics
     legacy_frops: bool,
+    /// Sort opcode/precompiled/FROPS report sections by operation count instead of by cost
+    sort_by_units: bool,
     costs: StatsCosts,
     // Global costs
     op_categories: OpsCount<OP_CATEGORIES>,
+    /// Execution count of each cheap opcode variant (see `CHEAP_VARIANTS`), e.g. add_hi0 / add_hif.
+    cheap_variant_counts: [u64; CHEAP_VARIANT_COUNT],
+    /// Show the per-opcode breakdown of cheap variants in the report (`--opcode-breakdown`).
+    opcode_breakdown: bool,
+    /// Show the operand pattern-analysis section (`--pattern-analysis`): per opcode, the operand
+    /// categories that cover a significant share of its operations.
+    pattern_analysis: bool,
+    /// Analyze duplicate precompile calls: count how many calls repeat the same input content
+    /// (same input → same output) and the cost spent on those repeats, per precompile
+    /// (`--duplicates`).
+    duplicates: bool,
+    /// Restrict the duplicate analysis to these opcodes (`--duplicates-ops`). `None` = every
+    /// supported precompile (all with a content descriptor, i.e. all except DMA).
+    duplicates_ops: Option<HashSet<u8>>,
+    /// How many innermost call-stack ROIs to record per precompile call for the detail report
+    /// (`--duplicates-depth`), clamped to `1..=DUP_MAX_ROI_DEPTH`.
+    duplicates_depth: usize,
+    /// Show the per-precompile call-path detail (level 2) in the report (`--duplicates-detail`).
+    duplicates_detail: bool,
+    /// Per-precompile duplicate-analysis state, keyed by opcode.
+    dup_stats: HashMap<u8, DupStats>,
     /// Buffer to store operation data before writing to file
     op_data_buffer: Vec<u8>,
     rois_by_pc: BTreeMap<u32, u32>,
@@ -122,12 +249,49 @@ pub struct Stats {
     sdk_top_functions: bool,
     mem_stats: bool,
     mem_full_stats: bool,
+    /// Accumulate the per-offset byte read/write counters (MEM_OFFSETS). Enabled by
+    /// `--mem-full-stats` for the on-screen table, and by `--save-stats` / `--ref-stats` so the
+    /// snapshot always includes them.
+    collect_offsets: bool,
+    /// Log every costly unaligned memory access (double 4B/8B, i.e. `MEM_ACCESS_MONITOR`) with its
+    /// execution context. Off by default; enabled by `--log-costly-unaligned`.
+    log_costly_unaligned: bool,
     /// PC histogram, i.e. number of times each PC was executed
     pc_histogram: HashMap<u64, u64>,
     previous_pc: u64,
     /// pc of the instruction currently being executed, set once per step; used to give execution
     /// context when reporting an invalid memory access.
     current_pc: u64,
+    /// step of the instruction currently being executed, set once per step; used by the
+    /// register step-distance analysis to timestamp each register access.
+    current_step: u64,
+    // --- Register step-distance analysis (`--reg-step-distance`) -------------------------------
+    /// Whether to measure, per register, the gap in steps between consecutive accesses.
+    reg_step_distance: bool,
+    /// Distance limit against which the 80% / 100% / 200% counters are compared (`--reg-step-limit-bits`).
+    reg_step_limit: u64,
+    /// Flush period in bits (`--reg-step-flush-bits`): every 2^bits steps every register is assumed
+    /// to be forcibly accessed. Kept only to label the report.
+    reg_flush_bits: u32,
+    /// Flush period in steps, i.e. 2^`reg_flush_bits`; always >= 1.
+    reg_flush_period: u64,
+    /// Program start step (minimum step seen): the baseline for the first-access distance, so the
+    /// gap from the program start to a register's first access is counted like any other gap.
+    reg_start_step: u64,
+    /// Last step each register was accessed (read or write); `None` until first accessed.
+    reg_last_step: [Option<u64>; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Maximum step distance seen per register.
+    reg_max_dist: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Maximum step distance seen per register once the periodic flush accesses are inserted, i.e.
+    /// the longest a register keeps a value if it is forcibly accessed every `reg_flush_period`
+    /// steps. Never larger than `reg_flush_period`.
+    reg_max_fdist: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Per-register count of distances reaching >=80% of the limit.
+    reg_near80: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Per-register count of distances reaching >=100% of the limit (over the limit).
+    reg_over: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
+    /// Per-register count of distances reaching >=200% of the limit (double the limit).
+    reg_double: [u64; REGS_IN_MAIN_TOTAL_NUMBER],
     call_stack: Vec<CallStackEntry>,
     is_call: bool,
     is_return: bool,
@@ -140,6 +304,11 @@ pub struct Stats {
     use_thousands_sep: bool,
     top_rois_filter: bool,
     disable_call_stack: bool,
+    /// Call-stack tracking mode. `false` (auto, default): on a stack mismatch, resync by unwinding
+    /// the collapsed self-recursive frames (handles GCC/C++ tail-recursion, e.g. std::sort's
+    /// __introsort_loop). `true` (strict): the original behaviour — report the mismatch and disable
+    /// the call stack.
+    callstack_strict: bool,
     use_colors: bool,
     compact_cost: bool,
     compact_names: Option<usize>,
@@ -193,6 +362,7 @@ impl Default for Stats {
             op_data_buffer: vec![],
             store_ops: false,
             legacy_frops: false,
+            sort_by_units: false,
             rois,
             rois_by_pc,
             current_roi: None,
@@ -207,6 +377,18 @@ impl Default for Stats {
             pc_histogram: HashMap::new(),
             previous_pc: 0,
             current_pc: 0,
+            current_step: 0,
+            reg_step_distance: false,
+            reg_step_limit: 1 << 22,
+            reg_flush_bits: 22,
+            reg_flush_period: 1 << 22,
+            reg_start_step: u64::MAX,
+            reg_last_step: [None; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_max_dist: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_max_fdist: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_near80: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_over: [0; REGS_IN_MAIN_TOTAL_NUMBER],
+            reg_double: [0; REGS_IN_MAIN_TOTAL_NUMBER],
             call_stack: Vec::new(),
             is_call: false,
             is_tail_call: false,
@@ -222,6 +404,7 @@ impl Default for Stats {
             use_thousands_sep: true,
             top_rois_filter: false,
             disable_call_stack: false,
+            callstack_strict: false,
             use_colors: std::io::stdout().is_terminal(),
             compact_cost: true,
             compact_names: None,
@@ -231,6 +414,8 @@ impl Default for Stats {
             sdk_top_functions: false,
             mem_stats: false,
             mem_full_stats: false,
+            collect_offsets: false,
+            log_costly_unaligned: false,
             ram_monitor: RamMonitor::new(),
             profile_tags_map: HashMap::new(),
             profile_tags: Vec::new(),
@@ -252,6 +437,14 @@ impl Default for Stats {
             rom_init_count: 0,
             ram_init_count: 0,
             op_categories: OpsCount::<OP_CATEGORIES>::new(),
+            cheap_variant_counts: [0; CHEAP_VARIANT_COUNT],
+            opcode_breakdown: false,
+            pattern_analysis: false,
+            duplicates: false,
+            duplicates_ops: None,
+            duplicates_depth: 4,
+            duplicates_detail: false,
+            dup_stats: HashMap::new(),
             byte_reads: [0; 8],
             byte_clean_writes: [0; 8],
             byte_dirty_writes: [0; 8],
@@ -278,24 +471,90 @@ impl Stats {
         }
     }
 
-    /// Records the pc of the instruction currently being executed (set once per step), so an invalid
-    /// memory access can be reported with the pc/function where it happened.
-    pub fn set_current_pc(&mut self, pc: u64) {
+    /// Records the pc and step of the instruction currently being executed (set once per step,
+    /// before its register/memory accesses). The pc gives execution context when reporting an
+    /// invalid memory access; the step timestamps register accesses for the step-distance analysis.
+    pub fn set_current_pc(&mut self, pc: u64, step: u64) {
         self.current_pc = pc;
+        self.current_step = step;
+        // The first step seen is the program start, used as the baseline for the first-access gap.
+        if self.reg_step_distance && step < self.reg_start_step {
+            self.reg_start_step = step;
+        }
+    }
+
+    /// Register step-distance bookkeeping shared by reads and writes: records the gap in steps
+    /// since this register was last accessed (or since the program start, for the first access)
+    /// and updates the max / threshold counters. The final gap to the program end is added later
+    /// in `report_reg_step_distance`.
+    #[inline(always)]
+    fn on_register_access(&mut self, reg: usize) {
+        if !self.reg_step_distance {
+            return;
+        }
+        let step = self.current_step;
+        // Baseline: the previous access, or the program start for the first access — so the gap
+        // the register holds its initial value (start -> first access) is counted like any other.
+        let last = self.reg_last_step[reg].unwrap_or(self.reg_start_step);
+        self.account_reg_distance(reg, last, step);
+        self.reg_last_step[reg] = Some(step);
+    }
+
+    /// Folds the gap `last` -> `step` of one register into its max and threshold counters, both
+    /// without flushes (`reg_max_dist`) and with them (`reg_max_fdist`).
+    #[inline(always)]
+    fn account_reg_distance(&mut self, reg: usize, last: u64, step: u64) {
+        let dist = step - last;
+        if dist > self.reg_max_dist[reg] {
+            self.reg_max_dist[reg] = dist;
+        }
+        let fdist = Self::flushed_distance(last, step, self.reg_flush_period);
+        if fdist > self.reg_max_fdist[reg] {
+            self.reg_max_fdist[reg] = fdist;
+        }
+        let limit = self.reg_step_limit;
+        if dist >= limit / 5 * 4 {
+            self.reg_near80[reg] += 1;
+        }
+        if dist >= limit {
+            self.reg_over[reg] += 1;
+        }
+        if dist >= limit * 2 {
+            self.reg_double[reg] += 1;
+        }
+    }
+
+    /// Largest sub-gap inside `(last, step]` once the forced flush accesses — one at every multiple
+    /// of `period` steps — are inserted between the two real accesses. Since a flush touches every
+    /// register, a gap spanning two or more flushes is broken into pieces of at most `period`, so
+    /// the result is never larger than `period`.
+    #[inline(always)]
+    fn flushed_distance(last: u64, step: u64, period: u64) -> u64 {
+        // First flush strictly after `last`: a flush landing on `last` coincides with that access.
+        let first_flush = (last / period + 1) * period;
+        if first_flush > step {
+            // No flush in between, the gap is untouched.
+            return step - last;
+        }
+        let last_flush = step / period * period;
+        // Head (last access -> first flush), tail (last flush -> this access) and, when there is
+        // more than one flush in between, the full flush-to-flush gaps of `period` steps.
+        let mid = if last_flush > first_flush { period } else { 0 };
+        (first_flush - last).max(step - last_flush).max(mid)
     }
 
     /// Called every time some data is read from memory, if statistics are enabled
     pub fn on_memory_read(&mut self, address: u64, width: u64) {
-        if self.mem_full_stats && width == 1 {
+        if self.collect_offsets && width == 1 {
             self.byte_reads[(address as usize) & 0x7] += 1;
         }
         let status = self.costs.memory_read(address, width);
         self.handle_mem_status(status, false, address, width, 0);
     }
 
-    /// Called every time some data is writen to memory, if statistics are enabled
+    /// Called every time some data is written to memory, if statistics are enabled
     pub fn on_memory_write(&mut self, address: u64, width: u64, value: u64) {
-        if self.mem_full_stats && width == 1 {
+        if self.collect_offsets && width == 1 {
             let offset = (address as usize) & 0x7;
             if value < 0x100 {
                 self.byte_clean_writes[offset] += 1;
@@ -313,7 +572,7 @@ impl Stats {
         if status & MEM_ACCESS_INVALID != 0 {
             self.report_invalid_mem_access(is_write, address, width);
         }
-        if status & MEM_ACCESS_MONITOR != 0 {
+        if self.log_costly_unaligned && status & MEM_ACCESS_MONITOR != 0 {
             self.monitor_mem_access(is_write, address, width, value);
         }
     }
@@ -343,6 +602,7 @@ impl Stats {
 
     /// Logs a monitored memory access (e.g. a double 4/8-byte access) with its execution context:
     /// pc, function, address, width, read/write, misalignment offset (`address % 8`) and value.
+    #[allow(dead_code)]
     fn monitor_mem_access(&self, is_write: bool, address: u64, width: u64, value: u64) {
         let pc = self.current_pc;
         if is_write {
@@ -364,12 +624,14 @@ impl Stats {
     pub fn on_register_read(&mut self, reg: usize) {
         assert!(reg < REGS_IN_MAIN_TOTAL_NUMBER);
         self.regs[reg] += 1;
+        self.on_register_access(reg);
     }
 
     /// Called every time a register is written, if statistics are enabled
     pub fn on_register_write(&mut self, reg: usize) {
         assert!(reg < REGS_IN_MAIN_TOTAL_NUMBER);
         self.regs[reg] += 1;
+        self.on_register_access(reg);
     }
 
     /// Called at every step with the current number of executed steps, if statistics are enabled
@@ -567,42 +829,79 @@ impl Stats {
             // At this point ROI change, search the new ROI
             // let roi = &mut self.rois[*index as usize];
             // If return after call, need to add delta costs
-            if let Some(return_call) = return_call {
+            if let Some(mut return_call) = return_call {
                 if return_call.caller_roi_index != Some(roi_index) {
-                    self.call_stack_error(
-                        "ERROR: STACK MISMATCH DETECTED, disabled call stack feature",
-                    );
-                    #[cfg(feature = "debug_call_stack")]
-                    {
-                        println!("**** STACK MISMATCH DETECTED ****\n");
-                        println!(
-                            "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
-                            self.regs[1], self.previous_pc
+                    // The popped frame does not return into the ROI we landed in. With GCC/C++
+                    // tail-recursion (e.g. std::__introsort_loop from std::sort) a single machine
+                    // `ret` unwinds several nested self-recursive frames the heuristic tracked as
+                    // separate calls. In `auto` mode (default) we resync by discarding the extra
+                    // frames until the one that returns into the current ROI; `strict` keeps the
+                    // original behaviour (report the mismatch and disable the call stack).
+                    if self.callstack_strict {
+                        self.call_stack_error(
+                            "ERROR: STACK MISMATCH DETECTED, disabled call stack feature",
                         );
-                        if let Some(caller_roi_index) = return_call.caller_roi_index {
-                            let _roi = &self.rois[caller_roi_index];
-                            println!("caller_roi_index (expected): {caller_roi_index} [0x{:08x}, 0x{:08x}] {}", _roi.from_pc, _roi.to_pc, _roi.name);
-                        } else {
-                            println!("caller_roi_index (expected): None !!");
-                        }
-                        let _roi = &self.rois[roi_index];
-                        println!(
-                            "caller_roi_index (current): {roi_index} [0x{:08x}, 0x{:08x}] {}",
-                            _roi.from_pc, _roi.to_pc, _roi.name
-                        );
-                        if let Some(called_roi_index) = return_call.called_roi_index {
-                            let _roi = &self.rois[called_roi_index];
+                        #[cfg(feature = "debug_call_stack")]
+                        {
+                            println!("**** STACK MISMATCH DETECTED ****\n");
                             println!(
-                                "called_roi_index: {called_roi_index} [0x{:08x}, 0x{:08x}] {}",
+                                "PC:[0x{pc:08x}] RA:[0x{:08x}] P_PC:[0x{:08x}]",
+                                self.regs[1], self.previous_pc
+                            );
+                            if let Some(caller_roi_index) = return_call.caller_roi_index {
+                                let _roi = &self.rois[caller_roi_index];
+                                println!("caller_roi_index (expected): {caller_roi_index} [0x{:08x}, 0x{:08x}] {}", _roi.from_pc, _roi.to_pc, _roi.name);
+                            } else {
+                                println!("caller_roi_index (expected): None !!");
+                            }
+                            let _roi = &self.rois[roi_index];
+                            println!(
+                                "caller_roi_index (current): {roi_index} [0x{:08x}, 0x{:08x}] {}",
                                 _roi.from_pc, _roi.to_pc, _roi.name
                             );
-                        } else {
-                            println!("called_roi_index (expected): None !!");
+                            if let Some(called_roi_index) = return_call.called_roi_index {
+                                let _roi = &self.rois[called_roi_index];
+                                println!(
+                                    "called_roi_index: {called_roi_index} [0x{:08x}, 0x{:08x}] {}",
+                                    _roi.from_pc, _roi.to_pc, _roi.name
+                                );
+                            } else {
+                                println!("called_roi_index (expected): None !!");
+                            }
+                            println!("\n");
+                            Self::static_print_call_stack(&self.call_stack, "");
                         }
-                        println!("\n");
-                        Self::static_print_call_stack(&self.call_stack, "");
+                        return;
                     }
-                    return;
+
+                    // auto: a single machine `ret` unwound several collapsed self-recursive frames
+                    // (`return_call`, the top frame, was already popped above). Find the nearest
+                    // remaining frame that returns into the current ROI and drop the extra frames
+                    // above it, keeping the profiler call path balanced; the dropped frame becomes
+                    // the effective return. If no such frame exists the mismatch is not a collapsed
+                    // recursion, so fall back to the strict behaviour (report and disable) without
+                    // mutating the stack further.
+                    match self
+                        .call_stack
+                        .iter()
+                        .rposition(|f| f.caller_roi_index == Some(roi_index))
+                    {
+                        Some(idx) => {
+                            while self.call_stack.len() > idx {
+                                if let Some(profiler) = &mut self.profiler {
+                                    let ram_usage = self.ram_monitor.get_usage(inst_ctx);
+                                    profiler.pop_call_path(self.costs.total_cost(), ram_usage);
+                                }
+                                return_call = self.call_stack.pop().unwrap();
+                            }
+                        }
+                        None => {
+                            self.call_stack_error(
+                                "ERROR: STACK MISMATCH DETECTED, disabled call stack feature",
+                            );
+                            return;
+                        }
+                    }
                 }
 
                 let (last_caller_in_stack, ok_return_call) =
@@ -957,10 +1256,67 @@ impl Stats {
                         self.op_categories.inc(inst.op, i_mask * 4 + 3);
                     }
                 }
+                if inst.op_type == ZiskOperationType::BinaryE {
+                    match inst.op {
+                        ZiskOp::PACK | ZiskOp::PACK_H | ZiskOp::PACK_W => {
+                            if inst_ctx.a < 0x1_0000_0000 && inst_ctx.b < 0x1_0000_0000 {
+                                self.op_categories.inc(inst.op, OP_BIN_EXT_A_LT_64_CAT);
+                            }
+                        }
+                        _ => {
+                            if inst_ctx.a < 64 {
+                                self.op_categories.inc(inst.op, OP_BIN_EXT_A_LT_64_CAT);
+                            }
+                            if inst_ctx.b < 64 {
+                                self.op_categories.inc(inst.op, OP_BIN_EXT_B_LT_64_CAT);
+                            }
+                        }
+                    }
+                }
             }
-            self.costs.add_fixed_cost_op(inst.op);
+            // Cheap opcode variants (e.g. BinaryAddHi shapes of ADD) are counted and charged their
+            // reduced cost, so the per-opcode and aggregate costs reflect the saving. Only for
+            // non-FROPS fixed-cost ops, so the counts are a subset of the opcode's count.
+            if let Some(variant) = Self::cheap_variant(inst.op, inst_ctx.a, inst_ctx.b, inst_ctx.c)
+            {
+                self.cheap_variant_counts[variant] += 1;
+                self.costs.add_cost_op(inst.op, CHEAP_VARIANTS[variant].2);
+            } else {
+                self.costs.add_fixed_cost_op(inst.op);
+            }
         } else {
             self.costs.add_variable_cost_op(inst.op, self.current_variable_cost);
+        }
+
+        // Precompile duplicate analysis: fingerprint the input content of each precompile call
+        // (following its memory layout, dereferencing indirections, so the key is the content —
+        // not the `b` address) and mark the call a duplicate if that content was seen before.
+        if self.duplicates && self.dup_op_enabled(inst.op) {
+            if let Some(content) = Self::precompile_content(inst.op, inst_ctx) {
+                let depth = self.duplicates_depth;
+                let stats = self.dup_stats.entry(inst.op).or_default();
+                let entry = stats.states.entry(content.into_boxed_slice()).or_insert(0);
+                let is_duplicate = *entry > 0;
+                *entry += 1;
+
+                // Innermost `depth` call-stack ROIs (leaf first): current function plus its
+                // callers, so the detail report shows the call path a duplicate comes from. Only
+                // the first `depth` levels are filled, so paths aggregate at the configured depth.
+                let mut path = [usize::MAX; DUP_MAX_ROI_DEPTH];
+                path[0] = self.current_roi.unwrap_or(usize::MAX);
+                let n = self.call_stack.len();
+                for i in 0..depth.saturating_sub(1) {
+                    if i < n {
+                        path[i + 1] =
+                            self.call_stack[n - 1 - i].caller_roi_index.unwrap_or(usize::MAX);
+                    }
+                }
+                let path_stats = stats.call_paths.entry(path).or_insert((0, 0));
+                path_stats.0 += 1;
+                if is_duplicate {
+                    path_stats.1 += 1;
+                }
+            }
         }
 
         // Increase the PC histogram entry for this PC
@@ -1116,6 +1472,11 @@ impl Stats {
     pub fn set_legacy_frops(&mut self, legacy: bool) {
         self.legacy_frops = legacy;
     }
+    /// When true, the opcode/precompiled/FROPS report sections are sorted by operation count
+    /// (units) instead of by cost.
+    pub fn set_sort_by_units(&mut self, sort_by_units: bool) {
+        self.sort_by_units = sort_by_units;
+    }
     /// Store operation data in memory buffer
     fn store_op_data(&mut self, op: u8, a: u64, b: u64) {
         // Reserve space for: 1 byte (op) + 8 bytes (a) + 8 bytes (b) = 17 bytes
@@ -1224,9 +1585,11 @@ impl Stats {
         ops: &OpsCosts,
         base: bool,
         precompiled: bool,
+        breakdown: bool,
     ) {
-        let top_opcodes = ops.top_cost_opcodes(5, base, precompiled);
-        let extended = base && !ops.is_frops();
+        // Collect the opcodes to report, then order them from highest to lowest by cost (default) or
+        // by operation count (units) when `sort_by_units` is set.
+        let mut entries: Vec<(u8, u64, u64)> = Vec::new(); // (opcode, count, cost)
         for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
             if let Some((count, cost)) = ops.get_opcode_count_and_cost(opcode) {
                 if count == 0 {
@@ -1239,30 +1602,161 @@ impl Stats {
                     if !precompiled && inst.is_precompiled() {
                         continue;
                     }
-                    let rank = if let Some(pos) = top_opcodes.iter().position(|&op| op == opcode) {
-                        format!(" #{}", pos + 1)
-                    } else {
-                        String::new()
-                    };
-                    if extended {
-                        let categories =
-                            self.op_categories.get_by_opcode(opcode).map(|c| &c[..]).unwrap_or(&[]);
-                        report.add_count_cost_perc2_extended(
-                            &format!("{title} {:}", inst.name()),
-                            count as u64,
-                            cost,
-                            &rank,
-                            categories,
-                        );
-                    } else {
-                        report.add_count_cost_perc2(
-                            &format!("{title} {:}", inst.name()),
-                            count as u64,
-                            cost,
-                            &rank,
-                        );
-                    }
+                    entries.push((opcode, count as u64, cost));
                 }
+            }
+        }
+        if self.sort_by_units {
+            entries.sort_by_key(|&(_, count, cost)| std::cmp::Reverse((count, cost)));
+        } else {
+            entries.sort_by_key(|&(_, count, cost)| std::cmp::Reverse((cost, count)));
+        }
+
+        for (opcode, count, cost) in entries {
+            let inst = match ZiskOp::try_from_code(opcode) {
+                Ok(inst) => inst,
+                Err(_) => continue,
+            };
+            report.add_count_cost_perc2(&format!("{title} {:}", inst.name()), count, cost, "");
+
+            // Per-opcode breakdown of cheap variants (e.g. add → add_hif / add_hi0), as a tree.
+            if breakdown {
+                let mut variants: Vec<(usize, &str, u64)> = CHEAP_VARIANTS
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, (vop, _, _))| *vop == opcode && self.cheap_variant_counts[*i] > 0)
+                    .map(|(i, (_, label, vcost))| (i, *label, *vcost))
+                    .collect();
+                variants.sort_by_key(|&(i, _, _)| std::cmp::Reverse(self.cheap_variant_counts[i]));
+                for (n, (i, label, vcost)) in variants.iter().enumerate() {
+                    let glyph = if n + 1 == variants.len() { "└" } else { "├" };
+                    let vcount = self.cheap_variant_counts[*i];
+                    report.add_count_cost_perc2(
+                        &format!("{glyph} {label}"),
+                        vcount,
+                        vcount * vcost,
+                        "",
+                    );
+                }
+            }
+        }
+    }
+
+    /// Reports the operand pattern analysis: for each ALU opcode, the operand categories (see
+    /// `CAT_LABELS`) that cover a significant share of its operations — more than `PATTERN_MIN_PCT`%
+    /// of the opcode's operations AND at least `PATTERN_MIN_COUNT` in absolute terms. Reuses the
+    /// per-opcode category counters collected in `on_op`.
+    ///
+    /// Only arithmetic and binary opcodes are considered: the operand shape of the rest (fcalls,
+    /// pubout, profile, internal and precompiled opcodes) says nothing about how they are proven.
+    /// Patterns that are true by definition rather than by data are dropped too — see
+    /// `B_ONLY_OPS`, whose `a` operand is always zero.
+    ///
+    /// Rows are grouped by opcode, one group per opcode ordered like the opcode tables (by cost,
+    /// or by operation count with `--sort-by-units`), and the patterns inside each group ordered by
+    /// count, so a single opcode can be followed at a glance.
+    fn report_pattern_analysis(&self, report: &mut StatsReport) {
+        // One group per opcode, with the significant patterns found for it.
+        struct PatternGroup {
+            /// Opcode name, the group header.
+            name: &'static str,
+            /// Operations of this opcode, the base of the percentages below.
+            op_count: u64,
+            /// Cost / count pair the groups are ordered by (see `sort_by_units`).
+            sort_key: (u64, u64),
+            /// (label, operations matching it, percentage of `op_count`), most first.
+            patterns: Vec<(&'static str, u64, f64)>,
+        }
+        let mut groups: Vec<PatternGroup> = Vec::new();
+        for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
+            let (op_count, op_cost) = match self.costs.get_opcode_count_and_cost(opcode) {
+                Some((count, cost)) if count > 0 => (count as u64, cost),
+                _ => continue,
+            };
+            let inst = match ZiskOp::try_from_code(opcode) {
+                Ok(inst) => inst,
+                Err(_) => continue,
+            };
+            // Only the ALU opcodes: categories are not collected for precompiled opcodes, and for
+            // the remaining types (fcall, pubout, profile, internal, evm, dma) the operand shape
+            // is meaningless.
+            if !matches!(
+                inst.op_type(),
+                OpType::Arith
+                    | OpType::ArithA32
+                    | OpType::ArithAm32
+                    | OpType::Binary
+                    | OpType::BinaryE
+            ) {
+                continue;
+            }
+            let cats = match self.op_categories.get_by_opcode(opcode) {
+                Some(cats) => cats,
+                None => continue,
+            };
+            let b_only = B_ONLY_OPS.contains(&opcode);
+            let mut patterns: Vec<(&str, u64, f64)> = Vec::new();
+            for (i, &cat) in cats.iter().enumerate() {
+                if cat < PATTERN_MIN_COUNT {
+                    continue;
+                }
+                let pct = cat as f64 * 100.0 / op_count as f64;
+                if pct <= PATTERN_MIN_PCT {
+                    continue;
+                }
+                let Some(&(full_label, reduced_label)) = CAT_LABELS.get(i) else {
+                    continue;
+                };
+                // For single-operand opcodes the conditions on `a` hold by definition: report the
+                // pattern without them, or skip it when nothing is left to say.
+                let label = if b_only {
+                    match reduced_label {
+                        Some(label) => label,
+                        None => continue,
+                    }
+                } else {
+                    full_label
+                };
+                patterns.push((label, cat, pct));
+            }
+            if patterns.is_empty() {
+                continue;
+            }
+            patterns.sort_by_key(|&(_, count, _)| std::cmp::Reverse(count));
+            let sort_key =
+                if self.sort_by_units { (op_count, op_cost) } else { (op_cost, op_count) };
+            groups.push(PatternGroup { name: inst.name(), op_count, sort_key, patterns });
+        }
+        if groups.is_empty() {
+            return;
+        }
+        groups.sort_by_key(|group| std::cmp::Reverse(group.sort_key));
+
+        let fmt_row = |label: &str, count: &str, pct: &str| -> String {
+            format!("{label:<34} {count:>15} {pct:>8}\n")
+        };
+        let header = fmt_row("PATTERN", "COUNT", "%");
+        let width = header.trim_end().len();
+        report.add(&format!(
+            "\nOPERAND PATTERN ANALYSIS (>{:.0}% of opcode ops and >={})\n",
+            PATTERN_MIN_PCT,
+            report.format_number(PATTERN_MIN_COUNT),
+        ));
+        report.add(&header);
+        report.add(&format!("{}\n", "-".repeat(width)));
+        for group in &groups {
+            // Group header: the opcode and its total operations, the base of the percentages below.
+            report.add(&fmt_row(
+                &format!("OP {}", group.name),
+                &report.format_number(group.op_count),
+                "100.00%",
+            ));
+            for (label, count, pct) in &group.patterns {
+                report.add(&fmt_row(
+                    &format!("  {label}"),
+                    &report.format_number(*count),
+                    &format!("{pct:.2}%"),
+                ));
             }
         }
     }
@@ -1419,7 +1913,9 @@ impl Stats {
     }
 
     pub fn report_frops_hit(&self, report: &mut StatsReport, title: &str) {
-        let top_opcodes = self.costs.top_cost_frops_opcodes(5);
+        // Collect the FROPS opcodes, then order them from highest to lowest by cost (default) or by
+        // FROPS count (units) when `sort_by_units` is set.
+        let mut entries: Vec<(u8, u64, u64, u64)> = Vec::new(); // (opcode, frops_count, no_frops_count, frops_cost)
         for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
             if let Some((frops_count, frops_cost)) =
                 self.costs.get_opcode_frops_count_and_cost(opcode)
@@ -1434,21 +1930,731 @@ impl Stats {
                     }
                     let (no_frops_count, _) =
                         self.costs.get_opcode_count_and_cost(opcode).unwrap_or((0, 0));
-                    let rank = if let Some(pos) = top_opcodes.iter().position(|&op| op == opcode) {
-                        format!(" #{}", pos + 1)
-                    } else {
-                        String::new()
-                    };
-                    report.add_count_perc_cost_perc(
-                        &format!("{title} {:}", inst.name()),
-                        frops_count as u64,
-                        (frops_count as f64 * 100.0) / ((frops_count + no_frops_count) as f64),
-                        frops_cost,
-                        &rank,
-                    );
+                    entries.push((opcode, frops_count as u64, no_frops_count as u64, frops_cost));
                 }
             }
         }
+        if self.sort_by_units {
+            entries.sort_by_key(|&(_, frops_count, _, frops_cost)| {
+                std::cmp::Reverse((frops_count, frops_cost))
+            });
+        } else {
+            entries.sort_by_key(|&(_, frops_count, _, frops_cost)| {
+                std::cmp::Reverse((frops_cost, frops_count))
+            });
+        }
+
+        for (opcode, frops_count, no_frops_count, frops_cost) in entries {
+            let inst = match ZiskOp::try_from_code(opcode) {
+                Ok(inst) => inst,
+                Err(_) => continue,
+            };
+            report.add_count_perc_cost_perc(
+                &format!("{title} {:}", inst.name()),
+                frops_count,
+                (frops_count as f64 * 100.0) / ((frops_count + no_frops_count) as f64),
+                frops_cost,
+                "",
+            );
+        }
+    }
+
+    /// Reports the precompile duplicate analysis. Level 1 (always) is a per-precompile summary
+    /// table: total calls, unique inputs, duplicates and the cost spent on those duplicates (what
+    /// deduplication could save). Level 2 (`--duplicates-detail`) adds, per precompile with
+    /// duplicates, the call paths where the duplicates come from — most costly first.
+    fn report_duplicates(&self, report: &mut StatsReport, total_cost: u64) {
+        // One summary row per precompile that had calls, ordered by duplicate cost (most first).
+        struct DupRow {
+            op: u8,
+            total: u64,
+            unique: u64,
+            dup: u64,
+            max_dup: u64,
+            dup_cost: u64,
+        }
+        let mut rows: Vec<DupRow> = self
+            .dup_stats
+            .iter()
+            .filter(|(_, s)| !s.states.is_empty())
+            .map(|(&op, s)| {
+                let total: u64 = s.states.values().sum();
+                let unique = s.states.len() as u64;
+                let dup = total.saturating_sub(unique);
+                let max_dup = s.states.values().copied().max().unwrap_or(0);
+                let (count, cost) = self.costs.get_opcode_count_and_cost(op).unwrap_or((0, 0));
+                // dup * cost / count, multiplying first so the average per-call cost is not
+                // truncated before scaling. In u128: the product overflows u64 on a long run.
+                let dup_cost =
+                    if count > 0 { (dup as u128 * cost as u128 / count as u128) as u64 } else { 0 };
+                DupRow { op, total, unique, dup, max_dup, dup_cost }
+            })
+            .collect();
+        if rows.is_empty() {
+            return;
+        }
+        rows.sort_by_key(|r| std::cmp::Reverse((r.dup_cost, r.dup)));
+
+        // --- Level 1: summary table ---------------------------------------------------------
+        let pct = |num: u64, den: u64| -> String {
+            if den == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * num as f64 / den as f64)
+            }
+        };
+        let fmt_row = |c: &[String; 9]| -> String {
+            format!(
+                "{:<22} {:>12} {:>12} {:>8} {:>12} {:>8} {:>9} {:>15} {:>8}\n",
+                c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]
+            )
+        };
+        let header = [
+            "PRECOMPILE".to_string(),
+            "TOTAL".to_string(),
+            "UNIQUE".to_string(),
+            "%".to_string(),
+            "DUP".to_string(),
+            "%".to_string(),
+            "MAX DUP".to_string(),
+            "DUP COST".to_string(),
+            "%".to_string(),
+        ];
+        let header_line = fmt_row(&header);
+        let width = header_line.trim_end().len();
+        report.add("\nPRECOMPILE DUPLICATES\n");
+        report.add(&header_line);
+        report.add(&format!("{}\n", "-".repeat(width)));
+
+        let (mut t_total, mut t_unique, mut t_dup, mut t_cost) = (0u64, 0u64, 0u64, 0u64);
+        for r in &rows {
+            let name =
+                ZiskOp::try_from_code(r.op).map(|z| z.name().to_string()).unwrap_or_default();
+            report.add(&fmt_row(&[
+                name,
+                report.format_number(r.total),
+                report.format_number(r.unique),
+                pct(r.unique, r.total),
+                report.format_number(r.dup),
+                pct(r.dup, r.total),
+                report.format_number(r.max_dup),
+                report.format_number(r.dup_cost),
+                pct(r.dup_cost, total_cost),
+            ]));
+            t_total += r.total;
+            t_unique += r.unique;
+            t_dup += r.dup;
+            t_cost += r.dup_cost;
+        }
+        if rows.len() > 1 {
+            report.add(&format!("{}\n", "-".repeat(width)));
+            report.add(&fmt_row(&[
+                "TOTAL".to_string(),
+                report.format_number(t_total),
+                report.format_number(t_unique),
+                pct(t_unique, t_total),
+                report.format_number(t_dup),
+                pct(t_dup, t_total),
+                "-".to_string(),
+                report.format_number(t_cost),
+                pct(t_cost, total_cost),
+            ]));
+        }
+
+        // --- Level 2: per-precompile call-path detail ---------------------------------------
+        if !self.duplicates_detail {
+            return;
+        }
+        let depth = self.duplicates_depth.clamp(1, DUP_MAX_ROI_DEPTH);
+        let top_n = self.top_rois.max(1);
+        let roi_name = |roi: usize| -> String {
+            if roi == usize::MAX {
+                "-".to_string()
+            } else {
+                self.format_roi_name(&self.rois[roi].name)
+            }
+        };
+        for r in &rows {
+            if r.dup == 0 {
+                continue;
+            }
+            let stats = match self.dup_stats.get(&r.op) {
+                Some(s) => s,
+                None => continue,
+            };
+            let mut paths: Vec<([usize; DUP_MAX_ROI_DEPTH], u64, u64)> = stats
+                .call_paths
+                .iter()
+                .map(|(&p, &(t, d))| (p, t, d))
+                .filter(|&(_, _, d)| d > 0)
+                .collect();
+            if paths.is_empty() {
+                continue;
+            }
+            paths.sort_by_key(|&(_, _, d)| std::cmp::Reverse(d));
+            let name =
+                ZiskOp::try_from_code(r.op).map(|z| z.name().to_string()).unwrap_or_default();
+            report.title(&format!("{} DUPLICATES BY CALL PATH", name.to_uppercase()));
+            for (path, path_total, dup) in paths.iter().take(top_n) {
+                report.add(&format!(
+                    "{} duplicates / {} total  ({:.2}%)\n",
+                    report.format_number(*dup),
+                    report.format_number(*path_total),
+                    100.0 * *dup as f64 / *path_total as f64,
+                ));
+                for (level, &roi) in path.iter().take(depth).enumerate() {
+                    let prefix = if level == 0 { "    " } else { "    <- " };
+                    report.add(&format!("{prefix}{}\n", roi_name(roi)));
+                }
+            }
+            if paths.len() > top_n {
+                report.add(&format!("... and {} more call paths\n", paths.len() - top_n));
+            }
+        }
+    }
+
+    /// Reports the register step-distance analysis: for each register, the gap in steps between
+    /// consecutive accesses (read or write), including the boundary gaps — from the program start
+    /// to the first access and from the last access to the program end. Shows the number of
+    /// accesses, the maximum gap and its ratio to the limit (`--reg-step-limit-bits`), the same maximum
+    /// once a forced access every 2^bits steps is assumed (`MAX FDIST` / `FRATIO`, see
+    /// `--reg-step-flush-bits`; those flushes are not counted as accesses), and how many gaps
+    /// reached 80% / 100% / 200% of the limit. Large gaps are a concern because a register holds
+    /// its value across the whole gap, which the proof must carry. Rows are in register-number
+    /// order.
+    fn report_reg_step_distance(&self, report: &mut StatsReport) {
+        let limit = self.reg_step_limit;
+        let start = if self.reg_start_step == u64::MAX { 0 } else { self.reg_start_step };
+        // Program end: the last step executed (current_step is monotonic and set every step).
+        let end = self.current_step;
+        let near80_thr = limit / 5 * 4;
+
+        let fmt_row = |c: &[String; 9]| -> String {
+            format!(
+                "{:<12} {:>13} {:>13} {:>8} {:>13} {:>8} {:>10} {:>10} {:>10}\n",
+                c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]
+            )
+        };
+        let ratio = |dist: u64| -> String { format!("{:.2}", dist as f64 / limit as f64) };
+        let header = [
+            "REGISTER".to_string(),
+            "ACCESSES".to_string(),
+            "MAX DIST".to_string(),
+            "RATIO".to_string(),
+            "MAX FDIST".to_string(),
+            "FRATIO".to_string(),
+            ">=80%".to_string(),
+            ">=LIMIT".to_string(),
+            ">=2x".to_string(),
+        ];
+        let header_line = fmt_row(&header);
+        let width = header_line.trim_end().len();
+        report.add(&format!(
+            "\nREGISTER STEP DISTANCE (limit {}, flush 2^{} = {} steps, {} steps)\n",
+            report.format_number(limit),
+            self.reg_flush_bits,
+            report.format_number(self.reg_flush_period),
+            report.format_number(end.saturating_sub(start)),
+        ));
+        report.add(&header_line);
+        report.add(&format!("{}\n", "-".repeat(width)));
+
+        // Accessed registers, in register-number order.
+        let order: Vec<usize> =
+            (0..REGS_IN_MAIN_TOTAL_NUMBER).filter(|&r| self.regs[r] > 0).collect();
+
+        let (mut t_acc, mut t_max, mut t_fmax, mut t_n80, mut t_over, mut t_dbl) =
+            (0u64, 0u64, 0u64, 0u64, 0u64, 0u64);
+        for r in order {
+            let name = RiscVRegisters::name_from_usize(r).unwrap_or("?");
+            let last = self.reg_last_step[r].unwrap_or(start);
+            let end_dist = end.saturating_sub(last);
+            // reg_max_dist / reg_max_fdist / counters already cover the start gap and the
+            // inter-access gaps; fold in the final gap (last access -> program end) here so the
+            // reported values are complete.
+            let max_dist = self.reg_max_dist[r].max(end_dist);
+            let max_fdist =
+                self.reg_max_fdist[r].max(Self::flushed_distance(last, end, self.reg_flush_period));
+            let near80 = self.reg_near80[r] + (end_dist >= near80_thr) as u64;
+            let over = self.reg_over[r] + (end_dist >= limit) as u64;
+            let double = self.reg_double[r] + (end_dist >= 2 * limit) as u64;
+            report.add(&fmt_row(&[
+                format!("x{r} ({name})"),
+                report.format_number(self.regs[r]),
+                report.format_number(max_dist),
+                ratio(max_dist),
+                report.format_number(max_fdist),
+                ratio(max_fdist),
+                report.format_number(near80),
+                report.format_number(over),
+                report.format_number(double),
+            ]));
+            t_acc += self.regs[r];
+            t_max = t_max.max(max_dist);
+            t_fmax = t_fmax.max(max_fdist);
+            t_n80 += near80;
+            t_over += over;
+            t_dbl += double;
+        }
+        report.add(&format!("{}\n", "-".repeat(width)));
+        report.add(&fmt_row(&[
+            "TOTAL".to_string(),
+            report.format_number(t_acc),
+            report.format_number(t_max),
+            ratio(t_max),
+            report.format_number(t_fmax),
+            ratio(t_fmax),
+            report.format_number(t_n80),
+            report.format_number(t_over),
+            report.format_number(t_dbl),
+        ]));
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Aggregate stats snapshot (semicolon-separated) — save one run and compare against it later.
+    // No per-function/ROI detail is included, only aggregate counters.
+    // ------------------------------------------------------------------------------------------
+
+    /// Cost-distribution totals, mirroring [`Self::report`]:
+    /// `(steps, main, opcodes, precompiled, memory, base, total, frops)`.
+    fn cost_distribution(&self) -> (u64, u64, u64, u64, u64, u64, u64, u64) {
+        let ops_cost = self.costs.base_ops_cost();
+        let precompiled_cost = self.costs.precompiled_ops_cost();
+        let steps = self.costs.steps;
+        let mem_cost = self.costs.mops.get_cost()
+            + self.rom_init_count as u64 * ROM_READ_COST
+            + self.ram_init_count as u64 * MEM_WRITE_COST;
+        let main_cost = steps * MAIN_COST;
+        let base_cost = BASE_COST as u64;
+        let total_cost = base_cost + mem_cost + main_cost + ops_cost + precompiled_cost;
+        (
+            steps,
+            main_cost,
+            ops_cost,
+            precompiled_cost,
+            mem_cost,
+            base_cost,
+            total_cost,
+            self.costs.frops_cost(),
+        )
+    }
+
+    /// Collects opcode rows `(name, count, cost)` for base or precompiled ops, sorted desc by cost.
+    fn csv_opcode_rows(&self, precompiled: bool) -> Vec<(String, u64, u64)> {
+        let mut rows: Vec<(String, u64, u64)> = Vec::new();
+        for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
+            if let Some((count, cost)) = self.costs.get_opcode_count_and_cost(opcode) {
+                if count == 0 {
+                    continue;
+                }
+                if let Ok(inst) = ZiskOp::try_from_code(opcode) {
+                    if inst.is_precompiled() != precompiled {
+                        continue;
+                    }
+                    rows.push((inst.name().to_string(), count as u64, cost));
+                }
+            }
+        }
+        rows.sort_by_key(|(_, count, cost)| std::cmp::Reverse((*cost, *count)));
+        rows
+    }
+
+    /// Collects FROP rows `(name, count, hit_percentage, cost)`, sorted desc by cost.
+    fn csv_frop_rows(&self) -> Vec<(String, u64, f64, u64)> {
+        let mut rows: Vec<(String, u64, f64, u64)> = Vec::new();
+        for opcode in ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE {
+            if let Some((frops_count, frops_cost)) =
+                self.costs.get_opcode_frops_count_and_cost(opcode)
+            {
+                if frops_count == 0 {
+                    continue;
+                }
+                if let Ok(inst) = ZiskOp::try_from_code(opcode) {
+                    if inst.is_precompiled() {
+                        continue;
+                    }
+                    let (no_frops_count, _) =
+                        self.costs.get_opcode_count_and_cost(opcode).unwrap_or((0, 0));
+                    let hit = frops_count as f64 * 100.0 / (frops_count + no_frops_count) as f64;
+                    rows.push((inst.name().to_string(), frops_count as u64, hit, frops_cost));
+                }
+            }
+        }
+        rows.sort_by_key(|(_, count, _, cost)| std::cmp::Reverse((*cost, *count)));
+        rows
+    }
+
+    /// Appends the memory sections (`MEM` cost by type, `DETAILED_MEM` and `DETAILED_MEM FULL`) to
+    /// `s`. Percentages are relative to the total memory count/cost; zero-cost rows are skipped
+    /// (mirroring the pretty report's hidden-no-cost behaviour).
+    fn append_mem_csv(&self, s: &mut String) {
+        let mops = &self.costs.mops;
+        let rom_init = self.rom_init_count as u64;
+        let ram_init = self.ram_init_count as u64;
+        let mem_count = mops.get_count() + rom_init + ram_init;
+        let mem_cost = mops.get_cost() + rom_init * ROM_READ_COST + ram_init * MEM_WRITE_COST;
+        let pct = |v: u64, total: u64| -> String {
+            if total == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * v as f64 / total as f64)
+            }
+        };
+        let row = |s: &mut String, tag: &str, label: &str, count: u64, cost: u64| {
+            if cost == 0 {
+                return; // hidden-no-cost
+            }
+            s.push_str(&format!(
+                "{tag};{label};{count};{};{cost};{}\n",
+                pct(count, mem_count),
+                pct(cost, mem_cost)
+            ));
+        };
+
+        // MEM cost by type.
+        s.push_str("MEM;COST BY TYPE;COUNT;%;COST;%\n");
+        row(
+            s,
+            "MEM",
+            "RAM STACK ALIGNED",
+            mops.get_ram_stack_aligned_count(),
+            mops.get_ram_stack_aligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "RAM NO STACK ALIGNED",
+            mops.get_ram_no_stack_aligned_count(),
+            mops.get_ram_no_stack_aligned_cost(),
+        );
+        row(s, "MEM", "RAM INIT", ram_init, ram_init * MEM_WRITE_COST);
+        row(s, "MEM", "ROM ALIGNED", mops.get_rom_aligned_count(), mops.get_rom_aligned_cost());
+        row(s, "MEM", "ROM INIT", rom_init, rom_init * ROM_READ_COST);
+        row(
+            s,
+            "MEM",
+            "INPUT ALIGNED",
+            mops.get_input_aligned_count(),
+            mops.get_input_aligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "RAM STACK UNALIGNED",
+            mops.get_ram_stack_unaligned_count(),
+            mops.get_ram_stack_unaligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "RAM NO STACK UNALIGNED",
+            mops.get_ram_no_stack_unaligned_count(),
+            mops.get_ram_no_stack_unaligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "ROM UNALIGNED",
+            mops.get_rom_unaligned_count(),
+            mops.get_rom_unaligned_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "INPUT UNALIGNED",
+            mops.get_input_unaligned_count(),
+            mops.get_input_unaligned_cost(),
+        );
+        s.push('\n');
+        row(
+            s,
+            "MEM",
+            "TOTAL ALIGNED",
+            mops.get_aligned_count() + ram_init + rom_init,
+            mops.get_aligned_cost() + ram_init * MEM_WRITE_COST + rom_init * ROM_READ_COST,
+        );
+        row(s, "MEM", "TOTAL UNALIGNED", mops.get_unaligned_count(), mops.get_unaligned_cost());
+        row(s, "MEM", "TOTAL RAM STACK", mops.get_ram_stack_count(), mops.get_ram_stack_cost());
+        row(
+            s,
+            "MEM",
+            "TOTAL RAM NO STACK",
+            mops.get_ram_no_stack_count(),
+            mops.get_ram_no_stack_cost(),
+        );
+        row(
+            s,
+            "MEM",
+            "TOTAL RAM",
+            mops.get_ram_count() + ram_init,
+            mops.get_ram_cost() + ram_init * MEM_WRITE_COST,
+        );
+        row(
+            s,
+            "MEM",
+            "TOTAL ROM",
+            mops.get_rom_count() + rom_init,
+            mops.get_rom_cost() + rom_init * ROM_READ_COST,
+        );
+        row(s, "MEM", "TOTAL INPUT", mops.get_input_count(), mops.get_input_cost());
+        s.push('\n');
+
+        // Detailed memory: per-subtype rows first, then aggregate totals (after the first empty
+        // separator returned by `get_detailed_items`) tagged as DETAILED_MEM FULL.
+        s.push_str("DETAILED_MEM;TYPE;COUNT;%;COST;%\n");
+        let mut full = false;
+        for (title, count, cost) in mops.get_detailed_items(rom_init, ram_init) {
+            if title.is_empty() {
+                full = true;
+                s.push('\n');
+                continue;
+            }
+            let tag = if full { "DETAILED_MEM FULL" } else { "DETAILED_MEM" };
+            s.push_str(&format!(
+                "{tag};{title};{count};{};{cost};{}\n",
+                pct(count, mem_count),
+                pct(cost, mem_cost)
+            ));
+        }
+        s.push('\n');
+    }
+
+    /// Appends the per-function memory rankings to `s`: the machine-readable form of the three
+    /// rankings the report prints with `--mem-stats` / `--mem-full-stats` when symbols are loaded
+    /// (`-S`) — `MEM_TOP_COST`, `MEM_TOP_UNALIGNED` and `MEM_TOP_RATIO`. Costs are raw (the
+    /// on-screen tables scale them to millions) and function names are the full mangled symbols
+    /// (the report compacts them), so the snapshot stays exact.
+    ///
+    /// Unlike the rest of the snapshot, the rows are written with `sep` directly: a mangled name
+    /// can contain the separator, so the name goes last and is quoted (RFC 4180) instead of being
+    /// rewritten.
+    fn append_mem_functions_csv(&self, s: &mut String, sep: char) {
+        if !self.is_rois_enabled() || self.disable_call_stack {
+            return;
+        }
+        // Quotes the function name when it carries the separator, a quote or a newline.
+        let name_field = |name: &str| -> String {
+            if name.contains(sep) || name.contains('"') || name.contains('\n') {
+                format!("\"{}\"", name.replace('"', "\"\""))
+            } else {
+                name.to_string()
+            }
+        };
+        let pct = |v: u64, total: u64| -> String {
+            if total == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * v as f64 / total as f64)
+            }
+        };
+
+        // Functions ranked by total memory cost, with the cost per call.
+        let mem_cost_total = self.costs.mops.get_cost();
+        s.push_str(&format!(
+            "MEM_TOP_COST{sep}MEM COST{sep}%{sep}CALLS{sep}COST/CALL{sep}FUNCTION\n"
+        ));
+        for (index, _) in self.get_top_rois_by(|roi| roi.get_mem_cost()).iter() {
+            let roi = &self.rois[*index];
+            let mem_cost = roi.get_mem_cost();
+            if mem_cost == 0 {
+                continue;
+            }
+            let per_call = if roi.calls > 0 { mem_cost / roi.calls as u64 } else { 0 };
+            s.push_str(&format!(
+                "MEM_TOP_COST{sep}{mem_cost}{sep}{}{sep}{}{sep}{per_call}{sep}{}\n",
+                pct(mem_cost, mem_cost_total),
+                roi.calls,
+                name_field(&roi.name)
+            ));
+        }
+        s.push('\n');
+
+        // Same ranking restricted to the unaligned cost, with the aligned cost alongside; the
+        // percentage is the share of the function's own memory cost that is unaligned.
+        s.push_str(&format!(
+            "MEM_TOP_UNALIGNED{sep}UNALIGNED{sep}ALIGNED{sep}% UNALIGNED{sep}CALLS{sep}FUNCTION\n"
+        ));
+        for (index, _) in self.get_top_rois_by(|roi| roi.get_mem_unaligned_cost()).iter() {
+            let roi = &self.rois[*index];
+            let unaligned = roi.get_mem_unaligned_cost();
+            let aligned = roi.get_mem_aligned_cost();
+            if unaligned + aligned == 0 {
+                continue;
+            }
+            s.push_str(&format!(
+                "MEM_TOP_UNALIGNED{sep}{unaligned}{sep}{aligned}{sep}{}{sep}{}{sep}{}\n",
+                pct(unaligned, unaligned + aligned),
+                roi.calls,
+                name_field(&roi.name)
+            ));
+        }
+        s.push('\n');
+
+        // Functions ranked by how far their unaligned cost per step exceeds the global average,
+        // keeping only those above 1% of the total unaligned cost (same filter as the report).
+        let total_unaligned = self.costs.mops.get_unaligned_cost();
+        let total_steps = self.costs.steps;
+        if total_unaligned == 0 || total_steps == 0 {
+            return;
+        }
+        let global_per_step = total_unaligned as f64 / total_steps as f64;
+        let min_unaligned = total_unaligned as f64 * 0.01;
+        let mut ranked: Vec<(usize, f64)> = self
+            .rois
+            .iter()
+            .enumerate()
+            .filter(|(_, roi)| !self.top_rois_filter || roi.is_selected_roi)
+            .filter_map(|(index, roi)| {
+                let unaligned = roi.get_mem_unaligned_cost();
+                let steps = roi.get_steps();
+                if steps == 0 || (unaligned as f64) < min_unaligned {
+                    return None;
+                }
+                Some((index, (unaligned as f64 / steps as f64) / global_per_step))
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.truncate(self.top_rois);
+
+        s.push_str(&format!(
+            "MEM_TOP_RATIO{sep}RATIO{sep}UNALIGNED{sep}% UNALIGNED{sep}UNALIGNED ACCESSES/CALL{sep}CALLS{sep}FUNCTION\n"
+        ));
+        for (index, ratio) in ranked.iter() {
+            let roi = &self.rois[*index];
+            let unaligned = roi.get_mem_unaligned_cost();
+            let per_call =
+                if roi.calls > 0 { roi.get_mem_unaligned_count() / roi.calls as u64 } else { 0 };
+            s.push_str(&format!(
+                "MEM_TOP_RATIO{sep}{ratio:.2}{sep}{unaligned}{sep}{}{sep}{per_call}{sep}{}{sep}{}\n",
+                pct(unaligned, total_unaligned),
+                roi.calls,
+                name_field(&roi.name)
+            ));
+        }
+        s.push('\n');
+    }
+
+    /// Builds the aggregate snapshot of this run, delimited by `sep`. The first column tags the
+    /// section (`STEPS`, `COST`, `MEM`, `DETAILED_MEM`, `MEM_OFFSETS`, `OP_BASE`, `PRECOMPILES`,
+    /// `FROP`, plus `MEM_TOP_COST` / `MEM_TOP_UNALIGNED` / `MEM_TOP_RATIO` with `--mem-stats` /
+    /// `--mem-full-stats` and symbols); sections are separated by a blank line. Numbers are raw (no thousands separators)
+    /// for easy parsing.
+    pub fn stats_csv(&self, sep: char) -> String {
+        let (
+            steps,
+            main_cost,
+            ops_cost,
+            precompiled_cost,
+            mem_cost,
+            base_cost,
+            total_cost,
+            frops_cost,
+        ) = self.cost_distribution();
+        let variable = total_cost - base_cost;
+        let pct = |v: u64, total: u64| -> String {
+            if total == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * v as f64 / total as f64)
+            }
+        };
+
+        let mut s = String::new();
+        s += &format!("STEPS;{steps}\n\n");
+
+        s += "COST;COST DISTRIBUTION;COST;%\n";
+        s += &format!("COST;MAIN;{main_cost};{}\n", pct(main_cost, total_cost));
+        s += &format!("COST;OPCODES;{ops_cost};{}\n", pct(ops_cost, total_cost));
+        s +=
+            &format!("COST;PRECOMPILES;{precompiled_cost};{}\n", pct(precompiled_cost, total_cost));
+        s += &format!("COST;MEMORY;{mem_cost};{}\n", pct(mem_cost, total_cost));
+        s += &format!("COST;VARIABLE;{variable};{}\n", pct(variable, total_cost));
+        s += &format!("COST;BASE;{base_cost};{}\n", pct(base_cost, total_cost));
+        s += &format!("COST;TOTAL;{total_cost};{}\n", pct(total_cost, total_cost));
+        s += &format!("COST;FROPS;{frops_cost};{}\n\n", pct(frops_cost, variable));
+
+        if self.ram_monitor.ram_size > 0 {
+            s += &format!(
+                "RAM USAGE;{};{}\n",
+                self.ram_monitor.ram_used,
+                pct(self.ram_monitor.ram_used, self.ram_monitor.ram_size)
+            );
+        }
+        let rom_used_rows =
+            self.inst_count + self.rom_init_count.div_ceil(4) + self.ram_init_count.div_ceil(4);
+        let rom_size = RomRomTrace::<Goldilocks>::NUM_ROWS as u64;
+        s += &format!("ROM USAGE;{};{}\n\n", rom_used_rows, pct(rom_used_rows as u64, rom_size));
+
+        self.append_mem_csv(&mut s);
+
+        s += "MEM_OFFSETS;offset;0;1;2;3;4;5;6;7;total\n";
+        for (label, vals) in [
+            ("reads", &self.byte_reads),
+            ("clean writes", &self.byte_clean_writes),
+            ("dirty writes", &self.byte_dirty_writes),
+        ] {
+            let total: u64 = vals.iter().sum();
+            let joined = vals.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(";");
+            s += &format!("MEM_OFFSETS;{label};{joined};{total}\n");
+        }
+        s.push('\n');
+
+        s += "OP_BASE;OPCODE;COUNT;%;COST;%\n";
+        for (name, count, cost) in self.csv_opcode_rows(false) {
+            s += &format!(
+                "OP_BASE;{name};{count};{};{cost};{}\n",
+                pct(count, steps),
+                pct(cost, total_cost)
+            );
+        }
+        s.push('\n');
+
+        for (name, count, cost) in self.csv_opcode_rows(true) {
+            s += &format!(
+                "PRECOMPILES;{name};{count};{};{cost};{}\n",
+                pct(count, steps),
+                pct(cost, total_cost)
+            );
+        }
+        s.push('\n');
+
+        for (name, count, hit, cost) in self.csv_frop_rows() {
+            s += &format!("FROP;{name};{count};{hit:.2}%;{cost};{}\n", pct(cost, variable));
+        }
+
+        // Built internally with ';'; swap to the requested separator (field content never
+        // contains ';', so this is safe).
+        if sep != ';' {
+            s = s.replace(';', &sep.to_string());
+        }
+
+        // The per-function memory rankings shown with `--mem-stats` / `--mem-full-stats`. Appended
+        // after the swap because they write `sep` themselves (mangled names can contain it).
+        if self.mem_stats || self.mem_full_stats {
+            s.push('\n');
+            self.append_mem_functions_csv(&mut s, sep);
+        }
+        s
+    }
+
+    /// Compares the current run against a reference snapshot saved with `--save-stats`. With
+    /// `csv = false` it returns the human-readable, colour-coded report (red = higher cost/calls,
+    /// green = lower; sign always shown); with `csv = true` it returns the previous plain
+    /// semicolon-separated view (used by SDK mode / `--legacy-display` / `--diff-format csv`).
+    pub fn compare_stats(
+        &self,
+        ref_path: &str,
+        csv: bool,
+        color: bool,
+        sep: char,
+    ) -> std::io::Result<String> {
+        let ref_text = std::fs::read_to_string(ref_path)?;
+        let cur_text = self.stats_csv(sep);
+        Ok(if csv {
+            diff_snapshots_csv(ref_path, &ref_text, "current run", &cur_text, sep)
+        } else {
+            diff_snapshots(ref_path, &ref_text, "current run", &cur_text, color)
+        })
     }
 
     fn sdk_report(&self) -> String {
@@ -1705,14 +2911,33 @@ impl Stats {
         }
 
         if show_opcodes {
-            report.title_count_cost_perc2("COST BY BASE OPCODE", "COUNT", "COST", " RANK");
-            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), true, false);
+            report.title_count_cost_perc2("COST BY BASE OPCODE", "COUNT", "COST", "");
+            self.report_opcodes(
+                &mut report,
+                "OP",
+                self.costs.ops_costs(),
+                true,
+                false,
+                self.opcode_breakdown,
+            );
 
-            report.title_count_cost_perc2("COST BY PRECOMPILED OPCODE", "COUNT", "COST", " RANK");
-            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), false, true);
+            report.title_count_cost_perc2("COST BY PRECOMPILED OPCODE", "COUNT", "COST", "");
+            self.report_opcodes(&mut report, "OP", self.costs.ops_costs(), false, true, false);
 
-            report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", " RANK");
+            report.title_count_perc_cost_perc("FROPS BY OPCODE", "COUNT", "HIT", "COST", "");
             self.report_frops_hit(&mut report, "FROP");
+        }
+
+        if self.pattern_analysis {
+            self.report_pattern_analysis(&mut report);
+        }
+
+        if self.duplicates {
+            self.report_duplicates(&mut report, total_cost);
+        }
+
+        if self.reg_step_distance {
+            self.report_reg_step_distance(&mut report);
         }
 
         if self.coverage {
@@ -1796,8 +3021,9 @@ impl Stats {
                         roi_report.pop_label_width();
                     }
 
-                    roi_report.title_count_cost_perc("COST BY OPCODE", "COUNT", "COST", " RANK");
-                    self.report_opcodes(&mut roi_report, "OP", roi.ops_costs(), true, true);
+                    // `_perc2`: the rows carry a percentage for both the count and the cost.
+                    roi_report.title_count_cost_perc2("COST BY OPCODE", "COUNT", "COST", "");
+                    self.report_opcodes(&mut roi_report, "OP", roi.ops_costs(), true, true, false);
 
                     roi_report.title_top_count_perc("TOP STEP CALLERS (calls, steps)");
                     let mut callers: Vec<_> = roi.get_callers().collect();
@@ -2058,27 +3284,28 @@ impl Stats {
         let mut current_internal_from = None;
         let mut current_internal_to = None;
         while let Some(inst) = rom.get_internal_instruction(internal_pc) {
-            let pc = inst.external_ref_addr.unwrap() as u32;
-            if pc >= current_roi_from && pc <= current_roi_to {
-                current_internal_to = Some(internal_pc as u32);
-            } else {
-                if let Some(internal_from) = current_internal_from {
-                    if let Some(roi_index) = current_roi_index {
-                        if !(self.update_roi_internal_pc_range(
-                            roi_index,
-                            internal_from,
-                            current_internal_to.unwrap_or(internal_from),
-                        )) {
-                            return;
+            if let Some(pc) = inst.external_ref_addr {
+                if pc as u32 >= current_roi_from && pc as u32 <= current_roi_to {
+                    current_internal_to = Some(internal_pc as u32);
+                } else {
+                    if let Some(internal_from) = current_internal_from {
+                        if let Some(roi_index) = current_roi_index {
+                            if !(self.update_roi_internal_pc_range(
+                                roi_index,
+                                internal_from,
+                                current_internal_to.unwrap_or(internal_from),
+                            )) {
+                                return;
+                            }
                         }
                     }
-                }
-                if let Some((roi_index, roi)) = self.get_roi_from_pc(pc) {
-                    current_roi_index = Some(roi_index);
-                    current_roi_from = roi.from_pc;
-                    current_roi_to = roi.to_pc;
-                    current_internal_from = Some(internal_pc as u32);
-                    current_internal_to = None;
+                    if let Some((roi_index, roi)) = self.get_roi_from_pc(pc as u32) {
+                        current_roi_index = Some(roi_index);
+                        current_roi_from = roi.from_pc;
+                        current_roi_to = roi.to_pc;
+                        current_internal_from = Some(internal_pc as u32);
+                        current_internal_to = None;
+                    }
                 }
             }
 
@@ -2189,6 +3416,188 @@ impl Stats {
     }
     pub fn set_mem_full_stats(&mut self, value: bool) {
         self.mem_full_stats = value;
+    }
+    /// Enables accumulation of the per-offset byte read/write counters (MEM_OFFSETS).
+    pub fn set_collect_offsets(&mut self, value: bool) {
+        self.collect_offsets = value;
+    }
+    /// Enables logging of costly unaligned memory accesses (double 4B/8B) with execution context.
+    pub fn set_log_costly_unaligned(&mut self, value: bool) {
+        self.log_costly_unaligned = value;
+    }
+    /// Selects strict call-stack tracking (original behaviour): a stack mismatch disables the call
+    /// stack instead of resyncing by unwinding collapsed recursive frames.
+    pub fn set_callstack_strict(&mut self, value: bool) {
+        self.callstack_strict = value;
+    }
+    /// Shows the per-opcode breakdown of cheap variants (e.g. add → add_hi0 / add_hif).
+    pub fn set_opcode_breakdown(&mut self, value: bool) {
+        self.opcode_breakdown = value;
+    }
+    /// Enables the operand pattern-analysis section.
+    pub fn set_pattern_analysis(&mut self, value: bool) {
+        self.pattern_analysis = value;
+    }
+    /// Enables the precompile duplicate analysis.
+    pub fn set_duplicates(&mut self, value: bool) {
+        self.duplicates = value;
+    }
+    /// Restricts the duplicate analysis to the given opcodes (`None` = every supported precompile).
+    pub fn set_duplicates_ops(&mut self, value: Option<HashSet<u8>>) {
+        self.duplicates_ops = value;
+    }
+    /// Sets the recorded call-path depth for the duplicate detail report (clamped to a sane range).
+    pub fn set_duplicates_depth(&mut self, value: usize) {
+        self.duplicates_depth = value.clamp(1, DUP_MAX_ROI_DEPTH);
+    }
+    /// Enables the per-precompile call-path detail (level 2) of the duplicate report.
+    pub fn set_duplicates_detail(&mut self, value: bool) {
+        self.duplicates_detail = value;
+    }
+    /// Enables the register step-distance analysis.
+    pub fn set_reg_step_distance(&mut self, value: bool) {
+        self.reg_step_distance = value;
+    }
+    /// Sets the distance limit for the register step-distance thresholds (must be > 0).
+    pub fn set_reg_step_limit(&mut self, value: u64) {
+        self.reg_step_limit = value.max(1);
+    }
+    /// Sets the flush period, in bits, of the register step-distance analysis: every 2^bits steps
+    /// every register is assumed to be forcibly accessed. Clamped to a representable period.
+    pub fn set_reg_step_flush_bits(&mut self, value: u32) {
+        self.reg_flush_bits = value.min(63);
+        self.reg_flush_period = 1u64 << self.reg_flush_bits;
+    }
+
+    /// Classifies an executed operation into a cheap variant (index into `CHEAP_VARIANTS`), or
+    /// `None` if it is a regular operation. Currently the BinaryAddHi shapes of ADD:
+    /// hi32(a)=hi32(c)=0 with hi32(b)=0 (add_hi0) or hi32(b)=0xFFFF_FFFF (add_hif).
+    #[inline(always)]
+    fn cheap_variant(op: u8, a: u64, b: u64, c: u64) -> Option<usize> {
+        if op == ADD_CODE && a & HI32_MASK == 0 && c & HI32_MASK == 0 {
+            if b & HI32_MASK == 0 {
+                return Some(CHEAP_ADD_HI0);
+            } else if b & HI32_MASK == HI32_MASK {
+                return Some(CHEAP_ADD_HIF);
+            }
+        }
+        None
+    }
+
+    /// Content descriptor for a precompile opcode, or `None` if the opcode is not a precompile
+    /// eligible for duplicate analysis (this excludes DMA, EVM `jump_dest`, `halt`, fcalls, etc.).
+    /// See the layout notes in `DupSeg`. The segments read the operand *content* (dereferencing
+    /// indirections) so two calls with the same inputs at different buffers are seen as duplicates.
+    fn dup_descriptor(op: u8) -> Option<&'static [DupSeg]> {
+        use DupSeg::{Direct, Indirect, Literal};
+        let z = ZiskOp::try_from_code(op).ok()?;
+        Some(match z {
+            // In-place operands read directly from `ctx.b`.
+            ZiskOp::Keccak => &[Direct { words: 25 }][..],
+            ZiskOp::Poseidon1 | ZiskOp::Poseidon2 => &[Direct { words: 16 }][..],
+            ZiskOp::Secp256k1Dbl | ZiskOp::Secp256r1Dbl | ZiskOp::Bn254CurveDbl => {
+                &[Direct { words: 8 }][..]
+            }
+            ZiskOp::Bls12_381CurveDbl => &[Direct { words: 12 }][..],
+            // Indirected operands: `ctx.b` holds pointers to the operand buffers.
+            ZiskOp::Sha256 => {
+                &[Indirect { param: 0, words: 4 }, Indirect { param: 1, words: 8 }][..]
+            }
+            ZiskOp::Blake2 => &[
+                Literal { param: 0 },
+                Indirect { param: 1, words: 16 },
+                Indirect { param: 2, words: 16 },
+            ][..],
+            ZiskOp::Blake3 => {
+                &[Indirect { param: 0, words: 8 }, Indirect { param: 1, words: 8 }][..]
+            }
+            ZiskOp::Add256 => &[
+                Indirect { param: 0, words: 4 },
+                Indirect { param: 1, words: 4 },
+                Literal { param: 2 },
+            ][..],
+            ZiskOp::Arith256 => &[
+                Indirect { param: 0, words: 4 },
+                Indirect { param: 1, words: 4 },
+                Indirect { param: 2, words: 4 },
+            ][..],
+            ZiskOp::Arith256Mod => &[
+                Indirect { param: 0, words: 4 },
+                Indirect { param: 1, words: 4 },
+                Indirect { param: 2, words: 4 },
+                Indirect { param: 3, words: 4 },
+            ][..],
+            ZiskOp::Secp256k1Add
+            | ZiskOp::Secp256r1Add
+            | ZiskOp::BabyJubJubAdd
+            | ZiskOp::Bn254CurveAdd
+            | ZiskOp::Bn254ComplexAdd
+            | ZiskOp::Bn254ComplexSub
+            | ZiskOp::Bn254ComplexMul => {
+                &[Indirect { param: 0, words: 8 }, Indirect { param: 1, words: 8 }][..]
+            }
+            ZiskOp::Arith384Mod => &[
+                Indirect { param: 0, words: 6 },
+                Indirect { param: 1, words: 6 },
+                Indirect { param: 2, words: 6 },
+                Indirect { param: 3, words: 6 },
+            ][..],
+            ZiskOp::Bls12_381CurveAdd
+            | ZiskOp::Bls12_381ComplexAdd
+            | ZiskOp::Bls12_381ComplexSub
+            | ZiskOp::Bls12_381ComplexMul => {
+                &[Indirect { param: 0, words: 12 }, Indirect { param: 1, words: 12 }][..]
+            }
+            _ => return None,
+        })
+    }
+
+    /// Reads the input-content fingerprint of a precompile call from memory, following the layout
+    /// in `dup_descriptor`. Returns `None` for opcodes that are not duplicate-analyzed precompiles.
+    /// Read post-execution (as `on_op` runs after the op): for in-place ops the words are the
+    /// output state, but since the precompile is deterministic, identical inputs still map to an
+    /// identical fingerprint — which is all duplicate detection needs.
+    fn precompile_content(op: u8, ctx: &InstContext) -> Option<Vec<u64>> {
+        let segs = Self::dup_descriptor(op)?;
+        let base = ctx.b;
+        let mut content = Vec::new();
+        let mut direct_off = 0u64;
+        for seg in segs {
+            match *seg {
+                DupSeg::Direct { words } => {
+                    for i in 0..words as u64 {
+                        content.push(ctx.mem.read(base + 8 * (direct_off + i), 8));
+                    }
+                    direct_off += words as u64;
+                }
+                DupSeg::Indirect { param, words } => {
+                    let ptr = ctx.mem.read(base + 8 * param as u64, 8);
+                    for i in 0..words as u64 {
+                        content.push(ctx.mem.read(ptr + 8 * i, 8));
+                    }
+                }
+                DupSeg::Literal { param } => {
+                    content.push(ctx.mem.read(base + 8 * param as u64, 8));
+                }
+            }
+        }
+        Some(content)
+    }
+
+    /// Whether the duplicate analysis should process this opcode: it must be a supported precompile
+    /// and, if a restriction list was given (`--duplicates-ops`), be in it.
+    fn dup_op_enabled(&self, op: u8) -> bool {
+        match &self.duplicates_ops {
+            Some(set) => set.contains(&op),
+            None => true,
+        }
+    }
+
+    /// The opcodes eligible for duplicate analysis (every precompile with a content descriptor).
+    pub fn dup_supported_opcodes() -> Vec<u8> {
+        (ZiskOp::MIN_OPCODE..=ZiskOp::MAX_OPCODE)
+            .filter(|&op| Self::dup_descriptor(op).is_some())
+            .collect()
     }
     pub fn set_sdk_width(&mut self, value: usize) {
         self.sdk_width = value;
@@ -2307,5 +3716,548 @@ impl OpStats for Stats {
     }
     fn set_variable_cost(&mut self, cost: u64) {
         self.current_variable_cost = cost;
+    }
+}
+
+// ==============================================================================================
+// Stats snapshot comparison — human-readable, colour-coded diff of two runs.
+// Red  = value went up (more cost / more calls → regression).
+// Green = value went down (improvement).  Dim = unchanged.  Magenta = hit% (inverted axis).
+// The sign is always printed, so the diff reads correctly with colour disabled.
+// ==============================================================================================
+
+const C_RESET: &str = "\x1b[0m";
+const C_RED: &str = "\x1b[31m";
+const C_GREEN: &str = "\x1b[32m";
+const C_DIM: &str = "\x1b[2m";
+const C_MAGENTA: &str = "\x1b[35m";
+const C_HEAD: &str = "\x1b[36m";
+
+#[derive(Default)]
+struct OpRow {
+    name: String,
+    count: u64,
+    count_pct: String,
+    cost: u64,
+    cost_pct: String,
+}
+
+#[derive(Default)]
+struct FrRow {
+    name: String,
+    count: u64,
+    hit: f64,
+    hit_pct: String,
+    cost: u64,
+    cost_pct: String,
+}
+
+#[derive(Default)]
+struct Snap {
+    steps: u64,
+    cost_rows: Vec<(String, u64, String)>, // (metric, cost, pct string)
+    cost_map: HashMap<String, u64>,
+    op_rows: Vec<OpRow>,
+    op_map: HashMap<String, (u64, u64)>,
+    pc_rows: Vec<OpRow>,
+    pc_map: HashMap<String, (u64, u64)>,
+    fr_rows: Vec<FrRow>,
+    fr_map: HashMap<String, (u64, u64, f64)>, // (count, cost, hit)
+}
+
+/// Detects the field separator of a snapshot: the character right after the leading `STEPS` tag on
+/// the first `STEPS` line. Defaults to `,` (also handles files saved with `;` or any single char).
+/// Shared with the HTML report parser, so both read snapshots the same way.
+pub(crate) fn detect_sep(text: &str) -> char {
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("STEPS") {
+            if let Some(c) = rest.chars().next() {
+                return c;
+            }
+        }
+    }
+    ','
+}
+
+/// Parses a `--save-stats` snapshot, preserving row order and the original share-of-total strings.
+/// The field separator is auto-detected, so snapshots saved with any separator parse correctly.
+fn parse_snapshot(text: &str) -> Snap {
+    let sep = detect_sep(text);
+    let mut snap = Snap::default();
+    for line in text.lines() {
+        let f: Vec<&str> = line.split(sep).collect();
+        match f.first().copied() {
+            Some("STEPS") if f.len() >= 2 => {
+                snap.steps = f[1].parse().unwrap_or(0);
+            }
+            Some("COST") if f.len() >= 4 && f[1] != "COST DISTRIBUTION" => {
+                if let Ok(c) = f[2].parse::<u64>() {
+                    snap.cost_rows.push((f[1].to_string(), c, f[3].to_string()));
+                    snap.cost_map.insert(f[1].to_string(), c);
+                }
+            }
+            Some("OP_BASE") if f.len() >= 6 && f[1] != "OPCODE" => {
+                if let (Ok(cnt), Ok(cst)) = (f[2].parse::<u64>(), f[4].parse::<u64>()) {
+                    snap.op_rows.push(OpRow {
+                        name: f[1].into(),
+                        count: cnt,
+                        count_pct: f[3].into(),
+                        cost: cst,
+                        cost_pct: f[5].into(),
+                    });
+                    snap.op_map.insert(f[1].into(), (cnt, cst));
+                }
+            }
+            Some("PRECOMPILES") if f.len() >= 6 && f[1] != "OPCODE" => {
+                if let (Ok(cnt), Ok(cst)) = (f[2].parse::<u64>(), f[4].parse::<u64>()) {
+                    snap.pc_rows.push(OpRow {
+                        name: f[1].into(),
+                        count: cnt,
+                        count_pct: f[3].into(),
+                        cost: cst,
+                        cost_pct: f[5].into(),
+                    });
+                    snap.pc_map.insert(f[1].into(), (cnt, cst));
+                }
+            }
+            Some("FROP") if f.len() >= 6 && f[1] != "OPCODE" => {
+                if let (Ok(cnt), Ok(cst)) = (f[2].parse::<u64>(), f[4].parse::<u64>()) {
+                    let hit = f[3].trim_end_matches('%').parse::<f64>().unwrap_or(0.0);
+                    snap.fr_rows.push(FrRow {
+                        name: f[1].into(),
+                        count: cnt,
+                        hit,
+                        hit_pct: f[3].into(),
+                        cost: cst,
+                        cost_pct: f[5].into(),
+                    });
+                    snap.fr_map.insert(f[1].into(), (cnt, cst, hit));
+                }
+            }
+            _ => {}
+        }
+    }
+    snap
+}
+
+/// Groups a non-negative integer with thousands separators: `1234567` -> `"1,234,567"`.
+fn group_u64(n: u64) -> String {
+    let s = n.to_string();
+    let len = s.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Signed, grouped delta: `1203` -> `"+1,203"`, `-48720` -> `"-48,720"`, `0` -> `"+0"`.
+fn fmt_delta(d: i64) -> String {
+    format!("{}{}", if d < 0 { "-" } else { "+" }, group_u64(d.unsigned_abs()))
+}
+
+/// Percentage change of `cur` vs `ref`, signed. `n/a` when the reference is zero but current isn't.
+fn pct_change(r: u64, c: u64) -> String {
+    if r == 0 {
+        if c == 0 {
+            "0.00%".to_string()
+        } else {
+            "n/a".to_string()
+        }
+    } else {
+        format!("{:+.2}%", 100.0 * (c as i64 - r as i64) as f64 / r as f64)
+    }
+}
+
+/// ANSI colour for a delta: red up (worse), green down (better), dim when flat.
+fn dir(d: i64) -> &'static str {
+    if d > 0 {
+        C_RED
+    } else if d < 0 {
+        C_GREEN
+    } else {
+        C_DIM
+    }
+}
+
+fn wrap(on: bool, code: &str, text: &str) -> String {
+    if on {
+        format!("{code}{text}{C_RESET}")
+    } else {
+        text.to_string()
+    }
+}
+
+/// The `Δ (Δ%)` cell for a cost/value delta, tagging brand-new and removed entries.
+fn delta_cell(r: u64, c: u64) -> String {
+    let d = c as i64 - r as i64;
+    if r == 0 && c > 0 {
+        format!("{} (new)", fmt_delta(d))
+    } else if c == 0 && r > 0 {
+        format!("{} (gone)", fmt_delta(d))
+    } else {
+        format!("{} ({})", fmt_delta(d), pct_change(r, c))
+    }
+}
+
+/// Joins pre-padded cells `(text, colour_code)` with single spaces, applying colour when enabled.
+/// `colour_code` empty means no colour. Widths live in the padded `text`, so alignment is preserved.
+fn row_line(color: bool, cells: &[(String, &str)]) -> String {
+    cells
+        .iter()
+        .map(|(text, code)| if code.is_empty() { text.clone() } else { wrap(color, code, text) })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Printed width of a header row built from pre-padded cells joined by single spaces, i.e. the
+/// length its underline must have. Counts characters, not bytes: the headers contain `Δ`, which
+/// `{:>width$}` pads by character count while `str::len` would report its two UTF-8 bytes and make
+/// the rule too long.
+fn rule_len(cells: &[(String, &str)]) -> usize {
+    cells.iter().map(|(text, _)| text.chars().count()).sum::<usize>() + cells.len() - 1
+}
+
+/// Renders an opcode-style section (base opcodes or precompiles): current value + share%, then a
+/// coloured signed delta for count and for cost. Reference-only entries are appended as `(gone)`.
+fn render_op_section(
+    out: &mut String,
+    color: bool,
+    title: &str,
+    prefix: &str,
+    cur_rows: &[OpRow],
+    ref_map: &HashMap<String, (u64, u64)>,
+) {
+    let header: [(String, &str); 7] = [
+        (format!("{:<24}", ""), C_DIM),
+        (format!("{:>12}", "COUNT"), C_DIM),
+        (format!("{:>7}", "%"), C_DIM),
+        (format!("{:>12}", "Δ"), C_DIM),
+        (format!("{:>15}", "COST"), C_DIM),
+        (format!("{:>7}", "%"), C_DIM),
+        (format!("{:>24}", "Δ (Δ%)"), C_DIM),
+    ];
+    out.push('\n');
+    out.push_str(&wrap(color, C_HEAD, title));
+    out.push('\n');
+    let plain_len = rule_len(&header);
+    out.push_str(&row_line(color, &header));
+    out.push('\n');
+    out.push_str(&wrap(color, C_DIM, &"-".repeat(plain_len)));
+    out.push('\n');
+
+    let mut seen: HashSet<String> = HashSet::new();
+    for row in cur_rows {
+        seen.insert(row.name.clone());
+        let (rcount, rcost) = ref_map.get(&row.name).copied().unwrap_or((0, 0));
+        let dcount = row.count as i64 - rcount as i64;
+        let dcost = row.cost as i64 - rcost as i64;
+        let cells: [(String, &str); 7] = [
+            (format!("{:<24}", format!("{prefix}{}", row.name)), ""),
+            (format!("{:>12}", group_u64(row.count)), ""),
+            (format!("{:>7}", row.count_pct), C_DIM),
+            (format!("{:>12}", fmt_delta(dcount)), dir(dcount)),
+            (format!("{:>15}", group_u64(row.cost)), ""),
+            (format!("{:>7}", row.cost_pct), C_DIM),
+            (format!("{:>24}", delta_cell(rcost, row.cost)), dir(dcost)),
+        ];
+        out.push_str(&row_line(color, &cells));
+        out.push('\n');
+    }
+    let mut removed: Vec<(&String, &(u64, u64))> =
+        ref_map.iter().filter(|(k, _)| !seen.contains(*k)).collect();
+    removed.sort_by_key(|(_, (_, cost))| std::cmp::Reverse(*cost));
+    for (rname, (rcount, rcost)) in removed {
+        let cells: [(String, &str); 7] = [
+            (format!("{:<24}", format!("{prefix}{rname}")), ""),
+            (format!("{:>12}", "0"), ""),
+            (format!("{:>7}", "-"), C_DIM),
+            (format!("{:>12}", fmt_delta(-(*rcount as i64))), dir(-(*rcount as i64))),
+            (format!("{:>15}", "0"), ""),
+            (format!("{:>7}", "-"), C_DIM),
+            (format!("{:>24}", delta_cell(*rcost, 0)), dir(-(*rcost as i64))),
+        ];
+        out.push_str(&row_line(color, &cells));
+        out.push('\n');
+    }
+}
+
+/// Renders a human-readable, colour-coded comparison of two snapshots (each in the `--save-stats`
+/// format). `ref_*` is the baseline, `cur_*` the run being evaluated; deltas are `cur - ref`.
+/// Pass `color = false` for plain output (piped / `--color=never`).
+pub fn diff_snapshots(
+    ref_label: &str,
+    ref_text: &str,
+    cur_label: &str,
+    cur_text: &str,
+    color: bool,
+) -> String {
+    let refs = parse_snapshot(ref_text);
+    let cur = parse_snapshot(cur_text);
+    let mut out = String::new();
+
+    out.push('\n');
+    out.push_str(&wrap(color, C_HEAD, &format!("COMPARISON   {ref_label}  →  {cur_label}")));
+    out.push('\n');
+    out.push_str(&wrap(
+        color,
+        C_DIM,
+        "red = higher / worse   green = lower / better   % = share of total   sign always shown",
+    ));
+    out.push('\n');
+
+    // STEPS
+    let dsteps = cur.steps as i64 - refs.steps as i64;
+    out.push('\n');
+    out.push_str(&row_line(
+        color,
+        &[
+            (format!("{:<24}", "STEPS"), ""),
+            (format!("{:>12}", group_u64(cur.steps)), ""),
+            (format!("{:>7}", ""), ""),
+            (format!("{:>24}", delta_cell(refs.steps, cur.steps)), dir(dsteps)),
+        ],
+    ));
+    out.push('\n');
+
+    // COST DISTRIBUTION
+    let cd_header: [(String, &str); 4] = [
+        (format!("{:<24}", "COST DISTRIBUTION"), C_DIM),
+        (format!("{:>15}", "COST"), C_DIM),
+        (format!("{:>8}", "%"), C_DIM),
+        (format!("{:>26}", "Δ (Δ%)"), C_DIM),
+    ];
+    out.push('\n');
+    let cd_len = rule_len(&cd_header);
+    out.push_str(&row_line(color, &cd_header));
+    out.push('\n');
+    out.push_str(&wrap(color, C_DIM, &"-".repeat(cd_len)));
+    out.push('\n');
+    for (metric, cost, pct) in &cur.cost_rows {
+        let r = refs.cost_map.get(metric).copied().unwrap_or(0);
+        let d = *cost as i64 - r as i64;
+        out.push_str(&row_line(
+            color,
+            &[
+                (format!("{metric:<24}"), ""),
+                (format!("{:>15}", group_u64(*cost)), ""),
+                (format!("{pct:>8}"), C_DIM),
+                (format!("{:>26}", delta_cell(r, *cost)), dir(d)),
+            ],
+        ));
+        out.push('\n');
+    }
+
+    // Base opcodes and precompiles.
+    render_op_section(&mut out, color, "COST BY BASE OPCODE", "OP ", &cur.op_rows, &refs.op_map);
+    render_op_section(
+        &mut out,
+        color,
+        "COST BY PRECOMPILED OPCODE",
+        "OP ",
+        &cur.pc_rows,
+        &refs.pc_map,
+    );
+
+    // FROPS — hit% is an inverted axis (up is good), shown in magenta with an explicit sign.
+    let fr_header: [(String, &str); 7] = [
+        (format!("{:<24}", "FROPS BY OPCODE"), C_DIM),
+        (format!("{:>12}", "COUNT"), C_DIM),
+        (format!("{:>8}", "HIT"), C_DIM),
+        (format!("{:>9}", "ΔHIT"), C_DIM),
+        (format!("{:>15}", "COST"), C_DIM),
+        (format!("{:>7}", "%"), C_DIM),
+        (format!("{:>24}", "Δ (Δ%)"), C_DIM),
+    ];
+    out.push('\n');
+    let fr_len = rule_len(&fr_header);
+    out.push_str(&row_line(color, &fr_header));
+    out.push('\n');
+    out.push_str(&wrap(color, C_DIM, &"-".repeat(fr_len.min(120))));
+    out.push('\n');
+    for row in &cur.fr_rows {
+        let (rcount, rcost, rhit) = refs.fr_map.get(&row.name).copied().unwrap_or((0, 0, 0.0));
+        let present = refs.fr_map.contains_key(&row.name);
+        let dhit = if present { format!("{:+.1}pp", row.hit - rhit) } else { "new".to_string() };
+        let dcost = row.cost as i64 - rcost as i64;
+        let _ = rcount;
+        out.push_str(&row_line(
+            color,
+            &[
+                (format!("{:<24}", format!("FROP {}", row.name)), ""),
+                (format!("{:>12}", group_u64(row.count)), ""),
+                (format!("{:>8}", row.hit_pct), C_DIM),
+                (format!("{dhit:>9}"), C_MAGENTA),
+                (format!("{:>15}", group_u64(row.cost)), ""),
+                (format!("{:>7}", row.cost_pct), C_DIM),
+                (format!("{:>24}", delta_cell(rcost, row.cost)), dir(dcost)),
+            ],
+        ));
+        out.push('\n');
+    }
+
+    out
+}
+
+/// Renders the comparison of two snapshots in the previous plain, semicolon-separated view
+/// (machine-friendly, no colour). Used by SDK mode, `--legacy-display`, and `--diff-format csv`.
+pub fn diff_snapshots_csv(
+    ref_label: &str,
+    ref_text: &str,
+    cur_label: &str,
+    cur_text: &str,
+    sep: char,
+) -> String {
+    let refs = parse_snapshot(ref_text);
+    let cur = parse_snapshot(cur_text);
+    let mut s = String::new();
+    s += &format!("\nCOMPARISON: {ref_label} (ref) -> {cur_label}\n\n");
+
+    s += "COST;metric;ref;current;delta;%\n";
+    for name in ["MAIN", "OPCODES", "PRECOMPILES", "MEMORY", "VARIABLE", "BASE", "TOTAL", "FROPS"] {
+        let r = refs.cost_map.get(name).copied().unwrap_or(0);
+        let c = cur.cost_map.get(name).copied().unwrap_or(0);
+        s += &format!("COST;{name};{r};{c};{:+};{}\n", c as i64 - r as i64, pct_change(r, c));
+    }
+    s.push('\n');
+
+    // Diffs a (name, count, cost) section: current rows first (order preserved), then
+    // reference-only entries (removed in the current run), sorted by cost.
+    let diff_cc = |tag: &str,
+                   cur_rows: &[(&str, u64, u64)],
+                   ref_map: &HashMap<String, (u64, u64)>|
+     -> String {
+        let mut out =
+            format!("{tag};name;ref_count;cur_count;d_count;ref_cost;cur_cost;d_cost;%\n");
+        let mut seen: HashSet<String> = HashSet::new();
+        for (name, ccount, ccost) in cur_rows {
+            seen.insert((*name).to_string());
+            let (rcount, rcost) = ref_map.get(*name).copied().unwrap_or((0, 0));
+            out += &format!(
+                "{tag};{name};{rcount};{ccount};{:+};{rcost};{ccost};{:+};{}\n",
+                *ccount as i64 - rcount as i64,
+                *ccost as i64 - rcost as i64,
+                pct_change(rcost, *ccost),
+            );
+        }
+        let mut removed: Vec<(&String, &(u64, u64))> =
+            ref_map.iter().filter(|(k, _)| !seen.contains(*k)).collect();
+        removed.sort_by_key(|(_, (_, cost))| std::cmp::Reverse(*cost));
+        for (name, (rcount, rcost)) in removed {
+            out += &format!(
+                "{tag};{name};{rcount};0;{:+};{rcost};0;{:+};{}\n",
+                -(*rcount as i64),
+                -(*rcost as i64),
+                pct_change(*rcost, 0),
+            );
+        }
+        out
+    };
+
+    let op_rows: Vec<(&str, u64, u64)> =
+        cur.op_rows.iter().map(|r| (r.name.as_str(), r.count, r.cost)).collect();
+    let pc_rows: Vec<(&str, u64, u64)> =
+        cur.pc_rows.iter().map(|r| (r.name.as_str(), r.count, r.cost)).collect();
+    let fr_rows: Vec<(&str, u64, u64)> =
+        cur.fr_rows.iter().map(|r| (r.name.as_str(), r.count, r.cost)).collect();
+    let fr_ref: HashMap<String, (u64, u64)> =
+        refs.fr_map.iter().map(|(k, (c, co, _))| (k.clone(), (*c, *co))).collect();
+
+    s += &diff_cc("OP_BASE", &op_rows, &refs.op_map);
+    s.push('\n');
+    s += &diff_cc("PRECOMPILES", &pc_rows, &refs.pc_map);
+    s.push('\n');
+    s += &diff_cc("FROP", &fr_rows, &fr_ref);
+
+    // Built internally with ';'; swap to the requested separator (field content never contains ';').
+    if sep != ';' {
+        s = s.replace(';', &sep.to_string());
+    }
+    s
+}
+
+/// Compares two aggregate stats snapshots (each saved with `--save-stats`) without running the
+/// emulator. `old_path` is the reference; deltas are `new - old`. `csv = true` selects the previous
+/// plain view (delimited by `sep`); otherwise the colour-coded view (honouring `color`).
+pub fn diff_stats_files(
+    old_path: &str,
+    new_path: &str,
+    csv: bool,
+    color: bool,
+    sep: char,
+) -> std::io::Result<String> {
+    let old_text = std::fs::read_to_string(old_path)?;
+    let new_text = std::fs::read_to_string(new_path)?;
+    Ok(if csv {
+        diff_snapshots_csv(old_path, &old_text, new_path, &new_text, sep)
+    } else {
+        diff_snapshots(old_path, &old_text, new_path, &new_text, color)
+    })
+}
+
+/// Resolves a `--color=auto|always|never` choice to an on/off flag. `auto` (and any unknown value)
+/// enables colour only when stdout is a terminal.
+pub fn resolve_color(when: &str) -> bool {
+    match when {
+        "always" => true,
+        "never" => false,
+        _ => std::io::stdout().is_terminal(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reference implementation of `Stats::flushed_distance`: builds the explicit list of accesses
+    /// (the two real ones plus every flush in between) and takes the largest consecutive gap.
+    fn flushed_distance_ref(last: u64, step: u64, period: u64) -> u64 {
+        let mut points = vec![last];
+        let mut flush = (last / period + 1) * period;
+        while flush <= step {
+            points.push(flush);
+            flush += period;
+        }
+        points.push(step);
+        points.windows(2).map(|w| w[1] - w[0]).max().unwrap()
+    }
+
+    #[test]
+    fn flushed_distance_matches_reference() {
+        for period in [1u64, 2, 3, 4, 8, 16] {
+            for last in 0..40u64 {
+                for step in last..80u64 {
+                    assert_eq!(
+                        Stats::flushed_distance(last, step, period),
+                        flushed_distance_ref(last, step, period),
+                        "last={last} step={step} period={period}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn flushed_distance_splits_a_gap_that_straddles_one_flush() {
+        // Two accesses at 2^22 - 10 and 2^22 + 20 with a flush at 2^22: the raw gap is 30, but the
+        // flush splits it into 10 + 20, so the longest the register holds a value is 20.
+        let p = 1u64 << 22;
+        assert_eq!(Stats::flushed_distance(p - 10, p + 20, p), 20);
+        assert_eq!(Stats::flushed_distance(p - 20, p + 10, p), 20);
+    }
+
+    #[test]
+    fn flushed_distance_is_capped_by_the_flush_period() {
+        // However far apart the two real accesses are, the flushes in between break the gap into
+        // pieces of at most `period` steps.
+        assert_eq!(Stats::flushed_distance(3, 1_000_000, 64), 64);
+        // A gap that fits between two flushes is left untouched.
+        assert_eq!(Stats::flushed_distance(65, 100, 64), 35);
+        // A flush landing exactly on an access does not create a zero-length gap of its own.
+        assert_eq!(Stats::flushed_distance(64, 100, 64), 36);
+        assert_eq!(Stats::flushed_distance(50, 128, 64), 64);
     }
 }

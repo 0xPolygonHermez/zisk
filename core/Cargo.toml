@@ -1,10 +1,13 @@
 [package]
 name = "zisk-core"
+description = "Core types and proving primitives for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 keywords = { workspace = true }
+homepage = { workspace = true }
 repository = { workspace = true }
+documentation = { workspace = true }
 categories = { workspace = true }
 
 [lib]
@@ -12,28 +15,26 @@ name = "zisk_core"
 path = "src/lib.rs"
 
 [dependencies]
-precompiles-helpers = { workspace = true }
-lib-c = { workspace = true }
+zisk-precomp-helpers = { workspace = true }
 ziskos = { workspace = true }
 rayon = { workspace = true }
-fields = { workspace = true }
+proofman-fields = { workspace = true }
 sha2 = { workspace = true }
 paste = { workspace = true }
 zisk-definitions = { workspace = true }
 
+tiny-keccak = { workspace = true, features = ["keccak"] }
 elf = "0.7.4"
-tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 [build-dependencies]
-lib-float = { workspace = true, optional = true }
-
+zisk-lib-float = { workspace = true, optional = true }
 
 [features]
 default = []
 debug_dma = []
 log_dma_ops = []
 # sp = []
-float = ["dep:lib-float", "lib-float/float"]
+float = ["dep:zisk-lib-float", "zisk-lib-float/float"]
 zba = []
 zbc = []
 zbkc = []

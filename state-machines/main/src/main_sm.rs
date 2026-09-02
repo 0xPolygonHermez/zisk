@@ -10,17 +10,17 @@
 use std::sync::Arc;
 
 use crate::MainSmError;
-use fields::PrimeField64;
-use mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
-use pil_std_lib::Std;
+use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
+use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
 use zisk_pil::MainAirValues;
+use zisk_sm_mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use ziskemu::{Emu, EmuRegTrace};
 
-use zisk_pil::{MainTrace, MainTraceRowOps};
+use zisk_pil::{IndexedFill, MainTrace, MainTraceRowOps};
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
@@ -53,8 +53,9 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Arguments
     /// * `zisk_rom` - Reference to the Zisk ROM used for execution.
-    /// * `min_traces` - A vector of the minimal traces, each segment has num_within minimal traces
-    ///   inside.
+    /// * `segment_min_traces` - This segment's minimal traces (at most `num_within`).
+    /// * `prev_chunk_last_c` - `last_c` of the chunk preceding the segment (`None` for the
+    ///   first segment).
     /// * `chunk_size` - The size of the minimal traces.
     ///
     /// The computed trace is added to the proof context's air instance repository.
@@ -67,12 +68,15 @@ impl<F: PrimeField64> MainInstance<F> {
     ///   ([`MainSmError::InvalidSegmentMetadata`]).
     /// - The segment has no minimal traces to process
     ///   ([`MainSmError::EmptyFillTraceOutput`]).
+    /// - A non-final segment was given fewer than `num_within` minimal traces
+    ///   ([`MainSmError::IncompleteSegment`]).
     /// - `MemHelpers::mem_step_to_slot` returned a slot outside `0..=2`
     ///   ([`MainSmError::InvalidSlot`]).
-    pub fn compute_witness<R: MainTraceRowOps<F>>(
+    pub fn compute_witness<R: MainTraceRowOps<F> + IndexedFill>(
         &self,
         zisk_rom: &ZiskRom,
-        min_traces: &[EmuTrace],
+        segment_min_traces: &[std::sync::Arc<EmuTrace>],
+        prev_chunk_last_c: Option<u64>,
         chunk_size: u64,
         trace_buffer: Vec<F>,
     ) -> Result<AirInstance<F>, MainSmError> {
@@ -100,10 +104,12 @@ impl<F: PrimeField64> MainInstance<F> {
         // Determine the number of minimal traces per segment
         let num_within = NUM_ROWS / chunk_size;
 
-        // Determine trace slice for the current segment
-        let start_idx = segment_id.as_usize() * num_within;
-        let end_idx = (start_idx + num_within).min(min_traces.len());
-        let segment_min_traces = &min_traces[start_idx..end_idx];
+        Self::check_segment_complete(
+            segment_id,
+            segment_min_traces.len(),
+            num_within,
+            is_last_segment,
+        )?;
 
         // Calculate total filled rows
         let filled_rows: usize =
@@ -147,7 +153,7 @@ impl<F: PrimeField64> MainInstance<F> {
                     &segment_min_traces[chunk_id],
                     &mut reg_trace,
                     &mut step_range_check,
-                    chunk_id == (end_idx - start_idx - 1),
+                    chunk_id == (segment_min_traces.len() - 1),
                 );
                 (pc, regs, reg_trace, step_range_check)
             })
@@ -180,10 +186,9 @@ impl<F: PrimeField64> MainInstance<F> {
         let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, NUM_ROWS);
 
         // Determine the last row of the previous segment
-        let prev_segment_last_c = if start_idx > 0 {
-            Emu::intermediate_value(min_traces[start_idx - 1].last_c)
-        } else {
-            [F::ZERO, F::ZERO]
+        let prev_segment_last_c = match prev_chunk_last_c {
+            Some(last_c) => Emu::intermediate_value(last_c),
+            None => [F::ZERO, F::ZERO],
         };
 
         // Prepare main AIR values
@@ -191,7 +196,11 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(is_last_segment);
-        air_values.segment_initial_pc = F::from_u32(main_trace[0].get_pc());
+        // From the ROM, not the trace: row 0's `pc` column is instruction-derived, so
+        // `main_trace[0].get_pc()` is 0 on the compact indexed row.
+        let segment_initial_pc =
+            zisk_rom.get_instruction(segment_min_traces[0].start_state.pc).paddr as u32;
+        air_values.segment_initial_pc = F::from_u32(segment_initial_pc);
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
         air_values.segment_last_c[0] = F::from_u32(last_row.get_c(0));
@@ -221,7 +230,7 @@ impl<F: PrimeField64> MainInstance<F> {
     ///
     /// # Returns
     /// The next program counter value after processing the minimal trace.
-    fn fill_partial_trace<R: MainTraceRowOps<F>>(
+    fn fill_partial_trace<R: MainTraceRowOps<F> + IndexedFill>(
         zisk_rom: &ZiskRom,
         main_trace: &mut [R],
         min_trace: &EmuTrace,
@@ -261,7 +270,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// # Errors
     /// Returns [`MainSmError::InvalidSlot`] if `MemHelpers::mem_step_to_slot`
     /// produces a value outside `0..=2`.
-    fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F>>(
+    fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F> + IndexedFill>(
         num_rows: usize,
         fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
         main_trace: &mut MainTrace<R>,
@@ -352,7 +361,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// based on the provided segment ID, step range checks, and large range checks.
     ///
     /// # Errors
-    /// Returns [`MainSmError::Proofman`] if `pil_std_lib::Std::get_range_id` fails
+    /// Returns [`MainSmError::Proofman`] if `pil2_std_lib::Std::get_range_id` fails
     /// to resolve the range IDs for the `mem_step` or `segment_id` range checks.
     /// This indicates a setup-time misconfiguration of the standard library.
     fn update_std_range_checks(
@@ -390,6 +399,35 @@ impl<F: PrimeField64> MainInstance<F> {
             ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
         );
         (initial_step, final_step)
+    }
+
+    /// Rejects a non-final segment that was handed fewer minimal traces than it
+    /// spans. Only the last segment may be partial; anywhere else a short slice
+    /// means the caller's minimal-trace store did not hold this segment's whole
+    /// chunk range, and padding the missing rows would quietly yield a truncated
+    /// Main witness that only surfaces as a global-constraint failure.
+    ///
+    /// An empty *non-final* segment is short like any other and is rejected here.
+    /// An empty *final* segment is the one case left to
+    /// [`MainSmError::EmptyFillTraceOutput`], which already rejects it further
+    /// down `compute_witness` and names the actual problem.
+    ///
+    /// # Errors
+    /// - [`MainSmError::IncompleteSegment`] if a non-final segment is short.
+    fn check_segment_complete(
+        segment_id: SegmentId,
+        got: usize,
+        num_within: usize,
+        is_last_segment: bool,
+    ) -> Result<(), MainSmError> {
+        if !is_last_segment && got != num_within {
+            return Err(MainSmError::IncompleteSegment {
+                segment_id: segment_id.as_usize(),
+                got,
+                expected: num_within,
+            });
+        }
+        Ok(())
     }
 
     /// Decodes `segment_id` and `is_last_segment` from the plan handed to this
@@ -440,7 +478,7 @@ impl MainSM {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use fields::Goldilocks;
+    use proofman_fields::Goldilocks;
     use std::any::Any;
     use zisk_common::{CheckPoint, ChunkId, InstanceType};
 
@@ -450,6 +488,48 @@ mod tests {
 
     fn make_plan(segment_id: Option<SegmentId>, meta: Option<Box<dyn Any + Send + Sync>>) -> Plan {
         Plan::new(0, 0, segment_id, InstanceType::Instance, CheckPoint::Single(ChunkId(0)), meta)
+    }
+
+    #[test]
+    fn full_non_final_segment_is_accepted() {
+        // The common case: a middle segment carrying exactly `num_within` chunks.
+        MI::check_segment_complete(SegmentId(1), 16, 16, false).expect("complete segment");
+    }
+
+    #[test]
+    fn short_non_final_segment_is_rejected() {
+        // Only the last segment may be partial. A short middle segment means the
+        // caller's store didn't hold the whole chunk range; computing it would pad
+        // the missing rows and silently produce a truncated Main witness.
+        let err = MI::check_segment_complete(SegmentId(2), 9, 16, false)
+            .expect_err("truncated middle segment");
+        assert!(matches!(
+            err,
+            MainSmError::IncompleteSegment { segment_id: 2, got: 9, expected: 16 }
+        ));
+    }
+
+    #[test]
+    fn empty_non_final_segment_is_rejected() {
+        let err = MI::check_segment_complete(SegmentId(0), 0, 16, false)
+            .expect_err("empty middle segment");
+        assert!(matches!(err, MainSmError::IncompleteSegment { got: 0, expected: 16, .. }));
+    }
+
+    #[test]
+    fn partial_final_segment_is_accepted() {
+        // The execution's tail is legitimately partial — this must not false-fire.
+        for got in 1..=16 {
+            MI::check_segment_complete(SegmentId(3), got, 16, true)
+                .unwrap_or_else(|e| panic!("final segment with {got} chunks rejected: {e}"));
+        }
+    }
+
+    #[test]
+    fn empty_final_segment_defers_to_empty_fill_trace_output() {
+        // Not this check's job: `compute_witness` rejects an empty segment later
+        // with `EmptyFillTraceOutput`, which names the actual problem.
+        MI::check_segment_complete(SegmentId(3), 0, 16, true).expect("deferred");
     }
 
     #[test]

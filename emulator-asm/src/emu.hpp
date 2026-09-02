@@ -33,6 +33,9 @@ typedef struct {
     uint64_t blake2_counter;
     uint64_t blake2_duration;
 
+    uint64_t blake3_counter;
+    uint64_t blake3_duration;
+
     uint64_t poseidon2_counter;
     uint64_t poseidon2_duration;
 
@@ -98,6 +101,9 @@ typedef struct {
 
     uint64_t add256_counter;    
     uint64_t add256_duration;
+
+    uint64_t babyjubjub_add_counter;
+    uint64_t babyjubjub_add_duration;
 
 } AsmCallMetrics;
 

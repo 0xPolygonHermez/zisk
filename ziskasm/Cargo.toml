@@ -9,7 +9,7 @@ categories.workspace = true
 
 [dependencies]
 zisk-core = { workspace = true }
-riscv = { workspace = true }
+zisk-riscv = { workspace = true }
 
 [dev-dependencies]
 ziskemu = { workspace = true }

@@ -3,8 +3,8 @@
 //! and integrating them with state machines and proofs.
 
 use crate::{BusDevice, CheckPoint, ChunkId, PayloadType, StatsType};
-use fields::PrimeField64;
 use proofman_common::{AirInstance, ProofCtx, ProofmanResult, SetupCtx};
+use proofman_fields::PrimeField64;
 use std::any::Any;
 
 /// Represents the type of an instance, either a standalone instance or a table.
@@ -113,7 +113,7 @@ macro_rules! table_instance {
         use std::collections::VecDeque;
         use std::sync::Arc;
 
-        use fields::PrimeField64;
+        use proofman_fields::PrimeField64;
 
         use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
         use zisk_common::{
@@ -223,7 +223,7 @@ macro_rules! table_instance_array {
         use std::collections::VecDeque;
         use std::sync::Arc;
 
-        use fields::PrimeField64;
+        use proofman_fields::PrimeField64;
 
         use proofman_common::{AirInstance, ProofCtx, SetupCtx, TraceInfo};
         use zisk_common::{
@@ -340,9 +340,9 @@ macro_rules! table_instance_array {
 #[macro_export]
 macro_rules! instance {
     ($name:ident, $sm:ty, $num_rows:path, $operation:path) => {
-        use data_bus::BusId;
         use proofman_common::{AirInstance, ProofCtx};
         use sm_common::{CheckPointSkip, Instance, InstanceType};
+        use $crate::BusId;
 
         /// Represents a standalone computation instance.
         pub struct $name {
@@ -389,6 +389,6 @@ macro_rules! instance {
             }
         }
 
-        impl<F: PrimeField64> data_bus::BusDevice<u64> for $name {}
+        impl<F: PrimeField64> $crate::BusDevice<u64> for $name {}
     };
 }

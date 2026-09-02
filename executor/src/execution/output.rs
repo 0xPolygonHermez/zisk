@@ -12,15 +12,15 @@
 //!
 //! The plan-merging callers (step 1.3 onward) drive this via:
 //! ```ignore
-//! let mem_plans = trace.backend.await_mem_plans()?;
+//! let (mem_plans, gpu_mops_used_bytes) = trace.backend.await_mem_plans()?;
 //! let rh_data   = trace.backend.await_rom_histogram()?;
 //! ```
 //! On the Rust path the calls yield `vec![]` / `None` instantly; on
 //! the ASM path they join the corresponding runner thread.
 
-use std::thread::JoinHandle;
+use std::{sync::Arc, thread::JoinHandle};
 
-use asm_runner::{AsmRunnerMO, AsmRunnerRH};
+use zisk_asm_runner::{AsmRunnerMO, AsmRunnerRH};
 use zisk_common::{EmuTrace, Plan};
 
 use crate::error::{ExecutorError, ExecutorResult};
@@ -29,8 +29,9 @@ use crate::CountersChunkMetrics;
 
 /// Uniform return type for all `Emulator<F>` impls.
 pub struct ExecutionOutput {
-    /// Minimal traces produced by the emulator.
-    pub min_traces: Vec<EmuTrace>,
+    /// Minimal traces produced by the emulator (shared with the progressive
+    /// main-witness advancement store, hence `Arc` elements).
+    pub min_traces: Vec<Arc<EmuTrace>>,
     /// Device metrics for secondary devices (counter-phase output).
     pub counters: CountersChunkMetrics,
     /// Public outputs accumulated during execution.
@@ -68,12 +69,13 @@ pub enum BackendArtifacts {
 }
 
 impl BackendArtifacts {
-    /// Joins the memory-operations runner (ASM) and returns its plans.
-    /// Returns `Ok(vec![])` for the Rust backend.
+    /// Joins the memory-operations runner (ASM) and returns its plans plus the
+    /// GPU mem-ops planner's borrowed-buffer usage in bytes (`None` on the CPU
+    /// planner path). Returns `Ok((vec![], None))` for the Rust backend.
     ///
     /// Each call consumes the `mo` handle inside the `Asm` variant; a
     /// second call returns an error noting the handle was already taken.
-    pub fn await_mem_plans(&mut self) -> ExecutorResult<Vec<Plan>> {
+    pub fn await_mem_plans(&mut self) -> ExecutorResult<(Vec<Plan>, Option<u64>)> {
         match self {
             Self::Asm { mo, .. } => {
                 let handle = mo.take().ok_or(ExecutorError::RunnerHandleConsumed { name: "MO" })?;
@@ -84,9 +86,9 @@ impl BackendArtifacts {
                         name: "MO",
                         message: e.to_string(),
                     })?;
-                Ok(asm_runner_mo.plans)
+                Ok((asm_runner_mo.plans, asm_runner_mo.gpu_mops_used_bytes))
             }
-            Self::Rust => Ok(Vec::new()),
+            Self::Rust => Ok((Vec::new(), None)),
         }
     }
 
@@ -119,13 +121,15 @@ impl BackendArtifacts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use asm_runner::AsmRHData;
+    use zisk_asm_runner::AsmRHData;
 
     #[test]
     fn rust_await_mem_plans_yields_empty() {
         let mut backend = BackendArtifacts::Rust;
-        let plans = backend.await_mem_plans().expect("await_mem_plans on Rust");
+        let (plans, gpu_mops_used_bytes) =
+            backend.await_mem_plans().expect("await_mem_plans on Rust");
         assert!(plans.is_empty());
+        assert!(gpu_mops_used_bytes.is_none());
     }
 
     #[test]
@@ -137,15 +141,17 @@ mod tests {
 
     #[test]
     fn asm_await_mem_plans_returns_canned_plans_after_thread_join() {
-        // The Vec<Plan> is opaque to this test; we just need its length
-        // to match what we passed in.
+        // Plan contents are opaque here; we only verify the tuple unwraps and
+        // preserves the plan count for the canned runner output.
         let canned = Vec::<Plan>::new();
         let expected_len = canned.len();
         let mo_handle = std::thread::spawn(move || Ok(AsmRunnerMO::new(canned)));
         let mut backend = BackendArtifacts::Asm { mo: Some(mo_handle), rh: None };
 
-        let plans = backend.await_mem_plans().expect("await_mem_plans on Asm");
+        let (plans, gpu_mops_used_bytes) =
+            backend.await_mem_plans().expect("await_mem_plans on Asm");
         assert_eq!(plans.len(), expected_len);
+        assert!(gpu_mops_used_bytes.is_none());
     }
 
     #[test]
