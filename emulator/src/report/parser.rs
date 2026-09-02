@@ -11,9 +11,46 @@ pub struct Report {
     pub detailed_mem: Vec<MemRow>,
     pub detailed_mem_full: Vec<MemRow>,
     pub mem_offsets: Offsets,
+    pub mem_top_cost: Vec<MemFnCostRow>,
+    pub mem_top_unaligned: Vec<MemFnAlignRow>,
+    pub mem_top_ratio: Vec<MemFnRatioRow>,
     pub op_base: Vec<OpRow>,
     pub precompiles: Vec<OpRow>,
     pub frop: Vec<FropRow>,
+}
+
+/// `MEM_TOP_COST` row: a function's total memory cost, its share of the program's memory cost,
+/// the calls it received and the cost each call paid.
+#[derive(Debug)]
+pub struct MemFnCostRow {
+    pub name: String,
+    pub cost: u64,
+    pub cost_pct: f64,
+    pub calls: u64,
+    pub cost_per_call: u64,
+}
+
+/// `MEM_TOP_UNALIGNED` row: a function's unaligned and aligned memory cost, and how much of its
+/// memory cost is unaligned.
+#[derive(Debug)]
+pub struct MemFnAlignRow {
+    pub name: String,
+    pub unaligned: u64,
+    pub aligned: u64,
+    pub unaligned_pct: f64,
+    pub calls: u64,
+}
+
+/// `MEM_TOP_RATIO` row: how far a function's unaligned cost per step exceeds the program average,
+/// with the unaligned cost behind the ratio and the unaligned accesses each call performs.
+#[derive(Debug)]
+pub struct MemFnRatioRow {
+    pub name: String,
+    pub ratio: f64,
+    pub unaligned: u64,
+    pub unaligned_pct: f64,
+    pub accesses_per_call: u64,
+    pub calls: u64,
 }
 
 #[derive(Debug, Default)]
@@ -139,6 +176,45 @@ pub fn parse(csv: &str) -> Report {
                 }
             }
 
+            // The per-function memory rankings put the (possibly quoted) function name last, so
+            // the fields are split off the front and the remainder is the name — see `tail`.
+            "MEM_TOP_COST" => {
+                if let Some(v) = tail(line, sep, 5) {
+                    r.mem_top_cost.push(MemFnCostRow {
+                        cost: n(&v[0]),
+                        cost_pct: p(&v[1]),
+                        calls: n(&v[2]),
+                        cost_per_call: n(&v[3]),
+                        name: unquote(&v[4]),
+                    });
+                }
+            }
+
+            "MEM_TOP_UNALIGNED" => {
+                if let Some(v) = tail(line, sep, 5) {
+                    r.mem_top_unaligned.push(MemFnAlignRow {
+                        unaligned: n(&v[0]),
+                        aligned: n(&v[1]),
+                        unaligned_pct: p(&v[2]),
+                        calls: n(&v[3]),
+                        name: unquote(&v[4]),
+                    });
+                }
+            }
+
+            "MEM_TOP_RATIO" => {
+                if let Some(v) = tail(line, sep, 6) {
+                    r.mem_top_ratio.push(MemFnRatioRow {
+                        ratio: p(&v[0]),
+                        unaligned: n(&v[1]),
+                        unaligned_pct: p(&v[2]),
+                        accesses_per_call: n(&v[3]),
+                        calls: n(&v[4]),
+                        name: unquote(&v[5]),
+                    });
+                }
+            }
+
             "OP_BASE" => {
                 if f.get(1) == Some(&"OPCODE") {
                     continue;
@@ -173,6 +249,35 @@ pub fn parse(csv: &str) -> Report {
     }
 
     r
+}
+
+/// Splits the `count` fields that follow the section tag in `line`, keeping the last one whole
+/// (the function name, which may itself contain the separator). Returns `None` for the header row,
+/// recognised by a first field that is not a number.
+fn tail(line: &str, sep: char, count: usize) -> Option<Vec<String>> {
+    let rest = line.split_once(sep)?.1;
+    let v: Vec<String> = rest.splitn(count, sep).map(|x| x.trim().to_string()).collect();
+    if v.len() < count {
+        return None;
+    }
+    // The header row's first field is a label (`MEM COST`, `UNALIGNED`, `RATIO`), not a number.
+    v[0].parse::<f64>().ok().map(|_| v)
+}
+
+/// Undoes the RFC 4180 quoting the snapshot applies to function names carrying the separator.
+fn unquote(field: &str) -> String {
+    match field.strip_prefix('"').and_then(|x| x.strip_suffix('"')) {
+        Some(inner) => inner.replace("\"\"", "\""),
+        None => field.to_string(),
+    }
+}
+
+fn n(field: &str) -> u64 {
+    field.parse().unwrap_or(0)
+}
+
+fn p(field: &str) -> f64 {
+    field.trim_end_matches('%').parse().unwrap_or(0.0)
 }
 
 fn s(field: Option<&&str>) -> String {
