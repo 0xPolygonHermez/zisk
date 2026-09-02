@@ -666,7 +666,7 @@ pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256k1(
     // Distinct sentinel base (see note on the r1 stub): keeps this body from being
     // merged with `ziskos_ecdsa_verify_secp256r1` by identical-code-folding, which
     // would collapse the two redirects onto a single routine.
-    black_box(0xBAD_5EC_256C1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
+    black_box(0xBAD5EC256C1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
 }
 
 /// Ergonomic API over [`ziskos_ecdsa_verify_secp256k1`]: `true` iff the signature
@@ -773,7 +773,7 @@ pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256r1(
     // Distinct sentinel base so this body is not identical to (and thus folded
     // with) `ziskos_ecdsa_verify_secp256k1`; each stub must keep its own symbol so
     // its own redirect resolves.
-    black_box(0xBAD_5EC_256F1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
+    black_box(0xBAD5EC256F1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
 }
 
 /// Ergonomic API over [`ziskos_ecdsa_verify_secp256r1`]: `true` iff the signature
@@ -861,7 +861,7 @@ pub fn bls12_381_pairing_check(g1: &[[u64; 12]], g2: &[[u64; 24]]) -> u64 {
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_map_to_curve_g1_bls12_381(u: *const u64, result: *mut u64) -> u64 {
     let (u, result) = black_box((u, result));
-    black_box(0x0BAD_A11_C001_u64 ^ u as u64 ^ result as u64)
+    black_box(0x0BADA11C001_u64 ^ u as u64 ^ result as u64)
 }
 
 /// Ergonomic API over [`ziskos_map_to_curve_g1_bls12_381`]: maps `u ∈ Fp` to a
@@ -888,7 +888,7 @@ pub fn bls12_381_map_to_curve_g1(u: &[u64; 6]) -> Result<[u64; 12], u64> {
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_map_to_curve_g2_bls12_381(u: *const u64, result: *mut u64) -> u64 {
     let (u, result) = black_box((u, result));
-    black_box(0x0BAD_A22_C002_u64 ^ u as u64 ^ result as u64)
+    black_box(0x0BADA22C002_u64 ^ u as u64 ^ result as u64)
 }
 
 /// Ergonomic API over [`ziskos_map_to_curve_g2_bls12_381`]: maps `u ∈ Fp2` to a
@@ -960,7 +960,7 @@ pub unsafe extern "C" fn ziskos_bls_verify_bls12_381(
     sig: *const u8,
 ) -> u64 {
     let (pk, msg, msg_len, sig) = black_box((pk, msg, msg_len, sig));
-    black_box(0x0BAD_B15_5169_u64 ^ pk as u64 ^ msg as u64 ^ msg_len ^ sig as u64)
+    black_box(0x0BADB155169_u64 ^ pk as u64 ^ msg as u64 ^ msg_len ^ sig as u64)
 }
 
 /// Ergonomic API over [`ziskos_bls_verify_bls12_381`]: verifies a BLS signature
@@ -990,7 +990,7 @@ pub unsafe extern "C" fn ziskos_verify_kzg_proof_bls12_381(
     proof: *const u8,
 ) -> u64 {
     let (z, y, commitment, proof) = black_box((z, y, commitment, proof));
-    black_box(0x0BAD_442_6202_u64 ^ z as u64 ^ y as u64 ^ commitment as u64 ^ proof as u64)
+    black_box(0x0BAD4426202_u64 ^ z as u64 ^ y as u64 ^ commitment as u64 ^ proof as u64)
 }
 
 /// Ergonomic API over [`ziskos_verify_kzg_proof_bls12_381`]: verifies an EIP-4844
@@ -1134,11 +1134,16 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
-    msg: *const u8, sig: *const u8, recid: u8, output: *mut u8,
+    msg: *const u8,
+    sig: *const u8,
+    recid: u8,
+    output: *mut u8,
 ) -> i32 {
     let (msg, sig, recid, output) = black_box((msg, sig, recid, output));
     let _ = (msg, sig, recid);
-    for i in 0..64usize { output.add(i).write(0xBA); }
+    for i in 0..64usize {
+        output.add(i).write(0xBA);
+    }
     black_box(-1)
 }
 
@@ -1149,7 +1154,10 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_secp256r1_verify(
-    msg: *const u8, sig: *const u8, pubkey: *const u8, verified: *mut u8,
+    msg: *const u8,
+    sig: *const u8,
+    pubkey: *const u8,
+    verified: *mut u8,
 ) -> i32 {
     let (msg, sig, pubkey, verified) = black_box((msg, sig, pubkey, verified));
     let _ = (msg, sig, pubkey);
@@ -1164,7 +1172,11 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_blake2f(
-    rounds: u32, h: *mut u8, m: *const u8, t: *const u8, f: u8,
+    rounds: u32,
+    h: *mut u8,
+    m: *const u8,
+    t: *const u8,
+    f: u8,
 ) -> i32 {
     let (rounds, h, m, t, f) = black_box((rounds, h, m, t, f));
     let _ = (rounds, m, t, f, h);
@@ -1180,8 +1192,13 @@ pub unsafe extern "C" fn zkvm_blake2f(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_modexp(
-    base: *const u8, base_len: usize, exp: *const u8, exp_len: usize,
-    modulus: *const u8, mod_len: usize, output: *mut u8,
+    base: *const u8,
+    base_len: usize,
+    exp: *const u8,
+    exp_len: usize,
+    modulus: *const u8,
+    mod_len: usize,
+    output: *mut u8,
 ) -> i32 {
     let t = black_box((base, base_len, exp, exp_len, modulus, mod_len, output));
     let _ = t;
@@ -1194,9 +1211,7 @@ pub unsafe extern "C" fn zkvm_modexp(
 /// `p1`/`p2` are 64 readable bytes; `result` is 64 writable bytes.
 #[no_mangle]
 #[inline(never)]
-pub unsafe extern "C" fn zkvm_bn254_g1_add(
-    p1: *const u8, p2: *const u8, result: *mut u8,
-) -> i32 {
+pub unsafe extern "C" fn zkvm_bn254_g1_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
     let t = black_box((p1, p2, result));
     let _ = t;
     black_box(-1)
@@ -1209,7 +1224,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_add(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bn254_g1_mul(
-    point: *const u8, scalar: *const u8, result: *mut u8,
+    point: *const u8,
+    scalar: *const u8,
+    result: *mut u8,
 ) -> i32 {
     let t = black_box((point, scalar, result));
     let _ = t;
@@ -1224,7 +1241,9 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bn254_pairing(
-    pairs: *const u8, num_pairs: usize, verified: *mut bool,
+    pairs: *const u8,
+    num_pairs: usize,
+    verified: *mut bool,
 ) -> i32 {
     let t = black_box((pairs, num_pairs, verified));
     let _ = t;
@@ -1237,54 +1256,91 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
 
 /// # Safety
 /// `p1`/`p2` are 96 readable bytes; `result` 96 writable.
-#[no_mangle] #[inline(never)]
+#[no_mangle]
+#[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_g1_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((p1, p2, result)); black_box(-1)
+    let _ = black_box((p1, p2, result));
+    black_box(-1)
 }
 /// # Safety
 /// `pairs` is `num_pairs*128` readable bytes; `result` 96 writable.
-#[no_mangle] #[inline(never)]
-pub unsafe extern "C" fn zkvm_bls12_g1_msm(pairs: *const u8, num_pairs: usize, result: *mut u8) -> i32 {
-    let _ = black_box((pairs, num_pairs, result)); black_box(-1)
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_g1_msm(
+    pairs: *const u8,
+    num_pairs: usize,
+    result: *mut u8,
+) -> i32 {
+    let _ = black_box((pairs, num_pairs, result));
+    black_box(-1)
 }
 /// # Safety
 /// `p1`/`p2` are 192 readable bytes; `result` 192 writable.
-#[no_mangle] #[inline(never)]
+#[no_mangle]
+#[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_g2_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((p1, p2, result)); black_box(-1)
+    let _ = black_box((p1, p2, result));
+    black_box(-1)
 }
 /// # Safety
 /// `pairs` is `num_pairs*224` readable bytes; `result` 192 writable.
-#[no_mangle] #[inline(never)]
-pub unsafe extern "C" fn zkvm_bls12_g2_msm(pairs: *const u8, num_pairs: usize, result: *mut u8) -> i32 {
-    let _ = black_box((pairs, num_pairs, result)); black_box(-1)
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_g2_msm(
+    pairs: *const u8,
+    num_pairs: usize,
+    result: *mut u8,
+) -> i32 {
+    let _ = black_box((pairs, num_pairs, result));
+    black_box(-1)
 }
 /// # Safety
 /// `pairs` is `num_pairs*288` readable bytes; `verified` a writable bool.
-#[no_mangle] #[inline(never)]
-pub unsafe extern "C" fn zkvm_bls12_pairing(pairs: *const u8, num_pairs: usize, verified: *mut bool) -> i32 {
-    let _ = black_box((pairs, num_pairs, verified)); black_box(-1)
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_pairing(
+    pairs: *const u8,
+    num_pairs: usize,
+    verified: *mut bool,
+) -> i32 {
+    let _ = black_box((pairs, num_pairs, verified));
+    black_box(-1)
 }
 /// # Safety
 /// `field_element` 48 readable bytes; `result` 96 writable.
-#[no_mangle] #[inline(never)]
+#[no_mangle]
+#[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(field_element: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((field_element, result)); black_box(-1)
+    let _ = black_box((field_element, result));
+    black_box(-1)
 }
 /// # Safety
 /// `field_element` 96 readable bytes; `result` 192 writable.
-#[no_mangle] #[inline(never)]
-pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(field_element: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((field_element, result)); black_box(-1)
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
+    field_element: *const u8,
+    result: *mut u8,
+) -> i32 {
+    let _ = black_box((field_element, result));
+    black_box(-1)
 }
 /// `zkvm_kzg_point_eval(commitment, z, y, proof, verified)` (EIP-4844) —
 /// redirected to `ziskasm_zkvm_kzg_point_eval`. commitment/proof are 48-byte
 /// compressed G1; z/y are 32-byte BE field elements. Always 0=EOK; `*verified` set.
 /// # Safety
 /// `commitment`/`proof` 48 readable bytes; `z`/`y` 32 readable bytes; `verified` writable.
-#[no_mangle] #[inline(never)]
-pub unsafe extern "C" fn zkvm_kzg_point_eval(commitment: *const u8, z: *const u8, y: *const u8, proof: *const u8, verified: *mut bool) -> i32 {
-    let _ = black_box((commitment, z, y, proof, verified)); black_box(-1)
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_kzg_point_eval(
+    commitment: *const u8,
+    z: *const u8,
+    y: *const u8,
+    proof: *const u8,
+    verified: *mut bool,
+) -> i32 {
+    let _ = black_box((commitment, z, y, proof, verified));
+    black_box(-1)
 }
 
 /// `zkvm_ripemd160(data, len, output)` — redirected to `ziskasm_zkvm_ripemd160`.
