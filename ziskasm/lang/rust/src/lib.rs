@@ -1067,3 +1067,233 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]
         )
     }
 }
+
+// ============================================================================
+// EF zkVM-accelerator ABI (zkvm_accelerators.h) — Rust stubs. Same model as the
+// C stubs (ziskasm/lang/c/src/zkvm_stubs.c): each `zkvm_*` is redirected by
+// elf2rom DIRECTLY to the native `ziskasm_zkvm_*` .zisk routine (single call, no
+// wrapper). A guest links EITHER these OR the portable `zkvm-interface` impl of
+// the same standard symbols — never both. Byte structs cross as raw pointers
+// (ABI-identical). Return: 0 = ZKVM_EOK, -1 = ZKVM_EFAIL.
+// ============================================================================
+
+/// `zkvm_keccak256(data, len, output)` — redirected to `ziskasm_zkvm_keccak256`.
+///
+/// # Safety
+/// `data` points to `len` readable bytes; `output` to 32 writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_keccak256(data: *const u8, len: usize, output: *mut u8) -> i32 {
+    let (data, len, output) = black_box((data, len, output));
+    let _ = (data, len);
+    for i in 0..32usize {
+        output.add(i).write(0xBA);
+    }
+    black_box(-1)
+}
+
+/// `zkvm_sha256(data, len, output)` — redirected to `ziskasm_zkvm_sha256`.
+///
+/// # Safety
+/// `data` points to `len` readable bytes; `output` to 32 writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_sha256(data: *const u8, len: usize, output: *mut u8) -> i32 {
+    let (data, len, output) = black_box((data, len, output));
+    let _ = (data, len);
+    for i in 0..32usize {
+        output.add(i).write(0xB5);
+    }
+    black_box(-1)
+}
+
+/// `zkvm_secp256k1_verify(msg, sig, pubkey, verified)` — redirected to
+/// `ziskasm_zkvm_secp256k1_verify`. msg=32B, sig=64B (r||s), pubkey=64B (x||y),
+/// all big-endian; `verified` is written 0/1. Returns 0 = ZKVM_EOK.
+///
+/// # Safety
+/// `msg`/`sig`/`pubkey` point to 32/64/64 readable bytes; `verified` is writable.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_secp256k1_verify(
+    msg: *const u8,
+    sig: *const u8,
+    pubkey: *const u8,
+    verified: *mut u8,
+) -> i32 {
+    let (msg, sig, pubkey, verified) = black_box((msg, sig, pubkey, verified));
+    let _ = (msg, sig, pubkey);
+    verified.write(0);
+    black_box(-1)
+}
+
+/// `zkvm_secp256k1_ecrecover(msg, sig, recid, output)` — redirected to
+/// `ziskasm_zkvm_secp256k1_ecrecover`. output=64B (x||y, BE). 0=EOK, -1=EFAIL.
+/// # Safety
+/// `msg`/`sig` point to 32/64 readable bytes; `output` to 64 writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
+    msg: *const u8, sig: *const u8, recid: u8, output: *mut u8,
+) -> i32 {
+    let (msg, sig, recid, output) = black_box((msg, sig, recid, output));
+    let _ = (msg, sig, recid);
+    for i in 0..64usize { output.add(i).write(0xBA); }
+    black_box(-1)
+}
+
+/// `zkvm_secp256r1_verify(msg, sig, pubkey, verified)` — redirected to
+/// `ziskasm_zkvm_secp256r1_verify`. Same shape as the secp256k1 variant.
+/// # Safety
+/// `msg`/`sig`/`pubkey` point to 32/64/64 readable bytes; `verified` writable.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_secp256r1_verify(
+    msg: *const u8, sig: *const u8, pubkey: *const u8, verified: *mut u8,
+) -> i32 {
+    let (msg, sig, pubkey, verified) = black_box((msg, sig, pubkey, verified));
+    let _ = (msg, sig, pubkey);
+    verified.write(0);
+    black_box(-1)
+}
+
+/// `zkvm_blake2f(rounds, h, m, t, f)` — redirected to `ziskasm_zkvm_blake2f`.
+/// h=64B (updated in place), m=128B, t=16B, all little-endian. 0=EOK.
+/// # Safety
+/// `h` is 64 writable bytes; `m`/`t` are 128/16 readable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_blake2f(
+    rounds: u32, h: *mut u8, m: *const u8, t: *const u8, f: u8,
+) -> i32 {
+    let (rounds, h, m, t, f) = black_box((rounds, h, m, t, f));
+    let _ = (rounds, m, t, f, h);
+    black_box(-1)
+}
+
+/// `zkvm_modexp(base, base_len, exp, exp_len, mod, mod_len, output)` (EIP-198) —
+/// redirected to `ziskasm_zkvm_modexp`. All operands are big-endian byte arrays
+/// of arbitrary length; `output` receives `mod_len` big-endian bytes. 0=EOK.
+/// # Safety
+/// Each pointer/len pair describes a readable byte range; `output` is `mod_len`
+/// writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_modexp(
+    base: *const u8, base_len: usize, exp: *const u8, exp_len: usize,
+    modulus: *const u8, mod_len: usize, output: *mut u8,
+) -> i32 {
+    let t = black_box((base, base_len, exp, exp_len, modulus, mod_len, output));
+    let _ = t;
+    black_box(-1)
+}
+
+/// `zkvm_bn254_g1_add(p1, p2, result)` — redirected to `ziskasm_zkvm_bn254_g1_add`.
+/// G1 points are 64 big-endian bytes (x‖y). 0=EOK, -1=EFAIL (not in field / off curve).
+/// # Safety
+/// `p1`/`p2` are 64 readable bytes; `result` is 64 writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_bn254_g1_add(
+    p1: *const u8, p2: *const u8, result: *mut u8,
+) -> i32 {
+    let t = black_box((p1, p2, result));
+    let _ = t;
+    black_box(-1)
+}
+
+/// `zkvm_bn254_g1_mul(point, scalar, result)` — redirected to `ziskasm_zkvm_bn254_g1_mul`.
+/// `point` = 64 BE bytes (x‖y), `scalar` = 32 BE bytes. 0=EOK, -1=EFAIL.
+/// # Safety
+/// `point` is 64 readable bytes, `scalar` 32 readable bytes, `result` 64 writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_bn254_g1_mul(
+    point: *const u8, scalar: *const u8, result: *mut u8,
+) -> i32 {
+    let t = black_box((point, scalar, result));
+    let _ = t;
+    black_box(-1)
+}
+
+/// `zkvm_bn254_pairing(pairs, num_pairs, verified)` — redirected to
+/// `ziskasm_zkvm_bn254_pairing`. `pairs` = num_pairs × 192 BE bytes (G1 64 ‖ G2 128).
+/// Sets `*verified` and returns 0=EOK, -1=EFAIL (invalid input).
+/// # Safety
+/// `pairs` is `num_pairs*192` readable bytes; `verified` is a writable bool.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_bn254_pairing(
+    pairs: *const u8, num_pairs: usize, verified: *mut bool,
+) -> i32 {
+    let t = black_box((pairs, num_pairs, verified));
+    let _ = t;
+    black_box(-1)
+}
+
+// ---- BLS12-381 (EIP-2537) + KZG (EIP-4844) stubs -----------------------------
+// All operands are packed big-endian bytes (Fp=48, G1=96, G2=192, scalar=32);
+// each redirects to the matching ziskasm_zkvm_* .zisk routine. 0=EOK, -1=EFAIL.
+
+/// # Safety
+/// `p1`/`p2` are 96 readable bytes; `result` 96 writable.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_g1_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((p1, p2, result)); black_box(-1)
+}
+/// # Safety
+/// `pairs` is `num_pairs*128` readable bytes; `result` 96 writable.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_g1_msm(pairs: *const u8, num_pairs: usize, result: *mut u8) -> i32 {
+    let _ = black_box((pairs, num_pairs, result)); black_box(-1)
+}
+/// # Safety
+/// `p1`/`p2` are 192 readable bytes; `result` 192 writable.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_g2_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((p1, p2, result)); black_box(-1)
+}
+/// # Safety
+/// `pairs` is `num_pairs*224` readable bytes; `result` 192 writable.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_g2_msm(pairs: *const u8, num_pairs: usize, result: *mut u8) -> i32 {
+    let _ = black_box((pairs, num_pairs, result)); black_box(-1)
+}
+/// # Safety
+/// `pairs` is `num_pairs*288` readable bytes; `verified` a writable bool.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_pairing(pairs: *const u8, num_pairs: usize, verified: *mut bool) -> i32 {
+    let _ = black_box((pairs, num_pairs, verified)); black_box(-1)
+}
+/// # Safety
+/// `field_element` 48 readable bytes; `result` 96 writable.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(field_element: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((field_element, result)); black_box(-1)
+}
+/// # Safety
+/// `field_element` 96 readable bytes; `result` 192 writable.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(field_element: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((field_element, result)); black_box(-1)
+}
+/// `zkvm_kzg_point_eval(commitment, z, y, proof, verified)` (EIP-4844) —
+/// redirected to `ziskasm_zkvm_kzg_point_eval`. commitment/proof are 48-byte
+/// compressed G1; z/y are 32-byte BE field elements. Always 0=EOK; `*verified` set.
+/// # Safety
+/// `commitment`/`proof` 48 readable bytes; `z`/`y` 32 readable bytes; `verified` writable.
+#[no_mangle] #[inline(never)]
+pub unsafe extern "C" fn zkvm_kzg_point_eval(commitment: *const u8, z: *const u8, y: *const u8, proof: *const u8, verified: *mut bool) -> i32 {
+    let _ = black_box((commitment, z, y, proof, verified)); black_box(-1)
+}
+
+/// `zkvm_ripemd160(data, len, output)` — redirected to `ziskasm_zkvm_ripemd160`.
+/// Writes 32 bytes: [0..12]=0, [12..32]=the 20-byte digest (each word LE). 0=EOK.
+/// # Safety
+/// `data` is `len` readable bytes; `output` is 32 writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_ripemd160(data: *const u8, len: usize, output: *mut u8) -> i32 {
+    let _ = black_box((data, len, output));
+    black_box(-1)
+}

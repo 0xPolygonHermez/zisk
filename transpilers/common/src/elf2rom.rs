@@ -62,6 +62,28 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     const REDIRECTS: &[(&str, &str)] = &[
         ("ziskos_add", "zisklib_add"),
         ("ziskos_keccak", "zisklib_keccak"),
+        // EF zkVM-accelerator C ABI (zkvm_accelerators.h): the standard `zkvm_*`
+        // symbols redirect DIRECTLY to the native `ziskasm_zkvm_*` .zisk routines
+        // (single call, no C/Rust wrapper). Kept explicit for auditability.
+        ("zkvm_keccak256", "ziskasm_zkvm_keccak256"),
+        ("zkvm_sha256", "ziskasm_zkvm_sha256"),
+        ("zkvm_secp256k1_verify", "ziskasm_zkvm_secp256k1_verify"),
+        ("zkvm_secp256k1_ecrecover", "ziskasm_zkvm_secp256k1_ecrecover"),
+        ("zkvm_secp256r1_verify", "ziskasm_zkvm_secp256r1_verify"),
+        ("zkvm_blake2f", "ziskasm_zkvm_blake2f"),
+        ("zkvm_modexp", "ziskasm_zkvm_modexp"),
+        ("zkvm_bn254_g1_add", "ziskasm_zkvm_bn254_g1_add"),
+        ("zkvm_bn254_g1_mul", "ziskasm_zkvm_bn254_g1_mul"),
+        ("zkvm_bn254_pairing", "ziskasm_zkvm_bn254_pairing"),
+        ("zkvm_bls12_g1_add", "ziskasm_zkvm_bls12_g1_add"),
+        ("zkvm_bls12_g2_add", "ziskasm_zkvm_bls12_g2_add"),
+        ("zkvm_bls12_g1_msm", "ziskasm_zkvm_bls12_g1_msm"),
+        ("zkvm_bls12_g2_msm", "ziskasm_zkvm_bls12_g2_msm"),
+        ("zkvm_bls12_pairing", "ziskasm_zkvm_bls12_pairing"),
+        ("zkvm_bls12_map_fp_to_g1", "ziskasm_zkvm_bls12_map_fp_to_g1"),
+        ("zkvm_bls12_map_fp2_to_g2", "ziskasm_zkvm_bls12_map_fp2_to_g2"),
+        ("zkvm_kzg_point_eval", "ziskasm_zkvm_kzg_point_eval"),
+        ("zkvm_ripemd160", "ziskasm_zkvm_ripemd160"),
         ("ziskos_sha256", "zisklib_sha256"),
         ("ziskos_blake2b_compress", "zisklib_blake2b_compress"),
         ("ziskos_inv256", "zisklib_inv256"),

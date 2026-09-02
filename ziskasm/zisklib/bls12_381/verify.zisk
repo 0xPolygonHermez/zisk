@@ -84,8 +84,8 @@ zisklib_decompress_g1_bls12_381:
 	eq(r7, 0), j(lv_dg1_err)
 	and(r6, 0x40) -> r7
 	eq(r7, 0), j(lv_dg1_notinf)
-	copyb(0, BLS_V_PK) -> r10
-	copyb(0, BLS_G1_IDENTITY) -> r11
+	copyb(0, BLS_G1_IDENTITY) -> r10    ; src = identity
+	copyb(0, BLS_V_PK) -> r11           ; dst = decompressed point (BLS_V_PK <- identity)
 	copyb(0, 12) -> r12
 	call bn254_memcpy
 	copyb(0, BLS_V_G1INF) -> r5

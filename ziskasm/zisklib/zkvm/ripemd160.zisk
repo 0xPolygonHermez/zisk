@@ -1,0 +1,463 @@
+; ============================================================================
+; zkvm/ripemd160.zisk - RIPEMD-160 (EIP-152 precompile 0x03) for the EF zkVM
+; accelerator C ABI. Entry `ziskasm_zkvm_ripemd160`, redirect target of `zkvm_ripemd160`.
+;
+;   zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len,
+;                              zkvm_ripemd160_hash* output)   (output = 32 bytes)
+;     [r10=data, r11=len, r12=output] -> a0 = ZKVM_EOK (0).
+;
+; RIPEMD-160 has NO ZisK precompile, so the full compression is authored here in
+; 32-bit arithmetic (mask to 0xffffffff after every add; rol via sll|srl). Little-
+; endian throughout: message words X[i] = LE u32, the 64-bit length is appended
+; little-endian. Two parallel lines (left/right) share one step routine `rmd_line`
+; (dispatch f1..f5 by round). The 20-byte digest is written right-aligned into the
+; 32-byte output: bytes [0..12] = 0, bytes [12..32] = h0..h4 each little-endian
+; (matches the reference ripemd160_c). Labels `rmd_`, data `RMD_*`.
+; ============================================================================
+
+const u64 RMD_H_INIT[5] = 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0
+const u64 RMD_KL[5]     = 0x00000000, 0x5A827999, 0x6ED9EBA1, 0x8F1BBCDC, 0xA953FD4E
+const u64 RMD_KR[5]     = 0x50A28BE6, 0x5C4DD124, 0x6D703EF3, 0x7A6D76E9, 0x00000000
+const u64 RMD_RL[80] = 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 7, 4, 13, 1, 10, 6, 15, 3, 12, 0, 9, 5, 2, 14, 11, 8, 3, 10, 14, 4, 9, 15, 8, 1, 2, 7, 0, 6, 13, 11, 5, 12, 1, 9, 11, 10, 0, 8, 12, 4, 13, 3, 7, 15, 14, 5, 6, 2, 4, 0, 5, 9, 7, 12, 2, 10, 14, 1, 3, 8, 11, 6, 15, 13
+const u64 RMD_RR[80] = 5, 14, 7, 0, 9, 2, 11, 4, 13, 6, 15, 8, 1, 10, 3, 12, 6, 11, 3, 7, 0, 13, 5, 10, 14, 15, 8, 12, 4, 9, 1, 2, 15, 5, 1, 3, 7, 14, 6, 9, 11, 8, 12, 2, 10, 0, 4, 13, 8, 6, 4, 1, 3, 11, 15, 0, 5, 12, 2, 13, 9, 7, 10, 14, 12, 15, 10, 4, 1, 5, 8, 7, 6, 2, 13, 14, 0, 3, 9, 11
+const u64 RMD_SL[80] = 11, 14, 15, 12, 5, 8, 7, 9, 11, 13, 14, 15, 6, 7, 9, 8, 7, 6, 8, 13, 11, 9, 7, 15, 7, 12, 15, 9, 11, 7, 13, 12, 11, 13, 6, 7, 14, 9, 13, 15, 14, 8, 13, 6, 5, 12, 7, 5, 11, 12, 14, 15, 14, 15, 9, 8, 9, 14, 5, 6, 8, 6, 5, 12, 9, 15, 5, 11, 6, 8, 13, 12, 5, 12, 13, 14, 11, 8, 5, 6
+const u64 RMD_SR[80] = 8, 9, 9, 11, 13, 15, 15, 5, 7, 7, 8, 11, 14, 14, 12, 6, 9, 13, 15, 7, 12, 8, 9, 11, 7, 7, 12, 7, 6, 15, 13, 11, 9, 7, 15, 11, 8, 6, 6, 14, 12, 13, 5, 14, 13, 13, 7, 5, 15, 5, 8, 11, 14, 14, 6, 14, 6, 9, 12, 9, 12, 5, 15, 8, 8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11
+
+u64 RMD_H[5]     = 0, 0, 0, 0, 0
+u64 RMD_L[5]     = 0, 0, 0, 0, 0
+u64 RMD_R[5]     = 0, 0, 0, 0, 0
+u64 RMD_BLOCK[8] = 0, 0, 0, 0, 0, 0, 0, 0
+u64 RMD_MSGP[1]  = 0
+u64 RMD_LEN[1]   = 0
+u64 RMD_OUTP[1]  = 0
+u64 RMD_I[1]     = 0
+u64 RMD_REM[1]   = 0
+u64 RMD_J[1]     = 0
+u64 RMD_T0[1]    = 0
+u64 RMD_LN_ST[1] = 0
+u64 RMD_LN_SEL[1]= 0
+u64 RMD_LN_RT[1] = 0
+u64 RMD_LN_STB[1]= 0
+u64 RMD_LN_KT[1] = 0
+u64 RMD_LN_J[1]  = 0
+u64 RMD_LN_RND[1]= 0
+u64 RMD_LN_T[1]  = 0
+
+; --- rmd_f(sel=r10, x=r11, y=r12, z=r13) -> r10 = f (32-bit) ---
+rmd_f:
+	eq(r10, 0), j(rmd_f1)
+	eq(r10, 1), j(rmd_f2)
+	eq(r10, 2), j(rmd_f3)
+	eq(r10, 3), j(rmd_f4)
+	jump(rmd_f5)
+rmd_f1:                                  ; x ^ y ^ z
+	xor(r11, r12) -> r5
+	xor(r5, r13) -> r10
+	ret
+rmd_f2:                                  ; (x & y) | (~x & z)
+	and(r11, r12) -> r5
+	xor(r11, 0xffffffff) -> r6
+	and(r6, r13) -> r6
+	or(r5, r6) -> r10
+	ret
+rmd_f3:                                  ; (x | ~y) ^ z
+	xor(r12, 0xffffffff) -> r5
+	or(r11, r5) -> r5
+	xor(r5, r13) -> r10
+	ret
+rmd_f4:                                  ; (x & z) | (y & ~z)
+	and(r11, r13) -> r5
+	xor(r13, 0xffffffff) -> r6
+	and(r12, r6) -> r6
+	or(r5, r6) -> r10
+	ret
+rmd_f5:                                  ; x ^ (y | ~z)
+	xor(r13, 0xffffffff) -> r5
+	or(r12, r5) -> r5
+	xor(r11, r5) -> r10
+	ret
+
+; --- rmd_rol(x=r10 (32-bit), n=r11) -> r10 = rol32(x,n) ---
+rmd_rol:
+	sll(r10, r11) -> r5
+	copyb(0, 32) -> r6
+	sub(r6, r11) -> r6
+	srl(r10, r6) -> r6
+	or(r5, r6) -> r5
+	and(r5, 0xffffffff) -> r10
+	ret
+
+; --- rmd_line: one RIPEMD-160 step on a 5-word state.
+;   [r10=state(5 u64), r11=sel(0..4), r12=rtab, r13=stab, r14=ktab, r15=j, r16=round]
+;   T = rol( state[0] + f(sel,state1,state2,state3) + X[rtab[j]] + ktab[round], stab[j] ) + state[4]
+;   state = (state[4], T, state[1], rol(state[2],10), state[3])  [i.e. A=E;E=D;D=rol(C,10);C=B;B=T]
+rmd_line:
+	push r1
+	copyb(0, RMD_LN_ST)  -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, RMD_LN_SEL) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, RMD_LN_RT)  -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, RMD_LN_STB) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, RMD_LN_KT)  -> r5
+	copyb(r5, r14) -> 8[a + 0]
+	copyb(0, RMD_LN_J)   -> r5
+	copyb(r5, r15) -> 8[a + 0]
+	copyb(0, RMD_LN_RND) -> r5
+	copyb(r5, r16) -> 8[a + 0]
+	; f = rmd_f(sel, state[1], state[2], state[3])
+	copyb(0, RMD_LN_SEL) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	copyb(0, RMD_LN_ST) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(r6, 8[a + 8])  -> r11
+	copyb(r6, 8[a + 16]) -> r12
+	copyb(r6, 8[a + 24]) -> r13
+	call rmd_f                           ; r10 = f
+	; t = state[0] + f
+	copyb(0, RMD_LN_ST) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(r6, 8[a + 0]) -> r7
+	add(r7, r10) -> r7
+	; + X[rtab[j]]
+	copyb(0, RMD_LN_J) -> r5
+	copyb(r5, 8[a + 0]) -> r15
+	sll(r15, 3) -> r6
+	copyb(0, RMD_LN_RT) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, 8[a + 0]) -> r14           ; rtab[j]
+	sll(r14, 2) -> r6
+	copyb(0, RMD_BLOCK) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, 4[a + 0]) -> r6            ; X[rtab[j]] (LE u32)
+	add(r7, r6) -> r7
+	; + ktab[round]
+	copyb(0, RMD_LN_RND) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	sll(r14, 3) -> r6
+	copyb(0, RMD_LN_KT) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, 8[a + 0]) -> r6            ; ktab[round]
+	add(r7, r6) -> r7
+	and(r7, 0xffffffff) -> r7
+	; t = rol(t, stab[j])
+	copyb(0, RMD_LN_J) -> r5
+	copyb(r5, 8[a + 0]) -> r15
+	sll(r15, 3) -> r6
+	copyb(0, RMD_LN_STB) -> r5
+	copyb(r5, 8[a + 0]) -> r5
+	add(r5, r6) -> r5
+	copyb(r5, 8[a + 0]) -> r11           ; stab[j]
+	copyb(0, r7) -> r10
+	call rmd_rol                         ; r10 = rol
+	; t = (rol + state[4]) & mask
+	copyb(0, RMD_LN_ST) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(r6, 8[a + 32]) -> r7
+	add(r10, r7) -> r7
+	and(r7, 0xffffffff) -> r7
+	copyb(0, RMD_LN_T) -> r5
+	copyb(r5, r7) -> 8[a + 0]            ; save T
+	; state rotation
+	copyb(0, RMD_LN_ST) -> r6
+	copyb(r6, 8[a + 0]) -> r6            ; state base
+	copyb(r6, 8[a + 32]) -> r7
+	copyb(r6, r7) -> 8[a + 0]            ; A = E
+	copyb(r6, 8[a + 24]) -> r7
+	copyb(r6, r7) -> 8[a + 32]           ; E = D
+	copyb(r6, 8[a + 16]) -> r10
+	copyb(0, 10) -> r11
+	call rmd_rol                         ; rol(C,10)
+	copyb(0, RMD_LN_ST) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	copyb(r6, r10) -> 8[a + 24]          ; D = rol(C,10)
+	copyb(r6, 8[a + 8]) -> r7
+	copyb(r6, r7) -> 8[a + 16]           ; C = B
+	copyb(0, RMD_LN_T) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r6, r7) -> 8[a + 8]            ; B = T
+	pop r1
+	ret
+
+; --- rmd_compress: fold RMD_BLOCK (64 bytes) into RMD_H[5] ---
+rmd_compress:
+	push r1
+	; L = H ; R = H
+	copyb(0, 0) -> r13
+rmd_cinit:
+	eq(r13, 5), j(rmd_step)
+	sll(r13, 3) -> r5
+	copyb(0, RMD_H) -> r6
+	add(r6, r5) -> r6
+	copyb(r6, 8[a + 0]) -> r7
+	copyb(0, RMD_L) -> r6
+	add(r6, r5) -> r6
+	copyb(r6, r7) -> 8[a + 0]
+	copyb(0, RMD_R) -> r6
+	add(r6, r5) -> r6
+	copyb(r6, r7) -> 8[a + 0]
+	add(r13, 1) -> r13
+	jump(rmd_cinit)
+rmd_step:
+	copyb(0, RMD_J) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+rmd_sloop:
+	copyb(0, RMD_J) -> r5
+	copyb(r5, 8[a + 0]) -> r15
+	eq(r15, 80), j(rmd_combine)
+	srl(r15, 4) -> r16                   ; round
+	; LEFT line
+	copyb(0, RMD_L) -> r10
+	copyb(0, r16) -> r11                 ; sel = round
+	copyb(0, RMD_RL) -> r12
+	copyb(0, RMD_SL) -> r13
+	copyb(0, RMD_KL) -> r14
+	call rmd_line
+	; RIGHT line
+	copyb(0, RMD_J) -> r5
+	copyb(r5, 8[a + 0]) -> r15
+	srl(r15, 4) -> r16
+	copyb(0, RMD_R) -> r10
+	copyb(0, 4) -> r11
+	sub(r11, r16) -> r11                 ; sel = 4 - round
+	copyb(0, RMD_RR) -> r12
+	copyb(0, RMD_SR) -> r13
+	copyb(0, RMD_KR) -> r14
+	call rmd_line
+	; j++
+	copyb(0, RMD_J) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 1) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	jump(rmd_sloop)
+rmd_combine:
+	; t = H1 + L2 + R3
+	copyb(0, RMD_H) -> r5
+	copyb(r5, 8[a + 8]) -> r7
+	copyb(0, RMD_L) -> r5
+	copyb(r5, 8[a + 16]) -> r14
+	add(r7, r14) -> r7
+	copyb(0, RMD_R) -> r5
+	copyb(r5, 8[a + 24]) -> r14
+	add(r7, r14) -> r7
+	and(r7, 0xffffffff) -> r7
+	copyb(0, RMD_T0) -> r5
+	copyb(r5, r7) -> 8[a + 0]
+	; H1 = H2 + L3 + R4
+	copyb(0, RMD_H) -> r5
+	copyb(r5, 8[a + 16]) -> r7
+	copyb(0, RMD_L) -> r5
+	copyb(r5, 8[a + 24]) -> r14
+	add(r7, r14) -> r7
+	copyb(0, RMD_R) -> r5
+	copyb(r5, 8[a + 32]) -> r14
+	add(r7, r14) -> r7
+	and(r7, 0xffffffff) -> r7
+	copyb(0, RMD_H) -> r5
+	copyb(r5, r7) -> 8[a + 8]
+	; H2 = H3 + L4 + R0
+	copyb(0, RMD_H) -> r5
+	copyb(r5, 8[a + 24]) -> r7
+	copyb(0, RMD_L) -> r5
+	copyb(r5, 8[a + 32]) -> r14
+	add(r7, r14) -> r7
+	copyb(0, RMD_R) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	add(r7, r14) -> r7
+	and(r7, 0xffffffff) -> r7
+	copyb(0, RMD_H) -> r5
+	copyb(r5, r7) -> 8[a + 16]
+	; H3 = H4 + L0 + R1
+	copyb(0, RMD_H) -> r5
+	copyb(r5, 8[a + 32]) -> r7
+	copyb(0, RMD_L) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	add(r7, r14) -> r7
+	copyb(0, RMD_R) -> r5
+	copyb(r5, 8[a + 8]) -> r14
+	add(r7, r14) -> r7
+	and(r7, 0xffffffff) -> r7
+	copyb(0, RMD_H) -> r5
+	copyb(r5, r7) -> 8[a + 24]
+	; nH4 = H0 + L1 + R2  (H0 still old); then H0=t, H4=nH4
+	copyb(0, RMD_H) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(0, RMD_L) -> r5
+	copyb(r5, 8[a + 8]) -> r14
+	add(r7, r14) -> r7
+	copyb(0, RMD_R) -> r5
+	copyb(r5, 8[a + 16]) -> r14
+	add(r7, r14) -> r7
+	and(r7, 0xffffffff) -> r7
+	copyb(0, RMD_T0) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(0, RMD_H) -> r5
+	copyb(r5, r14) -> 8[a + 0]           ; H0 = t
+	copyb(0, RMD_H) -> r5
+	copyb(r5, r7) -> 8[a + 32]           ; H4 = nH4
+	pop r1
+	ret
+
+; ============================================================================
+; ziskasm_zkvm_ripemd160(data=r10, len=r11, output=r12)
+;   MD-style padding (append 0x80, zeros, then 64-bit LITTLE-endian bit length),
+;   process 64-byte blocks via rmd_compress, write the 20-byte digest into
+;   output[12..32] (each h word little-endian) with output[0..12] = 0.
+; ============================================================================
+ziskasm_zkvm_ripemd160:
+	push r1
+	copyb(0, RMD_MSGP) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, RMD_LEN) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, RMD_OUTP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	; H = H_INIT
+	copyb(0, RMD_H_INIT) -> r6
+	copyb(0, RMD_H) -> r7
+	copyb(0, 5) -> r14
+rmd_hinit:
+	eq(r14, 0), j(rmd_blocks)
+	copyb(r6, 8[a + 0]) -> r15
+	copyb(r7, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r14, 1) -> r14
+	jump(rmd_hinit)
+rmd_blocks:
+	copyb(0, RMD_I) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+rmd_bloop:
+	copyb(0, RMD_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13           ; i
+	copyb(0, RMD_LEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6            ; len
+	add(r13, 64) -> r7
+	ltu(r6, r7), j(rmd_finalblk)         ; len < i+64 -> final
+	copyb(0, RMD_MSGP) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, r13) -> r6                   ; src = data + i
+	copyb(0, RMD_BLOCK) -> r7
+	copyb(0, 8) -> r14
+rmd_cpb:
+	eq(r14, 0), j(rmd_docomp)
+	copyb(r6, 8[a + 0]) -> r15
+	copyb(r7, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r14, 1) -> r14
+	jump(rmd_cpb)
+rmd_docomp:
+	call rmd_compress
+	copyb(0, RMD_I) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 64) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	jump(rmd_bloop)
+rmd_finalblk:
+	; rem = len - i  (r13 = i)
+	copyb(0, RMD_LEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sub(r6, r13) -> r6
+	copyb(0, RMD_REM) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	; zero RMD_BLOCK
+	copyb(0, RMD_BLOCK) -> r6
+	copyb(0, 8) -> r7
+rmd_fz:
+	eq(r7, 0), j(rmd_fcopy)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rmd_fz)
+rmd_fcopy:
+	; copy rem bytes from data+i to RMD_BLOCK (r13 = i)
+	copyb(0, RMD_MSGP) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	add(r10, r13) -> r10
+	copyb(0, RMD_BLOCK) -> r6
+	copyb(0, RMD_REM) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+rmd_fcl:
+	eq(r7, 0), j(rmd_appendpad)
+	copyb(r10, 1[a + 0]) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	add(r10, 1) -> r10
+	add(r6, 1) -> r6
+	sub(r7, 1) -> r7
+	jump(rmd_fcl)
+rmd_appendpad:
+	copyb(r6, 0x80) -> 1[a + 0]          ; block[rem] = 0x80 (r6 = block+rem)
+	copyb(0, RMD_REM) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	ltu(r6, 56), j(rmd_len)              ; rem < 56 -> length fits this block
+	call rmd_compress
+	copyb(0, RMD_BLOCK) -> r6
+	copyb(0, 8) -> r7
+rmd_z2:
+	eq(r7, 0), j(rmd_len)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(rmd_z2)
+rmd_len:
+	; bitlen = len << 3 ; write little-endian at block+56
+	copyb(0, RMD_LEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	sll(r6, 3) -> r15                    ; bitlen
+	copyb(0, RMD_BLOCK) -> r6
+	add(r6, 56) -> r6
+	copyb(0, 8) -> r7
+	copyb(0, 0) -> r14                   ; shift
+rmd_lenl:
+	eq(r7, 0), j(rmd_lastcomp)
+	srl(r15, r14) -> r16
+	and(r16, 0xff) -> r16
+	copyb(r6, r16) -> 1[a + 0]
+	add(r6, 1) -> r6
+	add(r14, 8) -> r14
+	sub(r7, 1) -> r7
+	jump(rmd_lenl)
+rmd_lastcomp:
+	call rmd_compress
+	; output: zero 32 bytes, then h0..h4 little-endian at output+12
+	copyb(0, RMD_OUTP) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(r6, 0) -> 8[a + 0]
+	copyb(r6, 0) -> 8[a + 8]
+	copyb(r6, 0) -> 8[a + 16]
+	copyb(r6, 0) -> 8[a + 24]
+	add(r6, 12) -> r6
+	copyb(0, 0) -> r13
+rmd_ow:
+	eq(r13, 5), j(rmd_done)
+	sll(r13, 3) -> r7
+	copyb(0, RMD_H) -> r5
+	add(r5, r7) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	and(r14, 0xffffffff) -> r14
+	and(r14, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	srl(r14, 8) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	srl(r14, 16) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	srl(r14, 24) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	add(r13, 1) -> r13
+	jump(rmd_ow)
+rmd_done:
+	copyb(0, 0) -> r10                   ; ZKVM_EOK
+	pop r1
+	ret

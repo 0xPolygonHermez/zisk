@@ -1,0 +1,147 @@
+; ============================================================================
+; zkvm/sha256.zisk - SHA2-256 for the EF zkVM accelerator C ABI. Entry point
+; `ziskasm_zkvm_sha256`, redirect target of the standard symbol `zkvm_sha256`.
+;
+; New, self-contained EF-native routine (does NOT call the legacy zisklib_sha256):
+; the compress loop is authored here, lifted from ziskasm/zisklib/sha256.zisk but
+; presenting the standard ABI:
+;
+;   zkvm_status zkvm_sha256(const uint8_t* data, size_t len,
+;                           zkvm_sha256_hash* output)
+;     a0 = data, a1 = len, a2 = output (32 bytes); returns a0 = ZKVM_EOK (0).
+;
+; Byte-in / byte-out: the `sha256` precompile does SHA-256's big-endian message
+; schedule internally, so no endianness marshalling is needed here. Labels are
+; prefixed `zsh_` and data `ZKVM_SHA_*` for uniqueness alongside the legacy file.
+; ============================================================================
+
+const u64 ZKVM_SHA_STATE_INIT[4] =
+	0xbb67ae856a09e667, 0xa54ff53a3c6ef372, 0x9b05688c510e527f, 0x5be0cd191f83d9ab
+
+u64 ZKVM_SHA_STATE[4] = 0, 0, 0, 0
+u64 ZKVM_SHA_INPUT[8] = 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_SHA_HDR[2]   = 0, 0
+
+ziskasm_zkvm_sha256:
+	copyb(0, ZKVM_SHA_STATE_INIT) -> r6
+	copyb(0, ZKVM_SHA_STATE) -> r7
+	copyb(0, 4) -> r14
+zsh_init:
+	eq(r14, 0), j(zsh_hdr)
+	copyb(r6, 8[a + 0]) -> r15
+	copyb(r7, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r14, 1) -> r14
+	jump(zsh_init)
+zsh_hdr:
+	copyb(0, ZKVM_SHA_HDR) -> r5
+	copyb(0, ZKVM_SHA_STATE) -> r6
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, ZKVM_SHA_INPUT) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+
+	copyb(0, 0) -> r13
+zsh_full:
+	add(r13, 64) -> r6
+	ltu(r11, r6), j(zsh_final)
+	add(r10, r13) -> r6
+	copyb(0, ZKVM_SHA_INPUT) -> r7
+	copyb(0, 8) -> r14
+zsh_cpb:
+	eq(r14, 0), j(zsh_comp)
+	copyb(r6, 8[a + 0]) -> r15
+	copyb(r7, r15) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r14, 1) -> r14
+	jump(zsh_cpb)
+zsh_comp:
+	sha256(0, r5)
+	add(r13, 64) -> r13
+	jump(zsh_full)
+
+zsh_final:
+	add(r10, r13) -> r10
+	sub(r11, r13) -> r13
+	copyb(0, ZKVM_SHA_INPUT) -> r6
+	copyb(0, 8) -> r7
+zsh_zero:
+	eq(r7, 0), j(zsh_crem)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(zsh_zero)
+zsh_crem:
+	copyb(0, ZKVM_SHA_INPUT) -> r6
+	copyb(0, r13) -> r7
+zsh_cr:
+	eq(r7, 0), j(zsh_pad)
+	copyb(r10, 1[a + 0]) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	add(r10, 1) -> r10
+	add(r6, 1) -> r6
+	sub(r7, 1) -> r7
+	jump(zsh_cr)
+zsh_pad:
+	copyb(r6, 0x80) -> 1[a + 0]
+	ltu(r13, 56), j(zsh_len)
+	sha256(0, r5)
+	copyb(0, ZKVM_SHA_INPUT) -> r6
+	copyb(0, 8) -> r7
+zsh_z2:
+	eq(r7, 0), j(zsh_len)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(zsh_z2)
+zsh_len:
+	sll(r11, 3) -> r15
+	copyb(0, ZKVM_SHA_INPUT) -> r6
+	add(r6, 56) -> r6
+	copyb(0, 56) -> r7
+zsh_lenl:
+	srl(r15, r7) -> r14
+	and(r14, 0xff) -> r14
+	copyb(r6, r14) -> 1[a + 0]
+	eq(r7, 0), j(zsh_out)
+	sub(r7, 8) -> r7
+	add(r6, 1) -> r6
+	jump(zsh_lenl)
+zsh_out:
+	sha256(0, r5)
+
+	copyb(0, 0) -> r13
+	copyb(0, r12) -> r6
+zsh_ow:
+	eq(r13, 8), j(zsh_done)
+	srl(r13, 1) -> r7
+	sll(r7, 3) -> r7
+	copyb(0, ZKVM_SHA_STATE) -> r14
+	add(r14, r7) -> r14
+	copyb(r14, 8[a + 0]) -> r14
+	and(r13, 1) -> r7
+	eq(r7, 0), j(zsh_lo)
+	srl(r14, 32) -> r14
+zsh_lo:
+	and(r14, 0xffffffff) -> r14
+	srl(r14, 24) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	srl(r14, 16) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	srl(r14, 8) -> r15
+	and(r15, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	and(r14, 0xff) -> r15
+	copyb(r6, r15) -> 1[a + 0]
+	add(r6, 1) -> r6
+	add(r13, 1) -> r13
+	jump(zsh_ow)
+zsh_done:
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
+	ret

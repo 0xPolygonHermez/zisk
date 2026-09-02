@@ -13,6 +13,18 @@ pub const ZISK_LIBRARY: &[(&str, &str)] = &[
     ("sha256", include_str!("../zisklib/sha256.zisk")),
     ("blake2b", include_str!("../zisklib/blake2b.zisk")),
     ("zkvm_io", include_str!("../zisklib/zkvm_io.zisk")),
+    // EF zkVM-accelerator C ABI (zkvm_accelerators.h): native `ziskasm_zkvm_*`
+    // entrypoints, redirect targets of the standard `zkvm_*` symbols.
+    ("zkvm/marshal", include_str!("../zisklib/zkvm/marshal.zisk")),
+    ("zkvm/keccak", include_str!("../zisklib/zkvm/keccak.zisk")),
+    ("zkvm/sha256", include_str!("../zisklib/zkvm/sha256.zisk")),
+    ("zkvm/secp256k1", include_str!("../zisklib/zkvm/secp256k1.zisk")),
+    ("zkvm/secp256r1", include_str!("../zisklib/zkvm/secp256r1.zisk")),
+    ("zkvm/blake2f", include_str!("../zisklib/zkvm/blake2f.zisk")),
+    ("zkvm/modexp", include_str!("../zisklib/zkvm/modexp.zisk")),
+    ("zkvm/bn254", include_str!("../zisklib/zkvm/bn254.zisk")),
+    ("zkvm/bls12_381", include_str!("../zisklib/zkvm/bls12_381.zisk")),
+    ("zkvm/ripemd160", include_str!("../zisklib/zkvm/ripemd160.zisk")),
     ("uint256/common", include_str!("../zisklib/uint256/common.zisk")),
     ("uint256/add", include_str!("../zisklib/uint256/add.zisk")),
     ("uint256/mul", include_str!("../zisklib/uint256/mul.zisk")),
