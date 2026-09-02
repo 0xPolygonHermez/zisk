@@ -19,7 +19,8 @@ use crate::{
 };
 
 use zisk_sm_mem_common::{
-    input_data_lanes_x_row, mem_lanes_x_row, MemAlignPlanner, MemCounters, RAM_W_ADDR_INIT,
+    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignPlanner, MemCounters,
+    RAM_W_ADDR_INIT,
 };
 
 #[cfg(feature = "save_mem_counters")]
@@ -125,7 +126,7 @@ impl MemPlanner {
                 addr_index: 0,
                 from_addr: ROM_DATA_W_ADDR_INIT,
                 last_addr: ROM_DATA_W_ADDR_INIT - 1,
-                rows: RomDataTrace::<Goldilocks>::NUM_ROWS as u32,
+                rows: (RomDataTrace::<Goldilocks>::NUM_ROWS * rom_data_lanes_x_row()) as u32,
                 max_addr_distance: 1 << 24,
             },
             counters.clone(),

@@ -41,14 +41,14 @@ pub const MAIN_INSTANCE_COST: usize = 570_425_344;
 /// `Rom`: 2^22 rows of 16 columns (1 + 3x3 + 6).
 pub const ROM_INSTANCE_COST: usize = 67_108_864;
 
-/// `Mem`: 2^23 rows of 28 columns (13 + 3x3 + 6).
-pub const MEM_INSTANCE_COST: usize = 234_881_024;
+/// `Mem`: 2^23 rows of 50 columns (26 + 3x6 + 6).
+pub const MEM_INSTANCE_COST: usize = 419_430_400;
 
 /// `InputData`: 2^22 rows of 27 columns (9 + 3x4 + 6).
 pub const INPUT_DATA_INSTANCE_COST: usize = 113_246_208;
 
-/// `RomData`: 2^22 rows of 14 columns (5 + 3x1 + 6).
-pub const ROM_DATA_INSTANCE_COST: usize = 58_720_256;
+/// `RomData`: 2^22 rows of 22 columns (10 + 3x2 + 6).
+pub const ROM_DATA_INSTANCE_COST: usize = 92_274_688;
 
 /// `MemAlign`: 2^21 rows of 50 columns (32 + 3x4 + 6).
 pub const MEM_ALIGN_INSTANCE_COST: usize = 104_857_600;

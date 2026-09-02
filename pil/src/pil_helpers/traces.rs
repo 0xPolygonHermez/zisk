@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "249a2ae684869178c5eb5bd3b92af259446952686f89eb6da0de3c8bb15bc258";
+pub const PILOUT_HASH: &str = "91653947857ff89d75b4dec328aebe53b3b1754c780c75994af7ac1f63df2f8d";
 
 //AIRGROUP CONSTANTS
 
@@ -216,7 +216,7 @@ trace_row!(RomDataFixedRow<F> {
 pub type RomDataFixed<F> = GenericTrace<RomDataFixedRow<F>, 4194304, 0, 4>;
 
 trace_row!(RomDataTraceRow<F> {
- addr_change:bit, addr:ubit(29), step:ubit(40), value:[u32; 2],
+ addr_change:[bit; 2], addr:[ubit(29); 2], step:[ubit(40); 2], value:[[u32; 2]; 2],
 });
 
 pub type RomDataTrace<R> = GenericTrace<R, 4194304, 0, 4>;
@@ -1044,8 +1044,8 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     }),
     (0, 4, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 3,
-        unpack_info: &[1, 29, 40, 32, 32],
+        num_packed_words: 5,
+        unpack_info: &[1, 1, 29, 29, 40, 40, 32, 32, 32, 32],
     }),
     (0, 5, PackedInfoConst {
         is_packed: true,
