@@ -101,7 +101,7 @@ impl ProgramSetupCmd {
         )?);
         let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
 
-        pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1, 1, false)?;
+        pctx.set_device_buffers(&sctx, &setups_vadcop, false, gpu, 1, 1, false, 0)?;
         let pctx = Arc::new(pctx);
 
         tracing::info!("Computing setup for ROM {}", self.elf.as_ref().unwrap().display());
