@@ -1,4 +1,4 @@
-use super::parser::{FropRow, MemRow, OpRow, Report};
+use super::parser::{FropRow, MemFnAlignRow, MemFnCostRow, MemFnRatioRow, MemRow, OpRow, Report};
 use super::render::fmt_num;
 use std::collections::{HashMap, HashSet};
 
@@ -129,6 +129,9 @@ pub fn single(r: &Report) -> Vec<u8> {
     section_mem(&mut l, "MEM TOTALS", &r.mem_totals);
     section_mem(&mut l, "DETAILED MEM", &r.detailed_mem);
     section_mem(&mut l, "DETAILED MEM (FULL)", &r.detailed_mem_full);
+    section_mem_top_cost(&mut l, "TOP MEMORY COST FUNCTIONS", &r.mem_top_cost);
+    section_mem_top_unaligned(&mut l, "TOP UNALIGNED MEMORY FUNCTIONS", &r.mem_top_unaligned);
+    section_mem_top_ratio(&mut l, "TOP UNALIGNED/STEP RATIO FUNCTIONS", &r.mem_top_ratio);
 
     let mut sections: Vec<(Vec<Item>, f64, f64, bool)> = vec![(l, A4_SHORT, A4_LONG, false)];
 
@@ -243,6 +246,79 @@ fn section_mem(l: &mut Vec<Item>, title: &str, rows: &[MemRow]) {
     );
 }
 
+fn section_mem_top_cost(l: &mut Vec<Item>, title: &str, rows: &[MemFnCostRow]) {
+    let out: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            vec![
+                r.name.clone(),
+                fmt_num(r.cost),
+                format!("{:.2}%", r.cost_pct),
+                fmt_num(r.calls),
+                fmt_num(r.cost_per_call),
+            ]
+        })
+        .collect();
+    table(
+        l,
+        title,
+        &["FUNCTION", "MEM COST", "%", "CALLS", "COST/CALL"],
+        &[false, true, true, true, true],
+        &out,
+        None,
+        None,
+    );
+}
+
+fn section_mem_top_unaligned(l: &mut Vec<Item>, title: &str, rows: &[MemFnAlignRow]) {
+    let out: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            vec![
+                r.name.clone(),
+                fmt_num(r.unaligned),
+                fmt_num(r.aligned),
+                format!("{:.2}%", r.unaligned_pct),
+                fmt_num(r.calls),
+            ]
+        })
+        .collect();
+    table(
+        l,
+        title,
+        &["FUNCTION", "UNALIGNED", "ALIGNED", "% UNALIGNED", "CALLS"],
+        &[false, true, true, true, true],
+        &out,
+        None,
+        None,
+    );
+}
+
+fn section_mem_top_ratio(l: &mut Vec<Item>, title: &str, rows: &[MemFnRatioRow]) {
+    let out: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| {
+            vec![
+                r.name.clone(),
+                format!("{:.2}x", r.ratio),
+                fmt_num(r.unaligned),
+                format!("{:.2}%", r.unaligned_pct),
+                fmt_num(r.accesses_per_call),
+                fmt_num(r.calls),
+            ]
+        })
+        .collect();
+    table(
+        l,
+        title,
+        &["FUNCTION", "RATIO", "UNALIGNED", "% UNALIGNED", "UNALIGNED ACC./CALL", "CALLS"],
+        &[false, true, true, true, true, true],
+        &out,
+        None,
+        None,
+    );
+}
+
 pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> Vec<u8> {
     let mut l: Vec<Item> = Vec::new();
     heading(&mut l, "ZisK stats report - comparison");
@@ -289,7 +365,27 @@ pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> Vec<u8> {
         mem_cost(&b.detailed_mem_full),
         true,
     );
-
+    cmp_table(
+        &mut l,
+        "MEM OFFSETS (totals)",
+        a.mem_offsets.rows.iter().map(|(n, v)| (n.clone(), *v.last().unwrap_or(&0))).collect(),
+        b.mem_offsets.rows.iter().map(|(n, v)| (n.clone(), *v.last().unwrap_or(&0))).collect(),
+        false,
+    );
+    cmp_table(
+        &mut l,
+        "TOP MEMORY COST FUNCTIONS",
+        a.mem_top_cost.iter().map(|r| (r.name.clone(), r.cost)).collect(),
+        b.mem_top_cost.iter().map(|r| (r.name.clone(), r.cost)).collect(),
+        false,
+    );
+    cmp_table(
+        &mut l,
+        "TOP UNALIGNED MEMORY FUNCTIONS",
+        a.mem_top_unaligned.iter().map(|r| (r.name.clone(), r.unaligned)).collect(),
+        b.mem_top_unaligned.iter().map(|r| (r.name.clone(), r.unaligned)).collect(),
+        false,
+    );
     render_sections(&[(l, A4_LONG, A4_SHORT, false)])
 }
 
