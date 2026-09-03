@@ -46,9 +46,9 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "alloy-json-abi"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "208699c66c453fbb4c50d2e602f8ceff8a5f1fa48ac8b6ee3b6357fdc93da311"
+checksum = "1dba4e59c3581a39e03e0b0b4a46ee9c41315b5d843b1e903271952b32bedb7c"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-type-parser",
@@ -58,9 +58,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-primitives"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c902f0ca3f8353c41e3e1ec3cf26be49412525bc48ab9d3c4710d7be4f01832"
+checksum = "ce7b00f0cb42c66ec353076ded1dff1fbf818f6e0e26c40c8a8456c04483fca4"
 dependencies = [
  "alloy-rlp",
  "bytes",
@@ -97,9 +97,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fdcbd48d60e029be4a325c3a2f1312761caea4ed249f18ba9e8ed24ca1bf01e6"
+checksum = "c64558980fb038cd34b4285ec2b36a2a8bd8d4ddd13b3f6e42d97cb5ee29938e"
 dependencies = [
  "alloy-sol-macro-expander",
  "alloy-sol-macro-input",
@@ -111,9 +111,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro-expander"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59c9f7c535f99a7e7b64cc520968b09ed14cec3715572fcc277cfbff602808cd"
+checksum = "1ffb0e793abdbaea9d01259493c8272c3af295d03389e70a2acdf53b57ad1edf"
 dependencies = [
  "alloy-sol-macro-input",
  "const-hex",
@@ -129,9 +129,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-macro-input"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1abd404fbc12f543823005146b73fd07621bdc0baaa950d26995c543a9d73811"
+checksum = "32c2c0ec8425d9663dac939ba75750f17d2933d2f020814b4f8fde4a60da6d26"
 dependencies = [
  "const-hex",
  "dunce",
@@ -145,9 +145,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-type-parser"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40a7fd71864526bfeca8903010d5bb7fd28a0a4f5cc55818304c9cad8f0d63ab"
+checksum = "96b37db6a7ad8170596345f864522f789cc7af093f516d6cdf34bbdcfba8adab"
 dependencies = [
  "serde",
  "winnow 1.0.4",
@@ -155,9 +155,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-sol-types"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "adfc2ba3fb0e865de4934bcad6d37fc51e9ffcd5294be1322eab38e4494e051b"
+checksum = "1f40e33a0f588dde548c3b6767a71e61b593421a8c1b253b9cf1441dc7cf7ab5"
 dependencies = [
  "alloy-json-abi",
  "alloy-primitives",
@@ -1094,8 +1094,8 @@ dependencies = [
  "predicates",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rand 0.8.8",
  "rayon",
  "reqwest",
@@ -3961,7 +3961,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3972,13 +3972,13 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "anyhow",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "serde",
  "serde_json",
  "tera",
@@ -3988,7 +3988,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "anyhow",
  "clap",
@@ -3998,8 +3998,8 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "prost 0.13.5",
  "rayon",
@@ -4014,11 +4014,11 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -4232,7 +4232,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "bincode",
  "blake3",
@@ -4247,12 +4247,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-witness",
  "rayon",
  "serde",
@@ -4264,7 +4264,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "borsh",
  "colored",
@@ -4276,9 +4276,9 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "serde",
@@ -4293,18 +4293,18 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
 ]
 
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "anyhow",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "regex",
  "serde",
@@ -4315,13 +4315,13 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "blake3",
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "serde",
 ]
 
@@ -4340,19 +4340,19 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4362,10 +4362,10 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
 ]
 
 [[package]]
@@ -4380,7 +4380,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 
 [[package]]
 name = "proofman-starks-src"
@@ -4390,7 +4390,7 @@ source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-de
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4399,11 +4399,11 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "serde",
  "tracing",
@@ -4424,11 +4424,11 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits#365d27eded7b33d39f0997068760db6826c69e00"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
 dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
 ]
 
 [[package]]
@@ -5785,9 +5785,9 @@ dependencies = [
 
 [[package]]
 name = "syn-solidity"
-version = "1.7.1"
+version = "1.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e452eb8cb83fc8b81597eb07c8d39f770d04905af9c5bffce8bea7213df29960"
+checksum = "4c6415502cd1e9ed58b3ceb415164b812d5572757b1a6f0e280ae806723c1fab"
 dependencies = [
  "paste",
  "proc-macro2",
@@ -7319,7 +7319,7 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "thiserror 2.0.20",
@@ -7393,8 +7393,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "serde",
  "serde_json",
  "sha2",
@@ -7508,7 +7508,7 @@ name = "zisk-core"
 version = "1.3.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -7534,7 +7534,7 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -7592,7 +7592,7 @@ name = "zisk-pil"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -7613,7 +7613,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "regex",
@@ -7641,7 +7641,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -7669,7 +7669,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7687,7 +7687,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7705,7 +7705,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7722,7 +7722,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7737,7 +7737,7 @@ dependencies = [
 name = "zisk-precomp-common"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "zisk-common",
  "zisk-core",
  "zisk-sm-mem",
@@ -7750,7 +7750,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7768,7 +7768,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7814,7 +7814,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -7833,7 +7833,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7850,7 +7850,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7897,9 +7897,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7927,8 +7927,8 @@ dependencies = [
  "pil2-stark-setup",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "serde",
  "serde_json",
  "tera",
@@ -7953,7 +7953,7 @@ dependencies = [
  "anyhow",
  "blake3",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -7969,8 +7969,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "serde",
  "serde_json",
@@ -7994,7 +7994,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -8010,7 +8010,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -8026,7 +8026,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "static_assertions",
  "zisk-core",
 ]
@@ -8037,7 +8037,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8055,7 +8055,7 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -8070,7 +8070,7 @@ name = "zisk-sm-mem-common"
 version = "1.3.0-alpha"
 dependencies = [
  "clap",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "static_assertions",
  "zisk-common",
@@ -8094,7 +8094,7 @@ name = "zisk-sm-rom"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -8166,7 +8166,7 @@ dependencies = [
  "config",
  "proofman",
  "proofman-common",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "serde",
  "time",
@@ -8209,7 +8209,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rayon",
  "regex",
  "serde_json",
@@ -8255,7 +8255,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rand 0.8.8",
  "ripemd",
  "secp256k1",
@@ -8286,7 +8286,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-raw-prefetch-custom-commits)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
  "rand 0.8.8",
  "ripemd",
  "serde",

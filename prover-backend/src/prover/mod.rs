@@ -14,10 +14,7 @@ use proofman::{
 };
 use proofman_common::{ProofOptions, ProofmanOptions, RowInfo};
 use proofman_verifier::VadcopFinalProof;
-use zisk_pil::{
-    get_packed_info, MAIN_AIR_IDS, VIRTUAL_TABLE_ZISK_0_AIR_IDS, VIRTUAL_TABLE_ZISK_1_AIR_IDS,
-    ZISK_AIRGROUP_ID,
-};
+use zisk_pil::{get_packed_info, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
 
 use anyhow::{anyhow, Result};
 use std::{
@@ -95,15 +92,6 @@ const PRELOADED_CONST_TREE_GPU: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, MAIN_AI
 /// Airs proved at most once per run, as `(airgroup_id, air_id)`. Lets proofman drop their
 /// `("const", false)` region and unpack into the const tree's node area instead, saving
 /// `N * nConstants` of aux trace per stream. Only airs big enough to build their const tree
-/// on the fly are affected; the rest keep the normal layout.
-///
-/// The two virtual tables qualify: each is registered once via `add_table`/`add_table_all`,
-/// so nothing ever reuses their const pols across proofs. Listing an air that IS proved more
-/// than once would re-merkelize its fixed columns on every proof.
-const TABLE_AIRS_GPU: &[(usize, usize)] = &[
-    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_0_AIR_IDS[0]),
-    (ZISK_AIRGROUP_ID, VIRTUAL_TABLE_ZISK_1_AIR_IDS[0]),
-];
 
 /// Comprehensive prover configuration containing all settings
 #[derive(Clone)]
@@ -191,7 +179,6 @@ impl BackendProverOpts {
             // choice depends on the air mix and the card, not on the caller. See the
             // constants above before changing either list.
             options.preloaded_const_tree_gpu(PRELOADED_CONST_TREE_GPU.to_vec());
-            options.table_airs_gpu(TABLE_AIRS_GPU.to_vec());
         }
 
         if self.packed {

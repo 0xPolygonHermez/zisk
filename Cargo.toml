@@ -151,18 +151,18 @@ zisk-coordinator-api = { path = "distributed/crates/coordinator-api", version = 
 zisk-coordinator-client = { path = "distributed/crates/coordinator-client", version = "1.3.0-alpha" }
 
 # Proofman git
-proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
-proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "feat/blake3-recursion-raw-prefetch-custom-commits", version = "1.3.0-alpha" }
+proofman = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+proofman-common = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+proofman-macros = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+proofman-verifier = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+proofman-util = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+pil2-std-lib = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+proofman-witness = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+proofman-fields = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+pil2-stark-setup = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+pil2-stark-recurser = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+pil2-pilout = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
+proofman-starks-lib-c = { git = "https://github.com/0xPolygonHermez/pil2-proofman.git", branch = "perf/tree-compute-preferred", version = "1.3.0-alpha" }
 
 # Proofman crates.io (enable once pil2-proofman is published; use instead of the path/git blocks)
 # proofman = "1.3.0-alpha"
