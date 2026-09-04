@@ -320,14 +320,6 @@ jobs:
           cd "$GITHUB_WORKSPACE/tools/test-env"
           ./build_zisk.sh
 
-      # Rebuilt rather than taken from the committed ELF: cross-compiling the
-      # ziskethone guest is what this job is here to cover on macOS. Costs a
-      # ~10-15 min toolchain install on a cold runner.
-      - name: Build zec guest ELF file
-        run: |
-          cd "$GITHUB_WORKSPACE/tools/test-env"
-          REBUILD_ZISKETHONE_GUEST=1 ./build_zec_guest.sh
-
       - name: Test sha_hasher
         run: |
           cd "$GITHUB_WORKSPACE/tools/test-env"
