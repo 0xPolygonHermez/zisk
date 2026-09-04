@@ -260,7 +260,7 @@ jobs:
           .github/scripts/docker_exec.sh \
             -u ziskuser \
             -e ZEC_GUEST="${ZEC_GUEST}" \
-            -e BLOCK_INPUTS_ETHPROOFS="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin" \
+            -e BLOCK_INPUTS_ETHPROOFS="mainnet_25431013_172_16_zec_ziskethone.bin,mainnet_25431039_325_25_zec_ziskethone.bin,mainnet_25431055_712_55_zec_ziskethone.bin" \
             -- bash -lc '
               cd /workspace/zisk/tools/test-env
               ./test_ethproofs.sh
