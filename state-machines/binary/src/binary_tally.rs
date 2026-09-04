@@ -28,9 +28,10 @@ pub const RANGE_16_BITS: usize = 0xFFFF + 1;
 /// is bounded by the thread count rather than by the finer split rayon would choose on its own.
 ///
 /// # Panics
-/// Panics in debug builds if `rows` does not hold exactly one row per `inputs_per_row` inputs. The
-/// two sides are zipped, so a mismatch would silently drop rows (leaving the trace underfilled) or
-/// inputs (losing operations), neither of which surfaces until the bus fails to balance.
+/// Panics if `rows` does not hold exactly one row per `inputs_per_row` inputs. The two sides are
+/// zipped, so a mismatch would silently drop rows (leaving the trace underfilled) or inputs (losing
+/// operations), neither of which surfaces until the bus fails to balance. The check is a couple of
+/// comparisons per call, not per row, so it is worth keeping in release builds too.
 pub fn fill_and_tally<R, T, Fill>(
     rows: &mut [R],
     inputs: &[T],
@@ -42,8 +43,8 @@ where
     T: Sync,
     Fill: Fn(&mut R, &[T], &mut [u32]) + Sync + Send,
 {
-    debug_assert!(inputs_per_row > 0, "a row must take at least one input");
-    debug_assert_eq!(
+    assert!(inputs_per_row > 0, "a row must take at least one input");
+    assert_eq!(
         rows.len(),
         inputs.len().div_ceil(inputs_per_row),
         "the rows must hold exactly the {} inputs, {inputs_per_row} to a row",
