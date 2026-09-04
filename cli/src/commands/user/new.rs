@@ -21,7 +21,7 @@ pub(crate) struct NewCmd {
 impl NewCmd {
     pub(crate) fn run(&self) -> Result<()> {
         let root = Path::new(&self.name);
-        let repo_url = "https://{}@github.com/0xPolygonHermez/zisk_template";
+        let repo_url = "https://github.com/0xPolygonHermez/zisk_template";
         // Create the root directory if it doesn't exist.
         if !root.exists() {
             fs::create_dir(&self.name)?;
@@ -123,7 +123,7 @@ fn rewrite_template_prefix(dir: &Path, name: &str) -> Result<()> {
 mod tests {
     use super::{rewrite_contents, sanitize, NewCmd};
 
-    const URL: &str = "https://{}@github.com/0xPolygonHermez/zisk_template";
+    const URL: &str = "https://github.com/0xPolygonHermez/zisk_template";
 
     #[test]
     fn clone_args_without_branch() {

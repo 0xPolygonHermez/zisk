@@ -9,8 +9,8 @@ documentation = "https://0xpolygonhermez.github.io/zisk-docs/"
 categories = ["cryptography"]
 
 [workspace.metadata]
-gha_zisk_ethproofs_branch = "develop-0.12.0"
-gha_zisk_eth_client_branch = "develop-0.12.0"
+gha_zisk_ethproofs_branch = "develop-0.13.0"
+gha_zisk_eth_client_branch = "develop-0.13.0"
 gha_zisk_template_branch = "pre-develop-1.3.0-alpha"
 gha_zisk_testvectors_branch = "develop-0.4.0"
 gha_pil2_compiler_branch = "develop-0.14.0"
