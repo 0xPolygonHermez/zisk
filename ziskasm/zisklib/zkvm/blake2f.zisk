@@ -1,0 +1,126 @@
+; ============================================================================
+; zkvm/blake2f.zisk - BLAKE2b compression F (EIP-152) for the EF zkVM accelerator
+; C ABI. Entry `ziskasm_zkvm_blake2f`, redirect target of `zkvm_blake2f`.
+;
+;   zkvm_status zkvm_blake2f(uint32_t rounds, zkvm_blake2f_state* h,   (64B = 8 u64)
+;                            const zkvm_blake2f_message* m,            (128B = 16 u64)
+;                            const zkvm_blake2f_offset* t, uint8_t f)  (16B = 2 u64)
+;     [r10=rounds, r11=h, r12=m, r13=t, r14=f] -> a0 = ZKVM_EOK (0); h updated in place.
+;
+; BLAKE2b is little-endian, so the EF byte structs are ABI-identical to the u64
+; arrays (same LE layout) — NO rev8 marshalling. This is a self-contained port of
+; the compress body (from ziskasm/zisklib/blake2b.zisk, NOT calling
+; zisklib_blake2b_compress). Labels `zb2_`, data `ZKVM_BLK_*`.
+; ============================================================================
+
+const u64 ZKVM_BLK_IV[8] =
+	0x6A09E667F3BCC908, 0xBB67AE8584CAA73B, 0x3C6EF372FE94F82B, 0xA54FF53A5F1D36F1,
+	0x510E527FADE682D1, 0x9B05688C2B3E6C1F, 0x1F83D9ABFB41BD6B, 0x5BE0CD19137E2179
+
+u64 ZKVM_BLK_V[16] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 ZKVM_BLK_HDR[3] = 0, 0, 0
+
+ziskasm_zkvm_blake2f:
+	; --- v[0..8] = h[0..8] ---
+	copyb(0, r11) -> r6
+	copyb(0, ZKVM_BLK_V) -> r7
+	copyb(0, 8) -> r15
+zb2_cph:
+	eq(r15, 0), j(zb2_iv)
+	copyb(r6, 8[a + 0]) -> r5
+	copyb(r7, r5) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r15, 1) -> r15
+	jump(zb2_cph)
+zb2_iv:
+	; --- v[8..12] = IV[0..4] ---
+	copyb(0, ZKVM_BLK_IV) -> r6
+	copyb(0, ZKVM_BLK_V) -> r7
+	add(r7, 64) -> r7
+	copyb(0, 4) -> r15
+zb2_civ:
+	eq(r15, 0), j(zb2_t)
+	copyb(r6, 8[a + 0]) -> r5
+	copyb(r7, r5) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	sub(r15, 1) -> r15
+	jump(zb2_civ)
+zb2_t:
+	; --- v[12] = t[0] ^ IV[4] ---
+	copyb(r13, 8[a + 0]) -> r5
+	copyb(0, ZKVM_BLK_IV) -> r6
+	add(r6, 32) -> r6
+	copyb(r6, 8[a + 0]) -> r7
+	xor(r5, r7) -> r5
+	copyb(0, ZKVM_BLK_V) -> r6
+	add(r6, 96) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+	; --- v[13] = t[1] ^ IV[5] ---
+	copyb(r13, 8[a + 8]) -> r5
+	copyb(0, ZKVM_BLK_IV) -> r6
+	add(r6, 40) -> r6
+	copyb(r6, 8[a + 0]) -> r7
+	xor(r5, r7) -> r5
+	copyb(0, ZKVM_BLK_V) -> r6
+	add(r6, 104) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+	; --- v[14] = IV[6] ^ (f ? 0xff..ff : 0) ---
+	copyb(0, ZKVM_BLK_IV) -> r6
+	add(r6, 48) -> r6
+	copyb(r6, 8[a + 0]) -> r5
+	eq(r14, 0), j(zb2_v14)
+	xor(r5, 0xffffffffffffffff) -> r5
+zb2_v14:
+	copyb(0, ZKVM_BLK_V) -> r6
+	add(r6, 112) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+	; --- v[15] = IV[7] ---
+	copyb(0, ZKVM_BLK_IV) -> r6
+	add(r6, 56) -> r6
+	copyb(r6, 8[a + 0]) -> r5
+	copyb(0, ZKVM_BLK_V) -> r6
+	add(r6, 120) -> r6
+	copyb(r6, r5) -> 8[a + 0]
+
+	; --- round loop: blake2(index = r % 10, v, m) ---
+	copyb(0, ZKVM_BLK_HDR) -> r5
+	copyb(0, ZKVM_BLK_V) -> r6
+	copyb(r5, r6) -> 8[a + 8]
+	copyb(r5, r12) -> 8[a + 16]
+	copyb(0, 0) -> r13
+zb2_round:
+	eq(r10, 0), j(zb2_finalize)
+	copyb(r5, r13) -> 8[a + 0]
+	blake2(0, r5)
+	add(r13, 1) -> r13
+	ltu(r13, 10), j(zb2_dec)
+	copyb(0, 0) -> r13
+zb2_dec:
+	sub(r10, 1) -> r10
+	jump(zb2_round)
+
+zb2_finalize:
+	; --- h[i] ^= v[i] ^ v[i+8] ---
+	copyb(0, r11) -> r6
+	copyb(0, ZKVM_BLK_V) -> r7
+	copyb(0, ZKVM_BLK_V) -> r14
+	add(r14, 64) -> r14
+	copyb(0, 8) -> r15
+zb2_fin:
+	eq(r15, 0), j(zb2_done)
+	copyb(r6, 8[a + 0]) -> r5
+	copyb(r7, 8[a + 0]) -> r13
+	xor(r5, r13) -> r5
+	copyb(r14, 8[a + 0]) -> r13
+	xor(r5, r13) -> r5
+	copyb(r6, r5) -> 8[a + 0]
+	add(r6, 8) -> r6
+	add(r7, 8) -> r7
+	add(r14, 8) -> r14
+	sub(r15, 1) -> r15
+	jump(zb2_fin)
+zb2_done:
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK
+	ret

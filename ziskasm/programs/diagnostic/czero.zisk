@@ -1,0 +1,58 @@
+; ============================================================================
+; czero.zisk - diagnostic for the ZisK conditional-zero instructions (Zicond).
+;
+;   czero_eqz  (b == 0 ? 0 : a)
+;   czero_nez  (b != 0 ? 0 : a)
+;
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; CZERO_TABLE columns: a b czero_eqz czero_nez
+; First mismatch returns 0x0fCC (01=czero_eqz 02=czero_nez).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b(condition)  r12 exp  r13 res.
+; ============================================================================
+
+ifdef EXPERIMENTAL   ; op unsupported by x86 asm gen & proving; excluded unless EXPERIMENTAL defined (Rust emulator only)
+
+define ROWS      5
+define ROW_BYTES 32      ; 4 u64 columns * 8 bytes
+
+; a, b, czero_eqz, czero_nez
+const u64 CZERO_TABLE =
+	0x00000000deadbeef, 0x0000000000000000, 0x0000000000000000, 0x00000000deadbeef,
+	0x00000000deadbeef, 0x0000000000000005, 0x00000000deadbeef, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0xffffffffffffffff, 0x0000000000000001, 0xffffffffffffffff, 0x0000000000000000,
+	0x0000000012345678, 0x8000000000000000, 0x0000000012345678, 0x0000000000000000
+
+czero:
+	copyb(0, CZERO_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+cz_loop:
+	eq(r6, ROWS), j(cz_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	czero_eqz(r7, r8) -> r13
+	eq(r13, r12), j(cz_c1)
+	copyb(0, 0x0f01) -> r10
+	ret
+cz_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	czero_nez(r7, r8) -> r13
+	eq(r13, r12), j(cz_next)
+	copyb(0, 0x0f02) -> r10
+	ret
+
+cz_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(cz_loop)
+
+cz_ok:
+	copyb(0, 0) -> r10
+	ret
+
+endif

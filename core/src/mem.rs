@@ -125,6 +125,8 @@ pub const SYS_SIZE: u64 = 0x10000;
 pub const OUTPUT_ADDR: u64 = SYS_ADDR + SYS_SIZE;
 /// Size of the output RW memory
 pub const OUTPUT_MAX_SIZE: u64 = 0x20000; // 128K
+/// First general purpose RW memory address
+pub const GENERAL_RAM_ADDR: u64 = OUTPUT_ADDR + OUTPUT_MAX_SIZE;
 /// First BIOS instruction address, i.e. first instruction executed
 pub const ROM_ENTRY: u64 = 0x1000;
 /// Size of the BIOS instruction area
@@ -153,6 +155,25 @@ pub const FLOAT_LIB_RAM_ADDR: u64 = RAM_ADDR + RAM_SIZE - FLOAT_LIB_RAM_SIZE;
 pub const FLOAT_LIB_RAM_ADDR_MAX: u64 = FLOAT_LIB_RAM_ADDR + FLOAT_LIB_RAM_SIZE - 1;
 /// Float library stack pointer address
 pub const FLOAT_LIB_SP: u64 = RAM_ADDR + RAM_SIZE - 16;
+
+// -------------------------------------------------------------------------
+// ZisK library (`.zisk` routines callable from a RISC-V guest via symbol
+// redirect). Reserved just below the float-library regions; code + ROM
+// constants live in ZISKLIB_ROM, mutable scratch/variables in ZISKLIB_RAM.
+// The guest linker fences these off so guest allocations never collide.
+// -------------------------------------------------------------------------
+/// Size of ZisK library ROM (code + read-only constants)
+pub const ZISKLIB_ROM_SIZE: u64 = 0x100000; // 1M
+/// First ZisK library ROM instruction address (just below the float library)
+pub const ZISKLIB_ROM_ADDR: u64 = FLOAT_LIB_ROM_ADDR - ZISKLIB_ROM_SIZE;
+/// Maximum ZisK library ROM address
+pub const ZISKLIB_ROM_ADDR_MAX: u64 = ZISKLIB_ROM_ADDR + ZISKLIB_ROM_SIZE - 1;
+/// Size of ZisK library RAM (mutable scratch / variables)
+pub const ZISKLIB_RAM_SIZE: u64 = 0x10000; // 64K
+/// First ZisK library RAM address (just below the float-library RAM)
+pub const ZISKLIB_RAM_ADDR: u64 = FLOAT_LIB_RAM_ADDR - ZISKLIB_RAM_SIZE;
+/// Maximum ZisK library RAM address
+pub const ZISKLIB_RAM_ADDR_MAX: u64 = ZISKLIB_RAM_ADDR + ZISKLIB_RAM_SIZE - 1;
 /// Zisk architecture ID
 pub const ARCH_ID_ZISK: u64 = 0xFFFEEEE;
 /// UART memory address; single bytes written here will be copied to the standard output

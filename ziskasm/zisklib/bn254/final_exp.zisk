@@ -1,0 +1,178 @@
+; ============================================================================
+; bn254/final_exp.zisk - final exponentiation f^((p^12-1)/r). GENERATED.
+; Straight-line fp12 ops + 3 exp_by_x_cyclo. Prefix fe_.
+; ============================================================================
+
+u64 FE_F[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_FCONJ[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_FINV[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_EASY1[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_M[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MX[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MXX[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MXXX[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MP[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MPP[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MPPP[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MXP[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MXXP[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MXXXP[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_MXXPP[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_Y1[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_Y2[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_Y4[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_Y5[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_Y6[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_Y7[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T11[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T21[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T12[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T22[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T23[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T24[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T13[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_T14[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 FE_PR[1] = 0
+
+; void zisklib_final_exp_bn254(const u64* f, u64* result)  [48,48]
+zisklib_final_exp_bn254:
+	push r1
+	copyb(0, FE_PR) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(0, FE_F) -> r11
+	copyb(0, 48) -> r12
+	call bn254_memcpy
+	copyb(0, FE_F) -> r10
+	copyb(0, FE_FCONJ) -> r11
+	call zisklib_conjugate_fp12_bn254
+	copyb(0, FE_F) -> r10
+	copyb(0, FE_FINV) -> r11
+	call zisklib_inv_fp12_bn254
+	copyb(0, FE_FCONJ) -> r10
+	copyb(0, FE_FINV) -> r11
+	copyb(0, FE_EASY1) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_EASY1) -> r10
+	copyb(0, FE_M) -> r11
+	call zisklib_frobenius2_fp12_bn254
+	copyb(0, FE_M) -> r10
+	copyb(0, FE_EASY1) -> r11
+	copyb(0, FE_M) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_M) -> r10
+	copyb(0, FE_MX) -> r11
+	call zisklib_exp_by_x_cyclo_bn254
+	copyb(0, FE_MX) -> r10
+	copyb(0, FE_MXX) -> r11
+	call zisklib_exp_by_x_cyclo_bn254
+	copyb(0, FE_MXX) -> r10
+	copyb(0, FE_MXXX) -> r11
+	call zisklib_exp_by_x_cyclo_bn254
+	copyb(0, FE_M) -> r10
+	copyb(0, FE_MP) -> r11
+	call zisklib_frobenius1_fp12_bn254
+	copyb(0, FE_M) -> r10
+	copyb(0, FE_MPP) -> r11
+	call zisklib_frobenius2_fp12_bn254
+	copyb(0, FE_M) -> r10
+	copyb(0, FE_MPPP) -> r11
+	call zisklib_frobenius3_fp12_bn254
+	copyb(0, FE_MX) -> r10
+	copyb(0, FE_MXP) -> r11
+	call zisklib_frobenius1_fp12_bn254
+	copyb(0, FE_MXX) -> r10
+	copyb(0, FE_MXXP) -> r11
+	call zisklib_frobenius1_fp12_bn254
+	copyb(0, FE_MXXX) -> r10
+	copyb(0, FE_MXXXP) -> r11
+	call zisklib_frobenius1_fp12_bn254
+	copyb(0, FE_MXX) -> r10
+	copyb(0, FE_MXXPP) -> r11
+	call zisklib_frobenius2_fp12_bn254
+	copyb(0, FE_MP) -> r10
+	copyb(0, FE_MPP) -> r11
+	copyb(0, FE_Y1) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_Y1) -> r10
+	copyb(0, FE_MPPP) -> r11
+	copyb(0, FE_Y1) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_M) -> r10
+	copyb(0, FE_Y2) -> r11
+	call zisklib_conjugate_fp12_bn254
+	copyb(0, FE_MXP) -> r10
+	copyb(0, FE_Y4) -> r11
+	call zisklib_conjugate_fp12_bn254
+	copyb(0, FE_MX) -> r10
+	copyb(0, FE_MXXP) -> r11
+	copyb(0, FE_Y5) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_Y5) -> r10
+	copyb(0, FE_Y5) -> r11
+	call zisklib_conjugate_fp12_bn254
+	copyb(0, FE_MXX) -> r10
+	copyb(0, FE_Y6) -> r11
+	call zisklib_conjugate_fp12_bn254
+	copyb(0, FE_MXXX) -> r10
+	copyb(0, FE_MXXXP) -> r11
+	copyb(0, FE_Y7) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_Y7) -> r10
+	copyb(0, FE_Y7) -> r11
+	call zisklib_conjugate_fp12_bn254
+	copyb(0, FE_Y7) -> r10
+	copyb(0, FE_T11) -> r11
+	call zisklib_square_fp12_bn254
+	copyb(0, FE_T11) -> r10
+	copyb(0, FE_Y5) -> r11
+	copyb(0, FE_T11) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T11) -> r10
+	copyb(0, FE_Y6) -> r11
+	copyb(0, FE_T11) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T11) -> r10
+	copyb(0, FE_Y4) -> r11
+	copyb(0, FE_T21) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T21) -> r10
+	copyb(0, FE_Y6) -> r11
+	copyb(0, FE_T21) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T11) -> r10
+	copyb(0, FE_MXXPP) -> r11
+	copyb(0, FE_T12) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T21) -> r10
+	copyb(0, FE_T22) -> r11
+	call zisklib_square_fp12_bn254
+	copyb(0, FE_T22) -> r10
+	copyb(0, FE_T12) -> r11
+	copyb(0, FE_T22) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T22) -> r10
+	copyb(0, FE_T23) -> r11
+	call zisklib_square_fp12_bn254
+	copyb(0, FE_T23) -> r10
+	copyb(0, FE_Y1) -> r11
+	copyb(0, FE_T24) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T23) -> r10
+	copyb(0, FE_Y2) -> r11
+	copyb(0, FE_T13) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T13) -> r10
+	copyb(0, FE_T14) -> r11
+	call zisklib_square_fp12_bn254
+	copyb(0, FE_T14) -> r10
+	copyb(0, FE_T24) -> r11
+	copyb(0, FE_T14) -> r12
+	call zisklib_mul_fp12_bn254
+	copyb(0, FE_T14) -> r10
+	copyb(0, FE_PR) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 48) -> r12
+	call bn254_memcpy
+	pop r1
+	ret

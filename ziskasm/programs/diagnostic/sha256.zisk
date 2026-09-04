@@ -1,0 +1,68 @@
+; ============================================================================
+; sha256.zisk - diagnostic for the ZisK sha256 precompile (SHA-256 compression).
+;
+; The `sha256` op takes, in its `b` operand, the address of a 2-pointer struct:
+;   b -> [ &state(4 u64 = 256-bit hash state), &input(8 u64 = 512-bit block) ]
+; It runs the SHA-256 compression (sha2::compress256) and writes the updated
+; 4-word state back to &state. (Indirection, unlike keccak's flat buffer.)
+;
+; Packing: state = 8 u32 (h0..h7) as 4 u64 (h0|h1<<32, ...); input = 64 message
+; bytes as 8 little-endian u64; compress256 reads the block big-endian.
+;
+; This test compresses the SHA-256 padding block of the empty message from the
+; SHA-256 IV, so the result equals the well-known digest
+; sha256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+; (independent reference, self-checked against Python hashlib).
+;
+; Returns r10 = 0 on success, or 0x2101 on the first mismatching state word.
+;
+; The 2 indirection pointers are filled at run time (data initializers can't yet
+; be symbol addresses).
+; ============================================================================
+
+; hash state (RAM, written back): SHA-256 IV, packed h0|h1<<32, ...
+u64 SHA_STATE[4] =
+	0xbb67ae856a09e667, 0xa54ff53a3c6ef372, 0x9b05688c510e527f, 0x5be0cd191f83d9ab
+
+; 512-bit message block (ROM): SHA-256 padding of "" (0x80 then zeros), packed LE
+const u64 SHA_INPUT[8] =
+	0x0000000000000080, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+	0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000
+
+; indirection struct (RAM): [ &SHA_STATE, &SHA_INPUT ], filled at run time
+u64 SHA_PTRS[2] = 0, 0
+
+; expected state after compression = sha256("") digest, packed h0|h1<<32, ...
+const u64 SHA_EXPECT[4] =
+	0x98fc1c14e3b0c442, 0x996fb9249afbf4c8, 0x649b934c27ae41e4, 0x7852b855a495991b
+
+sha256:
+	; SHA_PTRS[0] = &SHA_STATE ; SHA_PTRS[1] = &SHA_INPUT
+	copyb(0, SHA_PTRS) -> r8
+	copyb(0, SHA_STATE) -> r7
+	copyb(r8, r7) -> 8[a + 0]
+	copyb(0, SHA_INPUT) -> r7
+	copyb(r8, r7) -> 8[a + 8]
+
+	sha256(0, r8) -> r13              ; b = &SHA_PTRS ; compresses, writes state back
+
+	copyb(0, SHA_STATE) -> r7         ; result pointer
+	copyb(0, SHA_EXPECT) -> r5        ; expected pointer
+	copyb(0, 4) -> r6                 ; state words remaining
+
+sha_loop:
+	eq(r6, 0), j(sha_ok)
+	copyb(r7, 8[a + 0]) -> r13
+	copyb(r5, 8[a + 0]) -> r12
+	eq(r13, r12), j(sha_next)
+	copyb(0, 0x2101) -> r10
+	ret
+sha_next:
+	add(r7, 8) -> r7
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(sha_loop)
+
+sha_ok:
+	copyb(0, 0) -> r10
+	ret

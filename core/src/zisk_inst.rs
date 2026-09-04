@@ -293,6 +293,85 @@ impl ZiskInst {
         s
     }
 
+    /// Generates a single line of ZisK assembly code representing this instruction,
+    /// following the syntax specified in `ziskasm/ziskasm.md`.
+    ///
+    /// The general format is:
+    /// `operation(a_source, b_source) -> c_storage, j(jump1, jump2), setpc(jump), sp, end`
+    /// where the `-> c_storage`, `j(...)`/`setpc(...)`, `sp` and `end` parts are optional.
+    pub fn to_zisk_asm(&self) -> String {
+        // a_source
+        let a_source = match self.a_src {
+            SRC_C => "c".to_string(),
+            SRC_REG => format!("r{}", self.a_offset_imm0),
+            SRC_MEM => format!("[0x{:x}]", self.a_offset_imm0),
+            SRC_IMM => format!("0x{:x}", self.a_offset_imm0 | (self.a_use_sp_imm1 << 32)),
+            SRC_STEP => "step".to_string(),
+            _ => format!("<invalid a_src={}>", self.a_src),
+        };
+
+        // b_source
+        let b_source = match self.b_src {
+            SRC_C => "c".to_string(),
+            SRC_REG => format!("r{}", self.b_offset_imm0),
+            SRC_MEM => format!("[0x{:x}]", self.b_offset_imm0),
+            SRC_IMM => format!("0x{:x}", self.b_offset_imm0 | (self.b_use_sp_imm1 << 32)),
+            SRC_IND => Self::ind_operand(self.ind_width, self.b_offset_imm0 as i64),
+            _ => format!("<invalid b_src={}>", self.b_src),
+        };
+
+        // operation(a_source, b_source)
+        let mut s = format!("{}({}, {})", self.op_str, a_source, b_source);
+
+        // -> c_storage (optional; omitted when the result is not stored)
+        match self.store {
+            STORE_NONE => {}
+            STORE_REG => s += &format!(" -> r{}", self.store_offset),
+            STORE_MEM => s += &format!(" -> [0x{:x}]", self.store_offset as u64),
+            STORE_IND => {
+                s += &format!(" -> {}", Self::ind_operand(self.ind_width, self.store_offset))
+            }
+            _ => s += &format!(" -> <invalid store={}>", self.store),
+        }
+
+        // , setpc(jump)  or  , j(jump1, jump2)  (mutually exclusive: see get_next_pc)
+        if self.set_pc {
+            s += &format!(", setpc({})", self.jmp_offset1);
+        } else if self.jmp_offset1 == 4 && self.jmp_offset2 == 4 {
+            // Default fall-through (next_pc = current_pc + 4): the jump field is omitted.
+        } else if self.jmp_offset2 == 4 {
+            // jump2 is the default next instruction, so it can be omitted.
+            s += &format!(", j({})", self.jmp_offset1);
+        } else {
+            s += &format!(", j({}, {})", self.jmp_offset1, self.jmp_offset2);
+        }
+
+        // , sp (optional): only affects memory-addressed operands
+        let uses_sp = (self.a_src == SRC_MEM && self.a_use_sp_imm1 != 0)
+            || ((self.b_src == SRC_MEM || self.b_src == SRC_IND) && self.b_use_sp_imm1 != 0)
+            || ((self.store == STORE_MEM || self.store == STORE_IND) && self.store_use_sp);
+        if uses_sp {
+            s += ", sp";
+        }
+
+        // , end (optional)
+        if self.end {
+            s += ", end";
+        }
+
+        s
+    }
+
+    /// Formats an indirect (`W[a + N]`) memory operand per the ziskasm spec: `W` is the
+    /// access width in bytes and `N` is the signed address offset relative to register `a`.
+    fn ind_operand(width: u64, offset: i64) -> String {
+        if offset < 0 {
+            format!("{}[a - {}]", width, -offset)
+        } else {
+            format!("{}[a + {}]", width, offset)
+        }
+    }
+
     /// Constructs a `flags`` bitmap made of combinations of fields of the Zisk instruction.  This
     /// field is used by the PIL to proof some of the operations.
     pub fn get_flags(&self) -> u64 {
@@ -314,5 +393,65 @@ impl ZiskInst {
             | (((self.store == STORE_REG) as u64) << 15);
 
         flags
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Reconstructs the instruction from the ziskasm example (the transpiled
+    /// `jalr r0, r1, 0x0`) and checks it renders to the expected ZisK asm line.
+    #[test]
+    fn to_zisk_asm_jalr_example() {
+        let inst = ZiskInst {
+            a_src: SRC_IMM,
+            a_use_sp_imm1: 0xffffffff,
+            a_offset_imm0: 0xfffffffe,
+            b_src: SRC_REG,
+            b_offset_imm0: 0x1,
+            op: 14,
+            op_str: "and",
+            set_pc: true,
+            jmp_offset2: 4,
+            is_external_op: true,
+            ..Default::default()
+        };
+        assert_eq!(inst.to_zisk_asm(), "and(0xfffffffffffffffe, r1), setpc(0)");
+    }
+
+    #[test]
+    fn to_zisk_asm_covers_each_field() {
+        // add(r5, 0x10) -> r6 : register + immediate sources, register store.
+        let inst = ZiskInst {
+            a_src: SRC_REG,
+            a_offset_imm0: 5,
+            b_src: SRC_IMM,
+            b_offset_imm0: 0x10,
+            op_str: "add",
+            store: STORE_REG,
+            store_offset: 6,
+            jmp_offset1: 4,
+            jmp_offset2: 4,
+            ..Default::default()
+        };
+        assert_eq!(inst.to_zisk_asm(), "add(r5, 0x10) -> r6");
+
+        // A load feeding a store to memory, with an indirect source and a taken branch.
+        let inst = ZiskInst {
+            a_src: SRC_REG,
+            a_offset_imm0: 2,
+            b_src: SRC_IND,
+            b_offset_imm0: (-8_i64) as u64,
+            ind_width: 8,
+            op_str: "copyb",
+            store: STORE_MEM,
+            store_offset: 0xa0000000,
+            jmp_offset1: -16,
+            jmp_offset2: 4,
+            end: true,
+            ..Default::default()
+        };
+        assert_eq!(inst.to_zisk_asm(), "copyb(r2, 8[a - 8]) -> [0xa0000000], j(-16), end");
     }
 }

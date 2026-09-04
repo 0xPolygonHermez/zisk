@@ -1,0 +1,63 @@
+; ============================================================================
+; pack.zisk - diagnostic for the ZisK pack instructions (Zbkb).
+;
+;   pack    (low 32 of a | low 32 of b << 32)
+;   pack_h  (low 8  of a | low 8  of b << 8)
+;   pack_w  ((low 16 of a | low 16 of b << 16) sign-extended to 64)
+;
+; Pure-constant style; expected values generated from core/src/ops_core.rs.
+;
+; PACK_TABLE columns: a b pack pack_h pack_w
+; First mismatch returns 0x0bCC (01=pack 02=pack_h 03=pack_w).
+;
+; Registers: r5 row ptr  r6 row index  r7 a  r8 b  r12 exp  r13 res.
+; ============================================================================
+
+define ROWS      7
+define ROW_BYTES 40      ; 5 u64 columns * 8 bytes
+
+; a, b, pack, pack_h, pack_w
+const u64 PACK_TABLE =
+	0x1122334455667788, 0xaabbccddeeff0011, 0xeeff001155667788, 0x0000000000001188, 0x0000000000117788,
+	0x00000000ffffffff, 0x00000000ffffffff, 0xffffffffffffffff, 0x000000000000ffff, 0xffffffffffffffff,
+	0x0000000000000000, 0x0000000080008000, 0x8000800000000000, 0x0000000000000000, 0xffffffff80000000,
+	0xffffffffffffffff, 0x0000000000000000, 0x00000000ffffffff, 0x00000000000000ff, 0x000000000000ffff,
+	0x0000000000001234, 0x0000000000005678, 0x0000567800001234, 0x0000000000007834, 0x0000000056781234,
+	0x000000000000ffff, 0x000000000000ffff, 0x0000ffff0000ffff, 0x000000000000ffff, 0xffffffffffffffff,
+	0xdeadbeefcafebabe, 0x0123456789abcdef, 0x89abcdefcafebabe, 0x000000000000efbe, 0xffffffffcdefbabe
+
+pack:
+	copyb(0, PACK_TABLE) -> r5
+	copyb(0, 0) -> r6
+
+pk_loop:
+	eq(r6, ROWS), j(pk_ok)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r5, 8[a + 8]) -> r8
+
+	copyb(r5, 8[a + 16]) -> r12
+	pack(r7, r8) -> r13
+	eq(r13, r12), j(pk_c1)
+	copyb(0, 0x0b01) -> r10
+	ret
+pk_c1:
+	copyb(r5, 8[a + 24]) -> r12
+	pack_h(r7, r8) -> r13
+	eq(r13, r12), j(pk_c2)
+	copyb(0, 0x0b02) -> r10
+	ret
+pk_c2:
+	copyb(r5, 8[a + 32]) -> r12
+	pack_w(r7, r8) -> r13
+	eq(r13, r12), j(pk_next)
+	copyb(0, 0x0b03) -> r10
+	ret
+
+pk_next:
+	add(r5, ROW_BYTES) -> r5
+	add(r6, 1) -> r6
+	jump(pk_loop)
+
+pk_ok:
+	copyb(0, 0) -> r10
+	ret

@@ -1,0 +1,153 @@
+; ============================================================================
+; keccak.zisk - keccak256 for the ZisK library, callable from a RISC-V
+; guest via the elf2rom symbol redirect (guest stub `ziskos_keccak`).
+;
+; Shared zisklib ABI (RISC-V C convention; ZisK registers = RISC-V registers):
+;   - arguments in r10..r17 (a0..a7), return value in r10 (a0)
+;   - reached via a tail-jump, so r1 (ra) holds the guest return; `ret` returns there
+;   - a callee MUST preserve r8/r9 and r18..r27 (s0..s11), r2 (sp), r3/r4 (gp/tp);
+;     scratch freely in r5..r7 (t0..t2), r12..r17, r28..r31 (t3..t6)
+;
+; Each family gets its own file; keep labels prefixed per family (here `zk_`) so
+; they stay unique when the files are merged into one library.
+; ============================================================================
+
+; ----------------------------------------------------------------------------
+; void zisklib_keccak(const u8* input, usize len, u8* output)
+;   Computes keccak256(input[0..len]) into output[0..32], for ANY byte length and
+;   ANY input alignment, using the `keccak` op (Keccak-f[1600]) once per absorbed
+;   rate block. Mirrors ziskos zisklib keccak256.
+;
+;   Sponge (rate = 136 bytes = 17 u64 words, capacity 64 bytes), pad10*1:
+;     state[0..25] = 0
+;     absorb the message as a little-endian byte stream, XORing each rate-block
+;       worth of bytes into state[0..17] and running Keccak-f after every 136 bytes
+;     pad: XOR 0x01 at the byte just past the last absorbed byte, and 0x80 at byte
+;       135 of the rate block (they coincide -> 0x81 when only one free byte is left)
+;     one final Keccak-f, then output = first 32 bytes of the state
+;
+;   Because keccak absorbs a *byte stream* little-endian into 64-bit words, reading
+;   input[8*i..8*i+8] as a little-endian u64 gives exactly state word `i`'s XOR
+;   operand regardless of the input pointer's alignment; the final 1..7 leftover
+;   bytes (len % 8) are read one byte at a time and packed low-to-high.
+;
+;   Key running values:
+;     r10 = input cursor (advances by 8 per full word, then by 1 per tail byte)
+;     r12 = output cursor
+;     r5  = state cursor = &state + `pos`  (so it addresses state word `pos/8`)
+;     r6  = pos = byte offset within the current rate block, 0..136
+;     r13 = tail_bytes = len % 8 (kept live across the whole absorb loop)
+;   Uses caller-saved registers only (r5-r7, r13-r17), so it is ABI-safe as a
+;   callee. State scratch (KECCAK_STATE, 25 u64) is in ZISKLIB_RAM (writable, as
+;   the keccak op permutes it in place); re-zeroed each call (non-reentrant).
+; ----------------------------------------------------------------------------
+u64 KECCAK_STATE[25] =
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+zisklib_keccak:
+	; --- zero the 25-word state (reused across calls) ---
+	copyb(0, KECCAK_STATE) -> r5
+	copyb(0, 25) -> r6
+zk_zero:
+	eq(r6, 0), j(zk_full)
+	copyb(r5, 0) -> 8[a + 0]
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(zk_zero)
+
+; --- Phase 1: full 136-byte rate blocks (r11 = remaining message bytes). This is
+;     the hot loop and is identical to the word-only implementation (same
+;     instructions per word), so a multiple-of-8 message pays no penalty for the
+;     general tail handling below. ---
+zk_full:
+	ltu(r11, 136), j(zk_final)         ; remaining < 136 -> the last (partial) block
+	copyb(0, KECCAK_STATE) -> r5        ; state cursor = &state[0]
+	copyb(0, 17) -> r6                  ; 17 u64 words per rate block
+zk_xor_full:
+	eq(r6, 0), j(zk_full_perm)
+	copyb(r10, 8[a + 0]) -> r14         ; input word (unaligned-safe u64 load)
+	copyb(r5, 8[a + 0]) -> r15
+	xor(r15, r14) -> r15
+	copyb(r5, r15) -> 8[a + 0]          ; state[i] ^= input word
+	add(r10, 8) -> r10
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(zk_xor_full)
+zk_full_perm:
+	sub(r11, 136) -> r11
+	copyb(0, KECCAK_STATE) -> r14
+	keccak(0, r14) -> r14               ; permute the state in place
+	jump(zk_full)
+
+; --- Phase 2: the final block, remaining = r11 in 0..135 (always runs, even for
+;     an empty message or one that exactly filled the last block: keccak's pad10*1
+;     requires a final block). Absorb its rem/8 full words (same word loop), then
+;     the rem%8 leftover bytes one at a time, then the padding. ---
+zk_final:
+	copyb(0, KECCAK_STATE) -> r5        ; state cursor = &state[0]
+	srl(r11, 3) -> r6                   ; rem_words = remaining / 8
+	and(r11, 7) -> r13                  ; tail_bytes = remaining % 8 (0..7)
+zk_fin_words:
+	eq(r6, 0), j(zk_tail)
+	copyb(r10, 8[a + 0]) -> r14
+	copyb(r5, 8[a + 0]) -> r15
+	xor(r15, r14) -> r15
+	copyb(r5, r15) -> 8[a + 0]
+	add(r10, 8) -> r10
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(zk_fin_words)
+
+zk_tail:
+	; r5 addresses the first not-yet-full state word; r10 points at the `tail_bytes`
+	; leftover message bytes. Pack them low-to-high into r16, tracking the bit shift
+	; (8*byte_index) in r17. Runs 0 times when tail_bytes == 0 (multiple-of-8 case).
+	copyb(0, 0) -> r16                  ; tail_word = 0
+	copyb(0, 0) -> r17                  ; shift = 0 bits
+	copyb(0, r13) -> r6                 ; count = tail_bytes
+zk_tail_loop:
+	eq(r6, 0), j(zk_pad)
+	copyb(r10, 1[a + 0]) -> r14         ; one message byte (width-1 load, zero-extended)
+	sll(r14, r17) -> r14                ; place it at its byte position: byte << shift
+	or(r16, r14) -> r16                 ; tail_word |= (byte << shift)
+	add(r10, 1) -> r10                  ; input += 1
+	add(r17, 8) -> r17                  ; shift += 8 bits (next byte)
+	sub(r6, 1) -> r6
+	jump(zk_tail_loop)
+
+zk_pad:
+	; pad10*1 start: 0x01 goes just past the last message byte, i.e. at byte
+	; `tail_bytes` of this word -> shift (r17) is exactly 8*tail_bytes now.
+	sll(1, r17) -> r14                  ; 0x01 << (8 * tail_bytes)
+	or(r16, r14) -> r16                 ; fold the pad-start bit into the tail word
+	copyb(r5, 8[a + 0]) -> r14          ; XOR (tail bytes | pad-start) into state[rem_words]
+	xor(r14, r16) -> r14
+	copyb(r5, r14) -> 8[a + 0]
+	; pad10*1 end: 0x80 at byte 135 of the rate block = high byte of state word 16.
+	; (If only the last byte was free, rem_words == 16 and this XOR-combines with the
+	;  0x01 above into 0x81 in that byte, which is exactly pad10*1 for one free byte.)
+	copyb(0, KECCAK_STATE) -> r5
+	add(r5, 128) -> r5                  ; &state[16]
+	copyb(r5, 8[a + 0]) -> r14
+	xor(r14, 0x8000000000000000) -> r14
+	copyb(r5, r14) -> 8[a + 0]
+	; final permutation
+	copyb(0, KECCAK_STATE) -> r14
+	keccak(0, r14) -> r14
+
+zk_squeeze:
+	; output[0..32] = first 4 state words (little-endian). 8-byte stores are
+	; unaligned-safe, so `output` need not be aligned.
+	copyb(0, KECCAK_STATE) -> r5
+	copyb(0, 4) -> r6
+zk_sq:
+	eq(r6, 0), j(zk_done)
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r12, r7) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r6, 1) -> r6
+	jump(zk_sq)
+zk_done:
+	ret

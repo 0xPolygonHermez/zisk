@@ -1,0 +1,47 @@
+; ============================================================================
+; secp256r1/field.zisk - base-field (Fp) arithmetic for NIST P-256. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256r1/field.rs: only add / mul / square
+; are needed (all arith256_mod with the fixed modulus P). Leaves. Prefix `rfp_`.
+; ============================================================================
+
+u64 R1_FP_HDR[5] = 0, 0, 0, 0, 0
+
+; void zisklib_add_fp_secp256r1(const u64* x, const u64* y, u64* result)
+;   result = (x + y) mod P = (x*1 + y) mod P.  [r10=x, r11=y, r12=result]
+zisklib_add_fp_secp256r1:
+	copyb(0, R1_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, R1_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(r5, r11) -> 8[a + 16]        ; &y (c addend)
+	copyb(0, R1_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_mul_fp_secp256r1(const u64* x, const u64* y, u64* result)
+zisklib_mul_fp_secp256r1:
+	copyb(0, R1_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	copyb(0, R1_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, R1_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_square_fp_secp256r1(const u64* x, u64* result)  [r10=x, r11=result]
+zisklib_square_fp_secp256r1:
+	copyb(0, R1_FP_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, R1_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, R1_P) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret

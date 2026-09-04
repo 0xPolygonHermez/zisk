@@ -1,0 +1,131 @@
+; ============================================================================
+; uint256/mul.zisk - 256-bit multiply / square and inverse mod 2^256.
+; Mirrors ziskos/entrypoint/src/zisklib/lib/uint256/mul.rs (the checked/
+; saturating/wrapping mul & square variants are Rust wrappers over the
+; overflowing core; `inv256` also lives in mul.rs there). Shared data lives in
+; common.zisk. Internal labels: `um_` (mul), `u2_` (inv256).
+; FREE_INPUT / FCALL_UINT256_INV are `pub define`s in mem/fcall.
+; ============================================================================
+
+; ----------------------------------------------------------------------------
+; u64 zisklib_overflowing_mul256(const u64* a, const u64* b, u64* result)
+;   result = a * b (mod 2^256) = low 256 bits; returns 1 if the product overflows
+;   256 bits (high 256 bits != 0), else 0. Uses the arith256 precompile
+;   (a*b+c = dh:dl) with c = 0: dl (low) -> result, dh (high) -> overflow check.
+;   Args: r10 = a, r11 = b, r12 = result. Caller-saved regs only.
+; ----------------------------------------------------------------------------
+zisklib_overflowing_mul256:
+	copyb(0, U256_HDR) -> r5           ; reuse the 5-slot arith256 header
+	copyb(r5, r10) -> 8[a + 0]         ; &a
+	copyb(r5, r11) -> 8[a + 8]         ; &b
+	copyb(0, U256_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &c = 0
+	copyb(r5, r12) -> 8[a + 24]        ; &dl = result (low 256 bits)
+	copyb(0, U256_DH) -> r7
+	copyb(r5, r7) -> 8[a + 32]         ; &dh (high 256 bits)
+	arith256(0, r5) -> r13             ; dl:dh = a*b + 0
+
+	; overflow = (dh != 0): scan the 4 high words
+	copyb(0, U256_DH) -> r6
+	copyb(0, 4) -> r7
+um_ovf:
+	eq(r7, 0), j(um_noovf)
+	copyb(r6, 8[a + 0]) -> r13
+	eq(r13, 0), j(um_next)
+	copyb(0, 1) -> r10                 ; a high word is nonzero -> overflow
+	ret
+um_next:
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(um_ovf)
+um_noovf:
+	copyb(0, 0) -> r10                 ; high 256 bits all zero -> no overflow
+	ret
+
+; ----------------------------------------------------------------------------
+; u64 zisklib_inv256(const u64* a, u64* result)
+;   Computes a^(-1) mod 2^256 if it exists. Mirrors ziskos `inv256`:
+;     - hint the inverse via fcall FCALL_UINT256_INV (flag + 4 words),
+;     - if invertible, verify a*inv == 1 (mod 2^256) with the arith256 precompile
+;       and copy the inverse to `result`.
+;   Returns r10 = 1 and writes result[0..4] if invertible (a odd); r10 = 0
+;   otherwise (a even). Halts (like the reference `assert!`) if the hinted inverse
+;   fails verification — unreachable given a correct hint.
+;
+;   Args: r10 = a, r11 = result. Caller-saved regs only (r5-r7, r12-r15 scratch;
+;   r10/r11 persist), so it is ABI-safe as a callee.
+; ----------------------------------------------------------------------------
+zisklib_inv256:
+	; --- hint the inverse: fcall(a) -> free_input = flag, then 4 inverse words ---
+	fcall_param(4, r10) -> r14         ; append a[0..4] (r10 = &a)  [r14 = throwaway]
+	fcall(FCALL_UINT256_INV, 0) -> r14 ; free_input = flag, result_size = 5
+	copyb(0, [FREE_INPUT]) -> r5       ; r5 = flag (1 if invertible)
+	eq(r5, 0), j(u2_noinv)             ; a even -> not invertible
+
+	; --- read the 4-word hinted inverse into U256_INV ---
+	copyb(0, U256_INV) -> r6
+	copyb(0, 4) -> r7
+u2_read:
+	eq(r7, 0), j(u2_verify)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r13
+	copyb(r6, r13) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(u2_read)
+
+u2_verify:
+	; --- build the arith256 header [&a, &inv, &zero, &dl, &dh] ---
+	copyb(0, U256_HDR) -> r12
+	copyb(r12, r10) -> 8[a + 0]        ; &a
+	copyb(0, U256_INV) -> r13
+	copyb(r12, r13) -> 8[a + 8]        ; &inv
+	copyb(0, U256_ZERO) -> r13
+	copyb(r12, r13) -> 8[a + 16]       ; &zero (the c addend)
+	copyb(0, U256_DL) -> r13
+	copyb(r12, r13) -> 8[a + 24]       ; &dl (low 256 bits of a*inv)
+	copyb(0, U256_DH) -> r13
+	copyb(r12, r13) -> 8[a + 32]       ; &dh (high 256 bits, ignored)
+	arith256(0, r12) -> r13            ; dl:dh = a*inv + 0
+
+	; --- verify dl == 1 (a*inv ≡ 1 mod 2^256) ---
+	copyb(0, U256_DL) -> r6
+	copyb(r6, 8[a + 0]) -> r13
+	eq(r13, 1), j(u2_hi)               ; dl[0] == 1 ?
+	jump(u2_panic)
+u2_hi:
+	copyb(0, 3) -> r7                  ; dl[1..4] must all be 0
+	add(r6, 8) -> r6
+u2_hi_loop:
+	eq(r7, 0), j(u2_ok)
+	copyb(r6, 8[a + 0]) -> r13
+	eq(r13, 0), j(u2_hi_next)
+	jump(u2_panic)
+u2_hi_next:
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(u2_hi_loop)
+
+u2_ok:
+	; --- copy the verified inverse to result, return 1 ---
+	copyb(0, U256_INV) -> r5
+	copyb(0, 4) -> r7
+u2_copy:
+	eq(r7, 0), j(u2_ret1)
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(r11, r13) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(u2_copy)
+u2_ret1:
+	copyb(0, 1) -> r10
+	ret
+
+u2_noinv:
+	copyb(0, 0) -> r10
+	ret
+
+u2_panic:
+	; hinted inverse failed verification (unreachable with a correct hint): halt
+	copyb(0, 0) -> r10, end

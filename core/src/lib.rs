@@ -68,6 +68,7 @@ pub mod zisk_registers;
 pub mod zisk_required_operation;
 pub mod zisk_rom;
 pub mod zisk_rom_2_asm;
+pub mod ziskbin;
 
 pub use fcall::*;
 pub use helpers::*;

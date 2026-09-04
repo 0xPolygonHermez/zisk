@@ -1,9 +1,10 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::elf_extraction::{
-    collect_elf_payload_from_bytes, get_symbol_addresses_from_bytes, merge_ro_sections,
+    collect_elf_payload_from_bytes, get_symbol_addresses_and_sizes_from_bytes, merge_ro_sections,
     validate_entry_point, ElfPayload,
 };
+use std::collections::HashMap;
 use std::{error::Error, path::Path};
 use zisk_core::mem::DataSection;
 use zisk_core::mem::{RAM_ADDR, RAM_SIZE, ROM_ADDR, ROM_ENTRY, ROM_SIZE};
@@ -14,6 +15,13 @@ use zisk_riscv::riscv2zisk_context::{add_end_and_lib, add_entry_exit_jmp, add_zi
 
 /// Executes the ROM transpilation process: from ELF to Zisk
 pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
+    // A ziskbin ELF (e_machine == EM_ZISK) carries an already-built ZiskRom in a
+    // `.ziskrom` section instead of RISC-V code; decode it directly and skip
+    // transpilation. Any other input falls through to the RISC-V path below.
+    if let Some(rom) = zisk_core::ziskbin::try_elf_to_rom(elf)? {
+        return Ok(rom);
+    }
+
     // Load the embedded float library (enabled with the `float` feature).
     #[cfg(feature = "float")]
     const FLOAT_LIB_DATA: &[u8] = include_bytes!("../../../lib-float/c/lib/ziskfloat.elf");
@@ -48,8 +56,78 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // e_entry rather than booting from a fixed address).
     validate_entry_point(&payloads[elf_index])?;
 
-    // Get DMA function addresses: (memcpy, memcmp, memset, memmove)
-    let dma_addrs = get_dma_symbol_addresses(elf);
+    // Assemble the canonical hand-written ZisK library, then build the
+    // guest-symbol → library-entry redirect map.
+    // (guest stub symbol, library function symbol)
+    const REDIRECTS: &[(&str, &str)] = &[
+        ("ziskos_add", "zisklib_add"),
+        ("ziskos_keccak", "zisklib_keccak"),
+        // EF zkVM-accelerator C ABI (zkvm_accelerators.h): the standard `zkvm_*`
+        // symbols redirect DIRECTLY to the native `ziskasm_zkvm_*` .zisk routines
+        // (single call, no C/Rust wrapper). Kept explicit for auditability.
+        ("zkvm_keccak256", "ziskasm_zkvm_keccak256"),
+        ("zkvm_sha256", "ziskasm_zkvm_sha256"),
+        ("zkvm_secp256k1_verify", "ziskasm_zkvm_secp256k1_verify"),
+        ("zkvm_secp256k1_ecrecover", "ziskasm_zkvm_secp256k1_ecrecover"),
+        ("zkvm_secp256r1_verify", "ziskasm_zkvm_secp256r1_verify"),
+        ("zkvm_blake2f", "ziskasm_zkvm_blake2f"),
+        ("zkvm_modexp", "ziskasm_zkvm_modexp"),
+        ("zkvm_bn254_g1_add", "ziskasm_zkvm_bn254_g1_add"),
+        ("zkvm_bn254_g1_mul", "ziskasm_zkvm_bn254_g1_mul"),
+        ("zkvm_bn254_pairing", "ziskasm_zkvm_bn254_pairing"),
+        ("zkvm_bls12_g1_add", "ziskasm_zkvm_bls12_g1_add"),
+        ("zkvm_bls12_g2_add", "ziskasm_zkvm_bls12_g2_add"),
+        ("zkvm_bls12_g1_msm", "ziskasm_zkvm_bls12_g1_msm"),
+        ("zkvm_bls12_g2_msm", "ziskasm_zkvm_bls12_g2_msm"),
+        ("zkvm_bls12_pairing", "ziskasm_zkvm_bls12_pairing"),
+        ("zkvm_bls12_map_fp_to_g1", "ziskasm_zkvm_bls12_map_fp_to_g1"),
+        ("zkvm_bls12_map_fp2_to_g2", "ziskasm_zkvm_bls12_map_fp2_to_g2"),
+        ("zkvm_kzg_point_eval", "ziskasm_zkvm_kzg_point_eval"),
+        ("zkvm_ripemd160", "ziskasm_zkvm_ripemd160"),
+        ("ziskos_sha256", "zisklib_sha256"),
+        ("ziskos_blake2b_compress", "zisklib_blake2b_compress"),
+        ("ziskos_inv256", "zisklib_inv256"),
+        ("ziskos_overflowing_add256", "zisklib_overflowing_add256"),
+        ("ziskos_overflowing_sub256", "zisklib_overflowing_sub256"),
+        ("ziskos_overflowing_mul256", "zisklib_overflowing_mul256"),
+        ("ziskos_div_rem256", "zisklib_div_rem256"),
+        ("ziskos_reduce_mod256", "zisklib_reduce_mod256"),
+        ("ziskos_add_mod256", "zisklib_add_mod256"),
+        ("ziskos_mul_mod256", "zisklib_mul_mod256"),
+        ("ziskos_inv_mod256", "zisklib_inv_mod256"),
+        ("ziskos_pow_mod256", "zisklib_pow_mod256"),
+        ("ziskos_overflowing_pow256", "zisklib_overflowing_pow256"),
+        ("ziskos_ecdsa_verify_secp256k1", "zisklib_ecdsa_verify_secp256k1"),
+        ("ziskos_ecdsa_recover_secp256k1", "zisklib_ecdsa_recover_secp256k1"),
+        ("ziskos_schnorr_verify_secp256k1", "zisklib_schnorr_verify_secp256k1"),
+        ("ziskos_ecdsa_verify_secp256r1", "zisklib_ecdsa_verify_secp256r1"),
+        ("ziskos_pairing_check_bn254", "zisklib_pairing_check_bn254"),
+        ("ziskos_pairing_check_bls12_381", "zisklib_pairing_check_bls12_381"),
+        ("ziskos_map_to_curve_g1_bls12_381", "zisklib_map_to_curve_g1_bls12_381"),
+        ("ziskos_map_to_curve_g2_bls12_381", "zisklib_map_to_curve_g2_bls12_381"),
+        ("ziskos_hash_to_curve_g2_bls12_381", "zisklib_hash_to_curve_g2_bls12_381"),
+        ("ziskos_bls_verify_bls12_381", "zisklib_bls_verify_bls12_381"),
+        ("ziskos_verify_kzg_proof_bls12_381", "zisklib_verify_kzg_proof_bls12_381"),
+        ("read_input", "zisklib_read_input"),
+        ("write_output", "zisklib_write_output"),
+        ("modexp_u64_c", "zisklib_modexp_u64_c"),
+        ("ziskos_modexp_u64_c", "zisklib_modexp_u64_c"),
+    ];
+
+    let library =
+        ziskasm::assemble_zisk_library().map_err(|e| format!("assembling ZisK library: {e}"))?;
+
+    let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
+    let guest_syms = get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;
+    let mut redirects: HashMap<u64, (u64, u64)> = HashMap::new();
+    for (guest_name, lib_name) in REDIRECTS {
+        if let Some(&(guest_addr, size)) = guest_syms.get(*guest_name) {
+            let lib_addr = *library.symbols.get(*lib_name).ok_or_else(|| {
+                format!("ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)")
+            })?;
+            redirects.insert(guest_addr, (lib_addr, size));
+        }
+    }
 
     // Create an empty ZiskRom instance
     let mut rom: ZiskRom = ZiskRom { next_init_inst_addr: ROM_ENTRY, ..Default::default() };
@@ -64,9 +142,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     for (i, payload) in payloads.into_iter().enumerate() {
         let ElfPayload { entry_point, exec, ro, rw } = payload;
 
-        // Add executable code sections
+        // Add executable code sections (redirects intercept guest library stubs).
         for section in &exec {
-            add_zisk_code(&mut rom, section.addr, &section.data, dma_addrs);
+            add_zisk_code(&mut rom, section.addr, &section.data, &redirects);
         }
 
         // Add read-only data sections.  They will be stored in ROM, but there can be some RAM
@@ -207,6 +285,14 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
             DataSection64 { addr: section.addr, data }
         })
         .collect();
+
+    // Merge the ZisK library (only when something redirects into it): its
+    // instructions and data live in the reserved region, disjoint from the guest.
+    if !redirects.is_empty() {
+        rom.insts.extend(library.insts);
+        rom.ro_data_64.extend(library.ro_data);
+        rom.rw_data_64.extend(library.rw_data);
+    }
 
     // Preprocess the ROM
     // Split the ROM instructions based on their address to improve performance when
@@ -385,21 +471,6 @@ fn normalize_rw_data_sections(sections: Vec<DataSection>) -> Vec<DataSection> {
     }
 
     result
-}
-
-/// Get DMA function addresses from ELF data
-/// Returns (memcpy, memcmp, memset, memmove), with 0 for missing symbols
-fn get_dma_symbol_addresses(elf_data: &[u8]) -> (u64, u64, u64, u64) {
-    let symbols = ["memcpy", "memcmp", "memset", "memmove"];
-    match get_symbol_addresses_from_bytes(elf_data, &symbols) {
-        Ok(addrs) => (
-            addrs.get("memcpy").copied().unwrap_or(0),
-            addrs.get("memcmp").copied().unwrap_or(0),
-            addrs.get("memset").copied().unwrap_or(0),
-            addrs.get("memmove").copied().unwrap_or(0),
-        ),
-        Err(_) => (0, 0, 0, 0),
-    }
 }
 
 /// Executes the ELF file data transpilation process into a Zisk ROM, and saves the result into a

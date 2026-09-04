@@ -1,0 +1,346 @@
+; ============================================================================
+; bls12_381/hash.zisk - hash_to_curve for G2 (RFC9380 BLS12381G2_XMD:SHA-256_
+; SSWU_RO_). GENERATED (scratchpad/gen_bls_hash.py). Prefix lh_.
+; ============================================================================
+
+const u64 BLS_R256_FP[6] = 0, 0, 0, 0, 1, 0
+u64 BLS_H_DSTP[40] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_MSGP[160] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_BUF[48] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_UNIF[32] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_B0[4] = 0, 0, 0, 0
+u64 BLS_H_EJ[6] = 0, 0, 0, 0, 0, 0
+u64 BLS_H_DHI[6] = 0, 0, 0, 0, 0, 0
+u64 BLS_H_DLO[6] = 0, 0, 0, 0, 0, 0
+u64 BLS_H_U[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_Q0[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_Q1[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_RPT[24] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+u64 BLS_H_MSG[1] = 0
+u64 BLS_H_MSGLEN[1] = 0
+u64 BLS_H_DST[1] = 0
+u64 BLS_H_DSTLEN[1] = 0
+u64 BLS_H_DSTPLEN[1] = 0
+u64 BLS_H_BUFLEN[1] = 0
+u64 BLS_H_RESP[1] = 0
+u64 BLS_H_I[1] = 0
+u64 BLS_H_TMP[1] = 0
+u64 BLS_H_FB_B[1] = 0
+u64 BLS_H_O2P[1] = 0
+
+; void zisklib_bytecopy(const u8* src, u8* dst, u64 count)  [r10=src,r11=dst,r12=count]
+zisklib_bytecopy:
+	eq(r12, 0), j(lh_bc_done)
+	copyb(r10, 1[a + 0]) -> r14
+	copyb(r11, r14) -> 1[a + 0]
+	add(r10, 1) -> r10
+	add(r11, 1) -> r11
+	sub(r12, 1) -> r12
+	jump(zisklib_bytecopy)
+lh_bc_done:
+	ret
+
+; u64 zisklib_be64(const u8* src)  [r10=src] -> r10 = big-endian 8-byte int
+zisklib_be64:
+	copyb(0, 0) -> r6
+	copyb(0, 0) -> r7
+lh_be_loop:
+	eq(r7, 8), j(lh_be_done)
+	sll(r6, 8) -> r6
+	copyb(r10, 1[a + 0]) -> r14
+	or(r6, r14) -> r6
+	add(r10, 1) -> r10
+	add(r7, 1) -> r7
+	jump(lh_be_loop)
+lh_be_done:
+	copyb(0, r6) -> r10
+	ret
+
+; void zisklib_fill_be(const u8* bytes32, u64* dest6)  fill 4 BE limbs (limb3..0) + zero top2
+zisklib_fill_be_bls12_381:
+	push r1
+	copyb(0, BLS_H_TMP) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_H_FB_B) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_H_BUFLEN) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+lh_fb_loop:
+	copyb(0, BLS_H_BUFLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	eq(r13, 4), j(lh_fb_done)
+	copyb(0, BLS_H_FB_B) -> r5
+	copyb(r5, 8[a + 0]) -> r10
+	sll(r13, 3) -> r6
+	add(r10, r6) -> r10
+	call zisklib_be64
+	copyb(0, BLS_H_BUFLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, 3) -> r6
+	sub(r6, r13) -> r6
+	sll(r6, 3) -> r6
+	copyb(0, BLS_H_TMP) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	add(r7, r6) -> r7
+	copyb(r7, r10) -> 8[a + 0]
+	add(r13, 1) -> r13
+	copyb(0, BLS_H_BUFLEN) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	jump(lh_fb_loop)
+lh_fb_done:
+	copyb(0, BLS_H_TMP) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	copyb(r7, 0) -> 8[a + 32]
+	copyb(r7, 0) -> 8[a + 40]
+	pop r1
+	ret
+
+; void zisklib_os2ip_be_mod_p(const u8* bytes64)  [r10] -> BLS_H_EJ[6] = int mod p
+zisklib_os2ip_be_mod_p_bls12_381:
+	push r1
+	copyb(0, BLS_H_O2P) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_H_DHI) -> r11
+	call zisklib_fill_be_bls12_381
+	copyb(0, BLS_H_O2P) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r10, 32) -> r10
+	copyb(0, BLS_H_DLO) -> r11
+	call zisklib_fill_be_bls12_381
+	copyb(0, BLS_H_DHI) -> r10
+	copyb(0, BLS_R256_FP) -> r11
+	copyb(0, BLS_H_EJ) -> r12
+	call zisklib_mul_fp_bls12_381
+	copyb(0, BLS_H_EJ) -> r10
+	copyb(0, BLS_H_DLO) -> r11
+	copyb(0, BLS_H_EJ) -> r12
+	call zisklib_add_fp_bls12_381
+	pop r1
+	ret
+
+; void zisklib_expand_message_xmd(msg,msglen,dst,dstlen) -> BLS_H_UNIF[256B] (len=256,ell=8)
+zisklib_expand_message_xmd_bls12_381:
+	push r1
+	copyb(0, BLS_H_MSG) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, BLS_H_MSGLEN) -> r5
+	copyb(r5, r11) -> 8[a + 0]
+	copyb(0, BLS_H_DST) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_H_DSTLEN) -> r5
+	copyb(r5, r13) -> 8[a + 0]
+	copyb(0, BLS_H_DST) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_H_DSTP) -> r11
+	copyb(0, BLS_H_DSTLEN) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_bytecopy
+	copyb(0, BLS_H_DSTLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, BLS_H_DSTP) -> r7
+	add(r7, r6) -> r7
+	copyb(r7, r6) -> 1[a + 0]
+	add(r6, 1) -> r6
+	copyb(0, BLS_H_DSTPLEN) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_H_MSGP) -> r6
+	copyb(0, 8) -> r7
+lh_em_z:
+	eq(r7, 0), j(lh_em_zd)
+	copyb(r6, 0) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(lh_em_z)
+lh_em_zd:
+	copyb(0, BLS_H_MSG) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	copyb(0, BLS_H_MSGP) -> r11
+	add(r11, 64) -> r11
+	copyb(0, BLS_H_MSGLEN) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_bytecopy
+	copyb(0, BLS_H_MSGLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 64) -> r6
+	copyb(0, BLS_H_MSGP) -> r7
+	add(r7, r6) -> r7
+	copyb(r7, 1) -> 1[a + 0]
+	copyb(r7, 0) -> 1[a + 1]
+	copyb(r7, 0) -> 1[a + 2]
+	add(r6, 3) -> r6
+	copyb(0, BLS_H_TMP) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_H_DSTP) -> r10
+	copyb(0, BLS_H_MSGP) -> r11
+	add(r11, r6) -> r11
+	copyb(0, BLS_H_DSTPLEN) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_bytecopy
+	copyb(0, BLS_H_TMP) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	copyb(0, BLS_H_DSTPLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r7
+	add(r6, r7) -> r6
+	copyb(0, BLS_H_MSGP) -> r10
+	copyb(0, r6) -> r11
+	copyb(0, BLS_H_B0) -> r12
+	call zisklib_sha256
+	copyb(0, BLS_H_B0) -> r10
+	copyb(0, BLS_H_BUF) -> r11
+	copyb(0, 32) -> r12
+	call zisklib_bytecopy
+	copyb(0, BLS_H_BUF) -> r7
+	add(r7, 32) -> r7
+	copyb(r7, 1) -> 1[a + 0]
+	copyb(0, BLS_H_DSTP) -> r10
+	copyb(0, BLS_H_BUF) -> r11
+	add(r11, 33) -> r11
+	copyb(0, BLS_H_DSTPLEN) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_bytecopy
+	copyb(0, BLS_H_DSTPLEN) -> r5
+	copyb(r5, 8[a + 0]) -> r6
+	add(r6, 33) -> r6
+	copyb(0, BLS_H_BUFLEN) -> r5
+	copyb(r5, r6) -> 8[a + 0]
+	copyb(0, BLS_H_BUF) -> r10
+	copyb(0, BLS_H_BUFLEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, BLS_H_UNIF) -> r12
+	call zisklib_sha256
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 2) -> 8[a + 0]
+lh_em_loop:
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	eq(r13, 9), j(lh_em_done)
+	sub(r13, 2) -> r6
+	sll(r6, 5) -> r6
+	copyb(0, BLS_H_UNIF) -> r7
+	add(r7, r6) -> r7
+	copyb(0, 0) -> r14
+lh_em_xor:
+	eq(r14, 4), j(lh_em_xd)
+	sll(r14, 3) -> r15
+	copyb(0, BLS_H_B0) -> r10
+	add(r10, r15) -> r10
+	copyb(r10, 8[a + 0]) -> r10
+	add(r7, r15) -> r6
+	copyb(r6, 8[a + 0]) -> r6
+	xor(r10, r6) -> r10
+	copyb(0, BLS_H_BUF) -> r6
+	add(r6, r15) -> r6
+	copyb(r6, r10) -> 8[a + 0]
+	add(r14, 1) -> r14
+	jump(lh_em_xor)
+lh_em_xd:
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	copyb(0, BLS_H_BUF) -> r7
+	add(r7, 32) -> r7
+	copyb(r7, r13) -> 1[a + 0]
+	copyb(0, BLS_H_DSTP) -> r10
+	copyb(0, BLS_H_BUF) -> r11
+	add(r11, 33) -> r11
+	copyb(0, BLS_H_DSTPLEN) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_bytecopy
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	sub(r13, 1) -> r6
+	sll(r6, 5) -> r6
+	copyb(0, BLS_H_UNIF) -> r12
+	add(r12, r6) -> r12
+	copyb(0, BLS_H_TMP) -> r5
+	copyb(r5, r12) -> 8[a + 0]
+	copyb(0, BLS_H_BUF) -> r10
+	copyb(0, BLS_H_BUFLEN) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, BLS_H_TMP) -> r12
+	copyb(r12, 8[a + 0]) -> r12
+	call zisklib_sha256
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	add(r13, 1) -> r13
+	copyb(r5, r13) -> 8[a + 0]
+	jump(lh_em_loop)
+lh_em_done:
+	pop r1
+	ret
+
+; void zisklib_hash_to_field_g2(msg,msglen,dst,dstlen) -> BLS_H_U[24] (2 Fp2)
+zisklib_hash_to_field_g2_bls12_381:
+	push r1
+	call zisklib_expand_message_xmd_bls12_381
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 0) -> 8[a + 0]
+lh_hf_loop:
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	eq(r13, 4), j(lh_hf_done)
+	sll(r13, 6) -> r6
+	copyb(0, BLS_H_UNIF) -> r10
+	add(r10, r6) -> r10
+	call zisklib_os2ip_be_mod_p_bls12_381
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	sll(r13, 5) -> r6
+	sll(r13, 4) -> r7
+	add(r6, r7) -> r6
+	copyb(0, BLS_H_EJ) -> r10
+	copyb(0, BLS_H_U) -> r11
+	add(r11, r6) -> r11
+	copyb(0, 6) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_H_I) -> r5
+	copyb(r5, 8[a + 0]) -> r13
+	add(r13, 1) -> r13
+	copyb(r5, r13) -> 8[a + 0]
+	jump(lh_hf_loop)
+lh_hf_done:
+	pop r1
+	ret
+
+; void zisklib_hash_to_curve_g2(msg r10,msglen r11,dst r12,dstlen r13,result r14) [result=24 u64]
+zisklib_hash_to_curve_g2_bls12_381:
+	push r1
+	copyb(0, BLS_H_RESP) -> r5
+	copyb(r5, r14) -> 8[a + 0]
+	call zisklib_hash_to_field_g2_bls12_381
+	copyb(0, BLS_H_U) -> r10
+	copyb(0, BLS_M2_U) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	call zisklib_simple_swu_g2_bls12_381
+	copyb(0, BLS_M2_PP) -> r10
+	call zisklib_isogeny_map_g2_bls12_381
+	copyb(0, BLS_M2_ISOP) -> r10
+	copyb(0, BLS_H_Q0) -> r11
+	copyb(0, 24) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_H_U) -> r10
+	add(r10, 96) -> r10
+	copyb(0, BLS_M2_U) -> r11
+	copyb(0, 12) -> r12
+	call bn254_memcpy
+	call zisklib_simple_swu_g2_bls12_381
+	copyb(0, BLS_M2_PP) -> r10
+	call zisklib_isogeny_map_g2_bls12_381
+	copyb(0, BLS_M2_ISOP) -> r10
+	copyb(0, BLS_H_Q1) -> r11
+	copyb(0, 24) -> r12
+	call bn254_memcpy
+	copyb(0, BLS_H_Q0) -> r10
+	copyb(0, BLS_H_Q1) -> r11
+	copyb(0, BLS_H_RPT) -> r12
+	call zisklib_add_complete_twist_bls12_381
+	copyb(0, BLS_H_RPT) -> r10
+	call zisklib_clear_cofactor_twist_bls12_381
+	copyb(0, BLS_M2_A) -> r10
+	copyb(0, BLS_H_RESP) -> r11
+	copyb(r11, 8[a + 0]) -> r11
+	copyb(0, 24) -> r12
+	call bn254_memcpy
+	pop r1
+	ret
+

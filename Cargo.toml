@@ -28,6 +28,8 @@ members = [
   "transpilers/riscv",
   "transpilers/riscv2zisk",
   "transpilers/common",
+  "ziskasm",
+  "ziskasm/lang/rust",
   "rom-setup",
   "state-machines/arith",
   "state-machines/binary",
@@ -96,6 +98,7 @@ zisk-common = { path = "common", version = "1.3.0-alpha" }
 zisk-stream = { path = "stream", version = "1.3.0-alpha" }
 zisk-core = { path = "core", version = "1.3.0-alpha" }
 ziskemu = { path = "emulator", version = "1.3.0-alpha" }
+ziskasm = { path = "ziskasm", version = "1.3.0-alpha" }
 zisk-asm-runner = { path = "emulator-asm/asm-runner", version = "1.3.0-alpha" }
 zisk-executor = { path = "executor", version = "1.3.0-alpha" }
 zisk-lib-c = { path = "lib-c", version = "1.3.0-alpha" }

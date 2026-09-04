@@ -1,0 +1,10 @@
+; ============================================================================
+; mem.zisk - memory-map constants shared across every ZisK library
+; precompile family. Holds only `pub define`s (visible library-wide via the
+; multi-file pre-pass); no routines or data. Declared once here rather than
+; repeated in each family file.
+; ============================================================================
+
+; A u64 load from this address yields the current fcall free-input word (the
+; host-provided hint stream). Used by every fcall-based routine.
+pub define FREE_INPUT 0x40000000

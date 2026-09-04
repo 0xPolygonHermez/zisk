@@ -315,14 +315,19 @@ impl Emulator for ZiskEmulator {
             println!("emulate()\n{options}");
         }
 
-        // Check options
-        if options.rom.is_some() && options.elf.is_some() {
+        // Check options: exactly one program source (ROM `-r`, ELF `-e` or ZisK
+        // assembly `-z`) must be provided; they are mutually exclusive.
+        let source_count = [options.rom.is_some(), options.elf.is_some(), options.zisk.is_some()]
+            .iter()
+            .filter(|&&present| present)
+            .count();
+        if source_count == 0 {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                "ROM file and ELF file are incompatible; use only one of them",
+                "a program source must be provided: ROM file (-r), ELF file (-e) or ZisK assembly (-z)",
             )));
-        } else if options.rom.is_none() && options.elf.is_none() {
+        } else if source_count > 1 {
             return Err(ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(
-                "ROM file or ELF file must be provided",
+                "ROM (-r), ELF (-e) and ZisK assembly (-z) are mutually exclusive; use only one",
             )));
         }
 
@@ -385,6 +390,18 @@ impl Emulator for ZiskEmulator {
 
             // Call process_rom_file()
             Self::process_rom_file(rom_filename, &inputs, options, callback)
+        }
+        // If a ZisK assembly path is provided, assemble it into a ROM and run it
+        else if options.zisk.is_some() {
+            let zisk_path = options.zisk.clone().unwrap();
+            let files = ziskasm::collect_zisk_files(&zisk_path)
+                .map_err(|msg| ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(msg)))?;
+            let rom = ziskasm::assemble_files(&files).map_err(|e| {
+                ZiskEmulatorErr::WrongArguments(ErrWrongArguments::new(format!(
+                    "Could not assemble ZisK assembly at '{zisk_path}': {e}"
+                )))
+            })?;
+            Self::process_rom(&rom, &inputs, options, callback)
         }
         // Process the ELF file
         else {

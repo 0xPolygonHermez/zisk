@@ -1,0 +1,387 @@
+; ============================================================================
+; secp256k1/scalar.zisk - scalar-field (Fn) arithmetic for secp256k1. Mirrors
+; ziskos/entrypoint/src/zisklib/lib/secp256k1/scalar.rs. Same shape as field.zisk
+; but with the fixed modulus N (the curve order). Internal labels: `fn_`.
+; All routines are leaves (nested negations in glv_decompose are inlined).
+; ============================================================================
+
+; RAM scratch (own copy, decoupled from field's): arith256_mod header, low output,
+; hinted inverse, and the GLV decomposition buffers.
+u64 SECP_FN_HDR[5]  = 0, 0, 0, 0, 0
+u64 SECP_FN_DL[4]   = 0, 0, 0, 0
+u64 SECP_FN_INV[4]  = 0, 0, 0, 0
+u64 SECP_FN_GLV[10] = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0   ; k1[0..4] ‖ k2[4..8] ‖ s1 ‖ s2
+u64 SECP_FN_K1FN[4] = 0, 0, 0, 0
+u64 SECP_FN_K2FN[4] = 0, 0, 0, 0
+
+; void zisklib_reduce_fn_secp256k1(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = x mod N. Fast path: if x < N, copy through unchanged.
+zisklib_reduce_fn_secp256k1:
+	copyb(0, r10) -> r5
+	add(r5, 24) -> r5
+	copyb(0, SECP_N) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+fn_red_lt:
+	eq(r7, 0), j(fn_red_mod)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(fn_red_copy)
+	ltu(r15, r14), j(fn_red_mod)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fn_red_lt)
+fn_red_copy:
+	copyb(0, r10) -> r5
+	copyb(0, 4) -> r7
+fn_red_cp:
+	eq(r7, 0), j(fn_red_done)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(fn_red_cp)
+fn_red_done:
+	ret
+fn_red_mod:
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_add_fn_secp256k1(const u64* x, const u64* y, u64* result)
+zisklib_add_fn_secp256k1:
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(r5, r11) -> 8[a + 16]        ; &y (c addend)
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_neg_fn_secp256k1(const u64* x, u64* result)
+zisklib_neg_fn_secp256k1:
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_N_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_sub_fn_secp256k1(const u64* x, const u64* y, u64* result)
+zisklib_sub_fn_secp256k1:
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(r5, r11) -> 8[a + 0]         ; &y (a)
+	copyb(0, SECP_N_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(r5, r10) -> 8[a + 16]        ; &x (c addend)
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_mul_fn_secp256k1(const u64* x, const u64* y, u64* result)
+zisklib_mul_fn_secp256k1:
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r11) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r12) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_square_fn_secp256k1(const u64* x, u64* result)
+zisklib_square_fn_secp256k1:
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(r5, r10) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(r5, r11) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	ret
+
+; void zisklib_inv_fn_secp256k1(const u64* x, u64* result)  [r10=x, r11=result]
+;   result = x^(-1) mod N (0 if x == 0). Hint FCALL_SECP256K1_FN_INV + verify.
+zisklib_inv_fn_secp256k1:
+	copyb(0, r10) -> r5
+	copyb(0, 4) -> r6
+fn_inv_zchk:
+	eq(r6, 0), j(fn_inv_zero)
+	copyb(r5, 8[a + 0]) -> r7
+	ltu(0, r7), j(fn_inv_hint)
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(fn_inv_zchk)
+fn_inv_zero:
+	copyb(0, r11) -> r5
+	copyb(0, 4) -> r6
+fn_inv_zl:
+	eq(r6, 0), j(fn_inv_done)
+	copyb(r5, 0) -> 8[a + 0]
+	add(r5, 8) -> r5
+	sub(r6, 1) -> r6
+	jump(fn_inv_zl)
+fn_inv_done:
+	ret
+fn_inv_hint:
+	fcall_param(4, r10) -> r14
+	fcall(FCALL_SECP256K1_FN_INV, 0) -> r14
+	copyb(0, SECP_FN_INV) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 3) -> r15
+fn_inv_rd:
+	eq(r15, 0), j(fn_inv_lt)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(fn_inv_rd)
+fn_inv_lt:
+	copyb(0, SECP_FN_INV) -> r5
+	add(r5, 24) -> r5
+	copyb(0, SECP_N) -> r6
+	add(r6, 24) -> r6
+	copyb(0, 4) -> r7
+fn_inv_ltl:
+	eq(r7, 0), j(fn_inv_panic)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	ltu(r14, r15), j(fn_inv_vfy)
+	ltu(r15, r14), j(fn_inv_panic)
+	sub(r5, 8) -> r5
+	sub(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fn_inv_ltl)
+fn_inv_vfy:
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(r5, r10) -> 8[a + 0]
+	copyb(0, SECP_FN_INV) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, SECP_FN_DL) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	copyb(0, SECP_FN_DL) -> r5
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 1), j(fn_inv_hi)
+	jump(fn_inv_panic)
+fn_inv_hi:
+	copyb(0, 3) -> r7
+	add(r5, 8) -> r5
+fn_inv_hil:
+	eq(r7, 0), j(fn_inv_wr)
+	copyb(r5, 8[a + 0]) -> r14
+	eq(r14, 0), j(fn_inv_hin)
+	jump(fn_inv_panic)
+fn_inv_hin:
+	add(r5, 8) -> r5
+	sub(r7, 1) -> r7
+	jump(fn_inv_hil)
+fn_inv_wr:
+	copyb(0, SECP_FN_INV) -> r5
+	copyb(0, 4) -> r7
+fn_inv_wrl:
+	eq(r7, 0), j(fn_inv_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(fn_inv_wrl)
+fn_inv_ret:
+	ret
+fn_inv_panic:
+	copyb(0, 0) -> r10, end
+
+; u64 zisklib_glv_decompose_fn_secp256k1(const u64* k, u64* k1_out, u64* k2_out)
+;   [r10=k, r11=k1_out, r12=k2_out] -> r10 = sigma1 | (sigma2 << 1).
+;   Hints (k1, k2, sigma1, sigma2) via FCALL_SECP256K1_GLV_DECOMPOSE and verifies:
+;   k1,k2 < 2^128 (top two limbs 0), sigma1,sigma2 in {0,1}, and
+;   lambda*k2_fn + k1_fn == k (mod N), where k_i_fn = -k_i (mod N) if sigma_i else k_i.
+zisklib_glv_decompose_fn_secp256k1:
+	fcall_param(4, r10) -> r14
+	fcall(FCALL_SECP256K1_GLV_DECOMPOSE, 0) -> r14
+	; read 10 result words into SECP_FN_GLV
+	copyb(0, SECP_FN_GLV) -> r6
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	copyb(0, 9) -> r15
+fn_glv_rd:
+	eq(r15, 0), j(fn_glv_bound)
+	fcall_get(0, 0) -> r14
+	copyb(0, [FREE_INPUT]) -> r7
+	copyb(r6, r7) -> 8[a + 0]
+	add(r6, 8) -> r6
+	sub(r15, 1) -> r15
+	jump(fn_glv_rd)
+fn_glv_bound:
+	; k1[2],k1[3],k2[2],k2[3] must be 0 (GLV words 2,3,6,7)
+	copyb(0, SECP_FN_GLV) -> r5
+	copyb(r5, 8[a + 16]) -> r14        ; k1[2]
+	ltu(0, r14), j(fn_glv_panic)
+	copyb(r5, 8[a + 24]) -> r14        ; k1[3]
+	ltu(0, r14), j(fn_glv_panic)
+	copyb(r5, 8[a + 48]) -> r14        ; k2[2]
+	ltu(0, r14), j(fn_glv_panic)
+	copyb(r5, 8[a + 56]) -> r14        ; k2[3]
+	ltu(0, r14), j(fn_glv_panic)
+	; sigma1 (word 8), sigma2 (word 9) must be <= 1
+	copyb(r5, 8[a + 64]) -> r14        ; sigma1
+	ltu(1, r14), j(fn_glv_panic)       ; 1 < sigma1 -> invalid
+	copyb(r5, 8[a + 72]) -> r14        ; sigma2
+	ltu(1, r14), j(fn_glv_panic)
+	; --- k1_fn = sigma1 ? -k1 : k1  (into SECP_FN_K1FN) ---
+	copyb(r5, 8[a + 64]) -> r14        ; sigma1
+	eq(r14, 0), j(fn_glv_k1copy)
+	; -k1 mod N: arith256_mod(k1, N-1, 0, N) -> K1FN
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(0, SECP_FN_GLV) -> r7        ; &k1 = &GLV[0]
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(0, SECP_N_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, SECP_FN_K1FN) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	jump(fn_glv_k2)
+fn_glv_k1copy:
+	; K1FN = k1 (GLV[0..4])
+	copyb(0, SECP_FN_GLV) -> r5
+	copyb(0, SECP_FN_K1FN) -> r6
+	copyb(0, 4) -> r7
+fn_glv_k1cp:
+	eq(r7, 0), j(fn_glv_k2)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fn_glv_k1cp)
+fn_glv_k2:
+	; --- k2_fn = sigma2 ? -k2 : k2  (into SECP_FN_K2FN) ---
+	copyb(0, SECP_FN_GLV) -> r5
+	copyb(r5, 8[a + 72]) -> r14        ; sigma2
+	eq(r14, 0), j(fn_glv_k2copy)
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(0, SECP_FN_GLV) -> r7
+	add(r7, 32) -> r7                  ; &k2 = &GLV[4]
+	copyb(r5, r7) -> 8[a + 0]
+	copyb(0, SECP_N_MINUS_ONE) -> r7
+	copyb(r5, r7) -> 8[a + 8]
+	copyb(0, SECP_ZERO) -> r7
+	copyb(r5, r7) -> 8[a + 16]
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, SECP_FN_K2FN) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	jump(fn_glv_vfy)
+fn_glv_k2copy:
+	copyb(0, SECP_FN_GLV) -> r5
+	add(r5, 32) -> r5                  ; &k2
+	copyb(0, SECP_FN_K2FN) -> r6
+	copyb(0, 4) -> r7
+fn_glv_k2cp:
+	eq(r7, 0), j(fn_glv_vfy)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fn_glv_k2cp)
+fn_glv_vfy:
+	; DL = lambda*k2_fn + k1_fn mod N ; assert DL == k (r10)
+	copyb(0, SECP_FN_HDR) -> r5
+	copyb(0, SECP_LAMBDA) -> r7
+	copyb(r5, r7) -> 8[a + 0]          ; &lambda
+	copyb(0, SECP_FN_K2FN) -> r7
+	copyb(r5, r7) -> 8[a + 8]          ; &k2_fn
+	copyb(0, SECP_FN_K1FN) -> r7
+	copyb(r5, r7) -> 8[a + 16]         ; &k1_fn (c addend)
+	copyb(0, SECP_N) -> r7
+	copyb(r5, r7) -> 8[a + 24]
+	copyb(0, SECP_FN_DL) -> r7
+	copyb(r5, r7) -> 8[a + 32]
+	arith256_mod(0, r5) -> r14
+	copyb(0, SECP_FN_DL) -> r5
+	copyb(0, r10) -> r6                ; &k
+	copyb(0, 4) -> r7
+fn_glv_eq:
+	eq(r7, 0), j(fn_glv_out)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r6, 8[a + 0]) -> r15
+	eq(r14, r15), j(fn_glv_eqn)
+	jump(fn_glv_panic)
+fn_glv_eqn:
+	add(r5, 8) -> r5
+	add(r6, 8) -> r6
+	sub(r7, 1) -> r7
+	jump(fn_glv_eq)
+fn_glv_out:
+	; k1 (GLV[0..4]) -> k1_out (r11) ; k2 (GLV[4..8]) -> k2_out (r12)
+	copyb(0, SECP_FN_GLV) -> r5
+	copyb(0, 4) -> r7
+fn_glv_ok1:
+	eq(r7, 0), j(fn_glv_ok2)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r11, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r11, 8) -> r11
+	sub(r7, 1) -> r7
+	jump(fn_glv_ok1)
+fn_glv_ok2:
+	copyb(0, SECP_FN_GLV) -> r5
+	add(r5, 32) -> r5
+	copyb(0, 4) -> r7
+fn_glv_ok2l:
+	eq(r7, 0), j(fn_glv_ret)
+	copyb(r5, 8[a + 0]) -> r14
+	copyb(r12, r14) -> 8[a + 0]
+	add(r5, 8) -> r5
+	add(r12, 8) -> r12
+	sub(r7, 1) -> r7
+	jump(fn_glv_ok2l)
+fn_glv_ret:
+	; return sigma1 | (sigma2 << 1)
+	copyb(0, SECP_FN_GLV) -> r5
+	copyb(r5, 8[a + 64]) -> r6         ; sigma1
+	copyb(r5, 8[a + 72]) -> r7         ; sigma2
+	sll(r7, 1) -> r7
+	or(r6, r7) -> r10
+	ret
+fn_glv_panic:
+	copyb(0, 0) -> r10, end
