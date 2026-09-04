@@ -17,10 +17,13 @@ pub const BLAKE2_COST: u64 = 8 * 234;
 pub const BLAKE3_COST: u64 = 56 * 112;
 pub const MAIN_COST: u64 = 68;
 
+// Zba costs. sh<n>add and slli.uw are proven natively (a single Binary / BinaryExtension
+// operation); the .uw shift-and-adds are transpiled to `and` + native sh<n>add, and add.uw to
+// `and` + `add`, so their cost is the one of the sequence: one extra main step plus both ops.
 pub const ADD_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_ADD_COST; // step extra + and + add
-pub const SH_ADD_COST: u64 = MAIN_COST + BINARY_E_COST + BINARY_ADD_COST; // step extra + ssl + add
-pub const SH_ADD_U_W_COST: u64 = 2 * MAIN_COST + BINARY_E_COST + BINARY_COST + BINARY_ADD_COST; // 2 * step extra + ssl + and + add
-pub const SLL_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_E_COST; // step extra + and + ssl
+pub const SH_ADD_COST: u64 = MAIN_COST + BINARY_E_COST + BINARY_ADD_COST; // decomposed sh<n>add: step extra + ssl + add (the native one is a single BINARY_COST op)
+pub const SH_ADD_U_W_COST: u64 = MAIN_COST + BINARY_COST + BINARY_COST; // step extra + and + sh<n>add
+pub const SLL_U_W_COST: u64 = BINARY_E_COST; // native slli.uw: a single binary extension op
 
 /*
     Hash throughput comparison, where cost is clocks per columns:
