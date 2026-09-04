@@ -100,7 +100,7 @@ install_dependencies_darwin() {
     total_steps=1
 
     step "Installing package dependencies for macOS..."
-    ensure brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium cmake || return 1
+    ensure brew reinstall jq curl libomp protobuf openssl nasm pkgconf open-mpi libffi nlohmann-json libsodium || return 1
     # cmake is for the ziskethone C++ guest cross-compile (REBUILD_ZISKETHONE_GUEST=1).
     ensure brew reinstall cmake || return 1
 }
