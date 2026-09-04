@@ -1139,9 +1139,9 @@ checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
 
 [[package]]
 name = "cc"
-version = "1.4.4"
+version = "1.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ad534f4357a5264cce5019c989cf66a4f0dc4e0d1b1d15f8aacec0ff7360273"
+checksum = "005ec2760ca554fae18df7a11195552ec576cd665632a881bc011d5bb2fd4d80"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -2173,9 +2173,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.11"
+version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
+checksum = "3e0f1c7c3a72c66fd80abe965175f7523475c0489a87d3ff9d6e8c87d87a9d2d"
 
 [[package]]
 name = "fixed-cache"
@@ -3961,7 +3961,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3972,7 +3972,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "anyhow",
  "num-bigint",
@@ -3988,7 +3988,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "anyhow",
  "clap",
@@ -4014,7 +4014,7 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "colored",
  "proofman-common",
@@ -4232,7 +4232,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "bincode",
  "blake3",
@@ -4264,7 +4264,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "borsh",
  "colored",
@@ -4293,7 +4293,7 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
 ]
@@ -4301,7 +4301,7 @@ dependencies = [
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "anyhow",
  "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
@@ -4315,7 +4315,7 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "blake3",
  "cfg-if",
@@ -4340,7 +4340,7 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "itoa",
  "proofman-common",
@@ -4352,7 +4352,7 @@ dependencies = [
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4362,7 +4362,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "crossbeam-channel",
  "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred)",
@@ -4380,7 +4380,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 
 [[package]]
 name = "proofman-starks-src"
@@ -4390,7 +4390,7 @@ source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-de
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4399,7 +4399,7 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "bincode",
  "num-traits",
@@ -4424,7 +4424,7 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#428021f4fe3700aea6a8a3c430553e1f4733210c"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=perf%2Ftree-compute-preferred#9b8c0dde6c926a73ab57168d2404a159e27fcee1"
 dependencies = [
  "libloading",
  "proofman-common",
@@ -6047,9 +6047,9 @@ dependencies = [
 
 [[package]]
 name = "tinyvec"
-version = "1.12.0"
+version = "1.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb4ebadaa0af04fab11ae01eb5f9fdb5f9c5b875506e210e71c07873528baa7f"
+checksum = "4cf0ded5c4e56918d8f8a339e1bb67d038d3bc6d144ac407904015ba2e4cde9b"
 dependencies = [
  "tinyvec_macros",
 ]
@@ -6090,9 +6090,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-rustls"
-version = "0.26.4"
+version = "0.26.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1729aa945f29d91ba541258c8df89027d5792d85a8841fb65e8bf0f4ede4ef61"
+checksum = "b0c85f2c3ef0b1cd58b36682f4b17aaa995f0e5db534d85692b4903abce21f67"
 dependencies = [
  "rustls",
  "tokio",
