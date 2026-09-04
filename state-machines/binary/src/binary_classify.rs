@@ -82,7 +82,8 @@ pub fn opcode_is_shift(opcode: ZiskOp) -> bool {
         | ZiskOp::Bclr
         | ZiskOp::Bext
         | ZiskOp::Binv
-        | ZiskOp::Bset => true,
+        | ZiskOp::Bset
+        | ZiskOp::SllUW => true,
 
         ZiskOp::SignExtendB
         | ZiskOp::SignExtendH
@@ -130,6 +131,8 @@ pub fn opcode_is_shift_word(opcode: ZiskOp) -> bool {
         ZiskOp::Sll
         | ZiskOp::Srl
         | ZiskOp::Sra
+        // slli.uw masks the shift amount with 6 bits, like the 64-bit shifts
+        | ZiskOp::SllUW
         | ZiskOp::SignExtendB
         | ZiskOp::SignExtendH
         | ZiskOp::SignExtendW

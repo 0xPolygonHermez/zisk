@@ -288,6 +288,22 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
                     t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
                 }
             }
+            ZiskOp::SllUW => {
+                // slli.uw: rd = zext32(a) << (b & 63). Like Sll, but only the low 4 bytes of a
+                // take part (that is the zero extension) and the result keeps its full 64 bits,
+                // unlike SllW which truncates to 32 and sign-extends.
+                //
+                // The instruction sets m32, so the bus already zeroed the high half of a and those
+                // bytes are zero; skipping them makes the zero extension explicit.
+                binary_extension_table_op = BinaryExtensionTableOp::SllUw;
+                for j in 0..4 {
+                    let bits_to_shift = b_low + 8 * j as u64;
+                    let out =
+                        if bits_to_shift < 64 { (a_bytes[j] as u64) << bits_to_shift } else { 0 };
+                    t_out[j][0] = (out & 0xffffffff) as u32;
+                    t_out[j][1] = ((out >> 32) & 0xffffffff) as u32;
+                }
+            }
             ZiskOp::SrlW => {
                 binary_extension_table_op = BinaryExtensionTableOp::SrlW;
                 for j in 0..8 {

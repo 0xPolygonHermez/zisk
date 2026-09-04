@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "3388077915278649f53f558308dc22145b761dc6da8ecca7d39bd7456d8680ed";
+pub const PILOUT_HASH: &str = "41e6815d052c82d450640446cf43301bd418c90f0089a018571624067770ffe1";
 
 //AIRGROUP CONSTANTS
 
@@ -315,7 +315,7 @@ trace_row!(BinaryFixedRow<F> {
 pub type BinaryFixed<F> = GenericTrace<BinaryFixedRow<F>, 4194304, 0, 13>;
 
 trace_row!(BinaryTraceRow<F> {
- b_op:ubit(7), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[ubit(2); 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(10), mode32_and_c_is_signed:bit,
+ b_op:ubit(7), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[ubit(4); 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(10), mode32_and_c_is_signed:bit,
 });
 
 pub type BinaryTrace<R> = GenericTrace<R, 4194304, 0, 13>;
@@ -326,7 +326,7 @@ trace_row!(BinaryLargeFixedRow<F> {
 pub type BinaryLargeFixed<F> = GenericTrace<BinaryLargeFixedRow<F>, 8388608, 0, 14>;
 
 trace_row!(BinaryLargeTraceRow<F> {
- b_op:ubit(7), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[ubit(2); 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(10), mode32_and_c_is_signed:bit,
+ b_op:ubit(7), free_in_a:[u8; 8], free_in_b:[u8; 8], free_in_c:[u8; 8], carry:[ubit(4); 8], mode32:bit, result_is_a:bit, use_first_byte:bit, c_is_signed:bit, b_op_or_sext:ubit(10), mode32_and_c_is_signed:bit,
 });
 
 pub type BinaryLargeTrace<R> = GenericTrace<R, 8388608, 0, 14>;
@@ -706,12 +706,12 @@ trace_row!(VirtualTableZisk0TraceRow<F> {
 pub type VirtualTableZisk0Trace<F> = GenericTrace<VirtualTableZisk0TraceRow<F>, 2097152, 0, 48>;
 
 trace_row!(VirtualTableZisk1FixedRow<F> {
- __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_2: F, COL_20_49_3: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, UID_20: F, __L1__: F,
+ __ROW_INDEX__: F, COL_9_9_0: F, COL_14_14_0: F, COL_14_14_1: F, UID_14: F, COL_15_16_0: F, COL_15_16_1: F, COL_15_16_2: F, COL_15_16_3: F, COL_15_16_4: F, COL_15_16_5: F, UID_15: F, COL_16_22_0: F, COL_16_22_1: F, COL_16_22_2: F, COL_16_22_3: F, COL_16_22_4: F, COL_16_22_5: F, UID_16: F, COL_17_28_0: F, COL_17_28_1: F, COL_17_28_2: F, COL_17_28_3: F, COL_17_28_4: F, COL_17_28_5: F, COL_17_28_6: F, UID_17: F, COL_18_35_0: F, COL_18_35_1: F, COL_18_35_2: F, COL_18_35_3: F, COL_18_35_4: F, COL_18_35_5: F, COL_18_35_6: F, COL_19_42_0: F, COL_19_42_1: F, COL_19_42_4: F, COL_19_42_5: F, COL_19_42_6: F, COL_20_49_0: F, COL_20_49_1: F, COL_20_49_4: F, COL_20_49_5: F, COL_20_49_6: F, COL_21_56_0: F, COL_21_56_1: F, COL_21_56_2: F, COL_21_56_3: F, COL_21_56_4: F, COL_21_56_5: F, COL_21_56_6: F, UID_21: F, __L1__: F,
 });
 pub type VirtualTableZisk1Fixed<F> = GenericTrace<VirtualTableZisk1FixedRow<F>, 2097152, 0, 49>;
 
 trace_row!(VirtualTableZisk1TraceRow<F> {
- multiplicity:[F; 21],
+ multiplicity:[F; 22],
 });
 
 pub type VirtualTableZisk1Trace<F> = GenericTrace<VirtualTableZisk1TraceRow<F>, 2097152, 0, 49>;
@@ -1090,12 +1090,12 @@ pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 13, PackedInfoConst {
         is_packed: true,
         num_packed_words: 4,
-        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 10, 1],
+        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 10, 1],
     }),
     (0, 14, PackedInfoConst {
         is_packed: true,
         num_packed_words: 4,
-        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 10, 1],
+        unpack_info: &[7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 4, 4, 4, 4, 4, 4, 4, 4, 1, 1, 1, 1, 10, 1],
     }),
     (0, 15, PackedInfoConst {
         is_packed: true,

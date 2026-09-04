@@ -639,7 +639,9 @@ expensive ones: they force a read of the surrounding word before updating the by
 
 When symbols are available (`-S`), `--mem-stats` / `--mem-full-stats` also add three rankings that
 attribute the memory cost to functions. Costs are shown in millions (marked `(M)` in the header);
-the SDK report keeps raw values.
+the SDK report keeps raw values, and so does the
+[CSV snapshot](#saving-a-snapshot---save-stats), which carries the same three rankings when
+`--save-stats` is combined with these flags.
 
 ```bash
 ziskemu -e <elf> -i <input> -X -S --mem-full-stats
@@ -835,6 +837,35 @@ The snapshot holds the aggregate counters only — cost distribution, per-opcode
 precompiles, FROPS and memory — with no per-function detail, so it is small enough to commit
 alongside a benchmark. `--csv-separator` changes the field separator (default `,`).
 
+The memory sections (**MEM COST BY TYPE**, **DETAILED MEM COST** and the byte-offset table) are
+always written, whether or not `--mem-stats` / `--mem-full-stats` were passed — those flags only
+control what the *text* report shows. Adding them does extend the snapshot with the three
+[memory function rankings](#ranking-functions-by-memory-cost) when symbols are loaded (`-S`), the
+one per-function exception: sections `MEM_TOP_COST`, `MEM_TOP_UNALIGNED` and `MEM_TOP_RATIO`.
+
+```bash
+ziskemu -e <elf> -i <input> -X -S --mem-full-stats --save-stats mem.csv
+```
+
+```
+MEM_TOP_COST,MEM COST,%,CALLS,COST/CALL,FUNCTION
+MEM_TOP_COST,13393854,99.99%,1,13393854,sha256::__zisk_entry
+MEM_TOP_COST,12958412,96.74%,1,12958412,sha256::sha256f_apply
+
+MEM_TOP_UNALIGNED,UNALIGNED,ALIGNED,% UNALIGNED,CALLS,FUNCTION
+MEM_TOP_UNALIGNED,9803076,3155336,75.65%,1,sha256::sha256f_apply
+MEM_TOP_UNALIGNED,1749515,139404,92.62%,1,sha2::sha256::compress256
+
+MEM_TOP_RATIO,RATIO,UNALIGNED,% UNALIGNED,UNALIGNED ACCESSES/CALL,CALLS,FUNCTION
+MEM_TOP_RATIO,3.34,217932,2.19%,125,12,sha2::sha256::soft::sha256msg1::sigma0x4
+MEM_TOP_RATIO,2.97,935738,9.39%,164,32,sha2::sha256::soft::sha256_digest_round_x2
+```
+
+Costs are raw here (the text report scales them to millions) and the function name is the full
+mangled symbol, in the last field, quoted when it contains the separator — so `csv` readers handle
+the generic parameters correctly. These sections are ignored by `--ref-stats` / `--diff-stats` and
+by the HTML report, so an older snapshot still compares against a newer one.
+
 ### Diffing against a snapshot (`--ref-stats`)
 
 Run the modified program and compare it against the saved reference in the same command. The full
@@ -923,6 +954,19 @@ ziskemu -e <elf> -i <input> -X --html-report profile.html
 The page contains the same data as the text report — cost distribution, base and precompiled
 opcodes, FROPS, and the memory breakdown — laid out as sortable tables and bars, which is easier to
 scan and to attach to a PR or a ticket than a wall of terminal output.
+
+Adding `--mem-stats` / `--mem-full-stats` with symbols (`-S`) appends the three
+[memory function rankings](#ranking-functions-by-memory-cost) — **TOP MEMORY COST FUNCTIONS**,
+**TOP UNALIGNED MEMORY FUNCTIONS** and **TOP UNALIGNED/STEP RATIO FUNCTIONS** — as three more
+tables at the end of the page, with raw costs instead of millions:
+
+```bash
+ziskemu -e <elf> -i <input> -S --mem-full-stats --html-report mem.html
+```
+
+The comparison report matches the two cost-based rankings **by function name** (calls in the COUNT
+columns, memory cost — total, then unaligned only — in the COST columns), so a function that appears
+in only one of the runs shows `—` on the other side. The ratio ranking is single-run only.
 
 ### Comparison report
 
