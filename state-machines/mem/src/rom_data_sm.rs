@@ -144,8 +144,12 @@ impl<F: PrimeField64> RomDataSM<F> {
         let count = i;
 
         let (last_row, last_lane) = lanes.split(count - 1);
-        // The padding lanes repeat the last lane, with the step pinned to MEMORY_INIT_STEP so it
-        // differs from the last mem_op lane, and no address change.
+        // The padding lanes repeat the last lane (same addr and value, addr_change = 0), so they
+        // are sent to the bus as plain MEMORY_LOAD_OP and never as an INIT: the ROM provides
+        // exactly one INIT per address, and that one was already consumed by the first access to
+        // this address. The step is pinned to MEMORY_INIT_STEP because that is the step the
+        // padding lookup subtracts (`mul: -padding_size` in rom_data.pil), so these extra proves
+        // cancel out on the bus.
         let pad_addr = trace[last_row].get_addr(last_lane);
         let pad_value =
             [trace[last_row].get_value(last_lane, 0), trace[last_row].get_value(last_lane, 1)];
@@ -345,8 +349,12 @@ impl<F: PrimeField64> RomDataSM<F> {
             }
         }
 
-        // The padding lanes repeat the last lane, with the step pinned to MEMORY_INIT_STEP so it
-        // differs from the last mem_op lane, and no address change.
+        // The padding lanes repeat the last lane (same addr and value, addr_change = 0), so they
+        // are sent to the bus as plain MEMORY_LOAD_OP and never as an INIT: the ROM provides
+        // exactly one INIT per address, and that one was already consumed by the first access to
+        // this address. The step is pinned to MEMORY_INIT_STEP because that is the step the
+        // padding lookup subtracts (`mul: -padding_size` in rom_data.pil), so these extra proves
+        // cancel out on the bus.
         for islot in count..num_slots {
             let (row, lane) = lanes.split(islot);
             trace[row].set_addr(lane, last_addr);

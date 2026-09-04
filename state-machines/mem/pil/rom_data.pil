@@ -29,6 +29,10 @@ airtemplate RomData(const int N = 2**21, const int id = MEMORY_ID, const int rom
 
     assert(bytes == 8);
     assert(lanes_x_row >= 1);
+    // Witness generation maps virtual rows to (row, lane) with a shift and a mask
+    // (see MemLanes in state-machines/mem-common/src/mem_lanes.rs), so the lane count
+    // must be a power of two.
+    assert((lanes_x_row & (lanes_x_row - 1)) == 0, `lanes_x_row must be a power of two but it's ${lanes_x_row}`);
 
     const expr L1 = get_L1();
     const expr LAST = L1';

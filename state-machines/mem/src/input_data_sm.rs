@@ -505,7 +505,7 @@ impl<F: PrimeField64> InputDataSM<F> {
             let (row, lane) = lanes.split(islot);
             #[cfg(feature = "debug_mem")]
             {
-                assert!(!filled_slots[islot],"InputDataSM: overwiting non empty slot {islot} at index {index} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
+                assert!(!filled_slots[islot],"InputDataSM: overwriting non empty slot {islot} at index {index} for mem_op with addr 0x{:X} => 0x{:X} step:{} => {}",
                     trace[row].get_addr(lane) * 8, mem_op.addr * 8, trace[row].get_step(lane), mem_op.step);
                 filled_slots[islot] = true;
             }

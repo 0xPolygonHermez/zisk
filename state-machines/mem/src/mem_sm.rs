@@ -753,7 +753,7 @@ impl<F: PrimeField64> MemSM<F> {
                 // It's the first address access, it's a read, means no dual.
                 debug_assert!(
                     !dual_available,
-                    "MemSM: asddr_changes && dual_available (addr: 0x{:X} index: {index})",
+                    "MemSM: addr_changes && dual_available (addr: 0x{:X} index: {index})",
                     mem_op.addr * 8
                 );
                 current_offsets[addr_index] = (islot as u32) | OFFSET_DUAL_FLAG;
