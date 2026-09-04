@@ -1,11 +1,11 @@
-//! Unit tests for the ArithEq area-minimizing planner (moved out of `arith_eq_planner.rs`).
+//! Unit tests for the ArithEq air-selection planner (moved out of `arith_eq_planner.rs`).
 //! Declared there via `#[cfg(test)] #[path = "tests/arith_eq_planner_tests.rs"] mod tests;`,
 //! so it stays a child module of `arith_eq_planner` and keeps `super::` access to privates.
 
 use super::*;
 use zisk_pil::{
-    Arith256Trace, Arith256XTrace, ArithBn254ComplexTrace, ArithBn254EcTrace, ArithEqTrace,
-    ArithSecp256K1Trace,
+    Arith256XLargeTrace, Arith256XTrace, ArithBn254LargeTrace, ArithBn254Trace, ArithEqLargeTrace,
+    ArithEqTrace, ArithSecp256K1LargeTrace, ArithSecp256K1Trace,
 };
 
 fn counts(pairs: &[(ArithEqOp, u64)]) -> [u64; ARITH_EQ_OP_NUM] {
@@ -21,12 +21,11 @@ fn meta_of(air_id: usize) -> ArithEqAirMeta {
 }
 
 fn plan_area(plan: &[ArithEqAirPlan]) -> u64 {
-    plan.iter()
-        .map(|p| {
-            let m = meta_of(p.air_id);
-            p.instances * m.num_rows as u64 * m.row_size as u64
-        })
-        .sum()
+    plan.iter().map(|p| p.instances * meta_of(p.air_id).cost as u64).sum()
+}
+
+fn plan_instances(plan: &[ArithEqAirPlan]) -> u64 {
+    plan.iter().map(|p| p.instances).sum()
 }
 
 // Config-air ids taken straight from the generated `zisk_pil` trace types (pil_helpers/traces.rs),
@@ -35,11 +34,13 @@ fn plan_area(plan: &[ArithEqAirPlan]) -> u64 {
 fn all_air_ids() -> Vec<usize> {
     vec![
         ArithEqTrace::<()>::AIR_ID,
-        Arith256Trace::<()>::AIR_ID,
+        ArithEqLargeTrace::<()>::AIR_ID,
         Arith256XTrace::<()>::AIR_ID,
+        Arith256XLargeTrace::<()>::AIR_ID,
         ArithSecp256K1Trace::<()>::AIR_ID,
-        ArithBn254EcTrace::<()>::AIR_ID,
-        ArithBn254ComplexTrace::<()>::AIR_ID,
+        ArithSecp256K1LargeTrace::<()>::AIR_ID,
+        ArithBn254Trace::<()>::AIR_ID,
+        ArithBn254LargeTrace::<()>::AIR_ID,
     ]
 }
 
@@ -53,13 +54,54 @@ fn assert_conserves(plan: &[ArithEqAirPlan], totals: &[u64; ARITH_EQ_OP_NUM]) {
     assert_eq!(&summed, totals, "planner must conserve every operation's total count");
 }
 
+/// The air table must list every config at two heights, the tall one strictly taller and exactly as
+/// wide. That is what the strategy relies on to trade area for a lower instance count.
 #[test]
-fn single_small_family_stays_specialized() {
+fn every_config_is_a_size_ladder() {
+    for (short, tall) in [
+        (ArithEqTrace::<()>::AIR_ID, ArithEqLargeTrace::<()>::AIR_ID),
+        (Arith256XTrace::<()>::AIR_ID, Arith256XLargeTrace::<()>::AIR_ID),
+        (ArithSecp256K1Trace::<()>::AIR_ID, ArithSecp256K1LargeTrace::<()>::AIR_ID),
+        (ArithBn254Trace::<()>::AIR_ID, ArithBn254LargeTrace::<()>::AIR_ID),
+    ] {
+        let (short, tall) = (meta_of(short), meta_of(tall));
+        assert!(tall.num_rows > short.num_rows, "air {} must be taller", tall.air_id);
+        assert!(tall.cost > short.cost, "air {} must cost more, being taller", tall.air_id);
+        assert_eq!(tall.ops, short.ops, "air {} must cover the same operations", tall.air_id);
+    }
+}
+
+/// The sweep is exhaustive over which air takes each tail, so its cost is the product of the
+/// candidate counts. Pinning the current worst case keeps the headroom under
+/// [`MAX_TAIL_COMBINATIONS`] visible: a new config air multiplies it, it does not add to it.
+#[test]
+fn the_sweep_stays_within_its_ceiling() {
+    // Worst case: every operation has a tail, so every one contributes its full candidate count.
+    let airs = all_air_ids();
+    let metas = air_metas();
+    let combinations: u64 = ArithEqOp::ALL
+        .iter()
+        .map(|&op| metas.iter().filter(|m| airs.contains(&m.air_id) && m.covers(op)).count() as u64)
+        .product();
+
+    // Four candidates for an operation a specialised config covers (that config's two heights plus
+    // the two universal airs), two for the secp256r1 pair that only the universal airs prove.
+    assert_eq!(combinations, 4u64.pow(9) * 2u64.pow(2));
+    assert!(
+        combinations <= MAX_TAIL_COMBINATIONS,
+        "{combinations} placements exceed the {MAX_TAIL_COMBINATIONS} the sweep is sized for",
+    );
+}
+
+/// A handful of operations must not open a tall instance: one instance either way, so the area
+/// tie-break sends them to the narrowest, shortest air that covers them.
+#[test]
+fn a_small_family_takes_the_cheapest_air_that_covers_it() {
     let totals = counts(&[(ArithEqOp::Arith256, 3)]);
     let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
     assert_eq!(plan.len(), 1);
-    assert_eq!(plan[0].air_id, Arith256Trace::<()>::AIR_ID);
+    assert_eq!(plan[0].air_id, Arith256XTrace::<()>::AIR_ID);
     assert_eq!(plan[0].instances, 1);
 }
 
@@ -72,79 +114,58 @@ fn one_family_two_ops_uses_single_covering_air() {
     assert_eq!(plan[0].air_id, Arith256XTrace::<()>::AIR_ID);
 }
 
+/// The criterion's headline: leftovers of unrelated families pool into one instance rather than
+/// taking one each, because the instance count is what it looks at first.
 #[test]
-fn small_leftovers_consolidate_into_least_area() {
+fn small_leftovers_consolidate_into_one_instance() {
     let totals = counts(&[(ArithEqOp::Arith256Mod, 4), (ArithEqOp::Secp256k1Add, 5)]);
     let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
 
-    let all_specialized = area(&meta_of(Arith256XTrace::<()>::AIR_ID), 4)
-        + area(&meta_of(ArithSecp256K1Trace::<()>::AIR_ID), 5);
-    let consolidated = area(&meta_of(ArithEqTrace::<()>::AIR_ID), 9);
-    assert_eq!(plan_area(&plan), all_specialized.min(consolidated));
-    if consolidated < all_specialized {
-        assert_eq!(plan.len(), 1);
-        assert_eq!(plan[0].air_id, ArithEqTrace::<()>::AIR_ID);
-    }
+    assert_eq!(plan_instances(&plan), 1, "one instance holds both leftovers");
+    assert_eq!(plan.len(), 1);
+    assert_eq!(plan[0].air_id, ArithEqTrace::<()>::AIR_ID, "and it is the short universal air");
 }
 
+/// Work that fills whole instances goes to the air that needs the fewest of them, which is the tall
+/// universal one — even though a specialized air would take less area per operation.
 #[test]
-fn large_family_fills_specialized() {
-    let cap_arith = cap(&meta_of(Arith256Trace::<()>::AIR_ID));
-    let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_arith)]);
+fn a_bulk_goes_where_the_fewest_instances_are_needed() {
+    let cap_tall = cap(&meta_of(ArithEqLargeTrace::<()>::AIR_ID));
+    let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_tall)]);
     let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
     assert_eq!(plan.len(), 1);
-    assert_eq!(plan[0].air_id, Arith256Trace::<()>::AIR_ID);
+    assert_eq!(plan[0].air_id, ArithEqLargeTrace::<()>::AIR_ID);
     assert_eq!(plan[0].instances, 3);
+
+    // The specialized air is narrower but shorter, so it would need more instances — which the
+    // criterion rules out before area is ever compared.
+    let narrow = meta_of(Arith256XLargeTrace::<()>::AIR_ID);
+    assert!((3 * cap_tall).div_ceil(cap(&narrow)) > 3);
+    assert!(plan_area(&plan) > area(&narrow, 3 * cap_tall), "and it really is dearer in area");
 }
 
+/// A bulk's tail can land away from the bulk, splitting one operation across two airs — here into
+/// the instance another family needs anyway, which costs no extra instance at all.
 #[test]
-fn full_instances_specialized_remainder_pooled() {
-    // A large secp256k1 family (2·cap + small remainder) alongside a tiny arith256_mod family.
-    // Expect: secp256k1's 2 full instances stay in ArithSecp256K1; its remainder + the mod
-    // leftover pool into one ArithEq instance (cheaper than two extra partial specialized ones)
-    // — so secp256k1 ops are SPLIT across ArithSecp256K1 and ArithEq.
-    let cap_secp = cap(&meta_of(ArithSecp256K1Trace::<()>::AIR_ID));
-    let totals =
-        counts(&[(ArithEqOp::Secp256k1Add, 2 * cap_secp + 10), (ArithEqOp::Arith256Mod, 7)]);
+fn a_tail_rides_in_an_instance_another_family_needs() {
+    let cap_tall = cap(&meta_of(ArithEqLargeTrace::<()>::AIR_ID));
+    let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_tall + 10), (ArithEqOp::Secp256r1Add, 1)]);
     let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
 
-    let secp = plan.iter().find(|p| p.air_id == ArithSecp256K1Trace::<()>::AIR_ID);
-    let arith_eq = plan.iter().find(|p| p.air_id == ArithEqTrace::<()>::AIR_ID);
-    // secp256k1 has at least its 2 full instances specialized.
-    assert!(secp.is_some_and(|p| p.instances >= 2));
-    // Whether the remainder pooled depends on the row-size arithmetic; if it did, the ArithEq
-    // pool holds the secp remainder + the mod leftover.
-    if let Some(ae) = arith_eq {
-        assert!(ae.op_counts[ArithEqOp::Arith256Mod.index()] > 0);
-    }
-}
+    let bulk = plan.iter().find(|p| p.air_id == ArithEqLargeTrace::<()>::AIR_ID).unwrap();
+    assert_eq!(bulk.op_counts[ArithEqOp::Arith256.index()], 3 * cap_tall);
+    assert_eq!(bulk.instances, 3);
 
-#[test]
-fn a_bulk_keeps_the_narrow_air_and_its_tail_shares_the_wider_one() {
-    // The mix that per-family assignment could not handle: plenty of arith256 plus a handful of
-    // arith256_mod. Only `Arith256X` covers both, but `Arith256` (11 columns vs 19) covers the bulk
-    // — and the bulk's tail can then ride along in the `Arith256X` instance the mod ops need anyway.
-    let cap_arith = cap(&meta_of(Arith256Trace::<()>::AIR_ID));
-    let totals = counts(&[(ArithEqOp::Arith256, 3 * cap_arith + 10), (ArithEqOp::Arith256Mod, 1)]);
-    let plan = plan_air_strategy(&all_air_ids(), &totals);
-    assert_conserves(&plan, &totals);
-
-    let narrow = plan.iter().find(|p| p.air_id == Arith256Trace::<()>::AIR_ID).unwrap();
-    assert_eq!(narrow.op_counts[ArithEqOp::Arith256.index()], 3 * cap_arith);
-    assert_eq!(narrow.instances, 3);
-
-    let wide = plan.iter().find(|p| p.air_id == Arith256XTrace::<()>::AIR_ID).unwrap();
-    assert_eq!(wide.op_counts[ArithEqOp::Arith256.index()], 10);
-    assert_eq!(wide.op_counts[ArithEqOp::Arith256Mod.index()], 1);
-    assert_eq!(wide.instances, 1);
-
-    // Strictly better than proving the whole equation group in Arith256X, which is all a
-    // per-family assignment could do.
-    let all_in_wide = area(&meta_of(Arith256XTrace::<()>::AIR_ID), 3 * cap_arith + 11);
-    assert!(plan_area(&plan) < all_in_wide, "{} !< {all_in_wide}", plan_area(&plan));
+    // secp256r1 is only provable by a universal air, and the arith256 tail joins it there rather
+    // than opening a fifth instance.
+    assert_eq!(plan_instances(&plan), 4);
+    let pooled = plan.iter().find(|p| p.air_id == ArithEqTrace::<()>::AIR_ID).unwrap();
+    assert_eq!(pooled.op_counts[ArithEqOp::Arith256.index()], 10);
+    assert_eq!(pooled.op_counts[ArithEqOp::Secp256r1Add.index()], 1);
+    assert_eq!(pooled.instances, 1);
 }
 
 #[test]
@@ -159,10 +180,9 @@ fn ops_without_a_specialized_air_go_to_the_universal_one() {
 
 #[test]
 fn absent_airs_are_never_planned() {
-    // Without Arith256X in the pilout, arith256_mod has only the universal air left, and pooling
-    // the arith256 ops there with it beats keeping a separate Arith256 instance.
+    // Without the arith256 airs in the pilout, those operations have only the universal ones left.
     let totals = counts(&[(ArithEqOp::Arith256, 2), (ArithEqOp::Arith256Mod, 1)]);
-    let present = vec![ArithEqTrace::<()>::AIR_ID, Arith256Trace::<()>::AIR_ID];
+    let present = vec![ArithEqTrace::<()>::AIR_ID, ArithSecp256K1Trace::<()>::AIR_ID];
     let plan = plan_air_strategy(&present, &totals);
     assert_conserves(&plan, &totals);
 
@@ -171,40 +191,31 @@ fn absent_airs_are_never_planned() {
     assert_eq!(plan[0].air_id, ArithEqTrace::<()>::AIR_ID);
 }
 
+/// Tails are placed **whole**: the sweep chooses which air takes a leftover, never how to divide it
+/// between several. So an operation ends up in at most two airs — the one holding its bulk and the
+/// one holding its tail — never spread further. This is the module's *Known gap* stated as the
+/// property it actually guarantees.
 #[test]
-fn indivisible_tails_are_a_known_gap() {
-    // Documents the module's *Known gap*: tails are placed whole, so the sweep cannot divide one to
-    // top up two other airs at once, even when that empties an air. Update this test if divisible
-    // placements ever get searched — the assertion below should then become the split plan's area.
-    let c = cap(&meta_of(Arith256Trace::<()>::AIR_ID));
+fn an_operation_is_never_spread_beyond_its_bulk_and_its_tail() {
+    let c = cap(&meta_of(Arith256XTrace::<()>::AIR_ID));
     let totals = counts(&[
-        (ArithEqOp::Arith256, c / 2),
+        (ArithEqOp::Arith256, 5 * c + c / 2),
         (ArithEqOp::Arith256Mod, 3 * c / 4),
+        (ArithEqOp::Secp256k1Add, 3 * c / 4),
         (ArithEqOp::Secp256r1Add, 3 * c / 4),
     ]);
     let plan = plan_air_strategy(&all_air_ids(), &totals);
     assert_conserves(&plan, &totals);
 
-    // What it picks: one instance each, the Arith256 one only half used.
-    assert_eq!(plan.len(), 3);
-    for p in &plan {
-        assert_eq!(p.instances, 1, "air {} ", p.air_id);
+    for op in ArithEqOp::ALL {
+        let airs = plan.iter().filter(|p| p.op_counts[op.index()] > 0).count();
+        assert!(airs <= 2, "{op:?} was spread over {airs} airs, more than a bulk and a tail");
     }
-
-    // What a divisible search would find: split the c/2 Arith256 tail into c/4 + c/4, filling
-    // Arith256X (3c/4 of mod) and ArithEq (3c/4 of secp256r1) to exactly one instance each, so no
-    // Arith256 instance is needed at all.
-    let split = area(&meta_of(Arith256XTrace::<()>::AIR_ID), c)
-        + area(&meta_of(ArithEqTrace::<()>::AIR_ID), c);
-    let chosen = plan_area(&plan);
-    assert!(split < chosen, "expected the split plan to be cheaper: {split} vs {chosen}");
-    // The whole gap is exactly the wasted Arith256 instance.
-    assert_eq!(chosen - split, area(&meta_of(Arith256Trace::<()>::AIR_ID), 1));
 }
 
 #[test]
 #[should_panic(expected = "covered by no present air")]
 fn an_op_no_present_air_covers_panics() {
     let totals = counts(&[(ArithEqOp::Secp256r1Add, 1)]);
-    plan_air_strategy(&[Arith256Trace::<()>::AIR_ID], &totals);
+    plan_air_strategy(&[Arith256XTrace::<()>::AIR_ID], &totals);
 }

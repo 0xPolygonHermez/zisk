@@ -6,9 +6,8 @@
 use std::sync::Arc;
 
 use crate::{
-    extension_requires_full, opcode_is_chain, opcode_is_chain_rev, opcode_is_combine,
-    opcode_is_shift, opcode_is_shift_word, BinaryExtensionTableOp, BinaryExtensionTableSM,
-    BinaryInput,
+    opcode_is_chain, opcode_is_chain_rev, opcode_is_combine, opcode_is_shift, opcode_is_shift_word,
+    BinaryExtensionTableOp, BinaryExtensionTableSM, BinaryInput,
 };
 
 use pil2_std_lib::Std;
@@ -17,8 +16,8 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
-    BinaryExtensionAirValues, BinaryExtensionFullAirValues, BinaryExtensionFullTrace,
-    BinaryExtensionFullTraceRowOps, BinaryExtensionTrace, BinaryExtensionTraceRowOps,
+    BinaryExtensionAirValues, BinaryExtensionLargeAirValues, BinaryExtensionLargeTrace,
+    BinaryExtensionTrace, BinaryExtensionTraceRowOps,
 };
 
 // Constants for bit masks and operations.
@@ -35,16 +34,16 @@ const SIGN_BYTE: u64 = 0x80;
 const LS_5_BITS: u64 = 0x1F;
 const LS_6_BITS: u64 = 0x3F;
 
-/// Abstracts the two extension airs so one witness computation serves both.
+/// Ties an extension row type to the trace of the air it fills, so one witness computation serves
+/// both extension airs.
 ///
-/// `BinaryExtension` (reduced) and `BinaryExtensionFull` share every column except the ones the
-/// full air needs to carry the "dirty" parts of the operands (`free_in_b_bit6`, `free_in_b_bit7`,
-/// `b[2]`) and the byte-chain selectors. `Self` is the row type and `T` its trace type.
-///
-/// See [`crate::extension_requires_full`] for which operations each air can prove.
+/// `BinaryExtension` and `BinaryExtensionLarge` are the same air at two heights — both instantiated
+/// `full`, so they commit exactly the same columns — which is why they share the row type and differ
+/// only in `T`, the trace that carries the right `NUM_ROWS` and `AIR_ID`.
 pub trait BinaryExtensionRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
-    /// Sets the columns present in both airs.
-    fn set_shared_fields(
+    /// Sets every witness column of the row.
+    #[allow(clippy::too_many_arguments)]
+    fn set_fields(
         &mut self,
         op: u8,
         free_in_a: &[u8; 8],
@@ -52,21 +51,12 @@ pub trait BinaryExtensionRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
         free_in_c: &[[u32; 2]; 8],
         op_is_shift: bool,
         op_is_combine: bool,
-    );
-
-    /// Sets the columns only the full air owns. A no-op on the reduced air, whose PIL pins these
-    /// to the values its restricted operand shapes imply.
-    fn set_full_only_fields(
-        &mut self,
         free_in_b_bit6: bool,
         free_in_b_bit7: bool,
         op_is_chain: bool,
         op_is_chain_rev: bool,
         b: &[u32; 2],
     );
-
-    /// `true` for the air that owns the full-only columns.
-    fn is_full() -> bool;
 
     fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<T>;
     fn trace_num_rows(trace: &T) -> usize;
@@ -76,128 +66,73 @@ pub trait BinaryExtensionRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
     fn into_air_instance(trace: &mut T, padding_row: Self, total_inputs: usize) -> AirInstance<F>;
 }
 
-impl<F: PrimeField64, R: BinaryExtensionTraceRowOps<F>>
-    BinaryExtensionRow<F, BinaryExtensionTrace<R>> for R
-{
-    #[inline(always)]
-    fn set_shared_fields(
-        &mut self,
-        op: u8,
-        free_in_a: &[u8; 8],
-        free_in_b: u8,
-        free_in_c: &[[u32; 2]; 8],
-        op_is_shift: bool,
-        op_is_combine: bool,
-    ) {
-        self.set_op(op);
-        self.set_all_free_in_a(free_in_a);
-        self.set_free_in_b(free_in_b);
-        self.set_all_free_in_c(free_in_c);
-        self.set_op_is_shift(op_is_shift);
-        self.set_op_is_combine(op_is_combine);
-    }
+/// Emits the row-to-trace binding for one extension air. Both airs commit the same columns, so the
+/// body is identical and only the trace alias and its air values change.
+macro_rules! impl_binary_extension_row {
+    ($trace:ident, $air_values:ident) => {
+        impl<F: PrimeField64, R: BinaryExtensionTraceRowOps<F>> BinaryExtensionRow<F, $trace<R>>
+            for R
+        {
+            #[inline(always)]
+            fn set_fields(
+                &mut self,
+                op: u8,
+                free_in_a: &[u8; 8],
+                free_in_b: u8,
+                free_in_c: &[[u32; 2]; 8],
+                op_is_shift: bool,
+                op_is_combine: bool,
+                free_in_b_bit6: bool,
+                free_in_b_bit7: bool,
+                op_is_chain: bool,
+                op_is_chain_rev: bool,
+                b: &[u32; 2],
+            ) {
+                self.set_op(op);
+                self.set_all_free_in_a(free_in_a);
+                self.set_free_in_b(free_in_b);
+                self.set_all_free_in_c(free_in_c);
+                self.set_op_is_shift(op_is_shift);
+                self.set_op_is_combine(op_is_combine);
+                self.set_free_in_b_bit6(free_in_b_bit6);
+                self.set_free_in_b_bit7(free_in_b_bit7);
+                self.set_op_is_chain(op_is_chain);
+                self.set_op_is_chain_rev(op_is_chain_rev);
+                self.set_all_b(b);
+            }
 
-    #[inline(always)]
-    fn set_full_only_fields(&mut self, _: bool, _: bool, _: bool, _: bool, _: &[u32; 2]) {}
+            fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<$trace<R>> {
+                $trace::<R>::new_from_vec(trace_buffer)
+            }
 
-    #[inline(always)]
-    fn is_full() -> bool {
-        false
-    }
+            fn trace_num_rows(trace: &$trace<R>) -> usize {
+                trace.num_rows()
+            }
 
-    fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<BinaryExtensionTrace<R>> {
-        BinaryExtensionTrace::<R>::new_from_vec(trace_buffer)
-    }
+            fn trace_buffer_mut(trace: &mut $trace<R>) -> &mut [Self] {
+                &mut trace.buffer
+            }
 
-    fn trace_num_rows(trace: &BinaryExtensionTrace<R>) -> usize {
-        trace.num_rows()
-    }
+            fn into_air_instance(
+                trace: &mut $trace<R>,
+                padding_row: Self,
+                total_inputs: usize,
+            ) -> AirInstance<F> {
+                let num_rows = trace.num_rows();
+                trace.buffer[total_inputs..num_rows]
+                    .par_iter_mut()
+                    .for_each(|slot| *slot = padding_row);
 
-    fn trace_buffer_mut(trace: &mut BinaryExtensionTrace<R>) -> &mut [Self] {
-        &mut trace.buffer
-    }
-
-    fn into_air_instance(
-        trace: &mut BinaryExtensionTrace<R>,
-        padding_row: Self,
-        total_inputs: usize,
-    ) -> AirInstance<F> {
-        let num_rows = trace.num_rows();
-        trace.buffer[total_inputs..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
-
-        let mut air_values = BinaryExtensionAirValues::<F>::new();
-        air_values.padding_size = F::from_usize(num_rows - total_inputs);
-        AirInstance::new_from_trace(FromTrace::new(trace).with_air_values(&mut air_values))
-    }
+                let mut air_values = $air_values::<F>::new();
+                air_values.padding_size = F::from_usize(num_rows - total_inputs);
+                AirInstance::new_from_trace(FromTrace::new(trace).with_air_values(&mut air_values))
+            }
+        }
+    };
 }
 
-impl<F: PrimeField64, R: BinaryExtensionFullTraceRowOps<F>>
-    BinaryExtensionRow<F, BinaryExtensionFullTrace<R>> for R
-{
-    #[inline(always)]
-    fn set_shared_fields(
-        &mut self,
-        op: u8,
-        free_in_a: &[u8; 8],
-        free_in_b: u8,
-        free_in_c: &[[u32; 2]; 8],
-        op_is_shift: bool,
-        op_is_combine: bool,
-    ) {
-        self.set_op(op);
-        self.set_all_free_in_a(free_in_a);
-        self.set_free_in_b(free_in_b);
-        self.set_all_free_in_c(free_in_c);
-        self.set_op_is_shift(op_is_shift);
-        self.set_op_is_combine(op_is_combine);
-    }
-
-    #[inline(always)]
-    fn set_full_only_fields(
-        &mut self,
-        free_in_b_bit6: bool,
-        free_in_b_bit7: bool,
-        op_is_chain: bool,
-        op_is_chain_rev: bool,
-        b: &[u32; 2],
-    ) {
-        self.set_free_in_b_bit6(free_in_b_bit6);
-        self.set_free_in_b_bit7(free_in_b_bit7);
-        self.set_op_is_chain(op_is_chain);
-        self.set_op_is_chain_rev(op_is_chain_rev);
-        self.set_all_b(b);
-    }
-
-    #[inline(always)]
-    fn is_full() -> bool {
-        true
-    }
-
-    fn new_trace(trace_buffer: Vec<F>) -> ProofmanResult<BinaryExtensionFullTrace<R>> {
-        BinaryExtensionFullTrace::<R>::new_from_vec(trace_buffer)
-    }
-
-    fn trace_num_rows(trace: &BinaryExtensionFullTrace<R>) -> usize {
-        trace.num_rows()
-    }
-
-    fn trace_buffer_mut(trace: &mut BinaryExtensionFullTrace<R>) -> &mut [Self] {
-        &mut trace.buffer
-    }
-
-    fn into_air_instance(
-        trace: &mut BinaryExtensionFullTrace<R>,
-        padding_row: Self,
-        total_inputs: usize,
-    ) -> AirInstance<F> {
-        let num_rows = trace.num_rows();
-        trace.buffer[total_inputs..num_rows].par_iter_mut().for_each(|slot| *slot = padding_row);
-
-        let mut air_values = BinaryExtensionFullAirValues::<F>::new();
-        air_values.padding_size = F::from_usize(num_rows - total_inputs);
-        AirInstance::new_from_trace(FromTrace::new(trace).with_air_values(&mut air_values))
-    }
-}
+impl_binary_extension_row!(BinaryExtensionTrace, BinaryExtensionAirValues);
+impl_binary_extension_row!(BinaryExtensionLargeTrace, BinaryExtensionLargeAirValues);
 
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.
 ///
@@ -242,22 +177,10 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
     /// * `range_check` - A mutable reference to the range check table to update.
     ///
     /// # Returns
-    /// A row of the air selected by `R` (reduced or full) representing the processed trace.
-    ///
-    /// # Panics
-    /// In debug mode, panics if `R` is the reduced air but the operation needs the full one; the
-    /// counter, planner and collectors are expected to keep those apart.
+    /// A row of the air selected by `T`, representing the processed trace.
     pub fn process_slice<T, R: BinaryExtensionRow<F, T>>(&self, input: &BinaryInput) -> R {
         // Get a ZiskOp from the code
         let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
-
-        debug_assert!(
-            R::is_full() || !extension_requires_full(input.op, input.a, input.b),
-            "BinaryExtensionSM: op={:#04x} a={:#x} b={:#x} needs BinaryExtensionFull",
-            input.op,
-            input.a,
-            input.b
-        );
 
         // Set if the opcode is a shift operation
         let op_is_shift = opcode_is_shift(opcode);
@@ -713,18 +636,14 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             self.std.inc_virtual_row_one(self.table_id, table_row);
         }
 
-        // Build the trace row: the shared columns first, then the ones only the full air owns
-        // (a no-op on the reduced air).
         let mut row: R = Default::default();
-        row.set_shared_fields(
+        row.set_fields(
             input.op,
             &a_bytes,
             (in2_low & LS_6_BITS) as u8,
             &t_out,
             op_is_shift,
             op_is_combine,
-        );
-        row.set_full_only_fields(
             (in2_low >> 6) & 1 != 0,
             (in2_low >> 7) & 1 != 0,
             op_is_chain,
@@ -755,8 +674,7 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
         debug_assert!(total_inputs <= num_rows, "{} <= {}", total_inputs, num_rows);
 
         tracing::debug!(
-            "··· Creating Binary Extension{} instance [{} / {} rows filled {:.2}%]",
-            if R::is_full() { "Full" } else { "" },
+            "··· Creating Binary Extension instance [{} / {} rows filled {:.2}%]",
             total_inputs,
             num_rows,
             total_inputs as f64 / num_rows as f64 * 100.0
@@ -779,30 +697,31 @@ impl<F: PrimeField64> BinaryExtensionSM<F> {
             });
         });
 
-        // Range-check the high part of the shift amount carried in b[0]. Only the full air has
-        // that column (and the constraint); the reduced air keeps the whole amount in free_in_b,
-        // so it must not contribute to the range table.
-        if R::is_full() {
-            for row in inputs.iter() {
-                for input in row.iter() {
-                    let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
-                    if opcode_is_shift(opcode) {
-                        let row = (input.b >> 8) & 0xFFFFFF;
-                        self.std.range_check_one(self.range_id, row);
-                    }
+        // Range-check the high part of the shift amount carried in b[0].
+        for row in inputs.iter() {
+            for input in row.iter() {
+                let opcode = ZiskOp::try_from_code(input.op).expect("Invalid ZiskOp opcode");
+                if opcode_is_shift(opcode) {
+                    let row = (input.b >> 8) & 0xFFFFFF;
+                    self.std.range_check_one(self.range_id, row);
                 }
             }
         }
 
         // Set SEXT_B(0) as the padding row
         let mut padding_row: R = Default::default();
-        padding_row.set_shared_fields(
+        padding_row.set_fields(
             ZiskOp::SignExtendB.code(),
             &[0; 8],
             0,
             &[[0; 2]; 8],
             false,
             false,
+            false,
+            false,
+            false,
+            false,
+            &[0; 2],
         );
 
         let padding_size = num_rows - total_inputs;

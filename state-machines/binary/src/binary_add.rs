@@ -2,12 +2,13 @@
 //!
 //! This state machine processes binary-related operations.
 
+use crate::fill_and_tally;
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::sync::Arc;
-use zisk_pil::{BinaryAddAirValues, BinaryAddTrace, BinaryAddTraceRowOps};
+use zisk_pil::{BinaryAddAirValues, BinaryAddTraceRowOps, ZISK_AIRGROUP_ID};
 
 const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 
@@ -98,12 +99,20 @@ impl<F: PrimeField64> BinaryAddSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: BinaryAddTraceRowOps<F>>(
+    /// `BinaryAdd` and `BinaryAddLarge` commit the same columns and differ only in height, so the
+    /// row type `R` serves both and the air is picked by the `NUM_ROWS` / `AIR_ID` consts of the
+    /// trace this builds.
+    pub fn compute_witness<
+        R: BinaryAddTraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         inputs: &[Vec<[u64; 2]>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut add_trace = BinaryAddTrace::<R>::new_from_vec(trace_buffer)?;
+        let mut add_trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
 
         let num_rows = add_trace.num_rows();
 
@@ -119,26 +128,25 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         // Split the add_e_trace.buffer into slices matching each inner vector’s length.
         let flat_inputs: Vec<_> = inputs.iter().flatten().collect();
-        let mut range_checks: Vec<[u64; 4]> = vec![[0u64; 4]; flat_inputs.len()];
 
-        // Process each slice in parallel, and use the corresponding inner input from `inputs`.
-        flat_inputs
-            .into_par_iter()
-            .zip(add_trace.buffer.par_iter_mut())
-            .zip(range_checks.par_iter_mut())
-            .for_each(|((input, trace_row), range_check)| {
-                let checks = self.process_slice::<R>(trace_row, input);
-                *range_check = checks;
-            });
-
-        let mut multiplicities = vec![0u32; 0xFFFF + 1];
-        for range_check in range_checks {
-            multiplicities[range_check[0] as usize] += 1;
-            multiplicities[range_check[1] as usize] += 1;
-            multiplicities[range_check[2] as usize] += 1;
-            multiplicities[range_check[3] as usize] += 1;
-        }
+        // One input per row, and its four chunks are tallied as the row is filled rather than kept
+        // to be counted afterwards — see [`fill_and_tally`].
+        let mut multiplicities = fill_and_tally(
+            &mut add_trace.buffer[..total_inputs],
+            &flat_inputs,
+            1,
+            |trace_row, row_inputs, multiplicities| {
+                for chunk in self.process_slice::<R>(trace_row, row_inputs[0]) {
+                    multiplicities[chunk as usize] += 1;
+                }
+            },
+        );
         multiplicities[0] += 4 * (num_rows - total_inputs) as u32;
+        debug_assert_eq!(
+            multiplicities.iter().map(|&m| m as u64).sum::<u64>(),
+            4 * num_rows as u64,
+            "the multiplicities must account for the four chunks of every row",
+        );
 
         self.std.range_check_ranged(self.range_id, None, &multiplicities);
 

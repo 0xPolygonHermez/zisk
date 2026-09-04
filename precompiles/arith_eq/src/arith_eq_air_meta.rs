@@ -1,18 +1,21 @@
 //! Per-config air metadata for cost-based planning.
 //!
 //! Each `ArithEq` config air (one alias in `pil/zisk.pil`) covers a fixed set of sub-operations and
-//! has a fixed per-row column cost (`ROW_SIZE`) and capacity (`NUM_ROWS`). The planner counts each
-//! operation separately, then — over only the airs actually present in the pilout — assigns each
-//! operation to the cheapest air that covers it (mem_align-style: most efficient first).
+//! has a fixed width and capacity (`NUM_ROWS`). The planner counts each operation separately, then —
+//! over only the airs actually present in the pilout — assigns each operation under the shared
+//! criterion: fewest instances first, least area to break a tie.
 //!
-//! This table is the planner's static input; it is derived from the generated column layout in
-//! `zisk_pil` and the `equations` bitmask each alias was instantiated with. `row_size` / `num_rows`
-//! are read from the trace types so cost stays in sync with the PIL automatically.
+//! Every config comes in two heights: a plain air and a `Large` sibling that commits exactly the same
+//! columns over more rows. The tall one is what keeps the instance count down; the short one is what
+//! keeps the area down once the count is settled.
+//!
+//! This table is the planner's static input; it is derived from the `equations` bitmask each alias
+//! was instantiated with. `num_rows` is read from the trace types and the cost from
+//! that air's `*_INSTANCE_COST` constant in [`zisk_pil::air_costs`].
 
 use crate::{ArithEqInput, ArithEqOp, ArithEqSM};
-use proofman_common::trace::TraceRow;
 use proofman_common::{AirInstance, ProofmanResult, SetupCtx};
-use proofman_fields::{Goldilocks, PrimeField64};
+use proofman_fields::PrimeField64;
 use zisk_pil::*;
 
 /// Static description of one `ArithEq` config air.
@@ -22,19 +25,13 @@ pub struct ArithEqAirMeta {
     pub air_id: usize,
     /// Sub-operations this air can prove.
     pub ops: &'static [ArithEqOp],
-    /// Committed columns per row (cost driver).
-    pub row_size: usize,
+    /// Area of one instance of this air, full or not.
+    pub cost: usize,
     /// Rows per instance (capacity).
     pub num_rows: usize,
 }
 
 impl ArithEqAirMeta {
-    /// Cost of one full instance of this air, in committed field elements.
-    #[inline]
-    pub fn instance_cost(&self) -> usize {
-        self.row_size * self.num_rows
-    }
-
     /// Whether this air covers `op`.
     #[inline]
     pub fn covers(&self, op: ArithEqOp) -> bool {
@@ -42,57 +39,70 @@ impl ArithEqAirMeta {
     }
 }
 
-/// One entry per air alias instantiated in `pil/zisk.pil`, cheapest/most-specific first so the
-/// planner can greedily prefer efficient airs. `row_size`/`num_rows` come from the trace types.
+/// One entry per air alias instantiated in `pil/zisk.pil`, most specific first and, within a config,
+/// the short air before its tall sibling — the order the planner returns plans in, which is what
+/// orders a split operation's collect windows.
 ///
 /// NOTE: keep this in sync with the aliases in `pil/zisk.pil`. Airs whose id is absent from the
 /// pilout at runtime (`ARITH_EQ_AIR_IDS`) are simply skipped by the planner.
 pub fn air_metas() -> Vec<ArithEqAirMeta> {
     use ArithEqOp::*;
-    vec![
-        // AIR_ID 1 — arith256 only.
-        ArithEqAirMeta {
-            air_id: Arith256Trace::<()>::AIR_ID,
-            ops: &[Arith256],
-            row_size: Arith256TraceRow::<Goldilocks>::ROW_SIZE,
-            num_rows: Arith256Trace::<()>::NUM_ROWS,
-        },
-        // AIR_ID 2 — arith256 + arith256_mod.
-        ArithEqAirMeta {
-            air_id: Arith256XTrace::<()>::AIR_ID,
-            ops: &[Arith256, Arith256Mod],
-            row_size: Arith256XTraceRow::<Goldilocks>::ROW_SIZE,
-            num_rows: Arith256XTrace::<()>::NUM_ROWS,
-        },
-        // AIR_ID 3 — secp256k1 add/dbl.
-        ArithEqAirMeta {
-            air_id: ArithSecp256K1Trace::<()>::AIR_ID,
-            ops: &[Secp256k1Add, Secp256k1Dbl],
-            row_size: ArithSecp256K1TraceRow::<Goldilocks>::ROW_SIZE,
-            num_rows: ArithSecp256K1Trace::<()>::NUM_ROWS,
-        },
-        // AIR_ID 4 — bn254 EC add/dbl.
-        ArithEqAirMeta {
-            air_id: ArithBn254EcTrace::<()>::AIR_ID,
-            ops: &[Bn254CurveAdd, Bn254CurveDbl],
-            row_size: ArithBn254EcTraceRow::<Goldilocks>::ROW_SIZE,
-            num_rows: ArithBn254EcTrace::<()>::NUM_ROWS,
-        },
-        // AIR_ID 5 — bn254 complex add/sub/mul.
-        ArithEqAirMeta {
-            air_id: ArithBn254ComplexTrace::<()>::AIR_ID,
-            ops: &[Bn254ComplexAdd, Bn254ComplexSub, Bn254ComplexMul],
-            row_size: ArithBn254ComplexTraceRow::<Goldilocks>::ROW_SIZE,
-            num_rows: ArithBn254ComplexTrace::<()>::NUM_ROWS,
-        },
-        // AIR_ID 0 — full air (fallback: covers every operation).
-        ArithEqAirMeta {
-            air_id: ArithEqTrace::<()>::AIR_ID,
-            ops: &ArithEqOp::ALL,
-            row_size: ArithEqTraceRow::<Goldilocks>::ROW_SIZE,
-            num_rows: ArithEqTrace::<()>::NUM_ROWS,
-        },
-    ]
+
+    /// One config's two heights, sharing the operations they cover. Each is paired with its own
+    /// `*_INSTANCE_COST` constant rather than a lookup by air id, since air ids are positional.
+    macro_rules! config {
+        ($ops:expr, $short:ident, $short_cost:ident, $tall:ident, $tall_cost:ident) => {
+            [
+                ArithEqAirMeta {
+                    air_id: $short::<()>::AIR_ID,
+                    ops: $ops,
+                    cost: $short_cost,
+                    num_rows: $short::<()>::NUM_ROWS,
+                },
+                ArithEqAirMeta {
+                    air_id: $tall::<()>::AIR_ID,
+                    ops: $ops,
+                    cost: $tall_cost,
+                    num_rows: $tall::<()>::NUM_ROWS,
+                },
+            ]
+        };
+    }
+
+    let mut metas = Vec::with_capacity(8);
+    // arith256 + arith256_mod.
+    metas.extend(config!(
+        &[Arith256, Arith256Mod],
+        Arith256XTrace,
+        ARITH_256_X_INSTANCE_COST,
+        Arith256XLargeTrace,
+        ARITH_256_X_LARGE_INSTANCE_COST
+    ));
+    // secp256k1 add/dbl.
+    metas.extend(config!(
+        &[Secp256k1Add, Secp256k1Dbl],
+        ArithSecp256K1Trace,
+        ARITH_SECP_256_K_1_INSTANCE_COST,
+        ArithSecp256K1LargeTrace,
+        ARITH_SECP_256_K_1_LARGE_INSTANCE_COST
+    ));
+    // bn254 EC add/dbl and complex add/sub/mul.
+    metas.extend(config!(
+        &[Bn254CurveAdd, Bn254CurveDbl, Bn254ComplexAdd, Bn254ComplexSub, Bn254ComplexMul],
+        ArithBn254Trace,
+        ARITH_BN_254_INSTANCE_COST,
+        ArithBn254LargeTrace,
+        ARITH_BN_254_LARGE_INSTANCE_COST
+    ));
+    // The full airs, which cover every operation and are the only home of the secp256r1 ones.
+    metas.extend(config!(
+        &ArithEqOp::ALL,
+        ArithEqTrace,
+        ARITH_EQ_INSTANCE_COST,
+        ArithEqLargeTrace,
+        ARITH_EQ_LARGE_INSTANCE_COST
+    ));
+    metas
 }
 
 impl<F: PrimeField64> ArithEqSM<F> {
@@ -126,11 +136,14 @@ impl<F: PrimeField64> ArithEqSM<F> {
         }
         dispatch!(
             ArithEqTrace: ArithEqTraceRow / ArithEqTraceRowPacked,
-            Arith256Trace: Arith256TraceRow / Arith256TraceRowPacked,
+            ArithEqLargeTrace: ArithEqLargeTraceRow / ArithEqLargeTraceRowPacked,
             Arith256XTrace: Arith256XTraceRow / Arith256XTraceRowPacked,
+            Arith256XLargeTrace: Arith256XLargeTraceRow / Arith256XLargeTraceRowPacked,
             ArithSecp256K1Trace: ArithSecp256K1TraceRow / ArithSecp256K1TraceRowPacked,
-            ArithBn254EcTrace: ArithBn254EcTraceRow / ArithBn254EcTraceRowPacked,
-            ArithBn254ComplexTrace: ArithBn254ComplexTraceRow / ArithBn254ComplexTraceRowPacked,
+            ArithSecp256K1LargeTrace:
+                ArithSecp256K1LargeTraceRow / ArithSecp256K1LargeTraceRowPacked,
+            ArithBn254Trace: ArithBn254TraceRow / ArithBn254TraceRowPacked,
+            ArithBn254LargeTrace: ArithBn254LargeTraceRow / ArithBn254LargeTraceRowPacked,
         )
     }
 }

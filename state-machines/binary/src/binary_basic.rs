@@ -6,12 +6,12 @@ use std::sync::Arc;
 
 use crate::{binary_constants::*, BinaryBasicTableOp, BinaryBasicTableSM, BinaryInput};
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use std::cmp::Ordering as CmpOrdering;
 use zisk_core::zisk_ops::ZiskOp;
-use zisk_pil::{BinaryAirValues, BinaryTrace, BinaryTraceRowOps};
+use zisk_pil::{BinaryAirValues, BinaryTraceRowOps, ZISK_AIRGROUP_ID};
 
 const MASK_U64: u64 = 0xFFFF_FFFF_FFFF_FFFF;
 const SIGN_BYTE: u8 = 0x80;
@@ -932,12 +932,16 @@ impl<F: PrimeField64> BinaryBasicSM<F> {
     /// Computes the witness for a series of inputs and produces an `AirInstance`.
     ///
     /// The trace layout (packed/non-packed) is determined by `R`, fixed at construction.
-    pub fn compute_witness<R: BinaryTraceRowOps<F>>(
+    /// `Binary` and `BinaryLarge` commit the same columns and differ only in height, so the row type
+    /// `R` serves both and the air is picked by the `NUM_ROWS` / `AIR_ID` consts of the trace this
+    /// builds.
+    pub fn compute_witness<R: BinaryTraceRowOps<F>, const NUM_ROWS: usize, const AIR_ID: usize>(
         &self,
         inputs: &[Vec<BinaryInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = BinaryTrace::<R>::new_from_vec(trace_buffer)?;
+        let mut trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
         let num_rows = trace.num_rows();
         let total_inputs: usize = inputs.iter().map(|c| c.len()).sum();
         assert!(total_inputs <= num_rows);

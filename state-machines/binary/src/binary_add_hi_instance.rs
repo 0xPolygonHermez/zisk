@@ -13,7 +13,10 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryAddHiTrace, BinaryAddHiTraceRow, BinaryAddHiTraceRowPacked};
+use zisk_pil::{
+    BinaryAddHiLargeTrace, BinaryAddHiLargeTraceRow, BinaryAddHiLargeTraceRowPacked,
+    BinaryAddHiTrace, BinaryAddHiTraceRow, BinaryAddHiTraceRowPacked,
+};
 
 /// The `BinaryAddHiInstance` struct represents an instance for packed add witness computations.
 ///
@@ -49,9 +52,9 @@ impl<F: PrimeField64> BinaryAddHiInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryAddHiTrace::<()>::AIR_ID,
+        assert!(
+            ictx.plan.air_id == BinaryAddHiTrace::<()>::AIR_ID
+                || ictx.plan.air_id == BinaryAddHiLargeTrace::<()>::AIR_ID,
             "BinaryAddHiInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -63,6 +66,12 @@ impl<F: PrimeField64> BinaryAddHiInstance<F> {
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_add_hi_sm, collect_info, ictx, std }
+    }
+
+    /// `true` when this instance is the wide air, which packs [`crate::ADDS_X_ROW_LARGE`] additions
+    /// per row instead of [`crate::ADDS_X_ROW`].
+    fn is_large(&self) -> bool {
+        self.ictx.plan.air_id == BinaryAddHiLargeTrace::<()>::AIR_ID
     }
 
     pub fn build_binary_add_hi_collector(&self, chunk_id: ChunkId) -> BinaryAddHiCollector<F> {
@@ -99,16 +108,35 @@ impl<F: PrimeField64> Instance<F> for BinaryAddHiInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
-                self.binary_add_hi_sm
-                    .compute_witness::<BinaryAddHiTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
-                self.binary_add_hi_sm
-                    .compute_witness::<BinaryAddHiTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
+        // The two airs pack a different number of additions per row, so they have distinct row
+        // types; the trace type selects both the row layout and the air the instance belongs to.
+        match (self.is_large(), packed) {
+            (false, true) => Ok(Some(self.binary_add_hi_sm.compute_witness::<BinaryAddHiTrace<
+                BinaryAddHiTraceRowPacked<F>,
+            >, BinaryAddHiTraceRowPacked<F>>(
+                &inputs, trace_buffer
+            )?)),
+            (false, false) => Ok(Some(self.binary_add_hi_sm.compute_witness::<BinaryAddHiTrace<
+                BinaryAddHiTraceRow<F>,
+            >, BinaryAddHiTraceRow<F>>(
+                &inputs, trace_buffer
+            )?)),
+            (true, true) => {
+                Ok(Some(self.binary_add_hi_sm.compute_witness::<BinaryAddHiLargeTrace<
+                    BinaryAddHiLargeTraceRowPacked<F>,
+                >, BinaryAddHiLargeTraceRowPacked<F>>(
+                    &inputs, trace_buffer
+                )?))
+            }
+            (true, false) => {
+                Ok(
+                    Some(self.binary_add_hi_sm.compute_witness::<BinaryAddHiLargeTrace<
+                        BinaryAddHiLargeTraceRow<F>,
+                    >, BinaryAddHiLargeTraceRow<F>>(
+                        &inputs, trace_buffer
+                    )?),
+                )
+            }
         }
     }
 
