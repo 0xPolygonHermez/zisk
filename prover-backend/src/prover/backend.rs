@@ -531,14 +531,21 @@ impl ProverBackend {
         let vadcop_final_proof =
             VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, self.hash()?);
 
-        // Read the program VK from the flag-free view (a full vadcop_final
-        // publics vector carries the `is_vadcop_final_proof` flag at index 0).
-        let proof_verkey = &program_publics(publics_full)[..PROGRAM_VK_LEN];
+        // The RecursiveF verifier checks the vadcop proof against the verkey stamped
+        // into its leading publics. Only an aggregated (Recurser) proof carries its
+        // own verkey there; a plain vadcop_final proof carries the program VK
+        // (rom_root), and stamping that as the verkey diverges the wrapper
+        // transcript (circom `VerifyPoW` assert). Read the flag-free view (a full
+        // vadcop_final publics vector carries `is_vadcop_final_proof` at index 0).
+        let verkey_override = match VadcopKind::from_publics_full(publics_full) {
+            VadcopKind::Recurser => Some(&program_publics(publics_full)[..PROGRAM_VK_LEN]),
+            _ => None,
+        };
         let snark_proof = self
             .snark_wrapper
             .as_ref()
             .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, Some(proof_verkey))?;
+            .generate_final_snark_proof(&vadcop_final_proof, verkey_override)?;
 
         let time = start.elapsed();
 
@@ -564,10 +571,14 @@ impl ProverBackend {
                 // Store the canonical flag-free view (the input vadcop_final
                 // publics carry the is_vadcop_final_proof flag at index 0).
                 publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
-                // This wrap path stamps the proof's own program VK as rootC, read
-                // from the same flag-free view.
-                rootc: program_publics(&vadcop_final_proof.public_values)[..PROGRAM_VK_LEN]
-                    .to_vec(),
+                // rootC is the verkey actually stamped into the RecursiveF proof:
+                // the recurser's own verkey for an aggregated proof, the
+                // vadcop_final verkey otherwise. It must match what the on-chain
+                // verifier hashes as `rootCVadcopFinal`.
+                rootc: match verkey_override {
+                    Some(v) => v.to_vec(),
+                    None => self.get_vadcop_vk(false)?,
+                },
             },
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
