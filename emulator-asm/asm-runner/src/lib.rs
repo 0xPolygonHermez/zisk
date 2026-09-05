@@ -103,8 +103,18 @@ pub(crate) const TRACE_MAX_SIZE: usize = 0x1000000000; // 64GB
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 const SEM_CHUNK_DONE_WAIT_DURATION: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// Consume every pending post on `sem` and return how many there were.
+///
+/// A named semaphore outlives the run that posted to it, so a run that was
+/// aborted between a post and its matching wait leaves a count behind that would
+/// be miscounted as a fresh signal. `sem_open` does not reset an existing
+/// semaphore's value — the initial value is ignored once the name exists — so
+/// re-opening is not enough and the count has to be swept explicitly.
+///
+/// Used on `chunk_done` at the start of each run, and on `input_avail` when a
+/// program's semaphores are bound.
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-pub(crate) fn drain_chunk_done(sem: &mut named_sem::NamedSemaphore) -> u64 {
+pub(crate) fn drain_semaphore(sem: &mut named_sem::NamedSemaphore) -> u64 {
     let mut swept = 0;
     while sem.try_wait().is_ok() {
         swept += 1;
@@ -119,14 +129,14 @@ mod tests {
     use named_sem::NamedSemaphore;
 
     #[test]
-    fn drain_chunk_done_sweeps_all_pending_posts() {
+    fn drain_semaphore_sweeps_all_pending_posts() {
         let name = format!("/ZISK_unittest_drain_{}", std::process::id());
         let mut sem = NamedSemaphore::create(&name, 0).unwrap();
         for _ in 0..3 {
             sem.post().unwrap();
         }
-        assert_eq!(drain_chunk_done(&mut sem), 3, "should sweep the 3 pending posts");
-        assert_eq!(drain_chunk_done(&mut sem), 0, "nothing left to sweep");
+        assert_eq!(drain_semaphore(&mut sem), 3, "should sweep the 3 pending posts");
+        assert_eq!(drain_semaphore(&mut sem), 0, "nothing left to sweep");
 
         let c = std::ffi::CString::new(name).unwrap();
         unsafe { libc::sem_unlink(c.as_ptr()) };

@@ -19,7 +19,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
-    {Arc, RwLock},
+    {Arc, Mutex, RwLock},
 };
 use zisk_asm_runner::{AsmRunnerOptions, AsmServices, HintsShmem};
 use zisk_cluster_common::LoggingConfig;
@@ -30,7 +30,7 @@ use zisk_common::{
 };
 use zisk_core::ZiskRom;
 use zisk_executor::{AsmResources, AsmSharedResources, GpuBufferSource, ZiskExecutor};
-use zisk_precomp_hints::HintsProcessor;
+use zisk_precomp_hints::{HintsProcessor, MpiBroadcastFn};
 use zisk_rom_setup::{generate_assembly, get_output_path};
 use zisk_transpiler_riscv::Riscv2zisk;
 
@@ -91,6 +91,17 @@ struct ProgramEntry {
 pub struct AsmProver {
     core_prover: AsmCoreProver,
     program_cache: RwLock<HashMap<SetupKey, ProgramEntry>>,
+    /// The worker's shmem mappings, keyed on hints mode and shared by every
+    /// program in that mode.
+    ///
+    /// Keyed rather than single because the C binary only creates the
+    /// `_precompile` segment when precompile results are enabled, so a hints and
+    /// a non-hints program do not have the same set of segments to map. Two
+    /// entries at most.
+    shared_resources: RwLock<HashMap<bool, Arc<AsmSharedResources>>>,
+    /// Which program the shared segments and semaphores currently serve, so a
+    /// switch can be told from a repeat and the reset paid for only on a switch.
+    active_setup: Mutex<Option<SetupKey>>,
     /// Tracks whether the currently registered program was set up with hints.
     current_with_hints: AtomicBool,
     /// Tracks whether the currently registered program was set up emulator-only.
@@ -136,6 +147,8 @@ impl AsmProver {
         Ok(Self {
             core_prover,
             program_cache: RwLock::new(HashMap::new()),
+            shared_resources: RwLock::new(HashMap::new()),
+            active_setup: Mutex::new(None),
             current_with_hints: AtomicBool::new(false),
             current_emulator_only: AtomicBool::new(false),
         })
@@ -190,23 +203,26 @@ impl AsmProver {
 
         let init_rom = !is_distributed && world_rank == 0;
 
-        if let Some(entry) = self.program_cache.read().unwrap().get(&SetupKey::new(
-            &*elf.program_id.hash_id,
-            with_hints,
-            false,
-        )) {
+        let setup_key = SetupKey::new(&*elf.program_id.hash_id, with_hints, false);
+
+        if let Some(entry) = self.program_cache.read().unwrap().get(&setup_key) {
             timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
             let resources =
                 entry.resources.clone().expect("full-asm cache entry must have ASM resources");
+            // This program's services are still running from its own setup, but the
+            // shared `_ram`/`_rom` may have been overwritten by another program
+            // since. `make_active` rebuilds them before anything runs.
+            self.make_active(&setup_key, &resources)?;
             self.core_prover.backend.set_asm_resources(resources)?;
             return Ok(());
         }
 
         // The program hash is carried in the sem_prefix (so the semaphores are
-        // per-program), while the shmem segments are keyed by pid+local_rank only
-        // and are shared/reused across program hashes. Each program still gets its
-        // own AsmSharedResources; previous programs' resources stay alive in the
-        // pool via Arc.
+        // per-program), while the shmem segments are keyed by pid+local_rank+hints
+        // and are genuinely shared across program hashes: `AsmServices::new`
+        // creates them only the first time a prefix is seen, and the mapping side
+        // is the single `AsmSharedResources` looked up below. Each program owns
+        // only its three server processes and its semaphores.
         let asm_services = AsmServices::new(
             world_rank,
             local_rank,
@@ -228,6 +244,57 @@ impl AsmProver {
             GpuBufferSource::Borrowed { ptr: gpu_buf_ptr, size: gpu_buf_size as usize, gpu_id }
         };
 
+        let shared = self.shared_resources_for(
+            with_hints,
+            local_rank,
+            unlock_mapped_memory,
+            verbose_mode,
+            mpi_broadcast_fn,
+            init_rom,
+            asm_services.shm_prefix(),
+            gpu_buffer_source,
+        )?;
+        timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+
+        let resources = Arc::new(AsmResources::new(shared, asm_services)?);
+        self.make_active(&setup_key, &resources)?;
+        self.core_prover.backend.set_asm_resources(resources.clone())?;
+        self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
+        self.program_cache.write().unwrap().insert(
+            setup_key,
+            ProgramEntry { zisk_rom, resources: Some(resources), program_vk: program_vk.clone() },
+        );
+
+        Ok(())
+    }
+
+    /// The worker's shmem mappings for `with_hints`, creating them on first use.
+    ///
+    /// One `AsmSharedResources` per hints mode for the whole worker, not one per
+    /// program: the segments it maps are named per pid+rank+mode, so a second
+    /// instance would be a second set of `MAP_LOCKED` mappings over the same
+    /// inodes for no gain — and, before `AsmMultiShmem`'s `Drop` stopped
+    /// unlinking, a second owner able to destroy them.
+    #[allow(clippy::too_many_arguments)]
+    fn shared_resources_for(
+        &self,
+        with_hints: bool,
+        local_rank: i32,
+        unlock_mapped_memory: bool,
+        verbose_mode: VerboseMode,
+        mpi_broadcast_fn: Option<MpiBroadcastFn>,
+        init_rom: bool,
+        shm_prefix: &str,
+        gpu_buffer_source: GpuBufferSource,
+    ) -> Result<Arc<AsmSharedResources>> {
+        // One lock, no read-then-write double check: this runs once per program
+        // setup, never on a hot path, and holding the write lock across the
+        // mapping is what stops two concurrent setups from both creating a set.
+        let mut guard = self.shared_resources.write().unwrap();
+        if let Some(shared) = guard.get(&with_hints) {
+            return Ok(shared.clone());
+        }
+
         let shared = Arc::new(AsmSharedResources::new(
             local_rank,
             unlock_mapped_memory,
@@ -235,19 +302,29 @@ impl AsmProver {
             mpi_broadcast_fn,
             init_rom,
             with_hints,
-            asm_services.shm_prefix(),
+            shm_prefix,
             gpu_buffer_source,
         )?);
-        timer_stop_and_log_info!(STARTING_ASM_MICROSERVICES);
+        guard.insert(with_hints, shared.clone());
+        Ok(shared)
+    }
 
-        let resources = Arc::new(AsmResources::new(shared, asm_services)?);
-        self.core_prover.backend.set_asm_resources(resources.clone())?;
-        self.core_prover.asm_info.n_setups.fetch_add(1, Ordering::SeqCst);
-        self.program_cache.write().unwrap().insert(
-            SetupKey::new(&*elf.program_id.hash_id, with_hints, false),
-            ProgramEntry { zisk_rom, resources: Some(resources), program_vk: program_vk.clone() },
-        );
+    /// Hand the shared segments over to `setup_key`'s program, if it does not
+    /// already hold them.
+    ///
+    /// The shmem is shared and serves one program at a time, so switching means
+    /// rebinding the semaphores and rebuilding guest RAM/ROM — see
+    /// `AsmResources::activate`. Skipped when the same program runs again, which
+    /// is the common case within a batch, so the reset is paid once per switch
+    /// rather than once per proof.
+    fn make_active(&self, setup_key: &SetupKey, resources: &Arc<AsmResources>) -> Result<()> {
+        let mut active = self.active_setup.lock().unwrap();
+        if active.as_ref() == Some(setup_key) {
+            return Ok(());
+        }
 
+        resources.activate()?;
+        *active = Some(setup_key.clone());
         Ok(())
     }
 
@@ -433,13 +510,13 @@ impl ProverEngine for AsmProver {
         // services in turn, so the last setup wins. register_program restores the right services.
         // Prefer a full-ASM entry; fall back to an emulator-only entry for the same key.
         let guard = self.program_cache.read().unwrap();
-        let (resources, rom, emulator_only) = {
+        let (resources, rom, emulator_only, key) = {
             let full_key = SetupKey::new(&*program_id.hash_id, with_hints, false);
             let emu_key = SetupKey::new(&*program_id.hash_id, with_hints, true);
             if let Some(entry) = guard.get(&full_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), false)
+                (entry.resources.clone(), entry.zisk_rom.clone(), false, full_key)
             } else if let Some(entry) = guard.get(&emu_key) {
-                (entry.resources.clone(), entry.zisk_rom.clone(), true)
+                (entry.resources.clone(), entry.zisk_rom.clone(), true, emu_key)
             } else {
                 return Err(anyhow::anyhow!(
                     "Program '{}' (with_hints={}) not found in cache. Call setup() first.",
@@ -451,7 +528,15 @@ impl ProverEngine for AsmProver {
         drop(guard);
 
         match resources {
-            Some(r) => self.core_prover.backend.set_asm_resources(r)?,
+            Some(r) => {
+                // The shmem is shared across programs, so restoring the right
+                // services is not enough on its own: this program's guest RAM and
+                // ROM have to be rebuilt too, since another program's services may
+                // have overwritten those segments since it last ran. No-op when
+                // this program is already the active one.
+                self.make_active(&key, &r)?;
+                self.core_prover.backend.set_asm_resources(r)?
+            }
             None => self.core_prover.backend.clear_asm_resources()?,
         }
 

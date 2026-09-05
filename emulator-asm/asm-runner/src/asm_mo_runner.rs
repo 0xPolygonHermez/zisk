@@ -199,7 +199,7 @@ impl AsmRunnerMO {
         let mut sem_chunk_done = NamedSemaphore::create(sem_chunk_done_name.clone(), 0)
             .map_err(|e| AsmRunError::SemaphoreError(sem_chunk_done_name.clone(), e))?;
 
-        let stale = crate::drain_chunk_done(&mut sem_chunk_done);
+        let stale = crate::drain_semaphore(&mut sem_chunk_done);
         if stale > 0 {
             warn!(
                 "MO semaphore '{sem_chunk_done_name}' had {stale} stale chunk_done post(s) at run start; a prior run skipped its end-side cleanup"
@@ -405,7 +405,7 @@ impl AsmRunnerMO {
 
         let joined = handle.join();
 
-        crate::drain_chunk_done(&mut sem_chunk_done);
+        crate::drain_semaphore(&mut sem_chunk_done);
 
         // inject GPU-produced segments to the C++ segment table.
         #[cfg(gpu)]

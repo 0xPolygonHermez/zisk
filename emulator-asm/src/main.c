@@ -254,6 +254,33 @@ void process_request(const uint64_t * request, uint64_t * response, bool * bRese
             }
             break;
         }
+        case TYPE_RS_REQUEST:
+        {
+#ifdef DEBUG
+            if (verbose) asm_printf("RESET received\n");
+#endif
+            // Called directly, not via *bReset: that flag is honoured only after the response has
+            // been written, so the client could not tell the re-initialization apart from a
+            // pending one and could issue its next emulation request into half-reset memory.
+            //
+            // RAM and ROM only. Deliberately NOT server_reset_trace(): the trace needs no
+            // re-initialization here (it is per-emulation state, and server_run() already
+            // resets its header at the start of every emulation), while calling it out of
+            // band rewrites the header and zeroes trace_used_size without touching the
+            // assembly side's write pointer or re-deriving trace_address_threshold --
+            // which set_chunk_size() does when a real request arrives. Doing it here left
+            // the two inconsistent, so the next emulation saw the threshold already
+            // crossed and mapped a fresh 2 GB chunk for practically every chunk written:
+            // 13 of them in one run, up to the 32 GB cap, then the child aborted.
+            server_reset_slow();
+
+            response[0] = TYPE_RS_RESPONSE;
+            response[1] = 0;
+            response[2] = trace_size;
+            response[3] = 0;
+            response[4] = 0;
+            break;
+        }
         case TYPE_SD_REQUEST:
         {
             if (!silent) asm_printf("SHUTDOWN received\n");
