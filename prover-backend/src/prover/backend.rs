@@ -26,6 +26,8 @@ use zisk_common::{
     program_publics, HashMode, PlonkVkBlob, PlonkVkey, ProgramVK, Proof, ProofBody, ProofKind,
     PublicValues, VadcopKind, PROGRAM_VK_LEN,
 };
+#[cfg(test)]
+use zisk_common::{IS_VADCOP_FINAL_PROOF, VADCOP_FINAL_FLAG_LEN, ZISK_PUBLICS};
 use zisk_executor::{AsmResources, EmulatorAsm, ZiskExecutor};
 use zisk_precomp_hints::HintsProcessor;
 use zisk_recurser::prove::{
@@ -531,14 +533,14 @@ impl ProverBackend {
         let vadcop_final_proof =
             VadcopFinalProof::new(proof.to_vec(), publics_full.to_vec(), false, self.hash()?);
 
-        // Read the program VK from the flag-free view (a full vadcop_final
-        // publics vector carries the `is_vadcop_final_proof` flag at index 0).
-        let proof_verkey = &program_publics(publics_full)[..PROGRAM_VK_LEN];
+        let vadcop_final_vk = self.get_vadcop_vk(false)?;
+        let (verkey_override, rootc) = plonk_wrap_verkey(publics_full, &vadcop_final_vk);
+        let rootc = rootc.to_vec();
         let snark_proof = self
             .snark_wrapper
             .as_ref()
             .unwrap()
-            .generate_final_snark_proof(&vadcop_final_proof, Some(proof_verkey))?;
+            .generate_final_snark_proof(&vadcop_final_proof, verkey_override)?;
 
         let time = start.elapsed();
 
@@ -556,18 +558,14 @@ impl ProverBackend {
         let proof = Proof {
             body: ProofBody::Plonk {
                 proof_bytes: snark_proof.proof_bytes.clone(),
-                plonk_vk: Box::new(PlonkVkBlob {
-                    vadcop_vk: self.get_vadcop_vk(false)?,
-                    plonk_vkey,
-                }),
+                plonk_vk: Box::new(PlonkVkBlob { vadcop_vk: vadcop_final_vk, plonk_vkey }),
                 publics: PublicValues::new_from_u64(&vadcop_final_proof.public_values),
                 // Store the canonical flag-free view (the input vadcop_final
                 // publics carry the is_vadcop_final_proof flag at index 0).
                 publics_full: program_publics(&vadcop_final_proof.public_values).to_vec(),
-                // This wrap path stamps the proof's own program VK as rootC, read
-                // from the same flag-free view.
-                rootc: program_publics(&vadcop_final_proof.public_values)[..PROGRAM_VK_LEN]
-                    .to_vec(),
+                // The verkey actually stamped into the RecursiveF proof; the on-chain
+                // verifier hashes it as `rootCVadcopFinal`.
+                rootc,
             },
             program_vk: ProgramVK::new_from_publics_with_mode(
                 &vadcop_final_proof.public_values,
@@ -685,5 +683,73 @@ impl ProverBackend {
 
     pub(crate) fn cluster_barrier(&self) {
         self.proofman.set_barrier();
+    }
+}
+
+/// Verkey the snark wrapper must check a vadcop proof against when wrapping it
+/// into a PLONK proof, and therefore the `rootC` stamped into the result.
+///
+/// Only an aggregated (`Recurser`) proof carries its own verkey in the leading
+/// `PROGRAM_VK_LEN` publics. A plain `vadcop_final` proof carries the program VK
+/// (`rom_root`) there and must be checked against the `vadcop_final` verkey:
+/// stamping the program VK instead diverges the wrapper transcript (the circom
+/// `VerifyPoW` assert fires) and, if it did not, would export a
+/// `rootCVadcopFinal` equal to `programVK` that `ZiskVerifier` rejects.
+///
+/// Returns `(verkey_override, rootc)`; the override is `None` when the wrapper's
+/// default `vadcop_final` verkey applies. `publics_full` is the raw vector as it
+/// arrives from the proof (flag at index 0 for `Final`/`Recurser`).
+pub(crate) fn plonk_wrap_verkey<'a>(
+    publics_full: &'a [u64],
+    vadcop_final_vk: &'a [u64],
+) -> (Option<&'a [u64]>, &'a [u64]) {
+    match VadcopKind::from_publics_full(publics_full) {
+        VadcopKind::Recurser => {
+            let own_vk = &program_publics(publics_full)[..PROGRAM_VK_LEN];
+            (Some(own_vk), own_vk)
+        }
+        _ => (None, vadcop_final_vk),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VADCOP_FINAL_VK: [u64; PROGRAM_VK_LEN] = [0xA1, 0xA2, 0xA3, 0xA4];
+    const LEADING_VK: [u64; PROGRAM_VK_LEN] = [0xB1, 0xB2, 0xB3, 0xB4];
+
+    /// Raw publics of a vadcop proof as they arrive from the prover:
+    /// `[is_vadcop_final_proof | leading vk (4) | inputs (ZISK_PUBLICS)]`.
+    fn raw_publics(flag: u64) -> Vec<u64> {
+        let mut v = Vec::with_capacity(VADCOP_FINAL_FLAG_LEN + PROGRAM_VK_LEN + ZISK_PUBLICS);
+        v.push(flag);
+        v.extend_from_slice(&LEADING_VK);
+        v.extend((0..ZISK_PUBLICS as u64).map(|i| 1000 + i));
+        v
+    }
+
+    #[test]
+    fn plain_vadcop_final_proof_is_checked_against_the_vadcop_final_verkey() {
+        // Leading publics of a plain proof are the program VK, not a verkey.
+        let publics = raw_publics(IS_VADCOP_FINAL_PROOF);
+        assert_eq!(VadcopKind::from_publics_full(&publics), VadcopKind::Final);
+
+        let (verkey_override, rootc) = plonk_wrap_verkey(&publics, &VADCOP_FINAL_VK);
+
+        assert_eq!(verkey_override, None, "plain proof must use the wrapper's default verkey");
+        assert_eq!(rootc, &VADCOP_FINAL_VK, "rootC must be the vadcop_final verkey");
+        assert_ne!(rootc, &LEADING_VK, "rootC must not be the program VK");
+    }
+
+    #[test]
+    fn aggregated_proof_is_checked_against_its_own_verkey() {
+        let publics = raw_publics(0);
+        assert_eq!(VadcopKind::from_publics_full(&publics), VadcopKind::Recurser);
+
+        let (verkey_override, rootc) = plonk_wrap_verkey(&publics, &VADCOP_FINAL_VK);
+
+        assert_eq!(verkey_override, Some(&LEADING_VK[..]));
+        assert_eq!(rootc, &LEADING_VK);
     }
 }
