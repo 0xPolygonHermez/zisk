@@ -9,18 +9,33 @@
 
 use std::sync::Arc;
 
-use crate::MainSmError;
+use crate::{MainPlanner, MainSmError};
 use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofCtx, SetupCtx};
 use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_common::{EmuTrace, InstanceCtx, Plan, SegmentId};
 use zisk_core::{ZiskRom, DEFAULT_MAX_STEPS, REGS_IN_MAIN, REGS_IN_MAIN_FROM, REGS_IN_MAIN_TO};
-use zisk_pil::MainAirValues;
+use zisk_pil::{MainAirValues, MAIN_LANES, MAIN_STEPS_PER_SEGMENT};
 use zisk_sm_mem_common::{MemHelpers, MEM_REGS_MAX_DIFF, MEM_STEPS_BY_MAIN_STEP};
 use ziskemu::{Emu, EmuRegTrace};
 
 use zisk_pil::{IndexedFill, MainTrace, MainTraceRowOps};
+
+/// What filling one minimal-trace chunk hands back to [`MainInstance::compute_witness`].
+struct ChunkFill<R> {
+    /// `pc` after the chunk's last step.
+    next_pc: u64,
+    /// Register values at the end of the chunk, when the caller asked for them.
+    reg_values: Vec<u64>,
+    /// Per-register mem-step bookkeeping, folded into the segment's chain.
+    reg_trace: EmuRegTrace,
+    /// This chunk's contribution to the mem-step range checks.
+    step_range_check: Vec<u32>,
+    /// A row of end-instruction steps to pad the segment's tail with. Only the last chunk
+    /// of a short segment produces one.
+    pad_row: Option<R>,
+}
 
 /// Represents an instance of the main state machine,
 /// containing context for managing a specific segment of the main trace.
@@ -33,13 +48,14 @@ pub struct MainInstance<F: PrimeField64> {
 }
 
 impl<F: PrimeField64> MainInstance<F> {
-    /// Maximum segment ID allowed, derived from `DEFAULT_MAX_STEPS` and `MainTrace::NUM_ROWS`.
+    /// Maximum segment ID allowed, derived from `DEFAULT_MAX_STEPS` and the steps a
+    /// segment covers.
     const MAX_SEGMENT_ID: usize =
-        (((DEFAULT_MAX_STEPS + 1) / MainTrace::<()>::NUM_ROWS as u64) - 1) as usize;
+        (((DEFAULT_MAX_STEPS + 1) / MAIN_STEPS_PER_SEGMENT as u64) - 1) as usize;
 
     /// Size in main steps of a register flush window (mirrors FLUSH_SIZE in main.pil):
-    /// registers are reloaded every `min(NUM_ROWS, FLUSH_WINDOW_ROWS)` steps.
-    const FLUSH_WINDOW_ROWS: usize = 1 << 22;
+    /// registers are reloaded every `min(MAIN_STEPS_PER_SEGMENT, FLUSH_WINDOW_STEPS)` steps.
+    const FLUSH_WINDOW_STEPS: usize = 1 << 22;
 
     /// Creates a new `MainInstance`.
     ///
@@ -86,19 +102,8 @@ impl<F: PrimeField64> MainInstance<F> {
     ) -> Result<AirInstance<F>, MainSmError> {
         const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
 
-        // Compile-time assertion to ensure `MainTrace::NUM_ROWS` is a power of two.
-        const _: () =
-            assert!(NUM_ROWS.is_power_of_two(), "MainTrace::NUM_ROWS must be a power of two",);
-
         let chunk_size: usize = chunk_size.try_into()?;
-
-        if !chunk_size.is_power_of_two() {
-            return Err(MainSmError::ChunkSizeNotPowerOfTwo { size: chunk_size });
-        }
-
-        if NUM_ROWS < chunk_size {
-            return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: NUM_ROWS });
-        }
+        MainPlanner::validate_chunk_size(chunk_size)?;
 
         // Create the main trace buffer
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
@@ -106,7 +111,7 @@ impl<F: PrimeField64> MainInstance<F> {
         let (segment_id, is_last_segment) = Self::decode_plan(&self.ictx.plan)?;
 
         // Determine the number of minimal traces per segment
-        let num_within = NUM_ROWS / chunk_size;
+        let num_within = MAIN_STEPS_PER_SEGMENT / chunk_size;
 
         Self::check_segment_complete(
             segment_id,
@@ -115,43 +120,48 @@ impl<F: PrimeField64> MainInstance<F> {
             is_last_segment,
         )?;
 
-        // Calculate total filled rows
-        let filled_rows: usize =
+        // Steps the minimal traces actually cover, and the rows they occupy. A row is filled
+        // as soon as any of its lanes carries a real step: the lanes past the execution's end
+        // hold the end instruction re-executed, which the padding below then repeats.
+        let filled_steps: usize =
             segment_min_traces.iter().map(|min_trace| min_trace.steps as usize).sum();
+        let filled_rows = filled_steps.div_ceil(MAIN_LANES);
 
         tracing::debug!(
-            "··· Creating Main segment #{} [{} / {} rows filled {:.2}%]",
+            "··· Creating Main segment #{} [{} / {} steps filled {:.2}%]",
             segment_id,
-            filled_rows,
-            NUM_ROWS,
-            filled_rows as f64 / NUM_ROWS as f64 * 100.0
+            filled_steps,
+            MAIN_STEPS_PER_SEGMENT,
+            filled_steps as f64 / MAIN_STEPS_PER_SEGMENT as f64 * 100.0
         );
 
         // Compute the segment's boundary mem-steps. `initial_step` is the mem-step at the
         // end of the previous segment (0 for the first segment).
-        let (initial_step, _) = Self::mem_steps_for_segment(segment_id, NUM_ROWS);
+        let (initial_step, _) = Self::mem_steps_for_segment(segment_id);
 
         // Registers are reloaded (flushed) in windows of at most 2^22 main steps (mirrors
         // FLUSH_COUNT / FLUSH_SIZE in main.pil): each flush restarts the register range
-        // check distance, keeping it below 2^24 regardless of NUM_ROWS.
-        let flush_size = NUM_ROWS.min(Self::FLUSH_WINDOW_ROWS);
-        let flush_count = NUM_ROWS / flush_size;
+        // check distance, keeping it below 2^24 regardless of the segment's step count.
+        let flush_size = MAIN_STEPS_PER_SEGMENT.min(Self::FLUSH_WINDOW_STEPS);
+        let flush_count = MAIN_STEPS_PER_SEGMENT / flush_size;
         if chunk_size > flush_size || flush_size % chunk_size != 0 {
             // flush windows must be aligned to chunk boundaries
-            return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: flush_size });
+            return Err(MainSmError::ChunkSizeTooBig { chunk_size, max_steps: flush_size });
         }
         let chunks_per_flush = flush_size / chunk_size;
         let flush_steps: Vec<u64> = (0..flush_count)
             .map(|flush_index| {
                 MemHelpers::main_step_to_special_mem_step(
-                    (segment_id.as_usize() * NUM_ROWS + (flush_index + 1) * flush_size) as u64 - 1,
+                    (segment_id.as_usize() * MAIN_STEPS_PER_SEGMENT
+                        + (flush_index + 1) * flush_size) as u64
+                        - 1,
                 )
             })
             .collect();
 
         // To reduce memory used, only take memory for the maximum range of mem_step inside the
-        // minimal trace. `chunk_size <= NUM_ROWS` and `MEM_STEPS_BY_MAIN_STEP` is a small
-        // constant, so `chunk_size * MEM_STEPS_BY_MAIN_STEP` fits in usize by construction.
+        // minimal trace. `chunk_size <= MAIN_STEPS_PER_SEGMENT` and `MEM_STEPS_BY_MAIN_STEP` is a
+        // small constant, so `chunk_size * MEM_STEPS_BY_MAIN_STEP` fits in usize by construction.
         let max_range = chunk_size * MEM_STEPS_BY_MAIN_STEP as usize;
 
         // We know each register's previous step, but only by instance. We don't have this
@@ -172,23 +182,31 @@ impl<F: PrimeField64> MainInstance<F> {
                 // and at the last executed chunk (to close the remaining windows)
                 let last_reg_values = (chunk_id + 1) % chunks_per_flush == 0
                     || chunk_id == (segment_min_traces.len() - 1);
-                let (pc, regs) = Self::fill_partial_trace::<R>(
+                // Only the last chunk of a short segment needs the padding row, and a segment
+                // is only short once the execution has ended — so the emulator is sitting on
+                // the end instruction there, which is what makes the extra steps free of
+                // minimal-trace data.
+                let with_pad_row =
+                    chunk_id == (segment_min_traces.len() - 1) && filled_rows < NUM_ROWS;
+                let (next_pc, reg_values, pad_row) = Self::fill_partial_trace::<R>(
                     zisk_rom,
                     chunk,
                     &segment_min_traces[chunk_id],
                     &mut reg_trace,
                     &mut step_range_check,
                     last_reg_values,
+                    with_pad_row,
                 );
-                (pc, regs, reg_trace, step_range_check)
+                ChunkFill { next_pc, reg_values, reg_trace, step_range_check, pad_row }
             })
-            .collect::<Vec<(u64, Vec<u64>, EmuRegTrace, Vec<u32>)>>();
+            .collect::<Vec<ChunkFill<R>>>();
         let last_result = fill_trace_outputs.last().ok_or(MainSmError::EmptyFillTraceOutput)?;
-        let next_pc = last_result.0;
+        let next_pc = last_result.next_pc;
+        let pad_row = last_result.pad_row;
 
         let mut step_range_check: Vec<u32> = (0..max_range)
             .into_par_iter()
-            .map(|i| fill_trace_outputs.iter().map(|(_, _, _, local)| local[i]).sum())
+            .map(|i| fill_trace_outputs.iter().map(|fill| fill.step_range_check[i]).sum())
             .collect();
 
         // In the range checks are values too large to store in steps_range_check, but there
@@ -199,7 +217,6 @@ impl<F: PrimeField64> MainInstance<F> {
 
         let mut reg_steps = [initial_step; REGS_IN_MAIN];
         let mut large_range_checks = Self::complete_trace_with_initial_reg_steps_per_chunk::<R>(
-            NUM_ROWS,
             &fill_trace_outputs,
             &mut main_trace,
             &mut step_range_check,
@@ -209,7 +226,7 @@ impl<F: PrimeField64> MainInstance<F> {
             &mut air_values,
         )?;
 
-        Self::update_reg_steps_with_last_chunk(&last_result.2, &mut reg_steps);
+        Self::update_reg_steps_with_last_chunk(&last_result.reg_trace, &mut reg_steps);
 
         // Close the remaining flush windows: the one where the execution ended and any later
         // (empty) window. Register values stay at their final state; each closing restarts
@@ -220,17 +237,21 @@ impl<F: PrimeField64> MainInstance<F> {
                 &mut air_values,
                 flush_index,
                 flush_step,
-                &last_result.1,
+                &last_result.reg_values,
                 &mut reg_steps,
                 &mut step_range_check,
                 &mut large_range_checks,
             );
         }
 
-        // Pad remaining rows with the last valid row.
-        // In padding row must be clear of registers access, if not need to calculate previous
-        // register step and range check contribution.
-        let last_row = Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, NUM_ROWS);
+        // Pad the segment's tail, and take the row that ends up last — the AIR values below
+        // read the hand-over `c` off it.
+        let last_row = match pad_row {
+            Some(pad_row) => {
+                Self::pad_trailing_rows(&mut main_trace.buffer, filled_rows, NUM_ROWS, pad_row)
+            }
+            None => main_trace.buffer[NUM_ROWS - 1],
+        };
 
         // Determine the last row of the previous segment
         let prev_segment_last_c = match prev_chunk_last_c {
@@ -240,15 +261,22 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(is_last_segment);
+        // Steps run before this segment. Segments are uniform today, so this is just the
+        // segment's offset; it travels on the continuation bus so segments of different
+        // sizes can chain later on.
+        air_values.segment_initial_step =
+            F::from_usize(segment_id.as_usize() * MAIN_STEPS_PER_SEGMENT);
         // From the ROM, not the trace: row 0's `pc` column is instruction-derived, so
-        // `main_trace[0].get_pc()` is 0 on the compact indexed row.
+        // `main_trace[0].get_pc(0)` is 0 on the compact indexed row.
         let segment_initial_pc =
             zisk_rom.get_instruction(segment_min_traces[0].start_state.pc).paddr as u32;
         air_values.segment_initial_pc = F::from_u32(segment_initial_pc);
         air_values.segment_next_pc = F::from_u64(next_pc);
         air_values.segment_previous_c = prev_segment_last_c;
-        air_values.segment_last_c[0] = F::from_u32(last_row.get_c(0));
-        air_values.segment_last_c[1] = F::from_u32(last_row.get_c(1));
+        // The segment hands over the `c` of its LAST step, which is the last lane of the
+        // last row (mirrors the `SEGMENT_LAST` constraint in main.pil).
+        air_values.segment_last_c[0] = F::from_u32(last_row.get_c(MAIN_LANES - 1, 0));
+        air_values.segment_last_c[1] = F::from_u32(last_row.get_c(MAIN_LANES - 1, 1));
 
         self.update_std_range_checks(segment_id, step_range_check, &large_range_checks)?;
         // Generate and add the AIR instance
@@ -265,7 +293,10 @@ impl<F: PrimeField64> MainInstance<F> {
     /// * `min_trace` - Reference to the minimal trace to process.
     ///
     /// # Returns
-    /// The next program counter value after processing the minimal trace.
+    /// The next program counter value after processing the minimal trace, the register
+    /// values when `last_reg_values`, and — when `with_pad_row` — one extra row holding
+    /// `MAIN_LANES` further steps, for the caller to pad the segment's tail with.
+    #[allow(clippy::too_many_arguments)]
     fn fill_partial_trace<R: MainTraceRowOps<F> + IndexedFill>(
         zisk_rom: &ZiskRom,
         main_trace: &mut [R],
@@ -273,20 +304,47 @@ impl<F: PrimeField64> MainInstance<F> {
         reg_trace: &mut EmuRegTrace,
         step_range_check: &mut [u32],
         last_reg_values: bool,
-    ) -> (u64, Vec<u64>) {
+        with_pad_row: bool,
+    ) -> (u64, Vec<u64>, Option<R>) {
         // Initialize the emulator with the start state of the emu trace
         let mut emu = Emu::from_emu_trace_start(zisk_rom, &min_trace.start_state);
         let mut mem_reads_index: usize = 0;
 
+        // Each row packs `MAIN_LANES` consecutive steps, so a row is written lane by lane
+        // before moving on. The chunk always spans whole rows (`validate_chunk_size`).
         for trace in main_trace {
-            emu.step_slice_full_trace::<R, F>(
-                trace,
-                &min_trace.mem_reads,
-                &mut mem_reads_index,
-                reg_trace,
-                Some(step_range_check),
-            );
+            for lane in 0..MAIN_LANES {
+                emu.step_slice_full_trace::<R, F>(
+                    trace,
+                    lane,
+                    &min_trace.mem_reads,
+                    &mut mem_reads_index,
+                    reg_trace,
+                    Some(step_range_check),
+                );
+            }
         }
+
+        // The padding row is asked for only past the end of the execution, where the emulator
+        // is looping on the end instruction: it reads no minimal-trace data and touches no
+        // register, so these steps neither consume `mem_reads` nor contribute range checks.
+        // Building it from the emulator rather than copying a filled row is what keeps the
+        // pc chain intact: a row that mixes real steps with end-instruction lanes cannot be
+        // repeated, since its lane 0 would no longer follow the previous row's last lane.
+        let pad_row = with_pad_row.then(|| {
+            let mut pad_row = R::default();
+            for lane in 0..MAIN_LANES {
+                emu.step_slice_full_trace::<R, F>(
+                    &mut pad_row,
+                    lane,
+                    &min_trace.mem_reads,
+                    &mut mem_reads_index,
+                    reg_trace,
+                    None,
+                );
+            }
+            pad_row
+        });
 
         (
             emu.ctx.inst_ctx.pc,
@@ -295,6 +353,7 @@ impl<F: PrimeField64> MainInstance<F> {
             } else {
                 vec![]
             },
+            pad_row,
         )
     }
 
@@ -311,8 +370,7 @@ impl<F: PrimeField64> MainInstance<F> {
     /// produces a value outside `0..=2`.
     #[allow(clippy::too_many_arguments)]
     fn complete_trace_with_initial_reg_steps_per_chunk<R: MainTraceRowOps<F> + IndexedFill>(
-        num_rows: usize,
-        fill_trace_outputs: &[(u64, Vec<u64>, EmuRegTrace, Vec<u32>)],
+        fill_trace_outputs: &[ChunkFill<R>],
         main_trace: &mut MainTrace<R>,
         step_range_check: &mut [u32],
         reg_steps: &mut [u64; REGS_IN_MAIN],
@@ -322,9 +380,13 @@ impl<F: PrimeField64> MainInstance<F> {
     ) -> Result<Vec<u32>, MainSmError> {
         let mut large_range_checks: Vec<u32> = vec![];
         let max_range = step_range_check.len() as u64;
-        for (index, (_, _, reg_trace, _)) in fill_trace_outputs.iter().enumerate().skip(1) {
+        for (index, fill) in fill_trace_outputs.iter().enumerate().skip(1) {
+            let reg_trace = &fill.reg_trace;
             // fold the previous chunk's last register steps into the carried steps
-            Self::update_reg_steps_with_last_chunk(&fill_trace_outputs[index - 1].2, reg_steps);
+            Self::update_reg_steps_with_last_chunk(
+                &fill_trace_outputs[index - 1].reg_trace,
+                reg_steps,
+            );
 
             // close the flush window ending at this chunk boundary, if any
             if index % chunks_per_flush == 0 {
@@ -333,7 +395,7 @@ impl<F: PrimeField64> MainInstance<F> {
                     air_values,
                     flush_index,
                     flush_steps[flush_index],
-                    &fill_trace_outputs[index - 1].1,
+                    &fill_trace_outputs[index - 1].reg_values,
                     reg_steps,
                     step_range_check,
                     &mut large_range_checks,
@@ -345,7 +407,12 @@ impl<F: PrimeField64> MainInstance<F> {
                 let reg_prev_mem_step = reg_steps[reg_index];
                 if let Some(mem_step) = reg_trace.first_step_uses[reg_index] {
                     let slot = MemHelpers::mem_step_to_slot(mem_step);
-                    let row = MemHelpers::mem_step_to_row(mem_step) % num_rows;
+                    // `mem_step_to_row` yields the main step; the segment's steps are laid
+                    // out `MAIN_LANES` per row, in lane order.
+                    let segment_step =
+                        MemHelpers::mem_step_to_row(mem_step) % MAIN_STEPS_PER_SEGMENT;
+                    let row = segment_step / MAIN_LANES;
+                    let lane = segment_step % MAIN_LANES;
                     let range = mem_step - reg_prev_mem_step - 1;
                     if range >= max_range {
                         large_range_checks.push(range as u32);
@@ -354,13 +421,14 @@ impl<F: PrimeField64> MainInstance<F> {
                     }
                     match slot {
                         0 => {
-                            main_trace.buffer[row].set_a_reg_prev_mem_step(reg_prev_mem_step);
+                            main_trace.buffer[row].set_a_reg_prev_mem_step(lane, reg_prev_mem_step);
                         }
                         1 => {
-                            main_trace.buffer[row].set_b_reg_prev_mem_step(reg_prev_mem_step);
+                            main_trace.buffer[row].set_b_reg_prev_mem_step(lane, reg_prev_mem_step);
                         }
                         2 => {
-                            main_trace.buffer[row].set_store_reg_prev_mem_step(reg_prev_mem_step);
+                            main_trace.buffer[row]
+                                .set_store_reg_prev_mem_step(lane, reg_prev_mem_step);
                         }
                         _ => return Err(MainSmError::InvalidSlot { slot }),
                     }
@@ -445,18 +513,21 @@ impl<F: PrimeField64> MainInstance<F> {
     /// Computes the boundary mem-steps for a given segment of the main trace.
     ///
     /// Returns `(initial_step, final_step)`:
-    /// - `initial_step`: mem-step at the last row of segment `segment_id - 1`
-    ///   (or at row 0 for `segment_id == 0`, since there is no previous segment).
-    /// - `final_step`: mem-step at the last row of segment `segment_id`.
+    /// - `initial_step`: mem-step at the last step of segment `segment_id - 1`
+    ///   (or at step 0 for `segment_id == 0`, since there is no previous segment).
+    /// - `final_step`: mem-step at the last step of segment `segment_id`.
     ///
     /// Adjacent segments are contiguous in mem-step space:
-    /// `mem_steps_for_segment(s, n).1 == mem_steps_for_segment(s + 1, n).0`.
-    fn mem_steps_for_segment(segment_id: SegmentId, num_rows: usize) -> (u64, u64) {
-        let last_row_previous_segment =
-            if segment_id == 0 { 0 } else { (segment_id.as_usize() * num_rows) as u64 - 1 };
-        let initial_step = MemHelpers::main_step_to_special_mem_step(last_row_previous_segment);
+    /// `mem_steps_for_segment(s).1 == mem_steps_for_segment(s + 1).0`.
+    fn mem_steps_for_segment(segment_id: SegmentId) -> (u64, u64) {
+        let last_step_previous_segment = if segment_id == 0 {
+            0
+        } else {
+            (segment_id.as_usize() * MAIN_STEPS_PER_SEGMENT) as u64 - 1
+        };
+        let initial_step = MemHelpers::main_step_to_special_mem_step(last_step_previous_segment);
         let final_step = MemHelpers::main_step_to_special_mem_step(
-            ((segment_id.as_usize() + 1) * num_rows) as u64 - 1,
+            ((segment_id.as_usize() + 1) * MAIN_STEPS_PER_SEGMENT) as u64 - 1,
         );
         (initial_step, final_step)
     }
@@ -508,19 +579,19 @@ impl<F: PrimeField64> MainInstance<F> {
         Ok((segment_id, is_last_segment))
     }
 
-    /// Pads `buffer[filled_rows..num_rows]` with `buffer[filled_rows - 1]` (the
-    /// last filled row), in parallel. Returns the row used for padding so the
-    /// caller can reuse it (e.g. for AIR values).
+    /// Pads `buffer[filled_rows..num_rows]` with `pad_row`, in parallel, and returns the
+    /// segment's final row — `pad_row` itself when anything was padded, and the last row the
+    /// emulator wrote when the filled rows already reached `num_rows`.
     ///
     /// Caller must ensure `1 <= filled_rows <= num_rows <= buffer.len()`.
     fn pad_trailing_rows<R: Copy + Send + Sync>(
         buffer: &mut [R],
         filled_rows: usize,
         num_rows: usize,
+        pad_row: R,
     ) -> R {
-        let last_row = buffer[filled_rows - 1];
-        buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = last_row);
-        last_row
+        buffer[filled_rows..num_rows].par_iter_mut().for_each(|row| *row = pad_row);
+        buffer[num_rows - 1]
     }
 }
 
@@ -593,50 +664,54 @@ mod tests {
     }
 
     #[test]
-    fn segment_zero_starts_at_row_zero() {
-        let num_rows = 1 << 8; // 256 rows
-        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(0), num_rows);
+    fn segment_zero_starts_at_step_zero() {
+        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(0));
         assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(0));
-        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(num_rows as u64 - 1));
+        assert_eq!(
+            final_,
+            MemHelpers::main_step_to_special_mem_step(MAIN_STEPS_PER_SEGMENT as u64 - 1)
+        );
     }
 
     #[test]
     fn segment_one_starts_at_end_of_segment_zero() {
-        let num_rows = 1 << 8; // 256 rows
-        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(1), num_rows);
-        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(num_rows as u64 - 1));
-        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(2 * num_rows as u64 - 1));
+        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(1));
+        assert_eq!(
+            initial,
+            MemHelpers::main_step_to_special_mem_step(MAIN_STEPS_PER_SEGMENT as u64 - 1)
+        );
+        assert_eq!(
+            final_,
+            MemHelpers::main_step_to_special_mem_step(2 * MAIN_STEPS_PER_SEGMENT as u64 - 1)
+        );
     }
 
     #[test]
-    fn arbitrary_segment_uses_correct_row_indices() {
-        let num_rows = 1 << 8; // 256 rows
+    fn arbitrary_segment_uses_correct_step_indices() {
         let s = 5usize;
-        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(s), num_rows);
-        let expected_last_row_prev = (s * num_rows) as u64 - 1;
-        let expected_final_row = ((s + 1) * num_rows) as u64 - 1;
-        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(expected_last_row_prev));
-        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(expected_final_row));
+        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(s));
+        let expected_last_step_prev = (s * MAIN_STEPS_PER_SEGMENT) as u64 - 1;
+        let expected_final_step = ((s + 1) * MAIN_STEPS_PER_SEGMENT) as u64 - 1;
+        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(expected_last_step_prev));
+        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(expected_final_step));
     }
 
     #[test]
     fn consecutive_segments_are_contiguous_in_mem_step_space() {
         // The invariant the planner + witness pipeline rely on: segment `s`'s `final_step`
         // is the same mem-step as segment `s + 1`'s `initial_step`.
-        let num_rows = 1 << 8; // 256 rows
         for s in 0..4 {
-            let (_, final_s) = MI::mem_steps_for_segment(SegmentId(s), num_rows);
-            let (initial_next, _) = MI::mem_steps_for_segment(SegmentId(s + 1), num_rows);
+            let (_, final_s) = MI::mem_steps_for_segment(SegmentId(s));
+            let (initial_next, _) = MI::mem_steps_for_segment(SegmentId(s + 1));
             assert_eq!(final_s, initial_next, "discontinuity between segment {s} and {}", s + 1);
         }
     }
 
     #[test]
-    fn num_rows_one_does_not_panic() {
-        // Degenerate but valid: a single-row segment.
-        let (initial, final_) = MI::mem_steps_for_segment(SegmentId(0), 1);
-        assert_eq!(initial, MemHelpers::main_step_to_special_mem_step(0));
-        assert_eq!(final_, MemHelpers::main_step_to_special_mem_step(0));
+    fn a_segment_spans_lanes_times_rows_steps() {
+        // The whole lane change in one assertion: a segment still has NUM_ROWS rows, but
+        // each of them carries MAIN_LANES steps.
+        assert_eq!(MAIN_STEPS_PER_SEGMENT, MainTrace::<()>::NUM_ROWS * MAIN_LANES);
     }
 
     #[test]
@@ -676,18 +751,20 @@ mod tests {
     }
 
     #[test]
-    fn pad_trailing_rows_fills_tail_with_last_filled_row() {
+    fn pad_trailing_rows_fills_tail_with_the_pad_row() {
         let mut buf = [1u32, 2, 3, 4, 5, 0, 0, 0, 0, 0];
-        let last = MI::pad_trailing_rows(&mut buf, 5, 10);
-        assert_eq!(last, 5);
-        assert_eq!(buf, [1, 2, 3, 4, 5, 5, 5, 5, 5, 5]);
+        let last = MI::pad_trailing_rows(&mut buf, 5, 10, 9);
+        assert_eq!(last, 9);
+        assert_eq!(buf, [1, 2, 3, 4, 5, 9, 9, 9, 9, 9]);
     }
 
     #[test]
-    fn pad_trailing_rows_filled_equals_num_rows_is_noop() {
+    fn pad_trailing_rows_filled_equals_num_rows_keeps_the_emulated_last_row() {
+        // Nothing to pad: the segment's final row is the one the emulator wrote, not the
+        // pad row — which is why this returns `buffer[num_rows - 1]` rather than `pad_row`.
         let mut buf = [1u32, 2, 3, 4, 5];
         let before = buf;
-        let last = MI::pad_trailing_rows(&mut buf, 5, 5);
+        let last = MI::pad_trailing_rows(&mut buf, 5, 5, 9);
         assert_eq!(last, 5);
         assert_eq!(buf, before);
     }
@@ -695,8 +772,8 @@ mod tests {
     #[test]
     fn pad_trailing_rows_single_filled_row_pads_rest() {
         let mut buf = [42u32, 0, 0, 0];
-        let last = MI::pad_trailing_rows(&mut buf, 1, 4);
-        assert_eq!(last, 42);
-        assert_eq!(buf, [42, 42, 42, 42]);
+        let last = MI::pad_trailing_rows(&mut buf, 1, 4, 7);
+        assert_eq!(last, 7);
+        assert_eq!(buf, [42, 7, 7, 7]);
     }
 }

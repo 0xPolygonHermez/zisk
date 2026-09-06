@@ -18,13 +18,25 @@ pub enum MainSmError {
         size: usize,
     },
 
-    /// The configured chunk size exceeds the row capacity of `MainTrace`.
-    #[error("chunk_size ({chunk_size}) exceeds MainTrace::NUM_ROWS ({num_rows})")]
+    /// The configured chunk size exceeds the step capacity it has to fit into — a whole
+    /// Main segment, or one register flush window inside it.
+    #[error("chunk_size ({chunk_size}) exceeds the {max_steps} steps it must fit into")]
     ChunkSizeTooBig {
         /// The offending minimal trace size.
         chunk_size: usize,
-        /// The fixed row count of `MainTrace`.
-        num_rows: usize,
+        /// Steps available: a segment (`MainTrace::NUM_ROWS * MAIN_LANES`) or a flush window.
+        max_steps: usize,
+    },
+
+    /// The chunk size is not a whole number of Main rows. A Main row packs `MAIN_LANES`
+    /// steps, so a chunk that does not divide into rows would start mid-row and break the
+    /// row/lane mapping the witness fill relies on.
+    #[error("chunk_size ({chunk_size}) is not a multiple of MAIN_LANES ({lanes})")]
+    ChunkSizeNotLaneAligned {
+        /// The offending minimal trace size.
+        chunk_size: usize,
+        /// Steps packed into one Main row.
+        lanes: usize,
     },
     /// The plan handed to the main instance has no `segment_id`.
     #[error("plan is missing a segment_id")]

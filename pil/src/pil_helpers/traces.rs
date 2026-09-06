@@ -16,7 +16,7 @@ use std::fmt;
 #[allow(dead_code)]
 type FieldExtension<F> = [F; 3];
 
-pub const PILOUT_HASH: &str = "0f5e547d42553b276cc10117eb1357ce9933e7f7f74bca7982e944122588af00";
+pub const PILOUT_HASH: &str = "34deb18bbaac4764539c8ff6fafd7294da1a40437fa590df6b228fe627f006b1";
 
 //AIRGROUP CONSTANTS
 
@@ -177,13 +177,13 @@ values!(ZiskProofValues<F> {
 trace_row!(MainFixedRow<F> {
  SEGMENT_STEP: F, __L1__: F,
 });
-pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 8388608, 0, 0>;
+pub type MainFixed<F> = GenericTrace<MainFixedRow<F>, 4194304, 0, 0>;
 
 trace_row!(MainTraceRow<F> {
- a:[u32; 2], b:[u32; 2], c:[u32; 2], flag:bit, pc:u32, a_src_imm:bit, a_src_mem:bit, a_offset_imm0:u64, a_imm1:u32, is_precompiled:bit, b_src_imm:bit, b_src_mem:bit, b_offset_imm0:u64, b_imm1:u32, b_src_ind:bit, ind_width:ubit(4), is_external_op:bit, op:u8, store_pc:bit, store_mem:bit, store_ind:bit, store_offset:u64, set_pc:bit, jmp_offset1:u64, jmp_offset2:u64, m32:bit, addr1:u32, a_reg_prev_mem_step:ubit(38), b_reg_prev_mem_step:ubit(38), store_reg_prev_mem_step:ubit(38), store_reg_prev_value:[u32; 2], a_src_reg:bit, b_src_reg:bit, store_reg:bit,
+ a:[[u32; 2]; 4], b:[[u32; 2]; 4], c:[[u32; 2]; 4], flag:[bit; 4], pc:[u32; 4], a_src_imm:[bit; 4], a_src_mem:[bit; 4], a_offset_imm0:[u64; 4], a_imm1:[u32; 4], is_precompiled:[bit; 4], b_src_imm:[bit; 4], b_src_mem:[bit; 4], b_offset_imm0:[u64; 4], b_imm1:[u32; 4], b_src_ind:[bit; 4], ind_width:[ubit(4); 4], is_external_op:[bit; 4], op:[u8; 4], store_pc:[bit; 4], store_mem:[bit; 4], store_ind:[bit; 4], store_offset:[u64; 4], set_pc:[bit; 4], jmp_offset1:[u64; 4], jmp_offset2:[u64; 4], m32:[bit; 4], addr1:[u32; 4], a_reg_prev_mem_step:[ubit(38); 4], b_reg_prev_mem_step:[ubit(38); 4], store_reg_prev_mem_step:[ubit(38); 4], store_reg_prev_value:[[u32; 2]; 4], a_src_reg:[bit; 4], b_src_reg:[bit; 4], store_reg:[bit; 4],
 });
 
-pub type MainTrace<R> = GenericTrace<R, 8388608, 0, 0>;
+pub type MainTrace<R> = GenericTrace<R, 4194304, 0, 0>;
 
 trace_row!(RomFixedRow<F> {
  __L1__: F,
@@ -199,13 +199,13 @@ pub type RomTrace<F> = GenericTrace<RomTraceRow<F>, 4194304, 0, 1>;
 trace_row!(MemFixedRow<F> {
  __L1__: F,
 });
-pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 8388608, 0, 2>;
+pub type MemFixed<F> = GenericTrace<MemFixedRow<F>, 4194304, 0, 2>;
 
 trace_row!(MemTraceRow<F> {
- addr:[ubit(29); 2], step:[ubit(38); 2], sel:[bit; 2], addr_changes:[bit; 2], step_dual:[ubit(38); 2], sel_dual:[bit; 2], value:[[u32; 2]; 2], wr:[bit; 2], previous_step:[ubit(40); 2], l_increment:[ubit(22); 2], h_increment:[u16; 2], read_same_addr:[bit; 2],
+ addr:[ubit(29); 8], step:[ubit(38); 8], sel:[bit; 8], addr_changes:[bit; 8], step_dual:[ubit(38); 8], sel_dual:[bit; 8], value:[[u32; 2]; 8], wr:[bit; 8], previous_step:[ubit(40); 8], l_increment:[ubit(22); 8], h_increment:[u16; 8], read_same_addr:[bit; 8],
 });
 
-pub type MemTrace<R> = GenericTrace<R, 8388608, 0, 2>;
+pub type MemTrace<R> = GenericTrace<R, 4194304, 0, 2>;
 
 trace_row!(InputDataFixedRow<F> {
  __L1__: F,
@@ -775,7 +775,7 @@ pub type RomRomTrace<F> = GenericTrace<RomRomTraceRow<F>, 4194304, 0, 1, 0>;
 
 
 values!(MainAirValues<F> {
- main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], last_reg_value: [[[F; 2]; 31]; 2], last_reg_mem_step: [[F; 31]; 2], im_direct: [FieldExtension<F>; 189],
+ main_last_segment: F, main_segment: F, segment_initial_pc: F, segment_previous_c: [F; 2], segment_next_pc: F, segment_last_c: [F; 2], segment_initial_step: F, last_reg_value: [[[F; 2]; 31]; 4], last_reg_mem_step: [[F; 31]; 4], im_direct: [FieldExtension<F>; 375],
 });
 
 values!(MemAirValues<F> {
@@ -1113,13 +1113,13 @@ values!(VirtualTableZisk1AirGroupValues<F> {
 pub const PACKED_INFO: &[(usize, usize, PackedInfoConst)] = &[
     (0, 0, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 14,
-        unpack_info: &[32, 32, 32, 32, 32, 32, 1, 32, 1, 1, 64, 32, 1, 1, 1, 64, 32, 1, 4, 1, 8, 1, 1, 1, 64, 1, 64, 64, 1, 32, 38, 38, 38, 32, 32, 1, 1, 1],
+        num_packed_words: 53,
+        unpack_info: &[32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 32, 32, 32, 32, 1, 1, 1, 1, 4, 4, 4, 4, 1, 1, 1, 1, 8, 8, 8, 8, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 64, 64, 64, 64, 1, 1, 1, 1, 64, 64, 64, 64, 64, 64, 64, 64, 1, 1, 1, 1, 32, 32, 32, 32, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 38, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
     }),
     (0, 2, PackedInfoConst {
         is_packed: true,
-        num_packed_words: 8,
-        unpack_info: &[29, 29, 38, 38, 1, 1, 1, 1, 38, 38, 1, 1, 32, 32, 32, 32, 1, 1, 40, 40, 22, 22, 16, 16, 1, 1],
+        num_packed_words: 32,
+        unpack_info: &[29, 29, 29, 29, 29, 29, 29, 29, 38, 38, 38, 38, 38, 38, 38, 38, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 38, 38, 38, 38, 38, 38, 38, 38, 1, 1, 1, 1, 1, 1, 1, 1, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 32, 1, 1, 1, 1, 1, 1, 1, 1, 40, 40, 40, 40, 40, 40, 40, 40, 22, 22, 22, 22, 22, 22, 22, 22, 16, 16, 16, 16, 16, 16, 16, 16, 1, 1, 1, 1, 1, 1, 1, 1],
     }),
     (0, 3, PackedInfoConst {
         is_packed: true,

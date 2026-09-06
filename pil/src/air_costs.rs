@@ -37,14 +37,14 @@
 //! them move together: mixing a memory cost with a column-area one would make the comparison
 //! meaningless.
 
-/// `Main`: 14.22 GB.
-pub const MAIN_INSTANCE_COST: usize = 14561;
+/// `Main`: 18.83 GB.
+pub const MAIN_INSTANCE_COST: usize = 19282;
 
 /// `Rom`: 5.39 GB.
 pub const ROM_INSTANCE_COST: usize = 5519;
 
-/// `Mem`: 11.78 GB.
-pub const MEM_INSTANCE_COST: usize = 12063;
+/// `Mem`: 13.58 GB.
+pub const MEM_INSTANCE_COST: usize = 13906;
 
 /// `InputData`: 4.58 GB.
 pub const INPUT_DATA_INSTANCE_COST: usize = 4690;
