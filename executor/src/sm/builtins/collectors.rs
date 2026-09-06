@@ -6,9 +6,10 @@ use proofman_fields::PrimeField64;
 use zisk_common::BusDeviceMode;
 use zisk_common::{ChunkId, Instance};
 use zisk_pil::{
-    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_ADD_HI_LARGE_AIR_IDS,
-    BINARY_ADD_LARGE_AIR_IDS, BINARY_AIR_IDS, BINARY_EXTENSION_AIR_IDS,
-    BINARY_EXTENSION_LARGE_AIR_IDS, BINARY_LARGE_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
+    ARITH_AIR_IDS, BINARY_ADD_AIR_IDS, BINARY_ADD_HI_AIR_IDS, BINARY_ADD_HI_HUGE_AIR_IDS,
+    BINARY_ADD_HI_LARGE_AIR_IDS, BINARY_ADD_HUGE_AIR_IDS, BINARY_ADD_LARGE_AIR_IDS, BINARY_AIR_IDS,
+    BINARY_EXTENSION_AIR_IDS, BINARY_EXTENSION_HUGE_AIR_IDS, BINARY_EXTENSION_LARGE_AIR_IDS,
+    BINARY_HUGE_AIR_IDS, BINARY_LARGE_AIR_IDS, DMA_64_ALIGNED_AIR_IDS,
     DMA_64_ALIGNED_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_AIR_IDS, DMA_64_ALIGNED_MEM_CPY_AIR_IDS,
     DMA_64_ALIGNED_MEM_LARGE_AIR_IDS, DMA_64_ALIGNED_MEM_SET_AIR_IDS, DMA_AIR_IDS,
     DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS,
@@ -220,7 +221,10 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
         gid: usize,
     ) -> ExecutorResult<bool> {
         match air_id {
-            id if id == BINARY_AIR_IDS[0] || id == BINARY_LARGE_AIR_IDS[0] => {
+            id if id == BINARY_AIR_IDS[0]
+                || id == BINARY_LARGE_AIR_IDS[0]
+                || id == BINARY_HUGE_AIR_IDS[0] =>
+            {
                 let inst = downcast::<F, BinaryBasicInstance<F>>(
                     secn,
                     air_id,
@@ -230,13 +234,19 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 self.binary_basic.push((gid, inst.build_binary_basic_collector(chunk)));
                 Ok(true)
             }
-            id if id == BINARY_ADD_AIR_IDS[0] || id == BINARY_ADD_LARGE_AIR_IDS[0] => {
+            id if id == BINARY_ADD_AIR_IDS[0]
+                || id == BINARY_ADD_LARGE_AIR_IDS[0]
+                || id == BINARY_ADD_HUGE_AIR_IDS[0] =>
+            {
                 let inst =
                     downcast::<F, BinaryAddInstance<F>>(secn, air_id, gid, "BinaryAddInstance")?;
                 self.binary_add.push((gid, inst.build_binary_add_collector(chunk)));
                 Ok(true)
             }
-            id if id == BINARY_ADD_HI_AIR_IDS[0] || id == BINARY_ADD_HI_LARGE_AIR_IDS[0] => {
+            id if id == BINARY_ADD_HI_AIR_IDS[0]
+                || id == BINARY_ADD_HI_LARGE_AIR_IDS[0]
+                || id == BINARY_ADD_HI_HUGE_AIR_IDS[0] =>
+            {
                 let inst = downcast::<F, BinaryAddHiInstance<F>>(
                     secn,
                     air_id,
@@ -246,7 +256,10 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
                 self.binary_add_hi.push((gid, inst.build_binary_add_hi_collector(chunk)));
                 Ok(true)
             }
-            id if id == BINARY_EXTENSION_AIR_IDS[0] || id == BINARY_EXTENSION_LARGE_AIR_IDS[0] => {
+            id if id == BINARY_EXTENSION_AIR_IDS[0]
+                || id == BINARY_EXTENSION_LARGE_AIR_IDS[0]
+                || id == BINARY_EXTENSION_HUGE_AIR_IDS[0] =>
+            {
                 let inst = downcast::<F, BinaryExtensionInstance<F>>(
                     secn,
                     air_id,
