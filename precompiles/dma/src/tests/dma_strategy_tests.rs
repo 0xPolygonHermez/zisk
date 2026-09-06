@@ -93,7 +93,7 @@ fn no_rows_plans_nothing() {
 }
 
 /// The criterion's headline: work that would need several short instances is given the tall air, even
-/// though the area is no smaller.
+/// though the memory is no smaller.
 #[test]
 fn a_big_memcmp_goes_to_the_tall_air() {
     let caps = caps();
@@ -106,7 +106,7 @@ fn a_big_memcmp_goes_to_the_tall_air() {
     assert!(caps[air::FULL_LARGE] > caps[air::FULL]);
 }
 
-/// Once one instance is enough either way, the area tie-break sends the work to the narrowest,
+/// Once one instance is enough either way, the memory tie-break sends the work to the narrowest,
 /// shortest air that can prove it.
 #[test]
 fn area_breaks_the_tie_for_a_small_workload() {
@@ -146,7 +146,7 @@ fn an_input_copy_only_ever_goes_to_a_general_air() {
 }
 
 /// The packed airs hold eight operations per row, so a memcpy big enough to need several general
-/// instances fits in one packed instance — fewer instances *and* less area.
+/// instances fits in one packed instance — fewer instances *and* less memory.
 #[test]
 fn a_big_memcpy_takes_the_packed_air() {
     let caps = caps();

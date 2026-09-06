@@ -13,14 +13,17 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryAddLargeTrace, BinaryAddTrace, BinaryAddTraceRow, BinaryAddTraceRowPacked};
+use zisk_pil::{
+    BinaryAddHugeTrace, BinaryAddHugeTraceRow, BinaryAddHugeTraceRowPacked, BinaryAddLargeTrace,
+    BinaryAddLargeTraceRow, BinaryAddLargeTraceRowPacked, BinaryAddTrace, BinaryAddTraceRow,
+    BinaryAddTraceRowPacked,
+};
 
-/// Height and air id of each `BinaryAdd` air, as const-generic arguments for the witness
-/// computation.
-const ROWS: usize = BinaryAddTrace::<()>::NUM_ROWS;
+/// Air id of each `BinaryAdd` air. They no longer differ only in height: each packs a different
+/// number of operations per row, so each has its own row type.
 const AIR_ID: usize = BinaryAddTrace::<()>::AIR_ID;
-const LARGE_ROWS: usize = BinaryAddLargeTrace::<()>::NUM_ROWS;
 const LARGE_AIR_ID: usize = BinaryAddLargeTrace::<()>::AIR_ID;
+const HUGE_AIR_ID: usize = BinaryAddHugeTrace::<()>::AIR_ID;
 
 /// The `BinaryAddInstance` struct represents an instance for binary add witness computations.
 ///
@@ -57,7 +60,7 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         std: Arc<Std<F>>,
     ) -> Self {
         assert!(
-            ictx.plan.air_id == AIR_ID || ictx.plan.air_id == LARGE_AIR_ID,
+            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID | HUGE_AIR_ID),
             "BinaryAddInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -71,10 +74,10 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         Self { binary_add_sm, collect_info, ictx, std }
     }
 
-    /// `true` when this instance is the tall air. The two commit the same columns, so this only
-    /// picks the height and air id the trace is built with.
-    fn is_large(&self) -> bool {
-        self.ictx.plan.air_id == LARGE_AIR_ID
+    /// Which of the three `BinaryAdd` airs this instance is. They pack a different number of
+    /// operations per row, so this picks the row type the trace is built with.
+    fn air_id(&self) -> usize {
+        self.ictx.plan.air_id
     }
 
     pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector<F> {
@@ -112,23 +115,26 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             .collect();
 
         let sm = &self.binary_add_sm;
-        Ok(Some(match (self.is_large(), packed) {
-            (false, true) => sm.compute_witness::<BinaryAddTraceRowPacked<F>, ROWS, AIR_ID>(
-                &inputs,
-                trace_buffer,
-            )?,
-            (false, false) => {
-                sm.compute_witness::<BinaryAddTraceRow<F>, ROWS, AIR_ID>(&inputs, trace_buffer)?
+        Ok(Some(match (self.air_id(), packed) {
+            (AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryAddTraceRowPacked<F>>(&inputs, trace_buffer)?
             }
-            (true, true) => sm
-                .compute_witness::<BinaryAddTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
-                    &inputs,
-                    trace_buffer,
-                )?,
-            (true, false) => sm.compute_witness::<BinaryAddTraceRow<F>, LARGE_ROWS, LARGE_AIR_ID>(
-                &inputs,
-                trace_buffer,
-            )?,
+            (AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryAddTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (LARGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryAddLargeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (LARGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryAddLargeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryAddHugeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryAddHugeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (air_id, _) => panic!("BinaryAddInstance: Unsupported air_id: {air_id:?}"),
         }))
     }
 

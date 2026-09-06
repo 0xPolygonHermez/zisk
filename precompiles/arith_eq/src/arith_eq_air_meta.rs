@@ -3,11 +3,11 @@
 //! Each `ArithEq` config air (one alias in `pil/zisk.pil`) covers a fixed set of sub-operations and
 //! has a fixed width and capacity (`NUM_ROWS`). The planner counts each operation separately, then —
 //! over only the airs actually present in the pilout — assigns each operation under the shared
-//! criterion: fewest instances first, least area to break a tie.
+//! criterion: fewest instances first, least memory to break a tie.
 //!
 //! Every config comes in two heights: a plain air and a `Large` sibling that commits exactly the same
 //! columns over more rows. The tall one is what keeps the instance count down; the short one is what
-//! keeps the area down once the count is settled.
+//! keeps the memory down once the count is settled.
 //!
 //! This table is the planner's static input; it is derived from the `equations` bitmask each alias
 //! was instantiated with. `num_rows` is read from the trace types and the cost from

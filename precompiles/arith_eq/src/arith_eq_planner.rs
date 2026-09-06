@@ -3,18 +3,18 @@
 //! The counter tallies each sub-operation separately (`[u64; ARITH_EQ_OP_NUM]`). This module turns
 //! those totals — together with the airs actually present in the pilout — into a per-air, per-op
 //! assignment that covers every observed operation under the shared criterion: **fewest instances
-//! first, least area to break a tie** (see [`zisk_common::select_airs`], which places the other
+//! first, least memory to break a tie** (see [`zisk_common::select_airs`], which places the other
 //! families the same way).
 //!
-//! Cost model: every instance is a full `num_rows` trace regardless of how full it is, so its area is
+//! Cost model: every instance is a full `num_rows` trace regardless of how full it is, so its memory is
 //! `instances · num_rows · row_size`, where `row_size` is the width the setup commits. Each config
 //! comes in two heights — the tall `Large` air holds more operations per instance at the same width,
-//! the short one wastes less area on a partial fill — and a specialized config is narrower than the
+//! the short one wastes less memory on a partial fill — and a specialized config is narrower than the
 //! universal one, so it is the cheaper home for a *full* instance of its operations.
 //!
 //! Strategy, per operation (not per PIL equation group: an air may cover only part of a group):
 //!   * Its `bulk = ⌊count/cap⌋·cap` — the part that fills whole instances — **always goes to the
-//!     covering air with the largest capacity**, ties broken by the least area per operation. A bulk
+//!     covering air with the largest capacity**, ties broken by the least memory per operation. A bulk
 //!     is a whole number of instances, and no covering air can prove those operations in fewer, so
 //!     the choice is independent of everything below.
 //!   * Its `tail = count % cap` may go to **any** air that covers it — its own cheapest air (i.e.
@@ -71,14 +71,14 @@ fn cap(m: &ArithEqAirMeta) -> u64 {
     m.num_rows as u64 / ARITH_EQ_ROWS_BY_OP as u64
 }
 
-/// Total area to prove `ops` operations in air `m`: `ceil(ops/cap) · num_rows · row_size`.
+/// Total memory to prove `ops` operations in air `m`: `ceil(ops/cap) · num_rows · row_size`.
 ///
-/// The definition of the cost model, kept for the tests to state expected areas with. The sweep in
+/// The definition of the cost model, kept for the tests to state expected memories with. The sweep in
 /// `plan_air_strategy` inlines it against hoisted `caps`/`instance_areas` instead of calling it, so
 /// it does not redo the division once per air per combination.
 #[cfg(test)]
 #[inline]
-fn area(m: &ArithEqAirMeta, ops: u64) -> u64 {
+fn memory(m: &ArithEqAirMeta, ops: u64) -> u64 {
     ops.div_ceil(cap(m)) * m.cost as u64
 }
 
@@ -91,7 +91,7 @@ struct Tail {
 }
 
 /// Compute the per-air, per-op assignment for the given per-op totals, considering only
-/// `present_air_ids` (the airs in the pilout), at the least total instance area among the placements
+/// `present_air_ids` (the airs in the pilout), at the least total instance memory among the placements
 /// it searches — every tail placed whole, see the module's *Known gap*. Plans come back in
 /// `air_metas()` order — cheapest/most-specific first, universal last — so a split op's specialized
 /// collect windows are assigned before its universal ones. Panics if an observed operation is
@@ -117,7 +117,7 @@ pub fn plan_air_strategy(
         assert!(!candidates.is_empty(), "plan_air_strategy: {op:?} is covered by no present air");
 
         // The most capacious covering air proves the bulk in the fewest instances; among equally
-        // capacious ones, the cheapest does it in the least area.
+        // capacious ones, the cheapest does it in the least memory.
         let bulk_air = *candidates
             .iter()
             .min_by_key(|&&j| (std::cmp::Reverse(cap(&metas[j])), metas[j].cost))
@@ -142,7 +142,7 @@ pub fn plan_air_strategy(
          exhaustive search is sized for; the air table needs a smarter search"
     );
 
-    // Hoisted out of the sweep below: `area` would otherwise recompute both divisions once per air
+    // Hoisted out of the sweep below: `memory` would otherwise recompute both divisions once per air
     // per combination.
     let caps: Vec<u64> = metas.iter().map(cap).collect();
     let instance_areas: Vec<u64> = metas.iter().map(|m| m.cost as u64).collect();
@@ -150,7 +150,7 @@ pub fn plan_air_strategy(
     // Mixed-radix sweep over the tail placements: choice[i] indexes tails[i].candidates.
     let mut choice = vec![0usize; tails.len()];
     let mut best_choice = choice.clone();
-    let mut best = Cost { instances: u64::MAX, area: u64::MAX };
+    let mut best = Cost { instances: u64::MAX, memory: u64::MAX };
     let mut rows = vec![0u64; metas.len()];
     loop {
         rows.copy_from_slice(&bulk_rows);
@@ -164,7 +164,7 @@ pub fn plan_air_strategy(
             if r != 0 {
                 let instances = r.div_ceil(caps[j]);
                 total.instances += instances;
-                total.area += instances * instance_areas[j];
+                total.memory += instances * instance_areas[j];
             }
         }
         if total < best {

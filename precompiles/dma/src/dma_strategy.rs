@@ -18,7 +18,7 @@
 //! # The criterion
 //!
 //! [`zisk_common::select_airs`] places the operations under the shared criterion: **fewest instances
-//! first, least area to break a tie.** The tall airs are what that first term buys — one
+//! first, least memory to break a tie.** The tall airs are what that first term buys — one
 //! `Dma64AlignedLarge` instance holds what four short ones would — and the specialised airs are what
 //! the second term buys once the count is settled.
 //!

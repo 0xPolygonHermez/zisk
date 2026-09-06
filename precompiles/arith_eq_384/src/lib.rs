@@ -19,7 +19,7 @@ zisk_precompile! {
     row = ArithEq384Trace,
     // The same air at two heights. They prove the same operations and commit the same columns, so
     // the planner sizes them together: the tall one keeps the instance count down, the short one the
-    // area once the count is settled.
+    // memory once the count is settled.
     traces = [
         (
             ArithEq384Trace,

@@ -3,7 +3,7 @@ require "operations.pil"
 require "opids.pil"
 require "binary_table.pil"
 
-/* 
+/*
     Operation table summary:
     ==========================
 
@@ -56,12 +56,32 @@ require "binary_table.pil"
     │ LE_W      │   0x1d   │   0x0d   │   X   │       X            │    X    │
     │───────────┼──────────┼──────────┼───────┼────────────────────┼─────────│
     Note: op = b_op + 0x10*mode32
+
+    Lanes per row:
+    ==============
+
+    A "lane" is the full set of columns that proves ONE binary operation: b_op, the per-byte
+    free_in_a / free_in_b / free_in_c / carry chains, and the mode32 / result_is_a / use_first_byte /
+    c_is_signed flags. With `lanes_x_row` > 1 each row packs that many INDEPENDENT operations, side by
+    side.
+
+    Nothing in this air relates a row to its neighbour — every constraint and every lookup is local to
+    one operation — so packing lanes is a pure widening: the constraints are the same ones, repeated
+    per lane, and the air proves `lanes_x_row` operations per row instead of one. This is the same
+    packing `BinaryAddHi` does with `lanes_x_row`, and the note there about preferring an ODD count
+    (the operation-bus contributions amortize in pairs under the degree bound) applies here too.
+
+    `padding_size` stays a single air value: it counts padding OPERATIONS, not rows, so it already
+    speaks in lane units.
 */
 
-airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
+airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64,
+                   const int lanes_x_row = 1) {
     if (RC != 2 || bits != 64) {
         error(`Currently only RC=2 and bits=64 are supported, got RC=${RC}, bits=${bits}`);
     }
+
+    assert(lanes_x_row > 0, "lanes_x_row must be greater than 0");
 
     // Default values
     const int BYTES = bits / 8;
@@ -69,31 +89,28 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     const int BYTE_BASE = (1 << BYTES);
     const int BYTES_PER_CHUNK = BYTES / RC;
 
-    // Primary columns
-    col witness bits(7) b_op;               // binary operation code           
-    col witness bits(8) free_in_a[BYTES];   // input A per byte
-    col witness bits(8) free_in_b[BYTES];   // input B per byte
-    col witness bits(8) free_in_c[BYTES];   // output C per byte
-    col witness bits(4) carry[BYTES];       // per-byte carry chain:
+    // Primary columns, one set per lane
+    col witness bits(7) b_op[lanes_x_row];                     // binary operation code
+    col witness bits(8) free_in_a[lanes_x_row][BYTES];         // input A per byte
+    col witness bits(8) free_in_b[lanes_x_row][BYTES];         // input B per byte
+    col witness bits(8) free_in_c[lanes_x_row][BYTES];         // output C per byte
+    col witness bits(4) carry[lanes_x_row][BYTES];             // per-byte carry chain:
                                             //      (cin[i]=carry[i-1], cout[i]=carry[i])
                                             // 4 bits to hold SH3ADD's {carry + bits shifted out} in [0,8] and
                                             // LT_ABS_NP's packed {clt + 2*cneg}, all other ops use only bit 0
 
-    // Flags and helpers
-    col witness bits(1) mode32;             // 1 if operation is in 32-bit mode; 0 if in 64-bit mode
-    col witness bits(1) result_is_a;        // 1 if operation result is A (MIN/MAX family); 0 otherwise
-    col witness bits(1) use_first_byte;     // 1 if operation uses first byte (LT_ABS_*); 0 otherwise
-    col witness bits(1) c_is_signed;        // 1 if output C is signed; 0 otherwise
+    // Flags and helpers, one set per lane
+    col witness bits(1) mode32[lanes_x_row];          // 1 if operation is in 32-bit mode; 0 if in 64-bit mode
+    col witness bits(1) result_is_a[lanes_x_row];     // 1 if operation result is A (MIN/MAX family); 0 otherwise
+    col witness bits(1) use_first_byte[lanes_x_row];  // 1 if operation uses first byte (LT_ABS_*); 0 otherwise
+    col witness bits(1) c_is_signed[lanes_x_row];     // 1 if output C is signed; 0 otherwise
 
-    const expr mode64 = 1 - mode32;
-    const expr cout = carry[BYTES-1];
+    // Auxiliary columns (primarily used to lower the lookup call complexity)
+    col witness bits(10) b_op_or_sext[lanes_x_row];
+    col witness bits(1) mode32_and_c_is_signed[lanes_x_row];
 
-    // Selectors not constrained by the table should be constrained
-    mode32 * (1 - mode32) === 0; // Resilent constraint
-    cout * (1 - cout) === 0;
-    result_is_a * (1 - result_is_a) === 0;
-    use_first_byte * (1 - use_first_byte) === 0;
-    c_is_signed * (1 - c_is_signed) === 0;
+    const expr mode64[lanes_x_row];
+    const expr cout[lanes_x_row];
 
     /*
     Perform, at the byte level, lookups against the binary table on inputs:
@@ -119,55 +136,66 @@ airtemplate Binary(const int N = 2**21, const int RC = 2, const int bits = 64) {
     remaining flags above it is what makes the decoding of the looked up FLAGS value unique
     */
 
-    // Auxiliary columns (primarily used to lower the lookup call complexity)
-    col witness bits(10) b_op_or_sext;
-    col witness bits(1) mode32_and_c_is_signed;
-    b_op_or_sext <== mode32 * (c_is_signed * (OP_SEXT_FF - OP_SEXT_00) + OP_SEXT_00 - b_op) + b_op;
-    mode32_and_c_is_signed <== mode32 * c_is_signed;
-
-    // Lookups
-    lookup_assumes(BINARY_TABLE_ID, [2*use_first_byte, b_op, free_in_a[0], free_in_b[0], 0, free_in_c[0], carry[0] + 16*result_is_a + 32*use_first_byte]);
-    for (int i = 1; i < BYTES; i++) {
-        if (i < HALF_BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte]);
-        } else if (i == HALF_BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [mode32, b_op, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte + 64*mode32_and_c_is_signed]);
-        } else if (i < BYTES - 1) {
-            lookup_assumes(BINARY_TABLE_ID, [0, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte + 64*mode32_and_c_is_signed]);
-        } else  {
-            lookup_assumes(BINARY_TABLE_ID, [mode64, b_op_or_sext, free_in_a[i], free_in_b[i], carry[i-1], free_in_c[i], carry[i] + 16*result_is_a + 32*use_first_byte + 64*c_is_signed]);
-        }
-    }
-
     // Constraints to make sure that this component is called from the main component
-    expr a[RC];
-    expr b[RC];
-    expr c[RC];
-    for (int i = 0; i < RC; i++) {
-        a[i] = 0;
-        b[i] = 0;
-        c[i] = 0;
-    }
+    expr a[lanes_x_row][RC];
+    expr b[lanes_x_row][RC];
+    expr c[lanes_x_row][RC];
 
-    int byte = 0;
-    int chunk = 0;
-    for (int i = 0; i < BYTES; i++) {
-        const int byte_weight = BYTE_BASE ** byte;
-        a[chunk] += (byte_weight * free_in_a[i]);
-        b[chunk] += (byte_weight * free_in_b[i]);
-        c[chunk] += (byte_weight * free_in_c[i]);
-        byte++;
-        if (byte == BYTES_PER_CHUNK) {
-            byte = 0;
-            chunk++;
+    for (int lane = 0; lane < lanes_x_row; lane++) {
+
+        mode64[lane] = 1 - mode32[lane];
+        cout[lane] = carry[lane][BYTES-1];
+
+        // Selectors not constrained by the table should be constrained
+        mode32[lane] * (1 - mode32[lane]) === 0; // Resilent constraint
+        cout[lane] * (1 - cout[lane]) === 0;
+        result_is_a[lane] * (1 - result_is_a[lane]) === 0;
+        use_first_byte[lane] * (1 - use_first_byte[lane]) === 0;
+        c_is_signed[lane] * (1 - c_is_signed[lane]) === 0;
+
+        b_op_or_sext[lane] <== mode32[lane] * (c_is_signed[lane] * (OP_SEXT_FF - OP_SEXT_00) + OP_SEXT_00 - b_op[lane]) + b_op[lane];
+        mode32_and_c_is_signed[lane] <== mode32[lane] * c_is_signed[lane];
+
+        // Lookups
+        lookup_assumes(BINARY_TABLE_ID, [2*use_first_byte[lane], b_op[lane], free_in_a[lane][0], free_in_b[lane][0], 0, free_in_c[lane][0], carry[lane][0] + 16*result_is_a[lane] + 32*use_first_byte[lane]]);
+        for (int i = 1; i < BYTES; i++) {
+            if (i < HALF_BYTES - 1) {
+                lookup_assumes(BINARY_TABLE_ID, [0, b_op[lane], free_in_a[lane][i], free_in_b[lane][i], carry[lane][i-1], free_in_c[lane][i], carry[lane][i] + 16*result_is_a[lane] + 32*use_first_byte[lane]]);
+            } else if (i == HALF_BYTES - 1) {
+                lookup_assumes(BINARY_TABLE_ID, [mode32[lane], b_op[lane], free_in_a[lane][i], free_in_b[lane][i], carry[lane][i-1], free_in_c[lane][i], carry[lane][i] + 16*result_is_a[lane] + 32*use_first_byte[lane] + 64*mode32_and_c_is_signed[lane]]);
+            } else if (i < BYTES - 1) {
+                lookup_assumes(BINARY_TABLE_ID, [0, b_op_or_sext[lane], free_in_a[lane][i], free_in_b[lane][i], carry[lane][i-1], free_in_c[lane][i], carry[lane][i] + 16*result_is_a[lane] + 32*use_first_byte[lane] + 64*mode32_and_c_is_signed[lane]]);
+            } else  {
+                lookup_assumes(BINARY_TABLE_ID, [mode64[lane], b_op_or_sext[lane], free_in_a[lane][i], free_in_b[lane][i], carry[lane][i-1], free_in_c[lane][i], carry[lane][i] + 16*result_is_a[lane] + 32*use_first_byte[lane] + 64*c_is_signed[lane]]);
+            }
         }
+
+        for (int i = 0; i < RC; i++) {
+            a[lane][i] = 0;
+            b[lane][i] = 0;
+            c[lane][i] = 0;
+        }
+
+        int byte = 0;
+        int chunk = 0;
+        for (int i = 0; i < BYTES; i++) {
+            const int byte_weight = BYTE_BASE ** byte;
+            a[lane][chunk] += (byte_weight * free_in_a[lane][i]);
+            b[lane][chunk] += (byte_weight * free_in_b[lane][i]);
+            c[lane][chunk] += (byte_weight * free_in_c[lane][i]);
+            byte++;
+            if (byte == BYTES_PER_CHUNK) {
+                byte = 0;
+                chunk++;
+            }
+        }
+
+        // In comparison operations, we set c = 0 and so the result is cout
+        // Otherwise, the result is simply c
+        c[lane][0] += cout[lane];
+
+        proves_operation(op: b_op[lane] + 0x10 * mode32[lane], a: a[lane], b: b[lane], c: c[lane], flag: cout[lane]);
     }
-
-    // In comparison operations, we set c = 0 and so the result is cout
-    // Otherwise, the result is simply c
-    c[0] += cout;
-
-    proves_operation(op: b_op + 0x10 * mode32, a:, b:, c:, flag: cout);
 
     airval padding_size;
     assumes_padding_operation(op: OP_ADD, padding_size:);

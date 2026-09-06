@@ -1,7 +1,7 @@
 //! What one instance of each air costs, so the planners can price a layout.
 //!
-//! One constant per air. The value is the whole instance — `rows x columns` — regardless of how full
-//! it ends up: an instance is a full trace either way.
+//! One constant per air, in **MB of prover memory**. The value is the whole instance regardless of
+//! how full it ends up: an instance costs the same either way.
 //!
 //! **This file is meant to be regenerated or edited by hand.** Nothing derives these numbers at
 //! build time, precisely so that they can be overridden: raising an air's cost steers the planners
@@ -16,168 +16,182 @@
 //!
 //! # Where the numbers come from
 //!
-//! `columns` is what the setup commits, which is the figure the executor prices instances with at
-//! run time — the sum of `stark_info.map_sections_n` over every section but `const` (see
-//! `setup_cost` in `executor/src/adapters.rs`). The PIL compiler reports its two halves per air as
-//! `witness: <stage1>,<stage2>` (see `build/compile.log`); stage-2 columns live in the cubic
-//! extension, so each costs three field elements, and the quotient section adds six more:
+//! The peak memory the prover needs to prove one instance, which is what actually bounds how many
+//! can be proved at once and therefore the closest thing to what an instance really costs. It is
+//! not the committed trace: the extended-domain evaluations, the Merkle trees and the FRI folding
+//! steps all dwarf it, and they do not grow with the trace in the same proportion — an air with few
+//! columns but a high constraint degree can cost more than a wider one.
+//!
+//! The setup prints it per air, so these are measured rather than modelled. Each `SUMMARY` line of
+//! `build/setup.log` ends with it:
 //!
 //! ```text
-//! columns = stage1 + 3 x stage2 + 6
+//! SUMMARY | Binary | nBits: 22 | ... | Prover memory: 6.51 GB
 //! ```
 //!
-//! That formula reproduces exactly the six weights that used to be declared by hand in the planners
-//! (`Binary` 60, `BinaryAdd` 25, `BinaryAddHi` 36, `BinaryExtension` 58, `MemAlignReadByte` 25,
-//! `MemAlignWriteByte` 32), which is why it is trusted for the rest.
+//! To regenerate after a PIL change, run the setup and convert each air's figure to MB. The log
+//! reports GiB with two decimals, so `MB = round(GB * 1024)` and the resolution is about 10 MB —
+//! far finer than any decision the planners make with it.
 //!
-//! To regenerate after a PIL change, read the `witness:` line of each air from a fresh compilation
-//! and multiply by that air's `NUM_ROWS`. [`the_costs_cover_the_committed_trace`] catches the
-//! coarsest form of staleness — a cost that no longer even covers the air's committed area — but it
-//! cannot see stage-2 growth, so an air that grows only those will not be flagged.
+//! Note the unit is shared by every planner that compares costs, so what matters is that all of
+//! them move together: mixing a memory cost with a column-area one would make the comparison
+//! meaningless.
 
-/// `Main`: 2^23 rows of 68 columns (38 + 3x8 + 6).
-pub const MAIN_INSTANCE_COST: usize = 570_425_344;
+/// `Main`: 14.22 GB.
+pub const MAIN_INSTANCE_COST: usize = 14561;
 
-/// `Rom`: 2^22 rows of 16 columns (1 + 3x3 + 6).
-pub const ROM_INSTANCE_COST: usize = 67_108_864;
+/// `Rom`: 5.39 GB.
+pub const ROM_INSTANCE_COST: usize = 5519;
 
-/// `Mem`: 2^23 rows of 50 columns (26 + 3x6 + 6).
-pub const MEM_INSTANCE_COST: usize = 419_430_400;
+/// `Mem`: 11.78 GB.
+pub const MEM_INSTANCE_COST: usize = 12063;
 
-/// `InputData`: 2^22 rows of 27 columns (9 + 3x4 + 6).
-pub const INPUT_DATA_INSTANCE_COST: usize = 113_246_208;
+/// `InputData`: 4.58 GB.
+pub const INPUT_DATA_INSTANCE_COST: usize = 4690;
 
-/// `RomData`: 2^22 rows of 22 columns (10 + 3x2 + 6).
-pub const ROM_DATA_INSTANCE_COST: usize = 92_274_688;
+/// `RomData`: 4.14 GB.
+pub const ROM_DATA_INSTANCE_COST: usize = 4239;
 
-/// `MemAlign`: 2^21 rows of 50 columns (32 + 3x4 + 6).
-pub const MEM_ALIGN_INSTANCE_COST: usize = 104_857_600;
+/// `MemAlign`: 2.94 GB.
+pub const MEM_ALIGN_INSTANCE_COST: usize = 3011;
 
-/// `MemAlignLarge`: 2^23 rows of 50 columns (32 + 3x4 + 6).
-pub const MEM_ALIGN_LARGE_INSTANCE_COST: usize = 419_430_400;
+/// `MemAlignLarge`: 11.78 GB.
+pub const MEM_ALIGN_LARGE_INSTANCE_COST: usize = 12063;
 
-/// `MemAlignByte`: 2^22 rows of 34 columns (16 + 3x4 + 6).
-pub const MEM_ALIGN_BYTE_INSTANCE_COST: usize = 142_606_336;
+/// `MemAlignByte`: 4.89 GB.
+pub const MEM_ALIGN_BYTE_INSTANCE_COST: usize = 5007;
 
-/// `MemAlignReadByte`: 2^22 rows of 25 columns (10 + 3x3 + 6).
-pub const MEM_ALIGN_READ_BYTE_INSTANCE_COST: usize = 104_857_600;
+/// `MemAlignReadByte`: 4.33 GB.
+pub const MEM_ALIGN_READ_BYTE_INSTANCE_COST: usize = 4434;
 
-/// `MemAlignWriteByte`: 2^22 rows of 32 columns (14 + 3x4 + 6).
-pub const MEM_ALIGN_WRITE_BYTE_INSTANCE_COST: usize = 134_217_728;
+/// `MemAlignWriteByte`: 4.76 GB.
+pub const MEM_ALIGN_WRITE_BYTE_INSTANCE_COST: usize = 4874;
 
-/// `MemAlignByteLarge`: 2^23 rows of 34 columns (16 + 3x4 + 6).
-pub const MEM_ALIGN_BYTE_LARGE_INSTANCE_COST: usize = 285_212_672;
+/// `MemAlignByteLarge`: 9.78 GB.
+pub const MEM_ALIGN_BYTE_LARGE_INSTANCE_COST: usize = 10015;
 
-/// `MemAlignReadByteLarge`: 2^23 rows of 25 columns (10 + 3x3 + 6).
-pub const MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST: usize = 209_715_200;
+/// `MemAlignReadByteLarge`: 8.65 GB.
+pub const MEM_ALIGN_READ_BYTE_LARGE_INSTANCE_COST: usize = 8858;
 
-/// `Arith`: 2^21 rows of 96 columns (45 + 3x15 + 6).
-pub const ARITH_INSTANCE_COST: usize = 201_326_592;
+/// `Arith`: 4.41 GB.
+pub const ARITH_INSTANCE_COST: usize = 4516;
 
-/// `Binary`: 2^22 rows of 60 columns (39 + 3x5 + 6).
-pub const BINARY_INSTANCE_COST: usize = 251_658_240;
+/// `Binary`: 6.51 GB.
+pub const BINARY_INSTANCE_COST: usize = 6666;
 
-/// `BinaryLarge`: 2^23 rows of 60 columns (39 + 3x5 + 6).
-pub const BINARY_LARGE_INSTANCE_COST: usize = 503_316_480;
+/// `BinaryLarge`: 10.01 GB.
+pub const BINARY_LARGE_INSTANCE_COST: usize = 10250;
 
-/// `BinaryAdd`: 2^22 rows of 25 columns (10 + 3x3 + 6).
-pub const BINARY_ADD_INSTANCE_COST: usize = 104_857_600;
+/// `BinaryHuge`: 18.17 GB.
+pub const BINARY_HUGE_INSTANCE_COST: usize = 18606;
 
-/// `BinaryAddLarge`: 2^23 rows of 25 columns (10 + 3x3 + 6).
-pub const BINARY_ADD_LARGE_INSTANCE_COST: usize = 209_715_200;
+/// `BinaryAdd`: 4.39 GB.
+pub const BINARY_ADD_INSTANCE_COST: usize = 4495;
 
-/// `BinaryAddHi`: 2^22 rows of 36 columns (15 + 3x5 + 6).
-pub const BINARY_ADD_HI_INSTANCE_COST: usize = 150_994_944;
+/// `BinaryAddLarge`: 5.64 GB.
+pub const BINARY_ADD_LARGE_INSTANCE_COST: usize = 5775;
 
-/// `BinaryAddHiLarge`: 2^22 rows of 55 columns (25 + 3x8 + 6).
-pub const BINARY_ADD_HI_LARGE_INSTANCE_COST: usize = 230_686_720;
+/// `BinaryAddHuge`: 7.95 GB.
+pub const BINARY_ADD_HUGE_INSTANCE_COST: usize = 8141;
 
-/// `BinaryExtension`: 2^22 rows of 58 columns (34 + 3x6 + 6).
-pub const BINARY_EXTENSION_INSTANCE_COST: usize = 243_269_632;
+/// `BinaryAddHi`: 4.64 GB.
+pub const BINARY_ADD_HI_INSTANCE_COST: usize = 4751;
 
-/// `BinaryExtensionLarge`: 2^23 rows of 58 columns (34 + 3x6 + 6).
-pub const BINARY_EXTENSION_LARGE_INSTANCE_COST: usize = 486_539_264;
+/// `BinaryAddHiLarge`: 5.95 GB.
+pub const BINARY_ADD_HI_LARGE_INSTANCE_COST: usize = 6093;
 
-/// `Add256`: 2^20 rows of 104 columns (47 + 3x17 + 6).
-pub const ADD_256_INSTANCE_COST: usize = 109_051_904;
+/// `BinaryAddHiHuge`: 8.58 GB.
+pub const BINARY_ADD_HI_HUGE_INSTANCE_COST: usize = 8786;
 
-/// `ArithEq`: 2^20 rows of 87 columns (45 + 3x12 + 6).
-pub const ARITH_EQ_INSTANCE_COST: usize = 91_226_112;
+/// `BinaryExtension`: 6.39 GB.
+pub const BINARY_EXTENSION_INSTANCE_COST: usize = 6543;
 
-/// `ArithEqLarge`: 2^23 rows of 87 columns (45 + 3x12 + 6).
-pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 729_808_896;
+/// `BinaryExtensionLarge`: 9.64 GB.
+pub const BINARY_EXTENSION_LARGE_INSTANCE_COST: usize = 9871;
 
-/// `Arith256X`: 2^20 rows of 52 columns (19 + 3x9 + 6).
-pub const ARITH_256_X_INSTANCE_COST: usize = 54_525_952;
+/// `BinaryExtensionHuge`: 16.67 GB.
+pub const BINARY_EXTENSION_HUGE_INSTANCE_COST: usize = 17070;
 
-/// `Arith256XLarge`: 2^22 rows of 52 columns (19 + 3x9 + 6).
-pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 218_103_808;
+/// `Add256`: 2.32 GB.
+pub const ADD_256_INSTANCE_COST: usize = 2376;
 
-/// `ArithSecp256K1`: 2^20 rows of 69 columns (27 + 3x12 + 6).
-pub const ARITH_SECP_256_K_1_INSTANCE_COST: usize = 72_351_744;
+/// `ArithEq`: 2.12 GB.
+pub const ARITH_EQ_INSTANCE_COST: usize = 2171;
 
-/// `ArithSecp256K1Large`: 2^22 rows of 69 columns (27 + 3x12 + 6).
-pub const ARITH_SECP_256_K_1_LARGE_INSTANCE_COST: usize = 289_406_976;
+/// `ArithEqLarge`: 16.97 GB.
+pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 17377;
 
-/// `ArithBn254`: 2^20 rows of 75 columns (33 + 3x12 + 6).
-pub const ARITH_BN_254_INSTANCE_COST: usize = 78_643_200;
+/// `Arith256X`: 1.56 GB.
+pub const ARITH_256_X_INSTANCE_COST: usize = 1597;
 
-/// `ArithBn254Large`: 2^22 rows of 75 columns (33 + 3x12 + 6).
-pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 314_572_800;
+/// `Arith256XLarge`: 6.23 GB.
+pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 6380;
 
-/// `ArithEq384`: 2^20 rows of 77 columns (35 + 3x12 + 6).
-pub const ARITH_EQ_384_INSTANCE_COST: usize = 80_740_352;
+/// `ArithSecp256K1`: 1.84 GB.
+pub const ARITH_SECP_256_K_1_INSTANCE_COST: usize = 1884;
 
-/// `ArithEq384Large`: 2^22 rows of 77 columns (35 + 3x12 + 6).
-pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 322_961_408;
+/// `ArithSecp256K1Large`: 7.36 GB.
+pub const ARITH_SECP_256_K_1_LARGE_INSTANCE_COST: usize = 7537;
 
-/// `BabyJubJub`: 2^18 rows of 105 columns (39 + 3x20 + 6).
-pub const BABY_JUB_JUB_INSTANCE_COST: usize = 27_525_120;
+/// `ArithBn254`: 1.93 GB.
+pub const ARITH_BN_254_INSTANCE_COST: usize = 1976;
 
-/// `Keccakf`: 2^20 rows of 642 columns (453 + 3x61 + 6).
-pub const KECCAKF_INSTANCE_COST: usize = 673_185_792;
+/// `ArithBn254Large`: 7.73 GB.
+pub const ARITH_BN_254_LARGE_INSTANCE_COST: usize = 7916;
 
-/// `Sha256f`: 2^18 rows of 117 columns (102 + 3x3 + 6).
-pub const SHA_256_F_INSTANCE_COST: usize = 30_670_848;
+/// `ArithEq384`: 1.96 GB.
+pub const ARITH_EQ_384_INSTANCE_COST: usize = 2007;
 
-/// `Poseidon`: 2^17 rows of 201 columns (84 + 3x37 + 6).
-pub const POSEIDON_INSTANCE_COST: usize = 26_345_472;
+/// `ArithEq384Large`: 7.86 GB.
+pub const ARITH_EQ_384_LARGE_INSTANCE_COST: usize = 8049;
 
-/// `Blake2br`: 2^18 rows of 227 columns (119 + 3x34 + 6).
-pub const BLAKE_2_BR_INSTANCE_COST: usize = 59_506_688;
+/// `BabyJubJub`: 0.60 GB.
+pub const BABY_JUB_JUB_INSTANCE_COST: usize = 614;
 
-/// `Blake3f`: 2^20 rows of 216 columns (114 + 3x32 + 6).
-pub const BLAKE_3_F_INSTANCE_COST: usize = 226_492_416;
+/// `Keccakf`: 12.54 GB.
+pub const KECCAKF_INSTANCE_COST: usize = 12841;
 
-/// `Dma`: 2^21 rows of 61 columns (34 + 3x7 + 6).
-pub const DMA_INSTANCE_COST: usize = 127_926_272;
+/// `Sha256f`: 0.74 GB.
+pub const SHA_256_F_INSTANCE_COST: usize = 758;
 
-/// `Dma64Aligned`: 2^21 rows of 77 columns (35 + 3x12 + 6).
-pub const DMA_64_ALIGNED_INSTANCE_COST: usize = 161_480_704;
+/// `Poseidon`: 0.86 GB.
+pub const POSEIDON_INSTANCE_COST: usize = 881;
 
-/// `Dma64AlignedLarge`: 2^23 rows of 77 columns (35 + 3x12 + 6).
-pub const DMA_64_ALIGNED_LARGE_INSTANCE_COST: usize = 645_922_816;
+/// `Blake2br`: 1.10 GB.
+pub const BLAKE_2_BR_INSTANCE_COST: usize = 1126;
 
-/// `Dma64AlignedMemSet`: 2^21 rows of 35 columns (14 + 3x5 + 6).
-pub const DMA_64_ALIGNED_MEM_SET_INSTANCE_COST: usize = 73_400_320;
+/// `Blake3f`: 4.12 GB.
+pub const BLAKE_3_F_INSTANCE_COST: usize = 4219;
 
-/// `Dma64AlignedMem`: 2^21 rows of 50 columns (26 + 3x6 + 6).
-pub const DMA_64_ALIGNED_MEM_INSTANCE_COST: usize = 104_857_600;
+/// `Dma`: 3.29 GB.
+pub const DMA_INSTANCE_COST: usize = 3369;
 
-/// `Dma64AlignedMemLarge`: 2^22 rows of 50 columns (26 + 3x6 + 6).
-pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 209_715_200;
+/// `Dma64Aligned`: 3.79 GB.
+pub const DMA_64_ALIGNED_INSTANCE_COST: usize = 3881;
 
-/// `Dma64AlignedMemCpy`: 2^21 rows of 67 columns (31 + 3x10 + 6).
-pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 140_509_184;
+/// `Dma64AlignedLarge`: 15.15 GB.
+pub const DMA_64_ALIGNED_LARGE_INSTANCE_COST: usize = 15514;
 
-/// `DmaUnaligned`: 2^21 rows of 42 columns (24 + 3x4 + 6).
-pub const DMA_UNALIGNED_INSTANCE_COST: usize = 88_080_384;
+/// `Dma64AlignedMemSet`: 2.48 GB.
+pub const DMA_64_ALIGNED_MEM_SET_INSTANCE_COST: usize = 2540;
 
-/// `DmaPrePost`: 2^21 rows of 102 columns (66 + 3x10 + 6).
-pub const DMA_PRE_POST_INSTANCE_COST: usize = 213_909_504;
+/// `Dma64AlignedMem`: 2.94 GB.
+pub const DMA_64_ALIGNED_MEM_INSTANCE_COST: usize = 3011;
 
-/// `JumpDest`: 2^21 rows of 62 columns (32 + 3x8 + 6).
-pub const JUMP_DEST_INSTANCE_COST: usize = 130_023_424;
+/// `Dma64AlignedMemLarge`: 5.89 GB.
+pub const DMA_64_ALIGNED_MEM_LARGE_INSTANCE_COST: usize = 6031;
+
+/// `Dma64AlignedMemCpy`: 3.48 GB.
+pub const DMA_64_ALIGNED_MEM_CPY_INSTANCE_COST: usize = 3564;
+
+/// `DmaUnaligned`: 2.69 GB.
+pub const DMA_UNALIGNED_INSTANCE_COST: usize = 2755;
+
+/// `DmaPrePost`: 4.63 GB.
+pub const DMA_PRE_POST_INSTANCE_COST: usize = 4741;
+
+/// `JumpDest`: 3.40 GB.
+pub const JUMP_DEST_INSTANCE_COST: usize = 3482;
 
 #[cfg(test)]
 mod tests {
@@ -186,9 +200,18 @@ mod tests {
     use proofman_common::trace::TraceRow;
     use proofman_fields::Goldilocks;
 
-    /// Each cost must cover at least the committed area of the air it is named after — its rows
-    /// times the width of its trace row — since the setup counts those columns plus the stage-2 and
-    /// quotient ones. A cost that no longer does is stale, or was lowered past what the air is.
+    /// Bytes one field element takes, which is what turns a committed cell count into memory.
+    const BYTES_X_CELL: usize = 8;
+
+    /// Each cost must cover at least the committed trace of the air it is named after — its rows
+    /// times the width of its trace row, in MB. The prover holds that trace along with everything
+    /// built from it (the extended-domain evaluations, the Merkle trees, the FRI folding steps), so
+    /// a cost below it cannot be a real memory figure: it is stale, or was lowered past what the air
+    /// is.
+    ///
+    /// This is a loose bound on purpose. The trace is a small share of the peak — the extended
+    /// domain alone is a multiple of it — so passing this does not mean a cost is fresh, only that
+    /// it has not gone obviously wrong. Refreshing them means re-reading `build/setup.log`.
     ///
     /// Pairing each constant with its trace here is also what pins the naming: a constant whose name
     /// no longer matches an air fails to compile rather than quietly pricing the wrong thing.
@@ -201,22 +224,24 @@ mod tests {
                 check!(@assert $trace::<Goldilocks>::NUM_ROWS, $row, $cost, $trace);
             };
             (@assert $rows:expr, $row:ident, $cost:ident, $trace:ident) => {
-                let committed = $rows * $row::<Goldilocks>::ROW_SIZE;
+                let trace_mb = $rows * $row::<Goldilocks>::ROW_SIZE * BYTES_X_CELL / (1024 * 1024);
                 assert!(
-                    $cost >= committed,
-                    "{} ({}) no longer covers the {committed} committed cells of {}: the air grew \
-                     and the cost was not refreshed",
+                    $cost >= trace_mb,
+                    "{} ({} MB) is below the {trace_mb} MB committed trace of {}, which the prover \
+                     holds in full: the air grew and the cost was not refreshed",
                     stringify!($cost),
                     $cost,
                     stringify!($trace),
                 );
             };
             ($( $trace:ident : $row:ident : $cost:ident ),+ $(,)?) => {$(
-                let committed = $trace::<()>::NUM_ROWS * $row::<Goldilocks>::ROW_SIZE;
+                let trace_mb =
+                    $trace::<()>::NUM_ROWS * $row::<Goldilocks>::ROW_SIZE * BYTES_X_CELL
+                        / (1024 * 1024);
                 assert!(
-                    $cost >= committed,
-                    "{} ({}) no longer covers the {committed} committed cells of {}: the air grew \
-                     and the cost was not refreshed",
+                    $cost >= trace_mb,
+                    "{} ({} MB) is below the {trace_mb} MB committed trace of {}, which the prover \
+                     holds in full: the air grew and the cost was not refreshed",
                     stringify!($cost),
                     $cost,
                     stringify!($trace),
@@ -239,12 +264,16 @@ mod tests {
                     ArithTrace: ArithTraceRow: ARITH_INSTANCE_COST,
                     BinaryTrace: BinaryTraceRow: BINARY_INSTANCE_COST,
                     BinaryLargeTrace: BinaryLargeTraceRow: BINARY_LARGE_INSTANCE_COST,
+                    BinaryHugeTrace: BinaryHugeTraceRow: BINARY_HUGE_INSTANCE_COST,
                     BinaryAddTrace: BinaryAddTraceRow: BINARY_ADD_INSTANCE_COST,
                     BinaryAddLargeTrace: BinaryAddLargeTraceRow: BINARY_ADD_LARGE_INSTANCE_COST,
+                    BinaryAddHugeTrace: BinaryAddHugeTraceRow: BINARY_ADD_HUGE_INSTANCE_COST,
                     BinaryAddHiTrace: BinaryAddHiTraceRow: BINARY_ADD_HI_INSTANCE_COST,
                     BinaryAddHiLargeTrace: BinaryAddHiLargeTraceRow: BINARY_ADD_HI_LARGE_INSTANCE_COST,
+                    BinaryAddHiHugeTrace: BinaryAddHiHugeTraceRow: BINARY_ADD_HI_HUGE_INSTANCE_COST,
                     BinaryExtensionTrace: BinaryExtensionTraceRow: BINARY_EXTENSION_INSTANCE_COST,
                     BinaryExtensionLargeTrace: BinaryExtensionLargeTraceRow: BINARY_EXTENSION_LARGE_INSTANCE_COST,
+                    BinaryExtensionHugeTrace: BinaryExtensionHugeTraceRow: BINARY_EXTENSION_HUGE_INSTANCE_COST,
                     Add256Trace: Add256TraceRow: ADD_256_INSTANCE_COST,
                     ArithEqTrace: ArithEqTraceRow: ARITH_EQ_INSTANCE_COST,
                     ArithEqLargeTrace: ArithEqLargeTraceRow: ARITH_EQ_LARGE_INSTANCE_COST,

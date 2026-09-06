@@ -55,7 +55,7 @@ fn assert_conserves(plan: &[ArithEqAirPlan], totals: &[u64; ARITH_EQ_OP_NUM]) {
 }
 
 /// The air table must list every config at two heights, the tall one strictly taller and exactly as
-/// wide. That is what the strategy relies on to trade area for a lower instance count.
+/// wide. That is what the strategy relies on to trade memory for a lower instance count.
 #[test]
 fn every_config_is_a_size_ladder() {
     for (short, tall) in [
@@ -93,7 +93,7 @@ fn the_sweep_stays_within_its_ceiling() {
     );
 }
 
-/// A handful of operations must not open a tall instance: one instance either way, so the area
+/// A handful of operations must not open a tall instance: one instance either way, so the memory
 /// tie-break sends them to the narrowest, shortest air that covers them.
 #[test]
 fn a_small_family_takes_the_cheapest_air_that_covers_it() {
@@ -128,7 +128,7 @@ fn small_leftovers_consolidate_into_one_instance() {
 }
 
 /// Work that fills whole instances goes to the air that needs the fewest of them, which is the tall
-/// universal one — even though a specialized air would take less area per operation.
+/// universal one — even though a specialized air would take less memory per operation.
 #[test]
 fn a_bulk_goes_where_the_fewest_instances_are_needed() {
     let cap_tall = cap(&meta_of(ArithEqLargeTrace::<()>::AIR_ID));
@@ -140,10 +140,10 @@ fn a_bulk_goes_where_the_fewest_instances_are_needed() {
     assert_eq!(plan[0].instances, 3);
 
     // The specialized air is narrower but shorter, so it would need more instances — which the
-    // criterion rules out before area is ever compared.
+    // criterion rules out before memory is ever compared.
     let narrow = meta_of(Arith256XLargeTrace::<()>::AIR_ID);
     assert!((3 * cap_tall).div_ceil(cap(&narrow)) > 3);
-    assert!(plan_area(&plan) > area(&narrow, 3 * cap_tall), "and it really is dearer in area");
+    assert!(plan_area(&plan) > memory(&narrow, 3 * cap_tall), "and it really is dearer in memory");
 }
 
 /// A bulk's tail can land away from the bulk, splitting one operation across two airs — here into

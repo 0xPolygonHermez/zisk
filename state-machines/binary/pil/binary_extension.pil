@@ -93,167 +93,210 @@ x    in2[x]    out[x][0]     out[x][1]
 7    0x88      0x00000000    0x00000000
 ---------------------------------------
 Result:        0xFFFF8abc    0xFFFFFFFF
+
+Lanes per row:
+=======================================
+
+A "lane" is the full set of columns that proves ONE extension operation: op, the per-byte
+free_in_a / free_in_c, free_in_b, the family flags and — on a full lane — the shift-amount high
+bits and the b[2] halves. With `lanes_x_row` > 1 each row packs that many INDEPENDENT operations.
+Nothing here relates a row to its neighbour, so packing lanes is a pure widening: the same
+constraints repeated per lane.
+
+`full` is a COUNT of how many of those lanes are full, not a flag: lanes 0 .. full-1 are full and
+the rest are reduced. It defaults to -1, which means "every lane is full" (full = lanes_x_row).
+With lanes_x_row = 1 the old meaning is recovered exactly — full: 1 is one full lane, full: 0 is
+one reduced lane — so existing instantiations are unaffected.
+
+Mixing both kinds on a row is the point of the count: a full lane owns the chain flags, the
+bit6/bit7 columns and b[2], which is what lets it prove the byte-chain families and dirty
+operands; a reduced lane drops all of them and is much narrower, but only proves ops whose B is
+either zero or a 6-bit value. Sizing `full` to the actual mix of operations is what keeps the
+width down.
 */
 
-airtemplate BinaryExtension(const int N = 2**18, const int bits = 64, const int full = 1) {
+airtemplate BinaryExtension(const int N = 2**18, const int bits = 64,
+                            const int lanes_x_row = 1, int full = -1) {
     if (bits != 64) {
         error(`Currently only bits=64 is supported, got bits=${bits}`);
     }
+
+    // full = -1 means "every lane is full".
+    if (full == -1) {
+        full = lanes_x_row;
+    }
+
+    assert(lanes_x_row > 0, "lanes_x_row must be greater than 0");
+    assert(full >= 0, "full must not be negative");
+    assert(full <= lanes_x_row, "full must not exceed lanes_x_row");
 
     // Default values
     const int BYTES = bits / 8;
     const int HALF_BYTES = BYTES / 2;
     const int BYTE_BASE = (1 << BYTES);
 
-    // Primary columns
-    col witness bits(7)  op;                  // operation code (up to 0x4f = OP_SLL_UW)
-    col witness bits(8)  free_in_a[BYTES];    // input A per byte
-    col witness bits(6)  free_in_b;           // input B (only bits: 0..5 , values: 0..63)
-    col witness bits(32) free_in_c[BYTES][2]; // output C byte, split in 2 parts
-    
-    if (full == 1) {
-        col witness bits(1)  air.free_in_b_bit6;      // input B (only bit: 6)   
-        col witness bits(1)  air.free_in_b_bit7;      // input B (only bit: 7)
-        free_in_b_bit6 * (1 - free_in_b_bit6) === 0;
-        free_in_b_bit7 * (1 - free_in_b_bit7) === 0;
-    }   
+    // Primary columns, one set per lane
+    col witness bits(7)  op[lanes_x_row];                  // operation code (up to 0x4f = OP_SLL_UW)
+    col witness bits(8)  free_in_a[lanes_x_row][BYTES];    // input A per byte
+    col witness bits(6)  free_in_b[lanes_x_row];           // input B (only bits: 0..5 , values: 0..63)
+    col witness bits(32) free_in_c[lanes_x_row][BYTES][2]; // output C byte, split in 2 parts
 
     // Flags and helpers. Each is binary and the (up to four) families are mutually exclusive (an
     // op belongs to at most one): shift, forward byte-chain (ctz/ctz_w), reverse byte-chain
     // (clz/clz_w) or combine/pack (pack/pack_h/pack_w). An op in no family (e.g. sext/rev8/orcb)
-    // has flags = 0. The byte-chain selectors exist only in the full variant (see below).
-    col witness bits(1)  op_is_shift;         // 1 if operation is in the shift family
-    col witness bits(1)  op_is_combine;       // 1 for pack family (interleave low halves of a, b)
-    op_is_shift * (1 - op_is_shift) === 0;
-    op_is_combine * (1 - op_is_combine) === 0;
+    // has flags = 0. The byte-chain selectors exist only on full lanes (see below).
+    col witness bits(1)  op_is_shift[lanes_x_row];         // 1 if operation is in the shift family
+    col witness bits(1)  op_is_combine[lanes_x_row];       // 1 for pack family (interleave low halves of a, b)
 
-    // The family selectors are folded into flags = op_is_shift + 2*op_is_chain + 4*op_is_chain_rev
-    // + 8*op_is_combine, which, together with the constant byte index j, becomes a single lookup
-    // element j + BYTES * flags. This lets the table encode offset and flags in one fixed column
-    // (OFFSET_AND_FLAGS) instead of a separate offset column plus flag columns. The fold is
-    // injective only because every term is bounded: j is a compile-time constant in 0..BYTES-1 and
-    // each flag is binary. Legal flags are 0, 1, 2, 4, 8 (a single family bit); any two bits set
-    // has no table row, so the lookup itself enforces mutual exclusion.
-    //
-    // full: the full variant proves every op, including the byte-chain families (ctz/clz), and so
-    // owns the op_is_chain / op_is_chain_rev columns. The reduced variant (full = 0) only proves
-    // ops whose B is either zero or a 6-bit value, never the chain families: it has no chain flag
-    // columns and its flags can never encode 2 (chain) or 4 (chain_rev), so its lookup can never
-    // match a chain / chain_rev table row — no extra marker column is needed.
-    const expr flags;
-    if (full == 1) {
-        col witness bits(1)  air.op_is_chain;     // 1 for forward byte-chain (ctz/ctz_w, LSB -> MSB)
-        col witness bits(1)  air.op_is_chain_rev; // 1 for reverse byte-chain (clz/clz_w, MSB -> LSB)
-        op_is_chain * (1 - op_is_chain) === 0;
-        op_is_chain_rev * (1 - op_is_chain_rev) === 0;
-        flags = op_is_shift + 2 * op_is_chain + 4 * op_is_chain_rev + 8 * op_is_combine;
-    } else {
-        flags = op_is_shift + 8 * op_is_combine;
+    // Columns only the full lanes own. They are indexed by the lane, which is why they are sized
+    // `full`: lanes 0 .. full-1 are the full ones.
+    if (full > 0) {
+        col witness bits(1)  air.free_in_b_bit6[full];     // input B (only bit: 6)
+        col witness bits(1)  air.free_in_b_bit7[full];     // input B (only bit: 7)
+        col witness bits(1)  air.op_is_chain[full];        // 1 for forward byte-chain (ctz/ctz_w, LSB -> MSB)
+        col witness bits(1)  air.op_is_chain_rev[full];    // 1 for reverse byte-chain (clz/clz_w, MSB -> LSB)
+
+        // b[2] carries the 32-bit halves of the operands that don't fit in free_in_a/free_in_b: the
+        // shift-amount high bits, and the high halves that pack/rev8/sext/... leave unused (which
+        // may hold garbage). b[0] holds bits 8..31 of the shift amount, range-checked to 2^24.
+        col witness bits(32) air.b[full][2];
     }
 
-    // Constraints to check the correctness of each binary operation
-    for (int j = 0; j < BYTES; j++) {
-       lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op, j + BYTES * flags, free_in_a[j], free_in_b, free_in_c[j][0], free_in_c[j][1]]);
-    }
+    for (int lane = 0; lane < lanes_x_row; lane++) {
 
-    // Byte-chain operations (full variant only): free_in_c[j][0] holds the per-byte increment
-    // (summed to give the result) and free_in_c[j][1] holds the accumulated count entering byte j
-    // (acc_in). The chain forces acc_in to be the running sum of the increments already seen, so
-    // the table can tell whether byte j is still inside the run of zeros (offset provides the
-    // position threshold) without any degree-raising product across bytes. The reduced variant
-    // never proves chain ops, so it declares neither the flag columns nor these constraints.
-    if (full == 1) {
-        // Forward (ctz): scan LSB -> MSB, acc_in[0] = 0, acc_in[j] = acc_in[j-1] + increment[j-1].
-        op_is_chain * free_in_c[0][1] === 0;
-        for (int j = 1; j < BYTES; j++) {
-           op_is_chain * (free_in_c[j][1] - free_in_c[j-1][1] - free_in_c[j-1][0]) === 0;
+        const int is_full = lane < full;
+
+        op_is_shift[lane] * (1 - op_is_shift[lane]) === 0;
+        op_is_combine[lane] * (1 - op_is_combine[lane]) === 0;
+
+        if (is_full) {
+            free_in_b_bit6[lane] * (1 - free_in_b_bit6[lane]) === 0;
+            free_in_b_bit7[lane] * (1 - free_in_b_bit7[lane]) === 0;
+            op_is_chain[lane] * (1 - op_is_chain[lane]) === 0;
+            op_is_chain_rev[lane] * (1 - op_is_chain_rev[lane]) === 0;
         }
-        // Reverse (clz): scan MSB -> LSB, acc_in[BYTES-1] = 0, acc_in[j] = acc_in[j+1] + increment[j+1].
-        op_is_chain_rev * free_in_c[BYTES-1][1] === 0;
-        for (int j = 0; j < BYTES - 1; j++) {
-           op_is_chain_rev * (free_in_c[j][1] - free_in_c[j+1][1] - free_in_c[j+1][0]) === 0;
+
+        // The family selectors are folded into flags = op_is_shift + 2*op_is_chain
+        // + 4*op_is_chain_rev + 8*op_is_combine, which, together with the constant byte index j,
+        // becomes a single lookup element j + BYTES * flags. This lets the table encode offset and
+        // flags in one fixed column (OFFSET_AND_FLAGS) instead of a separate offset column plus
+        // flag columns. The fold is injective only because every term is bounded: j is a
+        // compile-time constant in 0..BYTES-1 and each flag is binary. Legal flags are 0, 1, 2, 4,
+        // 8 (a single family bit); any two bits set has no table row, so the lookup itself enforces
+        // mutual exclusion.
+        //
+        // A full lane proves every op, including the byte-chain families (ctz/clz), and so owns the
+        // op_is_chain / op_is_chain_rev columns. A reduced lane only proves ops whose B is either
+        // zero or a 6-bit value, never the chain families: it has no chain flag columns and its
+        // flags can never encode 2 (chain) or 4 (chain_rev), so its lookup can never match a
+        // chain / chain_rev table row — no extra marker column is needed.
+        const expr flags;
+        if (is_full) {
+            flags = op_is_shift[lane] + 2 * op_is_chain[lane] + 4 * op_is_chain_rev[lane] + 8 * op_is_combine[lane];
+        } else {
+            flags = op_is_shift[lane] + 8 * op_is_combine[lane];
         }
-    }
 
-    // Constraints to make sure that this component is called from the main component. b[2] carries
-    // the 32-bit halves of the operands that don't fit in free_in_a/free_in_b: the shift-amount
-    // high bits, and the high halves that pack/rev8/sext/... leave unused (which may hold garbage).
-    // b[0] holds bits 8..31 of the shift amount, range-checked to 2^24.
-    //
-    // The reduced variant (full = 0) only proves "clean" operations, so it needs no b[2] at all:
-    //   - shift  => shift amount fits in free_in_b (0..63); the high part is implicitly 0.
-    //   - combine => pack operands whose high halves are 0 (data lives in the low halves).
-    //   - plain  => single-source ops whose bus a operand is the immediate 0.
-    // A "dirty" operation (any non-zero high part) has no valid witness here and must be proved by
-    // a full instance.
-    if (full == 1) {
-        col witness bits(32) air.b[2];
-        range_check(expression: b[0], min: 0, max: 2**24 - 1, sel: op_is_shift);
-    }
+        // Constraints to check the correctness of each binary operation
+        for (int j = 0; j < BYTES; j++) {
+           lookup_assumes(BINARY_EXTENSION_TABLE_ID, [op[lane], j + BYTES * flags, free_in_a[lane][j], free_in_b[lane], free_in_c[lane][j][0], free_in_c[lane][j][1]]);
+        }
 
-    expr a[2];
-    a[0] = 0;
-    a[1] = 0;
-    for (int j = 0; j < HALF_BYTES; j++) {
-        const int byte_weight = BYTE_BASE ** j;
-        a[0] += (byte_weight * free_in_a[j]);
-        a[1] += (byte_weight * free_in_a[HALF_BYTES + j]);
-    }
+        // Byte-chain operations (full lanes only): free_in_c[j][0] holds the per-byte increment
+        // (summed to give the result) and free_in_c[j][1] holds the accumulated count entering byte
+        // j (acc_in). The chain forces acc_in to be the running sum of the increments already seen,
+        // so the table can tell whether byte j is still inside the run of zeros (offset provides the
+        // position threshold) without any degree-raising product across bytes. A reduced lane never
+        // proves chain ops, so it declares neither the flag columns nor these constraints.
+        if (is_full) {
+            // Forward (ctz): scan LSB -> MSB, acc_in[0] = 0, acc_in[j] = acc_in[j-1] + increment[j-1].
+            op_is_chain[lane] * free_in_c[lane][0][1] === 0;
+            for (int j = 1; j < BYTES; j++) {
+               op_is_chain[lane] * (free_in_c[lane][j][1] - free_in_c[lane][j-1][1] - free_in_c[lane][j-1][0]) === 0;
+            }
+            // Reverse (clz): scan MSB -> LSB, acc_in[BYTES-1] = 0, acc_in[j] = acc_in[j+1] + increment[j+1].
+            op_is_chain_rev[lane] * free_in_c[lane][BYTES-1][1] === 0;
+            for (int j = 0; j < BYTES - 1; j++) {
+               op_is_chain_rev[lane] * (free_in_c[lane][j][1] - free_in_c[lane][j+1][1] - free_in_c[lane][j+1][0]) === 0;
+            }
 
-    expr c[2];
-    c[0] = 0;
-    c[1] = 0;
-    for (int j = 0; j < BYTES; j++) {
-        c[0] += free_in_c[j][0];
-        c[1] += free_in_c[j][1];
-    }
+            range_check(expression: b[lane][0], min: 0, max: 2**24 - 1, sel: op_is_shift[lane]);
+        }
 
-    // For byte-chain ops, c[1] carries the acc_in chain (an internal helper), not the real
-    // high part of the result, so it must be forced to 0 on the operation bus. c[0] already
-    // equals the result: sum of per-byte increments telescopes to the trailing/leading count.
-    // The reduced variant has no chain ops, so c[1] is always the real high part.
-    const expr c_res[2];
-    c_res[0] = c[0];
-    if (full == 1) {
-        c_res[1] = (1 - op_is_chain - op_is_chain_rev) * c[1];
-    } else {
-        c_res[1] = c[1];
-    }
+        // Constraints to make sure that this component is called from the main component.
+        //
+        // A reduced lane only proves "clean" operations, so it needs no b[2] at all:
+        //   - shift  => shift amount fits in free_in_b (0..63); the high part is implicitly 0.
+        //   - combine => pack operands whose high halves are 0 (data lives in the low halves).
+        //   - plain  => single-source ops whose bus a operand is the immediate 0.
+        // A "dirty" operation (any non-zero high part) has no valid witness on a reduced lane and
+        // must be proved by a full one.
+        expr a[2];
+        a[0] = 0;
+        a[1] = 0;
+        for (int j = 0; j < HALF_BYTES; j++) {
+            const int byte_weight = BYTE_BASE ** j;
+            a[0] += (byte_weight * free_in_a[lane][j]);
+            a[1] += (byte_weight * free_in_a[lane][HALF_BYTES + j]);
+        }
 
-    // Reconstruct the bus operands from the witness, selected by the flags (all mutually
-    // exclusive). a[0]/a[1] are the two halves rebuilt from free_in_a; b[0]/b[1] are the b[] witness
-    // columns (full only); free_in_b is the shared low byte.
-    //   shift   => a = [a0, a1],           b = [shift_mode_b, b1]         (value, shift amount)
-    //   plain   => a = [b0, b1],           b = [a0, a1]                   (single input in free_in_a)
-    //   combine => a = [a0, b0],           b = [a1, b1]                   (pack: a0/a1 = rs1_low/rs2_low,
-    //                                                                      b0/b1 = rs1_high/rs2_high)
-    // Full rebuilds the whole shift amount from its low 6 bits (free_in_b), bits 6/7 and b[0]
-    // (bits 8..31). The reduced variant only admits amounts that fit in 6 bits, so the shift
-    // amount is exactly free_in_b (no bit6/bit7 columns, no b[0] high part).
-    const expr shift_mode_b;
-    if (full == 1) {
-        shift_mode_b = free_in_b + free_in_b_bit6 * 64 + free_in_b_bit7 * 128 + BYTE_BASE * b[0];
-    } else {
-        shift_mode_b = free_in_b;
-    }
+        expr c[2];
+        c[0] = 0;
+        c[1] = 0;
+        for (int j = 0; j < BYTES; j++) {
+            c[0] += free_in_c[lane][j][0];
+            c[1] += free_in_c[lane][j][1];
+        }
 
-    // op_b[0] never uses b[], so it is the same in both variants. The reduced variant substitutes
-    // b[0] = b[1] = 0 everywhere else, which forces the high halves to zero on the bus: a clean
-    // shift amount (b = [free_in_b, 0]), a clean pack (a = [a0, 0], b = [a1, 0]) and a single-source
-    // op (a = [0, 0]). A dirty operand would leave a non-zero high half that this can't match.
-    const expr op_a[2];
-    const expr op_b[2];
-    op_b[0] = op_is_shift * (shift_mode_b - a[0]) + op_is_combine * (a[1] - a[0]) + a[0];
-    if (full == 1) {
-        op_a[0] = (op_is_shift + op_is_combine) * (a[0] - b[0]) + b[0];
-        op_a[1] = op_is_shift * (a[1] - b[1]) + op_is_combine * (b[0] - b[1]) + b[1];
-        op_b[1] = (op_is_shift + op_is_combine) * (b[1] - a[1]) + a[1];
-    } else {
-        op_a[0] = (op_is_shift + op_is_combine) * a[0];
-        op_a[1] = op_is_shift * a[1];
-        op_b[1] = (1 - op_is_shift - op_is_combine) * a[1];
+        // For byte-chain ops, c[1] carries the acc_in chain (an internal helper), not the real
+        // high part of the result, so it must be forced to 0 on the operation bus. c[0] already
+        // equals the result: sum of per-byte increments telescopes to the trailing/leading count.
+        // A reduced lane has no chain ops, so c[1] is always the real high part.
+        const expr c_res[2];
+        c_res[0] = c[0];
+        if (is_full) {
+            c_res[1] = (1 - op_is_chain[lane] - op_is_chain_rev[lane]) * c[1];
+        } else {
+            c_res[1] = c[1];
+        }
+
+        // Reconstruct the bus operands from the witness, selected by the flags (all mutually
+        // exclusive). a[0]/a[1] are the two halves rebuilt from free_in_a; b[0]/b[1] are the b[]
+        // witness columns (full lanes only); free_in_b is the shared low byte.
+        //   shift   => a = [a0, a1],           b = [shift_mode_b, b1]         (value, shift amount)
+        //   plain   => a = [b0, b1],           b = [a0, a1]                   (single input in free_in_a)
+        //   combine => a = [a0, b0],           b = [a1, b1]                   (pack: a0/a1 = rs1_low/rs2_low,
+        //                                                                      b0/b1 = rs1_high/rs2_high)
+        // A full lane rebuilds the whole shift amount from its low 6 bits (free_in_b), bits 6/7 and
+        // b[0] (bits 8..31). A reduced lane only admits amounts that fit in 6 bits, so the shift
+        // amount is exactly free_in_b (no bit6/bit7 columns, no b[0] high part).
+        const expr shift_mode_b;
+        if (is_full) {
+            shift_mode_b = free_in_b[lane] + free_in_b_bit6[lane] * 64 + free_in_b_bit7[lane] * 128 + BYTE_BASE * b[lane][0];
+        } else {
+            shift_mode_b = free_in_b[lane];
+        }
+
+        // op_b[0] never uses b[], so it is the same on both kinds of lane. A reduced lane
+        // substitutes b[0] = b[1] = 0 everywhere else, which forces the high halves to zero on the
+        // bus: a clean shift amount (b = [free_in_b, 0]), a clean pack (a = [a0, 0], b = [a1, 0])
+        // and a single-source op (a = [0, 0]). A dirty operand would leave a non-zero high half
+        // that this can't match.
+        const expr op_a[2];
+        const expr op_b[2];
+        op_b[0] = op_is_shift[lane] * (shift_mode_b - a[0]) + op_is_combine[lane] * (a[1] - a[0]) + a[0];
+        if (is_full) {
+            op_a[0] = (op_is_shift[lane] + op_is_combine[lane]) * (a[0] - b[lane][0]) + b[lane][0];
+            op_a[1] = op_is_shift[lane] * (a[1] - b[lane][1]) + op_is_combine[lane] * (b[lane][0] - b[lane][1]) + b[lane][1];
+            op_b[1] = (op_is_shift[lane] + op_is_combine[lane]) * (b[lane][1] - a[1]) + a[1];
+        } else {
+            op_a[0] = (op_is_shift[lane] + op_is_combine[lane]) * a[0];
+            op_a[1] = op_is_shift[lane] * a[1];
+            op_b[1] = (1 - op_is_shift[lane] - op_is_combine[lane]) * a[1];
+        }
+
+        proves_operation(op: op[lane], a: op_a, b: op_b, c: c_res);
     }
-    proves_operation(op:, a: op_a, b: op_b, c: c_res);
 
     airval padding_size;
     assumes_padding_operation(op: OP_SEXT_B, padding_size:);

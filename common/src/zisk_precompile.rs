@@ -45,7 +45,7 @@
 //! The airs of a ladder must prove the *same* operations under the same
 //! `op_type` — they are one air at several heights, not several airs. The
 //! generated planner sizes them together under the shared criterion (fewest
-//! instances first, least area to break a tie; see [`select_sizes`](crate::select_sizes))
+//! instances first, least memory to break a tie; see [`select_sizes`](crate::select_sizes))
 //! and then cuts the operations at each granted instance's own capacity with
 //! [`plan_ladder`](crate::plan_ladder).
 //!
@@ -97,7 +97,7 @@ pub use paste::paste as __zisk_paste;
 /// instantiated at, each with:
 ///
 /// * `air_id` / `air_group_id` — where the air lives in the pilout;
-/// * `num_rows` — its height, which prices its area for the tie-break;
+/// * `num_rows` — its height, which prices its memory for the tie-break;
 /// * `num_available` — a *compile-time expression* for the operations one of its
 ///   instances holds. Consumed by the static `ComponentPlanBuilder::planner()`
 ///   impl, so no constructed SM is required for the planning phase;
@@ -256,7 +256,7 @@ macro_rules! zisk_precompile_explicit {
                 ///
                 /// The airs of a precompile prove the very same operations and differ only in how
                 /// many of them one instance holds, so they are sized together under the shared
-                /// criterion — fewest instances first, least area to break a tie (see
+                /// criterion — fewest instances first, least memory to break a tie (see
                 /// [`select_sizes`](crate::select_sizes)) — and the operations are then cut at each
                 /// granted instance's own capacity.
                 fn plan(
@@ -292,7 +292,7 @@ macro_rules! zisk_precompile_explicit {
                         ));
                     });
 
-                    // Capacity and area of each air, so the sizing can trade one against the other.
+                    // Capacity and memory of each air, so the sizing can trade one against the other.
                     let ladder: ::std::vec::Vec<$crate::AirChoice> = self
                         .instances_info
                         .iter()
@@ -301,7 +301,7 @@ macro_rules! zisk_precompile_explicit {
                             airgroup_id: info.airgroup_id,
                             air_id: info.air_id,
                             rows: info.num_ops as u64,
-                            area: cost as u64,
+                            memory: cost as u64,
                         })
                         .collect();
 

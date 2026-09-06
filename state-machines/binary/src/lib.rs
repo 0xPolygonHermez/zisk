@@ -25,6 +25,7 @@ mod binary_extension_legacy_frops;
 mod binary_extension_table;
 mod binary_input;
 mod binary_kinds;
+mod binary_lanes;
 mod binary_planner;
 mod binary_tally;
 
@@ -54,5 +55,6 @@ pub use binary_extension_legacy_frops::*;
 use binary_extension_table::*;
 use binary_input::*;
 pub use binary_kinds::*;
+pub use binary_lanes::*;
 use binary_planner::*;
 use binary_tally::*;

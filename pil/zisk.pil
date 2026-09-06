@@ -112,14 +112,20 @@ airgroup Zisk {
                         bin_file: "state-machines/arith/src/arith_frops_fixed.bin") alias ArithFrops;
 
     Binary(N: 2**22);
-    Binary(N: 2**23) alias BinaryLarge;
-    BinaryAdd(N: 2**22);
-    BinaryAdd(N: 2**23) alias BinaryAddLarge;
-    BinaryAddHi(N: 2**22);
-    BinaryAddHi(N: 2**22, adds_x_row: 5) alias BinaryAddHiLarge;
+    Binary(N: 2**22, lanes_x_row: 2) alias BinaryLarge;
+    Binary(N: 2**22, lanes_x_row: 4) alias BinaryHuge;
 
-    BinaryExtension(N: 2**22, full: 1);
-    BinaryExtension(N: 2**23, full: 1) alias BinaryExtensionLarge;    
+    BinaryAdd(N: 2**22);
+    BinaryAdd(N: 2**22, lanes_x_row: 2) alias BinaryAddLarge;
+    BinaryAdd(N: 2**22, lanes_x_row: 4) alias BinaryAddHuge;
+
+    BinaryAddHi(N: 2**22, lanes_x_row: 2);
+    BinaryAddHi(N: 2**22, lanes_x_row: 4) alias BinaryAddHiLarge;
+    BinaryAddHi(N: 2**22, lanes_x_row: 8) alias BinaryAddHiHuge;
+
+    BinaryExtension(N: 2**22);
+    BinaryExtension(N: 2**22, lanes_x_row: 2) alias BinaryExtensionLarge;
+    BinaryExtension(N: 2**22, lanes_x_row: 4) alias BinaryExtensionHuge;
 
     virtual BinaryTable();
     virtual BinaryExtensionTable();

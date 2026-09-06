@@ -3,32 +3,38 @@
 //!
 //! # Instance strategy
 //!
-//! Several airs can prove the same operation, at a different capacity and area. Every one of them
-//! comes in two heights — a plain air and a `Large` sibling twice as tall and exactly as wide:
+//! Several airs can prove the same operation, at a different capacity and prover memory. Every one
+//! of them comes in three sizes — a plain air, a `Large` and a `Huge` — which are all the same
+//! height and differ in how many operations they pack on a row (`lanes_x_row` in the PIL):
 //!
-//! | air                     | proves                              | ops per instance         |
-//! |-------------------------|-------------------------------------|--------------------------|
-//! | `Binary` / `…Large`     | every basic op, additions included  | rows                     |
-//! | `BinaryAdd` / `…Large`  | additions of any shape              | rows                     |
-//! | `BinaryAddHi`           | low-limb additions only             | rows × [`ADDS_X_ROW`]    |
-//! | `BinaryAddHiLarge`      | low-limb additions only             | rows × [`ADDS_X_ROW_LARGE`] |
-//! | `BinaryExtension` / `…Large` | every extension op             | rows                     |
+//! | air                              | proves                             | ops per instance    |
+//! |----------------------------------|------------------------------------|---------------------|
+//! | `Binary` / `…Large` / `…Huge`    | every basic op, additions included | rows × lanes        |
+//! | `BinaryAdd` / `…Large` / `…Huge` | additions and SH3ADD of any shape it can carry | rows × lanes |
+//! | `BinaryAddHi` / `…Large` / `…Huge` | low-limb additions and SH3ADD only | rows × lanes      |
+//! | `BinaryExtension` / `…Large` / `…Huge` | every extension op           | rows × lanes        |
 //!
-//! The criterion is the shared one (see [`zisk_common::select_airs`]): **fewest instances first, least
-//! area to break a tie.** That is what makes the tall airs and the packing worth their width — one
-//! `BinaryAddHiLarge` instance holds `ADDS_X_ROW_LARGE × 2²²` additions, two and a half times what a
-//! `BinaryLarge` instance holds, so routing the additions there is what keeps the instance count down.
+//! The criterion is the shared one (see [`zisk_common::select_airs`]): **fewest instances first,
+//! least prover memory to break a tie.** That is what makes the packing worth its width — one
+//! `BinaryAddHiHuge` instance holds eight additions per row, eight times what a `Binary` instance
+//! holds, so routing the additions there is what keeps the instance count down.
 //!
 //! Planning happens in two steps, which keeps the cost decision apart from the mechanics.
 //!
-//! **How many instances of each air.** Whole instances of the packed airs are always worth keeping —
-//! nothing holds more additions per instance — so the only thing to decide is what to do with the
-//! operations left over, which is at most one instance's worth. Giving them an instance of their own is
-//! one option; the other is letting them ride in room already paid for by the basic operations. Both
-//! are priced and the better wins, so nothing is hardcoded about which air gives way.
+//! **How many instances of each air.** Whole instances of the widest packed air are always worth
+//! keeping — nothing holds more additions per instance — so the only thing to decide is what to do
+//! with the operations left over, which is less than one of them. They can go to another instance of
+//! the same air, to a couple of narrower packed ones, or ride in room already paid for by the basic
+//! operations. Every combination is priced and the best wins, so nothing is hardcoded about which
+//! air gives way.
+//!
+//! Note the narrower packed airs do NOT hold more than every other air — `BinaryAddHi` holds fewer
+//! additions than `BinaryAddHuge` — which is exactly why they are enumerated as candidates rather
+//! than assumed. Only the widest one dominates, and `tests::the_widest_packed_air_holds_the_most_
+//! additions_per_instance` pins that.
 //!
 //! **Who collects what.** [`distribute`] then hands the operations to the airs in order, most
-//! specialised and tallest first, each taking what fits and leaving the rest pending for the next. A
+//! specialised and widest first, each taking what fits and leaving the rest pending for the next. A
 //! residual is therefore never forced into an instance of its own merely because it did not fit in one
 //! place: it can spread across every air that follows. The hand-out order matches the order the
 //! strategy filled the airs in, which is what keeps the two consistent.
@@ -36,11 +42,13 @@
 //! Each kind of operation is tracked apart, so what an instance collects is a `(count, skip)` per
 //! kind. The planner never needs to know the order the kinds are interleaved in — which it could not
 //! know, having only counts — because each kind's boundary is expressed in that kind's own terms.
+//! `SH3ADD` is split into its own kinds alongside the additions it shares an air with, since which
+//! air can fold its shift into an addition depends on the operands (see [`crate::sh3add_shape`]).
 
 use crate::{
-    add_family, distribute, ext_family, AirSlot, BinaryCounter, ChunkCollect, ADDS_X_ROW,
-    ADDS_X_ROW_LARGE, ADD_AIRS, ADD_KINDS, EXT_AIRS, EXT_KINDS, KIND_ADD_FULL, KIND_ADD_HI,
-    KIND_BASIC, KIND_EXT,
+    add_family, distribute, ext_family, lanes_x_row, AirSlot, BinaryCounter, ChunkCollect,
+    ADD_AIRS, ADD_KINDS, EXT_AIRS, EXT_KINDS, KIND_ADD_FULL, KIND_ADD_HI, KIND_BASIC, KIND_EXT,
+    KIND_SH3ADD_ADD, KIND_SH3ADD_HI,
 };
 use proofman_fields::PrimeField64;
 use std::any::Any;
@@ -49,27 +57,36 @@ use zisk_common::{
     Plan, Planner,
 };
 use zisk_pil::{
-    BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddLargeTrace, BinaryAddTrace,
-    BinaryExtensionLargeTrace, BinaryExtensionTrace, BinaryLargeTrace, BinaryTrace,
-    BINARY_ADD_HI_INSTANCE_COST, BINARY_ADD_HI_LARGE_INSTANCE_COST, BINARY_ADD_INSTANCE_COST,
-    BINARY_ADD_LARGE_INSTANCE_COST, BINARY_EXTENSION_INSTANCE_COST,
-    BINARY_EXTENSION_LARGE_INSTANCE_COST, BINARY_INSTANCE_COST, BINARY_LARGE_INSTANCE_COST,
+    BinaryAddHiHugeTrace, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddHugeTrace,
+    BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionHugeTrace, BinaryExtensionLargeTrace,
+    BinaryExtensionTrace, BinaryHugeTrace, BinaryLargeTrace, BinaryTrace,
+    BINARY_ADD_HI_HUGE_INSTANCE_COST, BINARY_ADD_HI_INSTANCE_COST,
+    BINARY_ADD_HI_LARGE_INSTANCE_COST, BINARY_ADD_HUGE_INSTANCE_COST, BINARY_ADD_INSTANCE_COST,
+    BINARY_ADD_LARGE_INSTANCE_COST, BINARY_EXTENSION_HUGE_INSTANCE_COST,
+    BINARY_EXTENSION_INSTANCE_COST, BINARY_EXTENSION_LARGE_INSTANCE_COST,
+    BINARY_HUGE_INSTANCE_COST, BINARY_INSTANCE_COST, BINARY_LARGE_INSTANCE_COST,
 };
 
 /// Slot of each air within [`add_family`] / [`InstanceCounts`], in hand-out order.
 mod slot {
+    /// `BinaryAddHiHuge`.
+    pub const PACKED_HUGE: usize = 0;
     /// `BinaryAddHiLarge`.
-    pub const PACKED_LARGE: usize = 0;
+    pub const PACKED_LARGE: usize = 1;
     /// `BinaryAddHi`.
-    pub const PACKED: usize = 1;
+    pub const PACKED: usize = 2;
+    /// `BinaryAddHuge`.
+    pub const ADD_HUGE: usize = 3;
     /// `BinaryAddLarge`.
-    pub const ADD_LARGE: usize = 2;
+    pub const ADD_LARGE: usize = 4;
     /// `BinaryAdd`.
-    pub const ADD: usize = 3;
+    pub const ADD: usize = 5;
+    /// `BinaryHuge`.
+    pub const BASIC_HUGE: usize = 6;
     /// `BinaryLarge`.
-    pub const BASIC_LARGE: usize = 4;
+    pub const BASIC_LARGE: usize = 7;
     /// `Binary`.
-    pub const BASIC: usize = 5;
+    pub const BASIC: usize = 8;
 }
 
 /// Totals over every chunk, which is all the strategy needs.
@@ -86,23 +103,32 @@ type InstanceCounts = [u64; ADD_AIRS];
 
 /// Operations one instance of each add-family air holds, in [`slot`] order.
 fn add_capacities() -> InstanceCounts {
+    // Every air is the same height now, so what tells them apart is how many operations they pack
+    // on a row: capacity is rows times lanes, not rows.
+    let ops = |rows: usize, lanes: usize| (rows * lanes) as u64;
     [
-        ADDS_X_ROW_LARGE as u64 * BinaryAddHiLargeTrace::<()>::NUM_ROWS as u64,
-        ADDS_X_ROW as u64 * BinaryAddHiTrace::<()>::NUM_ROWS as u64,
-        BinaryAddLargeTrace::<()>::NUM_ROWS as u64,
-        BinaryAddTrace::<()>::NUM_ROWS as u64,
-        BinaryLargeTrace::<()>::NUM_ROWS as u64,
-        BinaryTrace::<()>::NUM_ROWS as u64,
+        ops(BinaryAddHiHugeTrace::<()>::NUM_ROWS, lanes_x_row::ADD_HI_HUGE),
+        ops(BinaryAddHiLargeTrace::<()>::NUM_ROWS, lanes_x_row::ADD_HI_LARGE),
+        ops(BinaryAddHiTrace::<()>::NUM_ROWS, lanes_x_row::ADD_HI),
+        ops(BinaryAddHugeTrace::<()>::NUM_ROWS, lanes_x_row::ADD_HUGE),
+        ops(BinaryAddLargeTrace::<()>::NUM_ROWS, lanes_x_row::ADD_LARGE),
+        ops(BinaryAddTrace::<()>::NUM_ROWS, lanes_x_row::ADD),
+        ops(BinaryHugeTrace::<()>::NUM_ROWS, lanes_x_row::BASIC_HUGE),
+        ops(BinaryLargeTrace::<()>::NUM_ROWS, lanes_x_row::BASIC_LARGE),
+        ops(BinaryTrace::<()>::NUM_ROWS, lanes_x_row::BASIC),
     ]
 }
 
 /// Area of one instance of each add-family air, in [`slot`] order.
-fn add_areas() -> InstanceCounts {
+fn add_memories() -> InstanceCounts {
     [
+        BINARY_ADD_HI_HUGE_INSTANCE_COST as u64,
         BINARY_ADD_HI_LARGE_INSTANCE_COST as u64,
         BINARY_ADD_HI_INSTANCE_COST as u64,
+        BINARY_ADD_HUGE_INSTANCE_COST as u64,
         BINARY_ADD_LARGE_INSTANCE_COST as u64,
         BINARY_ADD_INSTANCE_COST as u64,
+        BINARY_HUGE_INSTANCE_COST as u64,
         BINARY_LARGE_INSTANCE_COST as u64,
         BINARY_INSTANCE_COST as u64,
     ]
@@ -110,17 +136,26 @@ fn add_areas() -> InstanceCounts {
 
 /// The two extension airs as a size ladder, tallest last so [`select_sizes`] can order them.
 fn ext_ladder() -> [AirChoice; EXT_AIRS] {
+    // `AirChoice::rows` is the capacity the choice offers, which for these airs is rows times the
+    // lanes they pack: they are all the same height and differ only in the packing.
+    let ops = |rows: usize, lanes: usize| rows * lanes;
     [
+        AirChoice::new(
+            BinaryExtensionHugeTrace::<()>::AIRGROUP_ID,
+            BinaryExtensionHugeTrace::<()>::AIR_ID,
+            ops(BinaryExtensionHugeTrace::<()>::NUM_ROWS, lanes_x_row::EXT_HUGE),
+            BINARY_EXTENSION_HUGE_INSTANCE_COST,
+        ),
         AirChoice::new(
             BinaryExtensionLargeTrace::<()>::AIRGROUP_ID,
             BinaryExtensionLargeTrace::<()>::AIR_ID,
-            BinaryExtensionLargeTrace::<()>::NUM_ROWS,
+            ops(BinaryExtensionLargeTrace::<()>::NUM_ROWS, lanes_x_row::EXT_LARGE),
             BINARY_EXTENSION_LARGE_INSTANCE_COST,
         ),
         AirChoice::new(
             BinaryExtensionTrace::<()>::AIRGROUP_ID,
             BinaryExtensionTrace::<()>::AIR_ID,
-            BinaryExtensionTrace::<()>::NUM_ROWS,
+            ops(BinaryExtensionTrace::<()>::NUM_ROWS, lanes_x_row::EXT),
             BINARY_EXTENSION_INSTANCE_COST,
         ),
     ]
@@ -139,10 +174,10 @@ impl<F: PrimeField64> BinaryPlanner<F> {
 
     /// What a layout costs, ranked the way the criterion ranks solutions.
     fn cost_of(counts: &InstanceCounts) -> Cost {
-        let areas = add_areas();
+        let memories = add_memories();
         Cost {
             instances: counts.iter().sum(),
-            area: counts.iter().zip(areas).map(|(&n, area)| n * area).sum(),
+            memory: counts.iter().zip(memories).map(|(&n, memory)| n * memory).sum(),
         }
     }
 
@@ -163,43 +198,52 @@ impl<F: PrimeField64> BinaryPlanner<F> {
     /// cannot hold leaves precisely that leftover to ride along.
     fn generic_counts(basic: u64, adds: u64) -> InstanceCounts {
         let caps = add_capacities();
+        let memories = add_memories();
+        // `AirChoice::rows` is the capacity the choice offers. These airs are all the same height,
+        // so it is rows times the lanes they pack, which is what `add_capacities` already returns.
+        let choice = |airgroup_id, air_id, slot: usize| AirChoice {
+            airgroup_id,
+            air_id,
+            rows: caps[slot],
+            memory: memories[slot],
+        };
         let binary_ladder = [
-            AirChoice {
-                airgroup_id: BinaryLargeTrace::<()>::AIRGROUP_ID,
-                air_id: BinaryLargeTrace::<()>::AIR_ID,
-                rows: caps[slot::BASIC_LARGE],
-                area: add_areas()[slot::BASIC_LARGE],
-            },
-            AirChoice {
-                airgroup_id: BinaryTrace::<()>::AIRGROUP_ID,
-                air_id: BinaryTrace::<()>::AIR_ID,
-                rows: caps[slot::BASIC],
-                area: add_areas()[slot::BASIC],
-            },
+            choice(
+                BinaryHugeTrace::<()>::AIRGROUP_ID,
+                BinaryHugeTrace::<()>::AIR_ID,
+                slot::BASIC_HUGE,
+            ),
+            choice(
+                BinaryLargeTrace::<()>::AIRGROUP_ID,
+                BinaryLargeTrace::<()>::AIR_ID,
+                slot::BASIC_LARGE,
+            ),
+            choice(BinaryTrace::<()>::AIRGROUP_ID, BinaryTrace::<()>::AIR_ID, slot::BASIC),
         ];
         let add_ladder = [
-            AirChoice {
-                airgroup_id: BinaryAddLargeTrace::<()>::AIRGROUP_ID,
-                air_id: BinaryAddLargeTrace::<()>::AIR_ID,
-                rows: caps[slot::ADD_LARGE],
-                area: add_areas()[slot::ADD_LARGE],
-            },
-            AirChoice {
-                airgroup_id: BinaryAddTrace::<()>::AIRGROUP_ID,
-                air_id: BinaryAddTrace::<()>::AIR_ID,
-                rows: caps[slot::ADD],
-                area: add_areas()[slot::ADD],
-            },
+            choice(
+                BinaryAddHugeTrace::<()>::AIRGROUP_ID,
+                BinaryAddHugeTrace::<()>::AIR_ID,
+                slot::ADD_HUGE,
+            ),
+            choice(
+                BinaryAddLargeTrace::<()>::AIRGROUP_ID,
+                BinaryAddLargeTrace::<()>::AIR_ID,
+                slot::ADD_LARGE,
+            ),
+            choice(BinaryAddTrace::<()>::AIRGROUP_ID, BinaryAddTrace::<()>::AIR_ID, slot::ADD),
         ];
 
         let lay_out = |binary_ops: u64, add_ops: u64| -> InstanceCounts {
             let binary = select_sizes(binary_ops, &binary_ladder);
             let add = select_sizes(add_ops, &add_ladder);
             let mut counts = InstanceCounts::default();
-            counts[slot::BASIC_LARGE] = binary[0];
-            counts[slot::BASIC] = binary[1];
-            counts[slot::ADD_LARGE] = add[0];
-            counts[slot::ADD] = add[1];
+            counts[slot::BASIC_HUGE] = binary[0];
+            counts[slot::BASIC_LARGE] = binary[1];
+            counts[slot::BASIC] = binary[2];
+            counts[slot::ADD_HUGE] = add[0];
+            counts[slot::ADD_LARGE] = add[1];
+            counts[slot::ADD] = add[2];
             counts
         };
 
@@ -218,7 +262,7 @@ impl<F: PrimeField64> BinaryPlanner<F> {
         .expect("three layouts are always considered")
     }
 
-    /// Picks how many instances of each add-family air to create: fewest instances, then least area.
+    /// Picks how many instances of each add-family air to create: fewest instances, then least memory.
     ///
     /// The packed airs hold more additions per instance than anything else, so whole instances of
     /// them are never in question — only their leftover is. The candidates are therefore how many
@@ -226,22 +270,30 @@ impl<F: PrimeField64> BinaryPlanner<F> {
     /// family is laid out by [`generic_counts`].
     fn best_add_counts(totals: &Totals) -> InstanceCounts {
         let caps = add_capacities();
-        let (cap_large, cap_small) = (caps[slot::PACKED_LARGE], caps[slot::PACKED]);
+        let (cap_huge, cap_large, cap_small) =
+            (caps[slot::PACKED_HUGE], caps[slot::PACKED_LARGE], caps[slot::PACKED]);
 
-        let whole_large = totals.add_hi / cap_large;
+        // Whole instances of the widest packed air are never in question: nothing holds more
+        // additions per instance than it does. Only its leftover is, and that leftover is smaller
+        // than one of them, so covering it takes at most one more of the same, or a couple of each
+        // narrower packed air. Every such combination is priced and the cheapest wins.
+        let whole_huge = totals.add_hi / cap_huge;
 
-        // One small packed instance may not hold the leftover of a large one, so two are offered.
-        [whole_large, whole_large + 1]
+        [whole_huge, whole_huge + 1]
             .into_iter()
-            .flat_map(|large| [0u64, 1, 2].map(move |small| (large, small)))
-            .map(|(large, small)| {
+            .flat_map(|huge| {
+                (0u64..=2).flat_map(move |large| (0u64..=2).map(move |small| (huge, large, small)))
+            })
+            .map(|(huge, large, small)| {
                 // What each packed air actually receives, so no instance is granted room it cannot
                 // use: an empty instance would only ever make the layout worse.
-                let to_large = totals.add_hi.min(large * cap_large);
-                let to_small = (totals.add_hi - to_large).min(small * cap_small);
-                let rest = totals.add_hi - to_large - to_small + totals.add_full;
+                let to_huge = totals.add_hi.min(huge * cap_huge);
+                let to_large = (totals.add_hi - to_huge).min(large * cap_large);
+                let to_small = (totals.add_hi - to_huge - to_large).min(small * cap_small);
+                let rest = totals.add_hi - to_huge - to_large - to_small + totals.add_full;
 
                 let mut counts = Self::generic_counts(totals.basic, rest);
+                counts[slot::PACKED_HUGE] = to_huge.div_ceil(cap_huge);
                 counts[slot::PACKED_LARGE] = to_large.div_ceil(cap_large);
                 counts[slot::PACKED] = to_small.div_ceil(cap_small);
                 counts
@@ -260,7 +312,7 @@ impl<F: PrimeField64> BinaryPlanner<F> {
     ///
     /// Such an instance collects no operation at all. It is only reached when a whole family's
     /// operations are frequent, or when a kind only one air sees has none of its own.
-    fn cover_frops<const K: usize>(frops: &[u64; K], airs: &mut [AirSlot<K>], areas: &[u64]) {
+    fn cover_frops<const K: usize>(frops: &[u64; K], airs: &mut [AirSlot<K>], memories: &[u64]) {
         for (k, &count) in frops.iter().enumerate() {
             if count == 0 || airs.iter().any(|a| a.sees[k] && a.instances > 0) {
                 continue;
@@ -269,7 +321,7 @@ impl<F: PrimeField64> BinaryPlanner<F> {
                 .iter()
                 .enumerate()
                 .filter(|(_, a)| a.sees[k])
-                .min_by_key(|(i, _)| areas[*i])
+                .min_by_key(|(i, _)| memories[*i])
                 .map(|(i, _)| i)
                 .expect("every kind is seen by at least one air");
             airs[smallest].instances += 1;
@@ -327,11 +379,15 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
             ops[KIND_BASIC] = c.counter_basic_wo_add.inst_count;
             ops[KIND_ADD_HI] = c.counter_add_hi.inst_count;
             ops[KIND_ADD_FULL] = c.counter_add.inst_count;
+            ops[KIND_SH3ADD_HI] = c.counter_sh3add_hi.inst_count;
+            ops[KIND_SH3ADD_ADD] = c.counter_sh3add_add.inst_count;
 
             let mut fr = [0u64; ADD_KINDS];
             fr[KIND_BASIC] = c.counter_basic_wo_add.frops_count;
             fr[KIND_ADD_HI] = c.counter_add_hi.frops_count;
             fr[KIND_ADD_FULL] = c.counter_add.frops_count;
+            fr[KIND_SH3ADD_HI] = c.counter_sh3add_hi.frops_count;
+            fr[KIND_SH3ADD_ADD] = c.counter_sh3add_add.frops_count;
 
             let mut eops = [0u64; EXT_KINDS];
             eops[KIND_EXT] = c.counter_extension.inst_count;
@@ -342,6 +398,10 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
             totals.basic += ops[KIND_BASIC];
             totals.add_hi += ops[KIND_ADD_HI];
             totals.add_full += ops[KIND_ADD_FULL];
+            // SH3ADD is sized alongside the additions it shares an air with: the Hi shape competes
+            // for the packed airs, the Add shape for the full 64-bit ones.
+            totals.add_hi += ops[KIND_SH3ADD_HI];
+            totals.add_full += ops[KIND_SH3ADD_ADD];
             totals.ext += eops[KIND_EXT];
 
             add_ops.push(ops);
@@ -354,7 +414,7 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
         let ext_counts = select_sizes(totals.ext, &ext_ladder());
 
         let mut add_airs = add_family(add_counts);
-        let mut ext_airs = ext_family([ext_counts[0], ext_counts[1]]);
+        let mut ext_airs = ext_family([ext_counts[0], ext_counts[1], ext_counts[2]]);
 
         // The sizing above only saw operations. A kind whose operations are all frequent would be left
         // with no air to account for them, so coverage is topped up here.
@@ -370,8 +430,8 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
                 *total += count;
             }
         }
-        let ext_areas: Vec<u64> = ext_ladder().iter().map(|air| air.area).collect();
-        Self::cover_frops(&add_frops_total, &mut add_airs, &add_areas());
+        let ext_areas: Vec<u64> = ext_ladder().iter().map(|air| air.memory).collect();
+        Self::cover_frops(&add_frops_total, &mut add_airs, &add_memories());
         Self::cover_frops(&ext_frops_total, &mut ext_airs, &ext_areas);
 
         tracing::debug!(
@@ -406,23 +466,36 @@ mod tests {
         add_capacities()[slot]
     }
 
-    /// The candidate set — keep the whole packed instances, or one more — is only exhaustive because
-    /// the packed airs hold more additions per instance than any other air. Were a taller `Binary` air
-    /// to overtake them, dropping below the whole packed instances could become worthwhile and this
-    /// strategy would stop being optimal, so the ordering is pinned here.
+    /// The candidate set — keep the whole instances of the widest packed air, or one more — is only
+    /// exhaustive because that air holds more additions per instance than any other. Were another air
+    /// to overtake it, dropping below its whole instances could become worthwhile and this strategy
+    /// would stop being optimal, so the ordering is pinned here.
+    ///
+    /// Note this is only claimed of the WIDEST packed air. The narrower packed ones no longer beat
+    /// every other air — `BinaryAddHi` holds fewer additions than `BinaryAddHuge` or `BinaryHuge` —
+    /// which is exactly why they are enumerated as candidates rather than assumed.
     #[test]
-    fn the_packed_airs_hold_the_most_additions_per_instance() {
+    fn the_widest_packed_air_holds_the_most_additions_per_instance() {
         let caps = add_capacities();
-        for other in [slot::ADD_LARGE, slot::ADD, slot::BASIC_LARGE, slot::BASIC] {
+        for (other, cap) in caps.iter().enumerate() {
+            if other == slot::PACKED_HUGE {
+                continue;
+            }
             assert!(
-                caps[slot::PACKED_LARGE] > caps[other],
-                "the wide packed air must hold more additions per instance than air slot {other}",
-            );
-            assert!(
-                caps[slot::PACKED] > caps[other],
-                "the packed air must hold more additions per instance than air slot {other}",
+                caps[slot::PACKED_HUGE] > *cap,
+                "the widest packed air must hold more additions per instance than air slot {other}",
             );
         }
+    }
+
+    /// The packed ladder is what `best_add_counts` enumerates a leftover over, and the range it
+    /// offers (up to two of each narrower air) only covers that leftover because each tier is twice
+    /// the one below it.
+    #[test]
+    fn the_packed_airs_form_a_doubling_ladder() {
+        let caps = add_capacities();
+        assert_eq!(caps[slot::PACKED_HUGE], 2 * caps[slot::PACKED_LARGE]);
+        assert_eq!(caps[slot::PACKED_LARGE], 2 * caps[slot::PACKED]);
     }
 
     #[test]
@@ -430,11 +503,11 @@ mod tests {
         let counts = TestPlanner::best_add_counts(&Totals::default());
         assert_eq!(counts, InstanceCounts::default());
         assert_eq!(TestPlanner::cost_of(&counts), Cost::default());
-        assert_eq!(select_sizes(0, &ext_ladder()), vec![0, 0]);
+        assert_eq!(select_sizes(0, &ext_ladder()), vec![0, 0, 0]);
     }
 
     /// The whole point of the new criterion: work that would need two short instances is given one
-    /// tall one instead, even though the area is the same.
+    /// tall one instead, even though the memory is the same.
     #[test]
     fn one_tall_instance_beats_two_short_ones() {
         let counts = TestPlanner::best_add_counts(&Totals {
@@ -446,7 +519,7 @@ mod tests {
         assert_eq!(TestPlanner::cost_of(&counts).instances, 1);
     }
 
-    /// Once the instance count is settled, area decides: work that fits in the short air must not be
+    /// Once the instance count is settled, memory decides: work that fits in the short air must not be
     /// given the tall one.
     #[test]
     fn area_breaks_the_tie_between_the_two_heights() {
@@ -480,15 +553,29 @@ mod tests {
         assert_eq!(counts[slot::PACKED], 0, "no second packed instance for five additions");
     }
 
-    /// The additions go to the packed airs, which is what keeps the instance count down: the same
-    /// additions in the `Binary` airs would need more than twice as many.
+    /// The additions go to the packed airs, and within them to the widest one, which is what keeps
+    /// the instance count down: the same additions in the `Binary` airs would need far more.
     #[test]
     fn the_additions_go_where_the_most_of_them_fit() {
-        let add_hi = 4 * cap(slot::PACKED_LARGE);
+        let add_hi = 4 * cap(slot::PACKED_HUGE);
         let counts = TestPlanner::best_add_counts(&Totals { add_hi, ..Default::default() });
-        assert_eq!(counts[slot::PACKED_LARGE], 4);
+        assert_eq!(counts[slot::PACKED_HUGE], 4, "the widest packed air takes them all");
+        assert_eq!(counts[slot::PACKED_LARGE], 0);
+        assert_eq!(counts[slot::PACKED], 0);
         assert_eq!(TestPlanner::cost_of(&counts).instances, 4);
-        assert!(add_hi.div_ceil(cap(slot::BASIC_LARGE)) > 4, "the general air would need more");
+        assert!(add_hi.div_ceil(cap(slot::BASIC_HUGE)) > 4, "the general air would need more");
+    }
+
+    /// A leftover smaller than the widest packed air is what the candidate enumeration is for: it
+    /// must be able to land on a narrower packed air rather than force another wide instance.
+    #[test]
+    fn a_packed_leftover_lands_on_the_narrowest_air_that_holds_it() {
+        // One whole wide instance plus a quarter of one, which is exactly one narrow instance.
+        let add_hi = cap(slot::PACKED_HUGE) + cap(slot::PACKED);
+        let counts = TestPlanner::best_add_counts(&Totals { add_hi, ..Default::default() });
+        assert_eq!(counts[slot::PACKED_HUGE], 1, "the whole wide instance stays");
+        assert_eq!(counts[slot::PACKED_LARGE], 0, "and the leftover does not need a wide one");
+        assert_eq!(counts[slot::PACKED], 1, "the narrowest air that holds it takes the leftover");
     }
 
     /// Additions that no packed air can prove still avoid the widest air when a narrower one holds
@@ -511,12 +598,12 @@ mod tests {
         let mut counts = InstanceCounts::default();
         counts[slot::ADD] = 1; // an add instance already exists
         let mut airs = add_family(counts);
-        TestPlanner::cover_frops(&[4, 0, 0], &mut airs, &add_areas());
+        TestPlanner::cover_frops(&[4, 0, 0, 0, 0], &mut airs, &add_memories());
         assert_eq!(airs[slot::BASIC].instances, 1, "only the Binary airs see basic operations");
         assert_eq!(airs[slot::BASIC_LARGE].instances, 0, "and the cheaper of the two is enough");
 
         let mut airs = add_family(counts);
-        TestPlanner::cover_frops(&[0, 4, 0], &mut airs, &add_areas());
+        TestPlanner::cover_frops(&[0, 4, 0, 0, 0], &mut airs, &add_memories());
         assert_eq!(airs.iter().map(|a| a.instances).sum::<u64>(), 1, "no instance is opened");
     }
 
@@ -530,6 +617,8 @@ mod tests {
             .map(|i| {
                 let c = BinaryCounter {
                     counter_basic_wo_add: Counter { inst_count: 0, frops_count: 4 },
+                    counter_sh3add_hi: Counter { inst_count: 0, frops_count: 2 },
+                    counter_sh3add_add: Counter { inst_count: 0, frops_count: 2 },
                     counter_add_hi: Counter { inst_count: 0, frops_count: 2 },
                     counter_add: Counter { inst_count: 0, frops_count: 3 },
                     counter_extension: Counter { inst_count: 0, frops_count: 5 },
@@ -592,20 +681,22 @@ mod tests {
     fn the_plans_cover_every_chunk_of_every_kind() {
         let unit = cap(slot::BASIC);
         let shapes = [
-            (unit / 2, unit, unit / 4, 13),
-            (unit, 3 * unit, unit, 5),
-            (7, 5, 0, 11),
-            (0, 0, 11, 0),
-            (unit / 3, unit / 3, unit / 3, 3),
-            (0, 4 * cap(slot::PACKED_LARGE), 0, 0),
+            (unit / 2, unit, unit / 4, 13, unit / 8, 3),
+            (unit, 3 * unit, unit, 5, 0, unit / 2),
+            (7, 5, 0, 11, 2, 1),
+            (0, 0, 11, 0, 0, 0),
+            (unit / 3, unit / 3, unit / 3, 3, unit / 3, unit / 3),
+            (0, 4 * cap(slot::PACKED_LARGE), 0, 0, cap(slot::PACKED), 0),
         ];
 
         let boxed: Vec<(ChunkId, Box<dyn BusDeviceMetrics>)> = shapes
             .iter()
             .enumerate()
-            .map(|(i, &(basic, hi, full, ext))| {
+            .map(|(i, &(basic, hi, full, ext, sh3_hi, sh3_add))| {
                 let c = BinaryCounter {
                     counter_basic_wo_add: Counter { inst_count: basic, frops_count: 2 },
+                    counter_sh3add_hi: Counter { inst_count: sh3_hi, frops_count: 2 },
+                    counter_sh3add_add: Counter { inst_count: sh3_add, frops_count: 2 },
                     counter_add_hi: Counter { inst_count: hi, frops_count: 1 },
                     counter_add: Counter { inst_count: full, frops_count: 3 },
                     counter_extension: Counter { inst_count: ext, frops_count: 1 },
@@ -647,8 +738,12 @@ mod tests {
             }
         }
 
-        for (i, &(basic, hi, full, ext)) in shapes.iter().enumerate() {
-            assert_eq!(add_seen[i], [basic, hi, full], "chunk {i}: add kinds not covered");
+        for (i, &(basic, hi, full, ext, sh3_hi, sh3_add)) in shapes.iter().enumerate() {
+            assert_eq!(
+                add_seen[i],
+                [basic, hi, full, sh3_hi, sh3_add],
+                "chunk {i}: add kinds not covered"
+            );
             assert_eq!(ext_seen[i], [ext], "chunk {i}: extension kinds not covered");
 
             // Every chunk here has frops of every kind, so each needs exactly one accountant.

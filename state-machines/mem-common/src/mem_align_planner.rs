@@ -19,7 +19,7 @@
 //! # The strategy
 //!
 //! [`zisk_common::select_airs`] decides, under the shared criterion (fewest instances first, least
-//! area to break a tie), which air each kind goes to and how many instances of each are granted. The
+//! memory to break a tie), which air each kind goes to and how many instances of each are granted. The
 //! assignment is then written into the fill order and the per-air costs, so [`MemAlignInstanceCounter`]
 //! only ever offers a kind to the air it was assigned to — which is what keeps the fill from
 //! consuming room the sizing had promised to another kind.

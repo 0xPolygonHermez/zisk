@@ -13,13 +13,17 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryLargeTrace, BinaryTrace, BinaryTraceRow, BinaryTraceRowPacked};
+use zisk_pil::{
+    BinaryHugeTrace, BinaryHugeTraceRow, BinaryHugeTraceRowPacked, BinaryLargeTrace,
+    BinaryLargeTraceRow, BinaryLargeTraceRowPacked, BinaryTrace, BinaryTraceRow,
+    BinaryTraceRowPacked,
+};
 
-/// Height and air id of each `Binary` air, as const-generic arguments for the witness computation.
-const ROWS: usize = BinaryTrace::<()>::NUM_ROWS;
+/// Air id of each `Binary` air. They no longer differ only in height: each packs a different number
+/// of operations per row, so each has its own row type and the trace itself carries the rest.
 const AIR_ID: usize = BinaryTrace::<()>::AIR_ID;
-const LARGE_ROWS: usize = BinaryLargeTrace::<()>::NUM_ROWS;
 const LARGE_AIR_ID: usize = BinaryLargeTrace::<()>::AIR_ID;
+const HUGE_AIR_ID: usize = BinaryHugeTrace::<()>::AIR_ID;
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
 ///
@@ -56,7 +60,7 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         std: Arc<Std<F>>,
     ) -> Self {
         assert!(
-            ictx.plan.air_id == AIR_ID || ictx.plan.air_id == LARGE_AIR_ID,
+            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID | HUGE_AIR_ID),
             "BinaryBasicInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -70,10 +74,10 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         Self { binary_basic_sm, ictx, collect_info, std }
     }
 
-    /// `true` when this instance is the tall air. The two commit the same columns, so this only
-    /// picks the height and air id the trace is built with.
-    fn is_large(&self) -> bool {
-        self.ictx.plan.air_id == LARGE_AIR_ID
+    /// Which of the three `Binary` airs this instance is. They pack a different number of
+    /// operations per row, so this picks the row type the trace is built with.
+    fn air_id(&self) -> usize {
+        self.ictx.plan.air_id
     }
 
     pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<F> {
@@ -111,22 +115,24 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             .collect();
 
         let sm = &self.binary_basic_sm;
-        Ok(Some(match (self.is_large(), packed) {
-            (false, true) => {
-                sm.compute_witness::<BinaryTraceRowPacked<F>, ROWS, AIR_ID>(&inputs, trace_buffer)?
+        Ok(Some(match (self.air_id(), packed) {
+            (AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?
             }
-            (false, false) => {
-                sm.compute_witness::<BinaryTraceRow<F>, ROWS, AIR_ID>(&inputs, trace_buffer)?
+            (AIR_ID, false) => sm.compute_witness::<_, BinaryTraceRow<F>>(&inputs, trace_buffer)?,
+            (LARGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryLargeTraceRowPacked<F>>(&inputs, trace_buffer)?
             }
-            (true, true) => sm
-                .compute_witness::<BinaryTraceRowPacked<F>, LARGE_ROWS, LARGE_AIR_ID>(
-                    &inputs,
-                    trace_buffer,
-                )?,
-            (true, false) => sm.compute_witness::<BinaryTraceRow<F>, LARGE_ROWS, LARGE_AIR_ID>(
-                &inputs,
-                trace_buffer,
-            )?,
+            (LARGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryLargeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryHugeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryHugeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (air_id, _) => panic!("BinaryBasicInstance: Unsupported air_id: {air_id:?}"),
         }))
     }
 
