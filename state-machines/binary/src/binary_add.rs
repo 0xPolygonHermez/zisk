@@ -26,7 +26,10 @@ const MASK_U32: u64 = 0x0000_0000_FFFF_FFFF;
 pub const LIMBS_X_ADD: usize = 2;
 
 /// 16-bit chunks of the result each operation range-checks: two per limb.
-pub const CHUNKS_X_ADD: usize = LIMBS_X_ADD * 2;
+///
+/// Named apart from `BinaryAddHi`'s own `CHUNKS_X_FULL_ADD`, which is 2: that air materializes only the
+/// low limb, so a name shared between the two would be a trap for anything importing both.
+pub const CHUNKS_X_FULL_ADD: usize = LIMBS_X_ADD * 2;
 
 /// Ties an add row type to the trace of the air it fills and to that air's packing width.
 ///
@@ -47,7 +50,7 @@ pub trait BinaryAddRow<F: PrimeField64, T>: Default + Copy + Send + Sync {
         lane: usize,
         a: &[u32; LIMBS_X_ADD],
         b: &[u32; LIMBS_X_ADD],
-        c_chunks: &[u16; CHUNKS_X_ADD],
+        c_chunks: &[u16; CHUNKS_X_FULL_ADD],
         cout: &[bool; LIMBS_X_ADD],
         sh3add: bool,
     );
@@ -76,7 +79,7 @@ macro_rules! impl_binary_add_row {
                 lane: usize,
                 a: &[u32; LIMBS_X_ADD],
                 b: &[u32; LIMBS_X_ADD],
-                c_chunks: &[u16; CHUNKS_X_ADD],
+                c_chunks: &[u16; CHUNKS_X_FULL_ADD],
                 cout: &[bool; LIMBS_X_ADD],
                 sh3add: bool,
             ) {
@@ -85,7 +88,7 @@ macro_rules! impl_binary_add_row {
                     self.set_b(lane, i, b[i]);
                     self.set_cout(lane, i, cout[i]);
                 }
-                for i in 0..CHUNKS_X_ADD {
+                for i in 0..CHUNKS_X_FULL_ADD {
                     self.set_c_chunks(lane, i, c_chunks[i]);
                 }
                 self.set_sel_sh3add(lane, sh3add);
@@ -172,7 +175,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
         row: &mut R,
         lane: usize,
         input: &BinaryInput,
-    ) -> [u64; CHUNKS_X_ADD] {
+    ) -> [u64; CHUNKS_X_FULL_ADD] {
         let sh3add = input.op == ZiskOp::Sh3add.code();
 
         // SH3ADD is c = b + (a << 3), so the multiplier rides on the operand that gets shifted.
@@ -185,9 +188,9 @@ impl<F: PrimeField64> BinaryAddSM<F> {
 
         let mut a_values = [0u32; LIMBS_X_ADD];
         let mut b_values = [0u32; LIMBS_X_ADD];
-        let mut c_chunks_values = [0u16; CHUNKS_X_ADD];
+        let mut c_chunks_values = [0u16; CHUNKS_X_FULL_ADD];
         let mut cout_values = [false; LIMBS_X_ADD];
-        let mut range_checks = [0u64; CHUNKS_X_ADD];
+        let mut range_checks = [0u64; CHUNKS_X_FULL_ADD];
 
         for i in 0..LIMBS_X_ADD {
             // Extract the appropriate 32-bit chunk for this iteration
@@ -195,6 +198,17 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             let _b = if i == 0 { b & MASK_U32 } else { b >> 32 };
             let c = scale * _a + _b + cin;
             let _c = c & MASK_U32;
+
+            // The air forces the shifted operand to be a clean 32-bit value, so every limb above
+            // the first must be zero — `sh3add_shape` only routes such operations here. Writing a
+            // non-zero one would break `sel_sh3add[lane] * a[lane][i] === 0` in the PIL, which is a
+            // far harder failure to read than this.
+            debug_assert!(
+                !sh3add || i == 0 || _a == 0,
+                "BinaryAdd: SH3ADD with a non-zero limb {i} of a ({:#x}); sh3add_shape should have \
+                 kept this operation out",
+                input.a,
+            );
 
             // The columns carry the operands as the bus sees them: unshifted.
             a_values[i] = _a as u32;
@@ -275,7 +289,7 @@ impl<F: PrimeField64> BinaryAddSM<F> {
                         lane,
                         &[0; LIMBS_X_ADD],
                         &[0; LIMBS_X_ADD],
-                        &[0; CHUNKS_X_ADD],
+                        &[0; CHUNKS_X_FULL_ADD],
                         &[false; LIMBS_X_ADD],
                         false,
                     );
@@ -283,13 +297,13 @@ impl<F: PrimeField64> BinaryAddSM<F> {
             },
         );
 
-        // Every slot range-checks CHUNKS_X_ADD chunks, and an empty one is 0 + 0 = 0, so its chunks
+        // Every slot range-checks CHUNKS_X_FULL_ADD chunks, and an empty one is 0 + 0 = 0, so its chunks
         // are all zero: the slots left over on the last filled row included.
         let padding_size = num_slots - total_inputs;
-        multiplicities[0] += (CHUNKS_X_ADD * padding_size) as u32;
+        multiplicities[0] += (CHUNKS_X_FULL_ADD * padding_size) as u32;
         debug_assert_eq!(
             multiplicities.iter().map(|&m| m as u64).sum::<u64>(),
-            CHUNKS_X_ADD as u64 * num_slots as u64,
+            CHUNKS_X_FULL_ADD as u64 * num_slots as u64,
             "the multiplicities must account for the chunks of every slot",
         );
 
