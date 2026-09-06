@@ -166,19 +166,19 @@ impl_binary_extension_row!(
     BinaryExtensionTraceRowOps,
     BinaryExtensionTrace,
     BinaryExtensionAirValues,
-    1
+    crate::lanes_x_row::EXT
 );
 impl_binary_extension_row!(
     BinaryExtensionLargeTraceRowOps,
     BinaryExtensionLargeTrace,
     BinaryExtensionLargeAirValues,
-    2
+    crate::lanes_x_row::EXT_LARGE
 );
 impl_binary_extension_row!(
     BinaryExtensionHugeTraceRowOps,
     BinaryExtensionHugeTrace,
     BinaryExtensionHugeAirValues,
-    4
+    crate::lanes_x_row::EXT_HUGE
 );
 
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.

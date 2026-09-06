@@ -125,9 +125,24 @@ macro_rules! impl_binary_add_row {
     };
 }
 
-impl_binary_add_row!(BinaryAddTraceRowOps, BinaryAddTrace, BinaryAddAirValues, 1);
-impl_binary_add_row!(BinaryAddLargeTraceRowOps, BinaryAddLargeTrace, BinaryAddLargeAirValues, 3);
-impl_binary_add_row!(BinaryAddHugeTraceRowOps, BinaryAddHugeTrace, BinaryAddHugeAirValues, 6);
+impl_binary_add_row!(
+    BinaryAddTraceRowOps,
+    BinaryAddTrace,
+    BinaryAddAirValues,
+    crate::lanes_x_row::ADD
+);
+impl_binary_add_row!(
+    BinaryAddLargeTraceRowOps,
+    BinaryAddLargeTrace,
+    BinaryAddLargeAirValues,
+    crate::lanes_x_row::ADD_LARGE
+);
+impl_binary_add_row!(
+    BinaryAddHugeTraceRowOps,
+    BinaryAddHugeTrace,
+    BinaryAddHugeAirValues,
+    crate::lanes_x_row::ADD_HUGE
+);
 
 /// The `BinaryAddSM` struct encapsulates the logic of the Binary Add State Machine.
 pub struct BinaryAddSM<F: PrimeField64> {

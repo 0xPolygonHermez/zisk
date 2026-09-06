@@ -143,9 +143,19 @@ macro_rules! impl_binary_basic_row {
     };
 }
 
-impl_binary_basic_row!(BinaryTraceRowOps, BinaryTrace, BinaryAirValues, 1);
-impl_binary_basic_row!(BinaryLargeTraceRowOps, BinaryLargeTrace, BinaryLargeAirValues, 2);
-impl_binary_basic_row!(BinaryHugeTraceRowOps, BinaryHugeTrace, BinaryHugeAirValues, 4);
+impl_binary_basic_row!(BinaryTraceRowOps, BinaryTrace, BinaryAirValues, crate::lanes_x_row::BASIC);
+impl_binary_basic_row!(
+    BinaryLargeTraceRowOps,
+    BinaryLargeTrace,
+    BinaryLargeAirValues,
+    crate::lanes_x_row::BASIC_LARGE
+);
+impl_binary_basic_row!(
+    BinaryHugeTraceRowOps,
+    BinaryHugeTrace,
+    BinaryHugeAirValues,
+    crate::lanes_x_row::BASIC_HUGE
+);
 
 /// The `BinaryBasicSM` struct encapsulates the logic of the Binary Basic State Machine.
 pub struct BinaryBasicSM<F: PrimeField64> {

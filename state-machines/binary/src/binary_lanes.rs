@@ -8,9 +8,9 @@
 //! The witness therefore works in **slots**: one slot per lane, numbered consecutively across the
 //! whole instance. Slot `s` lives on row `s / lanes_x_row`, at lane `s % lanes_x_row`.
 //!
-//! Unlike `MemLanes`, the lane count here is NOT required to be a power of two — `BinaryAddHi` uses
-//! 3, 5 and 9 — so the split is a division. It is done once per instance and hoisted out of the
-//! fill loop, never per operation.
+//! Unlike `MemLanes`, the lane count here is NOT required to be a power of two: nothing maps a slot
+//! with a shift and a mask, so the split is a plain division. It is done once per instance and
+//! hoisted out of the fill loop, never per operation.
 //!
 //! The number of lanes is never hardcoded. Callers build this from the generated trace row itself —
 //! `BinaryLanes::new(R::default().get_all_a().len())` — because the length of a per-lane column
@@ -138,6 +138,111 @@ mod tests {
         check!(BinaryExtensionTraceRow, get_all_b, lanes_x_row::EXT);
         check!(BinaryExtensionLargeTraceRow, get_all_b, lanes_x_row::EXT_LARGE);
         check!(BinaryExtensionHugeTraceRow, get_all_b, lanes_x_row::EXT_HUGE);
+    }
+
+    /// The row traits the state machines are generic over must report the same packing width as the
+    /// air they fill. `the_constants_match_the_generated_rows` pins the constants against the rows;
+    /// this pins the STATE MACHINES against the constants, which is the other half — a hardcoded
+    /// width in a macro invocation would otherwise index past the end of a row and only show up as
+    /// a panic deep inside witness computation.
+    #[test]
+    fn the_state_machines_pack_what_their_air_holds() {
+        use crate::{BinaryAddHiRow, BinaryAddRow, BinaryBasicRow, BinaryExtensionRow};
+        use proofman_fields::Goldilocks;
+        use zisk_pil::*;
+
+        type F = Goldilocks;
+
+        macro_rules! check {
+            ($trait:ident, $row:ident, $trace:ident, $probe:ident, $konst:path) => {
+                assert_eq!(
+                    <$row<F> as $trait<F, $trace<$row<F>>>>::LANES_X_ROW,
+                    $row::<F>::default().$probe().len(),
+                    concat!(stringify!($row), " packs a different width than its air"),
+                );
+                assert_eq!(
+                    <$row<F> as $trait<F, $trace<$row<F>>>>::LANES_X_ROW,
+                    $konst,
+                    concat!(stringify!($row), " does not use ", stringify!($konst)),
+                );
+            };
+        }
+
+        check!(BinaryBasicRow, BinaryTraceRow, BinaryTrace, get_all_b_op, lanes_x_row::BASIC);
+        check!(
+            BinaryBasicRow,
+            BinaryLargeTraceRow,
+            BinaryLargeTrace,
+            get_all_b_op,
+            lanes_x_row::BASIC_LARGE
+        );
+        check!(
+            BinaryBasicRow,
+            BinaryHugeTraceRow,
+            BinaryHugeTrace,
+            get_all_b_op,
+            lanes_x_row::BASIC_HUGE
+        );
+
+        check!(BinaryAddRow, BinaryAddTraceRow, BinaryAddTrace, get_all_a, lanes_x_row::ADD);
+        check!(
+            BinaryAddRow,
+            BinaryAddLargeTraceRow,
+            BinaryAddLargeTrace,
+            get_all_a,
+            lanes_x_row::ADD_LARGE
+        );
+        check!(
+            BinaryAddRow,
+            BinaryAddHugeTraceRow,
+            BinaryAddHugeTrace,
+            get_all_a,
+            lanes_x_row::ADD_HUGE
+        );
+
+        check!(
+            BinaryAddHiRow,
+            BinaryAddHiTraceRow,
+            BinaryAddHiTrace,
+            get_all_a,
+            lanes_x_row::ADD_HI
+        );
+        check!(
+            BinaryAddHiRow,
+            BinaryAddHiLargeTraceRow,
+            BinaryAddHiLargeTrace,
+            get_all_a,
+            lanes_x_row::ADD_HI_LARGE
+        );
+        check!(
+            BinaryAddHiRow,
+            BinaryAddHiHugeTraceRow,
+            BinaryAddHiHugeTrace,
+            get_all_a,
+            lanes_x_row::ADD_HI_HUGE
+        );
+
+        check!(
+            BinaryExtensionRow,
+            BinaryExtensionTraceRow,
+            BinaryExtensionTrace,
+            get_all_op,
+            lanes_x_row::EXT
+        );
+        check!(
+            BinaryExtensionRow,
+            BinaryExtensionLargeTraceRow,
+            BinaryExtensionLargeTrace,
+            get_all_op,
+            lanes_x_row::EXT_LARGE
+        );
+        check!(
+            BinaryExtensionRow,
+            BinaryExtensionHugeTraceRow,
+            BinaryExtensionHugeTrace,
+            get_all_op,
+            lanes_x_row::EXT_HUGE
+        );
     }
 
     #[test]
