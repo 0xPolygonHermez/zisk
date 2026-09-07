@@ -1065,6 +1065,19 @@ pub unsafe extern "C" fn zkvm_sha256(data: *const u8, len: usize, output: *mut u
     stub_fail("zkvm_sha256")
 }
 
+/// `zkvm_keccak_f1600(state)` — redirected to `ziskasm_zkvm_keccak_f1600`. Applies
+/// the Keccak-f[1600] permutation in place to the raw 25-word `state`. Returns
+/// 0 = ZKVM_EOK.
+///
+/// # Safety
+/// `state` must point to a writable `[u64; 25]`.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_keccak_f1600(state: *mut u64) -> i32 {
+    let _ = black_box((state,));
+    stub_fail("zkvm_keccak_f1600")
+}
+
 /// `zkvm_secp256k1_verify(msg, sig, pubkey, verified)` — redirected to
 /// `ziskasm_zkvm_secp256k1_verify`. msg=32B, sig=64B (r||s), pubkey=64B (x||y),
 /// all big-endian; `verified` is written 0/1. Returns 0 = ZKVM_EOK.

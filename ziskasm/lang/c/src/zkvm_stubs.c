@@ -58,6 +58,10 @@ ZKVM_STUB zkvm_status zkvm_sha256(const uint8_t *data, size_t len,
     TOUCH(data); TOUCH(len); TOUCH(output);
     STUB_FAIL();
 }
+ZKVM_STUB zkvm_status zkvm_keccak_f1600(uint64_t *state) {   /* 25-word state, in place */
+    TOUCH(state);
+    STUB_FAIL();
+}
 
 /* ---- secp256k1 --------------------------------------------------------- */
 ZKVM_STUB zkvm_status zkvm_secp256k1_verify(const zkvm_secp256k1_hash *msg,

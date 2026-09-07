@@ -86,6 +86,10 @@ typedef zkvm_bytes_32 zkvm_kzg_field_element;
 
 /* ---- functions --------------------------------------------------------- */
 zkvm_status zkvm_keccak256(const uint8_t* data, size_t len, zkvm_keccak256_hash* output);
+/* Keccak-f[1600] permutation, applied in place to the raw 25-word state (no
+ * sponge/padding). state: 25 uint64_t words, updated in place. ZKVM_EOK on
+ * success, ZKVM_EFAIL on failure. */
+zkvm_status zkvm_keccak_f1600(uint64_t* state);
 zkvm_status zkvm_sha256(const uint8_t* data, size_t len, zkvm_sha256_hash* output);
 zkvm_status zkvm_ripemd160(const uint8_t* data, size_t len, zkvm_ripemd160_hash* output);
 

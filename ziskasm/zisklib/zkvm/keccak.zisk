@@ -129,3 +129,16 @@ zzk_squeeze:
 	copyb(r12, r7) -> 8[a + 24]
 	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
 	ret
+
+; ============================================================================
+; zkvm_status zkvm_keccak_f1600(uint64_t* state)
+;   Keccak-f[1600] permutation applied IN PLACE to the 25-word (25 * u64) state
+;   at a0. This is the raw permutation (no sponge/padding) — exactly what the ZisK
+;   `keccak` precompile computes on a 25-u64 state buffer. a0 = state; returns
+;   a0 = ZKVM_EOK (0). Entry `ziskasm_zkvm_keccak_f1600`, redirect target of the
+;   standard symbol `zkvm_keccak_f1600`.
+; ============================================================================
+ziskasm_zkvm_keccak_f1600:
+	keccak(0, r10) -> r10               ; permute the 25-word state at [a0] in place
+	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
+	ret
