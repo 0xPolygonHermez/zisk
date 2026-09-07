@@ -17,7 +17,7 @@ guest (Rust)                       zisklib::keccak256(&[u8]) -> [u8;32]     ← 
                                         │  marshals &[u8] -> (ptr,len), returns [u8;32]
 raw ABI boundary (C ABI)           ziskos_keccak(*const u8, usize, *mut u8) ← #[no_mangle] stub, placeholder body
                                         │  (transpile-time symbol redirect)
-ziskasm routine                    zisklib_keccak:  … keccak op per block …  ← ziskasm/zisklib/keccak.zisk
+ziskasm routine                    ziskasm_zkvm_keccak256:  … keccak op per block …  ← ziskasm/zisklib/zkvm/keccak.zisk
                                                                                 (placed in the reserved ZISKLIB ROM region)
 ```
 
@@ -61,7 +61,7 @@ fn main() {
 ```
 
 That's it — `zisklib::keccak256` looks and behaves like a normal function. On the
-ZisK target the transpiler routes it through the hand-written `zisklib_keccak`.
+ZisK target the transpiler routes it through the hand-written `ziskasm_zkvm_keccak256`.
 
 ### 3. Build and run
 
@@ -94,9 +94,9 @@ against known-answer vectors in the demo guest.
 
 | Rust API (`zisklib::`) | ziskasm routine | Notes |
 |------------------------|-----------------|-------|
-| `keccak256(input: &[u8]) -> [u8; 32]` | `zisklib_keccak` | keccak256 digest of any-length, any-alignment input. |
+| `keccak256(input: &[u8]) -> [u8; 32]` | `ziskasm_zkvm_keccak256` | keccak256 digest of any-length, any-alignment input. |
 | `sha256(input: &[u8]) -> [u8; 32]` | `zisklib_sha256` | SHA2-256 (FIPS 180-4) digest of any-length, any-alignment input. |
-| `blake2b_compress(rounds, h: &mut [u64;8], m: &[u64;16], t: &[u64;2], f: bool)` | `zisklib_blake2b_compress` | BLAKE2b compression function F (RFC 7693) — low-level primitive; caller does blocking/padding. |
+| `blake2b_compress(rounds, h: &mut [u64;8], m: &[u64;16], t: &[u64;2], f: bool)` | `ziskasm_zkvm_blake2f` | BLAKE2b compression function F (RFC 7693) — low-level primitive; caller does blocking/padding. |
 | `{overflowing,checked,saturating,wrapping}_add256` / `_sub256` | `zisklib_overflowing_add256` / `_sub256` | 256-bit (`[u64; 4]`) add / subtract; the variants are Rust wrappers over the two overflowing cores. |
 | `{overflowing,checked,wrapping}_neg256` | (`zisklib_overflowing_sub256`) | 256-bit negation (`0 - a`). |
 | `{overflowing,checked,saturating,wrapping}_mul256` / `_square256` | `zisklib_overflowing_mul256` | 256-bit multiply / square (low 256 bits + overflow); square = `mul(a, a)`. |
@@ -158,7 +158,7 @@ registers):
 - **Prefix internal labels** per family (e.g. `zk_` for keccak) so they stay unique
   when all `.zisk` files are concatenated into one library.
 
-See [`ziskasm/zisklib/keccak.zisk`](zisklib/keccak.zisk) for a full example
+See [`ziskasm/zisklib/zkvm/keccak.zisk`](zisklib/zkvm/keccak.zisk) for a full example
 (a keccak256 sponge that calls the `keccak` op once per rate block).
 
 Two recurring shapes are worth knowing (both used throughout the `zisklib/uint256/*.zisk` files):
@@ -242,7 +242,7 @@ Rebuild the guest and it can call `zisklib::foo(...)`.
   run natively, give the wrapper a real fallback behind `#[cfg(not(zisk_guest))]`.
 - **Use the repository `cargo-zisk`** to build guests (`target/debug/cargo-zisk`),
   not a stale installed release.
-- **Performance:** keep the hot loop cheap. `zisklib_keccak` absorbs full rate
+- **Performance:** keep the hot loop cheap. `ziskasm_zkvm_keccak256` absorbs full rate
   blocks in a tight word loop (same cost whatever the length) and does byte-level
   work only for the ≤7-byte final tail, so arbitrary-length support adds no penalty
   to word-aligned inputs. The `pow`/`pow_mod` routines find the exponent's

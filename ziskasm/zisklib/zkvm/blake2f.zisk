@@ -8,9 +8,10 @@
 ;     [r10=rounds, r11=h, r12=m, r13=t, r14=f] -> a0 = ZKVM_EOK (0); h updated in place.
 ;
 ; BLAKE2b is little-endian, so the EF byte structs are ABI-identical to the u64
-; arrays (same LE layout) — NO rev8 marshalling. This is a self-contained port of
-; the compress body (from ziskasm/zisklib/blake2b.zisk, NOT calling
-; zisklib_blake2b_compress). Labels `zb2_`, data `ZKVM_BLK_*`.
+; arrays (same LE layout) — NO rev8 marshalling. This is the single BLAKE2b F
+; compression body: the guest `ziskos_blake2b_compress` symbol (same ABI:
+; r10=rounds, r11=h, r12=m, r13=t, r14=f) also redirects here, so there is no
+; separate legacy copy. Labels `zb2_`, data `ZKVM_BLK_*`.
 ; ============================================================================
 
 const u64 ZKVM_BLK_IV[8] =

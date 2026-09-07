@@ -52,7 +52,7 @@ Then replace a port's body with a call, e.g. keccak:
 // was: syscall_keccakf + evmone sponge in keccak_zisk.cpp
 extern "C" union ethash_hash256 ethash_keccak256(const uint8_t* d, size_t n) noexcept {
     union ethash_hash256 h;
-    ziskos_keccak(d, n, (uint8_t*)h.bytes);   // redirected to zisklib_keccak
+    ziskos_keccak(d, n, (uint8_t*)h.bytes);   // redirected to ziskasm_zkvm_keccak256
     return h;
 }
 ```

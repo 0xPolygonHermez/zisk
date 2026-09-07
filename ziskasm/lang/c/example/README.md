@@ -2,7 +2,7 @@
 
 Proves the [`ziskasm/lang/c`](../) binding works end to end: a real C guest calls
 `ziskos_keccak`, and at transpile time `elf2rom` redirects that symbol to the
-hand-written `zisklib_keccak` routine in `ziskasm/zisklib/keccak.zisk`, so the
+hand-written `ziskasm_zkvm_keccak256` routine in `ziskasm/zisklib/zkvm/keccak.zisk`, so the
 `.zisk` implementation runs in the guest's place.
 
 ## Level 1 — the C binding + redirect (runs today)

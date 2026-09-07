@@ -3,9 +3,9 @@
 ; ABI (zkvm_accelerators.h). Entry point `ziskasm_zkvm_keccak256`, reached from a
 ; guest via the elf2rom redirect of the standard symbol `zkvm_keccak256`.
 ;
-; This is a NEW, self-contained EF-native routine (it does NOT call the legacy
-; `zisklib_keccak`): the sponge is authored here, lifted from the proven
-; ziskasm/zisklib/keccak.zisk implementation but presenting the standard ABI:
+; This is the single keccak256 sponge in the library, presenting the standard
+; ABI. The guest `ziskos_keccak` symbol (same (input,len,output) ABI) also
+; redirects here, so there is no separate legacy copy:
 ;
 ;   zkvm_status zkvm_keccak256(const uint8_t* data, size_t len,
 ;                              zkvm_keccak256_hash* output)

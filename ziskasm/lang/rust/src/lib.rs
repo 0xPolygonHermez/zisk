@@ -35,7 +35,7 @@ pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
 }
 
 /// `keccak256(input[0..len])` → `output[0..32]`. Raw ABI boundary redirected to
-/// `zisklib_keccak` (any `len`, any `input` alignment). The placeholder fills
+/// `ziskasm_zkvm_keccak256` (any `len`, any `input` alignment). The placeholder fills
 /// `output` with a sentinel (`0xBA`), so a correct hash proves the ziskasm routine
 /// ran. `black_box` on all arguments is essential (see the crate docs): otherwise
 /// the optimizer would elide the `a0`/`a1` setup.
@@ -89,7 +89,7 @@ pub fn sha256(input: &[u8]) -> [u8; 32] {
 }
 
 /// BLAKE2b compression function F (RFC 7693). Raw ABI boundary redirected to
-/// `zisklib_blake2b_compress`: mixes message block `message[0..16]` into state
+/// `ziskasm_zkvm_blake2f`: mixes message block `message[0..16]` into state
 /// `state[0..8]` over `rounds` rounds with 128-bit counter `offset[0..2]` and
 /// finalization flag `final_block`; `state` is updated in place. This is the
 /// low-level primitive — the caller handles message blocking and padding.
