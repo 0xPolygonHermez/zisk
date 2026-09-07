@@ -61,7 +61,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // (guest stub symbol, library function symbol)
     const REDIRECTS: &[(&str, &str)] = &[
         ("ziskos_add", "zisklib_add"),
-        ("ziskos_keccak", "zisklib_keccak"),
+        ("ziskos_keccak", "ziskasm_zkvm_keccak256"),
         // EF zkVM-accelerator C ABI (zkvm_accelerators.h): the standard `zkvm_*`
         // symbols redirect DIRECTLY to the native `ziskasm_zkvm_*` .zisk routines
         // (single call, no C/Rust wrapper). Kept explicit for auditability.

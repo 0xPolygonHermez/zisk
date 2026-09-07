@@ -9,7 +9,6 @@ pub const ZISK_LIBRARY: &[(&str, &str)] = &[
     ("mem", include_str!("../zisklib/mem.zisk")),
     ("fcall", include_str!("../zisklib/fcall.zisk")),
     ("add", include_str!("../zisklib/add.zisk")),
-    ("keccak", include_str!("../zisklib/keccak.zisk")),
     ("sha256", include_str!("../zisklib/sha256.zisk")),
     ("blake2b", include_str!("../zisklib/blake2b.zisk")),
     ("zkvm_io", include_str!("../zisklib/zkvm_io.zisk")),
