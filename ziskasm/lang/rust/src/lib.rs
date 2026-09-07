@@ -37,11 +37,21 @@ use core::hint::black_box;
 /// Diagnostic + hard fault for a stub whose `elf2rom` redirect did not fire.
 /// Prints a one-line message to the ZisK memory-mapped stdout (UART at
 /// 0xA0400200, one byte per store), then accesses address 0 to force abnormal
-/// termination. Never returns. Reached only when the redirect did not happen (a
-/// stripped ELF, a missing symbol, or ziskemu/cargo-zisk built without the
-/// `ziskasm` feature) — failing hard beats returning a plausible-but-wrong value.
+/// termination. Reached only when the redirect did not happen (a stripped ELF, a
+/// missing symbol, or ziskemu/cargo-zisk built without the `ziskasm` feature) —
+/// failing hard beats returning a plausible-but-wrong value.
+///
+/// IMPORTANT: this is deliberately **not** `-> !`. The volatile store to address 0
+/// aborts the machine at runtime, but to the compiler it is an ordinary returning
+/// function (a store, not a diverge). Were it `-> !`, every stub tail-calling it
+/// would be inferred `noreturn`, and a caller that can see the body — under LTO, or
+/// if a stub shares a translation unit with a caller — would delete its own code
+/// *after* the call. Since the redirected `.zisk` routine returns normally, that
+/// would corrupt the guest. Returning `T: Default` keeps each stub non-diverging
+/// (and lets the stub's tail `stub_fail(..)` supply its own return type), so no
+/// caller is ever miscompiled; the returned value is never reached at runtime.
 #[inline(never)]
-fn stub_fail(name: &str) -> ! {
+fn stub_fail<T: Default>(name: &str) -> T {
     let uart = 0xA040_0200_usize as *mut u8; // ZisK stdout: one byte per store
     unsafe {
         for &c in b"ERROR: ziskasm stub reached without redirect: " {
@@ -58,7 +68,7 @@ fn stub_fail(name: &str) -> ! {
         let null = black_box(0usize) as *mut u8;
         core::ptr::write_volatile(null, 0);
     }
-    loop {}
+    black_box(T::default())
 }
 
 /// `a + b`. Implemented in ziskasm as `zisklib_add` (a demo routine). The

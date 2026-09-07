@@ -31,10 +31,20 @@
 
 /* Emit a one-line diagnostic to the ZisK memory-mapped stdout (UART at
  * 0xA0400200, one byte per store), then access the null guard page (address 0)
- * to force abnormal termination. `noreturn`: it never comes back, so the callers
- * need no return value. Reached only when the elf2rom redirect did not fire. */
-__attribute__((noinline, noreturn))
-static void zkvm_stub_fail(const char *fn) {
+ * to force abnormal termination. Reached only when the elf2rom redirect did not
+ * fire.
+ *
+ * IMPORTANT: this is deliberately NOT `noreturn`. The volatile store to address 0
+ * aborts the machine at runtime, but to the compiler it is an ordinary returning
+ * function (a store, not a diverge). Were it `noreturn`, every stub that ends in
+ * it would be inferred `noreturn`, and any caller that can see the body -- under
+ * LTO, or if a stub shares a translation unit with a caller -- would delete its
+ * own code AFTER the call. Since the redirected `.zisk` routine returns normally,
+ * that would corrupt the guest. Returning a value (via `STUB_FAIL()` ->
+ * `return`) keeps each stub non-diverging, so no caller is ever miscompiled; the
+ * returned value is never reached at runtime. */
+__attribute__((noinline))
+static zkvm_status zkvm_stub_fail(const char *fn) {
     static const char pre[]  = "ERROR: ziskasm zkVM stub reached without redirect: ";
     static const char post[] = "() -- build ziskemu/cargo-zisk with --features ziskasm "
                                "and do not strip the guest ELF\n";
@@ -44,9 +54,9 @@ static void zkvm_stub_fail(const char *fn) {
     for (const char *p = post; *p; ++p) *uart = (uint8_t)*p;
     volatile uintptr_t null_addr = 0;   /* volatile: force a real access, not folded away */
     *(volatile uint8_t *)null_addr = 0; /* touch address 0 -> abnormal termination */
-    __builtin_unreachable();
+    return ZKVM_EFAIL;                  /* never reached at runtime (faulted above) */
 }
-#define STUB_FAIL()  zkvm_stub_fail(__func__)
+#define STUB_FAIL()  return zkvm_stub_fail(__func__)
 
 /* ---- hashes (byte-in / byte-out; no marshalling) ----------------------- */
 ZKVM_STUB zkvm_status zkvm_keccak256(const uint8_t *data, size_t len,

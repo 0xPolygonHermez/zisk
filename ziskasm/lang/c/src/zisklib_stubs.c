@@ -32,10 +32,21 @@
 
 /* Emit a one-line diagnostic to the ZisK memory-mapped stdout (UART at
  * 0xA0400200, one byte per store), then access the null guard page (address 0)
- * to force abnormal termination. `noreturn`: it never comes back, so the callers
- * need no return value. Reached only when the elf2rom redirect did not fire. */
-__attribute__((noinline, noreturn))
-static void zisklib_stub_fail(const char *fn) {
+ * to force abnormal termination. Reached only when the elf2rom redirect did not
+ * fire.
+ *
+ * IMPORTANT: this is deliberately NOT `noreturn`. The volatile store to address 0
+ * aborts the machine at runtime, but to the compiler it is an ordinary returning
+ * function (a store, not a diverge). Were it `noreturn`, every stub that ends in
+ * it would be inferred `noreturn`, and any caller that can see the body -- under
+ * LTO, or if a stub shares a translation unit with a caller -- would delete its
+ * own code AFTER the call. Since the redirected `.zisk` routine returns normally,
+ * that would corrupt the guest. So value-returning stubs `return
+ * zisklib_stub_fail(..)` (STUB_FAIL) and void stubs call it as a statement
+ * (STUB_FAIL_VOID); either way the stub stays non-diverging and no caller is ever
+ * miscompiled. The returned value is never reached at runtime. */
+__attribute__((noinline))
+static uint64_t zisklib_stub_fail(const char *fn) {
     static const char pre[]  = "ERROR: ziskasm library stub reached without redirect: ";
     static const char post[] = "() -- build ziskemu/cargo-zisk with --features ziskasm "
                                "and do not strip the guest ELF\n";
@@ -45,9 +56,10 @@ static void zisklib_stub_fail(const char *fn) {
     for (const char *p = post; *p; ++p) *uart = (uint8_t)*p;
     volatile uintptr_t null_addr = 0;   /* volatile: force a real access, not folded away */
     *(volatile uint8_t *)null_addr = 0; /* touch address 0 -> abnormal termination */
-    __builtin_unreachable();
+    return 0;                           /* never reached at runtime (faulted above) */
 }
-#define STUB_FAIL()  zisklib_stub_fail(__func__)
+#define STUB_FAIL()       return zisklib_stub_fail(__func__)  /* value-returning stubs */
+#define STUB_FAIL_VOID()  (void)zisklib_stub_fail(__func__)   /* void stubs */
 
 /* ---- demo -------------------------------------------------------------- */
 
@@ -60,19 +72,19 @@ ZK_STUB uint64_t ziskos_add(uint64_t a, uint64_t b) {
 
 ZK_STUB void ziskos_keccak(const uint8_t *input, size_t len, uint8_t *output) {
     TOUCH(input); TOUCH(len); TOUCH(output);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 
 ZK_STUB void ziskos_sha256(const uint8_t *input, size_t len, uint8_t *output) {
     TOUCH(input); TOUCH(len); TOUCH(output);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 
 ZK_STUB void ziskos_blake2b_compress(uint32_t rounds, uint64_t *state,
                                      const uint64_t *message, const uint64_t *offset,
                                      uint8_t final_block) {
     TOUCH(rounds); TOUCH(state); TOUCH(message); TOUCH(offset); TOUCH(final_block);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 
 /* ---- 256-bit integer arithmetic ---------------------------------------- */
@@ -97,20 +109,20 @@ ZK_STUB uint64_t ziskos_overflowing_mul256(const uint64_t *a, const uint64_t *b,
 
 ZK_STUB void ziskos_div_rem256(const uint64_t *a, const uint64_t *b, uint64_t *q, uint64_t *r) {
     TOUCH(a); TOUCH(b); TOUCH(q); TOUCH(r);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 
 ZK_STUB void ziskos_reduce_mod256(const uint64_t *a, const uint64_t *m, uint64_t *result) {
     TOUCH(a); TOUCH(m); TOUCH(result);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 ZK_STUB void ziskos_add_mod256(const uint64_t *a, const uint64_t *b, const uint64_t *m, uint64_t *result) {
     TOUCH(a); TOUCH(b); TOUCH(m); TOUCH(result);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 ZK_STUB void ziskos_mul_mod256(const uint64_t *a, const uint64_t *b, const uint64_t *m, uint64_t *result) {
     TOUCH(a); TOUCH(b); TOUCH(m); TOUCH(result);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 ZK_STUB uint64_t ziskos_inv_mod256(const uint64_t *a, const uint64_t *m, uint64_t *result) {
     TOUCH(a); TOUCH(m); TOUCH(result);
@@ -118,7 +130,7 @@ ZK_STUB uint64_t ziskos_inv_mod256(const uint64_t *a, const uint64_t *m, uint64_
 }
 ZK_STUB void ziskos_pow_mod256(const uint64_t *base, const uint64_t *exp, const uint64_t *m, uint64_t *result) {
     TOUCH(base); TOUCH(exp); TOUCH(m); TOUCH(result);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 ZK_STUB uint64_t ziskos_overflowing_pow256(const uint64_t *base, const uint64_t *exp, uint64_t *result) {
     TOUCH(base); TOUCH(exp); TOUCH(result);
@@ -178,7 +190,7 @@ ZK_STUB void ziskos_hash_to_curve_g2_bls12_381(const uint8_t *msg, uint64_t msg_
                                                const uint8_t *dst, uint64_t dst_len,
                                                uint64_t *result) {
     TOUCH(msg); TOUCH(msg_len); TOUCH(dst); TOUCH(dst_len); TOUCH(result);
-    STUB_FAIL();
+    STUB_FAIL_VOID();
 }
 ZK_STUB uint64_t ziskos_bls_verify_bls12_381(const uint8_t *pk, const uint8_t *msg,
                                              uint64_t msg_len, const uint8_t *sig) {
