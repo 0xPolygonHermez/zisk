@@ -207,6 +207,13 @@ impl MemPlanner {
                     );
                 }
 
+                if checkpoints.len() != segment.chunks.len() {
+                    eprintln!(
+                        "TMPDIAG BRIDGE mem_id={mem_id} seg={segment_id} cpp_entries={} distinct_chunks={} (duplicate chunk_ids collapsed by HashMap::insert)",
+                        checkpoints.len(),
+                        segment.chunks.len()
+                    );
+                }
                 // Collect paged-dense offsets for this segment
                 let mut offsets_base_addr: u32 = 0;
                 let off = unsafe {

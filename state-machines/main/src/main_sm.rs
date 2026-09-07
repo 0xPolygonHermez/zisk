@@ -109,10 +109,6 @@ impl<F: PrimeField64> MainInstance<F> {
         let mut main_trace = MainTrace::<R>::new_from_vec(trace_buffer)?;
 
         let (segment_id, is_last_segment) = Self::decode_plan(&self.ictx.plan)?;
-        println!(
-            "Decoded plan: segment_id = {}, is_last_segment = {}",
-            segment_id, is_last_segment
-        );
 
         // Determine the number of minimal traces per segment
         let num_within = MAIN_STEPS_PER_SEGMENT / chunk_size;
@@ -271,10 +267,6 @@ impl<F: PrimeField64> MainInstance<F> {
 
         air_values.main_segment = F::from_usize(segment_id.into());
         air_values.main_last_segment = F::from_bool(is_last_segment);
-        println!(
-            "Processing segment_id: {}, is_last_segment: {}, segment_initial_step: {}",
-            segment_id, is_last_segment, segment_initial_step
-        );
         air_values.segment_initial_step = F::from_u64(segment_initial_step);
         // From the ROM, not the trace: row 0's `pc` column is instruction-derived, so
         // `main_trace[0].get_pc(0)` is 0 on the compact indexed row.
@@ -479,10 +471,6 @@ impl<F: PrimeField64> MainInstance<F> {
         step_range_check: &mut [u32],
         large_range_checks: &mut Vec<u32>,
     ) {
-        println!(
-            "Closing flush window for flush_index: {}, flush_step: {}",
-            flush_index, flush_step
-        );
         let max_range = step_range_check.len() as u64;
         for ireg in 0..REGS_IN_MAIN {
             let reg_value = last_reg_values[ireg];
@@ -496,9 +484,6 @@ impl<F: PrimeField64> MainInstance<F> {
                 step_range_check[range] += 1;
             }
             reg_steps[ireg] = flush_step;
-            println!("last_reg_value[{flush_index}][{ireg}][0] = {}", values[0]);
-            println!("last_reg_value[{flush_index}][{ireg}][1] = {}", values[1]);
-            println!("last_reg_mem_step[{flush_index}][{ireg}] = {}", reg_steps[ireg]);
         }
     }
 

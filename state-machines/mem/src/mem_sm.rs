@@ -652,11 +652,27 @@ impl<F: PrimeField64> MemSM<F> {
         let num_slots = lanes.slots(R::trace_num_rows(&mem_trace));
         // The plan picked this air because the segment fits in it; a mismatch would silently
         // truncate the fill at `num_slots`, so say so here instead.
-        assert!(
-            seg.used_slots() as usize <= num_slots,
-            "MemSM: segment needs {} slots but this air holds {num_slots}",
-            seg.used_slots()
-        );
+        {
+            let mut counts: Vec<(usize, u32, u32, u32, u32, u32)> = seg
+                .chunks
+                .iter()
+                .map(|(c, k)| (c.0, k.count, k.from_addr, k.from_skip, k.to_addr, k.to_count))
+                .collect();
+            counts.sort();
+            let sum: u32 = counts.iter().map(|c| c.1).sum();
+            eprintln!(
+                "TMPDIAG seg={} air_slots={} used_slots={} sum={} n_chunks={} is_last={} addr_range_slots={} mem_ops={} margin={}",
+                segment_id.as_usize(), num_slots, seg.used_slots(), sum, seg.chunks.len(),
+                seg.is_last_segment, seg.addr_range_slots, mem_ops.len(),
+                num_slots as i64 - seg.used_slots() as i64
+            );
+            if seg.used_slots() as usize > num_slots {
+                for (c, count, fa, fs, ta, tc) in &counts {
+                    eprintln!("TMPDIAG   chunk={c} count={count} from_addr=0x{:X} from_skip={fs} to_addr=0x{:X} to_count={tc}", fa*8, ta*8);
+                }
+                panic!("MemSM: segment needs {} slots but this air holds {num_slots}", seg.used_slots());
+            }
+        }
         // The fill below addresses rows directly; `mem_trace` is only touched again to wrap the
         // result, once this borrow is over.
         let trace = R::trace_rows_mut(&mut mem_trace);
