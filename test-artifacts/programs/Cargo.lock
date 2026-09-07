@@ -7342,7 +7342,6 @@ dependencies = [
  "elf",
  "zisk-core",
  "zisk-riscv",
- "ziskasm",
 ]
 
 [[package]]
@@ -7365,14 +7364,6 @@ name = "zisk-zkvm-interface"
 version = "1.3.0-alpha"
 dependencies = [
  "bindgen",
-]
-
-[[package]]
-name = "ziskasm"
-version = "1.3.0-alpha"
-dependencies = [
- "zisk-core",
- "zisk-riscv",
 ]
 
 [[package]]
@@ -7401,7 +7392,6 @@ dependencies = [
  "zisk-sm-binary",
  "zisk-sm-mem-common",
  "zisk-transpiler-riscv",
- "ziskasm",
 ]
 
 [[package]]

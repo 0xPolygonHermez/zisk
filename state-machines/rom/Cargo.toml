@@ -24,3 +24,9 @@ proofman-common = { workspace = true }
 tracing = { workspace = true }
 rayon = { workspace = true }
 thiserror = { workspace = true }
+
+[features]
+default = []
+# Enable the ZisK-library symbol redirect in elf2rom when transpiling the ELF
+# (see zisk-transpiler-common's `ziskasm` feature). OFF by default.
+ziskasm = ["zisk-transpiler-riscv/ziskasm"]

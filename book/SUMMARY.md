@@ -14,3 +14,4 @@
 # Developer Guide
 - [Ziskof](./developer/ziskof.md)
 - [Profiling Programs](./developer/profiling.md)
+- [EF zkEVM Standards Conformance](./developer/ef_requirements.md)

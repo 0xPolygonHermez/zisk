@@ -45,6 +45,9 @@ alloy-sol-types = { workspace = true }
 
 [features]
 default = []
+# Enable the ZisK-library symbol redirect in elf2rom when transpiling the ELF
+# (see zisk-transpiler-common's `ziskasm` feature). OFF by default.
+ziskasm = ["zisk-transpiler-riscv/ziskasm"]
 cpu-only = ["proofman-common/cpu-only", "zisk-executor/cpu-only"]
 stats = []
 diagnostic = ["proofman/diagnostic"]

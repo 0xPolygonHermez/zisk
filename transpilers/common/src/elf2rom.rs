@@ -1,8 +1,7 @@
 //! Reads RISC-V data from and ELF file and converts it to a ZiskRom
 
 use crate::elf_extraction::{
-    collect_elf_payload_from_bytes, get_symbol_addresses_and_sizes_from_bytes, merge_ro_sections,
-    validate_entry_point, ElfPayload,
+    collect_elf_payload_from_bytes, merge_ro_sections, validate_entry_point, ElfPayload,
 };
 use std::collections::HashMap;
 use std::{error::Error, path::Path};
@@ -56,9 +55,17 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
     // e_entry rather than booting from a fixed address).
     validate_entry_point(&payloads[elf_index])?;
 
-    // Assemble the canonical hand-written ZisK library, then build the
-    // guest-symbol → library-entry redirect map.
+    // Guest-symbol → library-entry redirect map. Populated only when the `ziskasm`
+    // feature is enabled; otherwise it stays empty and elf2rom neither assembles the
+    // ZisK library nor redirects any symbol, so guest code runs verbatim (this is the
+    // default / mainline behavior).
+    #[cfg(feature = "ziskasm")]
+    let mut redirects: HashMap<u64, (u64, u64)> = HashMap::new();
+    #[cfg(not(feature = "ziskasm"))]
+    let redirects: HashMap<u64, (u64, u64)> = HashMap::new();
+
     // (guest stub symbol, library function symbol)
+    #[cfg(feature = "ziskasm")]
     const REDIRECTS: &[(&str, &str)] = &[
         ("ziskos_add", "zisklib_add"),
         ("ziskos_keccak", "ziskasm_zkvm_keccak256"),
@@ -114,18 +121,22 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("ziskos_modexp_u64_c", "zisklib_modexp_u64_c"),
     ];
 
+    #[cfg(feature = "ziskasm")]
     let library =
         ziskasm::assemble_zisk_library().map_err(|e| format!("assembling ZisK library: {e}"))?;
 
-    let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
-    let guest_syms = get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;
-    let mut redirects: HashMap<u64, (u64, u64)> = HashMap::new();
-    for (guest_name, lib_name) in REDIRECTS {
-        if let Some(&(guest_addr, size)) = guest_syms.get(*guest_name) {
-            let lib_addr = *library.symbols.get(*lib_name).ok_or_else(|| {
-                format!("ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)")
-            })?;
-            redirects.insert(guest_addr, (lib_addr, size));
+    #[cfg(feature = "ziskasm")]
+    {
+        let guest_names: Vec<&str> = REDIRECTS.iter().map(|(g, _)| *g).collect();
+        let guest_syms =
+            crate::elf_extraction::get_symbol_addresses_and_sizes_from_bytes(elf, &guest_names)?;
+        for (guest_name, lib_name) in REDIRECTS {
+            if let Some(&(guest_addr, size)) = guest_syms.get(*guest_name) {
+                let lib_addr = *library.symbols.get(*lib_name).ok_or_else(|| {
+                    format!("ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)")
+                })?;
+                redirects.insert(guest_addr, (lib_addr, size));
+            }
         }
     }
 
@@ -288,6 +299,8 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
 
     // Merge the ZisK library (only when something redirects into it): its
     // instructions and data live in the reserved region, disjoint from the guest.
+    // Only reachable with the `ziskasm` feature (redirects is empty otherwise).
+    #[cfg(feature = "ziskasm")]
     if !redirects.is_empty() {
         rom.insts.extend(library.insts);
         rom.ro_data_64.extend(library.ro_data);

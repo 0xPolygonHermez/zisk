@@ -22,3 +22,9 @@ proofman-fields = { workspace = true }
 proofman-common = { workspace = true }
 anyhow = { workspace = true }
 blake3 = { workspace = true }
+
+[features]
+default = []
+# Enable the ZisK-library symbol redirect in elf2rom for ROM generation (see
+# zisk-transpiler-common's `ziskasm` feature). OFF by default.
+ziskasm = ["zisk-transpiler-riscv/ziskasm", "zisk-sm-rom/ziskasm"]

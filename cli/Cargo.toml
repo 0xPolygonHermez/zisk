@@ -63,6 +63,11 @@ predicates = "3"
 
 [features]
 default = []
+# Redirect zisklib guests through the ZisK library in the proving pipeline too.
+# OFF by default: without it, ROM generation and proving behave like mainline.
+# Feature unification makes zisk-transpiler-common consistent across every
+# transpile path in the build once any of these enables it.
+ziskasm = ["zisk-rom-setup/ziskasm", "zisk-prover-backend/ziskasm"]
 cpu-only = ["zisk-build/cpu-only", "zisk-prover-backend/cpu-only", "proofman-starks-lib-c/cpu-only"]
 diagnostic = ["zisk-prover-backend/diagnostic"]
 custom_rust_llvm = []
