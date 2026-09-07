@@ -7,7 +7,8 @@ use std::sync::{Arc, Mutex};
 use zisk_common::{BusDeviceMetrics, ChunkId, Metrics, Plan, Planner};
 
 use zisk_pil::{
-    InputDataTrace, RomDataTrace, INPUT_DATA_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+    InputDataTrace, MemTrace, RomDataTrace, INPUT_DATA_AIR_IDS, MEM_AIR_IDS, ROM_DATA_AIR_IDS,
+    ZISK_AIRGROUP_ID,
 };
 
 #[cfg(any(feature = "save_mem_plans", feature = "save_mem_bus_data"))]
@@ -18,8 +19,8 @@ use crate::{
 };
 
 use zisk_sm_mem_common::{
-    input_data_lanes_x_row, mem_planning_air, mem_planning_slots, rom_data_lanes_x_row,
-    shrink_last_mem_plan, MemAlignPlanner, MemCounters, RAM_W_ADDR_INIT,
+    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignPlanner, MemCounters,
+    RAM_W_ADDR_INIT,
 };
 
 #[cfg(feature = "save_mem_counters")]
@@ -106,15 +107,13 @@ impl MemPlanner {
         let mem_planner = Arc::new(Mutex::new(MemModulePlanner::new(
             MemModulePlannerConfig {
                 airgroup_id: ZISK_AIRGROUP_ID,
-                // Segments are planned on the widest `Mem` air, and the last one is moved down
-                // afterwards if it fits somewhere narrower — see `zisk_sm_mem_common::mem_airs`.
-                air_id: mem_planning_air().air_id,
+                air_id: MEM_AIR_IDS[0],
                 addr_index: 2,
                 from_addr: RAM_W_ADDR_INIT,
                 last_addr: RAM_W_ADDR_INIT,
                 // The offsets table is expressed in virtual rows: one per memory lane,
                 // so a segment holds NUM_ROWS * lanes_x_row of them (see `MemLanes`).
-                rows: mem_planning_slots() as u32,
+                rows: (MemTrace::<Goldilocks>::NUM_ROWS * mem_lanes_x_row()) as u32,
                 max_addr_distance: 0xFFFF_FFFF,
             },
             counters.clone(),
@@ -160,9 +159,7 @@ impl MemPlanner {
         mem_align_planner.plan();
 
         let mut plans: Vec<Plan> = Vec::new();
-        let mut mem_plans = mem_planner.lock().unwrap().collect_plans();
-        shrink_last_mem_plan(&mut mem_plans);
-        plans.append(&mut mem_plans);
+        plans.append(&mut mem_planner.lock().unwrap().collect_plans());
         plans.append(&mut rom_data_planner.lock().unwrap().collect_plans());
         plans.append(&mut input_data_planner.lock().unwrap().collect_plans());
         plans.append(&mut mem_align_planner.collect_plans());

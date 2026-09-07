@@ -25,20 +25,14 @@ use zisk_pil::{
     DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS,
     MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS,
     MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS,
-    MEM_ALIGN_WRITE_BYTE_AIR_IDS, MEM_HUGE_AIR_IDS, MEM_LARGE_AIR_IDS, ROM_AIR_IDS,
-    ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
+    MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS, ZISK_AIRGROUP_ID,
 };
 
 // Per-built-in AIR-id maps.
 const ROM_AIR_IDS_MAP: &[(usize, usize)] = &[(ZISK_AIRGROUP_ID, ROM_AIR_IDS[0])];
 
 const MEM_AIR_IDS_MAP: &[(usize, usize)] = &[
-    // RAM has three airs of different widths; a segment is planned on the widest and may be
-    // moved down to a narrower one (see `zisk_sm_mem_common::mem_airs`), so all three belong
-    // to the same state machine.
     (ZISK_AIRGROUP_ID, MEM_AIR_IDS[0]),
-    (ZISK_AIRGROUP_ID, MEM_LARGE_AIR_IDS[0]),
-    (ZISK_AIRGROUP_ID, MEM_HUGE_AIR_IDS[0]),
     (ZISK_AIRGROUP_ID, ROM_DATA_AIR_IDS[0]),
     (ZISK_AIRGROUP_ID, INPUT_DATA_AIR_IDS[0]),
     (ZISK_AIRGROUP_ID, MEM_ALIGN_AIR_IDS[0]),

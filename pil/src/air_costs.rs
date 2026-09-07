@@ -43,14 +43,8 @@ pub const MAIN_INSTANCE_COST: usize = 19282;
 /// `Rom`: 5.39 GB.
 pub const ROM_INSTANCE_COST: usize = 5519;
 
-/// `Mem`: 4.51 GB.
-pub const MEM_INSTANCE_COST: usize = 4618;
-
-/// `MemLarge`: 8.45 GB.
-pub const MEM_LARGE_INSTANCE_COST: usize = 8653;
-
-/// `MemHuge`: 13.58 GB.
-pub const MEM_HUGE_INSTANCE_COST: usize = 13906;
+/// `Mem`: 13.58 GB.
+pub const MEM_INSTANCE_COST: usize = 13906;
 
 /// `InputData`: 4.58 GB.
 pub const INPUT_DATA_INSTANCE_COST: usize = 4690;
@@ -258,8 +252,6 @@ mod tests {
         check!(
         MainTrace: MainTraceRow: MAIN_INSTANCE_COST,
                     MemTrace: MemTraceRow: MEM_INSTANCE_COST,
-                    MemLargeTrace: MemLargeTraceRow: MEM_LARGE_INSTANCE_COST,
-                    MemHugeTrace: MemHugeTraceRow: MEM_HUGE_INSTANCE_COST,
                     InputDataTrace: InputDataTraceRow: INPUT_DATA_INSTANCE_COST,
                     RomDataTrace: RomDataTraceRow: ROM_DATA_INSTANCE_COST,
                     MemAlignTrace: MemAlignTraceRow: MEM_ALIGN_INSTANCE_COST,

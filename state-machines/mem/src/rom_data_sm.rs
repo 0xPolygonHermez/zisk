@@ -509,7 +509,6 @@ impl<F: PrimeField64> MemModule<F> for RomDataSM<F> {
         trace_buffer: Vec<F>,
         packed: bool,
         seg: &MemModuleSegmentCheckPoint,
-        _air_id: usize,
     ) -> ProofmanResult<AirInstance<F>> {
         #[cfg(not(feature = "legacy_mem_count_and_plan"))]
         {

@@ -4,8 +4,6 @@ mod mem_inputs;
 pub use mem_module::*;
 mod mem_module;
 pub use mem_inputs::*;
-mod mem_row;
-pub use mem_row::*;
 mod mem_sm;
 pub use mem_sm::*;
 mod rom_data_sm;

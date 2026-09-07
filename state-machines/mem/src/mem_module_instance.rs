@@ -146,7 +146,6 @@ impl<F: PrimeField64> Instance<F> for MemModuleInstance<F> {
             trace_buffer,
             packed,
             &self.check_point,
-            self.ictx.plan.air_id,
         )?))
     }
 

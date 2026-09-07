@@ -15,8 +15,7 @@ use zisk_pil::{
     DMA_PRE_POST_AIR_IDS, DMA_UNALIGNED_AIR_IDS, INPUT_DATA_AIR_IDS, JUMP_DEST_AIR_IDS,
     MEM_AIR_IDS, MEM_ALIGN_AIR_IDS, MEM_ALIGN_BYTE_AIR_IDS, MEM_ALIGN_BYTE_LARGE_AIR_IDS,
     MEM_ALIGN_LARGE_AIR_IDS, MEM_ALIGN_READ_BYTE_AIR_IDS, MEM_ALIGN_READ_BYTE_LARGE_AIR_IDS,
-    MEM_ALIGN_WRITE_BYTE_AIR_IDS, MEM_HUGE_AIR_IDS, MEM_LARGE_AIR_IDS, ROM_AIR_IDS,
-    ROM_DATA_AIR_IDS,
+    MEM_ALIGN_WRITE_BYTE_AIR_IDS, ROM_AIR_IDS, ROM_DATA_AIR_IDS,
 };
 use zisk_precomp_dma::{
     Dma64AlignedCollector, Dma64AlignedInstance, DmaCollector, DmaCounterInputGen, DmaInstance,
@@ -163,8 +162,6 @@ impl<F: PrimeField64> BuiltinCollectors<F> {
     ) -> ExecutorResult<bool> {
         match air_id {
             id if id == MEM_AIR_IDS[0]
-                || id == MEM_LARGE_AIR_IDS[0]
-                || id == MEM_HUGE_AIR_IDS[0]
                 || id == INPUT_DATA_AIR_IDS[0]
                 || id == ROM_DATA_AIR_IDS[0] =>
             {

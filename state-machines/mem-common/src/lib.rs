@@ -1,4 +1,3 @@
-mod mem_airs;
 mod mem_align_check_point;
 mod mem_align_counters;
 mod mem_align_instance_counter;
@@ -13,7 +12,6 @@ mod mem_module_check_point;
 mod mem_module_segment_check_point;
 mod mem_plans;
 
-pub use mem_airs::*;
 pub use mem_align_check_point::*;
 pub use mem_module_check_point::*;
 pub use mem_module_segment_check_point::*;
