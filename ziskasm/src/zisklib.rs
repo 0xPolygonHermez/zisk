@@ -9,12 +9,12 @@ pub const ZISK_LIBRARY: &[(&str, &str)] = &[
     ("mem", include_str!("../zisklib/mem.zisk")),
     ("fcall", include_str!("../zisklib/fcall.zisk")),
     ("add", include_str!("../zisklib/add.zisk")),
-    ("sha256", include_str!("../zisklib/sha256.zisk")),
     ("zkvm_io", include_str!("../zisklib/zkvm_io.zisk")),
     // EF zkVM-accelerator C ABI (zkvm_accelerators.h): native `ziskasm_zkvm_*`
     // entrypoints, redirect targets of the standard `zkvm_*` symbols.
     ("zkvm/marshal", include_str!("../zisklib/zkvm/marshal.zisk")),
     ("zkvm/keccak", include_str!("../zisklib/zkvm/keccak.zisk")),
+    ("zkvm/sha256", include_str!("../zisklib/zkvm/sha256.zisk")),
     ("zkvm/secp256k1", include_str!("../zisklib/zkvm/secp256k1.zisk")),
     ("zkvm/secp256r1", include_str!("../zisklib/zkvm/secp256r1.zisk")),
     ("zkvm/blake2f", include_str!("../zisklib/zkvm/blake2f.zisk")),

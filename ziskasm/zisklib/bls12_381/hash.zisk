@@ -184,7 +184,7 @@ lh_em_zd:
 	copyb(0, BLS_H_MSGP) -> r10
 	copyb(0, r6) -> r11
 	copyb(0, BLS_H_B0) -> r12
-	call zisklib_sha256
+	call ziskasm_zkvm_sha256
 	copyb(0, BLS_H_B0) -> r10
 	copyb(0, BLS_H_BUF) -> r11
 	copyb(0, 32) -> r12
@@ -207,7 +207,7 @@ lh_em_zd:
 	copyb(0, BLS_H_BUFLEN) -> r11
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, BLS_H_UNIF) -> r12
-	call zisklib_sha256
+	call ziskasm_zkvm_sha256
 	copyb(0, BLS_H_I) -> r5
 	copyb(r5, 2) -> 8[a + 0]
 lh_em_loop:
@@ -258,7 +258,7 @@ lh_em_xd:
 	copyb(r11, 8[a + 0]) -> r11
 	copyb(0, BLS_H_TMP) -> r12
 	copyb(r12, 8[a + 0]) -> r12
-	call zisklib_sha256
+	call ziskasm_zkvm_sha256
 	copyb(0, BLS_H_I) -> r5
 	copyb(r5, 8[a + 0]) -> r13
 	add(r13, 1) -> r13

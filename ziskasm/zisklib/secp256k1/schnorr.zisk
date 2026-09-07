@@ -1,7 +1,7 @@
 ; ============================================================================
 ; secp256k1/schnorr.zisk - BIP-340 Schnorr verification. Mirrors
 ; ziskos/entrypoint/src/zisklib/lib/secp256k1/schnorr.rs (schnorr_verify).
-; Uses the GLV-accelerated glv_double_scalar_mul_with_g, zisklib_sha256 for the
+; Uses the GLV-accelerated glv_double_scalar_mul_with_g, ziskasm_zkvm_sha256 for the
 ; challenge, and a 32-byte reversal (`ecu_rev32`) for LE-limb <-> BE-byte
 ; conversion. Internal labels: `er32_` (rev32), `sv_` (verify).
 ; ============================================================================
@@ -145,7 +145,7 @@ sv_hash:
 	copyb(r5, 8[a + 0]) -> r11
 	add(r11, 128) -> r11
 	copyb(0, SECP_SCH_EHASH) -> r12
-	call zisklib_sha256
+	call ziskasm_zkvm_sha256
 	; e = reduce_fn(int(e_hash) big-endian)
 	copyb(0, SECP_SCH_EHASH) -> r10
 	copyb(0, SECP_SCH_ETMP) -> r11

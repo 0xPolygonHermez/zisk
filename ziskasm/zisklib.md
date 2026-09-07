@@ -95,7 +95,7 @@ against known-answer vectors in the demo guest.
 | Rust API (`zisklib::`) | ziskasm routine | Notes |
 |------------------------|-----------------|-------|
 | `keccak256(input: &[u8]) -> [u8; 32]` | `ziskasm_zkvm_keccak256` | keccak256 digest of any-length, any-alignment input. |
-| `sha256(input: &[u8]) -> [u8; 32]` | `zisklib_sha256` | SHA2-256 (FIPS 180-4) digest of any-length, any-alignment input. |
+| `sha256(input: &[u8]) -> [u8; 32]` | `ziskasm_zkvm_sha256` | SHA2-256 (FIPS 180-4) digest of any-length, any-alignment input. |
 | `blake2b_compress(rounds, h: &mut [u64;8], m: &[u64;16], t: &[u64;2], f: bool)` | `ziskasm_zkvm_blake2f` | BLAKE2b compression function F (RFC 7693) — low-level primitive; caller does blocking/padding. |
 | `{overflowing,checked,saturating,wrapping}_add256` / `_sub256` | `zisklib_overflowing_add256` / `_sub256` | 256-bit (`[u64; 4]`) add / subtract; the variants are Rust wrappers over the two overflowing cores. |
 | `{overflowing,checked,wrapping}_neg256` | (`zisklib_overflowing_sub256`) | 256-bit negation (`0 - a`). |
