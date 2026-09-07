@@ -29,6 +29,11 @@ pub(crate) struct ProveCmd {
     #[arg(alias = "input", short = 'i', long, conflicts_with = "hints")]
     inputs: Option<String>,
 
+    /// Prove the same input N times in ONE process (warm caches/graphs between
+    /// iterations) -- for measuring long-lived-worker behavior without a cluster.
+    #[arg(long, default_value_t = 1)]
+    repeat: usize,
+
     // Save the input to the specified file path. Only used if `--inputs` is a string literal and not a file path
     // #[arg(long, requires = "inputs")]
     // pub save_inputs: bool,
@@ -314,15 +319,25 @@ impl ProveCmd {
             prover.register_hints_stream(hints_stream)?;
         }
 
-        let mut builder = prover.prove(&guest_program, stdin);
-        if self.plonk {
-            builder = builder.wrap_proof(ProofKind::Plonk);
+        let mut stdin = Some(stdin);
+        let mut last = None;
+        for it in 0..self.repeat.max(1) {
+            let stdin_it = match stdin.take() {
+                Some(s) => s,
+                None => ZiskStdin::from_uri(self.inputs.as_ref())?,
+            };
+            let mut builder = prover.prove(&guest_program, stdin_it);
+            if self.plonk {
+                builder = builder.wrap_proof(ProofKind::Plonk);
+            }
+            if self.minimal {
+                builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
+            }
+            let result = builder.run()?;
+            info!("REPEAT {} Proof Time: {:.3} seconds", it, result.get_proving_time() as f64 / 1000.0);
+            last = Some(result);
         }
-        if self.minimal {
-            builder = builder.wrap_proof(ProofKind::VadcopFinalMinimal);
-        }
-
-        let result = builder.run()?;
+        let result = last.expect("repeat >= 1");
         let executor_time = prover.get_executor_time()?;
 
         Ok((result, executor_time))
