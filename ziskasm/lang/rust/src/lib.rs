@@ -1092,7 +1092,7 @@ pub unsafe extern "C" fn zkvm_keccak256(data: *const u8, len: usize, output: *mu
     black_box(-1)
 }
 
-/// `zkvm_sha256(data, len, output)` — redirected to `ziskasm_zkvm_sha256`.
+/// `zkvm_sha256(data, len, output)` — redirected to the shared `zisklib_sha256`.
 ///
 /// # Safety
 /// `data` points to `len` readable bytes; `output` to 32 writable bytes.

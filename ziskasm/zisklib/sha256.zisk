@@ -27,8 +27,13 @@ u64 SHA_INPUT[8] = 0, 0, 0, 0, 0, 0, 0, 0
 u64 SHA_HDR[2]   = 0, 0
 
 ; ----------------------------------------------------------------------------
-; void zisklib_sha256(const u8* input, u64 len, u8* output)
+; zisklib_sha256(const u8* input, u64 len, u8* output) -> r10 = 0
 ;   output[0..32] = SHA-256(input[0..len]). Args: r10=input, r11=len, r12=output.
+;   The single SHA-256 body in the library: the EF-ABI `zkvm_sha256` and the guest
+;   `ziskos_sha256` symbols both redirect here (identical ABI), and it is also
+;   called internally by secp256k1/schnorr and the BLS12-381 hash-to-curve. Returns
+;   r10 = 0, which doubles as ZKVM_EOK for the zkvm_sha256 redirect; the void
+;   internal callers ignore it (r10 is caller-saved and clobbered by the call).
 ;   Caller-saved regs only: r5 holds the header address across every compress;
 ;   r13 is the byte offset / remaining / output-word index; r6/r7/r14/r15 scratch.
 ; ----------------------------------------------------------------------------
@@ -164,4 +169,5 @@ sh_lo:
 	add(r13, 1) -> r13
 	jump(sh_ow)
 sh_done:
+	copyb(0, 0) -> r10                  ; 0 = success; doubles as ZKVM_EOK for zkvm_sha256
 	ret

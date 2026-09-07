@@ -66,7 +66,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         // symbols redirect DIRECTLY to the native `ziskasm_zkvm_*` .zisk routines
         // (single call, no C/Rust wrapper). Kept explicit for auditability.
         ("zkvm_keccak256", "ziskasm_zkvm_keccak256"),
-        ("zkvm_sha256", "ziskasm_zkvm_sha256"),
+        ("zkvm_sha256", "zisklib_sha256"),
         ("zkvm_secp256k1_verify", "ziskasm_zkvm_secp256k1_verify"),
         ("zkvm_secp256k1_ecrecover", "ziskasm_zkvm_secp256k1_ecrecover"),
         ("zkvm_secp256r1_verify", "ziskasm_zkvm_secp256r1_verify"),
