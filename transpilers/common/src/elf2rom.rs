@@ -85,7 +85,7 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("zkvm_kzg_point_eval", "ziskasm_zkvm_kzg_point_eval"),
         ("zkvm_ripemd160", "ziskasm_zkvm_ripemd160"),
         ("ziskos_sha256", "zisklib_sha256"),
-        ("ziskos_blake2b_compress", "zisklib_blake2b_compress"),
+        ("ziskos_blake2b_compress", "ziskasm_zkvm_blake2f"),
         ("ziskos_inv256", "zisklib_inv256"),
         ("ziskos_overflowing_add256", "zisklib_overflowing_add256"),
         ("ziskos_overflowing_sub256", "zisklib_overflowing_sub256"),
