@@ -35,6 +35,10 @@ pub(crate) struct ZiskProofmanSetupStats {
     #[arg(long, default_value = proofman_common::hash_family::DEFAULT_HASH_ID, value_parser = clap::builder::PossibleValuesParser::new(proofman_common::hash_family::FAMILIES))]
     hash: String,
 
+    /// Lanes the blake3 recursion is built at (compressions per block)
+    #[arg(long)]
+    blake3_lanes: Option<usize>,
+
     /// Verbosity (-v, -vv)
     #[arg(short = 'v', long, action = clap::ArgAction::Count)]
     verbose: u8,
@@ -52,7 +56,9 @@ impl ZiskProofmanSetupStats {
             airgroups: self.airgroups.clone(),
             airs: self.airs.clone(),
             im_pols_stages: self.impols,
-            blake3_lanes: 4,
+            blake3_lanes: self
+                .blake3_lanes
+                .unwrap_or(pil2_stark_recurser::plonk2pil::setups::blake3::DEFAULT_LANES),
         };
 
         // Expression trees in large AIRs (e.g. ZisK) can be thousands of levels deep,

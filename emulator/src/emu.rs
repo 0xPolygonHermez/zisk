@@ -2869,94 +2869,121 @@ impl<'a> Emu<'a> {
         trace.set_a_reg_prev_mem_step(lane, reg_trace.reg_prev_steps[0]);
         trace.set_b_reg_prev_mem_step(lane, reg_trace.reg_prev_steps[1]);
         trace.set_store_reg_prev_mem_step(lane, reg_trace.reg_prev_steps[2]);
-        // No-op on the full rows; would store the table index on the indexed row. Inert
-        // today: the indexed Main packing is off while a row carries lanes (see
-        // `zisk_pil::main_row`), so no Main row type reports `IS_INDEXED`.
-        trace.set_row_index(inst.sorted_pc_list_index as u32);
+        // No-op on full rows; the lane's table index on the indexed row.
+        trace.set_row_index(lane, inst.sorted_pc_list_index as u32);
 
-        // Instruction-derived columns: constant per `pc`. Compiled out for the indexed row
-        // (they would live in the table); always written while that packing is off.
+        // Instruction-derived columns: compiled out for the indexed row, which reads them from
+        // the table instead.
         if !<R as IndexedFill>::IS_INDEXED {
-            let jmp_offset1 = if inst.jmp_offset1 >= 0 {
-                inst.jmp_offset1 as u64
-            } else {
-                F::neg(F::from_u64((-inst.jmp_offset1) as u64)).as_canonical_u64()
-            };
-            let jmp_offset2 = if inst.jmp_offset2 >= 0 {
-                inst.jmp_offset2 as u64
-            } else {
-                F::neg(F::from_u64((-inst.jmp_offset2) as u64)).as_canonical_u64()
-            };
-            let store_offset = if inst.store_offset >= 0 {
-                inst.store_offset as u64
-            } else {
-                F::neg(F::from_u64((-inst.store_offset) as u64)).as_canonical_u64()
-            };
-            let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
-                inst.a_offset_imm0
-            } else {
-                F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64)).as_canonical_u64()
-            };
-            let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
-                inst.b_offset_imm0
-            } else {
-                F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
-            };
-
-            trace.set_pc(lane, inst.paddr as u32);
-            trace.set_a_src_imm(lane, inst.a_src == SRC_IMM);
-            trace.set_a_src_mem(lane, inst.a_src == SRC_MEM);
-            trace.set_a_src_reg(lane, inst.a_src == SRC_REG);
-            trace.set_a_offset_imm0(lane, a_offset_imm0);
-            // #[cfg(not(feature = "sp"))]
-            trace.set_a_imm1(lane, inst.a_use_sp_imm1 as u32);
-            // #[cfg(feature = "sp")]
-            // trace.set_sp(lane, inst_ctx.sp);
-            // #[cfg(feature = "sp")]
-            // trace.set_a_src_sp(lane, inst.a_src == SRC_SP),
-            // #[cfg(feature = "sp")]
-            // trace.set_a_use_sp_imm1(lane, inst.a_use_sp_imm1),
-            trace.set_is_precompiled(lane, inst.is_precompiled);
-            trace.set_b_src_imm(lane, inst.b_src == SRC_IMM);
-            trace.set_b_src_mem(lane, inst.b_src == SRC_MEM);
-            trace.set_b_src_reg(lane, inst.b_src == SRC_REG);
-            trace.set_b_offset_imm0(lane, b_offset_imm0);
-            // #[cfg(not(feature = "sp"))]
-            trace.set_b_imm1(lane, inst.b_use_sp_imm1 as u32);
-            // #[cfg(feature = "sp")]
-            // trace.set_b_use_sp_imm1(lane, inst.b_use_sp_imm1),
-            trace.set_b_src_ind(lane, inst.b_src == SRC_IND);
-            trace.set_ind_width(lane, inst.ind_width as u8);
-            trace.set_is_external_op(lane, inst.is_external_op);
-            // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
-            // of the copyb, use to get free-input information
-            trace.set_op(
-                lane,
-                if inst.op == ZiskOp::Fcall.code()
-                    || inst.op == ZiskOp::FcallGet.code()
-                    || inst.op == ZiskOp::FcallParam.code()
-                {
-                    ZiskOp::CopyB.code()
-                } else {
-                    inst.op
-                },
-            );
-            trace.set_store_pc(lane, inst.store_pc);
-            trace.set_store_mem(lane, inst.store == STORE_MEM);
-            trace.set_store_reg(lane, inst.store == STORE_REG);
-            trace.set_store_ind(lane, inst.store == STORE_IND);
-            trace.set_store_offset(lane, store_offset);
-            trace.set_set_pc(lane, inst.set_pc);
-            // #[cfg(feature = "sp")]
-            // trace.set_store_use_sp(lane, inst.store_use_sp);
-            // #[cfg(feature = "sp")]
-            // trace.set_sp(lane, inst_ctx.sp);
-            // #[cfg(feature = "sp")]
-            // trace.set_inc_sp(lane, inst.inc_sp);
-            trace.set_jmp_offset1(lane, jmp_offset1);
-            trace.set_jmp_offset2(lane, jmp_offset2);
-            trace.set_m32(lane, inst.m32);
+            Self::build_instr_table_entry::<R, F>(trace, lane, inst);
         }
+    }
+
+    /// The instruction-derived Main columns for `inst`, written into lane `lane`.
+    ///
+    /// One writer for both a full trace row and a table entry, so the two cannot drift apart.
+    #[inline(always)]
+    pub fn build_instr_table_entry<R, F: PrimeField64>(trace: &mut R, lane: usize, inst: &ZiskInst)
+    where
+        R: MainTraceRowOps<F>,
+    {
+        let jmp_offset1 = if inst.jmp_offset1 >= 0 {
+            inst.jmp_offset1 as u64
+        } else {
+            F::neg(F::from_u64((-inst.jmp_offset1) as u64)).as_canonical_u64()
+        };
+        let jmp_offset2 = if inst.jmp_offset2 >= 0 {
+            inst.jmp_offset2 as u64
+        } else {
+            F::neg(F::from_u64((-inst.jmp_offset2) as u64)).as_canonical_u64()
+        };
+        let store_offset = if inst.store_offset >= 0 {
+            inst.store_offset as u64
+        } else {
+            F::neg(F::from_u64((-inst.store_offset) as u64)).as_canonical_u64()
+        };
+        let a_offset_imm0 = if inst.a_offset_imm0 as i64 >= 0 {
+            inst.a_offset_imm0
+        } else {
+            F::neg(F::from_u64((-(inst.a_offset_imm0 as i64)) as u64)).as_canonical_u64()
+        };
+        let b_offset_imm0 = if inst.b_offset_imm0 as i64 >= 0 {
+            inst.b_offset_imm0
+        } else {
+            F::neg(F::from_u64((-(inst.b_offset_imm0 as i64)) as u64)).as_canonical_u64()
+        };
+
+        trace.set_pc(lane, inst.paddr as u32);
+        trace.set_a_src_imm(lane, inst.a_src == SRC_IMM);
+        trace.set_a_src_mem(lane, inst.a_src == SRC_MEM);
+        trace.set_a_src_reg(lane, inst.a_src == SRC_REG);
+        trace.set_a_offset_imm0(lane, a_offset_imm0);
+        // #[cfg(not(feature = "sp"))]
+        trace.set_a_imm1(lane, inst.a_use_sp_imm1 as u32);
+        // #[cfg(feature = "sp")]
+        // trace.set_sp(lane, inst_ctx.sp);
+        // #[cfg(feature = "sp")]
+        // trace.set_a_src_sp(lane, inst.a_src == SRC_SP),
+        // #[cfg(feature = "sp")]
+        // trace.set_a_use_sp_imm1(lane, inst.a_use_sp_imm1),
+        trace.set_is_precompiled(lane, inst.is_precompiled);
+        trace.set_b_src_imm(lane, inst.b_src == SRC_IMM);
+        trace.set_b_src_mem(lane, inst.b_src == SRC_MEM);
+        trace.set_b_src_reg(lane, inst.b_src == SRC_REG);
+        trace.set_b_offset_imm0(lane, b_offset_imm0);
+        // #[cfg(not(feature = "sp"))]
+        trace.set_b_imm1(lane, inst.b_use_sp_imm1 as u32);
+        // #[cfg(feature = "sp")]
+        // trace.set_b_use_sp_imm1(lane, inst.b_use_sp_imm1),
+        trace.set_b_src_ind(lane, inst.b_src == SRC_IND);
+        trace.set_ind_width(lane, inst.ind_width as u8);
+        trace.set_is_external_op(lane, inst.is_external_op);
+        // IMPORTANT: the opcodes fcall, fcall_get, and fcall_param are really a variant
+        // of the copyb, use to get free-input information
+        trace.set_op(
+            lane,
+            if inst.op == ZiskOp::Fcall.code()
+                || inst.op == ZiskOp::FcallGet.code()
+                || inst.op == ZiskOp::FcallParam.code()
+            {
+                ZiskOp::CopyB.code()
+            } else {
+                inst.op
+            },
+        );
+        trace.set_store_pc(lane, inst.store_pc);
+        trace.set_store_mem(lane, inst.store == STORE_MEM);
+        trace.set_store_reg(lane, inst.store == STORE_REG);
+        trace.set_store_ind(lane, inst.store == STORE_IND);
+        trace.set_store_offset(lane, store_offset);
+        trace.set_set_pc(lane, inst.set_pc);
+        // #[cfg(feature = "sp")]
+        // trace.set_store_use_sp(lane, inst.store_use_sp);
+        // #[cfg(feature = "sp")]
+        // trace.set_sp(lane, inst_ctx.sp);
+        // #[cfg(feature = "sp")]
+        // trace.set_inc_sp(lane, inst.inc_sp);
+        trace.set_jmp_offset1(lane, jmp_offset1);
+        trace.set_jmp_offset2(lane, jmp_offset2);
+        trace.set_m32(lane, inst.m32);
+    }
+
+    /// Instruction table for the indexed Main packing: one entry per instruction, indexed by
+    /// `sorted_pc_list_index`.
+    pub fn build_main_instr_table<F: PrimeField64>(rom: &ZiskRom) -> Vec<u64> {
+        use zisk_pil::MainTraceRowInstrTable;
+
+        let words_per_entry = MainTraceRowInstrTable::<F>::PACKED_WORDS;
+        let mut table = vec![0u64; rom.sorted_pc_list.len() * words_per_entry];
+
+        for (idx, &pc) in rom.sorted_pc_list.iter().enumerate() {
+            let mut entry = MainTraceRowInstrTable::<F>::default();
+            // An entry holds one lane, so which lane is written is immaterial.
+            Self::build_instr_table_entry::<_, F>(&mut entry, 0, &rom.insts[&pc].i);
+            table[idx * words_per_entry..(idx + 1) * words_per_entry]
+                .copy_from_slice(&entry.packed);
+        }
+        table
     }
 
     /// Returns if the emulation ended
