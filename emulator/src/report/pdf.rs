@@ -13,6 +13,7 @@ const SECTION: f64 = 10.0;
 const TITLE: f64 = 15.0;
 const LINE_FACTOR: f64 = 1.4;
 const RULE_H: f64 = 9.0;
+const SECTION_GAP: f64 = 9.0;
 
 const BLACK: [f64; 3] = [0.0, 0.0, 0.0];
 const GREEN_TITLE: [f64; 3] = [0.16, 0.40, 0.06];
@@ -21,6 +22,11 @@ const BAD: [f64; 3] = [0.72, 0.0, 0.0];
 const ZEBRA: [f64; 3] = [0.955, 0.955, 0.955];
 const HEADER_BG: [f64; 3] = [0.88, 0.94, 0.82];
 const RULE_COLOR: [f64; 3] = [0.70, 0.70, 0.70];
+const LOGO_GREEN: [f64; 3] = [0.055, 0.62, 0.34];
+
+const LOGO_SVG: &str = include_str!("zisk.svg");
+const LOGO_H: f64 = 22.0;
+const LOGO_W: f64 = 150.0 / 81.0 * LOGO_H;
 
 #[derive(Clone, Copy)]
 enum FontKind {
@@ -50,6 +56,7 @@ enum Item {
     Rule,
     Gap(f64),
     KeepStart(f64),
+    Logo(String),
 }
 
 #[derive(Clone, Copy)]
@@ -78,7 +85,7 @@ fn body_line(s: String) -> Item {
 
 pub fn single(r: &Report) -> Vec<u8> {
     let mut l: Vec<Item> = Vec::new();
-    heading(&mut l, "ZisK stats report");
+    heading(&mut l, "stats report");
 
     l.push(body_line(kv("STEPS", &fmt_num(r.steps))));
     if let Some(c) = find(r, "TOTAL") {
@@ -321,8 +328,8 @@ fn section_mem_top_ratio(l: &mut Vec<Item>, title: &str, rows: &[MemFnRatioRow])
 
 pub fn compare(a: &Report, b: &Report, name_a: &str, name_b: &str) -> Vec<u8> {
     let mut l: Vec<Item> = Vec::new();
-    heading(&mut l, "ZisK stats report - comparison");
-    l.push(body_line(format!("A = {} (baseline)   B = {}   Change = B - A", name_a, name_b)));
+    heading(&mut l, "stats report - comparison");
+    l.push(body_line(format!("A = {} (baseline)   B = {}   Δ = B - A", name_a, name_b)));
     l.push(line(
         vec![
             seg("green = lower cost   ".to_string(), 0, GOOD),
@@ -444,7 +451,7 @@ fn cmp_table(
     table(
         l,
         title,
-        &["", "A", "B", "CHANGE", "%"],
+        &["", "A", "B", "Δ", "%"],
         &[false, true, true, true, true],
         &rows,
         Some(&styles),
@@ -513,9 +520,154 @@ fn find(r: &Report, label: &str) -> Option<u64> {
 }
 
 fn heading(l: &mut Vec<Item>, title: &str) {
-    l.push(line(vec![seg(title.to_string(), 0, GREEN_TITLE)], FontKind::Title, TITLE, None, 0));
+    l.push(Item::Logo(title.to_string()));
     l.push(Item::Rule);
     l.push(Item::Gap(6.0));
+}
+
+enum PTok {
+    Cmd(char),
+    Num(f64),
+}
+
+fn logo_tokens(d: &str) -> Vec<PTok> {
+    let b = d.as_bytes();
+    let mut toks = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i] as char;
+        if c.is_ascii_alphabetic() {
+            toks.push(PTok::Cmd(c));
+            i += 1;
+        } else if c.is_ascii_digit() || c == '-' || c == '+' || c == '.' {
+            let start = i;
+            if c == '-' || c == '+' {
+                i += 1;
+            }
+            let mut dot = false;
+            while i < b.len() {
+                let ch = b[i] as char;
+                if ch.is_ascii_digit() {
+                    i += 1;
+                } else if ch == '.' && !dot {
+                    dot = true;
+                    i += 1;
+                } else {
+                    break;
+                }
+            }
+            if let Ok(v) = d[start..i].parse::<f64>() {
+                toks.push(PTok::Num(v));
+            }
+        } else {
+            i += 1;
+        }
+    }
+    toks
+}
+
+fn next_num(toks: &[PTok], i: &mut usize) -> Option<f64> {
+    match toks.get(*i) {
+        Some(PTok::Num(v)) => {
+            *i += 1;
+            Some(*v)
+        }
+        _ => None,
+    }
+}
+
+fn append_path(d: &str, h: f64, out: &mut String) {
+    let toks = logo_tokens(d);
+    let mut i = 0;
+    let mut cmd = ' ';
+    let (mut cx, mut cy, mut sx, mut sy) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    while i < toks.len() {
+        if let PTok::Cmd(c) = toks[i] {
+            i += 1;
+            if c == 'Z' || c == 'z' {
+                out.push_str("h ");
+                cx = sx;
+                cy = sy;
+                cmd = ' ';
+            } else {
+                cmd = c;
+            }
+            continue;
+        }
+        match cmd {
+            'M' => {
+                let (Some(x), Some(y)) = (next_num(&toks, &mut i), next_num(&toks, &mut i)) else {
+                    break;
+                };
+                cx = x;
+                cy = y;
+                sx = x;
+                sy = y;
+                out.push_str(&format!("{:.3} {:.3} m ", x, h - y));
+                cmd = 'L';
+            }
+            'L' => {
+                let (Some(x), Some(y)) = (next_num(&toks, &mut i), next_num(&toks, &mut i)) else {
+                    break;
+                };
+                cx = x;
+                cy = y;
+                out.push_str(&format!("{:.3} {:.3} l ", x, h - y));
+            }
+            'H' => {
+                let Some(x) = next_num(&toks, &mut i) else { break };
+                cx = x;
+                out.push_str(&format!("{:.3} {:.3} l ", x, h - cy));
+            }
+            'V' => {
+                let Some(y) = next_num(&toks, &mut i) else { break };
+                cy = y;
+                out.push_str(&format!("{:.3} {:.3} l ", cx, h - y));
+            }
+            'C' => {
+                let mut v = [0.0f64; 6];
+                for slot in v.iter_mut() {
+                    match next_num(&toks, &mut i) {
+                        Some(n) => *slot = n,
+                        None => return,
+                    }
+                }
+                out.push_str(&format!(
+                    "{:.3} {:.3} {:.3} {:.3} {:.3} {:.3} c ",
+                    v[0],
+                    h - v[1],
+                    v[2],
+                    h - v[3],
+                    v[4],
+                    h - v[5]
+                ));
+                cx = v[4];
+                cy = v[5];
+            }
+            _ => i += 1,
+        }
+    }
+}
+
+fn logo_ops() -> String {
+    let h = LOGO_SVG
+        .find("viewBox=\"")
+        .and_then(|p| LOGO_SVG[p + 9..].find('"').map(|q| &LOGO_SVG[p + 9..p + 9 + q]))
+        .and_then(|vb| vb.split_whitespace().nth(3).and_then(|s| s.parse::<f64>().ok()))
+        .unwrap_or(81.0);
+    let mut out = String::new();
+    let mut pos = 0;
+    while let Some(rel) = LOGO_SVG[pos..].find(" d=\"") {
+        let start = pos + rel + 4;
+        let end = match LOGO_SVG[start..].find('"') {
+            Some(q) => start + q,
+            None => break,
+        };
+        append_path(&LOGO_SVG[start..end], h, &mut out);
+        pos = end;
+    }
+    out.push('f');
+    out
 }
 
 fn kv(label: &str, value: &str) -> String {
@@ -546,9 +698,10 @@ fn table(
     let seps: Vec<f64> =
         (1..ncol).map(|c| (w[..c].iter().sum::<usize>() + 2 * c) as f64 - 1.0).collect();
     let row_h = BODY * LINE_FACTOR;
-    let reserve = 6.0 + RULE_H + SECTION * LINE_FACTOR + row_h + rows.len().min(2) as f64 * row_h;
+    let reserve =
+        SECTION_GAP + RULE_H + SECTION * LINE_FACTOR + row_h + rows.len().min(2) as f64 * row_h;
     l.push(Item::KeepStart(reserve));
-    l.push(Item::Gap(6.0));
+    l.push(Item::Gap(SECTION_GAP));
     l.push(Item::Rule);
     l.push(line(vec![seg(title.to_string(), 0, GREEN_TITLE)], FontKind::Title, SECTION, None, 0));
 
@@ -605,7 +758,7 @@ fn render_row<'a, I: Iterator<Item = &'a str>>(cells: I, w: &[usize], aligns: &[
 }
 
 fn pad(s: &str, w: usize, right: bool) -> String {
-    let len = s.len();
+    let len = s.chars().count();
     if len >= w {
         return s.to_string();
     }
@@ -635,6 +788,7 @@ fn item_height(it: &Item) -> f64 {
         Item::Rule => RULE_H,
         Item::Gap(h) => *h,
         Item::KeepStart(_) => 0.0,
+        Item::Logo(_) => LOGO_H + 4.0,
     }
 }
 
@@ -709,11 +863,26 @@ fn render_sections(sections: &[(Vec<Item>, f64, f64, bool)]) -> Vec<u8> {
     );
 
     off[3] = out.len();
-    wr(&mut out, "3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>\nendobj\n");
+    let enc = "/Encoding << /Type /Encoding /BaseEncoding /WinAnsiEncoding \
+               /Differences [ 200 /Delta ] >>";
+    wr(
+        &mut out,
+        &format!("3 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier {enc} >>\nendobj\n"),
+    );
     off[4] = out.len();
-    wr(&mut out, "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >>\nendobj\n");
+    wr(
+        &mut out,
+        &format!(
+            "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold {enc} >>\nendobj\n"
+        ),
+    );
     off[5] = out.len();
-    wr(&mut out, "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>\nendobj\n");
+    wr(
+        &mut out,
+        &format!(
+            "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold {enc} >>\nendobj\n"
+        ),
+    );
 
     let cw = charw(BODY);
     for (k, (page, page_w, page_h, center)) in pages.iter().enumerate() {
@@ -802,9 +971,48 @@ fn render_sections(sections: &[(Vec<Item>, f64, f64, bool)]) -> Vec<u8> {
                 }
                 Item::Gap(_) => {}
                 Item::KeepStart(_) => {}
+                Item::Logo(text) => {
+                    let s = LOGO_H / 81.0;
+                    let lx = MARGIN + dx;
+                    let ly = top - LOGO_H;
+                    gfx.push_str(&format!(
+                        "q {:.4} 0 0 {:.4} {:.2} {:.2} cm {:.3} {:.3} {:.3} rg {} Q\n",
+                        s,
+                        s,
+                        lx,
+                        ly,
+                        LOGO_GREEN[0],
+                        LOGO_GREEN[1],
+                        LOGO_GREEN[2],
+                        logo_ops()
+                    ));
+                    let tsize = TITLE;
+                    let tx = lx + LOGO_W + 8.0;
+                    let tby = top - LOGO_H * 0.72;
+                    txt.push_str(&format!(
+                        "/F3 {} Tf\n{:.3} {:.3} {:.3} rg\n1 0 0 1 {:.2} {:.2} Tm\n({}) Tj\n",
+                        tsize,
+                        GREEN_TITLE[0],
+                        GREEN_TITLE[1],
+                        GREEN_TITLE[2],
+                        tx,
+                        tby,
+                        pdf_escape(text, 200)
+                    ));
+                }
             }
             y -= h;
         }
+        let foot = format!("{} / {}", k + 1, n_pages);
+        let fsize = 7.0;
+        let fx = page_w - MARGIN - foot.chars().count() as f64 * charw(fsize);
+        txt.push_str(&format!(
+            "/F1 {} Tf\n0.5 0.5 0.5 rg\n1 0 0 1 {:.2} {:.2} Tm\n({}) Tj\n",
+            fsize,
+            fx,
+            BOTTOM_MARGIN * 0.55,
+            foot
+        ));
         txt.push_str("ET");
         let content = format!("{}{}", gfx, txt);
 
@@ -844,6 +1052,10 @@ fn pdf_escape(s: &str, max_cols: usize) -> String {
         if n >= max_cols {
             out.push_str("...");
             break;
+        }
+        if ch == '\u{0394}' {
+            out.push_str("\\310");
+            continue;
         }
         let c = if ch.is_ascii() && !ch.is_ascii_control() { ch } else { '?' };
         match c {
