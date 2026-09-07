@@ -11,7 +11,6 @@
 use super::*;
 use proofman_fields::Goldilocks;
 use std::collections::BTreeMap;
-use zisk_pil::{Arith256Trace, ArithEqTrace, ArithSecp256K1Trace};
 
 // NOTE: not named `Planner`, which would shadow the `zisk_common::Planner` trait `plan` comes from.
 type TestPlanner = ArithEqPlanner<Goldilocks>;
@@ -19,6 +18,22 @@ type TestPlanner = ArithEqPlanner<Goldilocks>;
 fn cap_of(air_id: usize) -> u64 {
     let meta = air_metas().into_iter().find(|m| m.air_id == air_id).unwrap();
     meta.num_rows as u64 / ARITH_EQ_ROWS_BY_OP as u64
+}
+
+/// The air a bulk of `op` lands in: the most capacious air covering it, ties broken by the least
+/// memory — the rule `plan_air_strategy` applies.
+///
+/// The filler tests need "the air that holds whole instances of this op" and not a particular alias:
+/// what they check is that the collect windows tile, not which air the strategy picked. Deriving it
+/// keeps them meaningful when `zisk.pil` reorders the ladders, as it did by giving `Arith256X` and
+/// `ArithSecp256K1` a `Huge` sibling taller than the universal airs.
+fn bulk_air_of(op: ArithEqOp) -> usize {
+    air_metas()
+        .into_iter()
+        .filter(|m| m.covers(op))
+        .min_by_key(|m| (std::cmp::Reverse(m.num_rows), m.cost))
+        .unwrap()
+        .air_id
 }
 
 /// Builds the planner input from per-chunk `(op, count)` lists, in chunk order.
@@ -124,6 +139,33 @@ fn plan_of(per_chunk: &[&[(ArithEqOp, u64)]]) -> Vec<Plan> {
     TestPlanner::new().plan(counters(per_chunk))
 }
 
+/// No instance may be handed more operations than *its own* air holds. The configs come in several
+/// heights, so a plan sized against a shorter one would be rejected by the witness computation the
+/// moment it landed on a taller instance — which is exactly the shape of the capacity bug this pins.
+#[test]
+fn no_instance_is_given_more_than_its_air_holds() {
+    let tall = cap_of(bulk_air_of(ArithEqOp::Arith256));
+    let shapes: &[&[(ArithEqOp, u64)]] = &[
+        &[(ArithEqOp::Arith256, 3)],
+        &[(ArithEqOp::Arith256, tall + 1)],
+        &[(ArithEqOp::Secp256k1Add, 2 * tall + 10), (ArithEqOp::Arith256Mod, 7)],
+        &[(ArithEqOp::Secp256r1Add, tall / 2), (ArithEqOp::Bn254ComplexMul, tall / 2)],
+    ];
+
+    for shape in shapes {
+        let per_chunk: &[&[(ArithEqOp, u64)]] = &[shape];
+        for plan in plan_of(per_chunk) {
+            let collected: u64 = checkpoint_of(&plan).iter().map(|cp| cp.count() as u64).sum();
+            let capacity = cap_of(plan.air_id);
+            assert!(
+                collected <= capacity,
+                "air {} was given {collected} operations but holds {capacity}",
+                plan.air_id,
+            );
+        }
+    }
+}
+
 #[test]
 fn no_operations_plans_nothing() {
     assert!(plan_of(&[&[], &[]]).is_empty());
@@ -152,36 +194,60 @@ fn windows_tile_across_several_chunks() {
 fn an_op_spanning_several_instances_is_split_without_gaps() {
     // One chunk holding more of a single op than an instance can take: the filler must cut it into
     // consecutive windows, one per instance.
-    let air = Arith256Trace::<()>::AIR_ID;
+    // A bulk goes to the air that holds the most of that operation per instance.
+    let air = bulk_air_of(ArithEqOp::Arith256);
     let cap = cap_of(air);
     let per_chunk: &[&[(ArithEqOp, u64)]] = &[&[(ArithEqOp::Arith256, 2 * cap + 10)]];
     let plans = plan_of(per_chunk);
     let per_air = assert_tiles(&plans, per_chunk);
 
-    assert_eq!(per_air.get(&air), Some(&3), "expected ceil((2·cap + 10)/cap) = 3 instances");
+    assert_eq!(
+        per_air.values().sum::<usize>(),
+        3,
+        "expected ceil((2·cap + 10)/cap) = 3 instances, the tail possibly in a shorter air"
+    );
+    assert_eq!(per_air.get(&air), Some(&2), "the two full instances stay in the tallest air");
 }
 
 #[test]
 fn an_instance_boundary_inside_a_chunk_keeps_both_windows() {
-    // The first instance fills up midway through the chunk, so the chunk appears in two instances
-    // with disjoint windows for the same op.
-    let air = Arith256Trace::<()>::AIR_ID;
-    let cap = cap_of(air);
+    // More operations than one instance holds, so an instance fills up midway through a chunk and
+    // that chunk appears in two instances with disjoint windows for the same op. Which air each
+    // instance belongs to is the strategy's business — what the filler owes is that the windows
+    // still tile.
+    let cap = cap_of(bulk_air_of(ArithEqOp::Arith256));
     let per_chunk: &[&[(ArithEqOp, u64)]] =
         &[&[(ArithEqOp::Arith256, cap - 1)], &[(ArithEqOp::Arith256, 5)]];
     let plans = plan_of(per_chunk);
     assert_tiles(&plans, per_chunk);
+    assert_eq!(plans.len(), 2, "cap + 4 operations need two instances");
 
-    // Chunk 1's 5 occurrences straddle the boundary: 1 in the first instance, 4 in the second.
-    let first = checkpoint_of(&plans[0]).get(ChunkId(1)).ops[ArithEqOp::Arith256.index()];
-    assert_eq!((first.initial_skip, first.collect_count), (0, 1));
-    let second = checkpoint_of(&plans[1]).get(ChunkId(1)).ops[ArithEqOp::Arith256.index()];
-    assert_eq!((second.initial_skip, second.collect_count), (1, 4));
+    // Exactly one chunk is straddled, and its two windows meet without a gap or an overlap.
+    let op = ArithEqOp::Arith256.index();
+    let straddled: Vec<usize> = (0..per_chunk.len())
+        .filter(|&chunk| {
+            plans
+                .iter()
+                .filter(|p| checkpoint_of(p).iter().any(|cp| cp.chunk_id == ChunkId(chunk)))
+                .count()
+                > 1
+        })
+        .collect();
+    assert_eq!(straddled.len(), 1, "one instance boundary falls inside one chunk");
+
+    let mut windows: Vec<(u32, u32)> = plans
+        .iter()
+        .filter_map(|p| checkpoint_of(p).iter().find(|cp| cp.chunk_id == ChunkId(straddled[0])))
+        .map(|cp| (cp.ops[op].initial_skip, cp.ops[op].collect_count))
+        .collect();
+    windows.sort();
+    assert_eq!(windows[0].0, 0, "the first window starts at the beginning of the chunk");
+    assert_eq!(windows[1].0, windows[0].1, "and the second picks up exactly where it stopped");
 }
 
 #[test]
 fn segment_ids_are_contiguous_per_air() {
-    let air = Arith256Trace::<()>::AIR_ID;
+    let air = bulk_air_of(ArithEqOp::Arith256);
     let cap = cap_of(air);
     let per_chunk: &[&[(ArithEqOp, u64)]] =
         &[&[(ArithEqOp::Arith256, 2 * cap + 1), (ArithEqOp::Secp256k1Add, 1)]];
@@ -201,34 +267,36 @@ fn segment_ids_are_contiguous_per_air() {
 
 #[test]
 fn a_split_op_tiles_across_two_airs() {
-    // A family big enough that its remainder is worth pooling elsewhere: the same op is then proved
-    // partly by its specialized air and partly by the pool, and the windows must still tile.
-    let cap = cap_of(ArithSecp256K1Trace::<()>::AIR_ID);
+    // A family big enough to fill whole instances of its tallest air, plus a remainder worth
+    // pooling elsewhere: the same op is then proved partly by one air and partly by another, and the
+    // windows must still tile.
+    let tall = bulk_air_of(ArithEqOp::Secp256k1Add);
+    let cap = cap_of(tall);
     let per_chunk: &[&[(ArithEqOp, u64)]] =
         &[&[(ArithEqOp::Secp256k1Add, 2 * cap + 10), (ArithEqOp::Arith256Mod, 7)]];
     let plans = plan_of(per_chunk);
     let per_air = assert_tiles(&plans, per_chunk);
 
-    // secp256k1 keeps its two full instances specialized.
-    assert_eq!(per_air.get(&ArithSecp256K1Trace::<()>::AIR_ID), Some(&2));
+    // The bulk fills two instances of the tall air, which is where the fewest of them are needed.
+    assert_eq!(per_air.get(&tall), Some(&2));
 
-    // And the split the test is named for: the 10-op tail is proved by the universal air, whose
-    // window must start exactly where the specialized ones stopped. Without this the test would
-    // still pass if the tail went back to ArithSecp256K1 — tiling holds either way.
+    // And the split the test is named for: the 10-op tail is proved by a different air. Its window
+    // and the bulk's must meet without a gap, whichever of the two the filler emitted first.
     let op = ArithEqOp::Secp256k1Add.index();
-    let specialized: u64 = plans
+    let mut windows: Vec<(u64, u64)> = plans
         .iter()
-        .filter(|p| p.air_id == ArithSecp256K1Trace::<()>::AIR_ID)
-        .map(|p| checkpoint_of(p).get(ChunkId(0)).ops[op].collect_count as u64)
-        .sum();
-    assert_eq!(specialized, 2 * cap);
+        .map(|p| checkpoint_of(p).get(ChunkId(0)).ops[op])
+        .filter(|w| w.collect_count > 0)
+        .map(|w| (w.initial_skip as u64, w.collect_count as u64))
+        .collect();
+    windows.sort();
+    assert_eq!(windows.len(), 3, "two bulk instances and the pooled tail");
 
-    let pooled = plans
+    let tail = plans
         .iter()
-        .find(|p| p.air_id == ArithEqTrace::<()>::AIR_ID)
-        .expect("the tail must be pooled into the universal air");
-    let window = checkpoint_of(pooled).get(ChunkId(0)).ops[op];
-    assert_eq!((window.initial_skip as u64, window.collect_count as u64), (2 * cap, 10));
+        .find(|p| p.air_id != tall && checkpoint_of(p).get(ChunkId(0)).ops[op].collect_count > 0)
+        .expect("the tail must be pooled into another air");
+    assert_eq!(checkpoint_of(tail).get(ChunkId(0)).ops[op].collect_count as u64, 10);
 }
 
 #[test]

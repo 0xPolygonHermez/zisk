@@ -100,8 +100,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
     /// * `verbose_mode` - Verbose mode for logging.
     /// * `shared_tables` - Whether to use shared tables for execution.
     /// * `with_asm_emulator` - Whether the executor supports the ASM backend at runtime.
-    /// * `packed` - Whether to use packed representation for witness computation. For Main
-    ///   this selects the compact indexed row (+ instruction table).
+    /// * `packed` - Whether to use packed representation for witness computation.
     pub fn new(
         wcm: &WitnessManager<F>,
         verbose_mode: proofman_common::VerboseMode,
@@ -204,7 +203,7 @@ impl<F: PrimeField64> ZiskExecutor<F> {
         }
     }
 
-    /// Whether the Main trace is built in the compact indexed form (i.e. packed).
+    /// Whether traces are built bit-packed.
     pub fn is_packed(&self) -> bool {
         self.witness.as_ref().map(|w| w.is_packed()).unwrap_or(false)
     }
@@ -619,7 +618,7 @@ impl<F: PrimeField64> WitnessComponent<F> for ZiskExecutor<F> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use zisk_pil::MainTrace;
+    use zisk_pil::MAIN_STEPS_PER_SEGMENT;
 
     /// `n` distinct chunks — `steps` is used only as an identity marker here.
     fn chunks(n: usize) -> Vec<Arc<EmuTrace>> {
@@ -692,7 +691,7 @@ mod tests {
     #[test]
     fn replay_releases_every_segment_exactly_once_and_publishes_every_chunk() {
         let num_within = MainPlanner::traces_per_segment(CHUNK_SIZE).expect("valid chunk size");
-        assert_eq!(num_within, MainTrace::<()>::NUM_ROWS / CHUNK_SIZE as usize);
+        assert_eq!(num_within, MAIN_STEPS_PER_SEGMENT / CHUNK_SIZE as usize);
 
         for num_chunks in 1..=(2 * num_within + 1) {
             let (released, published) = replay(num_chunks, num_within);

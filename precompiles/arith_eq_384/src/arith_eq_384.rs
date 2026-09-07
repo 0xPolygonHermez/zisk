@@ -3,9 +3,9 @@ use rayon::prelude::*;
 use std::sync::Arc;
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
-use zisk_pil::{ArithEq384Trace, ArithEq384TraceRowOps};
+use zisk_pil::{ArithEq384TraceRowOps, ZISK_AIRGROUP_ID};
 use zisk_precomp_arith_eq::ArithEqLtTableSM;
 
 use crate::{
@@ -15,12 +15,10 @@ use crate::{
 };
 
 /// The `ArithEq384SM` struct encapsulates the logic of the ArithEq384 State Machine.
+///
+/// Nothing here depends on the height of the air: the same state machine serves `ArithEq384` and its
+/// taller `ArithEq384Large` sibling, and the capacity is taken from the trace each call builds.
 pub struct ArithEq384SM<F: PrimeField64> {
-    /// Number of available arith384s in the trace.
-    pub num_available_ops: usize,
-
-    num_non_usable_rows: usize,
-
     /// Reference to the PIL2 standard library.
     pub std: Arc<Std<F>>,
 
@@ -51,8 +49,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     /// A new `ArithEq384SM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_ops = ArithEq384Trace::<()>::NUM_ROWS / ARITH_EQ_384_ROWS_BY_OP;
-        let num_non_usable_rows = ArithEq384Trace::<()>::NUM_ROWS % ARITH_EQ_384_ROWS_BY_OP;
         let q_hsc_range_id =
             std.get_range_id(0, ARITH_EQ_384_Q_HSC_MAX, None).expect("Failed to get range ID");
         let chunk_range_id = std
@@ -66,15 +62,7 @@ impl<F: PrimeField64> ArithEq384SM<F> {
         let table_id =
             std.get_virtual_table_id(ArithEqLtTableSM::TABLE_ID).expect("Failed to get table ID");
 
-        Arc::new(Self {
-            std,
-            num_available_ops,
-            num_non_usable_rows,
-            q_hsc_range_id,
-            chunk_range_id,
-            carry_range_id,
-            table_id,
-        })
+        Arc::new(Self { std, q_hsc_range_id, chunk_range_id, carry_range_id, table_id })
     }
     // Returns the LT flags for x3 and y3. The flags are determined solely by the operation type.
     fn get_lt_flags(input: &ArithEq384Input) -> u8 {
@@ -399,15 +387,27 @@ impl<F: PrimeField64> ArithEq384SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: ArithEq384TraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<
+        R: ArithEq384TraceRowOps<F>,
+        const NUM_ROWS: usize,
+        const AIR_ID: usize,
+    >(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<ArithEq384Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = ArithEq384Trace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
+            trace_buffer,
+        )?;
         let num_rows = trace.num_rows();
-        let num_available_ops = self.num_available_ops;
+        // Capacity of *this* air, not of the shortest one: the two heights hold a different number
+        // of operations, and a `Large` instance priced against the short air's capacity would reject
+        // the very inputs the planner routed to it.
+        let num_available_ops = arith_eq_384_ops_per_instance(num_rows);
+        let num_non_usable_rows = (num_rows % ARITH_EQ_384_ROWS_BY_OP) as u64;
 
         let total_inputs: usize = inputs.iter().map(|x| x.len()).sum();
         let all_ops_used = total_inputs == num_available_ops;
@@ -475,7 +475,6 @@ impl<F: PrimeField64> ArithEq384SM<F> {
 
         // All-zero padding rows satisfy every constraint, so we must only handle the range_checks.
 
-        let num_non_usable_rows = self.num_non_usable_rows as u64;
         let padding_ops = (num_available_ops - index) as u64;
         let q_hsc_range_mult = 3 * padding_ops;
         let chunk_range_mult = (7 * ARITH_EQ_384_ROWS_BY_OP as u64

@@ -10,8 +10,9 @@ use proofman_common::ProofCtx;
 use proofman_fields::PrimeField64;
 use zisk_common::{ComponentBuilder, ComponentPlanBuilder, Instance, InstanceCtx, Plan, Planner};
 use zisk_pil::{
-    InputDataTrace, MemAlignByteTrace, MemAlignReadByteTrace, MemAlignTrace,
-    MemAlignWriteByteTrace, MemTrace, RomDataTrace, ZiskProofValues,
+    InputDataTrace, MemAlignByteLargeTrace, MemAlignByteTrace, MemAlignLargeTrace,
+    MemAlignReadByteLargeTrace, MemAlignReadByteTrace, MemAlignTrace, MemAlignWriteByteTrace,
+    MemTrace, RomDataTrace, ZiskProofValues,
 };
 use zisk_sm_mem_common::MemCounters;
 
@@ -79,13 +80,15 @@ impl<F: PrimeField64> ComponentBuilder<F> for Mem<F> {
             InputDataTrace::<()>::AIR_ID => {
                 Box::new(MemModuleInstance::new(self.input_data_sm.clone(), ictx))
             }
-            MemAlignTrace::<()>::AIR_ID => {
+            // Each air and its `Large` sibling share one instance type, which picks the trace —
+            // and with it the height and air id — from `ictx.plan.air_id`.
+            MemAlignTrace::<()>::AIR_ID | MemAlignLargeTrace::<()>::AIR_ID => {
                 Box::new(MemAlignInstance::new(self.mem_align_sm.clone(), ictx))
             }
-            MemAlignByteTrace::<()>::AIR_ID => {
+            MemAlignByteTrace::<()>::AIR_ID | MemAlignByteLargeTrace::<()>::AIR_ID => {
                 Box::new(MemAlignByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
-            MemAlignReadByteTrace::<()>::AIR_ID => {
+            MemAlignReadByteTrace::<()>::AIR_ID | MemAlignReadByteLargeTrace::<()>::AIR_ID => {
                 Box::new(MemAlignReadByteInstance::new(self.mem_align_byte_sm.clone(), ictx))
             }
             MemAlignWriteByteTrace::<()>::AIR_ID => {

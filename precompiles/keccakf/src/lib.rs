@@ -16,6 +16,7 @@ zisk_common::zisk_precompile! {
     num_available = {
         OPS_PER_SLOT * (::zisk_pil::KeccakfTrace::<()>::NUM_ROWS / CLOCKS)
     },
+    cost = ::zisk_pil::KECCAKF_INSTANCE_COST,
     ops = [
         (OperationKeccakData, KeccakfInput),
     ],

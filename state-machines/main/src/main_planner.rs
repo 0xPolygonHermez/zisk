@@ -5,7 +5,7 @@
 
 use crate::{MainSmError, Result};
 use zisk_common::{CheckPoint, ChunkId, EmuTrace, InstanceType, Plan, SegmentId};
-use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+use zisk_pil::{MAIN_AIR_IDS, MAIN_LANES, MAIN_STEPS_PER_SEGMENT, ZISK_AIRGROUP_ID};
 
 /// The `MainPlanner` struct generates execution plans for the Main State Machine.
 ///
@@ -28,7 +28,9 @@ impl MainPlanner {
     /// # Errors
     /// Returns a `MainSmError` when:
     /// - The `chunk_size` is not a power of two ([`MainSmError::ChunkSizeNotPowerOfTwo`]).
-    /// - The `chunk_size` exceeds the row capacity of `MainTrace` ([`MainSmError::ChunkSizeTooBig`]).
+    /// - The `chunk_size` exceeds the step capacity of a segment ([`MainSmError::ChunkSizeTooBig`]).
+    /// - The `chunk_size` is not a whole number of Main rows
+    ///   ([`MainSmError::ChunkSizeNotLaneAligned`]).
     /// - A `u64` quantity could not be converted to `usize` on this target ([`MainSmError::TryFromIntError`]).
     pub fn plan(min_traces: &[EmuTrace], chunk_size: u64) -> Result<Vec<Plan>> {
         Self::plan_count(min_traces.len(), chunk_size)
@@ -52,23 +54,35 @@ impl MainPlanner {
     /// # Errors
     /// Same `chunk_size` validation as [`Self::plan`].
     pub fn traces_per_segment(chunk_size: u64) -> Result<usize> {
-        const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
-
-        // Compile-time assertion to ensure `MainTrace::NUM_ROWS` is a power of two.
-        const _: () =
-            assert!(NUM_ROWS.is_power_of_two(), "MainTrace::NUM_ROWS must be a power of two",);
-
         let chunk_size: usize = chunk_size.try_into()?;
+        Self::validate_chunk_size(chunk_size)?;
+        Ok(MAIN_STEPS_PER_SEGMENT / chunk_size)
+    }
 
+    /// Rejects a `chunk_size` that cannot tile a Main segment: it must be a power of two, no
+    /// larger than the segment's step capacity, and a whole number of rows so that a chunk
+    /// boundary is also a row boundary.
+    ///
+    /// Together those make every `chunk_size` a multiple of [`MAIN_LANES`] *and* a power of
+    /// two, so a lane count that is not itself a power of two has no valid chunk size — worth
+    /// knowing before trying one.
+    pub(crate) fn validate_chunk_size(chunk_size: usize) -> Result<()> {
         if !chunk_size.is_power_of_two() {
             return Err(MainSmError::ChunkSizeNotPowerOfTwo { size: chunk_size });
         }
 
-        if NUM_ROWS < chunk_size {
-            return Err(MainSmError::ChunkSizeTooBig { chunk_size, num_rows: NUM_ROWS });
+        if MAIN_STEPS_PER_SEGMENT < chunk_size {
+            return Err(MainSmError::ChunkSizeTooBig {
+                chunk_size,
+                max_steps: MAIN_STEPS_PER_SEGMENT,
+            });
         }
 
-        Ok(NUM_ROWS / chunk_size)
+        if chunk_size % MAIN_LANES != 0 {
+            return Err(MainSmError::ChunkSizeNotLaneAligned { chunk_size, lanes: MAIN_LANES });
+        }
+
+        Ok(())
     }
 
     /// The Main segment that chunk `chunk_idx` completes, or `None` when that
@@ -108,8 +122,6 @@ impl MainPlanner {
 mod tests {
     use super::*;
 
-    const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
-
     fn n_default_traces(n: usize) -> Vec<EmuTrace> {
         vec![EmuTrace::default(); n]
     }
@@ -135,19 +147,30 @@ mod tests {
     }
 
     #[test]
+    fn chunk_size_not_lane_aligned_errors() {
+        // A chunk that doesn't divide into whole rows would start mid-row. Only reachable
+        // when a row packs more than one step; with a single lane every size is aligned.
+        if MAIN_LANES > 1 {
+            let traces = n_default_traces(1);
+            let err = MainPlanner::plan(&traces, 1).unwrap_err();
+            assert!(matches!(err, MainSmError::ChunkSizeNotLaneAligned { chunk_size: 1, .. }));
+        }
+    }
+
+    #[test]
     fn chunk_size_too_big_errors() {
-        // 2 * NUM_ROWS is power of two but exceeds the row capacity of MainTrace.
+        // Twice a segment: a power of two, but more steps than a segment holds.
         let traces = n_default_traces(1);
-        let oversized = (NUM_ROWS as u64) * 2;
+        let oversized = (MAIN_STEPS_PER_SEGMENT as u64) * 2;
         let err = MainPlanner::plan(&traces, oversized).unwrap_err();
         assert!(matches!(err, MainSmError::ChunkSizeTooBig { .. }));
     }
 
     #[test]
     fn single_full_segment_when_traces_equal_num_within() {
-        // chunk_size = NUM_ROWS → num_within = 1, so 1 trace = 1 segment.
+        // chunk_size = one whole segment → num_within = 1, so 1 trace = 1 segment.
         let traces = n_default_traces(1);
-        let plans = MainPlanner::plan(&traces, NUM_ROWS as u64).unwrap();
+        let plans = MainPlanner::plan(&traces, MAIN_STEPS_PER_SEGMENT as u64).unwrap();
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].segment_id, Some(SegmentId(0)));
         assert!(is_last(&plans[0]));
@@ -155,9 +178,9 @@ mod tests {
 
     #[test]
     fn multiple_full_segments_have_sequential_ids() {
-        // chunk_size = NUM_ROWS / 2 → num_within = 2. With 4 traces → 2 segments.
+        // chunk_size = half a segment → num_within = 2. With 4 traces → 2 segments.
         let traces = n_default_traces(4);
-        let size = (NUM_ROWS as u64) / 2;
+        let size = (MAIN_STEPS_PER_SEGMENT as u64) / 2;
         let plans = MainPlanner::plan(&traces, size).unwrap();
         assert_eq!(plans.len(), 2);
         assert_eq!(plans[0].segment_id, Some(SegmentId(0)));
@@ -170,7 +193,7 @@ mod tests {
     fn partial_last_segment_uses_ceil_div() {
         // num_within = 2, 3 traces → ceil(3 / 2) = 2 segments. Last is partial.
         let traces = n_default_traces(3);
-        let size = (NUM_ROWS as u64) / 2;
+        let size = (MAIN_STEPS_PER_SEGMENT as u64) / 2;
         let plans = MainPlanner::plan(&traces, size).unwrap();
         assert_eq!(plans.len(), 2);
         assert!(!is_last(&plans[0]));
@@ -180,14 +203,14 @@ mod tests {
     #[test]
     fn empty_min_traces_produces_empty_plan() {
         let traces: Vec<EmuTrace> = vec![];
-        let plans = MainPlanner::plan(&traces, NUM_ROWS as u64).unwrap();
+        let plans = MainPlanner::plan(&traces, MAIN_STEPS_PER_SEGMENT as u64).unwrap();
         assert!(plans.is_empty());
     }
 
     #[test]
     fn plan_fields_match_main_air_constants() {
         let traces = n_default_traces(1);
-        let plans = MainPlanner::plan(&traces, NUM_ROWS as u64).unwrap();
+        let plans = MainPlanner::plan(&traces, MAIN_STEPS_PER_SEGMENT as u64).unwrap();
         let plan = &plans[0];
         assert_eq!(plan.airgroup_id, ZISK_AIRGROUP_ID);
         assert_eq!(plan.air_id, MAIN_AIR_IDS[0]);
@@ -226,7 +249,7 @@ mod tests {
 
     #[test]
     fn segment_completed_by_one_chunk_per_segment() {
-        // chunk_size == NUM_ROWS ⇒ num_within = 1: every chunk completes its own segment.
+        // chunk_size == MAIN_STEPS_PER_SEGMENT ⇒ num_within = 1: every chunk completes its own segment.
         for idx in 0..4 {
             assert_eq!(MainPlanner::segment_completed_by(idx, 1, false), Some(idx));
         }
@@ -237,7 +260,7 @@ mod tests {
         // Releasing chunk-by-chunk must yield exactly what the batch planner
         // yields — same segment ids, same order, same `is_last_segment` flags —
         // for every chunk count, partial tails included.
-        let chunk_size = (NUM_ROWS as u64) / 4;
+        let chunk_size = (MAIN_STEPS_PER_SEGMENT as u64) / 4;
         let num_within = MainPlanner::traces_per_segment(chunk_size).unwrap();
 
         for num_chunks in 1..=13usize {
@@ -263,7 +286,7 @@ mod tests {
     fn is_last_segment_metadata_decodes_to_bool() {
         // num_within = 2, 5 traces → ceil(5 / 2) = 3 segments → flags [false, false, true].
         let traces = n_default_traces(5);
-        let plans = MainPlanner::plan(&traces, (NUM_ROWS as u64) / 2).unwrap();
+        let plans = MainPlanner::plan(&traces, (MAIN_STEPS_PER_SEGMENT as u64) / 2).unwrap();
         assert_eq!(plans.len(), 3);
         let flags: Vec<bool> = plans.iter().map(is_last).collect();
         assert_eq!(flags, vec![false, false, true]);

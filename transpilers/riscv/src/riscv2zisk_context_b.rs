@@ -54,9 +54,9 @@ Zbkx — crossbar permutation
 //     sh1add: 2 instructions
 //     sh2add: 2 instructions
 //     sh3add: 2 instructions
-//     sh1add_u_w: 3 instructions
-//     sh2add_u_w: 3 instructions
-//     sh3add_u_w: 3 instructions
+//     sh1add_u_w: 3 instructions (2 with zba_native, using the native sh1add)
+//     sh2add_u_w: 3 instructions (2 with zba_native, using the native sh2add)
+//     sh3add_u_w: 3 instructions (2 with zba_native, using the native sh3add)
 //     bclr: 3 instructions
 //     bclri: 1 instruction
 //     bset: 2 instructions
@@ -329,6 +329,46 @@ impl Riscv2ZiskContext<'_> {
             zib.src_a("reg", i.rs2 as u64, false);
             zib.src_b("reg", 32, false);
             zib.op("add").unwrap();
+            zib.store("reg", i.rd as i64, false, false);
+            let jump_address = rom_address as i64 + 4 - internal_address_1 as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!("{} r{}, r{}, r{} 2/2", i.inst_name, i.rd, i.rs1, i.rs2));
+            zib.build(self.rom);
+        }
+    }
+
+    /// Implements sh<n>add.uw with the native sh<n>add operation, in two instructions:
+    /// `rd = rs2 + (zext(rs1[31:0]) << n)`, where `op` is "sh1add", "sh2add" or "sh3add".
+    ///
+    /// The zero extension is a plain `and` against 0xFFFFFFFF, and the native shift-and-add does
+    /// the rest, so this replaces the three-instruction (and + sll + add) decomposition.
+    #[cfg(feature = "zba_native")]
+    pub fn sh_add_u_w_native(&mut self, i: &RiscvInst, op: &str) {
+        // Get addresses of the required instructions to implement this function
+        let rom_address = i.rom_address;
+        let internal_address_1 = self.rom.get_internal_address();
+
+        // reg32 = rs1 & 0xFFFFFFFF
+        // Use scratch register 32 (not rd) to avoid clobbering rs2 when rd == rs2
+        {
+            let mut zib = ZiskInstBuilder::new_from_riscv(rom_address, i.inst_name.to_string());
+            zib.src_a("reg", i.rs1 as u64, false);
+            zib.src_b("imm", 0xFFFFFFFF, false);
+            zib.op("and").unwrap();
+            zib.store("reg", 32, false, false);
+            zib.set_next_internal_address(internal_address_1);
+            let jump_address = internal_address_1 as i64 - i.rom_address as i64;
+            zib.j(jump_address, jump_address);
+            zib.verbose(&format!("{} r{}, r{}, r{} 1/2", i.inst_name, i.rd, i.rs1, i.rs2));
+            zib.build(self.rom);
+        }
+
+        // rd = sh<n>add(reg32, rs2) = rs2 + (reg32 << n)
+        {
+            let mut zib = ZiskInstBuilder::new_internal(internal_address_1, rom_address);
+            zib.src_a("reg", 32, false);
+            zib.src_b("reg", i.rs2 as u64, false);
+            zib.op(op).unwrap();
             zib.store("reg", i.rd as i64, false, false);
             let jump_address = rom_address as i64 + 4 - internal_address_1 as i64;
             zib.j(jump_address, jump_address);
@@ -4565,3 +4605,71 @@ impl Riscv2ZiskContext<'_> {
         }
     }
 } // impl Riscv2ZiskContext
+
+#[cfg(all(test, feature = "zba_native"))]
+mod tests {
+    use super::*;
+    use crate::riscv_inst_name::RiscvInstName;
+    use zisk_core::{zisk_ops::ZiskOp, ZiskInstBuilder, ZiskRom, ROM_ADDR};
+
+    /// Scratch register the sequences use to hold the zero-extended operand.
+    const SCRATCH_REG: u64 = 32;
+
+    /// Encoding of a source / store as `ZiskInstBuilder` writes it, so the expectations below talk
+    /// about registers and immediates instead of duplicating how each one is laid out.
+    fn expected_operands(scratch: u64, rs2: u32, rd: u32) -> ZiskInstBuilder {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", scratch, false);
+        zib.src_b("reg", rs2 as u64, false);
+        zib.store("reg", rd as i64, false, false);
+        zib
+    }
+
+    fn expected_zero_extension(rs1: u32, scratch: u64) -> ZiskInstBuilder {
+        let mut zib = ZiskInstBuilder::new(0);
+        zib.src_a("reg", rs1 as u64, false);
+        zib.src_b("imm", 0xFFFFFFFF, false);
+        zib.store("reg", scratch as i64, false, false);
+        zib
+    }
+
+    #[test]
+    fn sh_add_u_w_native_is_and_plus_sh_add() {
+        for (name, op) in [
+            (RiscvInstName::Sh1addUw, "sh1add"),
+            (RiscvInstName::Sh2addUw, "sh2add"),
+            (RiscvInstName::Sh3addUw, "sh3add"),
+        ] {
+            let inst = RiscvInst {
+                rom_address: ROM_ADDR,
+                inst_name: name,
+                rd: 5,
+                rs1: 6,
+                rs2: 7,
+                ..Default::default()
+            };
+
+            let mut rom = ZiskRom::default();
+            Riscv2ZiskContext::new(&mut rom).sh_add_u_w_native(&inst, op);
+
+            assert_eq!(rom.insts.len(), 2, "{op}.uw must be two ZisK instructions");
+
+            // reg32 = rs1 & 0xFFFFFFFF (the zero extension)
+            let zext = &rom.insts[&ROM_ADDR].i;
+            let want = expected_zero_extension(inst.rs1, SCRATCH_REG).i;
+            assert_eq!(zext.op, ZiskOp::And.code());
+            assert_eq!((zext.a_src, zext.a_offset_imm0), (want.a_src, want.a_offset_imm0));
+            assert_eq!((zext.b_src, zext.b_offset_imm0), (want.b_src, want.b_offset_imm0));
+            assert_eq!((zext.store, zext.store_offset), (want.store, want.store_offset));
+
+            // rd = sh<n>add(reg32, rs2): the shifted operand is a, rs2 is b
+            let sh_add = &rom.insts[&zext.next_internal_inst.unwrap()].i;
+            let want = expected_operands(SCRATCH_REG, inst.rs2, inst.rd).i;
+            assert_eq!(sh_add.op, ZiskOp::try_from_name(op).unwrap().code());
+            assert_eq!((sh_add.a_src, sh_add.a_offset_imm0), (want.a_src, want.a_offset_imm0));
+            assert_eq!((sh_add.b_src, sh_add.b_offset_imm0), (want.b_src, want.b_offset_imm0));
+            assert_eq!((sh_add.store, sh_add.store_offset), (want.store, want.store_offset));
+            assert!(!sh_add.m32, "the b operand of sh<n>add is a full 64-bit register");
+        }
+    }
+}

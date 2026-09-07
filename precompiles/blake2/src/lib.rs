@@ -14,6 +14,7 @@ zisk_common::zisk_precompile! {
         let n = ::zisk_pil::Blake2brTrace::<::zisk_pil::Blake2brTraceRow<F>>::NUM_ROWS;
         n / CLOCKS - (n % CLOCKS != 0) as usize
     },
+    cost = ::zisk_pil::BLAKE_2_BR_INSTANCE_COST,
     ops = [
         (OperationBlake2Data, Blake2Input),
     ],

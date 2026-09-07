@@ -14,6 +14,7 @@ zisk_common::zisk_precompile! {
         let n = ::zisk_pil::Blake3fTrace::<::zisk_pil::Blake3fTraceRow<F>>::NUM_ROWS;
         n / CLOCKS * LANES
     },
+    cost = ::zisk_pil::BLAKE_3_F_INSTANCE_COST,
     ops = [
         (OperationBlake3Data, Blake3Input),
     ],

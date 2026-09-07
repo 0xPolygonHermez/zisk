@@ -4,11 +4,11 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 
 use pil2_std_lib::Std;
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 use zisk_common::{OperationAdd256Data, B, OPERATION_PRECOMPILED_BUS_DATA_SIZE, STEP};
-use zisk_pil::{Add256Trace, Add256TraceRowOps};
+use zisk_pil::{Add256Trace, Add256TraceRowOps, ZISK_AIRGROUP_ID};
 
 use super::add256_constants::{PARAM_CHUNKS, START_READ_PARAMS};
 
@@ -146,13 +146,16 @@ impl<F: PrimeField64> Add256SM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: Add256TraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<R: Add256TraceRowOps<F>, const NUM_ROWS: usize, const AIR_ID: usize>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<Add256Input>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = Add256Trace::<R>::new_from_vec(trace_buffer)?;
+        let mut trace =
+            GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec(trace_buffer)?;
 
         let num_rows = trace.num_rows();
 

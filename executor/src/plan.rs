@@ -126,21 +126,20 @@ impl<F: PrimeField64> PlanPhase<F> {
 mod tests {
     use super::*;
     use proofman_fields::Goldilocks;
-    use zisk_pil::{MainTrace, MAIN_AIR_IDS, ZISK_AIRGROUP_ID};
+    use zisk_pil::{MAIN_AIR_IDS, MAIN_STEPS_PER_SEGMENT, ZISK_AIRGROUP_ID};
 
     type F = Goldilocks;
 
-    const NUM_ROWS: usize = MainTrace::<()>::NUM_ROWS;
-
     #[test]
     fn plan_main_empty_traces_yields_empty_plan() {
-        let plans = PlanPhase::<F>::plan_main(0, NUM_ROWS as u64).expect("empty traces planned ok");
+        let plans = PlanPhase::<F>::plan_main(0, MAIN_STEPS_PER_SEGMENT as u64)
+            .expect("empty traces planned ok");
         assert!(plans.is_empty());
     }
 
     #[test]
     fn plan_main_single_full_trace_yields_one_plan() {
-        let plans = PlanPhase::<F>::plan_main(1, NUM_ROWS as u64).expect("ok");
+        let plans = PlanPhase::<F>::plan_main(1, MAIN_STEPS_PER_SEGMENT as u64).expect("ok");
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].airgroup_id, ZISK_AIRGROUP_ID);
         assert_eq!(plans[0].air_id, MAIN_AIR_IDS[0]);
@@ -148,7 +147,7 @@ mod tests {
 
     #[test]
     fn plan_main_segments_via_ceil_div() {
-        let plans = PlanPhase::<F>::plan_main(3, (NUM_ROWS as u64) / 2).expect("ok");
+        let plans = PlanPhase::<F>::plan_main(3, (MAIN_STEPS_PER_SEGMENT as u64) / 2).expect("ok");
         assert_eq!(plans.len(), 2);
     }
 

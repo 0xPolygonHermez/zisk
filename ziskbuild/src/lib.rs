@@ -121,15 +121,21 @@ impl BuildArgs {
 /// Note: `zicond` is enabled via Cargo feature `zicond_native` (there is no `zicond` feature).
 pub const GUEST_TARGET_FEATURES: &[&str] = &["zba", "zbc", "zbkc", "zbkx", "zicond"];
 
+/// Extensions from [`GUEST_TARGET_FEATURES`] that every guest build gets, no Cargo feature
+/// needed. Zba is proven natively by ZisK — `sh<n>add` and `slli.uw` by the binary state
+/// machines, `add.uw` and the `.uw` shift-and-adds by transpilation — and `zba_native` is a
+/// default feature of the transpiler, so guest code may use it unconditionally, the same way
+/// it already uses the Zbb / Zbs / Zbkb instructions that the base target carries.
+pub const GUEST_DEFAULT_TARGET_FEATURES: &[&str] = &["zba"];
+
 /// Translate the requested Cargo features into `-C target-feature=+...` flags,
 /// keeping guest codegen in lockstep with the `#[cfg(feature = ...)]` gates.
 ///
 /// `features` is cargo's space/comma-separated `--features` value; every name in
 /// [`GUEST_TARGET_FEATURES`] it selects — either as `ext` or as its `ext_native`
-/// variant — (or all of them under `all_features`) is emitted as a `+ext`.
-/// Features that don't name a guest extension are ignored
-/// here — they still reach cargo as ordinary `--features`. Returns an empty vec
-/// when nothing matches, so no `target-feature` flag is added.
+/// variant — (or all of them under `all_features`) is emitted as a `+ext`, on top of the
+/// always-on [`GUEST_DEFAULT_TARGET_FEATURES`]. Features that don't name a guest extension
+/// are ignored here — they still reach cargo as ordinary `--features`.
 pub fn target_features_from_features(features: Option<&str>, all_features: bool) -> Vec<String> {
     let requested: Vec<&str> = features
         .map(|f| f.split([',', ' ']).filter(|s| !s.is_empty()).collect())
@@ -138,6 +144,7 @@ pub fn target_features_from_features(features: Option<&str>, all_features: bool)
         .iter()
         .filter(|ext| {
             all_features
+                || GUEST_DEFAULT_TARGET_FEATURES.contains(*ext)
                 || requested.contains(*ext)
                 || requested.contains(&format!("{ext}_native").as_str())
         })
@@ -530,16 +537,39 @@ mod tests {
     }
 
     /// Only the requested guest extensions become `+target-feature`s, joined into
-    /// a single `-C target-feature` flag; unrelated features are left to cargo.
+    /// a single `-C target-feature` flag; unrelated features are left to cargo. The
+    /// always-on ones are there whatever the request is.
     #[test]
     fn target_features_selects_only_requested_extensions() {
-        assert!(target_features_from_features(None, false).is_empty());
+        let default: Vec<String> = vec![
+            "-C".to_string(),
+            format!(
+                "target-feature={}",
+                GUEST_DEFAULT_TARGET_FEATURES
+                    .iter()
+                    .map(|e| format!("+{e}"))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+        ];
+        assert_eq!(target_features_from_features(None, false), default);
         // A non-extension feature (e.g. `c_extension`) adds no target-feature.
-        assert!(target_features_from_features(Some("c_extension"), false).is_empty());
+        assert_eq!(target_features_from_features(Some("c_extension"), false), default);
 
         // Comma- and space-separated forms both parse; order follows the const.
-        let flags = target_features_from_features(Some("zbkx, zba c_extension"), false);
-        assert_eq!(flags, vec!["-C".to_string(), "target-feature=+zba,+zbkx".to_string()]);
+        let flags = target_features_from_features(Some("zbkx, zbc c_extension"), false);
+        assert_eq!(flags, vec!["-C".to_string(), "target-feature=+zba,+zbc,+zbkx".to_string()]);
+    }
+
+    /// Zba is on by default, so a guest never has to ask for it.
+    #[test]
+    fn target_features_always_enable_zba() {
+        assert!(GUEST_DEFAULT_TARGET_FEATURES.contains(&"zba"));
+        for ext in GUEST_DEFAULT_TARGET_FEATURES {
+            assert!(GUEST_TARGET_FEATURES.contains(ext), "{ext} is not a guest extension");
+        }
+        let flags = target_features_from_features(None, false);
+        assert!(flags.last().unwrap().contains("+zba"), "{flags:?}");
     }
 
     /// `--all-features` enables every guest extension regardless of the list.

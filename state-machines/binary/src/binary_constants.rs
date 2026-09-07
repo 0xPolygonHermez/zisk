@@ -41,3 +41,8 @@ pub const ANDN_OP: u8 = ZiskOp::Andn.code();
 pub const ORN_OP: u8 = ZiskOp::Orn.code();
 pub const XNOR_OP: u8 = ZiskOp::Xnor.code();
 pub const BREV8_OP: u8 = ZiskOp::Brev8.code();
+
+/// Zba shift-and-add opcodes: c = b + (a << shift)
+pub const SH1ADD_OP: u8 = ZiskOp::Sh1add.code();
+pub const SH2ADD_OP: u8 = ZiskOp::Sh2add.code();
+pub const SH3ADD_OP: u8 = ZiskOp::Sh3add.code();

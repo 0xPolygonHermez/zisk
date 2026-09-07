@@ -13,7 +13,17 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryTrace, BinaryTraceRow, BinaryTraceRowPacked};
+use zisk_pil::{
+    BinaryHugeTrace, BinaryHugeTraceRow, BinaryHugeTraceRowPacked, BinaryLargeTrace,
+    BinaryLargeTraceRow, BinaryLargeTraceRowPacked, BinaryTrace, BinaryTraceRow,
+    BinaryTraceRowPacked,
+};
+
+/// Air id of each `Binary` air. They no longer differ only in height: each packs a different number
+/// of operations per row, so each has its own row type and the trace itself carries the rest.
+const AIR_ID: usize = BinaryTrace::<()>::AIR_ID;
+const LARGE_AIR_ID: usize = BinaryLargeTrace::<()>::AIR_ID;
+const HUGE_AIR_ID: usize = BinaryHugeTrace::<()>::AIR_ID;
 
 /// The `BinaryBasicInstance` struct represents an instance for binary-related witness computations.
 ///
@@ -49,9 +59,8 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryTrace::<()>::AIR_ID,
+        assert!(
+            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID | HUGE_AIR_ID),
             "BinaryBasicInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -63,6 +72,12 @@ impl<F: PrimeField64> BinaryBasicInstance<F> {
             .expect("Failed to downcast ictx.plan.meta to expected type");
 
         Self { binary_basic_sm, ictx, collect_info, std }
+    }
+
+    /// Which of the three `Binary` airs this instance is. They pack a different number of
+    /// operations per row, so this picks the row type the trace is built with.
+    fn air_id(&self) -> usize {
+        self.ictx.plan.air_id
     }
 
     pub fn build_binary_basic_collector(&self, chunk_id: ChunkId) -> BinaryBasicCollector<F> {
@@ -99,16 +114,26 @@ impl<F: PrimeField64> Instance<F> for BinaryBasicInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
-                self.binary_basic_sm
-                    .compute_witness::<BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
-                self.binary_basic_sm.compute_witness::<BinaryTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
-        }
+        let sm = &self.binary_basic_sm;
+        Ok(Some(match (self.air_id(), packed) {
+            (AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (AIR_ID, false) => sm.compute_witness::<_, BinaryTraceRow<F>>(&inputs, trace_buffer)?,
+            (LARGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryLargeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (LARGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryLargeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryHugeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryHugeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (air_id, _) => panic!("BinaryBasicInstance: Unsupported air_id: {air_id:?}"),
+        }))
     }
 
     /// Retrieves the checkpoint associated with this instance.

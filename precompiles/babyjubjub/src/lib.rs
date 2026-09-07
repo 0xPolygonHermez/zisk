@@ -72,6 +72,7 @@ zisk_precompile! {
     num_available = {
         ::zisk_pil::BabyJubJubTrace::<()>::NUM_ROWS / BABYJUBJUB_ROWS_BY_OP
     },
+    cost = ::zisk_pil::BABY_JUB_JUB_INSTANCE_COST,
     ops = [
         (OperationBabyJubJubAddData => Add, BabyJubJubAddInput),
     ],

@@ -2419,9 +2419,125 @@ impl Stats {
         s.push('\n');
     }
 
+    /// Appends the per-function memory rankings to `s`: the machine-readable form of the three
+    /// rankings the report prints with `--mem-stats` / `--mem-full-stats` when symbols are loaded
+    /// (`-S`) — `MEM_TOP_COST`, `MEM_TOP_UNALIGNED` and `MEM_TOP_RATIO`. Costs are raw (the
+    /// on-screen tables scale them to millions) and function names are the full mangled symbols
+    /// (the report compacts them), so the snapshot stays exact.
+    ///
+    /// Unlike the rest of the snapshot, the rows are written with `sep` directly: a mangled name
+    /// can contain the separator, so the name goes last and is quoted (RFC 4180) instead of being
+    /// rewritten.
+    fn append_mem_functions_csv(&self, s: &mut String, sep: char) {
+        if !self.is_rois_enabled() || self.disable_call_stack {
+            return;
+        }
+        // Quotes the function name when it carries the separator, a quote or a newline.
+        let name_field = |name: &str| -> String {
+            if name.contains(sep) || name.contains('"') || name.contains('\n') {
+                format!("\"{}\"", name.replace('"', "\"\""))
+            } else {
+                name.to_string()
+            }
+        };
+        let pct = |v: u64, total: u64| -> String {
+            if total == 0 {
+                "0.00%".to_string()
+            } else {
+                format!("{:.2}%", 100.0 * v as f64 / total as f64)
+            }
+        };
+
+        // Functions ranked by total memory cost, with the cost per call.
+        let mem_cost_total = self.costs.mops.get_cost();
+        s.push_str(&format!(
+            "MEM_TOP_COST{sep}MEM COST{sep}%{sep}CALLS{sep}COST/CALL{sep}FUNCTION\n"
+        ));
+        for (index, _) in self.get_top_rois_by(|roi| roi.get_mem_cost()).iter() {
+            let roi = &self.rois[*index];
+            let mem_cost = roi.get_mem_cost();
+            if mem_cost == 0 {
+                continue;
+            }
+            let per_call = if roi.calls > 0 { mem_cost / roi.calls as u64 } else { 0 };
+            s.push_str(&format!(
+                "MEM_TOP_COST{sep}{mem_cost}{sep}{}{sep}{}{sep}{per_call}{sep}{}\n",
+                pct(mem_cost, mem_cost_total),
+                roi.calls,
+                name_field(&roi.name)
+            ));
+        }
+        s.push('\n');
+
+        // Same ranking restricted to the unaligned cost, with the aligned cost alongside; the
+        // percentage is the share of the function's own memory cost that is unaligned.
+        s.push_str(&format!(
+            "MEM_TOP_UNALIGNED{sep}UNALIGNED{sep}ALIGNED{sep}% UNALIGNED{sep}CALLS{sep}FUNCTION\n"
+        ));
+        for (index, _) in self.get_top_rois_by(|roi| roi.get_mem_unaligned_cost()).iter() {
+            let roi = &self.rois[*index];
+            let unaligned = roi.get_mem_unaligned_cost();
+            let aligned = roi.get_mem_aligned_cost();
+            if unaligned + aligned == 0 {
+                continue;
+            }
+            s.push_str(&format!(
+                "MEM_TOP_UNALIGNED{sep}{unaligned}{sep}{aligned}{sep}{}{sep}{}{sep}{}\n",
+                pct(unaligned, unaligned + aligned),
+                roi.calls,
+                name_field(&roi.name)
+            ));
+        }
+        s.push('\n');
+
+        // Functions ranked by how far their unaligned cost per step exceeds the global average,
+        // keeping only those above 1% of the total unaligned cost (same filter as the report).
+        let total_unaligned = self.costs.mops.get_unaligned_cost();
+        let total_steps = self.costs.steps;
+        if total_unaligned == 0 || total_steps == 0 {
+            return;
+        }
+        let global_per_step = total_unaligned as f64 / total_steps as f64;
+        let min_unaligned = total_unaligned as f64 * 0.01;
+        let mut ranked: Vec<(usize, f64)> = self
+            .rois
+            .iter()
+            .enumerate()
+            .filter(|(_, roi)| !self.top_rois_filter || roi.is_selected_roi)
+            .filter_map(|(index, roi)| {
+                let unaligned = roi.get_mem_unaligned_cost();
+                let steps = roi.get_steps();
+                if steps == 0 || (unaligned as f64) < min_unaligned {
+                    return None;
+                }
+                Some((index, (unaligned as f64 / steps as f64) / global_per_step))
+            })
+            .collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.truncate(self.top_rois);
+
+        s.push_str(&format!(
+            "MEM_TOP_RATIO{sep}RATIO{sep}UNALIGNED{sep}% UNALIGNED{sep}UNALIGNED ACCESSES/CALL{sep}CALLS{sep}FUNCTION\n"
+        ));
+        for (index, ratio) in ranked.iter() {
+            let roi = &self.rois[*index];
+            let unaligned = roi.get_mem_unaligned_cost();
+            let per_call =
+                if roi.calls > 0 { roi.get_mem_unaligned_count() / roi.calls as u64 } else { 0 };
+            s.push_str(&format!(
+                "MEM_TOP_RATIO{sep}{ratio:.2}{sep}{unaligned}{sep}{}{sep}{per_call}{sep}{}{sep}{}\n",
+                pct(unaligned, total_unaligned),
+                roi.calls,
+                name_field(&roi.name)
+            ));
+        }
+        s.push('\n');
+    }
+
     /// Builds the aggregate snapshot of this run, delimited by `sep`. The first column tags the
     /// section (`STEPS`, `COST`, `MEM`, `DETAILED_MEM`, `MEM_OFFSETS`, `OP_BASE`, `PRECOMPILES`,
-    /// `FROP`); sections are separated by a blank line. Numbers are raw (no thousands separators)
+    /// `FROP`, plus `MEM_TOP_COST` / `MEM_TOP_UNALIGNED` / `MEM_TOP_RATIO` with `--mem-stats` /
+    /// `--mem-full-stats` and symbols); sections are separated by a blank line. Numbers are raw (no thousands separators)
     /// for easy parsing.
     pub fn stats_csv(&self, sep: char) -> String {
         let (
@@ -2510,6 +2626,13 @@ impl Stats {
         // contains ';', so this is safe).
         if sep != ';' {
             s = s.replace(';', &sep.to_string());
+        }
+
+        // The per-function memory rankings shown with `--mem-stats` / `--mem-full-stats`. Appended
+        // after the swap because they write `sep` themselves (mangled names can contain it).
+        if self.mem_stats || self.mem_full_stats {
+            s.push('\n');
+            self.append_mem_functions_csv(&mut s, sep);
         }
         s
     }

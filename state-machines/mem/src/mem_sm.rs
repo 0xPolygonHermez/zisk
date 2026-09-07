@@ -17,7 +17,9 @@ use pil2_std_lib::Std;
 use proofman_common::{AirInstance, FromTrace, ProofmanResult};
 use proofman_fields::PrimeField64;
 use zisk_core::{RAM_ADDR, RAM_SIZE};
-use zisk_sm_mem_common::{MemHelpers, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT};
+use zisk_sm_mem_common::{
+    MemHelpers, MemLanes, MemModuleSegmentCheckPoint, RAM_W_ADDR_END, RAM_W_ADDR_INIT,
+};
 
 const OFFSET_DUAL_FLAG: u32 = 0x8000_0000;
 const OFFSET_USE_FLAG: u32 = 0x4000_0000;
@@ -34,6 +36,13 @@ pub struct MemPreviousSegment {
     pub addr: u32,
     pub step: u64,
     pub value: u64,
+}
+
+/// Lane layout of the `Mem` trace, read from the generated row so it always
+/// follows `lanes_x_row` in `state-machines/mem/pil/mem.pil`.
+#[inline]
+fn lanes_of<F: PrimeField64, R: MemTraceRowOps<F>>() -> MemLanes {
+    MemLanes::new(R::default().get_all_addr().len())
 }
 
 #[allow(unused, unused_variables)]
@@ -56,24 +65,28 @@ impl<F: PrimeField64> MemSM<F> {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
         let num_rows = MemTrace::<R>::NUM_ROWS;
+        let lanes = lanes_of::<F, R>();
 
         for i in 0..num_rows {
-            let addr = trace[i].get_addr() as u64 * 8;
-            let step = trace[i].get_step();
-            let main_step = if step == 0 { 0 } else { MemHelpers::mem_step_to_main_step(step) };
-            let op = if trace[i].get_wr() { 'W' } else { 'R' };
-            let values = [trace[i].get_value(0) as u64, trace[i].get_value(1) as u64];
-            let value = values[0] | (values[1] << 32);
-            writeln!(
-                writer,
-                "{i:<8} {addr:#010X} {step:>13} {main_step:>12} {op} {values:?} 0x{value:016X}"
-            )
-            .unwrap();
-            let dual = trace[i].get_sel_dual();
-            if dual {
-                let step = trace[i].get_step_dual();
-                writeln!(writer, "{i:<8} {addr:#010X} {step:>13} {main_step:>12} R {values:?} 0x{value:016X} DUAL")
-                    .unwrap();
+            for lane in 0..lanes.lanes() {
+                let addr = trace[i].get_addr(lane) as u64 * 8;
+                let step = trace[i].get_step(lane);
+                let main_step = if step == 0 { 0 } else { MemHelpers::mem_step_to_main_step(step) };
+                let op = if trace[i].get_wr(lane) { 'W' } else { 'R' };
+                let values =
+                    [trace[i].get_value(lane, 0) as u64, trace[i].get_value(lane, 1) as u64];
+                let value = values[0] | (values[1] << 32);
+                writeln!(
+                    writer,
+                    "{i:<8}.{lane} {addr:#010X} {step:>13} {main_step:>12} {op} {values:?} 0x{value:016X}"
+                )
+                .unwrap();
+                let dual = trace[i].get_sel_dual(lane);
+                if dual {
+                    let step = trace[i].get_step_dual(lane);
+                    writeln!(writer, "{i:<8}.{lane} {addr:#010X} {step:>13} {main_step:>12} R {values:?} 0x{value:016X} DUAL")
+                        .unwrap();
+                }
             }
         }
         println!("[MemDebug] done");
@@ -85,25 +98,32 @@ impl<F: PrimeField64> MemSM<F> {
         let file = File::create(file_name).unwrap();
         let mut writer = BufWriter::new(file);
         let num_rows = MemTrace::<R>::NUM_ROWS;
+        let lanes = lanes_of::<F, R>();
 
-        writeln!(writer, "row addr wr step chunk step_dual chunk_dual value sel_dual increment")
-            .unwrap();
+        writeln!(
+            writer,
+            "row lane addr wr step chunk step_dual chunk_dual value sel_dual increment"
+        )
+        .unwrap();
         for i in 0..num_rows {
-            let addr = trace[i].get_addr() as u64 * 8;
-            let step = trace[i].get_step();
-            let step_dual = trace[i].get_step_dual();
-            let chunk = if step == 0 { 0 } else { MemHelpers::mem_step_to_chunk(step).0 };
-            let chunk_dual =
-                if step_dual == 0 { 0 } else { MemHelpers::mem_step_to_chunk(step_dual).0 };
-            let value = trace[i].get_value(0) as u64 | ((trace[i].get_value(1) as u64) << 32);
-            let wr = trace[i].get_wr() as u8;
-            let sel_dual = trace[i].get_sel_dual() as u8;
-            let l_increment = trace[i].get_l_increment() as u64;
-            let h_increment = trace[i].get_h_increment() as u64;
+            for lane in 0..lanes.lanes() {
+                let addr = trace[i].get_addr(lane) as u64 * 8;
+                let step = trace[i].get_step(lane);
+                let step_dual = trace[i].get_step_dual(lane);
+                let chunk = if step == 0 { 0 } else { MemHelpers::mem_step_to_chunk(step).0 };
+                let chunk_dual =
+                    if step_dual == 0 { 0 } else { MemHelpers::mem_step_to_chunk(step_dual).0 };
+                let value = trace[i].get_value(lane, 0) as u64
+                    | ((trace[i].get_value(lane, 1) as u64) << 32);
+                let wr = trace[i].get_wr(lane) as u8;
+                let sel_dual = trace[i].get_sel_dual(lane) as u8;
+                let l_increment = trace[i].get_l_increment(lane) as u64;
+                let h_increment = trace[i].get_h_increment(lane) as u64;
 
-            let increment = l_increment + (h_increment << 22);
-            writeln!(writer, "{i} {addr:#08X} {wr} {step} {chunk} {step_dual} {chunk_dual} 0x{value:X} {sel_dual} {increment}")
+                let increment = l_increment + (h_increment << 22);
+                writeln!(writer, "{i} {lane} {addr:#08X} {wr} {step} {chunk} {step_dual} {chunk_dual} 0x{value:X} {sel_dual} {increment}")
                 .unwrap();
+            }
         }
         println!("[MemDebug] done");
     }
@@ -116,12 +136,15 @@ impl<F: PrimeField64> MemSM<F> {
         let file = std::fs::File::create(file_name).unwrap();
         let mut writer = std::io::BufWriter::new(file);
         let num_rows = MemTrace::<R>::NUM_ROWS;
+        let lanes = lanes_of::<F, R>();
 
         let mut last_addr = u32::MAX;
-        for i in 0..num_rows {
-            let addr = trace[i].get_addr();
+        // `islot` is the virtual row: the offsets table is expressed in these units.
+        for islot in 0..lanes.slots(num_rows) {
+            let (row, lane) = lanes.split(islot);
+            let addr = trace[row].get_addr(lane);
             if addr != last_addr {
-                writeln!(writer, "0x{:08X} {i}", addr * 8).unwrap();
+                writeln!(writer, "0x{:08X} {islot}", addr * 8).unwrap();
                 last_addr = addr;
             }
         }
@@ -176,10 +199,11 @@ impl<F: PrimeField64> MemSM<F> {
     /// The number of entries is implicit (file_size / 4).
     /// The base address is stored externally (segment->offsets_base_addr).
     ///
-    /// offsets[i] = 1-based row index of the first trace row whose qword address equals
-    ///              (from_addr + i).  If that address is absent, the slot inherits the value
-    ///              of the preceding slot (forward propagation); position 0 stays 0 when the
-    ///              halo address does not appear in the trace.
+    /// offsets[i] = 1-based virtual row (row * lanes_x_row + lane) of the first
+    ///              memory lane whose qword address equals (from_addr + i).  If
+    ///              that address is absent, the slot inherits the value of the
+    ///              preceding slot (forward propagation); position 0 stays 0 when
+    ///              the halo address does not appear in the trace.
     ///
     /// from_addr: first qword address in the trace for segment 0; previous_segment.addr for later
     ///            segments so the halo slot (index 0) is always present.
@@ -199,8 +223,10 @@ impl<F: PrimeField64> MemSM<F> {
         }
         println!("[MemDebug] saving binary offsets to {} .....", file_name);
 
-        let first_trace_addr = trace[0].get_addr();
-        let last_trace_addr = trace[count - 1].get_addr();
+        let lanes = lanes_of::<F, R>();
+        let (last_row, last_lane) = lanes.split(count - 1);
+        let first_trace_addr = trace[0].get_addr(0);
+        let last_trace_addr = trace[last_row].get_addr(last_lane);
 
         // For segment 0 the range starts at the first trace address; for later segments it starts
         // at previous_segment.addr so the halo slot (position 0) is always present.
@@ -209,8 +235,8 @@ impl<F: PrimeField64> MemSM<F> {
         let num_entries = (last_trace_addr - from_addr + 1) as usize;
         let mut offsets: Vec<u32> = vec![0u32; num_entries];
 
-        // Walk every row; on each address change fill the current slot and any gap since the
-        // previous address with the current offset (i + 1).
+        // Walk every virtual row; on each address change fill the current slot and any gap since
+        // the previous address with the current offset (islot + 1).
         // Slots before the first address stay 0 (halo position stays 0 when not in trace).
         let mut last_seen = from_addr;
         if segment_id == 0 {
@@ -218,13 +244,14 @@ impl<F: PrimeField64> MemSM<F> {
         } else {
             offsets[0] = 0;
         }
-        for i in 0..count {
-            let addr = trace[i].get_addr();
+        for islot in 0..count {
+            let (row, lane) = lanes.split(islot);
+            let addr = trace[row].get_addr(lane);
             if addr != last_seen {
                 let idx = (addr - from_addr) as usize;
                 let fill_from = (last_seen - from_addr) as usize + 1;
                 for offset in offsets.iter_mut().take(idx + 1).skip(fill_from) {
-                    *offset = (i + 1) as u32;
+                    *offset = (islot + 1) as u32;
                 }
                 last_seen = addr;
             }
@@ -242,9 +269,10 @@ impl<F: PrimeField64> MemSM<F> {
     /// Fills the witness trace from a **sorted** input slice (legacy path).
     ///
     /// `mem_ops` must be sorted by `(addr, step)` before this method is called.
-    /// Rows are written sequentially: each operation is assigned the next
-    /// available row in declaration order, so the trace is filled from top to
-    /// bottom with no random-access indexing.
+    /// Virtual rows are written sequentially: each operation is assigned the next
+    /// available lane in declaration order, so the trace is filled from top to
+    /// bottom (lane 0 .. lanes_x_row - 1 of each row) with no random-access
+    /// indexing.
     ///
     /// Use this path when the GPU / planning stage is disabled
     /// (`legacy_mem_count_and_plan` feature flag) and the CPU planner provides
@@ -286,6 +314,9 @@ impl<F: PrimeField64> MemSM<F> {
     ) -> ProofmanResult<AirInstance<F>> {
         let mut trace = MemTrace::<R>::new_from_vec(trace_buffer)?;
 
+        let lanes = lanes_of::<F, R>();
+        let num_slots = lanes.slots(trace.num_rows());
+
         let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
 
@@ -294,9 +325,10 @@ impl<F: PrimeField64> MemSM<F> {
         let mut last_addr = previous_segment.addr;
         let mut last_value = previous_segment.value;
         let mut dual_candidate = false;
-        // the last_step of previous_row
+        // the last_step of previous lane
         let mut last_step = previous_segment.step;
 
+        // `i` is a virtual row: `lanes.split(i)` gives the physical row and the lane inside it.
         let mut i = 0;
         let mut step = 0;
         let mem_op_count = mem_ops.len();
@@ -307,27 +339,30 @@ impl<F: PrimeField64> MemSM<F> {
             let addr_changes = last_addr != mem_op.addr;
             if dual_candidate {
                 dual_candidate = false;
-                trace[i].set_previous_step(last_step);
+                let (row, lane) = lanes.split(i);
+                trace[row].set_previous_step(lane, last_step);
                 // println!("trace[{i}].previous_step = {last_step} (last_step)");
                 let previous_step = mem_ops[index - 1].step;
                 let previous_chunk_id = MemHelpers::mem_step_to_chunk(previous_step);
                 let chunk_id = MemHelpers::mem_step_to_chunk(step);
                 if mem_op.is_write || addr_changes || previous_chunk_id != chunk_id {
                     // not dual, because write or addr changes
-                    trace[i].set_sel_dual(false);
-                    trace[i].set_step_dual(0);
+                    trace[row].set_sel_dual(lane, false);
+                    trace[row].set_step_dual(lane, 0);
                     // last step is previous_step (step)
                     last_step = previous_step;
                     i += 1;
                 } else {
-                    trace[i].set_sel_dual(true);
-                    trace[i].set_step_dual(step);
+                    trace[row].set_sel_dual(lane, true);
+                    trace[row].set_step_dual(lane, step);
                     // last step is step_dual (step)
                     last_step = step;
                     let increment_step =
                         step - previous_step - if mem_ops[index - 1].is_write { 1 } else { 0 };
                     assert_eq!(
-                        (trace[i].get_step_dual() - trace[i].get_step() - trace[i].get_wr() as u64),
+                        (trace[row].get_step_dual(lane)
+                            - trace[row].get_step(lane)
+                            - trace[row].get_wr(lane) as u64),
                         increment_step
                     );
                     range_22bits[increment_step as usize] += 1;
@@ -337,22 +372,24 @@ impl<F: PrimeField64> MemSM<F> {
                 }
             }
 
-            if i >= trace.num_rows() {
+            if i >= num_slots {
                 break;
             }
 
             dual_candidate = true;
 
+            let (row, lane) = lanes.split(i);
+
             // set the common values of trace between internal reads and regular memory operation
-            trace[i].set_addr(mem_op.addr);
-            trace[i].set_addr_changes(addr_changes);
+            trace[row].set_addr(lane, mem_op.addr);
+            trace[row].set_addr_changes(lane, addr_changes);
 
             let mut increment = if addr_changes {
                 (mem_op.addr - last_addr) as usize
             } else {
                 if step < last_step {
                     panic!(
-                        "MemSM: step < last_step {} < {} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} row:{} previous:{:?}",
+                        "MemSM: step < last_step {} < {} addr_changes:{} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} slot:{} previous:{:?}",
                         step, last_step, addr_changes as u8, mem_op.addr * 8, last_addr * 8, mem_op.step, last_step, i, previous_segment
                     );
                 }
@@ -361,24 +398,25 @@ impl<F: PrimeField64> MemSM<F> {
 
             // set specific values of trace for regular memory operation
             let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
-            trace[i].set_all_value(&[low_val, high_val]);
+            trace[row].set_value(lane, 0, low_val);
+            trace[row].set_value(lane, 1, high_val);
 
-            trace[i].set_step(step);
-            trace[i].set_sel(true);
+            trace[row].set_step(lane, step);
+            trace[row].set_sel(lane, true);
 
             if addr_changes || mem_op.is_write {
                 // in case of read operations of same address, add one to allow many reads
                 // over same address and step
-                trace[i].set_read_same_addr(false);
+                trace[row].set_read_same_addr(lane, false);
                 increment -= 1;
             } else {
-                trace[i].set_read_same_addr(true);
+                trace[row].set_read_same_addr(lane, true);
             }
             let l_increment = increment & ((1 << 22) - 1);
             let h_increment = increment >> 22;
-            trace[i].set_l_increment(l_increment as u32);
-            trace[i].set_h_increment(h_increment as u16);
-            trace[i].set_wr(mem_op.is_write);
+            trace[row].set_l_increment(lane, l_increment as u32);
+            trace[row].set_h_increment(lane, h_increment as u16);
+            trace[row].set_wr(lane, mem_op.is_write);
 
             #[cfg(feature = "debug_mem")]
             if (l_increment >= (1 << 22)) || (h_increment >= (1 << 16)) {
@@ -388,13 +426,8 @@ impl<F: PrimeField64> MemSM<F> {
 
             #[cfg(feature = "debug_mem")]
             if h_increment >= 0x1_0000 {
-                if i > 0 {
-                    panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?} {:?}",
-                         mem_op.addr, last_addr, mem_op.step, last_step, trace[i-1], trace[i]);
-                } else {
-                    panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} i:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{} {:?}",
-                         mem_op.addr, last_addr, mem_op.step, last_step, trace[i]);
-                }
+                panic!("MemSM: h_increment out of range: {h_increment} increment:{increment} slot:{i} addr_changes:{addr_changes} mem_op.addr:0x{:X} last_addr:0x{:X} mem_op.step:{} last_step:{}",
+                     mem_op.addr, last_addr, mem_op.step, last_step);
             }
             range_22bits[l_increment] += 1;
             range_16bits[h_increment] += 1;
@@ -403,45 +436,51 @@ impl<F: PrimeField64> MemSM<F> {
             last_value = mem_op.value;
         }
         if dual_candidate {
-            // if dual, need to "close" not dual row
-            trace[i].set_sel_dual(false);
-            trace[i].set_step_dual(0);
-            trace[i].set_previous_step(last_step);
+            // if dual, need to "close" not dual lane
+            let (row, lane) = lanes.split(i);
+            trace[row].set_sel_dual(lane, false);
+            trace[row].set_step_dual(lane, 0);
+            trace[row].set_previous_step(lane, last_step);
             last_step = step;
             i += 1;
         }
         let count = i;
 
-        // STEP3. Add dummy rows to the output vector to fill the remaining rows
+        // STEP3. Add dummy lanes to the output vector to fill the remaining virtual rows
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
-        let last_row_idx = count - 1;
-        let last_row = trace[last_row_idx];
-        let addr = last_row.get_addr();
-        let step =
-            if !last_row.get_sel_dual() { last_row.get_step() } else { last_row.get_step_dual() };
+        let (last_row, last_lane) = lanes.split(count - 1);
+        let addr = trace[last_row].get_addr(last_lane);
+        let step = if !trace[last_row].get_sel_dual(last_lane) {
+            trace[last_row].get_step(last_lane)
+        } else {
+            trace[last_row].get_step_dual(last_lane)
+        };
 
-        let value = last_row.get_all_value();
-        let padding_size = trace.num_rows() - count;
+        let value =
+            [trace[last_row].get_value(last_lane, 0), trace[last_row].get_value(last_lane, 1)];
+        let padding_size = num_slots - count;
         assert!(
             is_last_segment || padding_size == 0,
             "MemSM: padding_size must be 0 for non last segment, but got {padding_size}"
         );
-        for i in count..trace.num_rows() {
-            trace[i].set_previous_step(step);
-            trace[i].set_addr(addr);
-            trace[i].set_step(step);
-            trace[i].set_sel(false);
-            trace[i].set_wr(false);
+        for islot in count..num_slots {
+            let (row, lane) = lanes.split(islot);
+            trace[row].set_previous_step(lane, step);
+            trace[row].set_addr(lane, addr);
+            trace[row].set_step(lane, step);
+            trace[row].set_sel(lane, false);
+            trace[row].set_wr(lane, false);
 
-            trace[i].set_all_value(&value);
+            trace[row].set_value(lane, 0, value[0]);
+            trace[row].set_value(lane, 1, value[1]);
 
-            trace[i].set_addr_changes(false);
-            trace[i].set_h_increment(0);
-            trace[i].set_l_increment(0);
-            trace[i].set_read_same_addr(true);
-            trace[i].set_sel_dual(false);
-            trace[i].set_step_dual(0);
+            trace[row].set_addr_changes(lane, false);
+            trace[row].set_h_increment(lane, 0);
+            trace[row].set_l_increment(lane, 0);
+            trace[row].set_read_same_addr(lane, true);
+            trace[row].set_sel_dual(lane, false);
+            trace[row].set_step_dual(lane, 0);
         }
 
         if padding_size > 0 {
@@ -551,10 +590,14 @@ impl<F: PrimeField64> MemSM<F> {
     /// Fills the witness trace using a precomputed **offset table** (GPU path).
     ///
     /// `mem_ops` does not need to be sorted. Each operation is placed directly
-    /// into the trace row indicated by the `offsets` table, enabling
+    /// into the virtual row indicated by the `offsets` table, enabling
     /// random-access filling in a single pass.
     ///
     /// # Offset table layout
+    ///
+    /// The table is expressed in **virtual rows**: with `lanes_x_row` lanes per
+    /// physical row, the virtual row `v` is the lane `v % lanes_x_row` of the
+    /// physical row `v / lanes_x_row` (see [`MemLanes`]).
     ///
     /// `offset_base_addr` is the byte address of the first qword slot
     /// (i.e. the byte address of `offsets[0]`).  For every qword address
@@ -563,7 +606,7 @@ impl<F: PrimeField64> MemSM<F> {
     /// * `offsets[i] = 0` — **halo slot**: address `A` belongs to the
     ///   previous segment (`previous_segment`).  Only slot 0 of a non-first
     ///   segment can be 0.
-    /// * `offsets[i] = r + 1` — address `A` first appears at trace row `r`
+    /// * `offsets[i] = v + 1` — address `A` first appears at virtual row `v`
     ///   (1-based so that 0 is unambiguously the halo).
     /// * Addresses **absent** from this instance are forward-filled: the slot
     ///   for a missing address inherits the value of the *next* present
@@ -587,22 +630,29 @@ impl<F: PrimeField64> MemSM<F> {
         #[cfg(any(feature = "debug_mem", feature = "debug_mem_offsets"))]
         save_offsets_to_file(seg, &format!("tmp/mem_trace_gpu_{segment_id:04}_offsets.txt"));
 
+        let lanes = lanes_of::<F, R>();
+        let num_slots = lanes.slots(trace.num_rows());
+        // `current_offsets` packs a virtual row plus two flag bits in a u32.
+        debug_assert!(
+            num_slots < OFFSET_USE_FLAG as usize,
+            "MemSM: {num_slots} virtual rows do not fit in OFFSET_VALUE_MASK"
+        );
+
         let mut range_22bits: Vec<u32> = vec![0; 1 << 22];
         let mut range_16bits: Vec<u32> = vec![0; 1 << 16];
 
         // use special counter for internal reads
         let distance_base = previous_segment.addr - RAM_W_ADDR_INIT;
-        // the last_step of previous_row
+        // the last_step of previous lane
         let mut current_offsets = vec![0u32; seg.addr_range_slots as usize];
 
         #[cfg(feature = "debug_mem")]
-        let mut filled_rows = vec![false; trace.num_rows()];
+        let mut filled_slots = vec![false; num_slots];
         let offset_base_addr_w = seg.offsets_base_addr >> 3;
 
-        let mut i = 0;
         let mut step = 0;
         let mem_op_count = mem_ops.len();
-        let mut last_row_idx = 0;
+        let mut last_slot_idx = 0;
         let previous_segment_addr = previous_segment.addr - (segment_id == 0) as u32;
 
         // The address with offset 0 is the halo address, but point of view of continuations halo doesn't
@@ -614,10 +664,12 @@ impl<F: PrimeField64> MemSM<F> {
             step = mem_op.step;
 
             let addr_index = (mem_op.addr - offset_base_addr_w) as usize;
-            // The most significant bit of current_offsets is used to indicate whether the dual row is available for this address
+            // The most significant bit of current_offsets is used to indicate whether the dual slot is available for this address
             let mut dual_available = current_offsets[addr_index] & OFFSET_DUAL_FLAG != 0;
             let addr_changes = current_offsets[addr_index] == 0;
-            let mut irow = if addr_changes {
+            // `islot` is a virtual row: the offsets table is expressed in these units, so the
+            // physical row and the lane inside it come from `lanes.split(islot)`.
+            let mut islot = if addr_changes {
                 let off_val = seg.offset_at(addr_index as u32);
                 debug_assert!(off_val > 0, "MemSM: Address 0x{:X} at index {index} is out of offsets range, offset_base_addr_w: 0x{:X}",
                         mem_op.addr * 8, offset_base_addr_w * 8);
@@ -629,24 +681,25 @@ impl<F: PrimeField64> MemSM<F> {
             let mut init_row = false;
             let increment = if mem_op.is_write {
                 let _increment = if dual_available {
-                    // A write goes to a new row; if dual_available is true it means that
-                    // the current row is already occupied and therefore the write goes to a new row.
+                    // A write goes to a new lane; if dual_available is true it means that
+                    // the current lane is already occupied and therefore the write goes to a new lane.
                     // dual_available also means that addr_changes must be false
                     debug_assert!(
                         !addr_changes,
                         "MemSM: dual_available && addr_changes (addr: 0x{:X} index: {index})",
                         mem_op.addr * 8
                     );
-                    // fill sel_dual and step_dual for not dual row
+                    // fill sel_dual and step_dual for not dual lane
                     dual_available = false;
-                    irow += 1;
-                    step - if irow == 0 {
+                    islot += 1;
+                    step - if islot == 0 {
                         previous_segment.step
                     } else {
-                        trace[irow - 1].get_step()
+                        let (prow, plane) = lanes.split(islot - 1);
+                        trace[prow].get_step(plane)
                     } - 1
                 } else if addr_changes {
-                    // First access to this address → new row. The previous
+                    // First access to this address → new lane. The previous
                     // distinct address comes from the sparse change-point
                     // table (was a backward linear scan on the dense
                     // offsets array before the SoA refactor).
@@ -658,7 +711,7 @@ impl<F: PrimeField64> MemSM<F> {
                         previous_addr_w < mem_op.addr as u64,
                         "MemSM: Warning: address goes back \
                               or no change (on addr_changes path) from 0x{:X} to 0x{:X} \
-                              at irow {irow} (offset_base_addr_w: 0x{:X})",
+                              at slot {islot} (offset_base_addr_w: 0x{:X})",
                         mem_op.addr * 8,
                         previous_addr_w * 8,
                         offset_base_addr_w * 8
@@ -666,16 +719,19 @@ impl<F: PrimeField64> MemSM<F> {
 
                     mem_op.addr as u64 - previous_addr_w - 1
                 } else {
-                    // How addr_changes is false, means that the previous row belongs to same address,
+                    // How addr_changes is false, means that the previous lane belongs to same address,
                     // in this case, how the inputs are in natural time order, we could read from
-                    // previous trace the "last step", if dual the dual_step, else the step.
+                    // previous lane the "last step", if dual the dual_step, else the step.
 
-                    let previous_step = if irow == 0 {
+                    let previous_step = if islot == 0 {
                         previous_segment.step
-                    } else if trace[irow - 1].get_sel_dual() {
-                        trace[irow - 1].get_step_dual()
                     } else {
-                        trace[irow - 1].get_step()
+                        let (prow, plane) = lanes.split(islot - 1);
+                        if trace[prow].get_sel_dual(plane) {
+                            trace[prow].get_step_dual(plane)
+                        } else {
+                            trace[prow].get_step(plane)
+                        }
                     };
                     if step <= previous_step {
                         #[cfg(feature = "debug_mem")]
@@ -684,23 +740,23 @@ impl<F: PrimeField64> MemSM<F> {
                             &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"),
                         );
                         panic!("MemSM: Warning: step {step} is not greater than previous_step {previous_step} \
-                                for write operation at index {index} and irow {irow} with addr 0x{:X} \
+                                for write operation at index {index} and slot {islot} with addr 0x{:X} \
                                 (addr_index: {addr_index} previous_segment.addr: 0x{:X} offset_base_addr_w: 0x{:X})",
                             mem_op.addr * 8, previous_segment_addr * 8, offset_base_addr_w * 8);
                     }
                     step - previous_step - 1
                 };
-                current_offsets[addr_index] = (irow as u32) | OFFSET_DUAL_FLAG;
+                current_offsets[addr_index] = (islot as u32) | OFFSET_DUAL_FLAG;
                 init_row = true;
                 _increment
             } else if addr_changes {
                 // It's the first address access, it's a read, means no dual.
                 debug_assert!(
                     !dual_available,
-                    "MemSM: asddr_changes && dual_available (addr: 0x{:X} index: {index})",
+                    "MemSM: addr_changes && dual_available (addr: 0x{:X} index: {index})",
                     mem_op.addr * 8
                 );
-                current_offsets[addr_index] = (irow as u32) | OFFSET_DUAL_FLAG;
+                current_offsets[addr_index] = (islot as u32) | OFFSET_DUAL_FLAG;
                 // dual available
                 init_row = true;
 
@@ -711,7 +767,7 @@ impl<F: PrimeField64> MemSM<F> {
                     previous_addr < mem_op.addr as u64,
                     "MemSM: Warning: address goes back \
                               or no change (on addr_changes path) from 0x{:X} to 0x{:X} \
-                              at irow {irow} (offset_base_addr_w: 0x{:X})",
+                              at slot {islot} (offset_base_addr_w: 0x{:X})",
                     mem_op.addr * 8,
                     previous_addr * 8,
                     offset_base_addr_w * 8
@@ -719,126 +775,135 @@ impl<F: PrimeField64> MemSM<F> {
                 mem_op.addr as u64 - previous_addr - 1
             } else if dual_available {
                 // It's dual read, not addr_changes.
-                let prev_step = trace[irow].get_step();
+                let (row, lane) = lanes.split(islot);
+                let prev_step = trace[row].get_step(lane);
                 // But duals must be in the same chunk, otherwise I can't use
                 if MemHelpers::mem_steps_belongs_to_same_chunk(prev_step, step) {
-                    trace[irow].set_sel_dual(true);
-                    trace[irow].set_step_dual(step);
-                    current_offsets[addr_index] = irow as u32 + 1;
-                    step - prev_step - if trace[irow].get_wr() { 1 } else { 0 }
+                    trace[row].set_sel_dual(lane, true);
+                    trace[row].set_step_dual(lane, step);
+                    current_offsets[addr_index] = islot as u32 + 1;
+                    step - prev_step - if trace[row].get_wr(lane) { 1 } else { 0 }
                 } else {
                     dual_available = false;
-                    irow += 1;
+                    islot += 1;
                     init_row = true;
-                    current_offsets[addr_index] = (irow as u32) | OFFSET_DUAL_FLAG;
+                    current_offsets[addr_index] = (islot as u32) | OFFSET_DUAL_FLAG;
                     step - prev_step
                 }
             } else {
-                current_offsets[addr_index] = (irow as u32) | OFFSET_DUAL_FLAG;
+                current_offsets[addr_index] = (islot as u32) | OFFSET_DUAL_FLAG;
                 // dual available
                 init_row = true;
-                if irow >= trace.num_rows() {
+                if islot >= num_slots {
                     break;
                 }
                 // set specific values of trace for regular memory operation
-                step - if irow == 0 {
+                step - if islot == 0 {
                     previous_segment.step
-                } else if trace[irow - 1].get_sel_dual() {
-                    trace[irow - 1].get_step_dual()
                 } else {
-                    trace[irow - 1].get_step()
+                    let (prow, plane) = lanes.split(islot - 1);
+                    if trace[prow].get_sel_dual(plane) {
+                        trace[prow].get_step_dual(plane)
+                    } else {
+                        trace[prow].get_step(plane)
+                    }
                 }
             };
             if init_row {
-                if irow >= trace.num_rows() {
+                if islot >= num_slots {
                     break;
                 }
                 #[cfg(feature = "debug_mem")]
                 {
-                    if filled_rows[irow] {
+                    if filled_slots[islot] {
                         Self::dump_trace_to_file(
                             &trace,
                             &format!("tmp/mem_trace_gpu_{segment_id:04}_dump.txt"),
                         );
                         break;
                     }
-                    filled_rows[irow] = true;
+                    filled_slots[islot] = true;
                 }
+                let (row, lane) = lanes.split(islot);
                 // always set dual to false because we don't know if there will dual reads, maybe
                 // this is the last access to this address in this segment.
-                trace[irow].set_sel_dual(false);
-                trace[irow].set_step_dual(0);
-                trace[irow].set_addr(mem_op.addr);
-                trace[irow].set_step(step);
-                trace[irow].set_sel(true);
-                trace[irow].set_addr_changes(addr_changes);
-                trace[irow].set_wr(mem_op.is_write);
+                trace[row].set_sel_dual(lane, false);
+                trace[row].set_step_dual(lane, 0);
+                trace[row].set_addr(lane, mem_op.addr);
+                trace[row].set_step(lane, step);
+                trace[row].set_sel(lane, true);
+                trace[row].set_addr_changes(lane, addr_changes);
+                trace[row].set_wr(lane, mem_op.is_write);
                 let (low_val, high_val) = (mem_op.value as u32, (mem_op.value >> 32) as u32);
-                trace[irow].set_value(0, low_val);
-                trace[irow].set_value(1, high_val);
-                // trace[irow].set_read_same_addr((addr_changes || mem_op.is_write) == false);
-                // range check between rows
+                trace[row].set_value(lane, 0, low_val);
+                trace[row].set_value(lane, 1, high_val);
+                // trace[row].set_read_same_addr(lane, (addr_changes || mem_op.is_write) == false);
+                // range check between lanes
                 let increment = increment as usize;
                 let l_increment = increment & ((1 << 22) - 1);
                 let h_increment = increment >> 22;
-                trace[irow].set_l_increment(l_increment as u32);
-                trace[irow].set_h_increment(h_increment as u16);
+                trace[row].set_l_increment(lane, l_increment as u32);
+                trace[row].set_h_increment(lane, h_increment as u16);
 
                 range_22bits[l_increment] += 1;
                 range_16bits[h_increment] += 1;
             }
-            // trace[irow].set_previous_step
+            // trace[row].set_previous_step(lane, ...)
             if dual_available {
                 // range check dual
                 range_22bits[increment as usize] += 1;
             }
-            if irow > last_row_idx {
-                last_row_idx = irow;
+            if islot > last_slot_idx {
+                last_slot_idx = islot;
             }
         }
 
         #[cfg(feature = "debug_mem")]
         {
-            let mut prev_filled_row = filled_rows[0];
-            let mut from_row = 0;
-            let count = if is_last_segment { last_row_idx } else { trace.num_rows() };
-            for (i, filled) in filled_rows.iter().enumerate().take(count) {
+            let mut prev_filled_slot = filled_slots[0];
+            let mut from_slot = 0;
+            let count = if is_last_segment { last_slot_idx } else { num_slots };
+            for (i, filled) in filled_slots.iter().enumerate().take(count) {
                 debug_assert!(
-                    *filled == prev_filled_row,
+                    *filled == prev_filled_slot,
                     "MemSM: not complete instance found [{}..{}] = {}",
-                    from_row,
+                    from_slot,
                     i - 1,
-                    prev_filled_row
+                    prev_filled_slot
                 );
             }
         }
-        // STEP3. Add dummy rows to the output vector to fill the remaining rows
+        // STEP3. Add dummy lanes to the output vector to fill the remaining virtual rows
         // PADDING: At end of memory fill with same addr, incrementing step, same value, sel = 0, rd
         // = 1, wr = 0
-        let last_row = trace[last_row_idx];
-        let addr = last_row.get_addr();
-        let step =
-            if !last_row.get_sel_dual() { last_row.get_step() } else { last_row.get_step_dual() };
+        let (last_row, last_lane) = lanes.split(last_slot_idx);
+        let addr = trace[last_row].get_addr(last_lane);
+        let step = if !trace[last_row].get_sel_dual(last_lane) {
+            trace[last_row].get_step(last_lane)
+        } else {
+            trace[last_row].get_step_dual(last_lane)
+        };
 
-        let low_value = last_row.get_value(0);
-        let high_value = last_row.get_value(1);
-        let padding_size = trace.num_rows() - last_row_idx - 1;
-        for i in (last_row_idx + 1)..trace.num_rows() {
-            // trace[i].set_previous_step(step);
-            trace[i].set_addr(addr);
-            trace[i].set_step(step);
-            trace[i].set_sel(false);
-            trace[i].set_wr(false);
+        let low_value = trace[last_row].get_value(last_lane, 0);
+        let high_value = trace[last_row].get_value(last_lane, 1);
+        let padding_size = num_slots - last_slot_idx - 1;
+        for islot in (last_slot_idx + 1)..num_slots {
+            let (row, lane) = lanes.split(islot);
+            // trace[row].set_previous_step(lane, step);
+            trace[row].set_addr(lane, addr);
+            trace[row].set_step(lane, step);
+            trace[row].set_sel(lane, false);
+            trace[row].set_wr(lane, false);
 
-            trace[i].set_value(0, low_value);
-            trace[i].set_value(1, high_value);
+            trace[row].set_value(lane, 0, low_value);
+            trace[row].set_value(lane, 1, high_value);
 
-            trace[i].set_addr_changes(false);
-            trace[i].set_h_increment(0);
-            trace[i].set_l_increment(0);
-            // trace[i].set_read_same_addr(true);
-            trace[i].set_sel_dual(false);
-            trace[i].set_step_dual(0);
+            trace[row].set_addr_changes(lane, false);
+            trace[row].set_h_increment(lane, 0);
+            trace[row].set_l_increment(lane, 0);
+            // trace[row].set_read_same_addr(lane, true);
+            trace[row].set_sel_dual(lane, false);
+            trace[row].set_step_dual(lane, 0);
         }
 
         if padding_size > 0 {
@@ -849,7 +914,7 @@ impl<F: PrimeField64> MemSM<F> {
 
         // no add extra +1 because index = value - 1
         // RAM_W_ADDR_END - last_addr + 1 - 1 = RAM_W_ADDR_END - last_addr
-        let distance_end = RAM_W_ADDR_END - last_row.get_addr();
+        let distance_end = RAM_W_ADDR_END - addr;
 
         // Add one in range_check_data_max because it's used by intermediate reads, and reads
         // add one to distance to allow same step on read operations.
@@ -860,16 +925,14 @@ impl<F: PrimeField64> MemSM<F> {
         air_values.is_last_segment = F::from_bool(is_last_segment);
         air_values.previous_segment_step = F::from_u64(previous_segment.step);
         air_values.previous_segment_addr = F::from_u32(previous_segment.addr);
-        air_values.segment_last_addr = F::from_u32(last_row.get_addr());
-        let last_step =
-            if !last_row.get_sel_dual() { last_row.get_step() } else { last_row.get_step_dual() };
-        air_values.segment_last_step = F::from_u64(last_step);
+        air_values.segment_last_addr = F::from_u32(addr);
+        air_values.segment_last_step = F::from_u64(step);
 
         air_values.previous_segment_value[0] = F::from_u32(previous_segment.value as u32);
         air_values.previous_segment_value[1] = F::from_u32((previous_segment.value >> 32) as u32);
 
-        air_values.segment_last_value[0] = F::from_u32(last_row.get_value(0));
-        air_values.segment_last_value[1] = F::from_u32(last_row.get_value(1));
+        air_values.segment_last_value[0] = F::from_u32(low_value);
+        air_values.segment_last_value[1] = F::from_u32(high_value);
 
         let distance_base = [distance_base as u16, (distance_base >> 16) as u16];
         let distance_end = [distance_end as u16, (distance_end >> 16) as u16];

@@ -117,6 +117,18 @@ impl MemAlignInstanceCounter {
         self.instances_available = instances;
     }
 
+    /// Sets the row cost of each memory alignment type, which doubles as the air's capability mask:
+    /// a zero cost means the type is not offered to this air at all.
+    ///
+    /// # Parameters
+    /// - `costs`: The new per-type row costs (full_5, full_3, full_2, read_byte, write_byte).
+    #[inline(always)]
+    pub fn set_costs(&mut self, costs: &[u32; MA_TYPES]) {
+        for (data, &cost) in self.collect_data.iter_mut().zip(costs) {
+            data.cost = cost;
+        }
+    }
+
     /// Updates the processing order for memory alignment types.
     ///
     /// # Parameters

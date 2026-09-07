@@ -22,7 +22,11 @@ zisk-transpiler-common = { workspace = true }
 zisk-lib-float = { workspace = true, optional = true }
 
 [features]
-default = []
+# Zba is proven natively by ZisK (sh<n>add and slli.uw in the binary state machines, add.uw
+# and the .uw shift-and-adds by transpilation), so it is enabled by default like the Zbb /
+# Zbs / Zbkb extensions. Use `default-features = false` (plus `zba` for the decomposed
+# sequences) to opt out.
+default = ["zba_native"]
 zba = ["zisk-transpiler-common/zba", "zisk-core/zba"]
 zbc = ["zisk-transpiler-common/zbc", "zisk-core/zbc"]
 zbkc = ["zisk-transpiler-common/zbkc", "zisk-core/zbkc"]

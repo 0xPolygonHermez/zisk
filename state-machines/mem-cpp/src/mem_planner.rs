@@ -7,7 +7,8 @@ use crate::*;
 use zisk_sm_mem_common::save_plans;
 use zisk_sm_mem_common::MEM_OFFSETS_PAGE_SIZE;
 use zisk_sm_mem_common::{
-    MemAlignCounters, MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
+    input_data_lanes_x_row, mem_lanes_x_row, rom_data_lanes_x_row, MemAlignCounters,
+    MemAlignPlanner, MemModuleCheckPoint, MemModuleSegmentCheckPoint,
 };
 
 use zisk_common::{CheckPoint, ChunkId, InstanceType, Plan, SegmentId};
@@ -53,12 +54,17 @@ impl Default for MemPlanner {
 impl MemPlanner {
     /// Creates and prepares the planner. Rows per instance come from the
     /// PIL trace sizes so the C++ side never hardcodes them.
+    ///
+    /// The three airs pack `lanes_x_row` memory lanes on each row, and the
+    /// offsets table the planner emits is expressed in **virtual rows** (one per
+    /// lane), so every row budget is scaled by its lane count (see
+    /// [`zisk_sm_mem_common::MemLanes`]).
     pub fn new() -> Self {
         let ptr = unsafe {
             bindings::create_mem_count_and_plan(
-                RomDataTrace::<()>::NUM_ROWS as u32,
-                InputDataTrace::<()>::NUM_ROWS as u32,
-                MemTrace::<()>::NUM_ROWS as u32,
+                (RomDataTrace::<()>::NUM_ROWS * rom_data_lanes_x_row()) as u32,
+                (InputDataTrace::<()>::NUM_ROWS * input_data_lanes_x_row()) as u32,
+                (MemTrace::<()>::NUM_ROWS * mem_lanes_x_row()) as u32,
             )
         };
         assert!(!ptr.is_null(), "Failed to create MemCountAndPlan");

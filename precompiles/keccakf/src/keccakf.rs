@@ -3,11 +3,11 @@ use std::sync::Arc;
 use pil2_std_lib::Std;
 use proofman_fields::PrimeField64;
 
-use proofman_common::{AirInstance, FromTrace, ProofmanResult, SetupCtx};
+use proofman_common::{AirInstance, FromTrace, GenericTrace, ProofmanResult, SetupCtx};
 use proofman_util::{timer_start_trace, timer_stop_and_log_trace};
 
 use zisk_common::OperationKeccakData;
-use zisk_pil::{KeccakfTrace, KeccakfTraceRowOps};
+use zisk_pil::{KeccakfTraceRowOps, ZISK_AIRGROUP_ID};
 use zisk_precomp_helpers::{
     keccak_f_round, keccakf_bit_pos, keccakf_state_from_linear, KeccakState,
 };
@@ -35,9 +35,10 @@ impl KeccakfInput {
 }
 
 /// The `KeccakfSM` struct encapsulates the logic of the Keccakf State Machine.
+/// Nothing here depends on the height of the air: the capacity is taken from the trace each call
+/// builds, so a taller sibling would need no change.
 pub struct KeccakfSM<F: PrimeField64> {
     /// Number of available keccakfs in the trace.
-    pub num_available_keccakfs: usize,
 
     /// Reference to the PIL2 standard library.
     std: Arc<Std<F>>,
@@ -95,7 +96,6 @@ impl<F: PrimeField64> KeccakfSM<F> {
     /// A new `KeccakfSM` instance.
     pub fn new(std: Arc<Std<F>>) -> Arc<Self> {
         // Compute some useful values
-        let num_available_keccakfs = OPS_PER_SLOT * (KeccakfTrace::<()>::NUM_ROWS / CLOCKS);
 
         // Get the table IDs
         let chi_table_id = std
@@ -105,7 +105,7 @@ impl<F: PrimeField64> KeccakfSM<F> {
             .get_virtual_table_id(KeccakfXor5TableSM::TABLE_ID)
             .expect("Failed to get Keccakf xor5 table ID");
 
-        Arc::new(Self { num_available_keccakfs, std, chi_table_id, xor5_table_id })
+        Arc::new(Self { std, chi_table_id, xor5_table_id })
     }
 
     /// Processes one slot: fills its CLOCKS-row block of the trace with the two
@@ -284,17 +284,24 @@ impl<F: PrimeField64> KeccakfSM<F> {
     ///
     /// # Returns
     /// An `AirInstance` containing the computed witness data.
-    pub fn compute_witness<R: KeccakfTraceRowOps<F>>(
+    /// The air is selected by the `NUM_ROWS` / `AIR_ID` consts of the trace this builds, so one
+    /// body serves every height the air is instantiated at.
+    pub fn compute_witness<R: KeccakfTraceRowOps<F>, const NUM_ROWS: usize, const AIR_ID: usize>(
         &self,
         _sctx: &SetupCtx<F>,
         inputs: &[Vec<KeccakfInput>],
         trace_buffer: Vec<F>,
     ) -> ProofmanResult<AirInstance<F>> {
-        let mut trace = KeccakfTrace::<R>::new_from_vec_zeroes(trace_buffer)?;
+        let mut trace = GenericTrace::<R, NUM_ROWS, ZISK_AIRGROUP_ID, AIR_ID>::new_from_vec_zeroes(
+            trace_buffer,
+        )?;
         let num_rows = trace.num_rows();
 
         // Check that we can fit all the keccakfs in the trace
-        let num_available_keccakfs = self.num_available_keccakfs;
+        // Capacity of the air this call builds, taken from `NUM_ROWS`: deriving it from a
+        // fixed trace alias instead is what breaks the moment the air gains a taller
+        // sibling, since the instance would be measured against the short air's capacity.
+        let num_available_keccakfs = OPS_PER_SLOT * (NUM_ROWS / CLOCKS);
         let num_inputs = inputs.iter().map(|v| v.len()).sum::<usize>();
         if num_inputs > num_available_keccakfs {
             panic!(

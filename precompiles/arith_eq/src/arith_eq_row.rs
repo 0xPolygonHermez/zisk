@@ -1,8 +1,9 @@
 //! Parameterized witness-row abstraction for the ArithEq family.
 //!
 //! Goal: one witness computation (`arith_eq.rs`, `ArithEqSM`) that serves every `equations`
-//! configuration of the `ArithEq` airtemplate (ArithEq, Arith256, Arith256Mod, Arith256X,
-//! ArithSecp256K1, …) without replicating the file, even though each config is a *different* air with
+//! configuration of the `ArithEq` airtemplate (ArithEq, Arith256X, ArithSecp256K1, ArithBn254, and
+//! the `Large` sibling of each) without replicating the file, even though each config is a
+//! *different* air with
 //! a *different* trace row type, a *different* set of columns, and a *different* `AIR_ID`.
 //!
 //! Design (no proofman changes; only this crate + the generated `zisk_pil` trace rows):
@@ -91,7 +92,7 @@ pub trait ArithEqRow<F: PrimeField64>: TraceRow {
     /// The concrete `GenericTrace` alias for this config (carries the right `AIR_ID`).
     type Trace;
 
-    /// Human-readable air name (e.g. `"Arith256Trace"`), for logs.
+    /// Human-readable air name (e.g. `"Arith256XTrace"`), for logs.
     const AIR_NAME: &'static str;
 
     // Range-check profile — must mirror exactly which columns this config's PIL range-checks, so the

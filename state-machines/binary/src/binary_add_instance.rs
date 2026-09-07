@@ -13,7 +13,17 @@ use zisk_common::StatsType;
 use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
-use zisk_pil::{BinaryAddTrace, BinaryAddTraceRow, BinaryAddTraceRowPacked};
+use zisk_pil::{
+    BinaryAddHugeTrace, BinaryAddHugeTraceRow, BinaryAddHugeTraceRowPacked, BinaryAddLargeTrace,
+    BinaryAddLargeTraceRow, BinaryAddLargeTraceRowPacked, BinaryAddTrace, BinaryAddTraceRow,
+    BinaryAddTraceRowPacked,
+};
+
+/// Air id of each `BinaryAdd` air. They no longer differ only in height: each packs a different
+/// number of operations per row, so each has its own row type.
+const AIR_ID: usize = BinaryAddTrace::<()>::AIR_ID;
+const LARGE_AIR_ID: usize = BinaryAddLargeTrace::<()>::AIR_ID;
+const HUGE_AIR_ID: usize = BinaryAddHugeTrace::<()>::AIR_ID;
 
 /// The `BinaryAddInstance` struct represents an instance for binary add witness computations.
 ///
@@ -49,9 +59,8 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         mut ictx: InstanceCtx,
         std: Arc<Std<F>>,
     ) -> Self {
-        assert_eq!(
-            ictx.plan.air_id,
-            BinaryAddTrace::<()>::AIR_ID,
+        assert!(
+            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID | HUGE_AIR_ID),
             "BinaryAddInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -65,13 +74,13 @@ impl<F: PrimeField64> BinaryAddInstance<F> {
         Self { binary_add_sm, collect_info, ictx, std }
     }
 
+    /// Which of the three `BinaryAdd` airs this instance is. They pack a different number of
+    /// operations per row, so this picks the row type the trace is built with.
+    fn air_id(&self) -> usize {
+        self.ictx.plan.air_id
+    }
+
     pub fn build_binary_add_collector(&self, chunk_id: ChunkId) -> BinaryAddCollector<F> {
-        assert_eq!(
-            self.ictx.plan.air_id,
-            BinaryAddTrace::<()>::AIR_ID,
-            "BinaryAddInstance: Unsupported air_id: {:?}",
-            self.ictx.plan.air_id
-        );
         BinaryAddCollector::new(self.collect_info[&chunk_id], self.std.clone())
     }
 }
@@ -105,17 +114,28 @@ impl<F: PrimeField64> Instance<F> for BinaryAddInstance<F> {
             })
             .collect();
 
-        if packed {
-            Ok(Some(
-                self.binary_add_sm
-                    .compute_witness::<BinaryAddTraceRowPacked<F>>(&inputs, trace_buffer)?,
-            ))
-        } else {
-            Ok(Some(
-                self.binary_add_sm
-                    .compute_witness::<BinaryAddTraceRow<F>>(&inputs, trace_buffer)?,
-            ))
-        }
+        let sm = &self.binary_add_sm;
+        Ok(Some(match (self.air_id(), packed) {
+            (AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryAddTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryAddTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (LARGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryAddLargeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (LARGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryAddLargeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, true) => {
+                sm.compute_witness::<_, BinaryAddHugeTraceRowPacked<F>>(&inputs, trace_buffer)?
+            }
+            (HUGE_AIR_ID, false) => {
+                sm.compute_witness::<_, BinaryAddHugeTraceRow<F>>(&inputs, trace_buffer)?
+            }
+            (air_id, _) => panic!("BinaryAddInstance: Unsupported air_id: {air_id:?}"),
+        }))
     }
 
     /// Retrieves the checkpoint associated with this instance.
