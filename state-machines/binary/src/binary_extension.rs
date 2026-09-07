@@ -16,8 +16,7 @@ use proofman_fields::PrimeField64;
 use rayon::prelude::*;
 use zisk_core::zisk_ops::ZiskOp;
 use zisk_pil::{
-    BinaryExtensionAirValues, BinaryExtensionHugeAirValues, BinaryExtensionHugeTrace,
-    BinaryExtensionHugeTraceRowOps, BinaryExtensionLargeAirValues, BinaryExtensionLargeTrace,
+    BinaryExtensionAirValues, BinaryExtensionLargeAirValues, BinaryExtensionLargeTrace,
     BinaryExtensionLargeTraceRowOps, BinaryExtensionTrace, BinaryExtensionTraceRowOps,
 };
 
@@ -39,12 +38,12 @@ const LS_6_BITS: u64 = 0x3F;
 
 /// Ties an extension row type to the trace of the air it fills and to that air's packing width.
 ///
-/// The three extension airs pack a different number of operations per row (`lanes_x_row` in
+/// The two extension airs pack a different number of operations per row (`lanes_x_row` in
 /// `binary_extension.pil`), so they commit the same columns at different widths and cannot share a
 /// row type: each has its own, and `Self::LANES_X_ROW` is what tells the shared fill logic how many
 /// slots to write.
 ///
-/// Every lane of every one of them is a `full` one (`full` defaults to `lanes_x_row` in the PIL), so
+/// Every lane of both of them is a `full` one (`full` defaults to `lanes_x_row` in the PIL), so
 /// each owns the shift-amount high bits, the byte-chain flags and `b[2]`, and therefore proves every
 /// extension operation — chain families and dirty operands included. That is what lets any operation
 /// go in any slot and keeps this fill a plain sequential walk with nothing to route.
@@ -173,12 +172,6 @@ impl_binary_extension_row!(
     BinaryExtensionLargeTrace,
     BinaryExtensionLargeAirValues,
     crate::lanes_x_row::EXT_LARGE
-);
-impl_binary_extension_row!(
-    BinaryExtensionHugeTraceRowOps,
-    BinaryExtensionHugeTrace,
-    BinaryExtensionHugeAirValues,
-    crate::lanes_x_row::EXT_HUGE
 );
 
 /// The `BinaryExtensionSM` struct defines the Binary Extension State Machine.

@@ -11,7 +11,6 @@
 use super::*;
 use proofman_fields::Goldilocks;
 use std::collections::BTreeMap;
-use zisk_pil::ArithEqLargeTrace;
 
 // NOTE: not named `Planner`, which would shadow the `zisk_common::Planner` trait `plan` comes from.
 type TestPlanner = ArithEqPlanner<Goldilocks>;
@@ -19,6 +18,22 @@ type TestPlanner = ArithEqPlanner<Goldilocks>;
 fn cap_of(air_id: usize) -> u64 {
     let meta = air_metas().into_iter().find(|m| m.air_id == air_id).unwrap();
     meta.num_rows as u64 / ARITH_EQ_ROWS_BY_OP as u64
+}
+
+/// The air a bulk of `op` lands in: the most capacious air covering it, ties broken by the least
+/// memory — the rule `plan_air_strategy` applies.
+///
+/// The filler tests need "the air that holds whole instances of this op" and not a particular alias:
+/// what they check is that the collect windows tile, not which air the strategy picked. Deriving it
+/// keeps them meaningful when `zisk.pil` reorders the ladders, as it did by giving `Arith256X` and
+/// `ArithSecp256K1` a `Huge` sibling taller than the universal airs.
+fn bulk_air_of(op: ArithEqOp) -> usize {
+    air_metas()
+        .into_iter()
+        .filter(|m| m.covers(op))
+        .min_by_key(|m| (std::cmp::Reverse(m.num_rows), m.cost))
+        .unwrap()
+        .air_id
 }
 
 /// Builds the planner input from per-chunk `(op, count)` lists, in chunk order.
@@ -124,12 +139,12 @@ fn plan_of(per_chunk: &[&[(ArithEqOp, u64)]]) -> Vec<Plan> {
     TestPlanner::new().plan(counters(per_chunk))
 }
 
-/// No instance may be handed more operations than *its own* air holds. The configs come in two
-/// heights, so a plan sized against the shorter one would be rejected by the witness computation the
-/// moment it landed on a tall instance — which is exactly the shape of the capacity bug this pins.
+/// No instance may be handed more operations than *its own* air holds. The configs come in several
+/// heights, so a plan sized against a shorter one would be rejected by the witness computation the
+/// moment it landed on a taller instance — which is exactly the shape of the capacity bug this pins.
 #[test]
 fn no_instance_is_given_more_than_its_air_holds() {
-    let tall = cap_of(ArithEqLargeTrace::<()>::AIR_ID);
+    let tall = cap_of(bulk_air_of(ArithEqOp::Arith256));
     let shapes: &[&[(ArithEqOp, u64)]] = &[
         &[(ArithEqOp::Arith256, 3)],
         &[(ArithEqOp::Arith256, tall + 1)],
@@ -179,8 +194,8 @@ fn windows_tile_across_several_chunks() {
 fn an_op_spanning_several_instances_is_split_without_gaps() {
     // One chunk holding more of a single op than an instance can take: the filler must cut it into
     // consecutive windows, one per instance.
-    // The tall universal air is where a bulk of any operation goes: it holds the most per instance.
-    let air = ArithEqLargeTrace::<()>::AIR_ID;
+    // A bulk goes to the air that holds the most of that operation per instance.
+    let air = bulk_air_of(ArithEqOp::Arith256);
     let cap = cap_of(air);
     let per_chunk: &[&[(ArithEqOp, u64)]] = &[&[(ArithEqOp::Arith256, 2 * cap + 10)]];
     let plans = plan_of(per_chunk);
@@ -191,7 +206,7 @@ fn an_op_spanning_several_instances_is_split_without_gaps() {
         3,
         "expected ceil((2·cap + 10)/cap) = 3 instances, the tail possibly in a shorter air"
     );
-    assert_eq!(per_air.get(&air), Some(&2), "the two full instances stay in the tall air");
+    assert_eq!(per_air.get(&air), Some(&2), "the two full instances stay in the tallest air");
 }
 
 #[test]
@@ -200,7 +215,7 @@ fn an_instance_boundary_inside_a_chunk_keeps_both_windows() {
     // that chunk appears in two instances with disjoint windows for the same op. Which air each
     // instance belongs to is the strategy's business — what the filler owes is that the windows
     // still tile.
-    let cap = cap_of(ArithEqLargeTrace::<()>::AIR_ID);
+    let cap = cap_of(bulk_air_of(ArithEqOp::Arith256));
     let per_chunk: &[&[(ArithEqOp, u64)]] =
         &[&[(ArithEqOp::Arith256, cap - 1)], &[(ArithEqOp::Arith256, 5)]];
     let plans = plan_of(per_chunk);
@@ -232,7 +247,7 @@ fn an_instance_boundary_inside_a_chunk_keeps_both_windows() {
 
 #[test]
 fn segment_ids_are_contiguous_per_air() {
-    let air = ArithEqLargeTrace::<()>::AIR_ID;
+    let air = bulk_air_of(ArithEqOp::Arith256);
     let cap = cap_of(air);
     let per_chunk: &[&[(ArithEqOp, u64)]] =
         &[&[(ArithEqOp::Arith256, 2 * cap + 1), (ArithEqOp::Secp256k1Add, 1)]];
@@ -252,10 +267,10 @@ fn segment_ids_are_contiguous_per_air() {
 
 #[test]
 fn a_split_op_tiles_across_two_airs() {
-    // A family big enough to fill whole instances of the tall universal air, plus a remainder worth
+    // A family big enough to fill whole instances of its tallest air, plus a remainder worth
     // pooling elsewhere: the same op is then proved partly by one air and partly by another, and the
     // windows must still tile.
-    let tall = ArithEqLargeTrace::<()>::AIR_ID;
+    let tall = bulk_air_of(ArithEqOp::Secp256k1Add);
     let cap = cap_of(tall);
     let per_chunk: &[&[(ArithEqOp, u64)]] =
         &[&[(ArithEqOp::Secp256k1Add, 2 * cap + 10), (ArithEqOp::Arith256Mod, 7)]];

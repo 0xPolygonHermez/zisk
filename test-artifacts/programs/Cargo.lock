@@ -3608,7 +3608,7 @@ dependencies = [
 [[package]]
 name = "pil2-pilout"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "bytes",
  "prost 0.13.5",
@@ -3619,13 +3619,13 @@ dependencies = [
 [[package]]
 name = "pil2-stark-recurser"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "anyhow",
  "num-bigint",
  "num-traits",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "serde",
  "serde_json",
  "tera",
@@ -3635,7 +3635,7 @@ dependencies = [
 [[package]]
 name = "pil2-stark-setup"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "anyhow",
  "clap",
@@ -3645,8 +3645,8 @@ dependencies = [
  "pil2-stark-recurser",
  "proofman-common",
  "proofman-exps-codegen",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "prost 0.13.5",
  "rayon",
@@ -3661,11 +3661,11 @@ dependencies = [
 [[package]]
 name = "pil2-std-lib"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "colored",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-hints",
  "proofman-util",
  "proofman-witness",
@@ -3839,7 +3839,7 @@ dependencies = [
 [[package]]
 name = "proofman"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "bincode",
  "blake3 1.8.7",
@@ -3854,12 +3854,12 @@ dependencies = [
  "pil2-std-lib",
  "proofman-common",
  "proofman-curves",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-hints",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-witness",
  "rayon",
  "serde",
@@ -3871,7 +3871,7 @@ dependencies = [
 [[package]]
 name = "proofman-common"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "borsh",
  "colored",
@@ -3883,9 +3883,9 @@ dependencies = [
  "libloading",
  "mpi",
  "num_cpus",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-macros",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "serde",
@@ -3900,18 +3900,18 @@ dependencies = [
 [[package]]
 name = "proofman-curves"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
 ]
 
 [[package]]
 name = "proofman-exps-codegen"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "anyhow",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "regex",
  "serde",
@@ -3922,13 +3922,13 @@ dependencies = [
 [[package]]
 name = "proofman-fields"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "blake3 1.8.7",
  "cfg-if",
  "num-bigint",
  "paste",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "serde",
 ]
 
@@ -3947,19 +3947,19 @@ dependencies = [
 [[package]]
 name = "proofman-hints"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "itoa",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "tracing",
 ]
 
 [[package]]
 name = "proofman-macros"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3969,10 +3969,10 @@ dependencies = [
 [[package]]
 name = "proofman-starks-lib-c"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "crossbeam-channel",
- "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-starks-src 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
 ]
 
 [[package]]
@@ -3987,7 +3987,7 @@ dependencies = [
 [[package]]
 name = "proofman-starks-src"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 
 [[package]]
 name = "proofman-starks-src"
@@ -3997,7 +3997,7 @@ source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=pre-de
 [[package]]
 name = "proofman-util"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "colored",
  "sysinfo 0.35.2",
@@ -4006,11 +4006,11 @@ dependencies = [
 [[package]]
 name = "proofman-verifier"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "bincode",
  "num-traits",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "serde",
  "tracing",
@@ -4029,11 +4029,11 @@ dependencies = [
 [[package]]
 name = "proofman-witness"
 version = "1.3.0-alpha"
-source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion#497edaabbffb3488e98d32152f5cb3575777f25f"
+source = "git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split#326b8ea5b6a7321b0916880c9ed15c777ade8a4f"
 dependencies = [
  "libloading",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
 ]
 
 [[package]]
@@ -6642,7 +6642,7 @@ dependencies = [
  "anyhow",
  "libc",
  "named-sem",
- "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-starks-lib-c 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "thiserror 2.0.20",
@@ -6704,8 +6704,8 @@ dependencies = [
  "paste",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "serde",
  "serde_json",
  "sha2",
@@ -6754,7 +6754,7 @@ name = "zisk-core"
 version = "1.3.0-alpha"
 dependencies = [
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "sha2",
  "tiny-keccak",
@@ -6779,7 +6779,7 @@ dependencies = [
  "pil2-std-lib",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "proofman-witness",
  "rayon",
@@ -6820,7 +6820,7 @@ name = "zisk-pil"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-macros",
  "serde",
  "serde_arrays",
@@ -6841,7 +6841,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "regex",
@@ -6867,7 +6867,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "rustfmt-wrapper",
@@ -6893,7 +6893,7 @@ dependencies = [
  "path-clean",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -6911,7 +6911,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -6928,7 +6928,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -6944,7 +6944,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -6958,7 +6958,7 @@ dependencies = [
 name = "zisk-precomp-common"
 version = "1.3.0-alpha"
 dependencies = [
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "zisk-common",
  "zisk-core",
  "zisk-sm-mem",
@@ -6971,7 +6971,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -6989,7 +6989,7 @@ dependencies = [
  "clap",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "zisk-common",
  "zisk-core",
  "zisk-pil",
@@ -7034,7 +7034,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tiny-keccak",
@@ -7052,7 +7052,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7068,7 +7068,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7100,9 +7100,9 @@ dependencies = [
  "colored",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "serde",
  "tracing",
  "zisk-asm-runner",
@@ -7130,8 +7130,8 @@ dependencies = [
  "pil2-stark-setup",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "serde",
  "serde_json",
  "tera",
@@ -7155,7 +7155,7 @@ dependencies = [
  "anyhow",
  "blake3 1.8.7",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "tracing",
  "zisk-common",
  "zisk-core",
@@ -7171,8 +7171,8 @@ dependencies = [
  "bincode",
  "proofman",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
- "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
+ "proofman-verifier 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "serde",
  "serde_json",
@@ -7195,7 +7195,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "tracing",
  "zisk-common",
@@ -7211,7 +7211,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -7227,7 +7227,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "clap",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "static_assertions",
  "zisk-core",
 ]
@@ -7238,7 +7238,7 @@ version = "1.3.0-alpha"
 dependencies = [
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -7256,7 +7256,7 @@ dependencies = [
  "env",
  "pil2-std-lib",
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "proofman-util",
  "rayon",
  "tracing",
@@ -7271,7 +7271,7 @@ name = "zisk-sm-mem-common"
 version = "1.3.0-alpha"
 dependencies = [
  "clap",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "static_assertions",
  "tracing",
@@ -7296,7 +7296,7 @@ name = "zisk-sm-rom"
 version = "1.3.0-alpha"
 dependencies = [
  "proofman-common",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "thiserror 2.0.20",
  "tracing",
@@ -7361,7 +7361,7 @@ dependencies = [
  "memmap2",
  "num-format",
  "object",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rayon",
  "regex",
  "serde_json",
@@ -7403,7 +7403,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rand 0.8.8",
  "ripemd",
  "secp256k1 0.31.1",
@@ -7432,7 +7432,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "paste",
- "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion)",
+ "proofman-fields 1.3.0-alpha (git+https://github.com/0xPolygonHermez/pil2-proofman.git?branch=feat%2Fblake3-recursion-prod-prefetch-split)",
  "rand 0.8.8",
  "ripemd",
  "serde",

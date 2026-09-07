@@ -14,7 +14,6 @@ use zisk_common::{
     BusDevice, CheckPoint, ChunkId, Instance, InstanceCtx, InstanceType, PayloadType,
 };
 use zisk_pil::{
-    BinaryExtensionHugeTrace, BinaryExtensionHugeTraceRow, BinaryExtensionHugeTraceRowPacked,
     BinaryExtensionLargeTrace, BinaryExtensionLargeTraceRow, BinaryExtensionLargeTraceRowPacked,
     BinaryExtensionTrace, BinaryExtensionTraceRow, BinaryExtensionTraceRowPacked,
 };
@@ -23,7 +22,6 @@ use zisk_pil::{
 /// different number of operations per row, so each has its own row type.
 const AIR_ID: usize = BinaryExtensionTrace::<()>::AIR_ID;
 const LARGE_AIR_ID: usize = BinaryExtensionLargeTrace::<()>::AIR_ID;
-const HUGE_AIR_ID: usize = BinaryExtensionHugeTrace::<()>::AIR_ID;
 
 /// The `BinaryExtensionInstance` struct represents an instance for binary extension-related witness
 /// computations.
@@ -62,7 +60,7 @@ impl<F: PrimeField64> BinaryExtensionInstance<F> {
         std: Arc<Std<F>>,
     ) -> Self {
         assert!(
-            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID | HUGE_AIR_ID),
+            matches!(ictx.plan.air_id, AIR_ID | LARGE_AIR_ID),
             "BinaryExtensionInstance: Unsupported air_id: {:?}",
             ictx.plan.air_id
         );
@@ -143,17 +141,6 @@ impl<F: PrimeField64> Instance<F> for BinaryExtensionInstance<F> {
             (LARGE_AIR_ID, false) => Ok(Some(
                 self.binary_extension_sm
                     .compute_witness::<_, BinaryExtensionLargeTraceRow<F>>(&inputs, trace_buffer)?,
-            )),
-            (HUGE_AIR_ID, true) => Ok(Some(
-                self.binary_extension_sm
-                    .compute_witness::<_, BinaryExtensionHugeTraceRowPacked<F>>(
-                        &inputs,
-                        trace_buffer,
-                    )?,
-            )),
-            (HUGE_AIR_ID, false) => Ok(Some(
-                self.binary_extension_sm
-                    .compute_witness::<_, BinaryExtensionHugeTraceRow<F>>(&inputs, trace_buffer)?,
             )),
             (air_id, _) => panic!("BinaryExtensionInstance: Unsupported air_id: {air_id:?}"),
         }

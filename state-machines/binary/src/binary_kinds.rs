@@ -11,8 +11,8 @@
 use crate::{lanes_x_row, AirSlot};
 use zisk_pil::{
     BinaryAddHiHugeTrace, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddHugeTrace,
-    BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionHugeTrace, BinaryExtensionLargeTrace,
-    BinaryExtensionTrace, BinaryHugeTrace, BinaryLargeTrace, BinaryTrace,
+    BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionLargeTrace, BinaryExtensionTrace,
+    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace,
 };
 
 /// Kinds of the basic/add family, in the order the distributor sees them.
@@ -40,7 +40,7 @@ pub const KIND_EXT: usize = 0;
 /// Airs of the add family, in hand-out order.
 pub const ADD_AIRS: usize = 9;
 /// Airs of the extension family, in hand-out order.
-pub const EXT_AIRS: usize = 3;
+pub const EXT_AIRS: usize = 2;
 
 /// The add-family airs, most specific and tallest first, so each takes what it can and the rest flows
 /// on. Within a specialisation the tall air goes first because filling it is what spares the family an
@@ -136,8 +136,8 @@ pub fn add_family(instances: [u64; ADD_AIRS]) -> [AirSlot<ADD_KINDS>; ADD_AIRS] 
     ]
 }
 
-/// The extension-family airs, the widest first so it fills before a narrower one is opened. All
-/// three prove every extension operation, so the only thing that tells them apart is how many they
+/// The extension-family airs, the widest first so it fills before a narrower one is opened. Both
+/// prove every extension operation, so the only thing that tells them apart is how many they
 /// pack per row.
 pub fn ext_family(instances: [u64; EXT_AIRS]) -> [AirSlot<EXT_KINDS>; EXT_AIRS] {
     let ext = |airgroup_id, air_id, rows: usize, lanes: usize, instances| AirSlot {
@@ -151,25 +151,18 @@ pub fn ext_family(instances: [u64; EXT_AIRS]) -> [AirSlot<EXT_KINDS>; EXT_AIRS] 
 
     [
         ext(
-            BinaryExtensionHugeTrace::<()>::AIRGROUP_ID,
-            BinaryExtensionHugeTrace::<()>::AIR_ID,
-            BinaryExtensionHugeTrace::<()>::NUM_ROWS,
-            lanes_x_row::EXT_HUGE,
-            instances[0],
-        ),
-        ext(
             BinaryExtensionLargeTrace::<()>::AIRGROUP_ID,
             BinaryExtensionLargeTrace::<()>::AIR_ID,
             BinaryExtensionLargeTrace::<()>::NUM_ROWS,
             lanes_x_row::EXT_LARGE,
-            instances[1],
+            instances[0],
         ),
         ext(
             BinaryExtensionTrace::<()>::AIRGROUP_ID,
             BinaryExtensionTrace::<()>::AIR_ID,
             BinaryExtensionTrace::<()>::NUM_ROWS,
             lanes_x_row::EXT,
-            instances[2],
+            instances[1],
         ),
     ]
 }

@@ -38,10 +38,9 @@ pub mod lanes_x_row {
     pub const ADD_HI_LARGE: usize = 4;
     pub const ADD_HI_HUGE: usize = 8;
 
-    /// `BinaryExtension`, `BinaryExtensionLarge`, `BinaryExtensionHuge`.
+    /// `BinaryExtension`, `BinaryExtensionLarge`.
     pub const EXT: usize = 1;
     pub const EXT_LARGE: usize = 2;
-    pub const EXT_HUGE: usize = 4;
 
     /// The widest packing any add-hi air uses, so one row can be built through a fixed-size buffer
     /// whatever air is being filled.
@@ -126,7 +125,6 @@ mod tests {
 
         check!(BinaryExtensionTraceRow, get_all_op, lanes_x_row::EXT);
         check!(BinaryExtensionLargeTraceRow, get_all_op, lanes_x_row::EXT_LARGE);
-        check!(BinaryExtensionHugeTraceRow, get_all_op, lanes_x_row::EXT_HUGE);
 
         // The extension airs are instantiated with every lane `full`, and the witness relies on it:
         // it writes the full-only columns of every slot without asking whether the lane owns them.
@@ -134,10 +132,8 @@ mod tests {
         // them shorter than the lane count — which is exactly what this catches.
         check!(BinaryExtensionTraceRow, get_all_op_is_chain, lanes_x_row::EXT);
         check!(BinaryExtensionLargeTraceRow, get_all_op_is_chain, lanes_x_row::EXT_LARGE);
-        check!(BinaryExtensionHugeTraceRow, get_all_op_is_chain, lanes_x_row::EXT_HUGE);
         check!(BinaryExtensionTraceRow, get_all_b, lanes_x_row::EXT);
         check!(BinaryExtensionLargeTraceRow, get_all_b, lanes_x_row::EXT_LARGE);
-        check!(BinaryExtensionHugeTraceRow, get_all_b, lanes_x_row::EXT_HUGE);
     }
 
     /// The row traits the state machines are generic over must report the same packing width as the
@@ -235,13 +231,6 @@ mod tests {
             BinaryExtensionLargeTrace,
             get_all_op,
             lanes_x_row::EXT_LARGE
-        );
-        check!(
-            BinaryExtensionRow,
-            BinaryExtensionHugeTraceRow,
-            BinaryExtensionHugeTrace,
-            get_all_op,
-            lanes_x_row::EXT_HUGE
         );
     }
 

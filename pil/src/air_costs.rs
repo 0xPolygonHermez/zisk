@@ -109,17 +109,14 @@ pub const BINARY_EXTENSION_INSTANCE_COST: usize = 6543;
 /// `BinaryExtensionLarge`: 9.64 GB.
 pub const BINARY_EXTENSION_LARGE_INSTANCE_COST: usize = 9871;
 
-/// `BinaryExtensionHuge`: 16.67 GB.
-pub const BINARY_EXTENSION_HUGE_INSTANCE_COST: usize = 17070;
-
 /// `Add256`: 2.32 GB.
 pub const ADD_256_INSTANCE_COST: usize = 2376;
 
 /// `ArithEq`: 2.12 GB.
 pub const ARITH_EQ_INSTANCE_COST: usize = 2171;
 
-/// `ArithEqLarge`: 16.97 GB.
-pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 17377;
+/// `ArithEqLarge`: 8.48 GB.
+pub const ARITH_EQ_LARGE_INSTANCE_COST: usize = 8684;
 
 /// `Arith256X`: 1.56 GB.
 pub const ARITH_256_X_INSTANCE_COST: usize = 1597;
@@ -127,11 +124,17 @@ pub const ARITH_256_X_INSTANCE_COST: usize = 1597;
 /// `Arith256XLarge`: 6.23 GB.
 pub const ARITH_256_X_LARGE_INSTANCE_COST: usize = 6380;
 
+/// `Arith256XHuge`: 12.47 GB.
+pub const ARITH_256_X_HUGE_INSTANCE_COST: usize = 12769;
+
 /// `ArithSecp256K1`: 1.84 GB.
 pub const ARITH_SECP_256_K_1_INSTANCE_COST: usize = 1884;
 
 /// `ArithSecp256K1Large`: 7.36 GB.
 pub const ARITH_SECP_256_K_1_LARGE_INSTANCE_COST: usize = 7537;
+
+/// `ArithSecp256K1Huge`: 14.72 GB.
+pub const ARITH_SECP_256_K_1_HUGE_INSTANCE_COST: usize = 15073;
 
 /// `ArithBn254`: 1.93 GB.
 pub const ARITH_BN_254_INSTANCE_COST: usize = 1976;
@@ -273,14 +276,15 @@ mod tests {
                     BinaryAddHiHugeTrace: BinaryAddHiHugeTraceRow: BINARY_ADD_HI_HUGE_INSTANCE_COST,
                     BinaryExtensionTrace: BinaryExtensionTraceRow: BINARY_EXTENSION_INSTANCE_COST,
                     BinaryExtensionLargeTrace: BinaryExtensionLargeTraceRow: BINARY_EXTENSION_LARGE_INSTANCE_COST,
-                    BinaryExtensionHugeTrace: BinaryExtensionHugeTraceRow: BINARY_EXTENSION_HUGE_INSTANCE_COST,
                     Add256Trace: Add256TraceRow: ADD_256_INSTANCE_COST,
                     ArithEqTrace: ArithEqTraceRow: ARITH_EQ_INSTANCE_COST,
                     ArithEqLargeTrace: ArithEqLargeTraceRow: ARITH_EQ_LARGE_INSTANCE_COST,
                     Arith256XTrace: Arith256XTraceRow: ARITH_256_X_INSTANCE_COST,
                     Arith256XLargeTrace: Arith256XLargeTraceRow: ARITH_256_X_LARGE_INSTANCE_COST,
+                    Arith256XHugeTrace: Arith256XHugeTraceRow: ARITH_256_X_HUGE_INSTANCE_COST,
                     ArithSecp256K1Trace: ArithSecp256K1TraceRow: ARITH_SECP_256_K_1_INSTANCE_COST,
                     ArithSecp256K1LargeTrace: ArithSecp256K1LargeTraceRow: ARITH_SECP_256_K_1_LARGE_INSTANCE_COST,
+                    ArithSecp256K1HugeTrace: ArithSecp256K1HugeTraceRow: ARITH_SECP_256_K_1_HUGE_INSTANCE_COST,
                     ArithBn254Trace: ArithBn254TraceRow: ARITH_BN_254_INSTANCE_COST,
                     ArithBn254LargeTrace: ArithBn254LargeTraceRow: ARITH_BN_254_LARGE_INSTANCE_COST,
                     ArithEq384Trace: ArithEq384TraceRow: ARITH_EQ_384_INSTANCE_COST,

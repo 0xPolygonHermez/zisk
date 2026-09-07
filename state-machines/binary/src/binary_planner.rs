@@ -58,13 +58,12 @@ use zisk_common::{
 };
 use zisk_pil::{
     BinaryAddHiHugeTrace, BinaryAddHiLargeTrace, BinaryAddHiTrace, BinaryAddHugeTrace,
-    BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionHugeTrace, BinaryExtensionLargeTrace,
-    BinaryExtensionTrace, BinaryHugeTrace, BinaryLargeTrace, BinaryTrace,
-    BINARY_ADD_HI_HUGE_INSTANCE_COST, BINARY_ADD_HI_INSTANCE_COST,
-    BINARY_ADD_HI_LARGE_INSTANCE_COST, BINARY_ADD_HUGE_INSTANCE_COST, BINARY_ADD_INSTANCE_COST,
-    BINARY_ADD_LARGE_INSTANCE_COST, BINARY_EXTENSION_HUGE_INSTANCE_COST,
-    BINARY_EXTENSION_INSTANCE_COST, BINARY_EXTENSION_LARGE_INSTANCE_COST,
-    BINARY_HUGE_INSTANCE_COST, BINARY_INSTANCE_COST, BINARY_LARGE_INSTANCE_COST,
+    BinaryAddLargeTrace, BinaryAddTrace, BinaryExtensionLargeTrace, BinaryExtensionTrace,
+    BinaryHugeTrace, BinaryLargeTrace, BinaryTrace, BINARY_ADD_HI_HUGE_INSTANCE_COST,
+    BINARY_ADD_HI_INSTANCE_COST, BINARY_ADD_HI_LARGE_INSTANCE_COST, BINARY_ADD_HUGE_INSTANCE_COST,
+    BINARY_ADD_INSTANCE_COST, BINARY_ADD_LARGE_INSTANCE_COST, BINARY_EXTENSION_INSTANCE_COST,
+    BINARY_EXTENSION_LARGE_INSTANCE_COST, BINARY_HUGE_INSTANCE_COST, BINARY_INSTANCE_COST,
+    BINARY_LARGE_INSTANCE_COST,
 };
 
 /// Slot of each air within [`add_family`] / [`InstanceCounts`], in hand-out order.
@@ -140,12 +139,6 @@ fn ext_ladder() -> [AirChoice; EXT_AIRS] {
     // lanes they pack: they are all the same height and differ only in the packing.
     let ops = |rows: usize, lanes: usize| rows * lanes;
     [
-        AirChoice::new(
-            BinaryExtensionHugeTrace::<()>::AIRGROUP_ID,
-            BinaryExtensionHugeTrace::<()>::AIR_ID,
-            ops(BinaryExtensionHugeTrace::<()>::NUM_ROWS, lanes_x_row::EXT_HUGE),
-            BINARY_EXTENSION_HUGE_INSTANCE_COST,
-        ),
         AirChoice::new(
             BinaryExtensionLargeTrace::<()>::AIRGROUP_ID,
             BinaryExtensionLargeTrace::<()>::AIR_ID,
@@ -414,7 +407,7 @@ impl<F: PrimeField64> Planner for BinaryPlanner<F> {
         let ext_counts = select_sizes(totals.ext, &ext_ladder());
 
         let mut add_airs = add_family(add_counts);
-        let mut ext_airs = ext_family([ext_counts[0], ext_counts[1], ext_counts[2]]);
+        let mut ext_airs = ext_family([ext_counts[0], ext_counts[1]]);
 
         // The sizing above only saw operations. A kind whose operations are all frequent would be left
         // with no air to account for them, so coverage is topped up here.
@@ -503,7 +496,7 @@ mod tests {
         let counts = TestPlanner::best_add_counts(&Totals::default());
         assert_eq!(counts, InstanceCounts::default());
         assert_eq!(TestPlanner::cost_of(&counts), Cost::default());
-        assert_eq!(select_sizes(0, &ext_ladder()), vec![0, 0, 0]);
+        assert_eq!(select_sizes(0, &ext_ladder()), vec![0, 0]);
     }
 
     /// The whole point of the new criterion: work that would need two short instances is given one
