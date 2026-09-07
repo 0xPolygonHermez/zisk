@@ -7,7 +7,7 @@ use proofman_fields::PrimeField64;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 use zisk_common::{stats_begin, stats_end, BusDevice, Instance, InstanceType, Stats};
-use zisk_pil::{MainTraceRow, MainTraceRowPacked};
+use zisk_pil::{MainTraceRow, MainTraceRowPackedIndexed};
 use zisk_sm_main::{MainInstance, MainPlanner, MainSmError};
 
 use crate::error::{ExecutorError, ExecutorResult, RwLockExt};
@@ -23,8 +23,8 @@ pub struct WitnessGenerator {
     /// Chunk size for trace processing.
     chunk_size: u64,
 
-    /// Packed trace layout. For Main this means the bit-packed row
-    /// ([`MainTraceRowPacked`]).
+    /// Packed trace layout. For Main this means the compact indexed row
+    /// ([`MainTraceRowPackedIndexed`]) plus the shared instruction table.
     packed: AtomicBool,
 }
 
@@ -78,10 +78,9 @@ impl WitnessGenerator {
             )
         };
 
-        // Packed ⇒ bit-packed Main row; otherwise the unpacked row. The compact indexed row
-        // is unavailable while a Main row carries lanes (see `zisk_pil::main_row`).
+        // Packed ⇒ the compact indexed Main row (one index per lane); else the unpacked row.
         let air_instance = if self.packed.load(Ordering::Relaxed) {
-            main_instance.compute_witness::<MainTraceRowPacked<F>>(
+            main_instance.compute_witness::<MainTraceRowPackedIndexed<F>>(
                 &zisk_rom,
                 &segment_min_traces,
                 prev_chunk_last_c,
