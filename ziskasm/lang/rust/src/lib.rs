@@ -12,6 +12,13 @@
 //! This is the Rust language binding; sibling directories under `ziskasm/lang/`
 //! can provide equivalent bindings for other high-level languages.
 //!
+//! If a placeholder body ever runs, the redirect did NOT fire (a stripped ELF, a
+//! missing symbol, or ziskemu/cargo-zisk built without the `ziskasm` feature), so
+//! the stub FAILS HARD via [`stub_fail`] — it prints a diagnostic to the ZisK
+//! stdout and then accesses address 0 to force abnormal termination — rather than
+//! returning a plausible-but-wrong value. (The per-function doc comments below may
+//! still describe the old sentinel return; the behavior is now the hard fault.)
+//!
 //! Stub rules that keep the redirect working:
 //! - `#[no_mangle]` + `#[inline(never)]`: a stable symbol and a real call site the
 //!   transpiler can redirect (never inlined/folded away).
@@ -19,10 +26,40 @@
 //!   redirected routine reads its args from `a0..a7`; a stub that ignored an
 //!   argument would let the optimizer elide setting up that register at the call
 //!   site, leaving garbage for the real routine.
+//! - Each stub body stays *distinct*: `stub_fail("<name>")` carries a unique string
+//!   per stub, so identical-code folding cannot merge two same-signature stubs into
+//!   one symbol (which would collapse their separate redirect entries).
 
 #![no_std]
 
 use core::hint::black_box;
+
+/// Diagnostic + hard fault for a stub whose `elf2rom` redirect did not fire.
+/// Prints a one-line message to the ZisK memory-mapped stdout (UART at
+/// 0xA0400200, one byte per store), then accesses address 0 to force abnormal
+/// termination. Never returns. Reached only when the redirect did not happen (a
+/// stripped ELF, a missing symbol, or ziskemu/cargo-zisk built without the
+/// `ziskasm` feature) — failing hard beats returning a plausible-but-wrong value.
+#[inline(never)]
+fn stub_fail(name: &str) -> ! {
+    let uart = 0xA040_0200_usize as *mut u8; // ZisK stdout: one byte per store
+    unsafe {
+        for &c in b"ERROR: ziskasm stub reached without redirect: " {
+            core::ptr::write_volatile(uart, c);
+        }
+        for &c in name.as_bytes() {
+            core::ptr::write_volatile(uart, c);
+        }
+        for &c in b"() -- build ziskemu/cargo-zisk with --features ziskasm and do not strip the guest ELF\n" {
+            core::ptr::write_volatile(uart, c);
+        }
+        // Access the null guard page -> abnormal termination. black_box hides the
+        // null from the optimizer so it emits a real store rather than a trap/UB.
+        let null = black_box(0usize) as *mut u8;
+        core::ptr::write_volatile(null, 0);
+    }
+    loop {}
+}
 
 /// `a + b`. Implemented in ziskasm as `zisklib_add` (a demo routine). The
 /// placeholder returns an obviously-wrong, argument-dependent sentinel
@@ -31,7 +68,8 @@ use core::hint::black_box;
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
-    0xBAD_0000_0000_u64.wrapping_add(a).wrapping_add(b)
+    let _ = black_box((a, b,));
+    stub_fail("ziskos_add")
 }
 
 /// `keccak256(input[0..len])` → `output[0..32]`. Raw ABI boundary redirected to
@@ -45,10 +83,8 @@ pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_keccak(input: *const u8, len: usize, output: *mut u8) {
-    let (_input, _len, output) = black_box((input, len, output));
-    for i in 0..32usize {
-        output.add(i).write(0xBA);
-    }
+    let _ = black_box((input, len, output,));
+    stub_fail("ziskos_keccak")
 }
 
 /// Ergonomic Rust API over the raw [`ziskos_keccak`] boundary: the keccak256 digest
@@ -72,10 +108,8 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_sha256(input: *const u8, len: usize, output: *mut u8) {
-    let (_input, _len, output) = black_box((input, len, output));
-    for i in 0..32usize {
-        output.add(i).write(0x5A);
-    }
+    let _ = black_box((input, len, output,));
+    stub_fail("ziskos_sha256")
 }
 
 /// Ergonomic Rust API over the raw [`ziskos_sha256`] boundary: the SHA2-256 digest
@@ -107,12 +141,8 @@ pub unsafe extern "C" fn ziskos_blake2b_compress(
     offset: *const u64,
     final_block: u8,
 ) {
-    let (rounds, state, message, offset, final_block) =
-        black_box((rounds, state, message, offset, final_block));
-    let _ = (rounds, message, offset, final_block);
-    for i in 0..8usize {
-        state.add(i).write(0x0B2B_0B2B_0B2B_0B2B);
-    }
+    let _ = black_box((rounds, state, message, offset, final_block,));
+    stub_fail("ziskos_blake2b_compress")
 }
 
 /// Ergonomic wrapper over [`ziskos_blake2b_compress`]: one BLAKE2b compression,
@@ -135,11 +165,8 @@ pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_inv256(a: *const u64, result: *mut u64) -> u64 {
-    let (a, result) = black_box((a, result));
-    for i in 0..4usize {
-        result.add(i).write(0x0BAD_0BAD_0BAD_0BAD);
-    }
-    black_box(a as u64)
+    let _ = black_box((a, result,));
+    stub_fail("ziskos_inv256")
 }
 
 /// Ergonomic Rust API over [`ziskos_inv256`]: the modular inverse of `a` mod
@@ -171,15 +198,8 @@ pub unsafe extern "C" fn ziskos_overflowing_add256(
     b: *const u64,
     result: *mut u64,
 ) -> u64 {
-    // The sentinel is unique per stub: two stubs with identical bodies would be
-    // merged by identical-code folding into a single symbol/address, collapsing
-    // their distinct redirect entries. A distinct constant keeps the code distinct.
-    let (a, b, result) = black_box((a, b, result));
-    let _ = b;
-    for i in 0..4usize {
-        result.add(i).write(0x0ADD_0ADD_0ADD_0ADD);
-    }
-    black_box(a as u64)
+    let _ = black_box((a, b, result,));
+    stub_fail("ziskos_overflowing_add256")
 }
 
 /// Raw ABI boundary redirected to `zisklib_overflowing_sub256`: writes `a - b`
@@ -194,13 +214,8 @@ pub unsafe extern "C" fn ziskos_overflowing_sub256(
     b: *const u64,
     result: *mut u64,
 ) -> u64 {
-    // Distinct sentinel from `ziskos_overflowing_add256` — see the note there.
-    let (a, b, result) = black_box((a, b, result));
-    let _ = b;
-    for i in 0..4usize {
-        result.add(i).write(0x05AB_05AB_05AB_05AB);
-    }
-    black_box(a as u64)
+    let _ = black_box((a, b, result,));
+    stub_fail("ziskos_overflowing_sub256")
 }
 
 // --- 256-bit addition ---------------------------------------------------------
@@ -298,12 +313,8 @@ pub unsafe extern "C" fn ziskos_overflowing_mul256(
     b: *const u64,
     result: *mut u64,
 ) -> u64 {
-    let (a, b, result) = black_box((a, b, result));
-    let _ = b;
-    for i in 0..4usize {
-        result.add(i).write(0x0AF0_0AF0_0AF0_0AF0);
-    }
-    black_box(a as u64)
+    let _ = black_box((a, b, result,));
+    stub_fail("ziskos_overflowing_mul256")
 }
 
 /// Low 256 bits of `a * b`, with the overflow flag (`true` if the true product
@@ -377,12 +388,8 @@ pub fn saturating_square256(a: &[u64; 4]) -> [u64; 4] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_div_rem256(a: *const u64, b: *const u64, q: *mut u64, r: *mut u64) {
-    let (a, b, q, r) = black_box((a, b, q, r));
-    let _ = (a, b);
-    for i in 0..4usize {
-        q.add(i).write(0x0D10_0D10_0D10_0D10);
-        r.add(i).write(0x0DE0_0DE0_0DE0_0DE0);
-    }
+    let _ = black_box((a, b, q, r,));
+    stub_fail("ziskos_div_rem256")
 }
 
 /// `(a / b, a % b)` (Euclidean). **Panics on `b == 0`** (halts on-target).
@@ -438,11 +445,8 @@ pub fn div_ceil256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_reduce_mod256(a: *const u64, m: *const u64, result: *mut u64) {
-    let (a, m, result) = black_box((a, m, result));
-    let _ = (a, m);
-    for i in 0..4usize {
-        result.add(i).write(0x0BED_0BED_0BED_0BED);
-    }
+    let _ = black_box((a, m, result,));
+    stub_fail("ziskos_reduce_mod256")
 }
 
 /// Raw ABI boundary redirected to `zisklib_add_mod256`: `result = (a + b) mod m`.
@@ -457,11 +461,8 @@ pub unsafe extern "C" fn ziskos_add_mod256(
     m: *const u64,
     result: *mut u64,
 ) {
-    let (a, b, m, result) = black_box((a, b, m, result));
-    let _ = (a, b, m);
-    for i in 0..4usize {
-        result.add(i).write(0x0A0D_0A0D_0A0D_0A0D);
-    }
+    let _ = black_box((a, b, m, result,));
+    stub_fail("ziskos_add_mod256")
 }
 
 /// Raw ABI boundary redirected to `zisklib_mul_mod256`: `result = (a * b) mod m`.
@@ -476,11 +477,8 @@ pub unsafe extern "C" fn ziskos_mul_mod256(
     m: *const u64,
     result: *mut u64,
 ) {
-    let (a, b, m, result) = black_box((a, b, m, result));
-    let _ = (a, b, m);
-    for i in 0..4usize {
-        result.add(i).write(0x03D0_03D0_03D0_03D0);
-    }
+    let _ = black_box((a, b, m, result,));
+    stub_fail("ziskos_mul_mod256")
 }
 
 /// `a mod modulus` (`0` if `modulus == 0`).
@@ -531,12 +529,8 @@ pub fn square_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_inv_mod256(a: *const u64, m: *const u64, result: *mut u64) -> u64 {
-    let (a, m, result) = black_box((a, m, result));
-    let _ = m;
-    for i in 0..4usize {
-        result.add(i).write(0x0117_0117_0117_0117);
-    }
-    black_box(a as u64)
+    let _ = black_box((a, m, result,));
+    stub_fail("ziskos_inv_mod256")
 }
 
 /// Modular inverse: `a^(-1) mod modulus`, or `None` if it does not exist (i.e.
@@ -568,11 +562,8 @@ pub unsafe extern "C" fn ziskos_pow_mod256(
     m: *const u64,
     result: *mut u64,
 ) {
-    let (base, exp, m, result) = black_box((base, exp, m, result));
-    let _ = (base, exp, m);
-    for i in 0..4usize {
-        result.add(i).write(0x0B0E_0B0E_0B0E_0B0E);
-    }
+    let _ = black_box((base, exp, m, result,));
+    stub_fail("ziskos_pow_mod256")
 }
 
 /// `base^exp mod modulus`. `modulus in {0, 1}` yields `0` (every value is `0` mod 1).
@@ -601,12 +592,8 @@ pub unsafe extern "C" fn ziskos_overflowing_pow256(
     exp: *const u64,
     result: *mut u64,
 ) -> u64 {
-    let (base, exp, result) = black_box((base, exp, result));
-    let _ = exp;
-    for i in 0..4usize {
-        result.add(i).write(0x0B07_0B07_0B07_0B07);
-    }
-    black_box(base as u64)
+    let _ = black_box((base, exp, result,));
+    stub_fail("ziskos_overflowing_pow256")
 }
 
 /// `base^exp mod 2^256`, with the overflow flag (`true` if the true power exceeds
@@ -662,11 +649,8 @@ pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256k1(
     r: *const u64,
     s: *const u64,
 ) -> u64 {
-    let (pk, z, r, s) = black_box((pk, z, r, s));
-    // Distinct sentinel base (see note on the r1 stub): keeps this body from being
-    // merged with `ziskos_ecdsa_verify_secp256r1` by identical-code-folding, which
-    // would collapse the two redirects onto a single routine.
-    black_box(0xBAD5EC256C1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
+    let _ = black_box((pk, z, r, s,));
+    stub_fail("ziskos_ecdsa_verify_secp256k1")
 }
 
 /// Ergonomic API over [`ziskos_ecdsa_verify_secp256k1`]: `true` iff the signature
@@ -691,11 +675,8 @@ pub unsafe extern "C" fn ziskos_ecdsa_recover_secp256k1(
     recid: u64,
     result: *mut u64,
 ) -> u64 {
-    let (r, s, z, recid, result) = black_box((r, s, z, recid, result));
-    for i in 0..8usize {
-        result.add(i).write(0x0BAD_0BAD_0BAD_0BAD);
-    }
-    black_box(0xBAD_u64 ^ r as u64 ^ s as u64 ^ z as u64 ^ recid)
+    let _ = black_box((r, s, z, recid, result,));
+    stub_fail("ziskos_ecdsa_recover_secp256k1")
 }
 
 /// Ergonomic API over [`ziskos_ecdsa_recover_secp256k1`]: recover the public key
@@ -735,8 +716,8 @@ pub unsafe extern "C" fn ziskos_schnorr_verify_secp256k1(
     msg: *const u8,
     msg_len: u64,
 ) -> u64 {
-    let (pk_x, r, s, msg, msg_len) = black_box((pk_x, r, s, msg, msg_len));
-    black_box(0xBAD_u64 ^ pk_x as u64 ^ r as u64 ^ s as u64 ^ msg as u64 ^ msg_len)
+    let _ = black_box((pk_x, r, s, msg, msg_len,));
+    stub_fail("ziskos_schnorr_verify_secp256k1")
 }
 
 /// Ergonomic API over [`ziskos_schnorr_verify_secp256k1`]: `true` iff the BIP-340
@@ -769,11 +750,8 @@ pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256r1(
     r: *const u64,
     s: *const u64,
 ) -> u64 {
-    let (pk, z, r, s) = black_box((pk, z, r, s));
-    // Distinct sentinel base so this body is not identical to (and thus folded
-    // with) `ziskos_ecdsa_verify_secp256k1`; each stub must keep its own symbol so
-    // its own redirect resolves.
-    black_box(0xBAD5EC256F1 ^ pk as u64 ^ z as u64 ^ r as u64 ^ s as u64)
+    let _ = black_box((pk, z, r, s,));
+    stub_fail("ziskos_ecdsa_verify_secp256r1")
 }
 
 /// Ergonomic API over [`ziskos_ecdsa_verify_secp256r1`]: `true` iff the signature
@@ -795,8 +773,8 @@ pub fn secp256r1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u6
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_pairing_check_bn254(g1: *const u64, g2: *const u64, n: u64) -> u64 {
-    let (g1, g2, n) = black_box((g1, g2, n));
-    black_box(0x0BAD_B254_u64 ^ g1 as u64 ^ g2 as u64 ^ n)
+    let _ = black_box((g1, g2, n,));
+    stub_fail("ziskos_pairing_check_bn254")
 }
 
 /// Ergonomic API over [`ziskos_pairing_check_bn254`]: returns the raw status code
@@ -830,8 +808,8 @@ pub unsafe extern "C" fn ziskos_pairing_check_bls12_381(
     g2: *const u64,
     n: u64,
 ) -> u64 {
-    let (g1, g2, n) = black_box((g1, g2, n));
-    black_box(0x0BAD_B157_0381_u64 ^ g1 as u64 ^ g2 as u64 ^ n)
+    let _ = black_box((g1, g2, n,));
+    stub_fail("ziskos_pairing_check_bls12_381")
 }
 
 /// Ergonomic API over [`ziskos_pairing_check_bls12_381`]: returns the raw status
@@ -860,8 +838,8 @@ pub fn bls12_381_pairing_check(g1: &[[u64; 12]], g2: &[[u64; 24]]) -> u64 {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_map_to_curve_g1_bls12_381(u: *const u64, result: *mut u64) -> u64 {
-    let (u, result) = black_box((u, result));
-    black_box(0x0BADA11C001_u64 ^ u as u64 ^ result as u64)
+    let _ = black_box((u, result,));
+    stub_fail("ziskos_map_to_curve_g1_bls12_381")
 }
 
 /// Ergonomic API over [`ziskos_map_to_curve_g1_bls12_381`]: maps `u ∈ Fp` to a
@@ -887,8 +865,8 @@ pub fn bls12_381_map_to_curve_g1(u: &[u64; 6]) -> Result<[u64; 12], u64> {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_map_to_curve_g2_bls12_381(u: *const u64, result: *mut u64) -> u64 {
-    let (u, result) = black_box((u, result));
-    black_box(0x0BADA22C002_u64 ^ u as u64 ^ result as u64)
+    let _ = black_box((u, result,));
+    stub_fail("ziskos_map_to_curve_g2_bls12_381")
 }
 
 /// Ergonomic API over [`ziskos_map_to_curve_g2_bls12_381`]: maps `u ∈ Fp2` to a
@@ -920,10 +898,8 @@ pub unsafe extern "C" fn ziskos_hash_to_curve_g2_bls12_381(
     dst_len: u64,
     result: *mut u64,
 ) {
-    let (msg, msg_len, dst, dst_len, result) = black_box((msg, msg_len, dst, dst_len, result));
-    let _ = black_box(
-        0x0BAD_A233_C002_u64 ^ msg as u64 ^ msg_len ^ dst as u64 ^ dst_len ^ result as u64,
-    );
+    let _ = black_box((msg, msg_len, dst, dst_len, result,));
+    stub_fail("ziskos_hash_to_curve_g2_bls12_381")
 }
 
 /// Ergonomic API over [`ziskos_hash_to_curve_g2_bls12_381`]: returns the G2 point
@@ -959,8 +935,8 @@ pub unsafe extern "C" fn ziskos_bls_verify_bls12_381(
     msg_len: u64,
     sig: *const u8,
 ) -> u64 {
-    let (pk, msg, msg_len, sig) = black_box((pk, msg, msg_len, sig));
-    black_box(0x0BADB155169_u64 ^ pk as u64 ^ msg as u64 ^ msg_len ^ sig as u64)
+    let _ = black_box((pk, msg, msg_len, sig,));
+    stub_fail("ziskos_bls_verify_bls12_381")
 }
 
 /// Ergonomic API over [`ziskos_bls_verify_bls12_381`]: verifies a BLS signature
@@ -989,8 +965,8 @@ pub unsafe extern "C" fn ziskos_verify_kzg_proof_bls12_381(
     commitment: *const u8,
     proof: *const u8,
 ) -> u64 {
-    let (z, y, commitment, proof) = black_box((z, y, commitment, proof));
-    black_box(0x0BAD4426202_u64 ^ z as u64 ^ y as u64 ^ commitment as u64 ^ proof as u64)
+    let _ = black_box((z, y, commitment, proof,));
+    stub_fail("ziskos_verify_kzg_proof_bls12_381")
 }
 
 /// Ergonomic API over [`ziskos_verify_kzg_proof_bls12_381`]: verifies an EIP-4844
@@ -1035,18 +1011,8 @@ pub unsafe extern "C" fn ziskos_modexp_u64_c(
     modulus_len: usize,
     result: *mut u64,
 ) -> usize {
-    let (base, base_len, exp, exp_len, modulus, modulus_len, result) =
-        black_box((base, base_len, exp, exp_len, modulus, modulus_len, result));
-    black_box(
-        (0x0BAD_E198_u64 as usize)
-            ^ base as usize
-            ^ base_len
-            ^ exp as usize
-            ^ exp_len
-            ^ modulus as usize
-            ^ modulus_len
-            ^ result as usize,
-    )
+    let _ = black_box((base, base_len, exp, exp_len, modulus, modulus_len, result,));
+    stub_fail("ziskos_modexp_u64_c")
 }
 
 /// Ergonomic API over [`ziskos_modexp_u64_c`]: computes `base^exp mod modulus`
@@ -1084,12 +1050,8 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_keccak256(data: *const u8, len: usize, output: *mut u8) -> i32 {
-    let (data, len, output) = black_box((data, len, output));
-    let _ = (data, len);
-    for i in 0..32usize {
-        output.add(i).write(0xBA);
-    }
-    black_box(-1)
+    let _ = black_box((data, len, output,));
+    stub_fail("zkvm_keccak256")
 }
 
 /// `zkvm_sha256(data, len, output)` — redirected to the shared `ziskasm_zkvm_sha256`.
@@ -1099,12 +1061,8 @@ pub unsafe extern "C" fn zkvm_keccak256(data: *const u8, len: usize, output: *mu
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_sha256(data: *const u8, len: usize, output: *mut u8) -> i32 {
-    let (data, len, output) = black_box((data, len, output));
-    let _ = (data, len);
-    for i in 0..32usize {
-        output.add(i).write(0xB5);
-    }
-    black_box(-1)
+    let _ = black_box((data, len, output,));
+    stub_fail("zkvm_sha256")
 }
 
 /// `zkvm_secp256k1_verify(msg, sig, pubkey, verified)` — redirected to
@@ -1121,10 +1079,8 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
     pubkey: *const u8,
     verified: *mut u8,
 ) -> i32 {
-    let (msg, sig, pubkey, verified) = black_box((msg, sig, pubkey, verified));
-    let _ = (msg, sig, pubkey);
-    verified.write(0);
-    black_box(-1)
+    let _ = black_box((msg, sig, pubkey, verified,));
+    stub_fail("zkvm_secp256k1_verify")
 }
 
 /// `zkvm_secp256k1_ecrecover(msg, sig, recid, output)` — redirected to
@@ -1139,12 +1095,8 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
     recid: u8,
     output: *mut u8,
 ) -> i32 {
-    let (msg, sig, recid, output) = black_box((msg, sig, recid, output));
-    let _ = (msg, sig, recid);
-    for i in 0..64usize {
-        output.add(i).write(0xBA);
-    }
-    black_box(-1)
+    let _ = black_box((msg, sig, recid, output,));
+    stub_fail("zkvm_secp256k1_ecrecover")
 }
 
 /// `zkvm_secp256r1_verify(msg, sig, pubkey, verified)` — redirected to
@@ -1159,10 +1111,8 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
     pubkey: *const u8,
     verified: *mut u8,
 ) -> i32 {
-    let (msg, sig, pubkey, verified) = black_box((msg, sig, pubkey, verified));
-    let _ = (msg, sig, pubkey);
-    verified.write(0);
-    black_box(-1)
+    let _ = black_box((msg, sig, pubkey, verified,));
+    stub_fail("zkvm_secp256r1_verify")
 }
 
 /// `zkvm_blake2f(rounds, h, m, t, f)` — redirected to `ziskasm_zkvm_blake2f`.
@@ -1178,9 +1128,8 @@ pub unsafe extern "C" fn zkvm_blake2f(
     t: *const u8,
     f: u8,
 ) -> i32 {
-    let (rounds, h, m, t, f) = black_box((rounds, h, m, t, f));
-    let _ = (rounds, m, t, f, h);
-    black_box(-1)
+    let _ = black_box((rounds, h, m, t, f,));
+    stub_fail("zkvm_blake2f")
 }
 
 /// `zkvm_modexp(base, base_len, exp, exp_len, mod, mod_len, output)` (EIP-198) —
@@ -1200,9 +1149,8 @@ pub unsafe extern "C" fn zkvm_modexp(
     mod_len: usize,
     output: *mut u8,
 ) -> i32 {
-    let t = black_box((base, base_len, exp, exp_len, modulus, mod_len, output));
-    let _ = t;
-    black_box(-1)
+    let _ = black_box((base, base_len, exp, exp_len, modulus, mod_len, output,));
+    stub_fail("zkvm_modexp")
 }
 
 /// `zkvm_bn254_g1_add(p1, p2, result)` — redirected to `ziskasm_zkvm_bn254_g1_add`.
@@ -1212,9 +1160,8 @@ pub unsafe extern "C" fn zkvm_modexp(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bn254_g1_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let t = black_box((p1, p2, result));
-    let _ = t;
-    black_box(-1)
+    let _ = black_box((p1, p2, result,));
+    stub_fail("zkvm_bn254_g1_add")
 }
 
 /// `zkvm_bn254_g1_mul(point, scalar, result)` — redirected to `ziskasm_zkvm_bn254_g1_mul`.
@@ -1228,9 +1175,8 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
     scalar: *const u8,
     result: *mut u8,
 ) -> i32 {
-    let t = black_box((point, scalar, result));
-    let _ = t;
-    black_box(-1)
+    let _ = black_box((point, scalar, result,));
+    stub_fail("zkvm_bn254_g1_mul")
 }
 
 /// `zkvm_bn254_pairing(pairs, num_pairs, verified)` — redirected to
@@ -1245,9 +1191,8 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
     num_pairs: usize,
     verified: *mut bool,
 ) -> i32 {
-    let t = black_box((pairs, num_pairs, verified));
-    let _ = t;
-    black_box(-1)
+    let _ = black_box((pairs, num_pairs, verified,));
+    stub_fail("zkvm_bn254_pairing")
 }
 
 // ---- BLS12-381 (EIP-2537) + KZG (EIP-4844) stubs -----------------------------
@@ -1259,8 +1204,8 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_g1_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((p1, p2, result));
-    black_box(-1)
+    let _ = black_box((p1, p2, result,));
+    stub_fail("zkvm_bls12_g1_add")
 }
 /// # Safety
 /// `pairs` is `num_pairs*128` readable bytes; `result` 96 writable.
@@ -1271,16 +1216,16 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
     num_pairs: usize,
     result: *mut u8,
 ) -> i32 {
-    let _ = black_box((pairs, num_pairs, result));
-    black_box(-1)
+    let _ = black_box((pairs, num_pairs, result,));
+    stub_fail("zkvm_bls12_g1_msm")
 }
 /// # Safety
 /// `p1`/`p2` are 192 readable bytes; `result` 192 writable.
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_g2_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((p1, p2, result));
-    black_box(-1)
+    let _ = black_box((p1, p2, result,));
+    stub_fail("zkvm_bls12_g2_add")
 }
 /// # Safety
 /// `pairs` is `num_pairs*224` readable bytes; `result` 192 writable.
@@ -1291,8 +1236,8 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
     num_pairs: usize,
     result: *mut u8,
 ) -> i32 {
-    let _ = black_box((pairs, num_pairs, result));
-    black_box(-1)
+    let _ = black_box((pairs, num_pairs, result,));
+    stub_fail("zkvm_bls12_g2_msm")
 }
 /// # Safety
 /// `pairs` is `num_pairs*288` readable bytes; `verified` a writable bool.
@@ -1303,16 +1248,16 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
     num_pairs: usize,
     verified: *mut bool,
 ) -> i32 {
-    let _ = black_box((pairs, num_pairs, verified));
-    black_box(-1)
+    let _ = black_box((pairs, num_pairs, verified,));
+    stub_fail("zkvm_bls12_pairing")
 }
 /// # Safety
 /// `field_element` 48 readable bytes; `result` 96 writable.
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(field_element: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((field_element, result));
-    black_box(-1)
+    let _ = black_box((field_element, result,));
+    stub_fail("zkvm_bls12_map_fp_to_g1")
 }
 /// # Safety
 /// `field_element` 96 readable bytes; `result` 192 writable.
@@ -1322,8 +1267,8 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
     field_element: *const u8,
     result: *mut u8,
 ) -> i32 {
-    let _ = black_box((field_element, result));
-    black_box(-1)
+    let _ = black_box((field_element, result,));
+    stub_fail("zkvm_bls12_map_fp2_to_g2")
 }
 /// `zkvm_kzg_point_eval(commitment, z, y, proof, verified)` (EIP-4844) —
 /// redirected to `ziskasm_zkvm_kzg_point_eval`. commitment/proof are 48-byte
@@ -1339,8 +1284,8 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
     proof: *const u8,
     verified: *mut bool,
 ) -> i32 {
-    let _ = black_box((commitment, z, y, proof, verified));
-    black_box(-1)
+    let _ = black_box((commitment, z, y, proof, verified,));
+    stub_fail("zkvm_kzg_point_eval")
 }
 
 /// `zkvm_ripemd160(data, len, output)` — redirected to `ziskasm_zkvm_ripemd160`.
@@ -1350,6 +1295,6 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_ripemd160(data: *const u8, len: usize, output: *mut u8) -> i32 {
-    let _ = black_box((data, len, output));
-    black_box(-1)
+    let _ = black_box((data, len, output,));
+    stub_fail("zkvm_ripemd160")
 }

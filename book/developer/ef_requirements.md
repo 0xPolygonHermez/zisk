@@ -29,8 +29,8 @@ that gap with a **stub-and-redirect** scheme:
    `zkvm_accelerators.h` / `zisklib.h`); for Rust guests it is the `#[no_mangle]`
    stubs in the `zisklib` crate. These stubs exist only to satisfy the linker and
    to give each symbol a concrete address in the ELF; their bodies are never meant
-   to run. (Many fill the output with a sentinel such as `0xBA`, which doubles as a
-   negative control — see below.)
+   to run — if one does, it **fails hard** (see below) rather than returning a
+   value.
 
 2. **The real implementations live in ZisK assembly.** The actual routines are
    hand-written `.zisk` files under `ziskasm/zisklib/` (e.g. `zkvm/keccak.zisk`).
@@ -55,11 +55,19 @@ Two consequences worth knowing:
 - **Do not strip the guest ELF.** `elf2rom` resolves the stubs by name in the
   symbol table (`.symtab`); a stripped ELF has nothing to redirect, so the
   placeholder bodies run instead.
-- **The placeholder is a built-in negative control.** If the redirect does *not*
-  fire — the ELF was stripped, the symbol wasn't in the table, or (see below) ZisK
-  was built without the `ziskasm` feature — the stub's sentinel body runs and the
-  result is obviously wrong (e.g. a `0xBABA…` "hash"), rather than silently
-  producing a plausible-but-unaccelerated value.
+- **A reached stub panics — it never returns a wrong value.** If the redirect does
+  *not* fire — the ELF was stripped, the symbol wasn't in the table, or (see below)
+  ZisK was built without the `ziskasm` feature — the stub body runs, and every stub
+  is written to **fail hard**: it prints a one-line diagnostic to the ZisK stdout
+  (`ERROR: ziskasm … stub reached without redirect: <function>() -- build … with
+  --features ziskasm …`) and then **accesses address 0**, which lands in the
+  null-pointer guard region and triggers abnormal termination (the emulator reports
+  an invalid write at `addr=0` and halts; no output is produced). This is
+  deliberate: a missing redirect is a build/link error, so failing loudly is far
+  safer than silently returning a plausible-but-unaccelerated (and here, incorrect)
+  value that could be mistaken for a real result. The behavior is identical across
+  the C stubs (`zkvm_stubs.c`, `zisklib_stubs.c`) and the Rust stubs (`zisklib`
+  crate); the diagnostic names the exact function that was hit.
 
 This whole mechanism is **gated behind the `ziskasm` cargo feature** (off by
 default): without it, `elf2rom` neither assembles the library nor installs any
@@ -102,8 +110,9 @@ cargo build --release -p ziskemu --bin ziskemu --features ziskasm   # -> target/
 The **`ziskasm` feature is required** to get the redirect: it is off by default,
 and without it `elf2rom` neither assembles the ZisK library nor redirects any
 `zkvm_*`/`ziskos_*` symbol (a default `ziskemu` behaves like mainline, and an
-EF-ABI guest run through it produces the stub's sentinel output instead of the
-accelerated result — a handy negative control). The feature also enables the
+EF-ABI guest run through it reaches the un-redirected stubs, which panic — print
+a diagnostic and fault on address 0 — rather than returning a wrong result). The
+feature also enables the
 emulator's `-z` ZisK-assembly path. The same feature is plumbed through the
 proving pipeline, so `cargo build -p cargo-zisk --features ziskasm` redirects
 `zisklib` guests during ROM generation and proving as well (Cargo feature
