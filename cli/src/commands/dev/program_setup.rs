@@ -96,7 +96,6 @@ impl ProgramSetupCmd {
             &ProofType::Basic,
             false,
             &[],
-            &[],
             gpu,
         )?);
         let setups_vadcop = Arc::new(SetupsVadcop::new(&pctx.global_info, false, false, &[], gpu)?);
