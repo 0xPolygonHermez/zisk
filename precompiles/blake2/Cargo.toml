@@ -1,6 +1,6 @@
 [package]
 name = "zisk-precomp-blake2"
-description = "Blake2 precompile for the ZisK zkVM"
+description = "Blake2b and Blake2s precompiles for the ZisK zkVM"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }

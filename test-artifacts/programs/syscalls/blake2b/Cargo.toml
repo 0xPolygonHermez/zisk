@@ -1,5 +1,5 @@
 [package]
-name = "blake2"
+name = "blake2b"
 version.workspace = true
 edition.workspace = true
 

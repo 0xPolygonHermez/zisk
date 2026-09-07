@@ -2,11 +2,15 @@ require "std_constants.pil"
 require "std_lookup.pil"
 require "opids.pil"
 
-const int BLAKE3F_TABLE_SIZE = P2_17;
+// Byte-wise XOR ⊕ ROTR table shared by every Blake precompile (Blake2br, Blake2s, Blake3f).
+//
+// Row (a, b, rot) proves that [c0, c1] are the two byte pieces of ((a ^ b) as u32) >>> rot,
+// for rot ∈ {0, 12}. With rot = 0 this is the plain byte XOR (c0 = a ^ b, c1 = 0).
+const int BLAKE_TABLE_SIZE = P2_17;
 
-airtemplate Blake3fTable(const int N) {
-    if (N < BLAKE3F_TABLE_SIZE) {
-        error(`N must be at least ${BLAKE3F_TABLE_SIZE}, but N=${N} was provided`);
+airtemplate BlakeTable(const int N) {
+    if (N < BLAKE_TABLE_SIZE) {
+        error(`N must be at least ${BLAKE_TABLE_SIZE}, but N=${N} was provided`);
     }
 
     // Inputs A (8 bits)
@@ -38,10 +42,10 @@ airtemplate Blake3fTable(const int N) {
     }
 
     col witness multiplicity;
-    lookup_proves(BLAKE3F_TABLE_ID, [A, B, ROTATION, C_ROT[0], C_ROT[1]], multiplicity);
+    lookup_proves(BLAKE_TABLE_ID, [A, B, ROTATION, C_ROT[0], C_ROT[1]], multiplicity);
 }
 
 // Checks that [c0, c1] are the two byte pieces of (a ^ b) >>> rot, as computed by the table
 function xor_rotr_check(const expr a, const expr b, const int rot, const expr c0, const expr c1) {
-    lookup_assumes(BLAKE3F_TABLE_ID, [a, b, rot, c0, c1]);
+    lookup_assumes(BLAKE_TABLE_ID, [a, b, rot, c0, c1]);
 }

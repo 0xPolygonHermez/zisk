@@ -74,3 +74,55 @@ void blake2b_round(uint64_t v[16], const uint64_t m[16], uint64_t round) {
     g(v, 2, 7, 8, 13, m[s[12]], m[s[13]]);
     g(v, 3, 4, 9, 14, m[s[14]], m[s[15]]);
 }
+
+/// Rotation constants for the BLAKE2s G function
+const uint32_t R1_S = 16;
+const uint32_t R2_S = 12;
+const uint32_t R3_S = 8;
+const uint32_t R4_S = 7;
+
+static inline uint32_t rotr32(uint32_t x, uint32_t n) {
+    return (x >> n) | (x << (32 - n));
+}
+
+/// BLAKE2s G mixing function (32-bit words)
+static void g_s(uint32_t v[16], size_t a, size_t b, size_t c, size_t d, uint32_t x, uint32_t y) {
+    uint32_t va = v[a];
+    uint32_t vb = v[b];
+    uint32_t vc = v[c];
+    uint32_t vd = v[d];
+
+    va = va + vb + x;
+    vd = rotr32(vd ^ va, R1_S);
+    vc = vc + vd;
+    vb = rotr32(vb ^ vc, R2_S);
+
+    va = va + vb + y;
+    vd = rotr32(vd ^ va, R3_S);
+    vc = vc + vd;
+    vb = rotr32(vb ^ vc, R4_S);
+
+    v[a] = va;
+    v[b] = vb;
+    v[c] = vc;
+    v[d] = vd;
+}
+
+/// BLAKE2s simplified compression function: the 10-round permutation, no feed-forward
+void blake2s_f(uint32_t v[16], const uint32_t m[16]) {
+    for (size_t round = 0; round < 10; round++) {
+        const size_t* s = SIGMA[round];
+
+        // Column step
+        g_s(v, 0, 4, 8, 12, m[s[0]], m[s[1]]);
+        g_s(v, 1, 5, 9, 13, m[s[2]], m[s[3]]);
+        g_s(v, 2, 6, 10, 14, m[s[4]], m[s[5]]);
+        g_s(v, 3, 7, 11, 15, m[s[6]], m[s[7]]);
+
+        // Diagonal step
+        g_s(v, 0, 5, 10, 15, m[s[8]], m[s[9]]);
+        g_s(v, 1, 6, 11, 12, m[s[10]], m[s[11]]);
+        g_s(v, 2, 7, 8, 13, m[s[12]], m[s[13]]);
+        g_s(v, 3, 4, 9, 14, m[s[14]], m[s[15]]);
+    }
+}
