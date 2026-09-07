@@ -23,15 +23,33 @@ u64 ZKVM_KECCAK_STATE[25] =
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
 ziskasm_zkvm_keccak256:
-	; --- zero the 25-word state (reused across calls) ---
+	; --- zero the 25-word state (unrolled: 25 stores, no per-word loop control) ---
 	copyb(0, ZKVM_KECCAK_STATE) -> r5
-	copyb(0, 25) -> r6
-zzk_zero:
-	eq(r6, 0), j(zzk_full)
 	copyb(r5, 0) -> 8[a + 0]
-	add(r5, 8) -> r5
-	sub(r6, 1) -> r6
-	jump(zzk_zero)
+	copyb(r5, 0) -> 8[a + 8]
+	copyb(r5, 0) -> 8[a + 16]
+	copyb(r5, 0) -> 8[a + 24]
+	copyb(r5, 0) -> 8[a + 32]
+	copyb(r5, 0) -> 8[a + 40]
+	copyb(r5, 0) -> 8[a + 48]
+	copyb(r5, 0) -> 8[a + 56]
+	copyb(r5, 0) -> 8[a + 64]
+	copyb(r5, 0) -> 8[a + 72]
+	copyb(r5, 0) -> 8[a + 80]
+	copyb(r5, 0) -> 8[a + 88]
+	copyb(r5, 0) -> 8[a + 96]
+	copyb(r5, 0) -> 8[a + 104]
+	copyb(r5, 0) -> 8[a + 112]
+	copyb(r5, 0) -> 8[a + 120]
+	copyb(r5, 0) -> 8[a + 128]
+	copyb(r5, 0) -> 8[a + 136]
+	copyb(r5, 0) -> 8[a + 144]
+	copyb(r5, 0) -> 8[a + 152]
+	copyb(r5, 0) -> 8[a + 160]
+	copyb(r5, 0) -> 8[a + 168]
+	copyb(r5, 0) -> 8[a + 176]
+	copyb(r5, 0) -> 8[a + 184]
+	copyb(r5, 0) -> 8[a + 192]
 
 ; --- Phase 1: full 136-byte rate blocks (r11 = remaining message bytes) ---
 zzk_full:
@@ -99,16 +117,15 @@ zzk_pad:
 	keccak(0, r14) -> r14
 
 zzk_squeeze:
+	; unrolled: copy state[0..4] (the 32-byte digest) to output
 	copyb(0, ZKVM_KECCAK_STATE) -> r5
-	copyb(0, 4) -> r6
-zzk_sq:
-	eq(r6, 0), j(zzk_done)
 	copyb(r5, 8[a + 0]) -> r7
 	copyb(r12, r7) -> 8[a + 0]
-	add(r5, 8) -> r5
-	add(r12, 8) -> r12
-	sub(r6, 1) -> r6
-	jump(zzk_sq)
-zzk_done:
+	copyb(r5, 8[a + 8]) -> r7
+	copyb(r12, r7) -> 8[a + 8]
+	copyb(r5, 8[a + 16]) -> r7
+	copyb(r12, r7) -> 8[a + 16]
+	copyb(r5, 8[a + 24]) -> r7
+	copyb(r12, r7) -> 8[a + 24]
 	copyb(0, 0) -> r10                  ; return ZKVM_EOK (a0 = 0)
 	ret
