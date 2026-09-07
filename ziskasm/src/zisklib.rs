@@ -28,6 +28,7 @@ pub const ZISK_LIBRARY: &[(&str, &str)] = &[
     ("uint256/div", include_str!("../zisklib/uint256/div.zisk")),
     ("uint256/modular", include_str!("../zisklib/uint256/modular.zisk")),
     ("uint256/pow", include_str!("../zisklib/uint256/pow.zisk")),
+    ("zkvm/u256", include_str!("../zisklib/zkvm/u256.zisk")),
     ("secp256k1/constants", include_str!("../zisklib/secp256k1/constants.zisk")),
     ("secp256k1/field", include_str!("../zisklib/secp256k1/field.zisk")),
     ("secp256k1/scalar", include_str!("../zisklib/secp256k1/scalar.zisk")),

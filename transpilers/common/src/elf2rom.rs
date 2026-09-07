@@ -92,6 +92,34 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         ("zkvm_bls12_map_fp2_to_g2", "ziskasm_zkvm_bls12_map_fp2_to_g2"),
         ("zkvm_kzg_point_eval", "ziskasm_zkvm_kzg_point_eval"),
         ("zkvm_ripemd160", "ziskasm_zkvm_ripemd160"),
+        // EF U256 arithmetic accelerator C ABI (zkvm_u256.h): 256-bit EVM-word ops.
+        ("zkvm_u256_add", "ziskasm_zkvm_u256_add"),
+        ("zkvm_u256_sub", "ziskasm_zkvm_u256_sub"),
+        ("zkvm_u256_mul", "ziskasm_zkvm_u256_mul"),
+        ("zkvm_u256_div", "ziskasm_zkvm_u256_div"),
+        ("zkvm_u256_mod", "ziskasm_zkvm_u256_mod"),
+        ("zkvm_u256_divmod", "ziskasm_zkvm_u256_divmod"),
+        ("zkvm_u256_addmod", "ziskasm_zkvm_u256_addmod"),
+        ("zkvm_u256_mulmod", "ziskasm_zkvm_u256_mulmod"),
+        ("zkvm_u256_exp", "ziskasm_zkvm_u256_exp"),
+        ("zkvm_u256_sdiv", "ziskasm_zkvm_u256_sdiv"),
+        ("zkvm_u256_smod", "ziskasm_zkvm_u256_smod"),
+        ("zkvm_u256_sdivmod", "ziskasm_zkvm_u256_sdivmod"),
+        ("zkvm_u256_lt", "ziskasm_zkvm_u256_lt"),
+        ("zkvm_u256_gt", "ziskasm_zkvm_u256_gt"),
+        ("zkvm_u256_slt", "ziskasm_zkvm_u256_slt"),
+        ("zkvm_u256_sgt", "ziskasm_zkvm_u256_sgt"),
+        ("zkvm_u256_eq", "ziskasm_zkvm_u256_eq"),
+        ("zkvm_u256_iszero", "ziskasm_zkvm_u256_iszero"),
+        ("zkvm_u256_and", "ziskasm_zkvm_u256_and"),
+        ("zkvm_u256_or", "ziskasm_zkvm_u256_or"),
+        ("zkvm_u256_xor", "ziskasm_zkvm_u256_xor"),
+        ("zkvm_u256_not", "ziskasm_zkvm_u256_not"),
+        ("zkvm_u256_byte", "ziskasm_zkvm_u256_byte"),
+        ("zkvm_u256_shl", "ziskasm_zkvm_u256_shl"),
+        ("zkvm_u256_shr", "ziskasm_zkvm_u256_shr"),
+        ("zkvm_u256_sar", "ziskasm_zkvm_u256_sar"),
+        ("zkvm_u256_signextend", "ziskasm_zkvm_u256_signextend"),
         ("ziskos_sha256", "ziskasm_zkvm_sha256"),
         ("ziskos_blake2b_compress", "ziskasm_zkvm_blake2f"),
         ("ziskos_inv256", "zisklib_inv256"),
@@ -134,7 +162,9 @@ pub fn elf2rom(elf: &[u8]) -> Result<ZiskRom, Box<dyn Error>> {
         for (guest_name, lib_name) in REDIRECTS {
             if let Some(&(guest_addr, size)) = guest_syms.get(*guest_name) {
                 let lib_addr = *library.symbols.get(*lib_name).ok_or_else(|| {
-                    format!("ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)")
+                    format!(
+                        "ZisK library has no function `{lib_name}` (redirect of `{guest_name}`)"
+                    )
                 })?;
                 redirects.insert(guest_addr, (lib_addr, size));
             }

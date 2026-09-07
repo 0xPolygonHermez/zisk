@@ -24,6 +24,7 @@
  *   - do NOT --strip the guest ELF: elf2rom resolves the stubs by name.
  */
 #include "zkvm_accelerators.h"
+#include "zkvm_u256.h"
 
 #define ZKVM_STUB __attribute__((noinline, used))
 #define TOUCH(x)  __asm__ volatile("" : : "r"(x) : "memory")
@@ -175,5 +176,120 @@ ZKVM_STUB zkvm_status zkvm_kzg_point_eval(const zkvm_kzg_commitment *commitment,
 ZKVM_STUB zkvm_status zkvm_ripemd160(const uint8_t *data, size_t len,
                                      zkvm_ripemd160_hash *output) {
     TOUCH(data); TOUCH(len); TOUCH(output);
+    STUB_FAIL();
+}
+
+/* ---- U256 EVM-word arithmetic (zkvm_u256.h; big-endian 32-byte operands) ---- */
+ZKVM_STUB zkvm_status zkvm_u256_add(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_sub(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_mul(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_div(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *quotient) {
+    TOUCH(a); TOUCH(b); TOUCH(quotient);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_mod(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *remainder) {
+    TOUCH(a); TOUCH(b); TOUCH(remainder);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_divmod(const zkvm_u256 *a, const zkvm_u256 *b,
+                                       zkvm_u256 *quotient, zkvm_u256 *remainder) {
+    TOUCH(a); TOUCH(b); TOUCH(quotient); TOUCH(remainder);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_addmod(const zkvm_u256 *a, const zkvm_u256 *b,
+                                       const zkvm_u256 *n, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(n); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_mulmod(const zkvm_u256 *a, const zkvm_u256 *b,
+                                       const zkvm_u256 *n, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(n); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_exp(const zkvm_u256 *base, const zkvm_u256 *exponent,
+                                    zkvm_u256 *result) {
+    TOUCH(base); TOUCH(exponent); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_sdiv(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *quotient) {
+    TOUCH(a); TOUCH(b); TOUCH(quotient);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_smod(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *remainder) {
+    TOUCH(a); TOUCH(b); TOUCH(remainder);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_sdivmod(const zkvm_u256 *a, const zkvm_u256 *b,
+                                        zkvm_u256 *quotient, zkvm_u256 *remainder) {
+    TOUCH(a); TOUCH(b); TOUCH(quotient); TOUCH(remainder);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_lt(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_gt(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_slt(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_sgt(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_eq(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_iszero(const zkvm_u256 *a, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_and(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_or(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_xor(const zkvm_u256 *a, const zkvm_u256 *b, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(b); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_not(const zkvm_u256 *a, zkvm_u256 *result) {
+    TOUCH(a); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_byte(const zkvm_u256 *i, const zkvm_u256 *a, zkvm_u256 *result) {
+    TOUCH(i); TOUCH(a); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_shl(const zkvm_u256 *shift, const zkvm_u256 *value, zkvm_u256 *result) {
+    TOUCH(shift); TOUCH(value); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_shr(const zkvm_u256 *shift, const zkvm_u256 *value, zkvm_u256 *result) {
+    TOUCH(shift); TOUCH(value); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_sar(const zkvm_u256 *shift, const zkvm_u256 *value, zkvm_u256 *result) {
+    TOUCH(shift); TOUCH(value); TOUCH(result);
+    STUB_FAIL();
+}
+ZKVM_STUB zkvm_status zkvm_u256_signextend(const zkvm_u256 *b, const zkvm_u256 *value, zkvm_u256 *result) {
+    TOUCH(b); TOUCH(value); TOUCH(result);
     STUB_FAIL();
 }

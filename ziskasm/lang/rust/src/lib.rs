@@ -68,7 +68,7 @@ fn stub_fail(name: &str) -> ! {
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
-    let _ = black_box((a, b,));
+    let _ = black_box((a, b));
     stub_fail("ziskos_add")
 }
 
@@ -83,7 +83,7 @@ pub extern "C" fn ziskos_add(a: u64, b: u64) -> u64 {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_keccak(input: *const u8, len: usize, output: *mut u8) {
-    let _ = black_box((input, len, output,));
+    let _ = black_box((input, len, output));
     stub_fail("ziskos_keccak")
 }
 
@@ -108,7 +108,7 @@ pub fn keccak256(input: &[u8]) -> [u8; 32] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_sha256(input: *const u8, len: usize, output: *mut u8) {
-    let _ = black_box((input, len, output,));
+    let _ = black_box((input, len, output));
     stub_fail("ziskos_sha256")
 }
 
@@ -141,7 +141,7 @@ pub unsafe extern "C" fn ziskos_blake2b_compress(
     offset: *const u64,
     final_block: u8,
 ) {
-    let _ = black_box((rounds, state, message, offset, final_block,));
+    let _ = black_box((rounds, state, message, offset, final_block));
     stub_fail("ziskos_blake2b_compress")
 }
 
@@ -165,7 +165,7 @@ pub fn blake2b_compress(rounds: u32, h: &mut [u64; 8], m: &[u64; 16], t: &[u64; 
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_inv256(a: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((a, result,));
+    let _ = black_box((a, result));
     stub_fail("ziskos_inv256")
 }
 
@@ -198,7 +198,7 @@ pub unsafe extern "C" fn ziskos_overflowing_add256(
     b: *const u64,
     result: *mut u64,
 ) -> u64 {
-    let _ = black_box((a, b, result,));
+    let _ = black_box((a, b, result));
     stub_fail("ziskos_overflowing_add256")
 }
 
@@ -214,7 +214,7 @@ pub unsafe extern "C" fn ziskos_overflowing_sub256(
     b: *const u64,
     result: *mut u64,
 ) -> u64 {
-    let _ = black_box((a, b, result,));
+    let _ = black_box((a, b, result));
     stub_fail("ziskos_overflowing_sub256")
 }
 
@@ -313,7 +313,7 @@ pub unsafe extern "C" fn ziskos_overflowing_mul256(
     b: *const u64,
     result: *mut u64,
 ) -> u64 {
-    let _ = black_box((a, b, result,));
+    let _ = black_box((a, b, result));
     stub_fail("ziskos_overflowing_mul256")
 }
 
@@ -388,7 +388,7 @@ pub fn saturating_square256(a: &[u64; 4]) -> [u64; 4] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_div_rem256(a: *const u64, b: *const u64, q: *mut u64, r: *mut u64) {
-    let _ = black_box((a, b, q, r,));
+    let _ = black_box((a, b, q, r));
     stub_fail("ziskos_div_rem256")
 }
 
@@ -445,7 +445,7 @@ pub fn div_ceil256(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_reduce_mod256(a: *const u64, m: *const u64, result: *mut u64) {
-    let _ = black_box((a, m, result,));
+    let _ = black_box((a, m, result));
     stub_fail("ziskos_reduce_mod256")
 }
 
@@ -461,7 +461,7 @@ pub unsafe extern "C" fn ziskos_add_mod256(
     m: *const u64,
     result: *mut u64,
 ) {
-    let _ = black_box((a, b, m, result,));
+    let _ = black_box((a, b, m, result));
     stub_fail("ziskos_add_mod256")
 }
 
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn ziskos_mul_mod256(
     m: *const u64,
     result: *mut u64,
 ) {
-    let _ = black_box((a, b, m, result,));
+    let _ = black_box((a, b, m, result));
     stub_fail("ziskos_mul_mod256")
 }
 
@@ -529,7 +529,7 @@ pub fn square_mod256(a: &[u64; 4], modulus: &[u64; 4]) -> [u64; 4] {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_inv_mod256(a: *const u64, m: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((a, m, result,));
+    let _ = black_box((a, m, result));
     stub_fail("ziskos_inv_mod256")
 }
 
@@ -562,7 +562,7 @@ pub unsafe extern "C" fn ziskos_pow_mod256(
     m: *const u64,
     result: *mut u64,
 ) {
-    let _ = black_box((base, exp, m, result,));
+    let _ = black_box((base, exp, m, result));
     stub_fail("ziskos_pow_mod256")
 }
 
@@ -592,7 +592,7 @@ pub unsafe extern "C" fn ziskos_overflowing_pow256(
     exp: *const u64,
     result: *mut u64,
 ) -> u64 {
-    let _ = black_box((base, exp, result,));
+    let _ = black_box((base, exp, result));
     stub_fail("ziskos_overflowing_pow256")
 }
 
@@ -649,7 +649,7 @@ pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256k1(
     r: *const u64,
     s: *const u64,
 ) -> u64 {
-    let _ = black_box((pk, z, r, s,));
+    let _ = black_box((pk, z, r, s));
     stub_fail("ziskos_ecdsa_verify_secp256k1")
 }
 
@@ -675,7 +675,7 @@ pub unsafe extern "C" fn ziskos_ecdsa_recover_secp256k1(
     recid: u64,
     result: *mut u64,
 ) -> u64 {
-    let _ = black_box((r, s, z, recid, result,));
+    let _ = black_box((r, s, z, recid, result));
     stub_fail("ziskos_ecdsa_recover_secp256k1")
 }
 
@@ -716,7 +716,7 @@ pub unsafe extern "C" fn ziskos_schnorr_verify_secp256k1(
     msg: *const u8,
     msg_len: u64,
 ) -> u64 {
-    let _ = black_box((pk_x, r, s, msg, msg_len,));
+    let _ = black_box((pk_x, r, s, msg, msg_len));
     stub_fail("ziskos_schnorr_verify_secp256k1")
 }
 
@@ -750,7 +750,7 @@ pub unsafe extern "C" fn ziskos_ecdsa_verify_secp256r1(
     r: *const u64,
     s: *const u64,
 ) -> u64 {
-    let _ = black_box((pk, z, r, s,));
+    let _ = black_box((pk, z, r, s));
     stub_fail("ziskos_ecdsa_verify_secp256r1")
 }
 
@@ -773,7 +773,7 @@ pub fn secp256r1_ecdsa_verify(pk: &[u64; 8], z: &[u64; 4], r: &[u64; 4], s: &[u6
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_pairing_check_bn254(g1: *const u64, g2: *const u64, n: u64) -> u64 {
-    let _ = black_box((g1, g2, n,));
+    let _ = black_box((g1, g2, n));
     stub_fail("ziskos_pairing_check_bn254")
 }
 
@@ -808,7 +808,7 @@ pub unsafe extern "C" fn ziskos_pairing_check_bls12_381(
     g2: *const u64,
     n: u64,
 ) -> u64 {
-    let _ = black_box((g1, g2, n,));
+    let _ = black_box((g1, g2, n));
     stub_fail("ziskos_pairing_check_bls12_381")
 }
 
@@ -838,7 +838,7 @@ pub fn bls12_381_pairing_check(g1: &[[u64; 12]], g2: &[[u64; 24]]) -> u64 {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_map_to_curve_g1_bls12_381(u: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((u, result,));
+    let _ = black_box((u, result));
     stub_fail("ziskos_map_to_curve_g1_bls12_381")
 }
 
@@ -865,7 +865,7 @@ pub fn bls12_381_map_to_curve_g1(u: &[u64; 6]) -> Result<[u64; 12], u64> {
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn ziskos_map_to_curve_g2_bls12_381(u: *const u64, result: *mut u64) -> u64 {
-    let _ = black_box((u, result,));
+    let _ = black_box((u, result));
     stub_fail("ziskos_map_to_curve_g2_bls12_381")
 }
 
@@ -898,7 +898,7 @@ pub unsafe extern "C" fn ziskos_hash_to_curve_g2_bls12_381(
     dst_len: u64,
     result: *mut u64,
 ) {
-    let _ = black_box((msg, msg_len, dst, dst_len, result,));
+    let _ = black_box((msg, msg_len, dst, dst_len, result));
     stub_fail("ziskos_hash_to_curve_g2_bls12_381")
 }
 
@@ -935,7 +935,7 @@ pub unsafe extern "C" fn ziskos_bls_verify_bls12_381(
     msg_len: u64,
     sig: *const u8,
 ) -> u64 {
-    let _ = black_box((pk, msg, msg_len, sig,));
+    let _ = black_box((pk, msg, msg_len, sig));
     stub_fail("ziskos_bls_verify_bls12_381")
 }
 
@@ -965,7 +965,7 @@ pub unsafe extern "C" fn ziskos_verify_kzg_proof_bls12_381(
     commitment: *const u8,
     proof: *const u8,
 ) -> u64 {
-    let _ = black_box((z, y, commitment, proof,));
+    let _ = black_box((z, y, commitment, proof));
     stub_fail("ziskos_verify_kzg_proof_bls12_381")
 }
 
@@ -1011,7 +1011,7 @@ pub unsafe extern "C" fn ziskos_modexp_u64_c(
     modulus_len: usize,
     result: *mut u64,
 ) -> usize {
-    let _ = black_box((base, base_len, exp, exp_len, modulus, modulus_len, result,));
+    let _ = black_box((base, base_len, exp, exp_len, modulus, modulus_len, result));
     stub_fail("ziskos_modexp_u64_c")
 }
 
@@ -1050,7 +1050,7 @@ pub fn modexp_u64(base: &[u64], exp: &[u64], modulus: &[u64], result: &mut [u64]
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_keccak256(data: *const u8, len: usize, output: *mut u8) -> i32 {
-    let _ = black_box((data, len, output,));
+    let _ = black_box((data, len, output));
     stub_fail("zkvm_keccak256")
 }
 
@@ -1061,7 +1061,7 @@ pub unsafe extern "C" fn zkvm_keccak256(data: *const u8, len: usize, output: *mu
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_sha256(data: *const u8, len: usize, output: *mut u8) -> i32 {
-    let _ = black_box((data, len, output,));
+    let _ = black_box((data, len, output));
     stub_fail("zkvm_sha256")
 }
 
@@ -1092,7 +1092,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_verify(
     pubkey: *const u8,
     verified: *mut u8,
 ) -> i32 {
-    let _ = black_box((msg, sig, pubkey, verified,));
+    let _ = black_box((msg, sig, pubkey, verified));
     stub_fail("zkvm_secp256k1_verify")
 }
 
@@ -1108,7 +1108,7 @@ pub unsafe extern "C" fn zkvm_secp256k1_ecrecover(
     recid: u8,
     output: *mut u8,
 ) -> i32 {
-    let _ = black_box((msg, sig, recid, output,));
+    let _ = black_box((msg, sig, recid, output));
     stub_fail("zkvm_secp256k1_ecrecover")
 }
 
@@ -1124,7 +1124,7 @@ pub unsafe extern "C" fn zkvm_secp256r1_verify(
     pubkey: *const u8,
     verified: *mut u8,
 ) -> i32 {
-    let _ = black_box((msg, sig, pubkey, verified,));
+    let _ = black_box((msg, sig, pubkey, verified));
     stub_fail("zkvm_secp256r1_verify")
 }
 
@@ -1141,7 +1141,7 @@ pub unsafe extern "C" fn zkvm_blake2f(
     t: *const u8,
     f: u8,
 ) -> i32 {
-    let _ = black_box((rounds, h, m, t, f,));
+    let _ = black_box((rounds, h, m, t, f));
     stub_fail("zkvm_blake2f")
 }
 
@@ -1162,7 +1162,7 @@ pub unsafe extern "C" fn zkvm_modexp(
     mod_len: usize,
     output: *mut u8,
 ) -> i32 {
-    let _ = black_box((base, base_len, exp, exp_len, modulus, mod_len, output,));
+    let _ = black_box((base, base_len, exp, exp_len, modulus, mod_len, output));
     stub_fail("zkvm_modexp")
 }
 
@@ -1173,7 +1173,7 @@ pub unsafe extern "C" fn zkvm_modexp(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bn254_g1_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((p1, p2, result,));
+    let _ = black_box((p1, p2, result));
     stub_fail("zkvm_bn254_g1_add")
 }
 
@@ -1188,7 +1188,7 @@ pub unsafe extern "C" fn zkvm_bn254_g1_mul(
     scalar: *const u8,
     result: *mut u8,
 ) -> i32 {
-    let _ = black_box((point, scalar, result,));
+    let _ = black_box((point, scalar, result));
     stub_fail("zkvm_bn254_g1_mul")
 }
 
@@ -1204,7 +1204,7 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
     num_pairs: usize,
     verified: *mut bool,
 ) -> i32 {
-    let _ = black_box((pairs, num_pairs, verified,));
+    let _ = black_box((pairs, num_pairs, verified));
     stub_fail("zkvm_bn254_pairing")
 }
 
@@ -1217,7 +1217,7 @@ pub unsafe extern "C" fn zkvm_bn254_pairing(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_g1_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((p1, p2, result,));
+    let _ = black_box((p1, p2, result));
     stub_fail("zkvm_bls12_g1_add")
 }
 /// # Safety
@@ -1229,7 +1229,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
     num_pairs: usize,
     result: *mut u8,
 ) -> i32 {
-    let _ = black_box((pairs, num_pairs, result,));
+    let _ = black_box((pairs, num_pairs, result));
     stub_fail("zkvm_bls12_g1_msm")
 }
 /// # Safety
@@ -1237,7 +1237,7 @@ pub unsafe extern "C" fn zkvm_bls12_g1_msm(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_g2_add(p1: *const u8, p2: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((p1, p2, result,));
+    let _ = black_box((p1, p2, result));
     stub_fail("zkvm_bls12_g2_add")
 }
 /// # Safety
@@ -1249,7 +1249,7 @@ pub unsafe extern "C" fn zkvm_bls12_g2_msm(
     num_pairs: usize,
     result: *mut u8,
 ) -> i32 {
-    let _ = black_box((pairs, num_pairs, result,));
+    let _ = black_box((pairs, num_pairs, result));
     stub_fail("zkvm_bls12_g2_msm")
 }
 /// # Safety
@@ -1261,7 +1261,7 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
     num_pairs: usize,
     verified: *mut bool,
 ) -> i32 {
-    let _ = black_box((pairs, num_pairs, verified,));
+    let _ = black_box((pairs, num_pairs, verified));
     stub_fail("zkvm_bls12_pairing")
 }
 /// # Safety
@@ -1269,7 +1269,7 @@ pub unsafe extern "C" fn zkvm_bls12_pairing(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_bls12_map_fp_to_g1(field_element: *const u8, result: *mut u8) -> i32 {
-    let _ = black_box((field_element, result,));
+    let _ = black_box((field_element, result));
     stub_fail("zkvm_bls12_map_fp_to_g1")
 }
 /// # Safety
@@ -1280,7 +1280,7 @@ pub unsafe extern "C" fn zkvm_bls12_map_fp2_to_g2(
     field_element: *const u8,
     result: *mut u8,
 ) -> i32 {
-    let _ = black_box((field_element, result,));
+    let _ = black_box((field_element, result));
     stub_fail("zkvm_bls12_map_fp2_to_g2")
 }
 /// `zkvm_kzg_point_eval(commitment, z, y, proof, verified)` (EIP-4844) —
@@ -1297,7 +1297,7 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
     proof: *const u8,
     verified: *mut bool,
 ) -> i32 {
-    let _ = black_box((commitment, z, y, proof, verified,));
+    let _ = black_box((commitment, z, y, proof, verified));
     stub_fail("zkvm_kzg_point_eval")
 }
 
@@ -1308,6 +1308,333 @@ pub unsafe extern "C" fn zkvm_kzg_point_eval(
 #[no_mangle]
 #[inline(never)]
 pub unsafe extern "C" fn zkvm_ripemd160(data: *const u8, len: usize, output: *mut u8) -> i32 {
-    let _ = black_box((data, len, output,));
+    let _ = black_box((data, len, output));
     stub_fail("zkvm_ripemd160")
+}
+
+// ---- U256 EVM-word arithmetic (zkvm_u256.h) stubs ----------------------------
+
+/// `zkvm_u256_add(...)` — redirected to `ziskasm_zkvm_u256_add`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_add(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_add")
+}
+
+/// `zkvm_u256_sub(...)` — redirected to `ziskasm_zkvm_u256_sub`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_sub(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_sub")
+}
+
+/// `zkvm_u256_mul(...)` — redirected to `ziskasm_zkvm_u256_mul`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_mul(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_mul")
+}
+
+/// `zkvm_u256_div(...)` — redirected to `ziskasm_zkvm_u256_div`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_div(a: *const u8, b: *const u8, quotient: *mut u8) -> i32 {
+    let _ = black_box((a, b, quotient));
+    stub_fail("zkvm_u256_div")
+}
+
+/// `zkvm_u256_mod(...)` — redirected to `ziskasm_zkvm_u256_mod`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_mod(a: *const u8, b: *const u8, remainder: *mut u8) -> i32 {
+    let _ = black_box((a, b, remainder));
+    stub_fail("zkvm_u256_mod")
+}
+
+/// `zkvm_u256_divmod(...)` — redirected to `ziskasm_zkvm_u256_divmod`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_divmod(
+    a: *const u8,
+    b: *const u8,
+    quotient: *mut u8,
+    remainder: *mut u8,
+) -> i32 {
+    let _ = black_box((a, b, quotient, remainder));
+    stub_fail("zkvm_u256_divmod")
+}
+
+/// `zkvm_u256_addmod(...)` — redirected to `ziskasm_zkvm_u256_addmod`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_addmod(
+    a: *const u8,
+    b: *const u8,
+    n: *const u8,
+    result: *mut u8,
+) -> i32 {
+    let _ = black_box((a, b, n, result));
+    stub_fail("zkvm_u256_addmod")
+}
+
+/// `zkvm_u256_mulmod(...)` — redirected to `ziskasm_zkvm_u256_mulmod`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_mulmod(
+    a: *const u8,
+    b: *const u8,
+    n: *const u8,
+    result: *mut u8,
+) -> i32 {
+    let _ = black_box((a, b, n, result));
+    stub_fail("zkvm_u256_mulmod")
+}
+
+/// `zkvm_u256_exp(...)` — redirected to `ziskasm_zkvm_u256_exp`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_exp(
+    base: *const u8,
+    exponent: *const u8,
+    result: *mut u8,
+) -> i32 {
+    let _ = black_box((base, exponent, result));
+    stub_fail("zkvm_u256_exp")
+}
+
+/// `zkvm_u256_sdiv(...)` — redirected to `ziskasm_zkvm_u256_sdiv`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_sdiv(a: *const u8, b: *const u8, quotient: *mut u8) -> i32 {
+    let _ = black_box((a, b, quotient));
+    stub_fail("zkvm_u256_sdiv")
+}
+
+/// `zkvm_u256_smod(...)` — redirected to `ziskasm_zkvm_u256_smod`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_smod(a: *const u8, b: *const u8, remainder: *mut u8) -> i32 {
+    let _ = black_box((a, b, remainder));
+    stub_fail("zkvm_u256_smod")
+}
+
+/// `zkvm_u256_sdivmod(...)` — redirected to `ziskasm_zkvm_u256_sdivmod`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_sdivmod(
+    a: *const u8,
+    b: *const u8,
+    quotient: *mut u8,
+    remainder: *mut u8,
+) -> i32 {
+    let _ = black_box((a, b, quotient, remainder));
+    stub_fail("zkvm_u256_sdivmod")
+}
+
+/// `zkvm_u256_lt(...)` — redirected to `ziskasm_zkvm_u256_lt`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_lt(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_lt")
+}
+
+/// `zkvm_u256_gt(...)` — redirected to `ziskasm_zkvm_u256_gt`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_gt(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_gt")
+}
+
+/// `zkvm_u256_slt(...)` — redirected to `ziskasm_zkvm_u256_slt`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_slt(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_slt")
+}
+
+/// `zkvm_u256_sgt(...)` — redirected to `ziskasm_zkvm_u256_sgt`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_sgt(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_sgt")
+}
+
+/// `zkvm_u256_eq(...)` — redirected to `ziskasm_zkvm_u256_eq`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_eq(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_eq")
+}
+
+/// `zkvm_u256_iszero(...)` — redirected to `ziskasm_zkvm_u256_iszero`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_iszero(a: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, result));
+    stub_fail("zkvm_u256_iszero")
+}
+
+/// `zkvm_u256_and(...)` — redirected to `ziskasm_zkvm_u256_and`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_and(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_and")
+}
+
+/// `zkvm_u256_or(...)` — redirected to `ziskasm_zkvm_u256_or`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_or(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_or")
+}
+
+/// `zkvm_u256_xor(...)` — redirected to `ziskasm_zkvm_u256_xor`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_xor(a: *const u8, b: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, b, result));
+    stub_fail("zkvm_u256_xor")
+}
+
+/// `zkvm_u256_not(...)` — redirected to `ziskasm_zkvm_u256_not`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_not(a: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((a, result));
+    stub_fail("zkvm_u256_not")
+}
+
+/// `zkvm_u256_byte(...)` — redirected to `ziskasm_zkvm_u256_byte`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_byte(i: *const u8, a: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((i, a, result));
+    stub_fail("zkvm_u256_byte")
+}
+
+/// `zkvm_u256_shl(...)` — redirected to `ziskasm_zkvm_u256_shl`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_shl(shift: *const u8, value: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((shift, value, result));
+    stub_fail("zkvm_u256_shl")
+}
+
+/// `zkvm_u256_shr(...)` — redirected to `ziskasm_zkvm_u256_shr`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_shr(shift: *const u8, value: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((shift, value, result));
+    stub_fail("zkvm_u256_shr")
+}
+
+/// `zkvm_u256_sar(...)` — redirected to `ziskasm_zkvm_u256_sar`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_sar(shift: *const u8, value: *const u8, result: *mut u8) -> i32 {
+    let _ = black_box((shift, value, result));
+    stub_fail("zkvm_u256_sar")
+}
+
+/// `zkvm_u256_signextend(...)` — redirected to `ziskasm_zkvm_u256_signextend`. Big-endian
+/// 32-byte operands. Returns 0 = ZKVM_EOK.
+/// # Safety
+/// All pointers reference 32 readable/writable bytes.
+#[no_mangle]
+#[inline(never)]
+pub unsafe extern "C" fn zkvm_u256_signextend(
+    b: *const u8,
+    value: *const u8,
+    result: *mut u8,
+) -> i32 {
+    let _ = black_box((b, value, result));
+    stub_fail("zkvm_u256_signextend")
 }

@@ -5,7 +5,8 @@ the `eth-act` working group at
 <https://github.com/eth-act/zkevm-standards/tree/main/standards>. These standards
 define a common contract between a zkVM and the guest programs it proves — the
 RISC-V target, the ELF it loads, the memory layout, the I/O and termination
-interfaces, and the C ABI for cryptographic accelerators (the EVM precompiles) —
+interfaces, the C ABI for cryptographic accelerators (the EVM precompiles), and
+the C ABI for 256-bit EVM-word arithmetic —
 so that a single guest can be built once and proven on any conforming zkVM.
 
 This document records, standard by standard, how ZisK currently measures up.
@@ -171,6 +172,7 @@ conform but not yet audited against the spec.
 | # | Standard | Assessment | One-line status |
 |---|----------|------------|-----------------|
 | 1 | [C interface for accelerators](#1-c-interface-for-accelerators) | **Conformant** | All 19 `zkvm_*` functions implemented natively in `.zisk`; runtime-validated on real blocks via ziskethone. |
+| 1b | [U256 arithmetic C interface](#1b-u256-arithmetic-accelerator-c-interface) | **Conformant** | All 27 `zkvm_u256_*` functions implemented natively in `.zisk` over the shared uint256 precompile cores; golden-vector-validated against an EVM reference. |
 | 2 | [Accelerated memory operations](#2-accelerated-memory-operations) | **Partial** | `memcpy`/`memcmp`/`memset` accelerated via DMA precompiles; `memmove` and the link-precedence guarantee to confirm. |
 | 3 | [ELF loading and validation](#3-elf-loading-and-validation) | **Conformant** | `elf2rom` enforces header, PT_LOAD-only loading, zero-fill, W^X and entry-point validation. |
 | 4 | [I/O interface](#4-io-interface) | **Conformant** | `read_input` / `write_output` implemented and redirected to the ZisK library. |
@@ -216,6 +218,50 @@ Each routine performs the byte↔limb marshalling required by the EF encoding
 into ziskethone and run on three real mainnet blocks; the block hash is
 byte-identical to the native software path in every case, exercising
 keccak/sha256/secp256k1 and BN254 end-to-end on-chain traffic.
+
+**Assessment: Conformant.**
+
+---
+
+## 1b. U256 arithmetic accelerator C interface
+
+**Standard.** A companion header (`zkvm_u256.h`) in the same
+`c-interface-accelerators` family, defining accelerated **256-bit unsigned-integer
+(EVM word) arithmetic**: the arithmetic, comparison, bitwise and shift operations
+that back the EVM opcodes. Every operand and result is a 32-byte **big-endian**
+array (`zkvm_u256`, reusing `zkvm_bytes_32`); the result pointer **may alias** any
+input; division/modulo by zero and `addmod`/`mulmod` with a zero modulus return
+zero (EVM semantics), and `mulmod` must reduce the full 512-bit product.
+
+**ZisK.** All **27** functions of `zkvm_u256.h` are implemented as hand-written
+ZisK-assembly routines in `ziskasm/zisklib/zkvm/u256.zisk`, exposed under the
+`ziskasm_zkvm_u256_*` entry points and reached from a guest through the `elf2rom`
+redirect of the standard `zkvm_u256_*` symbols:
+
+- Arithmetic: `add`, `sub`, `mul`, `div`, `mod`, `divmod`, `addmod`, `mulmod`, `exp`
+- Signed (two's complement): `sdiv`, `smod`, `sdivmod`
+- Comparison: `lt`, `gt`, `slt`, `sgt`, `eq`, `iszero`
+- Bitwise / shifts: `and`, `or`, `xor`, `not`, `byte`, `shl`, `shr`, `sar`
+- Extended: `signextend`
+
+Rather than a separate bignum implementation, these wrappers **map onto the shared
+ZisK arithmetic precompiles** already used by `ziskos`: they byte-reverse each
+big-endian operand to the little-endian limbs the precompiles expect and reuse the
+`uint256/*.zisk` cores — `add256` (add/sub), `arith256` (mul, and the `div_rem256`
+quotient/remainder hint-verify), `arith256_mod` (`addmod`/`mulmod`/`exp`) — then
+byte-reverse the result back. Bitwise and equality operations are byte-order
+agnostic and act on the raw words directly (no marshalling). The EVM edge cases
+the cores don't cover are added in the wrappers: a zero divisor/modulus yields
+zero (instead of the core's panic), and the signed operations go through
+absolute-value plus sign (so `-2^255 / -1 = -2^255` falls out naturally). Because
+all inputs are read into private scratch before the output is written, the
+result-aliases-input guarantee holds. The header and fail-hard drop-in stubs live
+in `ziskasm/lang/c/` (`zkvm_u256.h`, `zkvm_stubs.c`) and the `zisklib` Rust crate.
+
+**Validation.** A generated guest exercises all 27 functions (45 cases including
+the div/mod/addmod/mulmod-by-zero guards, cross-word shifts, `sar` sign-fill and
+`shift >= 256`, `byte >= 32`, `signextend`, and the signed min-int case) and every
+result is **byte-identical to a Python EVM reference**.
 
 **Assessment: Conformant.**
 
